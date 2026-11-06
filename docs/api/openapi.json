@@ -56449,6 +56449,272 @@
         }
       }
     },
+    "/api/v1/bereavement/contacts/{contactId}/timeline": {
+      "get": {
+        "operationId": "getApiV1BereavementContactsByContactIdTimeline",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "The contact's touchpoints and program activities (mailings, sessions), newest first, cursor-paginated; program activities satisfy no cadence item; a bereavement volunteer sees no touchpoint outcome (ADR-0109 D10, #52)",
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "next_cursor",
+                    "has_more",
+                    "redactedCategories"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "entryId",
+                          "at",
+                          "source",
+                          "kind",
+                          "activityKind"
+                        ],
+                        "properties": {
+                          "entryId": {
+                            "type": "string"
+                          },
+                          "at": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "anyOf": [
+                              {
+                                "const": "outreach",
+                                "type": "string"
+                              },
+                              {
+                                "const": "program_activity",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "phone_call",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "in_person_visit",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "sympathy_card",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "sympathy_letter",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "anniversary_letter",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "email",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "portal_message",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "group_support_invitation",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "external_referral",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "activityKind": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "newsletter_mailing",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "holiday_mailing",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "memorial_invitation_mailing",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "support_group_session",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "memorial_service_attendance",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "outcome": {
+                            "anyOf": [
+                              {
+                                "const": "engaged",
+                                "type": "string"
+                              },
+                              {
+                                "const": "brief_acknowledgement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "declined",
+                                "type": "string"
+                              },
+                              {
+                                "const": "no_response",
+                                "type": "string"
+                              },
+                              {
+                                "const": "voicemail_left",
+                                "type": "string"
+                              },
+                              {
+                                "const": "wrong_number",
+                                "type": "string"
+                              },
+                              {
+                                "const": "returned_undeliverable",
+                                "type": "string"
+                              },
+                              {
+                                "const": "requested_followup",
+                                "type": "string"
+                              },
+                              {
+                                "const": "requested_no_further_contact",
+                                "type": "string"
+                              },
+                              {
+                                "const": "crisis_referral",
+                                "type": "string"
+                              },
+                              {
+                                "const": "artifact_rendered",
+                                "type": "string"
+                              },
+                              {
+                                "const": "mailed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "emailed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attended",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "next_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    },
+                    "total_count": {
+                      "type": "integer"
+                    },
+                    "redactedCategories": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "sud",
+                            "type": "string"
+                          },
+                          {
+                            "const": "clinical_risk",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/bereavement/dashboard/counselor": {
       "get": {
         "operationId": "getApiV1BereavementDashboardCounselor",
@@ -57181,6 +57447,2561 @@
                       "type": "integer"
                     },
                     "externalSourceCosignPendingCount": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/mailings/config": {
+      "get": {
+        "operationId": "getApiV1BereavementMailingsConfig",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "The four configurable mailings (quarterly newsletter, December holiday, Mother's Day, Father's Day), each merged with its stored config or a disabled default at version 0; bereavement oversight only (ADR-0109 D10, #42)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "mailingKey",
+                      "configured",
+                      "enabled",
+                      "leadDays",
+                      "schedule",
+                      "audienceRelationships",
+                      "content",
+                      "version",
+                      "updatedAt"
+                    ],
+                    "properties": {
+                      "mailingKey": {
+                        "anyOf": [
+                          {
+                            "const": "newsletter_quarterly",
+                            "type": "string"
+                          },
+                          {
+                            "const": "holiday_december",
+                            "type": "string"
+                          },
+                          {
+                            "const": "mothers_day",
+                            "type": "string"
+                          },
+                          {
+                            "const": "fathers_day",
+                            "type": "string"
+                          },
+                          {
+                            "const": "decedent_birthday",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "configured": {
+                        "type": "boolean"
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "leadDays": {
+                        "type": "integer"
+                      },
+                      "schedule": {
+                        "type": "object",
+                        "properties": {
+                          "monthDays": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "monthDay": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "audienceRelationships": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "const": "spouse",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "domestic_partner",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "parent",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "child",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "sibling",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "grandparent",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "grandchild",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "aunt_uncle",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cousin",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "in_law",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "friend",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "neighbor",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "clergy",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "colleague",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "caregiver_non_family",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "content": {
+                        "type": "object",
+                        "properties": {
+                          "en": {
+                            "type": "object",
+                            "required": [
+                              "title",
+                              "greeting",
+                              "paragraphs",
+                              "signoff"
+                            ],
+                            "properties": {
+                              "title": {
+                                "maxLength": 200,
+                                "type": "string"
+                              },
+                              "greeting": {
+                                "maxLength": 200,
+                                "type": "string"
+                              },
+                              "paragraphs": {
+                                "maxItems": 12,
+                                "type": "array",
+                                "items": {
+                                  "maxLength": 2000,
+                                  "type": "string"
+                                }
+                              },
+                              "signoff": {
+                                "maxLength": 400,
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "version": {
+                        "type": "integer"
+                      },
+                      "updatedAt": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/mailings/config/{mailingKey}": {
+      "put": {
+        "operationId": "putApiV1BereavementMailingsConfigByMailingKey",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "Configure one mailing: enabled, lead days (3..60), the occurrence dates, the audience and the agency's own wording (no default wording ships); `If-Match` (0 for the first write) and `Idempotency-Key` required (ADR-0109 D10, #43)",
+        "parameters": [
+          {
+            "name": "mailingKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "mailingKey",
+                    "configured",
+                    "enabled",
+                    "leadDays",
+                    "schedule",
+                    "audienceRelationships",
+                    "content",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "mailingKey": {
+                      "anyOf": [
+                        {
+                          "const": "newsletter_quarterly",
+                          "type": "string"
+                        },
+                        {
+                          "const": "holiday_december",
+                          "type": "string"
+                        },
+                        {
+                          "const": "mothers_day",
+                          "type": "string"
+                        },
+                        {
+                          "const": "fathers_day",
+                          "type": "string"
+                        },
+                        {
+                          "const": "decedent_birthday",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "configured": {
+                      "type": "boolean"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "leadDays": {
+                      "type": "integer"
+                    },
+                    "schedule": {
+                      "type": "object",
+                      "properties": {
+                        "monthDays": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "monthDay": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "audienceRelationships": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "spouse",
+                                "type": "string"
+                              },
+                              {
+                                "const": "domestic_partner",
+                                "type": "string"
+                              },
+                              {
+                                "const": "parent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "child",
+                                "type": "string"
+                              },
+                              {
+                                "const": "sibling",
+                                "type": "string"
+                              },
+                              {
+                                "const": "grandparent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "grandchild",
+                                "type": "string"
+                              },
+                              {
+                                "const": "aunt_uncle",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cousin",
+                                "type": "string"
+                              },
+                              {
+                                "const": "in_law",
+                                "type": "string"
+                              },
+                              {
+                                "const": "friend",
+                                "type": "string"
+                              },
+                              {
+                                "const": "neighbor",
+                                "type": "string"
+                              },
+                              {
+                                "const": "clergy",
+                                "type": "string"
+                              },
+                              {
+                                "const": "colleague",
+                                "type": "string"
+                              },
+                              {
+                                "const": "caregiver_non_family",
+                                "type": "string"
+                              },
+                              {
+                                "const": "other",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "content": {
+                      "type": "object",
+                      "properties": {
+                        "en": {
+                          "type": "object",
+                          "required": [
+                            "title",
+                            "greeting",
+                            "paragraphs",
+                            "signoff"
+                          ],
+                          "properties": {
+                            "title": {
+                              "maxLength": 200,
+                              "type": "string"
+                            },
+                            "greeting": {
+                              "maxLength": 200,
+                              "type": "string"
+                            },
+                            "paragraphs": {
+                              "maxItems": 12,
+                              "type": "array",
+                              "items": {
+                                "maxLength": 2000,
+                                "type": "string"
+                              }
+                            },
+                            "signoff": {
+                              "maxLength": 400,
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "enabled",
+                  "leadDays",
+                  "audienceRelationships",
+                  "content"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "leadDays": {
+                    "minimum": 3,
+                    "maximum": 60,
+                    "type": "integer"
+                  },
+                  "schedule": {
+                    "type": "object",
+                    "properties": {
+                      "monthDays": {
+                        "maxItems": 12,
+                        "type": "array",
+                        "items": {
+                          "pattern": "^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$",
+                          "type": "string"
+                        }
+                      },
+                      "monthDay": {
+                        "pattern": "^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$",
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "audienceRelationships": {
+                    "anyOf": [
+                      {
+                        "maxItems": 16,
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "const": "spouse",
+                              "type": "string"
+                            },
+                            {
+                              "const": "domestic_partner",
+                              "type": "string"
+                            },
+                            {
+                              "const": "parent",
+                              "type": "string"
+                            },
+                            {
+                              "const": "child",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sibling",
+                              "type": "string"
+                            },
+                            {
+                              "const": "grandparent",
+                              "type": "string"
+                            },
+                            {
+                              "const": "grandchild",
+                              "type": "string"
+                            },
+                            {
+                              "const": "aunt_uncle",
+                              "type": "string"
+                            },
+                            {
+                              "const": "cousin",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_law",
+                              "type": "string"
+                            },
+                            {
+                              "const": "friend",
+                              "type": "string"
+                            },
+                            {
+                              "const": "neighbor",
+                              "type": "string"
+                            },
+                            {
+                              "const": "clergy",
+                              "type": "string"
+                            },
+                            {
+                              "const": "colleague",
+                              "type": "string"
+                            },
+                            {
+                              "const": "caregiver_non_family",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "content": {
+                    "type": "object",
+                    "properties": {
+                      "en": {
+                        "type": "object",
+                        "required": [
+                          "title",
+                          "greeting",
+                          "paragraphs",
+                          "signoff"
+                        ],
+                        "properties": {
+                          "title": {
+                            "maxLength": 200,
+                            "type": "string"
+                          },
+                          "greeting": {
+                            "maxLength": 200,
+                            "type": "string"
+                          },
+                          "paragraphs": {
+                            "maxItems": 12,
+                            "type": "array",
+                            "items": {
+                              "maxLength": 2000,
+                              "type": "string"
+                            }
+                          },
+                          "signoff": {
+                            "maxLength": 400,
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/mailings/runs": {
+      "get": {
+        "operationId": "getApiV1BereavementMailingsRuns",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "Mailing runs, newest scheduled first (`?status=`), cursor-paginated, each with its item counts; bereavement oversight only (ADR-0109 D10, #44)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "draft",
+                  "type": "string"
+                },
+                {
+                  "const": "generating",
+                  "type": "string"
+                },
+                {
+                  "const": "ready",
+                  "type": "string"
+                },
+                {
+                  "const": "mailed",
+                  "type": "string"
+                },
+                {
+                  "const": "cancelled",
+                  "type": "string"
+                },
+                {
+                  "const": "failed",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "next_cursor",
+                    "has_more"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "runId",
+                          "runKind",
+                          "mailingKey",
+                          "occurrenceKey",
+                          "scheduledFor",
+                          "status",
+                          "content",
+                          "recipientCount",
+                          "excludedCount",
+                          "failureCode",
+                          "hasDocument",
+                          "generatedAt",
+                          "mailedAt",
+                          "itemCounts",
+                          "version",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "runId": {
+                            "type": "string"
+                          },
+                          "runKind": {
+                            "anyOf": [
+                              {
+                                "const": "newsletter",
+                                "type": "string"
+                              },
+                              {
+                                "const": "holiday",
+                                "type": "string"
+                              },
+                              {
+                                "const": "memorial_invitation",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "mailingKey": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "newsletter_quarterly",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "holiday_december",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mothers_day",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "fathers_day",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "decedent_birthday",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "occurrenceKey": {
+                            "type": "string"
+                          },
+                          "scheduledFor": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "draft",
+                                "type": "string"
+                              },
+                              {
+                                "const": "generating",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ready",
+                                "type": "string"
+                              },
+                              {
+                                "const": "mailed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "content": {
+                            "type": "object",
+                            "properties": {
+                              "en": {
+                                "type": "object",
+                                "required": [
+                                  "title",
+                                  "greeting",
+                                  "paragraphs",
+                                  "signoff"
+                                ],
+                                "properties": {
+                                  "title": {
+                                    "maxLength": 200,
+                                    "type": "string"
+                                  },
+                                  "greeting": {
+                                    "maxLength": 200,
+                                    "type": "string"
+                                  },
+                                  "paragraphs": {
+                                    "maxItems": 12,
+                                    "type": "array",
+                                    "items": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "signoff": {
+                                    "maxLength": 400,
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "recipientCount": {
+                            "type": "integer"
+                          },
+                          "excludedCount": {
+                            "type": "integer"
+                          },
+                          "failureCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "hasDocument": {
+                            "type": "boolean"
+                          },
+                          "generatedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "mailedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "itemCounts": {
+                            "type": "object",
+                            "required": [
+                              "included",
+                              "excluded",
+                              "logged",
+                              "excludedAfterRender"
+                            ],
+                            "properties": {
+                              "included": {
+                                "type": "integer"
+                              },
+                              "excluded": {
+                                "type": "integer"
+                              },
+                              "logged": {
+                                "type": "integer"
+                              },
+                              "excludedAfterRender": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "next_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    },
+                    "total_count": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/mailings/runs/{runId}": {
+      "get": {
+        "operationId": "getApiV1BereavementMailingsRunsByRunId",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "One mailing run: status, wording snapshot, recipient / excluded counts and per-state item counts; the batch document itself is reached only through download (ADR-0109 D10, #45)",
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "runId",
+                    "runKind",
+                    "mailingKey",
+                    "occurrenceKey",
+                    "scheduledFor",
+                    "status",
+                    "content",
+                    "recipientCount",
+                    "excludedCount",
+                    "failureCode",
+                    "hasDocument",
+                    "generatedAt",
+                    "mailedAt",
+                    "itemCounts",
+                    "version",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "runId": {
+                      "type": "string"
+                    },
+                    "runKind": {
+                      "anyOf": [
+                        {
+                          "const": "newsletter",
+                          "type": "string"
+                        },
+                        {
+                          "const": "holiday",
+                          "type": "string"
+                        },
+                        {
+                          "const": "memorial_invitation",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "mailingKey": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "newsletter_quarterly",
+                              "type": "string"
+                            },
+                            {
+                              "const": "holiday_december",
+                              "type": "string"
+                            },
+                            {
+                              "const": "mothers_day",
+                              "type": "string"
+                            },
+                            {
+                              "const": "fathers_day",
+                              "type": "string"
+                            },
+                            {
+                              "const": "decedent_birthday",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "occurrenceKey": {
+                      "type": "string"
+                    },
+                    "scheduledFor": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "generating",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "mailed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "failed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "content": {
+                      "type": "object",
+                      "properties": {
+                        "en": {
+                          "type": "object",
+                          "required": [
+                            "title",
+                            "greeting",
+                            "paragraphs",
+                            "signoff"
+                          ],
+                          "properties": {
+                            "title": {
+                              "maxLength": 200,
+                              "type": "string"
+                            },
+                            "greeting": {
+                              "maxLength": 200,
+                              "type": "string"
+                            },
+                            "paragraphs": {
+                              "maxItems": 12,
+                              "type": "array",
+                              "items": {
+                                "maxLength": 2000,
+                                "type": "string"
+                              }
+                            },
+                            "signoff": {
+                              "maxLength": 400,
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "recipientCount": {
+                      "type": "integer"
+                    },
+                    "excludedCount": {
+                      "type": "integer"
+                    },
+                    "failureCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasDocument": {
+                      "type": "boolean"
+                    },
+                    "generatedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mailedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "itemCounts": {
+                      "type": "object",
+                      "required": [
+                        "included",
+                        "excluded",
+                        "logged",
+                        "excludedAfterRender"
+                      ],
+                      "properties": {
+                        "included": {
+                          "type": "integer"
+                        },
+                        "excluded": {
+                          "type": "integer"
+                        },
+                        "logged": {
+                          "type": "integer"
+                        },
+                        "excludedAfterRender": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/mailings/runs/{runId}/cancel": {
+      "post": {
+        "operationId": "postApiV1BereavementMailingsRunsByRunIdCancel",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "Cancel a draft, ready or failed run; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #51)",
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "runId",
+                    "runKind",
+                    "mailingKey",
+                    "occurrenceKey",
+                    "scheduledFor",
+                    "status",
+                    "content",
+                    "recipientCount",
+                    "excludedCount",
+                    "failureCode",
+                    "hasDocument",
+                    "generatedAt",
+                    "mailedAt",
+                    "itemCounts",
+                    "version",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "runId": {
+                      "type": "string"
+                    },
+                    "runKind": {
+                      "anyOf": [
+                        {
+                          "const": "newsletter",
+                          "type": "string"
+                        },
+                        {
+                          "const": "holiday",
+                          "type": "string"
+                        },
+                        {
+                          "const": "memorial_invitation",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "mailingKey": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "newsletter_quarterly",
+                              "type": "string"
+                            },
+                            {
+                              "const": "holiday_december",
+                              "type": "string"
+                            },
+                            {
+                              "const": "mothers_day",
+                              "type": "string"
+                            },
+                            {
+                              "const": "fathers_day",
+                              "type": "string"
+                            },
+                            {
+                              "const": "decedent_birthday",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "occurrenceKey": {
+                      "type": "string"
+                    },
+                    "scheduledFor": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "generating",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "mailed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "failed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "content": {
+                      "type": "object",
+                      "properties": {
+                        "en": {
+                          "type": "object",
+                          "required": [
+                            "title",
+                            "greeting",
+                            "paragraphs",
+                            "signoff"
+                          ],
+                          "properties": {
+                            "title": {
+                              "maxLength": 200,
+                              "type": "string"
+                            },
+                            "greeting": {
+                              "maxLength": 200,
+                              "type": "string"
+                            },
+                            "paragraphs": {
+                              "maxItems": 12,
+                              "type": "array",
+                              "items": {
+                                "maxLength": 2000,
+                                "type": "string"
+                              }
+                            },
+                            "signoff": {
+                              "maxLength": 400,
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "recipientCount": {
+                      "type": "integer"
+                    },
+                    "excludedCount": {
+                      "type": "integer"
+                    },
+                    "failureCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasDocument": {
+                      "type": "boolean"
+                    },
+                    "generatedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mailedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "itemCounts": {
+                      "type": "object",
+                      "required": [
+                        "included",
+                        "excluded",
+                        "logged",
+                        "excludedAfterRender"
+                      ],
+                      "properties": {
+                        "included": {
+                          "type": "integer"
+                        },
+                        "excluded": {
+                          "type": "integer"
+                        },
+                        "logged": {
+                          "type": "integer"
+                        },
+                        "excludedAfterRender": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/mailings/runs/{runId}/confirm-mailed": {
+      "post": {
+        "operationId": "postApiV1BereavementMailingsRunsByRunIdConfirmmailed",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "Confirm the batch was mailed: re-check eligibility over the rendered contacts (an opt-out or closure since the render is flagged `excluded_after_render` and never logged as mailed), ready to mailed, `m16.bereavement.mailing_run_mailed`; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #50)",
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "runId",
+                    "runKind",
+                    "mailingKey",
+                    "occurrenceKey",
+                    "scheduledFor",
+                    "status",
+                    "content",
+                    "recipientCount",
+                    "excludedCount",
+                    "failureCode",
+                    "hasDocument",
+                    "generatedAt",
+                    "mailedAt",
+                    "itemCounts",
+                    "version",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "runId": {
+                      "type": "string"
+                    },
+                    "runKind": {
+                      "anyOf": [
+                        {
+                          "const": "newsletter",
+                          "type": "string"
+                        },
+                        {
+                          "const": "holiday",
+                          "type": "string"
+                        },
+                        {
+                          "const": "memorial_invitation",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "mailingKey": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "newsletter_quarterly",
+                              "type": "string"
+                            },
+                            {
+                              "const": "holiday_december",
+                              "type": "string"
+                            },
+                            {
+                              "const": "mothers_day",
+                              "type": "string"
+                            },
+                            {
+                              "const": "fathers_day",
+                              "type": "string"
+                            },
+                            {
+                              "const": "decedent_birthday",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "occurrenceKey": {
+                      "type": "string"
+                    },
+                    "scheduledFor": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "generating",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "mailed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "failed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "content": {
+                      "type": "object",
+                      "properties": {
+                        "en": {
+                          "type": "object",
+                          "required": [
+                            "title",
+                            "greeting",
+                            "paragraphs",
+                            "signoff"
+                          ],
+                          "properties": {
+                            "title": {
+                              "maxLength": 200,
+                              "type": "string"
+                            },
+                            "greeting": {
+                              "maxLength": 200,
+                              "type": "string"
+                            },
+                            "paragraphs": {
+                              "maxItems": 12,
+                              "type": "array",
+                              "items": {
+                                "maxLength": 2000,
+                                "type": "string"
+                              }
+                            },
+                            "signoff": {
+                              "maxLength": 400,
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "recipientCount": {
+                      "type": "integer"
+                    },
+                    "excludedCount": {
+                      "type": "integer"
+                    },
+                    "failureCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasDocument": {
+                      "type": "boolean"
+                    },
+                    "generatedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mailedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "itemCounts": {
+                      "type": "object",
+                      "required": [
+                        "included",
+                        "excluded",
+                        "logged",
+                        "excludedAfterRender"
+                      ],
+                      "properties": {
+                        "included": {
+                          "type": "integer"
+                        },
+                        "excluded": {
+                          "type": "integer"
+                        },
+                        "logged": {
+                          "type": "integer"
+                        },
+                        "excludedAfterRender": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/mailings/runs/{runId}/content": {
+      "patch": {
+        "operationId": "patchApiV1BereavementMailingsRunsByRunIdContent",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "Replace a DRAFT run's wording; 409 once the run is generating or later; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #47)",
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "runId",
+                    "runKind",
+                    "mailingKey",
+                    "occurrenceKey",
+                    "scheduledFor",
+                    "status",
+                    "content",
+                    "recipientCount",
+                    "excludedCount",
+                    "failureCode",
+                    "hasDocument",
+                    "generatedAt",
+                    "mailedAt",
+                    "itemCounts",
+                    "version",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "runId": {
+                      "type": "string"
+                    },
+                    "runKind": {
+                      "anyOf": [
+                        {
+                          "const": "newsletter",
+                          "type": "string"
+                        },
+                        {
+                          "const": "holiday",
+                          "type": "string"
+                        },
+                        {
+                          "const": "memorial_invitation",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "mailingKey": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "newsletter_quarterly",
+                              "type": "string"
+                            },
+                            {
+                              "const": "holiday_december",
+                              "type": "string"
+                            },
+                            {
+                              "const": "mothers_day",
+                              "type": "string"
+                            },
+                            {
+                              "const": "fathers_day",
+                              "type": "string"
+                            },
+                            {
+                              "const": "decedent_birthday",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "occurrenceKey": {
+                      "type": "string"
+                    },
+                    "scheduledFor": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "generating",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "mailed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "failed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "content": {
+                      "type": "object",
+                      "properties": {
+                        "en": {
+                          "type": "object",
+                          "required": [
+                            "title",
+                            "greeting",
+                            "paragraphs",
+                            "signoff"
+                          ],
+                          "properties": {
+                            "title": {
+                              "maxLength": 200,
+                              "type": "string"
+                            },
+                            "greeting": {
+                              "maxLength": 200,
+                              "type": "string"
+                            },
+                            "paragraphs": {
+                              "maxItems": 12,
+                              "type": "array",
+                              "items": {
+                                "maxLength": 2000,
+                                "type": "string"
+                              }
+                            },
+                            "signoff": {
+                              "maxLength": 400,
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "recipientCount": {
+                      "type": "integer"
+                    },
+                    "excludedCount": {
+                      "type": "integer"
+                    },
+                    "failureCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasDocument": {
+                      "type": "boolean"
+                    },
+                    "generatedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mailedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "itemCounts": {
+                      "type": "object",
+                      "required": [
+                        "included",
+                        "excluded",
+                        "logged",
+                        "excludedAfterRender"
+                      ],
+                      "properties": {
+                        "included": {
+                          "type": "integer"
+                        },
+                        "excluded": {
+                          "type": "integer"
+                        },
+                        "logged": {
+                          "type": "integer"
+                        },
+                        "excludedAfterRender": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "content"
+                ],
+                "properties": {
+                  "content": {
+                    "type": "object",
+                    "properties": {
+                      "en": {
+                        "type": "object",
+                        "required": [
+                          "title",
+                          "greeting",
+                          "paragraphs",
+                          "signoff"
+                        ],
+                        "properties": {
+                          "title": {
+                            "maxLength": 200,
+                            "type": "string"
+                          },
+                          "greeting": {
+                            "maxLength": 200,
+                            "type": "string"
+                          },
+                          "paragraphs": {
+                            "maxItems": 12,
+                            "type": "array",
+                            "items": {
+                              "maxLength": 2000,
+                              "type": "string"
+                            }
+                          },
+                          "signoff": {
+                            "maxLength": 400,
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/mailings/runs/{runId}/download": {
+      "get": {
+        "operationId": "getApiV1BereavementMailingsRunsByRunIdDownload",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "A short-lived URL for the rendered batch PDF (every recipient's name and address: internal-only), minted through the M22 org-level document seam, which records the access; 409 unless the run is ready or mailed; never cached (ADR-0109 D10, #49)",
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "runId",
+                    "url",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "runId": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/mailings/runs/{runId}/generate": {
+      "post": {
+        "operationId": "postApiV1BereavementMailingsRunsByRunIdGenerate",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "Generate the batch: compare-and-set draft (or failed) to generating, select the recipients set-based through the eligibility rule, hand the render to the worker; 422 `MAILING_CONTENT_EMPTY` when no wording was written (no default ships); a run with no eligible recipient lands `failed` (`NO_RECIPIENTS`); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #48)",
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "runId",
+                    "runKind",
+                    "mailingKey",
+                    "occurrenceKey",
+                    "scheduledFor",
+                    "status",
+                    "content",
+                    "recipientCount",
+                    "excludedCount",
+                    "failureCode",
+                    "hasDocument",
+                    "generatedAt",
+                    "mailedAt",
+                    "itemCounts",
+                    "version",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "runId": {
+                      "type": "string"
+                    },
+                    "runKind": {
+                      "anyOf": [
+                        {
+                          "const": "newsletter",
+                          "type": "string"
+                        },
+                        {
+                          "const": "holiday",
+                          "type": "string"
+                        },
+                        {
+                          "const": "memorial_invitation",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "mailingKey": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "newsletter_quarterly",
+                              "type": "string"
+                            },
+                            {
+                              "const": "holiday_december",
+                              "type": "string"
+                            },
+                            {
+                              "const": "mothers_day",
+                              "type": "string"
+                            },
+                            {
+                              "const": "fathers_day",
+                              "type": "string"
+                            },
+                            {
+                              "const": "decedent_birthday",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "occurrenceKey": {
+                      "type": "string"
+                    },
+                    "scheduledFor": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "generating",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "mailed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "failed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "content": {
+                      "type": "object",
+                      "properties": {
+                        "en": {
+                          "type": "object",
+                          "required": [
+                            "title",
+                            "greeting",
+                            "paragraphs",
+                            "signoff"
+                          ],
+                          "properties": {
+                            "title": {
+                              "maxLength": 200,
+                              "type": "string"
+                            },
+                            "greeting": {
+                              "maxLength": 200,
+                              "type": "string"
+                            },
+                            "paragraphs": {
+                              "maxItems": 12,
+                              "type": "array",
+                              "items": {
+                                "maxLength": 2000,
+                                "type": "string"
+                              }
+                            },
+                            "signoff": {
+                              "maxLength": 400,
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "recipientCount": {
+                      "type": "integer"
+                    },
+                    "excludedCount": {
+                      "type": "integer"
+                    },
+                    "failureCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasDocument": {
+                      "type": "boolean"
+                    },
+                    "generatedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mailedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "itemCounts": {
+                      "type": "object",
+                      "required": [
+                        "included",
+                        "excluded",
+                        "logged",
+                        "excludedAfterRender"
+                      ],
+                      "properties": {
+                        "included": {
+                          "type": "integer"
+                        },
+                        "excluded": {
+                          "type": "integer"
+                        },
+                        "logged": {
+                          "type": "integer"
+                        },
+                        "excludedAfterRender": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/mailings/runs/{runId}/items": {
+      "get": {
+        "operationId": "getApiV1BereavementMailingsRunsByRunIdItems",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "A run's items in letter order: contact id, relationship, channel, status and exclusion reason; never a name or an address (ADR-0109 D10, #46)",
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "included",
+                  "type": "string"
+                },
+                {
+                  "const": "excluded",
+                  "type": "string"
+                },
+                {
+                  "const": "logged",
+                  "type": "string"
+                },
+                {
+                  "const": "excluded_after_render",
+                  "type": "string"
+                },
+                {
+                  "const": "email_sent",
+                  "type": "string"
+                },
+                {
+                  "const": "email_failed",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "next_cursor",
+                    "has_more"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "itemId",
+                          "contactId",
+                          "planId",
+                          "relationshipCode",
+                          "channel",
+                          "status",
+                          "exclusionReason",
+                          "ordinal"
+                        ],
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "contactId": {
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "relationshipCode": {
+                            "anyOf": [
+                              {
+                                "const": "spouse",
+                                "type": "string"
+                              },
+                              {
+                                "const": "domestic_partner",
+                                "type": "string"
+                              },
+                              {
+                                "const": "parent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "child",
+                                "type": "string"
+                              },
+                              {
+                                "const": "sibling",
+                                "type": "string"
+                              },
+                              {
+                                "const": "grandparent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "grandchild",
+                                "type": "string"
+                              },
+                              {
+                                "const": "aunt_uncle",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cousin",
+                                "type": "string"
+                              },
+                              {
+                                "const": "in_law",
+                                "type": "string"
+                              },
+                              {
+                                "const": "friend",
+                                "type": "string"
+                              },
+                              {
+                                "const": "neighbor",
+                                "type": "string"
+                              },
+                              {
+                                "const": "clergy",
+                                "type": "string"
+                              },
+                              {
+                                "const": "colleague",
+                                "type": "string"
+                              },
+                              {
+                                "const": "caregiver_non_family",
+                                "type": "string"
+                              },
+                              {
+                                "const": "other",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "channel": {
+                            "anyOf": [
+                              {
+                                "const": "postal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "email",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "included",
+                                "type": "string"
+                              },
+                              {
+                                "const": "excluded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "logged",
+                                "type": "string"
+                              },
+                              {
+                                "const": "excluded_after_render",
+                                "type": "string"
+                              },
+                              {
+                                "const": "email_sent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "email_failed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "exclusionReason": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "plan_not_active",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "contact_not_engageable",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "opted_out",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no_mailings",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "channel_opted_out",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "channel_not_allowed",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no_mailing_address",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no_email_address",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "email_channel_unavailable",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "not_in_audience",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "ordinal": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "next_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    },
+                    "total_count": {
                       "type": "integer"
                     }
                   }

@@ -4955,6 +4955,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bereavement/contacts/{contactId}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The contact's touchpoints and program activities (mailings, sessions), newest first, cursor-paginated; program activities satisfy no cadence item; a bereavement volunteer sees no touchpoint outcome (ADR-0109 D10, #52) */
+        get: operations["getApiV1BereavementContactsByContactIdTimeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bereavement/dashboard/counselor": {
         parameters: {
             query?: never;
@@ -4981,6 +4998,176 @@ export interface paths {
         };
         /** Full-tenant bereavement rollups, optionally narrowed to one CCN / location — COUNTS, never rates (§4.1 #31) */
         get: operations["getApiV1BereavementDashboardSupervisor"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/mailings/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The four configurable mailings (quarterly newsletter, December holiday, Mother's Day, Father's Day), each merged with its stored config or a disabled default at version 0; bereavement oversight only (ADR-0109 D10, #42) */
+        get: operations["getApiV1BereavementMailingsConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/mailings/config/{mailingKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Configure one mailing: enabled, lead days (3..60), the occurrence dates, the audience and the agency's own wording (no default wording ships); `If-Match` (0 for the first write) and `Idempotency-Key` required (ADR-0109 D10, #43) */
+        put: operations["putApiV1BereavementMailingsConfigByMailingKey"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/mailings/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mailing runs, newest scheduled first (`?status=`), cursor-paginated, each with its item counts; bereavement oversight only (ADR-0109 D10, #44) */
+        get: operations["getApiV1BereavementMailingsRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/mailings/runs/{runId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One mailing run: status, wording snapshot, recipient / excluded counts and per-state item counts; the batch document itself is reached only through download (ADR-0109 D10, #45) */
+        get: operations["getApiV1BereavementMailingsRunsByRunId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/mailings/runs/{runId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a draft, ready or failed run; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #51) */
+        post: operations["postApiV1BereavementMailingsRunsByRunIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/mailings/runs/{runId}/confirm-mailed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm the batch was mailed: re-check eligibility over the rendered contacts (an opt-out or closure since the render is flagged `excluded_after_render` and never logged as mailed), ready to mailed, `m16.bereavement.mailing_run_mailed`; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #50) */
+        post: operations["postApiV1BereavementMailingsRunsByRunIdConfirmmailed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/mailings/runs/{runId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Replace a DRAFT run's wording; 409 once the run is generating or later; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #47) */
+        patch: operations["patchApiV1BereavementMailingsRunsByRunIdContent"];
+        trace?: never;
+    };
+    "/api/v1/bereavement/mailings/runs/{runId}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A short-lived URL for the rendered batch PDF (every recipient's name and address: internal-only), minted through the M22 org-level document seam, which records the access; 409 unless the run is ready or mailed; never cached (ADR-0109 D10, #49) */
+        get: operations["getApiV1BereavementMailingsRunsByRunIdDownload"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/mailings/runs/{runId}/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate the batch: compare-and-set draft (or failed) to generating, select the recipients set-based through the eligibility rule, hand the render to the worker; 422 `MAILING_CONTENT_EMPTY` when no wording was written (no default ships); a run with no eligible recipient lands `failed` (`NO_RECIPIENTS`); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #48) */
+        post: operations["postApiV1BereavementMailingsRunsByRunIdGenerate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/mailings/runs/{runId}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A run's items in letter order: contact id, relationship, channel, status and exclusion reason; never a name or an address (ADR-0109 D10, #46) */
+        get: operations["getApiV1BereavementMailingsRunsByRunIdItems"];
         put?: never;
         post?: never;
         delete?: never;
@@ -42640,6 +42827,46 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BereavementContactsByContactIdTimeline: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                contactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            entryId: string;
+                            at: string;
+                            source: "outreach" | "program_activity";
+                            kind: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral") | null;
+                            activityKind: ("newsletter_mailing" | "holiday_mailing" | "memorial_invitation_mailing" | "support_group_session" | "memorial_service_attendance") | null;
+                            outcome?: "engaged" | "brief_acknowledgement" | "declined" | "no_response" | "voicemail_left" | "wrong_number" | "returned_undeliverable" | "requested_followup" | "requested_no_further_contact" | "crisis_referral" | "artifact_rendered" | "mailed" | "emailed" | "attended";
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                        redactedCategories: ("sud" | "clinical_risk")[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BereavementDashboardCounselor: {
         parameters: {
             query?: {
@@ -42773,6 +43000,520 @@ export interface operations {
                         };
                         unassignedPlanCount: number;
                         externalSourceCosignPendingCount: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementMailingsConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        mailingKey: "newsletter_quarterly" | "holiday_december" | "mothers_day" | "fathers_day" | "decedent_birthday";
+                        configured: boolean;
+                        enabled: boolean;
+                        leadDays: number;
+                        schedule: {
+                            monthDays?: string[];
+                            monthDay?: string;
+                        };
+                        audienceRelationships: ("spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other")[] | null;
+                        content: {
+                            en?: {
+                                title: string;
+                                greeting: string;
+                                paragraphs: string[];
+                                signoff: string;
+                            };
+                        };
+                        version: number;
+                        updatedAt: string | null;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1BereavementMailingsConfigByMailingKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mailingKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                    leadDays: number;
+                    schedule?: {
+                        monthDays?: string[];
+                        monthDay?: string;
+                    };
+                    audienceRelationships: ("spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other")[] | null;
+                    content: {
+                        en?: {
+                            title: string;
+                            greeting: string;
+                            paragraphs: string[];
+                            signoff: string;
+                        };
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        mailingKey: "newsletter_quarterly" | "holiday_december" | "mothers_day" | "fathers_day" | "decedent_birthday";
+                        configured: boolean;
+                        enabled: boolean;
+                        leadDays: number;
+                        schedule: {
+                            monthDays?: string[];
+                            monthDay?: string;
+                        };
+                        audienceRelationships: ("spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other")[] | null;
+                        content: {
+                            en?: {
+                                title: string;
+                                greeting: string;
+                                paragraphs: string[];
+                                signoff: string;
+                            };
+                        };
+                        version: number;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementMailingsRuns: {
+        parameters: {
+            query?: {
+                status?: "draft" | "generating" | "ready" | "mailed" | "cancelled" | "failed";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            runId: string;
+                            runKind: "newsletter" | "holiday" | "memorial_invitation";
+                            mailingKey: ("newsletter_quarterly" | "holiday_december" | "mothers_day" | "fathers_day" | "decedent_birthday") | null;
+                            occurrenceKey: string;
+                            scheduledFor: string;
+                            status: "draft" | "generating" | "ready" | "mailed" | "cancelled" | "failed";
+                            content: {
+                                en?: {
+                                    title: string;
+                                    greeting: string;
+                                    paragraphs: string[];
+                                    signoff: string;
+                                };
+                            };
+                            recipientCount: number;
+                            excludedCount: number;
+                            failureCode: string | null;
+                            hasDocument: boolean;
+                            generatedAt: string | null;
+                            mailedAt: string | null;
+                            itemCounts: {
+                                included: number;
+                                excluded: number;
+                                logged: number;
+                                excludedAfterRender: number;
+                            };
+                            version: number;
+                            createdAt: string;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementMailingsRunsByRunId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        runId: string;
+                        runKind: "newsletter" | "holiday" | "memorial_invitation";
+                        mailingKey: ("newsletter_quarterly" | "holiday_december" | "mothers_day" | "fathers_day" | "decedent_birthday") | null;
+                        occurrenceKey: string;
+                        scheduledFor: string;
+                        status: "draft" | "generating" | "ready" | "mailed" | "cancelled" | "failed";
+                        content: {
+                            en?: {
+                                title: string;
+                                greeting: string;
+                                paragraphs: string[];
+                                signoff: string;
+                            };
+                        };
+                        recipientCount: number;
+                        excludedCount: number;
+                        failureCode: string | null;
+                        hasDocument: boolean;
+                        generatedAt: string | null;
+                        mailedAt: string | null;
+                        itemCounts: {
+                            included: number;
+                            excluded: number;
+                            logged: number;
+                            excludedAfterRender: number;
+                        };
+                        version: number;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementMailingsRunsByRunIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        runId: string;
+                        runKind: "newsletter" | "holiday" | "memorial_invitation";
+                        mailingKey: ("newsletter_quarterly" | "holiday_december" | "mothers_day" | "fathers_day" | "decedent_birthday") | null;
+                        occurrenceKey: string;
+                        scheduledFor: string;
+                        status: "draft" | "generating" | "ready" | "mailed" | "cancelled" | "failed";
+                        content: {
+                            en?: {
+                                title: string;
+                                greeting: string;
+                                paragraphs: string[];
+                                signoff: string;
+                            };
+                        };
+                        recipientCount: number;
+                        excludedCount: number;
+                        failureCode: string | null;
+                        hasDocument: boolean;
+                        generatedAt: string | null;
+                        mailedAt: string | null;
+                        itemCounts: {
+                            included: number;
+                            excluded: number;
+                            logged: number;
+                            excludedAfterRender: number;
+                        };
+                        version: number;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementMailingsRunsByRunIdConfirmmailed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        runId: string;
+                        runKind: "newsletter" | "holiday" | "memorial_invitation";
+                        mailingKey: ("newsletter_quarterly" | "holiday_december" | "mothers_day" | "fathers_day" | "decedent_birthday") | null;
+                        occurrenceKey: string;
+                        scheduledFor: string;
+                        status: "draft" | "generating" | "ready" | "mailed" | "cancelled" | "failed";
+                        content: {
+                            en?: {
+                                title: string;
+                                greeting: string;
+                                paragraphs: string[];
+                                signoff: string;
+                            };
+                        };
+                        recipientCount: number;
+                        excludedCount: number;
+                        failureCode: string | null;
+                        hasDocument: boolean;
+                        generatedAt: string | null;
+                        mailedAt: string | null;
+                        itemCounts: {
+                            included: number;
+                            excluded: number;
+                            logged: number;
+                            excludedAfterRender: number;
+                        };
+                        version: number;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1BereavementMailingsRunsByRunIdContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    content: {
+                        en?: {
+                            title: string;
+                            greeting: string;
+                            paragraphs: string[];
+                            signoff: string;
+                        };
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        runId: string;
+                        runKind: "newsletter" | "holiday" | "memorial_invitation";
+                        mailingKey: ("newsletter_quarterly" | "holiday_december" | "mothers_day" | "fathers_day" | "decedent_birthday") | null;
+                        occurrenceKey: string;
+                        scheduledFor: string;
+                        status: "draft" | "generating" | "ready" | "mailed" | "cancelled" | "failed";
+                        content: {
+                            en?: {
+                                title: string;
+                                greeting: string;
+                                paragraphs: string[];
+                                signoff: string;
+                            };
+                        };
+                        recipientCount: number;
+                        excludedCount: number;
+                        failureCode: string | null;
+                        hasDocument: boolean;
+                        generatedAt: string | null;
+                        mailedAt: string | null;
+                        itemCounts: {
+                            included: number;
+                            excluded: number;
+                            logged: number;
+                            excludedAfterRender: number;
+                        };
+                        version: number;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementMailingsRunsByRunIdDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        runId: string;
+                        url: string;
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementMailingsRunsByRunIdGenerate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        runId: string;
+                        runKind: "newsletter" | "holiday" | "memorial_invitation";
+                        mailingKey: ("newsletter_quarterly" | "holiday_december" | "mothers_day" | "fathers_day" | "decedent_birthday") | null;
+                        occurrenceKey: string;
+                        scheduledFor: string;
+                        status: "draft" | "generating" | "ready" | "mailed" | "cancelled" | "failed";
+                        content: {
+                            en?: {
+                                title: string;
+                                greeting: string;
+                                paragraphs: string[];
+                                signoff: string;
+                            };
+                        };
+                        recipientCount: number;
+                        excludedCount: number;
+                        failureCode: string | null;
+                        hasDocument: boolean;
+                        generatedAt: string | null;
+                        mailedAt: string | null;
+                        itemCounts: {
+                            included: number;
+                            excluded: number;
+                            logged: number;
+                            excludedAfterRender: number;
+                        };
+                        version: number;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementMailingsRunsByRunIdItems: {
+        parameters: {
+            query?: {
+                status?: "included" | "excluded" | "logged" | "excluded_after_render" | "email_sent" | "email_failed";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            itemId: string;
+                            contactId: string;
+                            planId: string;
+                            relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                            channel: "postal" | "email";
+                            status: "included" | "excluded" | "logged" | "excluded_after_render" | "email_sent" | "email_failed";
+                            exclusionReason: ("plan_not_active" | "contact_not_engageable" | "opted_out" | "no_mailings" | "channel_opted_out" | "channel_not_allowed" | "no_mailing_address" | "no_email_address" | "email_channel_unavailable" | "not_in_audience") | null;
+                            ordinal: number | null;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
                     };
                 };
             };

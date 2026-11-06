@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1901,
-    "coveredRoutes": 1901,
-    "directRoutesReferenced": 1734
+    "routes": 1912,
+    "coveredRoutes": 1912,
+    "directRoutesReferenced": 1745
   },
   "modules": [
     {
@@ -296,15 +296,16 @@
     },
     {
       "module": "16-bereavement",
-      "routes": 42,
+      "routes": 53,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/bereavement-inject.test.ts",
+        "apps/backend/__tests__/m16-mailings.live.test.ts",
         "apps/backend/__tests__/m16-routes.live.test.ts",
         "apps/backend/__tests__/m22-internal-documents.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 42
+      "directRoutesReferenced": 53
     },
     {
       "module": "17-scheduling",
@@ -374,6 +375,7 @@
         "apps/backend/__tests__/f238-prospect-summary.test.ts",
         "apps/backend/__tests__/f238-records-request-expiry.test.ts",
         "apps/backend/__tests__/f238-records-request.test.ts",
+        "apps/backend/__tests__/m16-mailings.live.test.ts",
         "apps/backend/__tests__/m22-doclens-sud-gate.test.ts",
         "apps/backend/__tests__/m22-internal-documents.live.test.ts",
         "apps/backend/__tests__/m22-internal-documents.test.ts",
