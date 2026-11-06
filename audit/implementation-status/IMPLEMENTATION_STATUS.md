@@ -21,7 +21,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M09 Clinical Assessments Suite | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 20/20 ✅ | ✅ | ✅ | — | 6/6 ✅ |
 | M10 HOPE Engine | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 30/30 ✅ | ✅ | ✅ | ✅ | 13/13 ✅ |
 | M11 Orders | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 35/35 ✅ | ✅ | ✅ | — | 12/12 ✅ |
-| M12 DoseSpot Integration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 40/40 ✅ | ✅ | ✅ | ✅ | 14/15 ⚠️ |
+| M12 DoseSpot Integration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 40/40 ✅ | ✅ | ✅ | ✅ | 15/15 ✅ |
 | M13 eMAR & Med Administration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M14 IDG | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 39/39 ✅ | ✅ | ✅ | — | 11/11 ✅ |
 | M15 Discipline Care Plans | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 12/12 ✅ |
