@@ -843,6 +843,8 @@ function stubDb(tenantStatus: string | null, options: { failInserts?: boolean } 
         inserts.push({ table, values });
       },
     }),
+    // a write also voids a pending go-live attestation (`voidPendingGoLiveForDataChange`): the stub has none to revoke
+    update: () => ({ set: () => ({ where: () => ({ returning: async () => [] }) }) }),
     // `set_config('app.org_id' | 'app.user_id', …)` and the onboarding advisory lock
     execute: async (query: { queryChunks?: unknown[] }) => {
       trace.push(`exec:${JSON.stringify(query.queryChunks ?? query)}`);
