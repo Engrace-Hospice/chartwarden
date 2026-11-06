@@ -1166,20 +1166,30 @@ describe("service: the clearinghouse choice", () => {
   it("a failing settle is logged and never fails the committed write", async () => {
     const { db } = stubDb("onboarding");
     const { port } = fakePort();
-    const logged: unknown[] = [];
+    const failure = new Error("advance failed");
+    const warned: { message: string; context: Record<string, unknown> }[] = [];
+    const errored: unknown[] = [];
     const service = buildDrizzleOnboardingDataService({
       db,
       resolveTenant,
       clearinghouse: port,
       settleOnboarding: async () => {
-        throw new Error("advance failed");
+        throw failure;
       },
-      logError: (cause) => logged.push(cause),
+      warn: (message, context) => warned.push({ message, context }),
+      logError: (cause) => errored.push(cause),
     });
     await expect(
       service.activateClearinghouse(OPERATOR, "tenant-b", "ticket CHG-1"),
     ).resolves.toEqual({ status: "active" });
-    expect(logged).toHaveLength(1);
+    // warned with its own message and the raw error (for the redacting logger), never through the tax-id `logError`
+    expect(warned).toEqual([
+      {
+        message: "m34.onboarding data: onboarding settle after a clearinghouse change failed",
+        context: { organizationId: expect.any(String), err: failure },
+      },
+    ]);
+    expect(errored).toEqual([]);
   });
 
   it("answers 503 when the clearinghouse adapter is not bound, and audits the failed attempt", async () => {
