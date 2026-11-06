@@ -58,8 +58,25 @@ GRANT SELECT ON "plan_census_band" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "plan_census_band" TO chartwarden_admin;--> statement-breakpoint
 
 -- The guard on `plan`. census_banded rows only; the retired tiers pass through untouched (and may not carry the new columns).
+-- A plan's tier is part of what freezes: the published-version freeze below keys on OLD.tier, so a row that could leave census_banded
+-- (nulling its prices and its published_at in the same UPDATE) and come back as a draft would be re-priced and re-published under
+-- the subscriptions that signed it. So a census_banded row never changes tier, a published row never goes back to a draft, and a
+-- flat row that subscriptions already use never becomes census_banded.
 CREATE OR REPLACE FUNCTION plan_census_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF OLD.tier = 'census_banded' AND NEW.tier <> OLD.tier THEN
+      RAISE EXCEPTION 'plan %: a census_banded plan cannot change tier', OLD.slug USING ERRCODE = '23514';
+    END IF;
+    IF OLD.tier = 'census_banded' AND OLD.published_at IS NOT NULL AND NEW.published_at IS NULL THEN
+      RAISE EXCEPTION 'plan %: a published version cannot go back to a draft', OLD.slug USING ERRCODE = '23514';
+    END IF;
+    IF OLD.tier <> 'census_banded' AND NEW.tier = 'census_banded'
+       AND EXISTS (SELECT 1 FROM subscription s WHERE s.plan_id = OLD.id) THEN
+      RAISE EXCEPTION 'plan %: a plan that subscriptions use cannot become census_banded', OLD.slug USING ERRCODE = '23514';
+    END IF;
+  END IF;
+
   IF NEW.tier <> 'census_banded' THEN
     IF NEW.family_slug IS NOT NULL OR NEW.per_user_price_cents IS NOT NULL OR NEW.billing_software_bps IS NOT NULL
        OR NEW.managed_billing_bps IS NOT NULL OR NEW.contract_term_months IS NOT NULL
@@ -107,11 +124,16 @@ CREATE TRIGGER "plan_census_guard" BEFORE INSERT OR UPDATE ON "plan"
   FOR EACH ROW EXECUTE FUNCTION plan_census_guard();--> statement-breakpoint
 
 -- Bands of a published plan are frozen with it.
+-- A band never moves between plans: re-pointing a band of a draft at a published plan (or the reverse) would rewrite a published
+-- price list without touching the plan row, so the guard judges the band's OLD plan and refuses a plan_id change outright.
 CREATE OR REPLACE FUNCTION plan_census_band_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
   target uuid;
 BEGIN
-  IF TG_OP = 'DELETE' THEN target := OLD.plan_id; ELSE target := NEW.plan_id; END IF;
+  IF TG_OP = 'UPDATE' AND NEW.plan_id IS DISTINCT FROM OLD.plan_id THEN
+    RAISE EXCEPTION 'plan_census_band: a band cannot move to another plan' USING ERRCODE = '23514';
+  END IF;
+  IF TG_OP = 'DELETE' OR TG_OP = 'UPDATE' THEN target := OLD.plan_id; ELSE target := NEW.plan_id; END IF;
   IF EXISTS (SELECT 1 FROM plan p WHERE p.id = target AND p.published_at IS NOT NULL)
      OR NOT EXISTS (SELECT 1 FROM plan p WHERE p.id = target AND p.tier = 'census_banded') THEN
     RAISE EXCEPTION 'plan_census_band: the bands of a published (or non-census_banded) plan cannot change' USING ERRCODE = '23514';

@@ -191,8 +191,6 @@ const PLATFORM_WRITER_FUNCTIONS = [
 
 /** The M35 platform-only tables (migration 0143 — RLS with no chartwarden_app grant): full write. */
 const PLATFORM_WRITE_TABLES = [
-  // Slice 2 — the bands of a DRAFT plan are replaced wholesale by the plan editor (the guard trigger freezes a published plan's).
-  "plan_census_band",
   "revenue_recognition_snapshot",
   "stripe_webhook_event",
   "patient_pseudonym_key",
@@ -203,9 +201,8 @@ const PLATFORM_WRITE_TABLES = [
 
 /** The §5.2 admin ACTIONS' mutation surface (refunds / dunning / promos) — INSERT+UPDATE only. */
 const PLATFORM_MUTATE_TABLES = [
-  // Slice 2 — the plan editor (draft edit / publish / archive; a published row is frozen by its trigger), the daily census snapshot
-  // and the monthly statement (a final row is frozen by its trigger). Tenants hold SELECT only on the last two.
-  "plan",
+  // Slice 2 — the daily census snapshot and the monthly statement (a final row is frozen by its trigger). Tenants hold SELECT only.
+  // `plan` and `plan_census_band` are NOT here: their grants are narrower than INSERT + table-wide UPDATE (see PLAN_PLATFORM_UPDATE_COLUMNS).
   "patient_census_daily",
   "subscription_statement",
   // ADR-0108 — platform-only grant/cancel of the claims-billing add-on (tenants hold SELECT only).
@@ -247,6 +244,34 @@ const PLATFORM_PROVISION_UPDATE_TABLES = [
   "onboarding_task",
   "support_session",
   "feature_flag",
+] as const;
+
+/**
+ * The `plan` columns the platform carrier may UPDATE (slice 2 plan editor + the legacy flat-tier editor). Deliberately NOT here: `id`,
+ * `slug`, `tier`, `cadence`, `family_slug`, `version`, `supersedes_plan_id`, `created_at`. A published version's freeze keys on its
+ * tier, so a carrier that could change `tier` could un-freeze a plan the database is meant to hold still; identity and lineage columns
+ * are set at INSERT and never rewritten. The guard triggers (migration 1341) refuse the same changes even to a superuser.
+ */
+const PLAN_PLATFORM_UPDATE_COLUMNS = [
+  "name",
+  "description",
+  "currency_code",
+  "base_price_cents",
+  "trial_period_days",
+  "is_active",
+  "valid_from",
+  "valid_to",
+  "deprecated_at",
+  "stripe_product_id",
+  "stripe_price_id",
+  "per_user_price_cents",
+  "billing_software_bps",
+  "managed_billing_bps",
+  "contract_term_months",
+  "implementation_fee_cents",
+  "minimum_monthly_cents",
+  "published_at",
+  "updated_at",
 ] as const;
 
 /** The destruction_certificate columns the platform carrier may update: the same set as the app role (migration 1159), never the spend columns or data_class. */
@@ -356,6 +381,16 @@ async function main(): Promise<void> {
       await run(
         'GRANT UPDATE ("billing_service_mode", "updated_at") ON "subscription_contract" TO chartwarden_platform;',
       );
+      // plan (slice 2): the editor INSERTs a draft and UPDATEs by COLUMN (never tier, slug, family, version, cadence, lineage,
+      // created_at); the bands of a draft are only ever inserted and deleted, never updated in place. REVOKE first so a
+      // re-provision takes back an older table-wide grant.
+      await run('GRANT INSERT ON "plan" TO chartwarden_platform;');
+      await run('REVOKE UPDATE ON "plan" FROM chartwarden_platform;');
+      await run(
+        `GRANT UPDATE (${PLAN_PLATFORM_UPDATE_COLUMNS.map((c) => `"${c}"`).join(", ")}) ON "plan" TO chartwarden_platform;`,
+      );
+      await run('GRANT INSERT, DELETE ON "plan_census_band" TO chartwarden_platform;');
+      await run('REVOKE UPDATE ON "plan_census_band" FROM chartwarden_platform;');
       await run('REVOKE UPDATE ON "tenant_go_live_attestation" FROM chartwarden_platform;');
       await run(
         'GRANT UPDATE ("status", "approved_by_membership_id", "approved_by_user_id", "approved_at", "approval_reason", "revoked_by_membership_id", "revoked_by_user_id", "revoked_at", "revoke_reason", "updated_at") ON "tenant_go_live_attestation" TO chartwarden_platform;',

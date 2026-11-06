@@ -136,6 +136,20 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
     }
   }
 
+  /** A connection as the REAL platform carrier (BYPASSRLS, bound by its enumerated grants), never the superuser. */
+  async function asCarrier<T>(fn: (carrier: Client) => Promise<T>): Promise<T> {
+    const url = new URL(DB_URL as string);
+    url.username = "chartwarden_platform_login";
+    url.password = PLATFORM_PASSWORD;
+    const carrier = new Client({ connectionString: url.toString() });
+    await carrier.connect();
+    try {
+      return await fn(carrier);
+    } finally {
+      await carrier.end();
+    }
+  }
+
   async function seedOrg(id: string, slug: string, status: string): Promise<void> {
     await admin.query(
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -661,6 +675,144 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         [ORG_B],
       );
       await admin.query("UPDATE plan SET is_active=false WHERE slug='starter-monthly'");
+    });
+  });
+
+  // ── 1b. the freeze cannot be walked around ─────────────────────────────────────────────────────────
+  describe("the published-plan freeze cannot be bypassed", () => {
+    let frozenId = "";
+    let draftId = "";
+
+    it("leaving census_banded and coming back as a draft (the two-step re-price) is refused to the REAL carrier by its column grants, and to a superuser by the trigger", async () => {
+      const probe = await plans.create(
+        operator,
+        plan({ familySlug: "freeze-probe" }),
+        "a plan the freeze probes attack",
+      );
+      frozenId = probe.id;
+      await plans.publish(operator, frozenId, "publish the freeze probe");
+      // Step 1: ONE statement leaves census_banded, nulls every contracted column and un-publishes the row; the old
+      // guard checked only OLD.tier = census_banded rows, so this passed and the row was an editable flat plan.
+      const leave = `UPDATE plan SET tier='starter', family_slug=NULL, per_user_price_cents=NULL, billing_software_bps=NULL,
+        managed_billing_bps=NULL, contract_term_months=NULL, implementation_fee_cents=NULL, minimum_monthly_cents=NULL,
+        published_at=NULL WHERE id=$1`;
+      await asCarrier(async (carrier) => {
+        await expect(carrier.query(leave, [frozenId])).rejects.toMatchObject({ code: "42501" });
+        // tier, slug, family, version, cadence and lineage are not columns the carrier may write at all
+        for (const column of ["tier", "slug", "family_slug", "version", "cadence"]) {
+          await expect(
+            carrier.query(`UPDATE plan SET ${column} = ${column} WHERE id=$1`, [frozenId]),
+            column,
+          ).rejects.toMatchObject({ code: "42501" });
+        }
+      });
+      await expect(admin.query(leave, [frozenId])).rejects.toThrow(/cannot change tier/);
+      const [row] = await q<{
+        tier: string;
+        published_at: Date | null;
+        per_user_price_cents: string;
+      }>("SELECT tier, published_at, per_user_price_cents FROM plan WHERE id=$1", [frozenId]);
+      expect(row).toMatchObject({ tier: "census_banded", per_user_price_cents: "10000" });
+      expect(row?.published_at).not.toBeNull();
+    });
+
+    it("a published version cannot be sent back to a draft, even by the carrier (the column is writable; the trigger holds)", async () => {
+      await asCarrier(async (carrier) => {
+        await expect(
+          carrier.query("UPDATE plan SET published_at = NULL WHERE id=$1", [frozenId]),
+        ).rejects.toThrow(/go back to a draft/);
+        await expect(
+          carrier.query("UPDATE plan SET per_user_price_cents = 1 WHERE id=$1", [frozenId]),
+        ).rejects.toThrow(/frozen/);
+      });
+    });
+
+    it("a flat plan that subscriptions already use cannot be flipped to census_banded", async () => {
+      await admin.query(
+        `INSERT INTO plan (slug,name,tier,cadence,base_price_cents,is_active,trial_period_days)
+         VALUES ('flat-probe','Flat probe','starter','monthly',100,true,0)`,
+      );
+      const [flat] = await q<{ id: string }>("SELECT id FROM plan WHERE slug='flat-probe'");
+      await admin.query(
+        "INSERT INTO subscription (organization_id, plan_id, status) VALUES ($1,$2,'active')",
+        [ORG_E, flat?.id],
+      );
+      try {
+        await expect(
+          admin.query(
+            "UPDATE plan SET tier='census_banded', family_slug='flat-probe', slug='flat-probe-v1' WHERE id=$1",
+            [flat?.id],
+          ),
+        ).rejects.toThrow(/subscriptions use/);
+      } finally {
+        await admin.query("DELETE FROM subscription WHERE organization_id=$1", [ORG_E]);
+        await admin.query("DELETE FROM plan WHERE id=$1", [flat?.id]);
+      }
+    });
+
+    it("a band cannot be re-pointed from a draft to a published plan (or back), and the carrier cannot UPDATE a band at all", async () => {
+      const draft = await plans.create(
+        operator,
+        plan({ familySlug: "freeze-probe-draft" }),
+        "a draft whose bands the probe moves",
+      );
+      draftId = draft.id;
+      const move = "UPDATE plan_census_band SET plan_id=$1 WHERE plan_id=$2";
+      await asCarrier(async (carrier) => {
+        await expect(carrier.query(move, [frozenId, draftId])).rejects.toMatchObject({
+          code: "42501",
+        });
+        await expect(
+          carrier.query("UPDATE plan_census_band SET monthly_fee_cents = 1 WHERE plan_id=$1", [
+            draftId,
+          ]),
+        ).rejects.toMatchObject({ code: "42501" });
+      });
+      await expect(admin.query(move, [frozenId, draftId])).rejects.toThrow(/another plan/);
+      await expect(admin.query(move, [draftId, frozenId])).rejects.toThrow(/another plan/);
+      // the published plan's bands are untouched
+      expect(await q("SELECT 1 FROM plan_census_band WHERE plan_id=$1", [frozenId])).toHaveLength(
+        4,
+      );
+      // a draft's bands are still replaced the way the editor does it: delete and insert
+      await expect(
+        plans.replaceDraft(
+          operator,
+          draftId,
+          plan({ familySlug: "freeze-probe-draft" }),
+          "edit the draft",
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    it("the carrier holds no UPDATE on plan_census_band and only the editable columns of plan", async () => {
+      const grants = await q<{ privilege_type: string; column_name: string | null }>(
+        `SELECT 'table' AS scope, privilege_type, NULL AS column_name FROM information_schema.role_table_grants
+          WHERE grantee='chartwarden_platform' AND table_name='plan_census_band'
+         UNION ALL
+         SELECT 'column', privilege_type, column_name FROM information_schema.role_column_grants
+          WHERE grantee='chartwarden_platform' AND table_name='plan' AND privilege_type='UPDATE'`,
+      );
+      const bandPrivileges = grants
+        .filter((g) => g.column_name === null)
+        .map((g) => g.privilege_type);
+      expect(bandPrivileges.sort()).toEqual(["DELETE", "INSERT", "SELECT"]);
+      const updatable = grants.filter((g) => g.column_name !== null).map((g) => g.column_name);
+      for (const never of [
+        "id",
+        "slug",
+        "tier",
+        "cadence",
+        "family_slug",
+        "version",
+        "supersedes_plan_id",
+        "created_at",
+      ]) {
+        expect(updatable, never).not.toContain(never);
+      }
+      expect(updatable).toEqual(
+        expect.arrayContaining(["published_at", "per_user_price_cents", "is_active"]),
+      );
     });
   });
 
