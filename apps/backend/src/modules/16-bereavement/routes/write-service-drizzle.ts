@@ -630,6 +630,8 @@ export function buildDrizzleM16WriteService(
           kind: p.kind,
           status: "scheduled" as const,
           anniversaryMark: p.anniversaryMark,
+          // ADR-0110 D4 — persist the floor mark so a tier change can top the schedule up idempotently.
+          cadenceMark: p.mark,
           deathAnchorAt: new Date(p.deathAnchorAt),
           dueAt: new Date(p.dueAt),
           lateGraceUntil: new Date(p.lateGraceUntil),

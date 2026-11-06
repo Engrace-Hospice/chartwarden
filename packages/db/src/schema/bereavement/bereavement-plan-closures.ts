@@ -53,6 +53,8 @@ export const bereavementPlanClosure = pgTable(
     contactsOptedOutCount: integer("contacts_opted_out_count").notNull(),
 
     bereavementSummaryDocumentId: uuid("bereavement_summary_document_id"), // logical FK → M22 document
+    // ADR-0110 D9 (migration 1341) — the internal discharge-summary render; logical FK → M22 document.
+    dischargeSummaryDocumentId: uuid("discharge_summary_document_id"),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

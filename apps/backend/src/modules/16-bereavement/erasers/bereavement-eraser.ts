@@ -194,6 +194,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
             emailCipher: null,
             phoneCipher: null,
             mailingAddressCipher: null,
+            careGoalsCipher: null,
             ineligibleReasonRedacted: null,
           })
           .where(inArray(CONTACT.planId, planIds))
