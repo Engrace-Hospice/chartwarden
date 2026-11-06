@@ -319,6 +319,7 @@ export {
 } from "./membership-display-for-org";
 // §11 D19 (#205 hard half) — the real org activate/suspend/close capability + its one ABAC predicate.
 export {
+  type OrganizationActivationGuard,
   type OrganizationLifecycleEvent,
   type OrganizationLifecycleOutboxPort,
   type OrganizationLifecycleStatus,
@@ -373,6 +374,7 @@ import {
 import { createDbMembershipRepository as _dbMemberships } from "./membership-repository";
 import { createDrizzleOrgAdminStore as _drizzleOrgAdminStore } from "./org-admin-store";
 import {
+  type OrganizationActivationGuard,
   type OrganizationLifecycleOutboxPort,
   activateCreatedOrganization as _activateCreatedOrganization,
   createDrizzleOrganizationLifecycleWriter as _organizationLifecycleWriter,
@@ -621,10 +623,11 @@ export function createOrganizationStatusReader(db: DbClient) {
  */
 export function createOrganizationActivator(
   db: DbClient,
+  activationGuard: OrganizationActivationGuard,
   outbox?: OrganizationLifecycleOutboxPort,
   onTransitioned?: (organizationId: string) => void,
 ) {
-  const writer = _organizationLifecycleWriter(db, outbox, onTransitioned);
+  const writer = _organizationLifecycleWriter(db, outbox, onTransitioned, activationGuard);
   return (
     organizationId: string,
     ctx: { reason: string; actorUserId: string; actorMembershipId: string },
@@ -643,6 +646,8 @@ export function createOrganizationActivator(
 export function mountOrganizationLifecycleRoutes(
   app: FastifyInstance,
   db: DbClient,
+  /** Refuses `activate` while the organization's tenant is onboarding (go-live is the only way in). Required, so a mount cannot forget it. */
+  activationGuard: OrganizationActivationGuard,
   /** The `m2.*` outbox publisher (#205). Omitted → transition still lands, event is dropped. */
   outbox?: OrganizationLifecycleOutboxPort,
   /** Called after a transition commits; the composition root evicts the tenant-host cache here (ADR-0049 D6). */
@@ -651,7 +656,7 @@ export function mountOrganizationLifecycleRoutes(
   _registerM2AbacPredicates();
   _registerOrganizationLifecycleRoutes(
     app,
-    _organizationLifecycleWriter(db, outbox, onTransitioned),
+    _organizationLifecycleWriter(db, outbox, onTransitioned, activationGuard),
   );
 }
 // M2-T10 — the `identity` data eraser (two_factor/passkey + pending invitations) + its ports.

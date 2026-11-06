@@ -5253,9 +5253,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // §11 D19 (#205 hard half) — the real org activate/suspend/close capability. This is what
           // makes M35's `m2.organization.*` subscriptions have a producer at all; `organization.status`
           // had no UPDATE anywhere in the codebase before this.
+          // Activation through this route is refused while the organization's tenant is provisioning/onboarding: the only
+          // way a new tenant's organization opens is the two-party go-live approval (M34), not one operator's POST.
           mountOrganizationLifecycleRoutes(
             app,
             dbHandle.db,
+            createOnboardingTenantReader(dbHandle.db),
             m2OutboxPublisher,
             (organizationId) => {
               tenantHostResolver?.invalidateOrganization(organizationId);
@@ -5930,6 +5933,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // After a change the wizard asks the advance sweep to run for that tenant so the next step unlocks at once.
           const m2OrganizationActivator = createOrganizationActivator(
             dbHandle.db,
+            createOnboardingTenantReader(dbHandle.db),
             m2OutboxPublisher,
             (organizationId) => {
               tenantHostResolver?.invalidateOrganization(organizationId);
@@ -7968,13 +7972,38 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         auditBypass: m34PlatformBypassAuditor,
         outbox: m34OutboxPublisher,
         facts: buildM34OnboardingFacts(dbHandle.db),
+        // The daily sweep also opens an organization whose tenant went live but whose activation never landed (the second,
+        // separate step of a go-live approval). The M2 writer refuses while the tenant is onboarding, which it is not here.
+        activateOrganization: (() => {
+          const activate = createOrganizationActivator(
+            dbHandle.db,
+            createOnboardingTenantReader(dbHandle.db),
+            m2OutboxPublisher,
+            (organizationId) => {
+              tenantHostResolver?.invalidateOrganization(organizationId);
+              organizationStage?.invalidate(organizationId);
+            },
+          );
+          return async (input: {
+            organizationId: string;
+            operatorUserId: string;
+            operatorMembershipId: string;
+            reason: string;
+          }) => {
+            await activate(input.organizationId, {
+              reason: input.reason,
+              actorUserId: input.operatorUserId,
+              actorMembershipId: input.operatorMembershipId,
+            });
+          };
+        })(),
         alerts: {
           emit: (
             orgId: string,
             input: Parameters<NonNullable<ReturnType<typeof getM34AlertEmitter>>["emit"]>[1],
           ) => getM34AlertEmitter().emit(orgId, input),
         },
-        warn: (message: string, context: Record<string, string>) => app.log.warn(context, message),
+        warn: (message: string, context: Record<string, unknown>) => app.log.warn(context, message),
         info: (message: string, context: Record<string, string>) => app.log.info(context, message),
       };
       const m34SweepWorkers = [

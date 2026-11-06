@@ -705,7 +705,7 @@ describe("two-party go-live", () => {
       expect(tenant().status).toBe("onboarding");
     });
 
-    it("a failed activation is a loud typed error naming the recovery; the tenant stays live and the failure is logged", async () => {
+    it("a failed activation is a loud typed 503 (not a 500) naming the recovery; the tenant stays live and the failure is logged", async () => {
       await wizard().attestGoLive(OFFICER, ORG, undefined);
       activateOrganization.mockRejectedValueOnce(new Error("organization update unavailable"));
 
@@ -715,11 +715,72 @@ describe("two-party go-live", () => {
       } catch (e) {
         const err = e as ChartWardenError;
         expect(err.code).toBe("ORGANIZATION_ACTIVATION_FAILED");
-        expect(err.statusCode).toBe(500);
-        expect(err.message).toMatch(/organizations\/.*\/status/);
+        expect(err.statusCode).toBe(503);
+        expect(err.message).toMatch(/repeat the approval/);
+        expect(err.message).not.toMatch(/organizations\/.*\/status/); // not the manual M2 route platform_ops cannot call
       }
       expect(tenant().status).toBe("active");
       expect(warnings).toHaveLength(1);
+    });
+
+    describe("repeating the approval finishes an organization the first pass could not open", () => {
+      beforeEach(async () => {
+        await wizard().attestGoLive(OFFICER, ORG, undefined);
+        activateOrganization.mockRejectedValueOnce(new Error("organization update unavailable"));
+        await code(wizard().approveGoLive("acme", OPS, APPROVAL));
+        activateOrganization.mockClear();
+      });
+
+      it("skips the guards, activates nothing twice and re-runs only the organization activation", async () => {
+        // Guards that would now fail (a step re-opened after go-live) must not matter: the approval already happened.
+        settle("organisation");
+        state.tasks[0] = { ...(state.tasks[0] as (typeof state.tasks)[number]), status: "pending" };
+        const other: PlatformActor = { kind: "platform", membershipId: "ops2-m", userId: "ops2-u" };
+
+        const view = await wizard().approveGoLive(
+          "acme",
+          other,
+          "completing the organization activation",
+        );
+
+        expect(view.goLive.state).toBe("live");
+        expect(activateOrganization).toHaveBeenCalledTimes(1);
+        expect(activateOrganization).toHaveBeenCalledWith({
+          organizationId: ORG,
+          operator: other,
+          reason: "completing the organization activation",
+        });
+        expect(state.activations).toHaveLength(1); // the tenant was activated once, by the first approval
+        expect(state.goLive[0]).toMatchObject({ status: "approved", approvedByUserId: "ops-u" });
+      });
+
+      it("is repeatable until it works, and a second failure is the same typed 503", async () => {
+        activateOrganization.mockRejectedValueOnce(new Error("still unavailable"));
+        expect(await code(wizard().approveGoLive("acme", OPS, APPROVAL))).toBe(
+          "ORGANIZATION_ACTIVATION_FAILED",
+        );
+        await expect(wizard().approveGoLive("acme", OPS, APPROVAL)).resolves.toBeDefined();
+      });
+
+      it("still refuses the attester completing it (two people, not one)", async () => {
+        const attesterAsOperator: PlatformActor = {
+          kind: "platform",
+          membershipId: "somewhere-m",
+          userId: OFFICER.userId,
+        };
+        expect(await code(wizard().approveGoLive("acme", attesterAsOperator, APPROVAL))).toBe(
+          "GO_LIVE_SAME_PERSON",
+        );
+        expect(activateOrganization).not.toHaveBeenCalled();
+      });
+    });
+
+    it("an active tenant with no approved attestation is still refused (the repeat is not a way around the approval)", async () => {
+      state.tenants = [{ ...tenant(), status: "active" }];
+      expect(await code(wizard().approveGoLive("acme", OPS, APPROVAL))).toBe(
+        "TENANT_NOT_ONBOARDING",
+      );
+      expect(activateOrganization).not.toHaveBeenCalled();
     });
   });
 
@@ -1085,9 +1146,11 @@ describe("go-live: two people, a live attester, a fresh attestation", () => {
         expect.stringContaining("void"),
         expect.objectContaining({
           tenantAccountId: TENANT,
-          error: "platform database unavailable",
+          // The raw error, for the redacting serializer: never its message (a database error's message holds bound values).
+          err: expect.objectContaining({ message: "platform database unavailable" }),
         }),
       );
+      expect(warn.mock.calls[0]?.[1]).not.toHaveProperty("error");
       expect(state.goLive[0]?.status).toBe("pending");
       expect(
         await code(wizard().approveGoLive("acme", OPS, "reviewed the evidence and the BAA")),

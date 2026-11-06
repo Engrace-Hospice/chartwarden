@@ -10,6 +10,7 @@ import {
   assertCanRevoke,
   assertGuardsPass,
   evaluateGoLiveGuards,
+  latestApproved,
 } from "./go-live";
 import {
   COMPLIANCE_OFFICER_ROLE,
@@ -210,6 +211,19 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
   ): Promise<WizardView> {
     const reason = normalizeReason(reasonInput);
     const attestations = await ctx.store.listGoLive(ctx.tenant);
+    // A repeat of an approval that already committed: the tenant is live and only the organization's activation (a separate
+    // M2 transaction, after the approval commits) may be missing. Nothing is judged again; the caller re-runs the activation.
+    const approved = ctx.tenant.status === "active" ? latestApproved(attestations) : undefined;
+    if (approved) {
+      if (approved.attestedByUserId === actor.userId) {
+        throw refuse(
+          "GO_LIVE_SAME_PERSON",
+          "the person who attested readiness cannot also complete the go-live",
+          409,
+        );
+      }
+      return viewOf(ctx);
+    }
     const pending = assertCanApprove({
       tenantStatus: ctx.tenant.status,
       attestations,
@@ -347,15 +361,16 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
       deps.warn?.("m34.onboarding wizard: voiding the superseded go-live attestation failed", {
         tenantAccountId: tenant.tenantAccountId,
         attestationId: superseded.id,
-        error: error instanceof Error ? error.message : String(error),
+        err: error,
       });
     }
   }
 
   /**
    * The approval has committed: the tenant is live. Now open its organization. A failure must not look like success (the
-   * organization would stay on the onboarding allowlist), so it is a typed error that names the recovery; the tenant stays live
-   * and the manual platform route (`POST /api/v1/platform/organizations/:id/status {event: activate}`) finishes the job.
+   * organization would stay on the onboarding allowlist), so it is a typed 503 that names the recovery; the tenant stays live.
+   * Repeating the approval finishes the job (`goLiveApprove` skips the guards for an approval that already committed and
+   * the activation is a no-op on an organization that is already open), and the daily sweep reconciles it too.
    */
   async function activateOrganizationAfterApproval(
     approved: { organizationId: string; tenantAccountId: string },
@@ -373,12 +388,12 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
       deps.warn?.("m34.onboarding wizard: organization activation after go-live approval failed", {
         tenantAccountId: approved.tenantAccountId,
         organizationId: approved.organizationId,
-        error: error instanceof Error ? error.message : String(error),
+        err: error,
       });
       throw refuse(
         "ORGANIZATION_ACTIVATION_FAILED",
-        `the tenant is live but its organization could not be activated; retry POST /api/v1/platform/organizations/${approved.organizationId}/status with {"event":"activate"}`,
-        500,
+        "the go-live approval is recorded and the tenant is live, but its organization could not be opened yet: repeat the approval (it is safe to repeat and only finishes the activation); the daily onboarding sweep also completes it",
+        503,
       );
     }
   }

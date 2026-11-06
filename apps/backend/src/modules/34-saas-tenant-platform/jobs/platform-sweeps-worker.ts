@@ -9,6 +9,7 @@
 // this file binds their ports. Platform sweeps run inside ONE audited `withPlatformContext` transaction and publish
 // their outbox events in that same transaction (the event commits atomically with the write). The pure `run*`
 // functions take plain dependency bags so they are unit-testable without a database.
+import { randomUUID } from "node:crypto";
 import { auditPlatformEvent } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import {
@@ -30,7 +31,8 @@ import {
   withPlatformContext,
 } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { and, eq, inArray, isNull, lte } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte } from "drizzle-orm";
+import { pickGoverningBaa } from "../routes/platform/activation-guards";
 import { M34_JOB_SCHEDULES, M34_QUEUES } from "./index";
 
 /**
@@ -172,7 +174,10 @@ export async function gatherOnboardingContext(
     ? await readers.orgSeed(orgId)
     : { providerEntities: [], locationCount: 0 };
   const adminCount = readers.orgAdminCount ? await readers.orgAdminCount(orgId) : 0;
-  const [latestBaa] = await new BaaRegisterRepository(tx).listByTenantAccountId(tenantAccountId);
+  // The governing BAA (not rows[0]: the register lists `executed_on DESC`, which puts an undated pending renewal first).
+  const latestBaa = pickGoverningBaa(
+    await new BaaRegisterRepository(tx).listByTenantAccountId(tenantAccountId),
+  );
   const [account] = await tx
     .select({ officer: schema.tenantAccount.complianceOfficerMembershipId })
     .from(schema.tenantAccount)
@@ -210,7 +215,7 @@ export interface OnboardingFanOutDeps {
     tenantAccountId: string;
     orgId: string;
   }) => Promise<OnboardingAdvanceReport>;
-  readonly warn?: (message: string, context: Record<string, string>) => void;
+  readonly warn?: (message: string, context: Record<string, unknown>) => void;
 }
 
 /** The daily sweep: one advance pass per `onboarding` tenant; a failing tenant never stops the rest. */
@@ -226,11 +231,72 @@ export async function runOnboardingFanOut(
       failed += 1;
       deps.warn?.("m34.onboarding_advance: tenant pass failed", {
         tenantAccountId: t.tenantAccountId,
-        error: error instanceof Error ? error.message : String(error),
+        err: error,
       });
     }
   }
   return { tenants: tenants.length, failed };
+}
+
+// ── organization activation reconcile ────────────────────────────────────────────────────────────────
+
+/** A tenant that went live (an approved go-live attestation) whose M2 organization is still `created`. */
+export interface PendingOrganizationActivation {
+  readonly organizationId: string;
+  readonly tenantAccountId: string;
+  /** The operator who approved the go-live: the reconcile completes THEIR approval, so it is attributed to them. */
+  readonly approvedByUserId: string;
+  readonly approvedByMembershipId: string;
+}
+
+export interface OrganizationActivationReconcileDeps {
+  readonly listPending: () => Promise<readonly PendingOrganizationActivation[]>;
+  /** M2's lifecycle activation through a port (M34 does not import M2); a no-op on an organization that is already open. */
+  readonly activate: (input: {
+    organizationId: string;
+    operatorUserId: string;
+    operatorMembershipId: string;
+    reason: string;
+  }) => Promise<void>;
+  /** The system-job audit entry for one organization this pass opened. */
+  readonly recordReconciled: (entry: PendingOrganizationActivation) => Promise<void>;
+  readonly warn?: (message: string, context: Record<string, unknown>) => void;
+}
+
+const RECONCILE_REASON =
+  "go-live approved earlier; completing the organization activation (daily onboarding reconcile)";
+
+/**
+ * Approval flips the tenant to `active` and then, in a separate M2 transaction, opens the organization. If that second step
+ * fails the tenant is live but its organization stays on the onboarding allowlist; repeating the approval fixes it by hand,
+ * and this pass fixes it without anyone noticing. One failing organization never stops the rest.
+ */
+export async function runOrganizationActivationReconcile(
+  deps: OrganizationActivationReconcileDeps,
+): Promise<{ pending: number; activated: number; failed: number }> {
+  const pending = await deps.listPending();
+  let activated = 0;
+  let failed = 0;
+  for (const entry of pending) {
+    try {
+      await deps.activate({
+        organizationId: entry.organizationId,
+        operatorUserId: entry.approvedByUserId,
+        operatorMembershipId: entry.approvedByMembershipId,
+        reason: RECONCILE_REASON,
+      });
+      await deps.recordReconciled(entry);
+      activated += 1;
+    } catch (error) {
+      failed += 1;
+      deps.warn?.("m34.onboarding_advance: organization activation reconcile failed", {
+        tenantAccountId: entry.tenantAccountId,
+        organizationId: entry.organizationId,
+        err: error,
+      });
+    }
+  }
+  return { pending: pending.length, activated, failed };
 }
 
 // ── live construction ────────────────────────────────────────────────────────────────────────────────
@@ -245,13 +311,18 @@ export interface PlatformSweepWorkerDeps {
   readonly outbox: M34SweepOutbox;
   readonly alerts: M34SweepAlerts;
   readonly facts?: OnboardingFactReaders;
+  /**
+   * M2's activation of a `created` organization (the M2 lifecycle writer behind a port; M34 does not import M2). Bound, the
+   * daily onboarding sweep also opens any organization whose tenant went live but whose organization was never activated.
+   */
+  readonly activateOrganization?: OrganizationActivationReconcileDeps["activate"];
   readonly now?: () => Date;
-  readonly warn?: (message: string, context: Record<string, string>) => void;
+  readonly warn?: (message: string, context: Record<string, unknown>) => void;
   readonly info?: (message: string, context: Record<string, string>) => void;
 }
 
 function platformTx<T>(
-  deps: PlatformSweepWorkerDeps,
+  deps: Pick<PlatformSweepWorkerDeps, "platformDb" | "auditBypass">,
   reason: string,
   fn: (tx: DbClient) => Promise<T>,
 ): Promise<T> {
@@ -344,7 +415,7 @@ export function registerM34SupportSessionCloseWorker(deps: PlatformSweepWorkerDe
                 } catch (error) {
                   deps.warn?.("m34.support_session_close: grantor alert failed", {
                     organizationId: alert.organizationId,
-                    error: error instanceof Error ? error.message : String(error),
+                    err: error,
                   });
                 }
               },
@@ -406,6 +477,71 @@ export function createOnboardingAdvancer(
     });
 }
 
+/** Tenants that are `active` with an approved go-live whose organization is still `created` (platform credential, cross-tenant). */
+export function listPendingOrganizationActivations(
+  deps: Pick<PlatformSweepWorkerDeps, "platformDb" | "auditBypass">,
+): Promise<readonly PendingOrganizationActivation[]> {
+  return platformTx(deps, "m34 onboarding reconcile (organizations still created)", async (tx) => {
+    const rows = await tx
+      .selectDistinctOn([schema.tenantAccount.id], {
+        organizationId: schema.tenantAccount.organizationId,
+        tenantAccountId: schema.tenantAccount.id,
+        approvedByUserId: schema.tenantGoLiveAttestation.approvedByUserId,
+        approvedByMembershipId: schema.tenantGoLiveAttestation.approvedByMembershipId,
+      })
+      .from(schema.tenantAccount)
+      .innerJoin(
+        schema.tenantGoLiveAttestation,
+        and(
+          eq(schema.tenantGoLiveAttestation.tenantAccountId, schema.tenantAccount.id),
+          eq(schema.tenantGoLiveAttestation.status, "approved"),
+        ),
+      )
+      .innerJoin(
+        schema.organizations,
+        eq(schema.organizations.id, schema.tenantAccount.organizationId),
+      )
+      .where(
+        and(eq(schema.tenantAccount.status, "active"), eq(schema.organizations.status, "created")),
+      )
+      .orderBy(schema.tenantAccount.id, desc(schema.tenantGoLiveAttestation.approvedAt));
+    return rows.flatMap((r) =>
+      r.approvedByUserId && r.approvedByMembershipId
+        ? [
+            {
+              ...r,
+              approvedByUserId: r.approvedByUserId,
+              approvedByMembershipId: r.approvedByMembershipId,
+            },
+          ]
+        : [],
+    );
+  });
+}
+
+/** The system job's own audit entry for an organization it opened (the M2 transition audits itself, naming the approver). */
+export function recordOrganizationActivationReconciled(
+  deps: Pick<PlatformSweepWorkerDeps, "platformDb" | "auditBypass">,
+  entry: PendingOrganizationActivation,
+): Promise<void> {
+  return platformTx(deps, "m34 onboarding reconcile (audit)", (tx) =>
+    auditPlatformEvent(tx, {
+      eventType: "m34.onboarding.organization_activation_reconciled",
+      resourceKind: "tenant_account",
+      resourceId: entry.tenantAccountId,
+      outcome: "success",
+      severity: "warn",
+      correlationId: `m34-onboarding-reconcile:${entry.tenantAccountId}:${randomUUID()}`,
+      context: {
+        organizationId: entry.organizationId,
+        approvedByUserId: entry.approvedByUserId,
+        approvedByMembershipId: entry.approvedByMembershipId,
+        actor: "system",
+      },
+    }),
+  );
+}
+
 /** Construct the `tenant.onboarding_advance` Worker: a job with a tenant advances it; an empty tick fans out. */
 export function registerM34OnboardingAdvanceWorker(deps: PlatformSweepWorkerDeps): Worker {
   const advance = createOnboardingAdvancer(deps);
@@ -416,7 +552,7 @@ export function registerM34OnboardingAdvanceWorker(deps: PlatformSweepWorkerDeps
       if (data.tenantAccountId && data.orgId) {
         return advance({ tenantAccountId: data.tenantAccountId, orgId: data.orgId });
       }
-      return runOnboardingFanOut({
+      const fanOut = await runOnboardingFanOut({
         listOnboardingTenants: () =>
           platformTx(deps, "m34 onboarding sweep (tenant enumeration)", async (tx) => {
             const rows = await tx
@@ -431,6 +567,15 @@ export function registerM34OnboardingAdvanceWorker(deps: PlatformSweepWorkerDeps
         advance,
         warn: deps.warn,
       });
+      const activateOrganization = deps.activateOrganization;
+      if (!activateOrganization) return fanOut;
+      const organizations = await runOrganizationActivationReconcile({
+        listPending: () => listPendingOrganizationActivations(deps),
+        activate: activateOrganization,
+        recordReconciled: (entry) => recordOrganizationActivationReconciled(deps, entry),
+        warn: deps.warn,
+      });
+      return { ...fanOut, organizations };
     },
     { connection: deps.connection, concurrency: 4 },
   );
