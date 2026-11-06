@@ -59,7 +59,7 @@ function tierRows(points: unknown): string[][] {
 function contactBlocks(contact: unknown): Block[] {
   const c = rec(contact);
   const blocks: Block[] = [];
-  const name = str(c.displayName) ?? "Contact";
+  const name = str(c.label) ?? "Contact";
   blocks.push({ kind: "heading", level: 2, text: `${name} (${humanize(c.relationship)})` });
 
   const optOuts = arr(c.optOuts).map(rec);

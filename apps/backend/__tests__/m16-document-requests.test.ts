@@ -9,6 +9,7 @@ import {
   RenderPayloadError,
   assertBereavementDischargeSummaryRenderPayload,
   assertBereavementPhysicianLetterRenderPayload,
+  assertBereavementPhysicianLetterRequestPayload,
 } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
@@ -47,7 +48,7 @@ const SUMMARY: BereavementDischargeSummaryRenderPayload = {
   ],
   contacts: [
     {
-      displayName: "Pat Example",
+      label: "Contact 1",
       relationship: "spouse",
       status: "active",
       mailingsAllowed: false,
@@ -95,7 +96,7 @@ const SUMMARY: BereavementDischargeSummaryRenderPayload = {
       unreachable: null,
     },
     {
-      displayName: "Sam Example",
+      label: "Contact 2",
       relationship: "child",
       status: "unreachable",
       mailingsAllowed: true,
@@ -135,13 +136,13 @@ describe("m16.bereavement.document_requested is a live M22 subscription", () => 
         documentKind: "physician_condolence_letter",
         aggregateId: LETTER,
         templateKey: "bereavement_physician_condolence_letter",
-        payloadJsonb: { deathDate: "2026-11-01", personalNote: null },
+        payloadJsonb: { deathDate: "2026-11-01" },
       },
     });
     expect(payload.templateKey).toBe("bereavement_physician_condolence_letter");
     expect(payload.aggregateId).toBe(LETTER);
     expect(payload.patientId).toBe(PATIENT);
-    expect(payload.content).toEqual({ deathDate: "2026-11-01", personalNote: null });
+    expect(payload.content).toEqual({ deathDate: "2026-11-01" });
   });
 
   it("reads the discharge summary against the CLOSURE, not the plan", () => {
@@ -193,6 +194,18 @@ describe("the physician condolence letter renders through the structured generic
     expect(Buffer.from(bytes).toString("latin1").startsWith("%PDF-1.4")).toBe(true);
     expect(text).toContain("Physician Condolence Letter");
     expect(text).toContain("walking this family home");
+  });
+
+  it("the request that travels on the outbox carries the death date and refuses a note (the note is sealed in M16 and pulled at render time)", () => {
+    expect(assertBereavementPhysicianLetterRequestPayload({ deathDate: "2026-11-01" })).toEqual({
+      deathDate: "2026-11-01",
+    });
+    expect(() =>
+      assertBereavementPhysicianLetterRequestPayload({
+        deathDate: "2026-11-01",
+        personalNote: "must never ride the outbox",
+      }),
+    ).toThrow(RenderPayloadError);
   });
 
   it("refuses a note over 1000 characters at the schema", () => {

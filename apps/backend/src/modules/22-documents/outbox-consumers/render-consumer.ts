@@ -705,6 +705,18 @@ export interface DocumentRequestConsumerDeps {
     readonly templateKey: string;
     readonly content: Record<string, unknown>;
   }) => Promise<{ readonly detail: string } | null>;
+  /**
+   * Late-bound content: runs right before the render (never on an idempotent re-delivery) and returns the content the renderer draws.
+   * It is how a producer keeps a SEALED field off the outbox (ADR-0109 D6: the physician letter's personal note): the request carries
+   * ids only and the composition root binds a port that opens the field with the producer's own cipher. M22 imports no producer, so the
+   * port is the whole contract. A throw is a delivery failure (retry-then-DLQ); the content is never stored by M22.
+   */
+  readonly resolveRenderContent?: (request: {
+    readonly organizationId: string;
+    readonly templateKey: string;
+    readonly aggregateId: string;
+    readonly content: Record<string, unknown>;
+  }) => Promise<Record<string, unknown>>;
   /** Template table override (tests); defaults to the T04 published table. */
   readonly templates?: Readonly<Record<string, TemplateDescriptor>>;
   /**
@@ -911,8 +923,15 @@ export function buildM22DocumentRequestConsumer(
           // NOR rendered under its ADMISSION's id and `notice_of_rights_acknowledgment.document_id` could
           // never be stamped. The document existed, addressed to the wrong row, which is the one failure
           // mode a back-ref cannot recover from.
+          const content =
+            (await deps.resolveRenderContent?.({
+              organizationId: payload.organizationId,
+              templateKey: render.templateKey,
+              aggregateId: render.aggregateId,
+              content: render.content,
+            })) ?? render.content;
           await renderer().render({ orgId: payload.organizationId }, render.templateKey, {
-            ...render.content,
+            ...content,
             aggregateId: render.aggregateId,
             patientId: render.patientId,
             ...(render.title ? { title: render.title } : {}),

@@ -82,8 +82,8 @@ export function registerBereavementPhysicianLetterRoutes(
       const { letterId } = parse(LetterParams, request.params);
       const body = parse(ApproveLetterBody, request.body);
       return letterService.approveLetter(writeActorOf(request), letterId, {
-        expectedVersion: ifMatchVersion(request, true) as number,
         ...body,
+        expectedVersion: ifMatchVersion(request, true) as number,
       });
     },
   );
@@ -102,8 +102,8 @@ export function registerBereavementPhysicianLetterRoutes(
       const { letterId } = parse(LetterParams, request.params);
       const body = parse(DeclineLetterBody, request.body);
       return letterService.declineLetter(writeActorOf(request), letterId, {
-        expectedVersion: ifMatchVersion(request, true) as number,
         ...body,
+        expectedVersion: ifMatchVersion(request, true) as number,
       });
     },
   );

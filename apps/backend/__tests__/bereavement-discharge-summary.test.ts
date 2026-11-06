@@ -22,7 +22,6 @@ const rows = (over: Partial<DischargeSummaryRows> = {}): DischargeSummaryRows =>
   contacts: [
     {
       id: "c1",
-      displayName: "Pat Example",
       relationship: "spouse",
       status: "active",
       unreachableAt: null,
@@ -30,7 +29,6 @@ const rows = (over: Partial<DischargeSummaryRows> = {}): DischargeSummaryRows =>
     },
     {
       id: "c2",
-      displayName: "Sam Example",
       relationship: "child",
       status: "unreachable",
       unreachableAt: D("2026-01-21T00:00:00.000Z"),
@@ -244,7 +242,7 @@ describe("buildDischargeSummaryPayload", () => {
     expect(keys).toEqual(
       [
         "assessmentTasks",
-        "displayName",
+        "label",
         "mailingsAllowed",
         "optOuts",
         "relationship",

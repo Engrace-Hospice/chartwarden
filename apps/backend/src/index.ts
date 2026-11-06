@@ -72,6 +72,7 @@ import {
   ACK_ESCALATION_REQUIRED_ROLE,
   ALARM_INGEST_IP_BUDGET_PER_MINUTE,
   ALARM_INGEST_SOURCE_BUDGET_PER_MINUTE,
+  BEREAVEMENT_PHYSICIAN_CONDOLENCE_TEMPLATE_KEY,
   ChartWardenError,
   DegradedError,
   type Npi,
@@ -831,6 +832,7 @@ import {
   wireM16Tenancy,
 } from "./modules/16-bereavement/index";
 import { bereavementCensusForOrg } from "./modules/16-bereavement/seams/bereavement-census-for-org";
+import { physicianLetterNoteForOrg } from "./modules/16-bereavement/seams/physician-letter-note-for-org";
 // F-161 (#248) — M16's org-explicit bereavement-plan-siting seam, injected as a port into M30's
 // plan-closure consumer (M30's manifest `dependsOn` excludes 16, the F-160 `CapConsumerStore` shape).
 import {
@@ -12743,6 +12745,22 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // GAP-036 - the appeal packet re-verifies every enclosure it names (still visible, active, not Part 2)
             // at render time: a document can change class between submit and render.
             renderGuard: buildAppealPacketRenderGuard(() => getSeam("DocumentReader")),
+            // ADR-0109 D6 - the physician condolence letter's personal note is sealed in M16 and NEVER rides the outbox (a plaintext copy
+            // the eraser cannot reach): M22 pulls it here at render time and merges it into the content the template draws.
+            resolveRenderContent: async ({ organizationId, templateKey, aggregateId, content }) => {
+              if (templateKey !== BEREAVEMENT_PHYSICIAN_CONDOLENCE_TEMPLATE_KEY) return content;
+              const note = await physicianLetterNoteForOrg(
+                dbHandle.db,
+                createBereavementCipher({
+                  dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+                  dekForOrgVersion: (orgId, version) =>
+                    getTenantKeyProvider().dekForOrgVersion(orgId, version),
+                }),
+                organizationId,
+                aggregateId,
+              );
+              return { ...content, personalNote: note };
+            },
             // A gate refusal is a settled decision, not a delivery failure — the row completes, so without
             // this sink a refused SUD/BAA render would be silent. Not the DLQ path (that is a throw).
             onRefusal: (r) =>

@@ -6,8 +6,10 @@
 // `m16.bereavement.document_requested` through the catalog-validating publisher on the SAME transaction: the status change and the
 // render request commit together or not at all. The reviewer's personal note is sealed with the tenant DEK BEFORE the transaction opens
 // (the key provider takes its own connection, the M21-T05 self-deadlock); with no cipher bound a note is refused 503 rather than
-// stored in plaintext. A user the reviewer names as the recipient must hold an ACTIVE membership in this organization: the letter stays
-// internal. The render payload carries the death date and the note and no name.
+// stored in plaintext. The recipient (the care-team attending or the user the reviewer names) must hold an ACTIVE membership in this
+// organization on EVERY approve: the letter stays internal. The render request carries the death date and NO note and no name: the note
+// is sealed in `personal_note_cipher` only (an outbox payload is a plaintext copy the eraser cannot reach), and M22 pulls it at render time
+// through `physicianLetterNoteForOrg` (the composition root binds the port).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { NotFoundError } from "@chartwarden/types";
@@ -140,25 +142,24 @@ export function buildDrizzleM16LetterService(db: DbClient, deps: M16LetterDeps):
           { status: letter.status, attendingUserId: letter.attendingUserId ?? null },
           { personalNote: note, attendingUserId: input.attendingUserId },
         );
-        if (decision.attendingUserId !== letter.attendingUserId) {
-          // The reviewer named the recipient: it must be an active member of THIS organization (RLS scopes the read).
-          const [member] = await tx
-            .select({ id: MEMBERSHIP.id })
-            .from(MEMBERSHIP)
-            .where(
-              and(
-                eq(MEMBERSHIP.userId, decision.attendingUserId),
-                eq(MEMBERSHIP.organizationId, actor.organizationId),
-                eq(MEMBERSHIP.status, "active"),
-              ),
-            )
-            .limit(1);
-          if (!member) {
-            throw new BereavementStateError(
-              "PHYSICIAN_LETTER_ATTENDING_INVALID",
-              "the chosen recipient is not an active member of this organization",
-            );
-          }
+        // The recipient (the care-team attending the intake resolved, or the user the reviewer names) must be an active member of THIS
+        // organization at approval time, every time: an attending recorded when the plan opened may have left since. RLS scopes the read.
+        const [member] = await tx
+          .select({ id: MEMBERSHIP.id })
+          .from(MEMBERSHIP)
+          .where(
+            and(
+              eq(MEMBERSHIP.userId, decision.attendingUserId),
+              eq(MEMBERSHIP.organizationId, actor.organizationId),
+              eq(MEMBERSHIP.status, "active"),
+            ),
+          )
+          .limit(1);
+        if (!member) {
+          throw new BereavementStateError(
+            "PHYSICIAN_LETTER_ATTENDING_INVALID",
+            "the chosen recipient is not an active member of this organization",
+          );
         }
         const [plan] = await tx
           .select({ deathDate: PLAN.deathDate })
@@ -201,7 +202,7 @@ export function buildDrizzleM16LetterService(db: DbClient, deps: M16LetterDeps):
             documentKind: PHYSICIAN_CONDOLENCE_DOCUMENT_KIND,
             aggregateId: row.id,
             templateKey: PHYSICIAN_CONDOLENCE_TEMPLATE_KEY,
-            payloadJsonb: { deathDate: plan.deathDate, personalNote: decision.personalNote },
+            payloadJsonb: { deathDate: plan.deathDate },
           },
         });
         return viewOf(row);

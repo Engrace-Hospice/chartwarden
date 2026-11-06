@@ -2006,6 +2006,20 @@ describe("M16 §4.1 routes 38 / 39 / 40 — physician letter review queue", () =
     await app.close();
   });
 
+  it("the If-Match header decides the version: an `expectedVersion` in the body cannot override a stale header", async () => {
+    const { app, backend } = makeServer();
+    const letter = backend.seedLetter();
+    const res = await approve(
+      app,
+      letter.letterId,
+      { ...SUPERVISOR, "idempotency-key": "l-hdr", "if-match": '"7"' },
+      { expectedVersion: 0 } as never,
+    );
+    expect(res.statusCode).toBe(412);
+    expect(backend.letterEvents).toHaveLength(0);
+    await app.close();
+  });
+
   it("refuses to approve with no attending (422), then approves once the reviewer names an internal clinician", async () => {
     const { app, backend } = makeServer();
     const letter = backend.seedLetter({ attendingUserId: null });

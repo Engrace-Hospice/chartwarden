@@ -80,8 +80,8 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(UpdateContactBody, request.body);
       return writeService.updateContact(writeActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request, true),
         ...body,
+        expectedVersion: ifMatchVersion(request, true),
       });
     },
   );
@@ -122,8 +122,8 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(ConfirmContactBody, request.body);
       return writeService.confirmContact(writeActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
@@ -145,8 +145,8 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(OptOutBody, request.body);
       return writeService.optOutContact(mutatingActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
@@ -170,8 +170,8 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(RescindOptOutBody, request.body);
       return writeService.rescindOptOut(mutatingActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
@@ -190,8 +190,8 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(MarkDeceasedBody, request.body);
       return writeService.markContactDeceased(writeActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
@@ -211,8 +211,8 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(MarkUnreachableBody, request.body);
       return writeService.markContactUnreachable(writeActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
@@ -232,8 +232,8 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(DismissUnreachableProposalBody, request.body);
       return writeService.dismissUnreachableProposal(writeActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
@@ -254,8 +254,8 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(FlagComplicatedGriefBody, request.body);
       return writeService.flagComplicatedGrief(writeActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
