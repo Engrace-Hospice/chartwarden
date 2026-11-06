@@ -24,7 +24,7 @@ import { EnrollPrescriberVendorBodySchema, PutClinicBodySchema } from "./typebox
 export interface TenantDoseSpotRouteDeps {
   readonly clinicService: DoseSpotClinicRouteService;
   /** A prescriber's DoseSpot (vendor) enrolment; absent => that route is not mounted. */
-  readonly enrollmentService?: PrescriberEnrollmentService;
+  readonly enrollmentService?: Pick<PrescriberEnrollmentService, "enroll">;
   /** Per-user cap on `verify` (a vendor call per request); fail-open like the other route limits. Absent = unlimited. */
   readonly verifyRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 }

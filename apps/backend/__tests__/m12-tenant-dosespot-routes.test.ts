@@ -118,7 +118,7 @@ function makeServer(opts: { verifyLimit?: number } = {}) {
   reg.register("step_up_recent", async (context) => context.attributes.stepUpRecent === true);
   registerAbacRegistry(reg);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  const enrollmentService: PrescriberEnrollmentService = {
+  const enrollmentService: Pick<PrescriberEnrollmentService, "enroll"> = {
     async enroll(actor, membershipId, input) {
       calls.push({
         method: "enroll",
