@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 // Step 6, Locations: the sites the tenant works from, entered on its behalf. The step settles on its own once a primary location
 // exists (the platform checks right after each save), so there is no "mark done" to press unless it cannot read the fact.
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { LocationsPanel } from "./locations-panel";
 import {
   ORG_SLUG,
   ok,
   panelCtx,
+  refused,
   renderAt,
   stubClient,
   wizardStep,
@@ -165,5 +166,34 @@ describe("LocationsPanel", () => {
     mount([LOC], {}, view({ tenantStatus: "active" }));
     await screen.findByRole("table", { name: "Locations" });
     expect(screen.queryByRole("button", { name: "Add location" })).toBeNull();
+  });
+});
+
+describe("LocationsPanel: coming back from Re-verify", () => {
+  it("restores an EDIT as an edit: the save is a PATCH to that location, never a duplicate create", async () => {
+    mount([LOC], { PATCH: { [LOCATION]: () => refused(403, "STEP_UP_REQUIRED") } });
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Main office" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Main campus" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save location" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), {
+      target: { value: "Renamed at the customer's request" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    cleanup();
+
+    const { client } = mount([LOC], { PATCH: { [LOCATION]: () => ok(LOC) } });
+    expect(((await screen.findByLabelText("Name")) as HTMLInputElement).value).toBe("Main campus");
+    expect(screen.queryByLabelText("Provider entity")).toBeNull(); // an edit, not a create
+    fireEvent.click(screen.getByRole("button", { name: "Save location" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), {
+      target: { value: "Renamed at the customer's request" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(client.PATCH).toHaveBeenCalledTimes(1));
+    expect(client.POST).not.toHaveBeenCalled();
+    const [path, init] = client.PATCH.mock.calls[0] as [string, { params: { path: unknown } }];
+    expect(path).toBe(LOCATION);
+    expect(init.params.path).toEqual({ orgSlug: ORG_SLUG, id: "loc-1" });
   });
 });

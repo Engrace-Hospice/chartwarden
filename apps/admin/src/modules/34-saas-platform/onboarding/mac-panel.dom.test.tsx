@@ -2,7 +2,7 @@
 // Step 8, Billing: MAC credentials. The submitter credential for Medicare claims, entered on the tenant's behalf. The client secret is
 // write-only: it is sealed under the tenant's own key, never shown, never stashed. An update is pinned to the version the operator read
 // (If-Match); a first create carries none.
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { MacPanel } from "./mac-panel";
 import {
@@ -178,5 +178,27 @@ describe("MacPanel", () => {
     mount([CRED], {}, view({ tenantStatus: "active" }));
     await screen.findByText("SUB123");
     expect(screen.queryByRole("button", { name: "Add MAC credential" })).toBeNull();
+  });
+});
+
+describe("MacPanel: coming back from Re-verify", () => {
+  it("restores a REPLACE as a replace, re-pinned to the version loaded now, never a create without If-Match", async () => {
+    mount([CRED], { POST: { [MAC]: () => refused(403, "STEP_UP_REQUIRED") } });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Replace credential for Beta Hospice" }),
+    );
+    fill();
+    save("Customer rotated their client key");
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    cleanup();
+
+    // someone else replaced it while the operator was re-verifying: the version is now 4
+    const { client } = mount([{ ...CRED, version: 4 }], { POST: { [MAC]: () => ok(CRED) } });
+    expect(await screen.findByText("Replace MAC credential")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/^Client secret/), { target: { value: TYPED_VALUE } });
+    save("Customer rotated their client key");
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    const init = client.POST.mock.calls[0]?.[1] as { params: { header: Record<string, string> } };
+    expect(init.params.header["If-Match"]).toBe("4");
   });
 });

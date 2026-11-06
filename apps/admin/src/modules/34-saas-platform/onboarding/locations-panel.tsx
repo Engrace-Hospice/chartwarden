@@ -127,11 +127,12 @@ export function LocationsPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         response?: { status: number };
       }>,
   );
-  const restored = useStepUpDraft<Form>(draftKey(orgSlug));
+  // The stash names what was being edited (a record, or null for a new one) so coming back resumes THAT edit, not a create.
+  const restored = useStepUpDraft<{ form: Form; id: string | null }>(draftKey(orgSlug));
   const [editing, setEditing] = useState<{ id: string | null } | null>(
-    restored ? { id: null } : null,
+    restored ? { id: restored.id } : null,
   );
-  const [form, setForm] = useState<Form>(restored ?? BLANK);
+  const [form, setForm] = useState<Form>(restored?.form ?? BLANK);
   const [errors, setErrors] = useState<Errors>({});
   const [asking, setAsking] = useState(false);
   const write = useOpsWrite();
@@ -326,7 +327,7 @@ export function LocationsPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         confirmLabel="Save"
         write={write}
         orgSlug={orgSlug}
-        onReverify={() => stashStepUpDraft<Form>(draftKey(orgSlug), form)}
+        onReverify={() => stashStepUpDraft(draftKey(orgSlug), { form, id: editing?.id ?? null })}
         onConfirm={(reason) => void save(reason)}
         onCancel={() => {
           write.clear();

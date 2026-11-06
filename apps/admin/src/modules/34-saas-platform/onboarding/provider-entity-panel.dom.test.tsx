@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Step 5, Provider entity & NPI: the CMS identity the tenant bills under, entered on its behalf. Each save is its own audited write
 // (a reason, an Idempotency-Key); the EIN is write-once and never shown or kept.
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ProviderEntityPanel } from "./provider-entity-panel";
 import {
@@ -177,5 +177,38 @@ describe("ProviderEntityPanel", () => {
       client,
     );
     expect(await screen.findByText(/Could not load the provider entities/)).toBeTruthy();
+  });
+});
+
+describe("ProviderEntityPanel: coming back from Re-verify", () => {
+  it("restores an EDIT as an edit: the save is a PATCH to that entity, never a second create", async () => {
+    mount([ENTITY], { PATCH: { [PATCH]: () => refused(403, "STEP_UP_REQUIRED") } });
+    fireEvent.click(await screen.findByRole("button", { name: "Edit 444444" }));
+    fireEvent.change(screen.getByLabelText("Legal name"), {
+      target: { value: "Beta Hospice, LLC" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save provider entity" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), {
+      target: { value: "Legal name corrected per the customer" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    cleanup();
+
+    const { client } = mount([ENTITY], { PATCH: { [PATCH]: () => ok(ENTITY) } });
+    expect(((await screen.findByLabelText("Legal name")) as HTMLInputElement).value).toBe(
+      "Beta Hospice, LLC",
+    );
+    expect(screen.queryByLabelText("CCN")).toBeNull(); // an edit, not a create
+    fireEvent.click(screen.getByRole("button", { name: "Save provider entity" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), {
+      target: { value: "Legal name corrected per the customer" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(client.PATCH).toHaveBeenCalledTimes(1));
+    expect(client.POST).not.toHaveBeenCalled();
+    const [path, init] = client.PATCH.mock.calls[0] as [string, { params: { path: unknown } }];
+    expect(path).toBe(PATCH);
+    expect(init.params.path).toEqual({ orgSlug: ORG_SLUG, id: "pe-1" });
   });
 });

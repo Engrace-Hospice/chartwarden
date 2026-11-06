@@ -121,11 +121,12 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         response?: { status: number };
       }>,
   );
-  const restored = useStepUpDraft<Form>(draftKey(orgSlug));
+  // The stash names what was being edited (a record, or null for a new one) so coming back resumes THAT edit, not a create.
+  const restored = useStepUpDraft<{ form: Form; id: string | null }>(draftKey(orgSlug));
   const [editing, setEditing] = useState<{ id: string | null } | null>(
-    restored ? { id: null } : null,
+    restored ? { id: restored.id } : null,
   );
-  const [form, setForm] = useState<Form>(restored ?? BLANK);
+  const [form, setForm] = useState<Form>(restored?.form ?? BLANK);
   const [errors, setErrors] = useState<Errors>({});
   const write = useOpsWrite();
   const items = list.data?.items ?? [];
@@ -294,7 +295,9 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
             <FailureNotice
               failure={write.failure}
               orgSlug={orgSlug}
-              onReverify={() => stashStepUpDraft<Form>(draftKey(orgSlug), form)}
+              onReverify={() =>
+                stashStepUpDraft(draftKey(orgSlug), { form, id: editing?.id ?? null })
+              }
             />
           ) : null}
           <div className="wx-drawer-actions">

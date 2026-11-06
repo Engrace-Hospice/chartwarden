@@ -2,7 +2,7 @@
 // Step 3, BAA: the business associate agreement between ChartWarden and the tenant. The operator records it (status, dates, the signed
 // document's id); the platform settles the step at once when the latest record is executed, has its document and has more than 90 days
 // left. The operator who records it cannot also approve go-live (four eyes), so the panel says so.
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { BaaPanel, baaFacts } from "./baa-panel";
 import {
@@ -179,5 +179,27 @@ describe("BaaPanel", () => {
     mount([record()], {}, view({ tenantStatus: "active" }));
     await screen.findByText("v1");
     expect(screen.queryByRole("button", { name: "Record BAA" })).toBeNull();
+  });
+});
+
+describe("BaaPanel: coming back from Re-verify", () => {
+  it("restores an EDIT as an edit: the save is a PATCH to that record, not a second create of the same addendum", async () => {
+    mount([record()], { PATCH: { [ONE]: () => refused(403, "STEP_UP_REQUIRED") } });
+    fireEvent.click(await screen.findByRole("button", { name: "Edit v1" }));
+    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "executed" } });
+    fireEvent.change(screen.getByLabelText(/^Signed document id/), { target: { value: DOC } });
+    fireEvent.click(screen.getByRole("button", { name: "Save BAA" }));
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    cleanup();
+
+    const { client } = mount([record()], {
+      PATCH: { [ONE]: () => ok(record({ baaStatus: "executed" })) },
+    });
+    expect(((await screen.findByLabelText("Status")) as HTMLSelectElement).value).toBe("executed");
+    expect(screen.queryByLabelText("Addendum version")).toBeNull(); // an edit, not a record
+    fireEvent.click(screen.getByRole("button", { name: "Save BAA" }));
+    await waitFor(() => expect(client.PATCH).toHaveBeenCalledTimes(1));
+    expect(client.POST).not.toHaveBeenCalled();
+    expect(client.PATCH.mock.calls[0]?.[0]).toBe(ONE);
   });
 });
