@@ -38,9 +38,10 @@
  * CI:    exits 1 on any violation (arch:fitness stage).
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { MODULES, type ModuleDef } from "../architecture/module-manifest";
+import { walkFiles } from "./lib/gate-scan";
 
 const REPO_ROOT = process.cwd();
 const SCHEMA_DIR = "packages/db/src/schema";
@@ -335,21 +336,12 @@ const PHI_SIGNAL_RE =
 
 type Violation = { file: string; rule: string; detail: string };
 
-function listFiles(dir: string, acc: string[] = []): string[] {
-  let entries: string[] = [];
-  try {
-    entries = readdirSync(join(REPO_ROOT, dir));
-  } catch {
-    return acc;
-  }
-  for (const e of entries) {
-    const rel = join(dir, e);
-    if (statSync(join(REPO_ROOT, rel)).isDirectory()) {
-      if (e === "node_modules" || e === "dist" || e === ".turbo") continue;
-      listFiles(rel, acc);
-    } else if (/\.(ts|sql)$/.test(e)) acc.push(rel);
-  }
-  return acc;
+function listFiles(dir: string): string[] {
+  return walkFiles(dir, {
+    base: REPO_ROOT,
+    skipDirs: ["node_modules", "dist", ".turbo"],
+    include: (name) => /\.(ts|sql)$/.test(name),
+  });
 }
 
 // ---- SQL structure: statements, policy statements, clause bodies ----------

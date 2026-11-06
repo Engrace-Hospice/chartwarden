@@ -23,9 +23,10 @@
  * Run: bun run scripts/check-fitness-gaps.ts   (alias: bun run arch:gaps)
  * CI:  exits 1 on any violation; exits 0 (with an `inert` note) when source is absent.
  */
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MODULES } from "../architecture/module-manifest";
+import { moduleForPath, walkFiles } from "./lib/gate-scan";
 
 const ROOT = process.cwd();
 const moduleIds = new Set((MODULES as { id: number }[]).map((m) => m.id));
@@ -45,27 +46,12 @@ const violations: V[] = [];
 const notes: string[] = [];
 const fail = (check: string, detail: string) => violations.push({ check, detail });
 
-function walk(dir: string, test: RegExp, acc: string[] = []): string[] {
-  let entries: string[] = [];
-  try {
-    entries = readdirSync(join(ROOT, dir));
-  } catch {
-    return acc;
-  }
-  for (const e of entries) {
-    const rel = join(dir, e);
-    let st: ReturnType<typeof statSync>;
-    try {
-      st = statSync(join(ROOT, rel));
-    } catch {
-      continue;
-    }
-    if (st.isDirectory()) {
-      if (["node_modules", ".git", "dist", ".turbo"].includes(e)) continue;
-      walk(rel, test, acc);
-    } else if (test.test(rel)) acc.push(rel);
-  }
-  return acc;
+function walk(dir: string, test: RegExp): string[] {
+  return walkFiles(dir, {
+    base: ROOT,
+    skipDirs: ["node_modules", ".git", "dist", ".turbo"],
+    include: (_name, rel) => test.test(rel),
+  });
 }
 const hasAppSource = existsSync(join(ROOT, "apps")) || existsSync(join(ROOT, "packages"));
 
@@ -86,7 +72,9 @@ const hasAppSource = existsSync(join(ROOT, "apps")) || existsSync(join(ROOT, "pa
         names.add(m[1]!);
       for (const m of src.matchAll(/\bpublish\(\s*['"]([a-z0-9_]+\.[a-z0-9_.]+)['"]/g))
         names.add(m[1]!);
-      const fileModule = /events-by-m(\d+)\.ts$/.exec(f)?.[1];
+      // A per-module contribution file declares its owner's events; the owner is whoever the manifest
+      // says owns the file, not the number in its name.
+      const fileModule = /events-by-m\d+\.ts$/.test(f) ? moduleForPath(f)?.id : undefined;
       for (const name of names) {
         if (SYSTEM_EVENT_ALLOWLIST.has(name)) continue;
         const mPrefix = /^m(\d+)\./.exec(name);
@@ -100,7 +88,7 @@ const hasAppSource = existsSync(join(ROOT, "apps")) || existsSync(join(ROOT, "pa
         const owner = Number(mPrefix[1]);
         if (!moduleIds.has(owner))
           fail("event-owner", `'${name}' uses prefix m${owner} which is not a module id`);
-        if (fileModule && Number(fileModule) !== owner)
+        if (fileModule !== undefined && fileModule !== owner)
           fail(
             "event-namespace",
             `${f} (module m${fileModule}) declares '${name}' under another module's m${owner} prefix`,

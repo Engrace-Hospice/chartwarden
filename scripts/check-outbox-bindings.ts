@@ -85,11 +85,12 @@
  * CI:    exits 1 on any disagreement (arch:fitness stage).
  */
 
-import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { buildBootOutboxCatalog } from "../apps/backend/src/bootstrap/outbox-persister";
 import { MODULES } from "../architecture/module-manifest";
 import type { ModuleEventContribution, OutboxEventEntry } from "../packages/types/src/index";
+import { appSourceFiles } from "./lib/gate-scan";
 import { DEFERRED_CONSUMERS, type DeferredConsumerGroup } from "./outbox-deferred-consumers";
 import { SUBSCRIPTION_EXCEPTIONS } from "./outbox-subscription-exceptions";
 
@@ -101,8 +102,6 @@ import { SUBSCRIPTION_EXCEPTIONS } from "./outbox-subscription-exceptions";
 const MODULE_TOKENS = new Set(MODULES.map((m) => `m${m.id}`));
 
 const REPO_ROOT = process.cwd();
-const SCAN_ROOTS = ["apps", "packages"];
-const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".turbo", "coverage", "__tests__"]);
 const COMPOSITION_ROOT = "apps/backend/src/index.ts";
 
 /**
@@ -131,26 +130,7 @@ interface DiscoveredBinding {
   readonly eventTypes: readonly string[];
 }
 
-function sourceFiles(): string[] {
-  const out: string[] = [];
-  const walk = (dir: string): void => {
-    let entries: string[];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (SKIP_DIRS.has(entry)) continue;
-      const full = join(dir, entry);
-      if (statSync(full).isDirectory()) walk(full);
-      else if (entry.endsWith(".ts") && !entry.endsWith(".d.ts") && !entry.includes(".test."))
-        out.push(full);
-    }
-  };
-  for (const root of SCAN_ROOTS) walk(join(REPO_ROOT, root));
-  return out;
-}
+const sourceFiles = (): string[] => appSourceFiles(REPO_ROOT);
 
 /** Files that declare a consumer binding: they name both halves of the dispatcher's contract. */
 function bindingSites(): string[] {

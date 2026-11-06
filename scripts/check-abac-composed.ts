@@ -21,14 +21,13 @@
  *
  * Run:  bun run arch:abac-composed   (in `arch:fitness`)
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ABAC_UNCOMPOSED_ALLOWLIST } from "./abac-uncomposed-allowlist";
+import { appSourceFiles } from "./lib/gate-scan";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SCAN_ROOTS = ["apps", "packages"];
-const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".turbo", "coverage", "__tests__"]);
 
 export interface CompositionScan {
   /** name → declaring file. */
@@ -42,27 +41,6 @@ export type Violation =
   | { readonly kind: "stale-allowlist-composed"; readonly name: string }
   | { readonly kind: "stale-allowlist-undeclared"; readonly name: string }
   | { readonly kind: "allowlist-without-reason"; readonly name: string };
-
-function sourceFiles(root: string): string[] {
-  const out: string[] = [];
-  const walk = (dir: string): void => {
-    let entries: string[];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (SKIP_DIRS.has(entry)) continue;
-      const full = join(dir, entry);
-      if (statSync(full).isDirectory()) walk(full);
-      else if (entry.endsWith(".ts") && !entry.endsWith(".d.ts") && !entry.includes(".test."))
-        out.push(full);
-    }
-  };
-  for (const r of SCAN_ROOTS) walk(join(root, r));
-  return out;
-}
 
 /**
  * Blank `//` and block comments (keeping offsets and newlines) so an apostrophe in prose cannot flip the
@@ -278,7 +256,7 @@ function collectComposed(
 
 export function scanAbacComposition(root: string = REPO_ROOT): CompositionScan {
   const sources = new Map<string, string>(
-    sourceFiles(root).map((f) => [f, blankComments(readFileSync(f, "utf8"))]),
+    appSourceFiles(root).map((f) => [f, blankComments(readFileSync(f, "utf8"))]),
   );
   return { declared: collectDeclared(sources, root), composed: collectComposed(sources, root) };
 }

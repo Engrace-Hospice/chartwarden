@@ -23,9 +23,10 @@
  *
  * Run:  bun run arch:queue-names   (in `arch:fitness`)
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { walkFiles } from "./lib/gate-scan";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SCAN_ROOTS = ["apps/backend/src", "packages"];
@@ -95,26 +96,14 @@ export function findQueueCollisions(declarations: readonly QueueDeclaration[]): 
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function walk(dir: string, out: string[]): void {
-  for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules" || entry === "dist" || entry === "__tests__") continue;
-    const full = join(dir, entry);
-    const st = statSync(full);
-    if (st.isDirectory()) walk(full, out);
-    else if (/\.ts$/.test(entry) && !/\.(test|live\.test|spec)\.ts$/.test(entry)) out.push(full);
-  }
-}
-
 export function collectQueueDeclarations(root: string = REPO_ROOT): QueueDeclaration[] {
-  const files: string[] = [];
-  for (const scanRoot of SCAN_ROOTS) {
-    const abs = join(root, scanRoot);
-    try {
-      walk(abs, files);
-    } catch {
-      // a scan root that does not exist in this checkout contributes nothing
-    }
-  }
+  // A scan root that does not exist in this checkout contributes nothing.
+  const files = SCAN_ROOTS.flatMap((scanRoot) =>
+    walkFiles(join(root, scanRoot), {
+      skipDirs: ["node_modules", "dist", "__tests__"],
+      include: (name) => /\.ts$/.test(name) && !/\.(test|live\.test|spec)\.ts$/.test(name),
+    }),
+  );
   const declarations: QueueDeclaration[] = [];
   for (const abs of files) {
     const file = relative(root, abs);

@@ -2,7 +2,9 @@
  * Pure helpers for `report-implementation-status.ts` (kept import-safe: the report itself runs on import).
  */
 
-const CREATE_TABLE_RE = /create\s+table\s+(?:if\s+not\s+exists\s+)?"?(\w+)"?([^;]*)/gi;
+import { parseCreateTables } from "./lib/gate-scan";
+
+// `EXECUTE format('CREATE TABLE IF NOT EXISTS %I …')` parses as a table named `IF`.
 const RESERVED = new Set(["if", "not", "exists"]);
 
 // `DO $$ ... FOREACH s IN ARRAY ARRAY['a','b'] LOOP t := 'prefix_' || s; EXECUTE format('CREATE TABLE ... %I', t ...)`:
@@ -12,13 +14,10 @@ const LOOPED_CREATE_RE =
 
 /** Table names a migration's SQL creates: literal `CREATE TABLE` (partition children skipped) plus looped creates. */
 export function createdTablesIn(sql: string): string[] {
-  const out: string[] = [];
-  for (const m of sql.matchAll(CREATE_TABLE_RE)) {
-    const name = m[1]!;
-    if (RESERVED.has(name.toLowerCase())) continue;
-    if (/partition\s+of/i.test(m[2]!)) continue; // partition child belongs to its owned parent
-    out.push(name);
-  }
+  const out = parseCreateTables(sql)
+    // a partition child belongs to its owned parent
+    .filter((t) => !t.isPartition && !RESERVED.has(t.name.toLowerCase()))
+    .map((t) => t.name);
   for (const m of sql.matchAll(LOOPED_CREATE_RE)) {
     for (const item of m[2]!.matchAll(/'(\w+)'/g)) out.push(`${m[4]}${item[1]}`);
   }

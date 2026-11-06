@@ -36,10 +36,10 @@
  *
  * Usage: `bun run arch:live-suites` (wired into `arch:fitness`).
  */
-import type { Dirent } from "node:fs";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { walkFiles } from "./lib/gate-scan";
 
 // `import.meta.dir` is a Bun extension and is undefined under vitest's node runner, which imports
 // this module directly (scripts/__tests__/check-live-suite-coverage.test.ts). `import.meta.url` is
@@ -66,7 +66,7 @@ const LIVE_FILE = /(\.live|-live)\.test\.ts$/;
 /** Where suites live. Anything outside these trees is not a test tree. */
 const SUITE_ROOTS = ["apps", "packages", "scripts", "e2e"] as const;
 
-const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".git", "coverage", ".turbo"]);
+const SKIP_DIRS = ["node_modules", "dist", "build", ".git", "coverage", ".turbo"];
 
 /**
  * Files that match {@link LIVE_FILE} but are deliberately not their own suite. Empty today, and kept
@@ -111,27 +111,15 @@ export interface LiveScript {
 
 /** Every `*.live.test.ts` / `*-live.test.ts` file under {@link SUITE_ROOTS}, repo-relative, sorted. */
 export function liveFiles(root: string): string[] {
-  const found: string[] = [];
-  const walk = (dir: string): void => {
-    // `ReturnType<typeof readdirSync>` resolves to the NO-options overload (`string[]`), so
-    // `entry.name` below did not type-check once this tree was compiled. `withFileTypes: true`
-    // returns `Dirent[]`; name it.
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return; // a root that does not exist in this checkout is not an error
-    }
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        if (!SKIP_DIRS.has(entry.name)) walk(join(dir, entry.name));
-      } else if (LIVE_FILE.test(entry.name) && !NOT_A_SUITE_FILE.has(entry.name)) {
-        found.push(relative(root, join(dir, entry.name)));
-      }
-    }
-  };
-  for (const suiteRoot of SUITE_ROOTS) walk(join(root, suiteRoot));
-  return found.sort();
+  // A root that does not exist in this checkout is not an error.
+  return SUITE_ROOTS.flatMap((suiteRoot) =>
+    walkFiles(join(root, suiteRoot), {
+      skipDirs: SKIP_DIRS,
+      include: (name) => LIVE_FILE.test(name) && !NOT_A_SUITE_FILE.has(name),
+    }),
+  )
+    .map((file) => relative(root, file))
+    .sort();
 }
 
 /**
