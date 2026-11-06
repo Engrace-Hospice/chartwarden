@@ -5857,7 +5857,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // worker capability set is complete. Both fall back to the in-memory slice when no DB client is present (tests).
           const m34PlatformEnqueue = buildPlatformEnqueue(queueConnection);
           const m34TenantEnqueue = buildTenantEnqueue(queueConnection);
+          // The onboarding advance pass is built first: the BAA register write (platform backend) and the wizard both run it
+          // after a change, so a blocked `baa_executed` step settles at once rather than at the next write or the 06:00 sweep.
+          const m34OnboardingAdvance = buildM34OnboardingAdvance(dbHandle.db, m34OutboxPublisher);
           const m34PlatformBackend = buildDrizzlePlatformService({
+            advanceOnboarding: async ({ tenantAccountId, organizationId }) => {
+              await m34OnboardingAdvance({ tenantAccountId, orgId: organizationId });
+            },
+            warn: (message, context) => app.log.warn(context, message),
             platformDb: platformDbHandle?.db ?? dbHandle.db,
             enqueue: m34PlatformEnqueue.enqueue,
             provisionJobs: m34PlatformEnqueue.provisionJobs,
@@ -5900,7 +5907,6 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // The onboarding wizard (both surfaces): the tenant steps run in the actor's own org transaction, the platform
           // steps in an audited platform transaction, and go-live approval activates the tenant in that same transaction.
           // After a change the wizard asks the advance sweep to run for that tenant so the next step unlocks at once.
-          const m34OnboardingAdvance = buildM34OnboardingAdvance(dbHandle.db, m34OutboxPublisher);
           const m34Onboarding = {
             wizard: createOnboardingWizard({
               runner: createDrizzleWizardRunner({

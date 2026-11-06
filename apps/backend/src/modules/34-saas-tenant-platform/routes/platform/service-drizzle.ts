@@ -51,7 +51,7 @@ import {
 } from "@chartwarden/saas-tenant-platform";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   type InvitationDeliveryPort,
   acceptBaseUrlForOrg,
@@ -163,6 +163,16 @@ export interface DrizzleTenantPlatformDeps {
   };
   /** The registered platform-job id used as the `withPlatformContext` caller (allowlisted at boot). */
   readonly platformJobId: string;
+  /**
+   * Runs the onboarding advance pass for one tenant after a write that can make an `auto` step's fact true (a BAA record),
+   * so the blocked step settles at once instead of waiting for the next step write or the daily sweep. Runs AFTER the
+   * write commits; a failure is logged through `warn`, never thrown. Omitted: the sweep is the only advance.
+   */
+  readonly advanceOnboarding?: (tenant: {
+    tenantAccountId: string;
+    organizationId: string;
+  }) => Promise<void>;
+  readonly warn?: (message: string, context: Record<string, string>) => void;
 }
 
 const A = schema.tenantAccount;
@@ -264,6 +274,26 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       deps.auditBypass,
       fn,
     );
+
+  /** The platform transaction acts for this operator: the row-audit triggers then name the person, not a NULL actor. */
+  const actingAs = (tx: PlatformTx, operatorUserId: string) =>
+    tx.execute(sql`SELECT set_config('app.user_id', ${operatorUserId}, true)`);
+
+  /** Post-commit, best effort: the same settle the wizard runs after a step write. */
+  const settleOnboarding = async (tenant: {
+    tenantAccountId: string;
+    organizationId: string;
+  }): Promise<void> => {
+    if (!deps.advanceOnboarding) return;
+    try {
+      await deps.advanceOnboarding(tenant);
+    } catch (error) {
+      deps.warn?.("m34.platform BAA register: onboarding advance after write failed", {
+        tenantAccountId: tenant.tenantAccountId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
 
   const toSummary = (a: schema.TenantAccount, orgSlug: string): TenantSummaryView => ({
     id: a.id,
@@ -1160,7 +1190,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     },
 
     async createBaaRecord(actorUserId, args: CreateBaaRecordArgs): Promise<BaaRecordView> {
-      return inPlatformCtx("platform-ops create BAA record", async (tx) => {
+      const view = await inPlatformCtx("platform-ops create BAA record", async (tx) => {
+        await actingAs(tx, actorUserId);
         const repo = new BaaRegisterRepository(tx);
         const existing = await repo.listByTenantAccountId(args.tenantAccountId);
         if (existing.some((b) => b.addendumVersion === args.addendumVersion)) {
@@ -1184,13 +1215,15 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           breachNotificationContactEmail: args.breachNotificationContactEmail,
           breachNotificationContactPhone: args.breachNotificationContactPhone,
         });
-        void actorUserId;
         return baaView(row);
       });
+      await settleOnboarding(view);
+      return view;
     },
 
     async updateBaaRecord(baaId, actorUserId, args: UpdateBaaRecordArgs): Promise<BaaRecordView> {
-      return inPlatformCtx("platform-ops update BAA record", async (tx) => {
+      const view = await inPlatformCtx("platform-ops update BAA record", async (tx) => {
+        await actingAs(tx, actorUserId);
         const repo = new BaaRegisterRepository(tx);
         const existing = await repo.findById(baaId);
         if (!existing) throw new NotFoundError("platform-tenant BAA record");
@@ -1203,9 +1236,10 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           breachNotificationContactPhone: args.breachNotificationContactPhone,
           documentId: args.documentId,
         });
-        void actorUserId;
         return baaView(row);
       });
+      await settleOnboarding(view);
+      return view;
     },
 
     // ── tenant export: SEC-052 oversized-hold release (§3.7; GAP-097) ──
