@@ -24,7 +24,7 @@ import {
   t,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import { CompleteAssessmentModal } from "./assessment-completion";
@@ -49,6 +49,7 @@ import {
   DATA_COMPLETENESS_TONE,
   RISK_FACTOR_KEYS,
   assessmentTaskKindLabel,
+  countLabel,
   dateTime,
   dueLabel,
   humanize,
@@ -62,6 +63,7 @@ import {
 import {
   Card,
   CheckboxField,
+  ErrorText,
   Field,
   FilterRow,
   Modal,
@@ -70,7 +72,6 @@ import {
   SelectField,
   SummaryGrid,
   TextAreaField,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
   mutedStyle,
@@ -82,18 +83,29 @@ import {
   tdNum,
   th,
   thNum,
+  useActionStatus,
 } from "./bereavement-ui";
 
 const TIERS = ["low", "moderate", "high", "complicated"];
+const SCORE_LIMIT = 100;
 
 export function BereavementRiskView(): JSX.Element {
-  const client = useApiClient();
   const { planId } = useParams<{ planId: string }>();
+  // Keyed by plan: a route-param change remounts, so one plan's ledger is never shown under another's id.
+  return <RiskViewForPlan key={planId ?? "none"} planId={planId} />;
+}
+
+function RiskViewForPlan({ planId }: { planId: string | undefined }): JSX.Element {
+  const client = useApiClient();
   const [plan, setPlan] = useState<PlanDetail | null>(null);
   const [scores, setScores] = useState<RiskScoreRow[]>([]);
+  const [scoresHasMore, setScoresHasMore] = useState(false);
   const [contactFilter, setContactFilter] = useState("");
+  // `loading` is the FIRST load only: after an action or a filter change the page stays up with its data (no unmount, no
+  // lost focus) while the reload runs.
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [recomputeOpen, setRecomputeOpen] = useState(false);
   // ADR-0109 — the checkpoints (null = unreadable), whether the D10 scope withheld them, the pre-death draft (null =
   // unreadable or none: provenance is then simply not claimed) and the checkpoint being completed.
@@ -101,27 +113,28 @@ export function BereavementRiskView(): JSX.Element {
   const [tasksWithheld, setTasksWithheld] = useState(false);
   const [draft, setDraft] = useState<PreDeathDraft | null>(null);
   const [completing, setCompleting] = useState<AssessmentTaskRow | null>(null);
+  const { announce, region } = useActionStatus();
+  const latestRequest = useRef(0);
+  const hasPlan = useRef(false);
 
   const load = useCallback(async () => {
     if (!planId) return;
-    setLoading(true);
-    setError(null);
+    const mine = ++latestRequest.current;
+    const stale = () => mine !== latestRequest.current; // a newer load (filter change, action) or an unmount superseded this one
+    const fail = (message: string) => {
+      if (hasPlan.current) setRefreshError(message);
+      else setError(message);
+      setLoading(false);
+    };
     const [detail, page] = await Promise.all([
       getPlan(client, planId),
-      listRiskScores(client, planId, { contactId: contactFilter || undefined, limit: 100 }),
+      listRiskScores(client, planId, { contactId: contactFilter || undefined, limit: SCORE_LIMIT }),
     ]);
-    if (detail.error) {
-      setError(errorMessage(detail.error, "This bereavement plan could not be loaded."));
-      setLoading(false);
-      return;
-    }
-    if (page.error) {
-      setError(errorMessage(page.error, "The risk-score history could not be loaded."));
-      setLoading(false);
-      return;
-    }
-    setPlan(detail.plan);
-    setScores(page.page?.data ?? []);
+    if (stale()) return;
+    if (detail.error)
+      return fail(errorMessage(detail.error, "This bereavement plan could not be loaded."));
+    if (page.error)
+      return fail(errorMessage(page.error, "The risk-score history could not be loaded."));
     // The checkpoints and the draft are context beside the ledger: neither failing hides the ledger itself.
     const [taskList, preDeath] = await Promise.all([
       listAssessmentTasks(client, planId),
@@ -129,14 +142,24 @@ export function BereavementRiskView(): JSX.Element {
         ? getPreDeathDraft(client, detail.plan.admissionId)
         : Promise.resolve({ draft: null, error: null }),
     ]);
+    if (stale()) return;
+    hasPlan.current = true;
+    setPlan(detail.plan);
+    setScores(page.page?.data ?? []);
+    setScoresHasMore(page.page?.has_more ?? false);
     setTasks(taskList.list?.items ?? null);
     setTasksWithheld((taskList.list?.redactedCategories ?? []).includes("clinical_risk"));
     setDraft(preDeath.draft);
+    setError(null);
+    setRefreshError(null);
     setLoading(false);
   }, [client, planId, contactFilter]);
 
   useEffect(() => {
     void load();
+    return () => {
+      latestRequest.current += 1;
+    };
   }, [load]);
 
   if (loading) return <LoadingSpinner />;
@@ -148,6 +171,12 @@ export function BereavementRiskView(): JSX.Element {
         description="This bereavement plan does not exist, or is not on your caseload."
       />
     );
+
+  /** A write succeeded: reload (the page stays mounted) and say so, moving focus off a trigger that may be gone. */
+  const acted = (message: string): void => {
+    announce(message);
+    void load();
+  };
 
   const nameOf = (contactId: string | null) =>
     contactId === null
@@ -172,6 +201,9 @@ export function BereavementRiskView(): JSX.Element {
           </div>
         }
       />
+
+      {region}
+      {refreshError ? <ErrorText>{refreshError}</ErrorText> : null}
 
       {latest ? (
         <Notice
@@ -265,7 +297,13 @@ export function BereavementRiskView(): JSX.Element {
         </Card>
       )}
 
-      <Card title={`Assessment checkpoints (${tasks?.length ?? 0})`}>
+      <Card
+        title={
+          tasks === null || tasksWithheld
+            ? "Assessment checkpoints"
+            : `Assessment checkpoints (${tasks.length})`
+        }
+      >
         {tasks === null ? (
           <span style={mutedStyle}>The assessment checkpoints could not be loaded.</span>
         ) : tasksWithheld ? (
@@ -312,6 +350,7 @@ export function BereavementRiskView(): JSX.Element {
                       <button
                         type="button"
                         style={ghostButtonStyle}
+                        aria-label={`Complete assessment: ${assessmentTaskKindLabel(task.taskKind)} for ${nameOf(task.contactId)}`}
                         onClick={() => setCompleting(task)}
                       >
                         Complete assessment
@@ -332,7 +371,7 @@ export function BereavementRiskView(): JSX.Element {
         </span>
       </Card>
 
-      <Card title={`Score ledger (${scores.length})`}>
+      <Card title={`Score ledger (${countLabel(scores.length, scoresHasMore)})`}>
         {scores.length === 0 ? (
           <span style={mutedStyle}>The append-only ledger is empty.</span>
         ) : (
@@ -402,7 +441,7 @@ export function BereavementRiskView(): JSX.Element {
           onClose={() => setCompleting(null)}
           onDone={() => {
             setCompleting(null);
-            void load();
+            acted("The assessment was recorded and the checkpoint is complete.");
           }}
         />
       ) : null}
@@ -414,7 +453,7 @@ export function BereavementRiskView(): JSX.Element {
           onClose={() => setRecomputeOpen(false)}
           onDone={() => {
             setRecomputeOpen(false);
-            void load();
+            acted("The risk score was recomputed.");
           }}
         />
       ) : null}
@@ -590,7 +629,7 @@ function RecomputeModal({
         />
       ) : null}
 
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }

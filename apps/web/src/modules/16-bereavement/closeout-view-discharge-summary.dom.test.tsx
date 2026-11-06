@@ -1,10 +1,12 @@
-// apps/web/src/modules/16-bereavement — ADR-0109 D9: the closeout view offers a print link for the internal discharge summary
-// once Module 22 has rendered it (the closure route sends the id to oversight readers only), and says so plainly before then.
+// apps/web/src/modules/16-bereavement — ADR-0109 D9: the closeout view links the internal discharge summary's version history
+// once Module 22 has rendered it (the closure route sends the id to oversight readers only). Before then only an oversight reader
+// is told it is pending; anyone else sees nothing about it at all. The link needs the document-history permission it opens.
 import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
+import type { Session } from "../../shell/session-types";
 import { BereavementCloseoutView } from "./closeout-view";
 
 const PLAN_ID = "8f14e45f-ceea-467a-9c1f-1b0c2d3e4f50";
@@ -52,7 +54,14 @@ const closure = (dischargeSummaryDocumentId: string | null) => ({
   dischargeSummaryDocumentId,
 });
 
-function mount(closureBody: unknown, closureStatus = 200): void {
+const READER: Session = { userId: "u-1", organizationId: "org-1" };
+const OVERSIGHT: Session = {
+  ...READER,
+  roles: ["bereavement_coordinator"],
+  permissions: ["bereavement.plan.read", "documents.read_history"],
+};
+
+function mount(closureBody: unknown, closureStatus = 200, session: Session = OVERSIGHT): void {
   const stub = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const req = input instanceof Request ? input : null;
     const url = req ? req.url : String(input);
@@ -70,7 +79,7 @@ function mount(closureBody: unknown, closureStatus = 200): void {
   };
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stub })}>
-      <SessionProvider session={{ userId: "u-1", organizationId: "org-1" }}>
+      <SessionProvider session={session}>
         <MemoryRouter initialEntries={[`/bereavement/plans/${PLAN_ID}/closeout`]}>
           <Routes>
             <Route
@@ -89,19 +98,33 @@ beforeEach(() => {
 });
 
 describe("ADR-0109 D9 — the closeout view's discharge summary link", () => {
-  it("links to the rendered internal discharge summary's document", async () => {
+  it("links to the rendered internal discharge summary's version history, named for what it opens", async () => {
     mount(closure(DOC_ID));
-    const link = await screen.findByRole("link", { name: "Print the internal discharge summary" });
+    const link = await screen.findByRole("link", { name: "View discharge summary versions" });
     expect(link.getAttribute("href")).toBe(`/documents/${DOC_ID}/versions`);
-    expect(link.textContent).toBe("Print discharge summary");
+    expect(link.getAttribute("aria-label")).toBeNull(); // the visible text IS the accessible name
   });
 
-  it("says it is not available yet when the closure carries no document (not rendered, or not an oversight reader)", async () => {
+  it("explains instead of linking when the reader lacks the permission the target screen needs", async () => {
+    mount(closure(DOC_ID), 200, { ...OVERSIGHT, permissions: ["bereavement.plan.read"] });
+    expect(await screen.findByText(/cannot open the document history/i)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /discharge summary/i })).toBeNull();
+  });
+
+  it("tells an oversight reader the summary is not rendered yet when the closure carries no document", async () => {
     mount(closure(null));
-    expect(
-      await screen.findByText(/internal discharge summary is not available yet/i),
-    ).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Print the internal discharge summary" })).toBeNull();
+    expect(await screen.findByText(/has not been rendered yet/i)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /discharge summary/i })).toBeNull();
+  });
+
+  it("says nothing at all to a non-oversight reader when the closure carries no document", async () => {
+    mount(closure(null), 200, {
+      ...READER,
+      roles: ["bereavement_counselor"],
+      permissions: ["bereavement.plan.read", "documents.read_history"],
+    });
+    await screen.findByText("Closure record");
+    expect(screen.queryByText(/discharge summary/i)).toBeNull();
   });
 
   it("shows no summary link at all before the plan has closed", async () => {

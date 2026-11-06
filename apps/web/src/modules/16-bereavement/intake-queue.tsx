@@ -31,6 +31,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
+import { useSession } from "../../shell/session";
 import {
   type BereavementPlanStatus,
   type PlanListItem,
@@ -39,14 +40,21 @@ import {
   errorMessage,
   listPlans,
 } from "./bereavement-api";
-import { PLAN_STATUS_TONE, humanize, shortDate, shortId, toneOf } from "./bereavement-status";
 import {
+  PLAN_STATUS_TONE,
+  countLabel,
+  humanize,
+  shortDate,
+  shortId,
+  toneOf,
+} from "./bereavement-status";
+import {
+  ErrorText,
   Field,
   Modal,
   Notice,
   RiskTierPill,
   TextField,
-  alertStyle,
   ghostButtonStyle,
   linkStyle,
   mutedStyle,
@@ -60,6 +68,10 @@ const STATUSES = [
   { value: "active", label: "Active" },
   { value: "paused", label: "Paused" },
 ];
+
+/** ADR-0109 D6 — the key that lets a reader see (and decide) the physician condolence letters. */
+const LETTER_READ_PERMISSION = "bereavement.letter.read";
+const INTAKE_LIMIT = 100;
 
 type Ceremony = { plan: PlanListItem; kind: "counselor" | "volunteer" } | null;
 type RiskFilter = "all" | "low" | "moderate" | "high" | "complicated" | "unscored" | "withheld";
@@ -92,8 +104,11 @@ const drawerActionStyle: CSSProperties = {
 
 export function BereavementIntakeQueue(): JSX.Element {
   const client = useApiClient();
+  const session = useSession();
+  const mayReviewLetters = session?.permissions?.includes(LETTER_READ_PERMISSION) ?? false;
   const [status, setStatus] = useState("eligible");
   const [rows, setRows] = useState<PlanListItem[]>([]);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [ceremony, setCeremony] = useState<Ceremony>(null);
@@ -109,7 +124,7 @@ export function BereavementIntakeQueue(): JSX.Element {
     // `status` is always one of the closed vocabulary the SelectField below offers.
     const { page, error: err } = await listPlans(client, {
       status: status as BereavementPlanStatus,
-      limit: 100,
+      limit: INTAKE_LIMIT,
     });
     if (err) {
       setError(errorMessage(err, "The bereavement intake queue could not be loaded."));
@@ -117,6 +132,7 @@ export function BereavementIntakeQueue(): JSX.Element {
       return;
     }
     setRows(page?.data ?? []);
+    setHasMore(page?.has_more ?? false);
     setLoading(false);
   }, [client, status]);
 
@@ -124,9 +140,8 @@ export function BereavementIntakeQueue(): JSX.Element {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-
+  // The loading and error states render INSIDE the layout (the table slot below), so the letter review section — which has its
+  // own list — stays mounted when the status filter changes instead of being torn down and refetched.
   const pendingCosign = rows.filter((r) => r.externalSourceCosignPending);
 
   const hasActiveFilters = searchQuery !== "" || riskFilter !== "all";
@@ -269,14 +284,22 @@ export function BereavementIntakeQueue(): JSX.Element {
               </div>
 
               <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.8125rem" }}>
-                {filteredRows.length} of {rows.length} plans
+                {loading || error
+                  ? null
+                  : `${filteredRows.length} of ${countLabel(rows.length, hasMore)} plans`}
               </span>
             </div>
           </div>
         }
         table={
           <>
-            {rows.length === 0 ? (
+            {loading ? (
+              <div style={{ padding: "2rem 1.5rem" }}>
+                <LoadingSpinner />
+              </div>
+            ) : error ? (
+              <EmptyState title="Unavailable" description={error} />
+            ) : rows.length === 0 ? (
               <div style={{ padding: "2rem 1.5rem" }}>
                 <EmptyState
                   title="No plans in this state"
@@ -317,10 +340,12 @@ export function BereavementIntakeQueue(): JSX.Element {
                 />
               </div>
             )}
-            {/* ADR-0109 D6 — the physician condolence letters awaiting review (oversight only; a reader without the key sees none). */}
-            <div style={{ padding: "0 1.5rem 1.5rem" }}>
-              <PhysicianLetterReview />
-            </div>
+            {/* ADR-0109 D6 — the physician condolence letters awaiting review (oversight only; a reader without the key never mounts it). */}
+            {mayReviewLetters ? (
+              <div style={{ padding: "0 1.5rem 1.5rem" }}>
+                <PhysicianLetterReview />
+              </div>
+            ) : null}
           </>
         }
         detail={
@@ -600,7 +625,7 @@ function AssignModal({
           answer.
         </Notice>
       ) : null}
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }

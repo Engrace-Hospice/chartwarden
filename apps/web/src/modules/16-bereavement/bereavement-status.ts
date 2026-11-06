@@ -468,3 +468,8 @@ export function scoreLabel(value: number | null | undefined): string {
   if (value == null) return "—";
   return String(value);
 }
+
+/** A list count that is honest about a capped page: `100+` when the server said there is more. */
+export function countLabel(shown: number, hasMore: boolean): string {
+  return hasMore ? `${shown}+` : String(shown);
+}

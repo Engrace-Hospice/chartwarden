@@ -28,11 +28,11 @@ import {
   shortDate,
 } from "./bereavement-status";
 import {
+  ErrorText,
   Modal,
   Notice,
   SelectField,
   TextField,
-  alertStyle,
   mutedStyle,
   primaryButtonStyle,
 } from "./bereavement-ui";
@@ -186,7 +186,7 @@ export function CompleteAssessmentModal({
         onChange={setPg13}
       />
       {!pg13Valid ? (
-        <p style={alertStyle}>The PG-13 total is a whole number from 0 to {PG13_MAX}.</p>
+        <ErrorText>The PG-13 total is a whole number from 0 to {PG13_MAX}.</ErrorText>
       ) : null}
       {promotes ? (
         <Notice tone="warning">
@@ -194,7 +194,7 @@ export function CompleteAssessmentModal({
         </Notice>
       ) : null}
 
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }

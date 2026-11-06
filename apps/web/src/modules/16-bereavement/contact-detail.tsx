@@ -13,6 +13,7 @@
 // `flag_complicated_grief` deliberately does NOT: it ends the program for this survivor and belongs with
 // the screening instrument that justifies it (§5.1 #13).
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -20,7 +21,7 @@ import {
   t,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -35,6 +36,7 @@ import {
   dismissUnreachableProposal,
   errorMessage,
   getPlan,
+  isStaleWrite,
   listOutreach,
   logDirectContact,
   markContactDeceased,
@@ -69,6 +71,7 @@ import {
 import {
   Card,
   CheckboxField,
+  ErrorText,
   Field,
   Modal,
   Notice,
@@ -77,7 +80,6 @@ import {
   SummaryGrid,
   TextAreaField,
   TextField,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
   mutedStyle,
@@ -87,7 +89,16 @@ import {
   tableStyle,
   td,
   th,
+  useActionStatus,
+  useIdempotencyKey,
 } from "./bereavement-ui";
+
+/** What a refused write on this page means: the contact moved (or was decided) under the reader, so the page reloads. */
+const CONTACT_MOVED =
+  "This contact changed while you were working on it. The page has been refreshed: check it and try again.";
+
+/** This contact's schedule is a convenience beside the care plan; it says why when it is not there. */
+type Schedule = { kind: "ready"; rows: OutreachRow[] } | { kind: "forbidden" } | { kind: "error" };
 
 type Ceremony =
   | "opt-out"
@@ -100,46 +111,71 @@ type Ceremony =
   | null;
 
 export function BereavedContactDetail(): JSX.Element {
-  const client = useApiClient();
   const { planId, contactId } = useParams<{ planId: string; contactId: string }>();
+  // Keyed by plan + contact: a route-param change remounts, so one survivor's page is never shown under another's id.
+  return <ContactForPlan key={`${planId}/${contactId}`} planId={planId} contactId={contactId} />;
+}
+
+function ContactForPlan({
+  planId,
+  contactId,
+}: { planId: string | undefined; contactId: string | undefined }): JSX.Element {
+  const client = useApiClient();
   const [plan, setPlan] = useState<PlanDetail | null>(null);
+  // `loading` is the FIRST load only: after an action the page stays up with its data (no unmount, no lost focus or typing).
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [ceremony, setCeremony] = useState<Ceremony>(null);
   const [keepTryingBusy, setKeepTryingBusy] = useState(false);
   const [keepTryingError, setKeepTryingError] = useState<string | null>(null);
   const [resumeBusy, setResumeBusy] = useState(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
-  // ADR-0109 — this contact's own schedule (null = not loaded / unreadable; the care plan then says so).
-  const [schedule, setSchedule] = useState<OutreachRow[] | null>(null);
+  // ADR-0109 — this contact's own schedule (null until the first load).
+  const [schedule, setSchedule] = useState<Schedule | null>(null);
+  const { announce, region } = useActionStatus();
+  const keepTryingKey = useIdempotencyKey();
+  const resumeKey = useIdempotencyKey();
+  const latestRequest = useRef(0);
+  const hasPlan = useRef(false);
 
   const load = useCallback(async () => {
     if (!planId) return;
-    setLoading(true);
-    setError(null);
+    const mine = ++latestRequest.current;
     const [{ plan: p, error: err }, outreach] = await Promise.all([
       getPlan(client, planId),
       contactId
         ? listOutreach(client, planId, { contactId, limit: 100 })
-        : Promise.resolve({ page: null, error: null }),
+        : Promise.resolve({ page: null, error: null, status: 200 }),
     ]);
+    if (mine !== latestRequest.current) return; // a newer load, or an unmount, superseded this response
     if (err) {
-      setError(errorMessage(err, "This bereavement plan could not be loaded."));
+      const message = errorMessage(err, "This bereavement plan could not be loaded.");
+      if (hasPlan.current) setRefreshError(message);
+      else setError(message);
       setLoading(false);
       return;
     }
+    hasPlan.current = true;
     setPlan(p);
     // The schedule is a convenience beside the care plan: an unreadable one never hides the contact.
     setSchedule(
       Array.isArray(outreach.page?.data)
-        ? outreach.page.data.filter((row) => row.contactId === contactId)
-        : null,
+        ? { kind: "ready", rows: outreach.page.data.filter((row) => row.contactId === contactId) }
+        : outreach.status === 403
+          ? { kind: "forbidden" }
+          : { kind: "error" },
     );
+    setError(null);
+    setRefreshError(null);
     setLoading(false);
   }, [client, planId, contactId]);
 
   useEffect(() => {
     void load();
+    return () => {
+      latestRequest.current += 1;
+    };
   }, [load]);
 
   if (loading) return <LoadingSpinner />;
@@ -153,40 +189,66 @@ export function BereavedContactDetail(): JSX.Element {
       />
     );
 
+  /** A write succeeded: reload (the page stays mounted) and say so, moving focus off a trigger that may be gone. */
+  const acted = (message: string) => {
+    announce(message);
+    void load();
+  };
+
   const refresh = () => {
     setCeremony(null);
-    void load();
+    acted("Saved. The page shows the latest version.");
   };
 
   const keepTrying = async () => {
     setKeepTryingBusy(true);
     setKeepTryingError(null);
-    const { error: err } = await dismissUnreachableProposal(
+    const { error: err, status } = await dismissUnreachableProposal(
       client,
       contact.contactId,
       contact.version,
+      keepTryingKey.keyFor(String(contact.version)),
     );
+    keepTryingKey.settle(status);
     setKeepTryingBusy(false);
     if (err) {
+      if (isStaleWrite(status)) void load();
       setKeepTryingError(
-        errorMessage(err, "The unreachable proposal could not be dismissed. Reload and try again."),
+        isStaleWrite(status)
+          ? CONTACT_MOVED
+          : errorMessage(
+              err,
+              "The unreachable proposal could not be dismissed. Reload and try again.",
+            ),
       );
       return;
     }
-    void load();
+    acted("Kept trying: the unreachable proposal was dismissed.");
   };
 
   // ADR-0109 D10 — mailings resume by rescinding the open `no_mailings` row; the contact never left the program.
   const resumeMailings = async () => {
     setResumeBusy(true);
     setResumeError(null);
-    const { error: err } = await rescindOptOut(client, contact.contactId, contact.version, {});
+    const { error: err, status } = await rescindOptOut(
+      client,
+      contact.contactId,
+      contact.version,
+      {},
+      resumeKey.keyFor(String(contact.version)),
+    );
+    resumeKey.settle(status);
     setResumeBusy(false);
     if (err) {
-      setResumeError(errorMessage(err, "Mailings could not be resumed. Reload and try again."));
+      if (isStaleWrite(status)) void load();
+      setResumeError(
+        isStaleWrite(status)
+          ? CONTACT_MOVED
+          : errorMessage(err, "Mailings could not be resumed. Reload and try again."),
+      );
       return;
     }
-    void load();
+    acted("Mailings resumed.");
   };
 
   return (
@@ -207,6 +269,15 @@ export function BereavedContactDetail(): JSX.Element {
           </div>
         }
       />
+      {region}
+      {refreshError ? (
+        <div style={{ display: "flex", gap: t.space2, alignItems: "center", flexWrap: "wrap" }}>
+          <ErrorText>{refreshError}</ErrorText>
+          <Button size="sm" tone="secondary" onClick={() => void load()}>
+            Try again
+          </Button>
+        </div>
+      ) : null}
 
       {contact.status === "proposed" ? (
         <Notice tone="warning">
@@ -242,7 +313,7 @@ export function BereavedContactDetail(): JSX.Element {
               {keepTryingBusy ? "Saving…" : "Keep trying"}
             </button>
           </div>
-          {keepTryingError ? <p style={alertStyle}>{keepTryingError}</p> : null}
+          {keepTryingError ? <ErrorText>{keepTryingError}</ErrorText> : null}
         </Notice>
       ) : null}
 
@@ -317,8 +388,12 @@ export function BereavedContactDetail(): JSX.Element {
       </Card>
 
       <Card title="Care plan">
-        <CarePlanGoals contact={contact} onSaved={() => void load()} />
-        <ContactSchedule rows={schedule} />
+        <CarePlanGoals
+          contact={contact}
+          onSaved={() => acted("Care goals saved.")}
+          onStale={() => void load()}
+        />
+        <ContactSchedule schedule={schedule} onRetry={() => void load()} />
       </Card>
 
       <Card title="Actions">
@@ -358,7 +433,7 @@ export function BereavedContactDetail(): JSX.Element {
             Mark deceased
           </button>
         </div>
-        {resumeError ? <p style={alertStyle}>{resumeError}</p> : null}
+        {resumeError ? <ErrorText>{resumeError}</ErrorText> : null}
         <span style={mutedStyle}>
           Marking a survivor deceased is §2.3's only terminal state, so the verification source is
           required. Marking unreachable accepts the nightly three-strikes proposal — the machine
@@ -391,16 +466,29 @@ export function BereavedContactDetail(): JSX.Element {
   );
 }
 
+const sameList = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((value, i) => value === b[i]);
+
 /** The contact's 1-3 care goals (ADR-0109). ABSENT `careGoals` means the D10 scope withheld them — no editor then. */
 function CarePlanGoals({
   contact,
   onSaved,
-}: { contact: ContactRow; onSaved: () => void }): JSX.Element {
+  onStale,
+}: { contact: ContactRow; onSaved: () => void; onStale: () => void }): JSX.Element {
   const client = useApiClient();
   const recorded = contact.careGoals;
   const [goals, setGoals] = useState<string[]>([...(recorded ?? [])]);
+  // The server's goals the editor was last seeded from. A reload for an unrelated action keeps what was typed: the editor
+  // is re-seeded only when the contact's version moved AND the reader has not edited it.
+  const [seeded, setSeeded] = useState({ version: contact.version, goals: recorded ?? [] });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const idempotency = useIdempotencyKey();
+
+  if (seeded.version !== contact.version) {
+    if (sameList(goals, seeded.goals)) setGoals([...(recorded ?? [])]);
+    setSeeded({ version: contact.version, goals: recorded ?? [] });
+  }
 
   if (recorded === undefined) {
     return (
@@ -413,15 +501,27 @@ function CarePlanGoals({
 
   const trimmed = goals.map((g) => g.trim());
   const blank = trimmed.some((g) => g.length === 0);
-  const unchanged =
-    trimmed.length === recorded.length && trimmed.every((g, i) => g === recorded[i]);
+  const unchanged = sameList(trimmed, recorded);
 
   const save = async () => {
     setBusy(true);
     setError(null);
-    const { error: err } = await setCareGoals(client, contact.contactId, contact.version, trimmed);
+    const { error: err, status } = await setCareGoals(
+      client,
+      contact.contactId,
+      contact.version,
+      trimmed,
+      idempotency.keyFor(`${contact.version}:${JSON.stringify(trimmed)}`),
+    );
+    idempotency.settle(status);
     setBusy(false);
     if (err) {
+      if (isStaleWrite(status)) {
+        // What was typed stays in the editor; the page reloads so the next save carries the version now current.
+        setError(CONTACT_MOVED);
+        onStale();
+        return;
+      }
       setError(errorMessage(err, "The care goals could not be saved."));
       return;
     }
@@ -468,16 +568,34 @@ function CarePlanGoals({
           {busy ? "Saving…" : "Save care goals"}
         </button>
       </div>
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </div>
   );
 }
 
 /** This contact's own touchpoints, each named by the Medicare-floor mark it was generated for (ADR-0109 D2/D4). */
-function ContactSchedule({ rows }: { rows: OutreachRow[] | null }): JSX.Element {
-  if (rows === null) {
-    return <span style={mutedStyle}>This survivor's schedule could not be loaded.</span>;
+function ContactSchedule({
+  schedule,
+  onRetry,
+}: { schedule: Schedule | null; onRetry: () => void }): JSX.Element {
+  if (schedule === null || schedule.kind === "error") {
+    return (
+      <div style={{ display: "flex", gap: t.space2, alignItems: "center", flexWrap: "wrap" }}>
+        <ErrorText>This survivor's schedule could not be loaded.</ErrorText>
+        <Button size="sm" tone="secondary" onClick={onRetry}>
+          Try again
+        </Button>
+      </div>
+    );
   }
+  if (schedule.kind === "forbidden") {
+    return (
+      <span style={mutedStyle}>
+        Your role does not include the touchpoint schedule, so it is not shown here.
+      </span>
+    );
+  }
+  const rows = schedule.rows;
   if (rows.length === 0) {
     return <span style={mutedStyle}>No touchpoints are scheduled for this survivor.</span>;
   }
@@ -561,7 +679,7 @@ function ConfirmModal({
       <Notice tone="info">
         Consent is resolved by the server against Module 39. It is never decided by this form.
       </Notice>
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -606,9 +724,11 @@ function OptOutModal({
     onDone();
   };
 
+  // `no_mailings` is not a departure: the survivor stays in the program, so the ceremony says what it does.
+  const stopsMailings = optOutKind === "no_mailings";
   return (
     <Modal
-      title="Record opt-out"
+      title={stopsMailings ? "Stop mailings" : "Record opt-out"}
       onClose={onClose}
       footer={
         <button
@@ -617,11 +737,11 @@ function OptOutModal({
           disabled={busy || (optOutKind === "channel_specific" && channelKinds.length === 0)}
           onClick={submit}
         >
-          {busy ? "Recording…" : "Record opt-out"}
+          {busy ? "Recording…" : stopsMailings ? "Stop mailings" : "Record opt-out"}
         </button>
       }
     >
-      {optOutKind === "no_mailings" ? (
+      {stopsMailings ? (
         <Notice tone="info">
           Stops the cards, letters and invitations sent by post. The survivor stays in the program:
           calls and visits continue, and a mailed touchpoint on the schedule becomes a phone call.
@@ -654,7 +774,7 @@ function OptOutModal({
         </div>
       ) : null}
       <TextAreaField label="Reason (optional)" value={reason} onChange={setReason} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -700,7 +820,7 @@ function RescindModal({
         say why.
       </Notice>
       <TextAreaField label="Reason" value={reason} onChange={setReason} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -763,7 +883,7 @@ function DeceasedModal({
         onChange={setDeathSource}
         placeholder="e.g. family notification, obituary, state registry"
       />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -814,7 +934,7 @@ function UnreachableModal({
       }
     >
       <TextAreaField label="Note (optional)" value={note} onChange={setNote} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -896,7 +1016,7 @@ function LogDirectModal({
         onChange={setResponded}
       />
       <TextAreaField label="Counselor note" value={notes} onChange={setNotes} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -962,7 +1082,7 @@ function ChannelsModal({
         checked={volunteerVisibleOnly}
         onChange={setVolunteerVisibleOnly}
       />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
