@@ -35,19 +35,19 @@ export const M33_ABAC_PREDICATES = [
 ] as const;
 
 /** Roles that may read the compliance drilldown-audit trail (the §4.2 `compliance_officer_scope`). */
-export const COMPLIANCE_AUDIT_ROLE_KEYS = [
+const COMPLIANCE_AUDIT_ROLE_KEYS = [
   "compliance_officer",
   "hipaa_privacy_officer",
   "hipaa_security_officer",
 ] as const;
 
 /** `platform_admin_scope` - the actor holds a role from the platform-ops catalog (the M29 / M35 single source). */
-export function isPlatformAdminActor(context: AbacContext): boolean {
+function isPlatformAdminActor(context: AbacContext): boolean {
   return context.roles.some((r) => (PLATFORM_OPS_ROLE_KEYS as readonly string[]).includes(r));
 }
 
 /** `compliance_officer_scope` - a tenant actor holding a compliance / privacy / security officer role. */
-export function isComplianceOfficerActor(context: AbacContext): boolean {
+function isComplianceOfficerActor(context: AbacContext): boolean {
   return (
     Boolean(context.organizationId) &&
     context.roles.some((r) => (COMPLIANCE_AUDIT_ROLE_KEYS as readonly string[]).includes(r))

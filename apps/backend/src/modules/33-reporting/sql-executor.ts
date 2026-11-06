@@ -21,7 +21,7 @@ import type { ExportSqlExecutor, TileSqlExecutor } from "./routes/index";
  * (a real `pg` driver parameter, never string-interpolated) — this is a re-encoding of the SAME
  * already-safe parameterized query, not a new SQL-construction surface.
  */
-export function toParameterizedSql(text: string, params: readonly unknown[]) {
+function toParameterizedSql(text: string, params: readonly unknown[]) {
   const parts = text.split(/\$(\d+)/);
   const chunks: ReturnType<typeof sql.raw>[] = [];
   for (let i = 0; i < parts.length; i += 1) {

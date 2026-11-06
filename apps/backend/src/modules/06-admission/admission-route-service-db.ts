@@ -14,6 +14,7 @@
 
 import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
+import { mapUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
@@ -202,7 +203,6 @@ import type { SignedNoteFacts } from "./state-machines/f2f-attestation-rules";
 import { type FaceToFaceState, transitionFaceToFace } from "./state-machines/face-to-face";
 import { type LevelOfCareState, transitionLevelOfCare } from "./state-machines/level-of-care";
 import { TEXT_MINIMUMS } from "./state-machines/validation";
-import { mapUniqueViolation } from "./unique-violation";
 
 /**
  * The transactional-outbox port (§4.4): the composition root binds M1's catalog-validating publisher

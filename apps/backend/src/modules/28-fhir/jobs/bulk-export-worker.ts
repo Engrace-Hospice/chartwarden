@@ -102,7 +102,7 @@ export type BulkExportOutcome =
   | { readonly status: "skipped" };
 
 /** A refusal the client may be told about (no PHI, no internals) — everything else becomes a generic reason. */
-export class BulkExportRefused extends Error {}
+class BulkExportRefused extends Error {}
 
 const GENERIC_FAILURE_REASON = "the export could not be completed; see the server log";
 

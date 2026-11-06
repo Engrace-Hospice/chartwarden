@@ -1,3 +1,4 @@
+import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/06-admission/routes/discharge-worklist-routes.ts — the end-of-episode worklist read
 // behind the web "Discharge / transfer" hub:
 //
@@ -8,15 +9,13 @@
 // narrowed to the caller's caseload exactly like the admission census (GAP-020, `readScope`) — except
 // `recently_discharged` (the Readmit list), which an `admission.create` holder also sees at their own site / org-wide
 // (`readmissionScope`, admission-routes.ts), mirroring the readmission routes' ABAC.
-import { requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { DegradedError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "./admission-typebox";
 import type { DischargeWorklistService } from "./discharge-worklist-service";
 import { DischargeWorklistQuerySchema } from "./discharge-worklist-typebox";
 import type { AdmissionReadScope } from "./service";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface DischargeWorklistRouteDeps {
   readonly service: DischargeWorklistService | undefined;

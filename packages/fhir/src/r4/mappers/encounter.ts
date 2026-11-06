@@ -4,7 +4,7 @@ import type { FhirMapper, MapperContext } from "../../interfaces/mapper";
 import type { Encounter } from "../types";
 import type { EncounterDomain } from "./domain";
 
-export const US_CORE_ENCOUNTER_PROFILE =
+const US_CORE_ENCOUNTER_PROFILE =
   "http://hl7.org/fhir/us/core/StructureDefinition/us-core-encounter";
 
 const ENCOUNTER_CLASS_SYSTEM = "http://terminology.hl7.org/CodeSystem/v3-ActCode";

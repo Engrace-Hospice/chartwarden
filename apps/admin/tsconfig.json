@@ -9,7 +9,6 @@
   "include": ["src"],
   "references": [
     { "path": "../../packages/types" },
-    { "path": "../../packages/ui" },
-    { "path": "../../packages/admin-ui-shell" }
+    { "path": "../../packages/ui" }
   ]
 }

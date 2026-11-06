@@ -64,17 +64,10 @@ export type AggregatorSubmissionView = Ok<
   operations["postApiV1EvvAggregatorsubmissionsByIdCancel"]
 >;
 
-export type RejectDeviceBody = ReqBody<operations["postApiV1EvvDevicesByIdReject"]>;
 export type EditTenantPolicyBody = ReqBody<operations["patchApiV1EvvGeofencepolicyTenant"]>;
 export type PerAddressOverrideBody = ReqBody<operations["postApiV1EvvGeofencepolicyPeraddress"]>;
 export type ClinicianAttestBody = ReqBody<
   operations["postApiV1EvvMissingresolutionsByIdClinicianattest"]
->;
-export type SupervisorOverrideBody = ReqBody<
-  operations["postApiV1EvvMissingresolutionsByIdSupervisoroverride"]
->;
-export type CancelSubmissionBody = ReqBody<
-  operations["postApiV1EvvAggregatorsubmissionsByIdCancel"]
 >;
 
 /**

@@ -494,7 +494,7 @@ export async function runParseSweep(deps: ParseSweepDeps): Promise<SweepResult> 
   return total;
 }
 
-export const PARSE_WORKER_DEFAULT_INTERVAL_MS = 2_000;
+const PARSE_WORKER_DEFAULT_INTERVAL_MS = 2_000;
 
 /** The in-process poller (single-flight; `unref`'d). Replicas coordinate through `SKIP LOCKED`. */
 export function startParseWorker(deps: ParseSweepDeps & { readonly intervalMs?: number }): {

@@ -27,13 +27,6 @@ export interface ReportingSeamRegistrar {
 
 // ── 1. PUBLISH — the three seams M33 registers into the M1 SeamRegistry (§4.3) ───────────────────────
 
-/** The canonical M1-registry seam names M33 publishes (the keys added to the SeamName union in P2C). */
-export const REPORTING_PUBLISHED_SEAM_NAMES = [
-  "MetricsProvider",
-  "DashboardCatalogProvider",
-  "ScheduledReportProvider",
-] as const;
-
 /** The live published-seam implementations the caller supplies once the §3 repositories land. */
 export interface ReportingPublishedSeams {
   readonly metricsProvider: MetricsProvider;

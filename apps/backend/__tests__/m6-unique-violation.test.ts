@@ -1,11 +1,8 @@
+import { mapUniqueViolation, uniqueViolationConstraint } from "@chartwarden/shared/route-kit";
 // apps/backend/__tests__/m6-unique-violation.test.ts — Bug 4: the backstop that maps a `23505` on a named
 // M6 unique index (behind the explicit pre-checks) to the same 409 domain error instead of a 500.
 import { describe, expect, it } from "vitest";
 import { AdmissionStateError } from "../src/modules/06-admission/state-machines/errors";
-import {
-  mapUniqueViolation,
-  uniqueViolationConstraint,
-} from "../src/modules/06-admission/unique-violation";
 
 const pgError = (code: string, constraint?: string): Error =>
   Object.assign(new Error("duplicate key value violates unique constraint"), { code, constraint });

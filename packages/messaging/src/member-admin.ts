@@ -74,7 +74,7 @@ export async function mayManageChannelMembersResolved(
 /** Channel kinds an admin may archive by hand. The others are not the admin's to close: `dm` is private,
  *  `announcement` is the tenant's one broadcast channel, and `care_team` / `bereavement` / `on_call` are driven by
  *  the M5/M6/M16/M19 lifecycle (a manual archive would be silently reopened by the next assignment event). */
-export const ADMIN_ARCHIVABLE_CHANNEL_KINDS: readonly string[] = ["discipline", "location"];
+const ADMIN_ARCHIVABLE_CHANNEL_KINDS: readonly string[] = ["discipline", "location"];
 
 /** The archive / unarchive decision both service implementations share: org_admin only (else 403), a `dm` is 403,
  *  and any other lifecycle-managed kind is 409. Throws; returns when the change may proceed. */

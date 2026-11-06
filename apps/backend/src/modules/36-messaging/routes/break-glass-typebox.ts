@@ -93,7 +93,7 @@ const ReviewShape = {
   overdue: Type.Boolean(),
 } as const;
 
-export const ReviewResponseSchema = Type.Object(ReviewShape);
+const ReviewResponseSchema = Type.Object(ReviewShape);
 export const ReviewListResponseSchema = Type.Object({ reviews: Type.Array(ReviewResponseSchema) });
 
 export const ReviewDetailResponseSchema = Type.Object({

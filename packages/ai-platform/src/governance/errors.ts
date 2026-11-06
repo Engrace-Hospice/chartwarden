@@ -23,7 +23,7 @@
 import { ChartWardenError } from "@chartwarden/types";
 
 /** The M32-T03 governance failure catalog → HTTP status. */
-export const AI_GOVERNANCE_ERROR_STATUS = {
+const AI_GOVERNANCE_ERROR_STATUS = {
   // ── §2.2 capability lifecycle ──────────────────────────────────────────────────────────────────
   /** The (fromState, toState, approvalKind) triple is not an edge of the §2.2 FSM. 409 because the
    *  request is well-formed and the CURRENT STATE is what makes it illegal — a retry after a legal

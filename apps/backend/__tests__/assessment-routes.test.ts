@@ -8,7 +8,7 @@
 // shim populates request.context. The three predicates M9 owns are registered into a FRESH ABAC registry
 // over the slice's resolver. Covers: RBAC gating (2xx with key, 403 without), the discipline floor
 // (chaplain → AIMS 403), the §10 record pipeline (license/discipline gates), LPN cosignature (RN ∧
-// not-self-recorder), the §2.3 If-Match version race (412 STALE_VERSION), significant-change ack, and
+// not-self-recorder), the §2.3 If-Match version race (409 STALE_VERSION), significant-change ack, and
 // (GAP-015) caseload scoping (§4.1 `caseload_or_scope` / M9-owned `assessment.scope`).
 import {
   createInMemoryEffectivePermissionStore,
@@ -485,7 +485,7 @@ describe("M9-T05 — correction-of-record (§2.3 If-Match → STALE_VERSION)", (
     expect(res.json().version).toBe(2);
   });
 
-  it("a stale If-Match version is a 412 STALE_VERSION", async () => {
+  it("a stale If-Match version is a 409 STALE_VERSION", async () => {
     const { app } = makeServer();
     const res = await app.inject({
       method: "POST",
@@ -493,11 +493,11 @@ describe("M9-T05 — correction-of-record (§2.3 If-Match → STALE_VERSION)", (
       headers: { ...RN, "if-match": "99" },
       payload: painadBody({ correctionReason: "transcription error on the original PAINAD score" }),
     });
-    expect(res.statusCode).toBe(412);
+    expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe("STALE_VERSION");
   });
 
-  it("a missing If-Match is a 428 PRECONDITION_REQUIRED", async () => {
+  it("a missing If-Match is a 428 IF_MATCH_REQUIRED", async () => {
     const { app } = makeServer();
     const res = await app.inject({
       method: "POST",

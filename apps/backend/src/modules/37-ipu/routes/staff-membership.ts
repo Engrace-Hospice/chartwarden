@@ -25,7 +25,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 
 /** Org-wide IPU authority roles (the role templates that carry director-level reach; rule 1). */
-export const IPU_ORG_WIDE_ROLE_KEYS = [
+const IPU_ORG_WIDE_ROLE_KEYS = [
   "medical_director",
   "director_of_nursing",
   "administrator",
@@ -84,7 +84,7 @@ export function decideIpuStaffMembership(input: {
 }
 
 /** Load the unit's live roster inside the window (one query; RLS-scoped by the caller's tx). */
-export async function loadUnitRoster(
+async function loadUnitRoster(
   t: DbClient,
   unitId: string,
   now: Date,

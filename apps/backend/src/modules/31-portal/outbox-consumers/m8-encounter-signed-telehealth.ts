@@ -41,7 +41,7 @@ const TV = schema.telehealthVisits;
 /** Mirrors the sibling telehealth consumers' sentinel — no actor column this update needs to stamp. */
 const CONSUMER_USER_ID = "";
 
-export const M31_ENCOUNTER_SIGNED_TELEHEALTH_CONSUMER = {
+const M31_ENCOUNTER_SIGNED_TELEHEALTH_CONSUMER = {
   eventName: "m8.encounter.signed",
   consumerName: "m31.m8-encounter-signed-telehealth",
 } as const;

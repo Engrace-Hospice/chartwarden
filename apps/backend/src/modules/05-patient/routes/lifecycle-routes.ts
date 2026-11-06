@@ -1,3 +1,9 @@
+import {
+  type GuardRequest,
+  requireAbac,
+  requirePermission,
+  requireStepUp,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/05-patient/routes/lifecycle-routes.ts — GAP-018 / GAP-019 / GAP-012 (backend):
 // the M5 §4.3 routes that were specified and never registered.
 //
@@ -19,12 +25,7 @@
 // refusal never confirms the chart exists). The review-queue / amendment routes are `abac: "none"` in the
 // §4.3 table and the catalog: they act on a REVIEW or AMENDMENT id, which `caseload_or_scope` cannot
 // resolve to a patient (same reasoning as the accept/deny routes in `patient-routes.ts`).
-import {
-  type GuardRequest,
-  requireAbac,
-  requirePermission,
-  requireStepUp,
-} from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { InvalidDeceasedDateError } from "../deceased";
@@ -74,8 +75,6 @@ import {
 } from "./lifecycle-typebox";
 import { LooseIdParamsSchema, parse } from "./patient-typebox";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 const DEFAULT_QUEUE_LIMIT = 100;
 
 const chartScope = (action: string): PreHandler =>
@@ -100,12 +99,6 @@ const SENSITIVE_IDENTIFIER_WRITE_GATE: PreHandler = async (request, reply) => {
   await SENSITIVE_WRITE_PERMISSION(request, reply);
   await SENSITIVE_WRITE_STEP_UP(request, reply);
 };
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
-}
 
 const err = (code: string, message: string, status: number): ChartWardenError =>
   new ChartWardenError(code, message, status);

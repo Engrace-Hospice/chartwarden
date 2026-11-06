@@ -45,9 +45,6 @@ export type BillingDb = repositories.BillingDb;
 /** The structural org-context transaction handle the repos write through (a `BillingDb` for typing). */
 export type BillingTx = BillingDb;
 
-/** The legitimate `claim_state_history.actor_kind` values (D13 forbids any `ai_*` principal). */
-export type BillingActorKind = "user" | "system" | "consumer" | "worker";
-
 /**
  * The MUTATING-route/worker/consumer actor: org + user + roles, the server-assembled active membership id
  * (the row's acting principal), the §D14 recent-step-up flag, and the `actorKind`. The membership/org are

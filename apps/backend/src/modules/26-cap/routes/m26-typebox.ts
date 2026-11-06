@@ -78,7 +78,6 @@ const UuidString = Type.String({
   pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
 });
 
-export const UuidParam = Type.Object({ id: UuidString });
 export const PeriodIdParams = Type.Object({ periodId: UuidString });
 export const EventIdParams = Type.Object({ eventId: UuidString });
 export const LineIdParams = Type.Object({ importId: UuidString, lineId: UuidString });
@@ -131,9 +130,7 @@ export const FinalizeSettlementRequest = strict(
 
 // ── response shapes (assembled from the §4.2 DTOs) ──
 export const CapPeriodDto = contracts.CapPeriodDto;
-export const CapPeriodListResponse = Type.Array(contracts.CapPeriodDto);
 export const ProjectionSnapshotDto = contracts.ProjectionSnapshotDto;
-export const ProjectionListResponse = Type.Array(contracts.ProjectionSnapshotDto);
 export const InpatientProjectionDto = contracts.InpatientProjectionDto;
 export const SettlementDto = contracts.SettlementDto;
 

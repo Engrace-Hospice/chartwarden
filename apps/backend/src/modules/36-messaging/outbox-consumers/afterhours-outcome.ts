@@ -10,7 +10,7 @@ import type {
 } from "../../../bootstrap/outbox-dispatcher";
 import type { AfterHoursLinkStore } from "../afterhours-triage/afterhours-link-store";
 
-export const M36_AFTERHOURS_OUTCOME_CONSUMER = "m36.afterhours-outcome" as const;
+const M36_AFTERHOURS_OUTCOME_CONSUMER = "m36.afterhours-outcome" as const;
 export const M19_AFTERHOURS_OUTCOME_EVENT = "m19.afterhours_triage.outcome" as const;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -5,7 +5,7 @@
 import { type Static, Type } from "@sinclair/typebox";
 
 /** GIP criterion 1 — acute symptom management not manageable at home. */
-export const GipCriteriaAcuteSymptomManagement = Type.Object({
+const GipCriteriaAcuteSymptomManagement = Type.Object({
   criterion_kind: Type.Literal("acute_symptom_management"),
   uncontrolled_symptoms: Type.Array(
     Type.Object({
@@ -23,7 +23,7 @@ export const GipCriteriaAcuteSymptomManagement = Type.Object({
 });
 
 /** GIP criterion 2 — terminal care of an imminently dying patient. */
-export const GipCriteriaImminentDeath = Type.Object({
+const GipCriteriaImminentDeath = Type.Object({
   criterion_kind: Type.Literal("imminent_death_terminal_care"),
   clinical_estimate_days_to_death: Type.Integer({ minimum: 0, maximum: 14 }),
   signs_of_imminent_death: Type.Array(
@@ -45,7 +45,7 @@ export const GipCriteriaImminentDeath = Type.Object({
 });
 
 /** GIP criterion 3 — medications/treatments requiring an inpatient setting. */
-export const GipCriteriaMedicationsTreatments = Type.Object({
+const GipCriteriaMedicationsTreatments = Type.Object({
   criterion_kind: Type.Literal("medications_treatments_inpatient_only"),
   named_medications: Type.Array(
     Type.Object({
@@ -72,7 +72,7 @@ export const GipCriteriaPayload = Type.Union([
 export type GipCriteriaPayloadType = Static<typeof GipCriteriaPayload>;
 
 /** §2.6/§3.4 — the IV-safety overlay invariant shape (server-side enforcement; mirrors the ipu_iv_safety_overlay row). */
-export const IvSafetyOverlaySpec = Type.Object({
+const IvSafetyOverlaySpec = Type.Object({
   titration_min_rate: Type.Number({ minimum: 0 }),
   titration_max_rate: Type.Number({ minimum: 0 }),
   rate_unit: Type.Union([

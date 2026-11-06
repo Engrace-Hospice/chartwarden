@@ -26,8 +26,9 @@
  * CI:    exits 1 on any violation.
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
+import { walkFiles } from "./lib/gate-scan";
 
 const REPO_ROOT = process.cwd();
 const UI_DIR = "docs/design";
@@ -43,17 +44,11 @@ function read(rel: string): string {
   return readFileSync(join(REPO_ROOT, rel), "utf8");
 }
 
-function listScreens(dir: string, acc: string[] = []): string[] {
-  for (const e of readdirSync(join(REPO_ROOT, dir))) {
-    const rel = join(dir, e);
-    if (statSync(join(REPO_ROOT, rel)).isDirectory()) listScreens(rel, acc);
-    else if (/^CHARTWARDEN_UI_.+\.md$/.test(e)) acc.push(rel);
-  }
-  return acc;
-}
+const listMarkdown = (dir: string, include: (name: string) => boolean): string[] =>
+  walkFiles(dir, { base: REPO_ROOT, include, mustExist: true });
 
 // ---- gather the screen set (relative to docs/design/, matching index entries) ----
-const screenFiles = listScreens(SCREENS_DIR)
+const screenFiles = listMarkdown(SCREENS_DIR, (name) => /^CHARTWARDEN_UI_.+\.md$/.test(name))
   .map((p) => relative(UI_DIR, p))
   .sort();
 
@@ -124,17 +119,9 @@ const adrNumbers = new Set(
     .filter((f) => /^ADR-\d{4}-/.test(f))
     .map((f) => f.slice(4, 8)),
 );
-function listAllMd(dir: string, acc: string[] = []): string[] {
-  for (const e of readdirSync(join(REPO_ROOT, dir))) {
-    const rel = join(dir, e);
-    if (statSync(join(REPO_ROOT, rel)).isDirectory()) listAllMd(rel, acc);
-    else if (e.endsWith(".md")) acc.push(rel);
-  }
-  return acc;
-}
 let adrsChecked = 0;
 let linksChecked = 0;
-for (const rel of listAllMd(UI_DIR)) {
+for (const rel of listMarkdown(UI_DIR, (name) => name.endsWith(".md"))) {
   const lines = readFileSync(join(REPO_ROOT, rel), "utf8").split("\n");
   for (let i = 0; i < lines.length; i++) {
     for (const m of lines[i]!.matchAll(/\bADR-(\d{4})\b/g)) {

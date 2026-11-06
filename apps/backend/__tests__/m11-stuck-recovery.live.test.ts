@@ -805,13 +805,13 @@ describe.skipIf(!DB_URL)("F-201 — stuck lab-order recovery, LIVE Postgres", ()
     await expect(
       recovery.listHeld(ORG_A, { limit: 2, cursor: "not-a-cursor" }),
     ).rejects.toMatchObject({
-      code: "VALIDATION_FAILED",
+      code: "INVALID_CURSOR",
     });
     const forged = Buffer.from(
       JSON.stringify({ u: "2026-01-01T00:00:00.000000Z", i: "x'); DROP TABLE order_record;--" }),
     ).toString("base64url");
     await expect(recovery.listHeld(ORG_A, { limit: 2, cursor: forged })).rejects.toMatchObject({
-      code: "VALIDATION_FAILED",
+      code: "INVALID_CURSOR",
     });
   });
 

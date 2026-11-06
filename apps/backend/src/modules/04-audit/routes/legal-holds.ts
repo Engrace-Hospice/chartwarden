@@ -1,3 +1,12 @@
+import {
+  type AuditContext,
+  type AuditQuery,
+  MAX_PAGE_LIMIT,
+  isMessagingOnlyCriteria,
+  resolveLimit,
+} from "@chartwarden/audit";
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/04-audit/routes/legal-holds.ts — GAP-003 the §7 legal-hold surface
 // (M4 spec §4.2-4.3, §10.6, M04-F03).
 //
@@ -12,16 +21,12 @@
 // RLS-scoped `AuditQuery` the read routes use) — bounded (`MATCH_SCAN_CAP`) so a hold with a broad
 // criteria can never trigger an unbounded partition scan from a single request.
 import {
-  type AuditContext,
-  type AuditQuery,
-  MAX_PAGE_LIMIT,
+  type PreHandler,
+  actorOf,
   decodeCursor,
   encodeCursor,
-  isMessagingOnlyCriteria,
-  resolveLimit,
-} from "@chartwarden/audit";
-import { requirePermission, requireStepUp } from "@chartwarden/auth";
-import { type DbClient, schema } from "@chartwarden/db";
+  isKeysetCursor,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
@@ -45,9 +50,6 @@ import {
   parse,
 } from "./audit-typebox";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export type { M4OutboxEmission, M4OutboxPort } from "../messaging-hold-workflow";
 
 /** The injection surface for the legal-holds routes. */
@@ -61,17 +63,6 @@ export interface LegalHoldsRouteDeps {
 }
 
 const HOLD = schema.legalHolds;
-
-/** The org-scoped actor (org binding is server-side: the context, never the query/body). */
-function actorOf(request: FastifyRequest): {
-  organizationId: string;
-  userId: string;
-  roles: readonly string[];
-} {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
-}
 
 /** Build the audit context for the compliance-lifecycle event from the request. */
 function auditContextFor(request: FastifyRequest): AuditContext {
@@ -180,11 +171,9 @@ export function registerLegalHoldsRoutes(app: FastifyInstance, deps: LegalHoldsR
       const limit = resolveLimit(q.limit);
       const where = [eq(HOLD.organizationId, organizationId)];
       if (q.status) where.push(eq(HOLD.status, q.status));
-      const cur = q.cursor ? decodeCursor(q.cursor) : null;
+      const cur = decodeCursor(organizationId, q.cursor, isKeysetCursor);
       if (cur) {
-        where.push(
-          sql`(${HOLD.appliedAt}, ${HOLD.id}) < (${cur.createdAt}::timestamptz, ${cur.id})`,
-        );
+        where.push(sql`(${HOLD.appliedAt}, ${HOLD.id}) < (${cur.a}::timestamptz, ${cur.id})`);
       }
       const rows = await tx
         .select()
@@ -197,7 +186,7 @@ export function registerLegalHoldsRoutes(app: FastifyInstance, deps: LegalHoldsR
       const last = page[page.length - 1];
       const nextCursor =
         hasMore && last
-          ? encodeCursor({ createdAt: last.appliedAt.toISOString(), id: last.id })
+          ? encodeCursor(organizationId, { a: last.appliedAt.toISOString(), id: last.id })
           : null;
       return { items: page.map(toLegalHoldView), nextCursor };
     });

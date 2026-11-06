@@ -28,7 +28,7 @@ if (!FormatRegistry.Has("uuid")) {
   FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
 }
 
-export const ConsentTypeKeySchema = Type.Union(CONSENT_TYPE_KEYS.map((k) => Type.Literal(k)));
+const ConsentTypeKeySchema = Type.Union(CONSENT_TYPE_KEYS.map((k) => Type.Literal(k)));
 
 export const PatientIdParamsSchema = Type.Object({ patientId: Type.String({ minLength: 1 }) });
 export const ConsentIdParamsSchema = Type.Object({ consentId: Type.String({ minLength: 1 }) });
@@ -76,7 +76,7 @@ export const CreateDraftBodySchema = Type.Object({
   ),
 });
 
-export const CaptureEvidenceSchema = Type.Object({
+const CaptureEvidenceSchema = Type.Object({
   signedAtIso: Type.Optional(Type.String({ minLength: 20 })),
   typedSignatureName: Type.Optional(Type.String({ minLength: 2, maxLength: 200 })),
   typedSignatureRole: Type.Optional(Type.String({ minLength: 2, maxLength: 100 })),
@@ -360,7 +360,7 @@ const pagedOf = <T extends TSchema>(item: T) =>
   Type.Object({ data: Type.Array(item), nextCursor: nullableStr() });
 
 /** `ConsentRecordView` — the record every consent surface renders. */
-export const ConsentRecordViewSchema = Type.Object({
+const ConsentRecordViewSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   patientId: Type.String(),
@@ -381,14 +381,14 @@ export const ConsentRecordViewSchema = Type.Object({
 export const ConsentListResponseSchema = dataOf(Type.Array(ConsentRecordViewSchema));
 
 /** `ExpiringConsentView` — a consent inside the renewal window, with its countdown. */
-export const ExpiringConsentViewSchema = Type.Intersect([
+const ExpiringConsentViewSchema = Type.Intersect([
   ConsentRecordViewSchema,
   Type.Object({ daysUntilExpiry: Type.Integer() }),
 ]);
 export const ExpiringConsentsResponseSchema = pagedOf(ExpiringConsentViewSchema);
 
 /** `ConsentRecipientView` — a named disclosure recipient (D6). `active` is derived server-side. */
-export const ConsentRecipientViewSchema = Type.Object({
+const ConsentRecipientViewSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   consentRecordId: Type.String(),
@@ -406,7 +406,7 @@ export const ConsentRecipientViewSchema = Type.Object({
 export const ConsentRecipientListResponseSchema = dataOf(Type.Array(ConsentRecipientViewSchema));
 
 /** `ConsentDpoaAgentView` — a named DPOA agent (D5). */
-export const ConsentDpoaAgentViewSchema = Type.Object({
+const ConsentDpoaAgentViewSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   consentRecordId: Type.String(),
@@ -434,7 +434,7 @@ export const ConsentDpoaAgentListResponseSchema = dataOf(Type.Array(ConsentDpoaA
 // added or renamed breaks `bun run build` rather than silently drifting the generated client to `never`.
 
 /** `ConsentCatalogView` — a row of the consent-type catalog + applicable overlay (route 1). */
-export const ConsentCatalogViewSchema = Type.Object({
+const ConsentCatalogViewSchema = Type.Object({
   typeKey: ConsentTypeKeySchema,
   displayNameEn: Type.String(),
   scopeDiscriminator: Type.String(),
@@ -446,7 +446,7 @@ export const ConsentCatalogListResponseSchema = dataOf(Type.Array(ConsentCatalog
 export const ConsentRecordResponseSchema = dataOf(ConsentRecordViewSchema);
 
 /** `ConsentVersionChainView` — both ancestor chains, oldest → newest (route 5). */
-export const ConsentVersionChainViewSchema = Type.Object({
+const ConsentVersionChainViewSchema = Type.Object({
   consentId: Type.String(),
   supersedes: Type.Array(ConsentRecordViewSchema),
   renewedFrom: Type.Array(ConsentRecordViewSchema),
@@ -465,7 +465,7 @@ export const ActivePrimaryDpoaResponseSchema = Type.Object({
 });
 
 /** `ConsentRenewalCycleView` — an open/closed renewal cycle (route 19, D8). */
-export const ConsentRenewalCycleViewSchema = Type.Object({
+const ConsentRenewalCycleViewSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   sourceConsentRecordId: Type.String(),
@@ -483,7 +483,7 @@ export const ConsentRenewalCycleListResponseSchema = dataOf(
 );
 
 /** `DelegatedAccessView` — the D10 projection a portal/caregiver session resolves against (route 21). */
-export const DelegatedAccessViewSchema = Type.Object({
+const DelegatedAccessViewSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   patientId: Type.String(),
@@ -501,7 +501,7 @@ export const DelegatedAccessViewSchema = Type.Object({
 export const DelegatedAccessListResponseSchema = dataOf(Type.Array(DelegatedAccessViewSchema));
 
 /** `PostMortemEligibilityView` — the M16 survive-death verdict per consent (route 28, D13). */
-export const PostMortemEligibilityViewSchema = Type.Object({
+const PostMortemEligibilityViewSchema = Type.Object({
   consentId: Type.String(),
   typeKey: ConsentTypeKeySchema,
   status: CONSENT_STATUS,
@@ -513,7 +513,7 @@ export const PostMortemEligibilityListResponseSchema = dataOf(
 );
 
 /** `ReRenderReceiptView` — the re-render request receipt (route 24). */
-export const ReRenderReceiptViewSchema = Type.Object({
+const ReRenderReceiptViewSchema = Type.Object({
   consentRecordId: Type.String(),
   requestedAt: Type.String(),
   requestedById: Type.String(),
@@ -522,7 +522,7 @@ export const ReRenderReceiptViewSchema = Type.Object({
 export const ReRenderReceiptResponseSchema = dataOf(ReRenderReceiptViewSchema);
 
 /** `CascadeRetryView` — the D7 cascade sweep verdict after a retry (route 30). */
-export const CascadeRetryViewSchema = Type.Object({
+const CascadeRetryViewSchema = Type.Object({
   consentRecordId: Type.String(),
   revocationId: Type.String(),
   status: CASCADE_STATUS,
@@ -532,7 +532,7 @@ export const CascadeRetryViewSchema = Type.Object({
 export const CascadeRetryResponseSchema = dataOf(CascadeRetryViewSchema);
 
 /** `EvalAuditRow` — a consent-decision audit row (routes 22/23, cursor-paginated). */
-export const EvalAuditRowSchema = Type.Object({
+const EvalAuditRowSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   patientId: Type.String(),
@@ -546,7 +546,7 @@ export const EvalAuditRowSchema = Type.Object({
 export const EvalAuditPageResponseSchema = pagedOf(EvalAuditRowSchema);
 
 /** `ConsentTypeOverlayView` — the published tenant overlay row (route 2, §7.6). */
-export const ConsentTypeOverlayViewSchema = Type.Object({
+const ConsentTypeOverlayViewSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   typeKey: ConsentTypeKeySchema,

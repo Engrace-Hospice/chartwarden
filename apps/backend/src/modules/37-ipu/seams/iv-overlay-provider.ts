@@ -39,7 +39,7 @@ function maxRateOf(row: OverlayRow): number {
   return row.titrationMaxRate === null ? Number.POSITIVE_INFINITY : Number(row.titrationMaxRate);
 }
 
-export function overlayFieldsOf(row: OverlayRow): IvSafetyOverlayFields {
+function overlayFieldsOf(row: OverlayRow): IvSafetyOverlayFields {
   return {
     titrationMinRate: minRateOf(row),
     titrationMaxRate: maxRateOf(row),

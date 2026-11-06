@@ -1,3 +1,6 @@
+import { type GrantSnapshot, verifyAppendOnly, verifySealLinkage } from "@chartwarden/audit";
+import { requirePermission } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/04-audit/routes/audit-integrity.ts — GAP-003 the §10.4 tamper-evidence
 // report surface.
 //
@@ -13,16 +16,11 @@
 // seal / a run — "never checked" must not read as "verified clean". `backupSampling` (a pgBackRest
 // comparison) stays absent: no backup reader exists in this repo, which `integritySample
 // .backupCrossReference` states explicitly rather than fabricating a section.
-import { type GrantSnapshot, verifyAppendOnly, verifySealLinkage } from "@chartwarden/audit";
-import { requirePermission } from "@chartwarden/auth";
-import type { DbClient } from "@chartwarden/db";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { readIntegrityState } from "../jobs/audit-integrity-job";
-
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface AuditIntegrityRouteDeps {
   readonly db: DbClient;
@@ -35,12 +33,6 @@ const AUDIT_TABLE = "audit_event";
 const APP_ROLE = "chartwarden_app";
 
 const integrityPermission = requirePermission("audit.integrity") as PreHandler;
-
-function actorOf(request: FastifyRequest): string {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return ctx.organizationId;
-}
 
 /** First partition a stored run recorded as broken, or null. */
 function firstRecordedBreak(detail: unknown): string | null {
@@ -90,7 +82,7 @@ export function registerAuditIntegrityRoutes(
     "/api/v1/audit/integrity/report",
     { preHandler: [integrityPermission] },
     async (request) => {
-      const organizationId = actorOf(request);
+      const { organizationId } = actorOf(request);
       const grants = await readAuditEventGrants(deps.db);
       const violations = verifyAppendOnly(grants, {
         appRoles: [APP_ROLE],

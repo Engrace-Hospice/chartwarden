@@ -15,9 +15,9 @@ import {
   type IdempotencyRecord,
   type IdempotencyStore,
   type IdempotentResponse,
+  claimIdempotencyKey,
   computeIdempotencyHash,
 } from "@chartwarden/shared";
-import { ConflictError, IdempotencyConflictError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
 declare module "fastify" {
@@ -62,29 +62,10 @@ export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore):
       key,
       request.body ?? null,
     );
-    const answerFrom = (existing: IdempotencyRecord) => {
-      if (existing.requestHash !== requestHash) throw new IdempotencyConflictError();
-      if (existing.state === "complete") {
-        const status = Number(existing.response.status) || 200;
-        return reply.code(status).send(existing.response.body);
-      }
-      // Still `pending` — a concurrent duplicate arrived before the first finished.
-      throw new ConflictError("Idempotency-Key request is still being processed");
-    };
-
-    const existing = await store.load(orgId, key);
-    if (existing) return answerFrom(existing);
-
-    // The claim is the serialization point (GAP-007): `load` returning null does not mean we own
-    // the key, only that nobody did a moment ago. Only the caller whose `putPending` wins runs the
-    // handler; a loser reloads the winner's record and replays it or reports it in flight.
-    if (!(await store.putPending(orgId, key, requestHash))) {
-      const winner = await store.load(orgId, key);
-      if (winner) return answerFrom(winner);
-      // The record vanished between the lost claim and the reload (swept or expired in between):
-      // fail safe — never run the handler without the claim; the client retries.
-      throw new ConflictError("Idempotency-Key request is still being processed");
-    }
+    // The shared claim (`@chartwarden/shared` claimIdempotencyKey, the core of runIdempotent) decides: a cached
+    // response replays, a different body is 409 IDEMPOTENCY_CONFLICT, a duplicate still in flight is 409 CONFLICT.
+    const cached = await claimIdempotencyKey(store, orgId, key, requestHash);
+    if (cached) return reply.code(Number(cached.status) || 200).send(cached.body);
     pendingCaptures.set(request, { orgId, key });
   });
 

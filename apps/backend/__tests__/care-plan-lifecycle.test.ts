@@ -332,14 +332,14 @@ describe("Synchronous validation rules (§2.3)", () => {
     expect(() => checkInterventionFrequency("  ")).toThrow(CarePlanStateError);
   });
 
-  it("optimistic concurrency: a version mismatch is a 412 STALE_VERSION", () => {
+  it("optimistic concurrency: a version mismatch is a 409 STALE_VERSION", () => {
     expect(() => checkOptimisticConcurrency(3, 3)).not.toThrow();
     try {
       checkOptimisticConcurrency(2, 3);
       expect.unreachable();
     } catch (e) {
       expect((e as CarePlanStateError).code).toBe("STALE_VERSION");
-      expect((e as CarePlanStateError).statusCode).toBe(412);
+      expect((e as CarePlanStateError).statusCode).toBe(409);
     }
   });
 });

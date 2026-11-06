@@ -23,7 +23,7 @@ export const M30_ASSIGN_UNASSIGNED_MORTALITY_QUEUE = "m30.assign-unassigned-mort
 export const M30_ASSIGN_UNASSIGNED_MORTALITY_SCHEDULE = "0 5 * * *";
 
 /** Max reviews assigned per org per tick. */
-export const MORTALITY_BACKFILL_BATCH_SIZE = 200;
+const MORTALITY_BACKFILL_BATCH_SIZE = 200;
 
 /** The open statuses a review can still be worked in (`completed` is terminal and never re-assigned). */
 const OPEN_STATUSES = ["pending", "in_progress", "overdue"] as const;

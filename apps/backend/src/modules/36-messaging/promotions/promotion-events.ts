@@ -10,7 +10,7 @@ export const M36_PROMOTION_EVENTS = {
   requested: "m36.promotion.requested",
 } as const;
 
-export const PROMOTION_AGGREGATE_KIND = "chart_promotion_request";
+const PROMOTION_AGGREGATE_KIND = "chart_promotion_request";
 
 export interface PromotionRequestedFacts {
   readonly orgId: string;

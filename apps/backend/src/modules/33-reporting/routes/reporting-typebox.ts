@@ -94,7 +94,7 @@ const CursorPageOf = <T extends TSchema>(item: T) =>
     hasMore: Type.Boolean(),
   });
 
-export const DashboardSummaryViewSchema = Type.Object({
+const DashboardSummaryViewSchema = Type.Object({
   dashboardId: Type.String(),
   displayName: Type.String(),
   authorship: lit(["system", "tenant"] as const),
@@ -105,7 +105,7 @@ export const DashboardSummaryViewSchema = Type.Object({
 export const DashboardListResponseSchema = CursorPageOf(DashboardSummaryViewSchema);
 
 /** One tile on a dashboard — the `report_base_catalog.base_key` `GET /reporting/tiles/:tileKey` takes. */
-export const DashboardTileDescriptorSchema = Type.Object({
+const DashboardTileDescriptorSchema = Type.Object({
   tileKey: Type.String(),
   displayName: Type.String(),
   kind: Type.String(),
@@ -135,7 +135,7 @@ const MeasureDescriptorSchema = Type.Object({
   aggregation: lit(AGGREGATION),
 });
 
-export const ReportBaseViewSchema = Type.Object({
+const ReportBaseViewSchema = Type.Object({
   id: Type.String(),
   baseKey: Type.String(),
   displayName: Type.String(),
@@ -158,7 +158,7 @@ export const ReportBaseDetailViewSchema = Type.Composite([
   }),
 ]);
 
-export const ReportMetricViewSchema = Type.Object({
+const ReportMetricViewSchema = Type.Object({
   id: Type.String(),
   metricKey: Type.String(),
   displayName: Type.String(),
@@ -172,7 +172,7 @@ export const ReportMetricViewSchema = Type.Object({
 });
 export const ReportMetricListResponseSchema = CursorPageOf(ReportMetricViewSchema);
 
-export const MvMetadataViewSchema = Type.Object({
+const MvMetadataViewSchema = Type.Object({
   id: Type.String(),
   mvKey: Type.String(),
   schemaName: Type.String(),
@@ -202,7 +202,7 @@ export const TileFreshnessViewSchema = Type.Object({
 });
 
 // `query_filters_cipher` is DENYLISTED (§3.6) and is NEVER projected onto this view.
-export const DrilldownAuditViewSchema = Type.Object({
+const DrilldownAuditViewSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   actorMembershipId: Type.String(),

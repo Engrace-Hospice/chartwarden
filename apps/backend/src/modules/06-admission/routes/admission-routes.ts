@@ -20,6 +20,7 @@ import {
   requirePermission,
   resolveActorPermissions,
 } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
@@ -110,9 +111,6 @@ import {
   ResourceNotFoundError,
 } from "./service";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface AdmissionRouteDeps {
   service: AdmissionRouteService;
   /**
@@ -199,15 +197,6 @@ async function readmissionScopeOf(
     ...base,
     sites: { providerEntityIds: [...ctx.providerEntityIds], locationIds: [...ctx.locationIds] },
   };
-}
-
-function actorOf(request: FastifyRequest): {
-  organizationId: string;
-  userId: string;
-} {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 const idOf = (request: FastifyRequest): string => parse(IdParamsSchema, request.params).id;

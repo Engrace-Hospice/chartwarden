@@ -212,7 +212,7 @@ describe("POST /patients/:id/code-status", () => {
 
   it("refuses a principal with no membership (the row records who)", async () => {
     const { app, calls } = makeServer();
-    expect((await app.inject(SET(MD_NO_MEMBERSHIP))).statusCode).toBe(401);
+    expect((await app.inject(SET(MD_NO_MEMBERSHIP))).statusCode).toBe(403);
     expect(calls.set).toHaveLength(0);
   });
 
