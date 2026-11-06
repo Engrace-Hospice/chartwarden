@@ -2418,6 +2418,24 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       const newest = await platformRunner((tx) => selectNewestContract(tx, "live", nov20, ORG_N));
       expect(newest?.sub.status).toBe("active");
       expect(await readBillingServiceMode(app.db, ORG_N, nov20)).toBe("billing_software");
+      // and the views show the NEWEST contract, not whichever row the table returns first
+      const [activeSub] = await q<{ id: string }>(
+        "SELECT id FROM subscription WHERE organization_id=$1 AND status='active'",
+        [ORG_N],
+      );
+      const tenantSide = await contractsAt("2026-11-20T12:00:00Z").tenantView(
+        ORG_N,
+        "tenant-n-user",
+      );
+      expect(tenantSide.contract).toMatchObject({
+        subscriptionId: activeSub?.id,
+        billingServiceMode: "billing_software",
+      });
+      const platformSide = await contractsAt("2026-11-20T12:00:00Z").platformView(
+        operator,
+        "pricing-n",
+      );
+      expect(platformSide.contract?.subscriptionId).toBe(activeSub?.id);
       expect(
         await recordDailyCensusForOrg(
           {
