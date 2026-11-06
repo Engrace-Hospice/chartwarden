@@ -70,6 +70,7 @@ import type {
 import { and, asc, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import { NotImplementedError, getSeam } from "../../../bootstrap/index";
 import type { BereavementCipher, BereavementCipherColumn } from "../bereavement-crypto";
+import { encodeCareGoals, normalizeCareGoals } from "../care-goals";
 import {
   BereavementStateError,
   anniversaryMarksForTier,
@@ -94,6 +95,7 @@ import { scoreBereavementRisk } from "../risk/index";
 import { planCaregiverSeeds } from "../roster-seed";
 import { getBereavementEncounterReader, getVolunteerComplianceProvider } from "../seams/index";
 import type { M16MutatingActor, M16WriteActor } from "./actor";
+import { isBereavementVolunteer } from "./disclosure";
 import { type EffectPatch, runEffects } from "./effects-runner";
 import { heldCadenceMarks } from "./held-cadence-marks";
 import type {
@@ -135,6 +137,7 @@ import type {
   ResumePlanInput,
   ScheduleRegenerationView,
   SeedRosterAndScheduleInput,
+  SetCareGoalsInput,
   UpdateContactInput,
   WriteOutboxPort,
 } from "./write-service";
@@ -1817,6 +1820,47 @@ export function buildDrizzleM16WriteService(
           .returning();
         if (!row) throw new Error("m16: the contact update returned no row");
         return contactViewOf(tx, row);
+      });
+    },
+
+    // ── 41 — the contact's care goals (ADR-0109): sealed free text, If-Match, never a volunteer's to write ──────
+    async setCareGoals(actor, contactId, input: SetCareGoalsInput) {
+      // D10 — a volunteer's scope holds no clinical content; care goals are exactly that, so a volunteer neither reads nor
+      // writes them (the route's discipline gate admits the assigned volunteer to the window, this is the content gate).
+      if (isBereavementVolunteer(actor)) {
+        throw new ForbiddenError("care goals are outside the volunteer scope");
+      }
+      const goals = normalizeCareGoals(input.goals);
+      // Sealed BEFORE the transaction opens (the key provider takes its own connection — M21-T05); an unbound cipher with
+      // goals to store is a 503, never a plaintext cipher column and never a silent discard.
+      assertSensitiveStorable(goals, cipher !== undefined);
+      const sealed =
+        goals.length === 0
+          ? null
+          : await seal(actor.organizationId, "bereaved_contact.care_goals", encodeCareGoals(goals));
+      return withOrgContext(db, scope(actor), async (tx) => {
+        const contact = await contactOr404(tx, contactId);
+        checkVersion(input.expectedVersion, contact.version);
+        const plan = await planOr404(tx, contact.planId);
+        if (isClosedPlanStatus(plan.status)) {
+          throw new BereavementStateError("PLAN_CLOSED", `the bereavement plan is ${plan.status}`);
+        }
+        const [row] = await tx
+          .update(CONTACT)
+          .set({
+            careGoalsCipher: sealed ?? null,
+            version: contact.version + 1,
+            updatedAt: new Date(now()),
+          })
+          .where(and(eq(CONTACT.id, contactId), eq(CONTACT.version, contact.version)))
+          .returning();
+        if (!row) {
+          throw new BereavementStateError(
+            "STALE_VERSION",
+            "the contact has moved on; re-read it and retry",
+          );
+        }
+        return { ...(await contactViewOf(tx, row)), careGoals: goals };
       });
     },
 

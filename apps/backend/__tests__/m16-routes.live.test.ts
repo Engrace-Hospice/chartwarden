@@ -300,7 +300,13 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     );
 
     const key = randomBytes(32);
-    const readService = buildDrizzleM16ReadService(handle.db);
+    const cipher = createBereavementCipher({
+      dekForOrg: async () => ({ version: "v1", key }),
+      dekForOrgVersion: async () => ({ version: "v1", key }),
+    });
+    // One envelope for both services, as the composition root binds it: the write service seals the care goals, the read
+    // service opens them for a reader the D10 scope permits.
+    const readService = buildDrizzleM16ReadService(handle.db, { cipher });
     app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
     mountM16Routes(app, {
       readService,
@@ -309,10 +315,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
       }),
       writeService: buildDrizzleM16WriteService(handle.db, readService, {
         outbox: outbox as never,
-        cipher: createBereavementCipher({
-          dekForOrg: async () => ({ version: "v1", key }),
-          dekForOrgVersion: async () => ({ version: "v1", key }),
-        }),
+        cipher,
         // D6 — the PRODUCTION probe, exactly as index.ts binds it, over M39's Drizzle-backed evaluator
         // (RLS-scoped reads of consent_record as the app role). Every confirm below needs a real consent.
         bereavementConsentActive: createBereavementOutreachConsentProbe(() =>
@@ -1643,6 +1646,76 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect(
       (await call("POST", `/api/v1/bereavement/contacts/${chris}/rescind-opt-out`, "counselor", {}))
         .statusCode,
+    ).toBe(404);
+  });
+
+  it("care goals: sealed with the tenant DEK, opened for the counselor and oversight, absent for the volunteer, If-Match guarded (ADR-0109)", async () => {
+    const pat = contacts.Pat as string;
+    const url = `/api/v1/bereavement/contacts/${pat}/care-plan`;
+    const goals = ["Get back to the garden", "Join the Thursday group"];
+    const sealed = async () =>
+      (
+        await admin.query("SELECT care_goals_cipher, version FROM bereaved_contact WHERE id=$1", [
+          pat,
+        ])
+      ).rows[0] as { care_goals_cipher: string | null; version: number };
+    const patOnPlan = async (as: string) => {
+      const plan = await call("GET", `/api/v1/bereavement/plans/${planId}`, as);
+      expect(plan.statusCode).toBe(200);
+      return {
+        row: (plan.json().contacts as Record<string, unknown>[]).find(
+          (c) => c.contactId === pat,
+        ) as {
+          careGoals?: string[];
+        },
+        redacted: plan.json().redactedCategories as string[],
+      };
+    };
+
+    // If-Match is required; a stale version is refused; a volunteer may not write them.
+    const v0 = (await sealed()).version;
+    expect((await call("PUT", url, "counselor", { goals })).statusCode).toBe(428);
+    expect(
+      (await call("PUT", url, "counselor", { goals }, { "if-match": `"${v0 + 5}"` })).statusCode,
+    ).toBe(412);
+    expect(
+      (await call("PUT", url, "volunteer", { goals }, { "if-match": `"${v0}"` })).statusCode,
+    ).toBe(403);
+    expect((await sealed()).care_goals_cipher).toBeNull();
+
+    const saved = await call("PUT", url, "counselor", { goals }, { "if-match": `"${v0}"` });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({ contactId: pat, careGoals: goals, version: v0 + 1 });
+    const after = await sealed();
+    expect(after.version).toBe(v0 + 1);
+    expect(after.care_goals_cipher).toBeTruthy();
+    expect(String(after.care_goals_cipher)).not.toContain("garden");
+    expect(String(after.care_goals_cipher)).toMatch(/^v1\./);
+
+    // The counselor and oversight read them back (opened with the tenant DEK) ...
+    expect((await patOnPlan("counselor")).row.careGoals).toEqual(goals);
+    expect((await patOnPlan("don")).row.careGoals).toEqual(goals);
+    // ... the volunteer assigned to this plan sees the contact but NOT the goals, and is told clinical content was withheld.
+    const asVolunteer = await patOnPlan("volunteer");
+    expect(asVolunteer.row).toBeDefined();
+    expect(asVolunteer.row).not.toHaveProperty("careGoals");
+    expect(asVolunteer.redacted).toContain("clinical_risk");
+
+    // An empty list clears them (the cipher goes NULL and readers see an empty list, not a missing field).
+    const cleared = await call(
+      "PUT",
+      url,
+      "counselor",
+      { goals: [] },
+      { "if-match": `"${v0 + 1}"` },
+    );
+    expect(cleared.statusCode).toBe(200);
+    expect((await sealed()).care_goals_cipher).toBeNull();
+    expect((await patOnPlan("counselor")).row.careGoals).toEqual([]);
+
+    // Another tenant's supervisor cannot reach this contact at all (RLS + the window predicate: 404, never 403).
+    expect(
+      (await call("PUT", url, "donB", { goals }, { "if-match": `"${v0 + 2}"` })).statusCode,
     ).toBe(404);
   });
 

@@ -20,6 +20,7 @@ import {
   P,
 } from "./guards";
 import {
+  CareGoalsBody,
   ConfirmContactBody,
   ContactParams,
   CreateContactBody,
@@ -81,6 +82,27 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       return writeService.updateContact(writeActorOf(request), contactId, {
         expectedVersion: ifMatchVersion(request, true),
         ...body,
+      });
+    },
+  );
+
+  // 41 — the contact's care goals (ADR-0109): at most 3, sealed with the tenant DEK. `If-Match` required (a blind
+  //      overwrite could erase goals another counselor just recorded with the family); a volunteer neither reads nor writes.
+  app.put(
+    "/api/v1/bereavement/contacts/:contactId/care-plan",
+    {
+      preHandler: [
+        P("bereavement.contact.update"),
+        ABAC_WINDOW_CONTACT("bereavement.contact.update"),
+        IDEMPOTENT,
+      ],
+    },
+    async (request) => {
+      const { contactId } = parse(ContactParams, request.params);
+      const body = parse(CareGoalsBody, request.body);
+      return writeService.setCareGoals(writeActorOf(request), contactId, {
+        expectedVersion: ifMatchVersion(request, true) ?? 0,
+        goals: body.goals,
       });
     },
   );

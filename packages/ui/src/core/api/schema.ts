@@ -4785,6 +4785,23 @@ export interface paths {
         patch: operations["patchApiV1BereavementContactsByContactId"];
         trace?: never;
     };
+    "/api/v1/bereavement/contacts/{contactId}/care-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Record the contact's care goals (ADR-0109, #41) — at most 3 goals of 1..280 characters, sealed with the tenant DEK; `If-Match` and `Idempotency-Key` required; an empty list clears them; a volunteer neither reads nor writes them */
+        put: operations["putApiV1BereavementContactsByContactIdCareplan"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bereavement/contacts/{contactId}/confirm": {
         parameters: {
             query?: never;
@@ -42030,6 +42047,59 @@ export interface operations {
                         mayRescindOptOut: boolean;
                         mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1BereavementContactsByContactIdCareplan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    goals: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        planId: string;
+                        status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                        displayName: string;
+                        relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                        preferredLanguageIso639: string;
+                        portalAccountId: string | null;
+                        consentRecordId: string | null;
+                        allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                        volunteerVisibleOnly: boolean;
+                        confirmedAt: string | null;
+                        optedOutAt: string | null;
+                        unreachableAt: string | null;
+                        unreachableProposed: boolean;
+                        unreachableProposedAt: string | null;
+                        deceasedAt: string | null;
+                        mayRescindOptOut: boolean;
+                        mailingsAllowed: boolean;
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -42082,6 +42152,7 @@ export interface operations {
                         mayRescindOptOut: boolean;
                         mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -42133,6 +42204,7 @@ export interface operations {
                         mayRescindOptOut: boolean;
                         mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -42188,6 +42260,7 @@ export interface operations {
                         mayRescindOptOut: boolean;
                         mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -42286,6 +42359,7 @@ export interface operations {
                         mayRescindOptOut: boolean;
                         mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -42337,6 +42411,7 @@ export interface operations {
                         mayRescindOptOut: boolean;
                         mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -42391,6 +42466,7 @@ export interface operations {
                         mayRescindOptOut: boolean;
                         mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -42485,6 +42561,7 @@ export interface operations {
                         mayRescindOptOut: boolean;
                         mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -43034,6 +43111,7 @@ export interface operations {
                             mayRescindOptOut: boolean;
                             mailingsAllowed: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            careGoals?: string[];
                             version: number;
                         }[];
                         stats: {
@@ -43176,6 +43254,7 @@ export interface operations {
                             mayRescindOptOut: boolean;
                             mailingsAllowed: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            careGoals?: string[];
                             version: number;
                         }[];
                         stats: {
@@ -43278,6 +43357,7 @@ export interface operations {
                             mayRescindOptOut: boolean;
                             mailingsAllowed: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            careGoals?: string[];
                             version: number;
                         }[];
                         stats: {
@@ -43378,6 +43458,7 @@ export interface operations {
                             mayRescindOptOut: boolean;
                             mailingsAllowed: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            careGoals?: string[];
                             version: number;
                         }[];
                         stats: {
@@ -43498,6 +43579,7 @@ export interface operations {
                         mayRescindOptOut: boolean;
                         mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -43727,6 +43809,7 @@ export interface operations {
                             mayRescindOptOut: boolean;
                             mailingsAllowed: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            careGoals?: string[];
                             version: number;
                         }[];
                         stats: {
@@ -43946,6 +44029,7 @@ export interface operations {
                             mayRescindOptOut: boolean;
                             mailingsAllowed: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            careGoals?: string[];
                             version: number;
                         }[];
                         stats: {
@@ -44112,6 +44196,7 @@ export interface operations {
                                 mayRescindOptOut: boolean;
                                 mailingsAllowed: boolean;
                                 currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                                careGoals?: string[];
                                 version: number;
                             }[];
                             stats: {

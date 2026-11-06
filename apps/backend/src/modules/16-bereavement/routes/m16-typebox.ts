@@ -14,6 +14,7 @@ import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { CARE_GOALS_MAX, CARE_GOAL_MAX_CHARS } from "../care-goals";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -334,6 +335,14 @@ export const UpdateContactBody = Type.Object({
   volunteerVisibleOnly: Type.Optional(Type.Boolean()),
 });
 
+/** Route 41 — a contact's care goals: at most 3, each 1..280 characters with something in it (ADR-0109). An empty list
+ *  clears them. Sealed with the tenant DEK; never returned to a volunteer or a portal session. */
+export const CareGoalsBody = Type.Object({
+  goals: Type.Array(Type.String({ minLength: 1, maxLength: CARE_GOAL_MAX_CHARS, pattern: "\\S" }), {
+    maxItems: CARE_GOALS_MAX,
+  }),
+});
+
 /** Route 13 — proposed → active. The M39 consent verdict is resolved server-side (D6 fail-CLOSED). */
 export const ConfirmContactBody = Type.Object({
   consentRecordId: Type.Optional(Uuid),
@@ -622,6 +631,7 @@ export const BereavedContactRowViewResponseSchema = Type.Object({
   mayRescindOptOut: Bool,
   mailingsAllowed: Bool,
   currentRiskTier: Type.Optional(Nullable(RiskTier)),
+  careGoals: Type.Optional(Type.Array(Str)),
   version: Int,
 });
 

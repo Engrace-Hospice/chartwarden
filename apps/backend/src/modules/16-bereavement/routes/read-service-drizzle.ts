@@ -38,6 +38,8 @@ import type {
 } from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { BEREAVEMENT_OVERSIGHT_ROLES } from "../abac-predicates";
+import type { BereavementCipher } from "../bereavement-crypto";
+import { decodeCareGoals } from "../care-goals";
 import { COP_DENOMINATOR_STATUSES, COP_NUMERATOR_STATUSES } from "../seams/store";
 import type { M16ReadActor } from "./actor";
 import {
@@ -133,6 +135,11 @@ const EMPTY_CLOSURE_COUNTS: { [K in BereavementPlanClosureReason]: number } = {
 export interface M16ReadDeps {
   readonly now?: () => IsoInstant;
   readonly disclosure?: BereavementDisclosurePort;
+  /**
+   * ADR-0109 — the tenant-DEK envelope the contact's care goals are opened with. UNBOUND ⇒ `careGoals` is simply ABSENT from
+   * the contact rows (a reader is never told "no goals" when they could not be read).
+   */
+  readonly cipher?: BereavementCipher;
 }
 
 export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {}): M16ReadService {
@@ -147,6 +154,35 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
 
   const now = deps.now ?? (() => new Date().toISOString() as IsoInstant);
   const disclosurePort = deps.disclosure ?? seamBereavementDisclosurePort;
+  const cipher = deps.cipher;
+
+  /**
+   * ADR-0109 — open the care goals of the contacts a reader may see them for. Runs AFTER the read transaction (the key
+   * provider takes its own pooled connection, and holding ours while it does is the M21-T05 self-deadlock). A blob that
+   * cannot be opened or is malformed leaves `careGoals` ABSENT for that contact — never a partial or guessed list.
+   */
+  async function withCareGoals(
+    organizationId: string,
+    contacts: readonly BereavedContactRowView[],
+    sealed: ReadonlyMap<string, string | null>,
+  ): Promise<BereavedContactRowView[]> {
+    if (cipher === undefined) return [...contacts];
+    return Promise.all(
+      contacts.map(async (contact) => {
+        const blob = sealed.get(contact.contactId);
+        if (blob === undefined) return contact;
+        if (blob === null) return { ...contact, careGoals: [] };
+        try {
+          const goals = decodeCareGoals(
+            await cipher.decrypt(organizationId, "bereaved_contact.care_goals", blob),
+          );
+          return goals === null ? contact : { ...contact, careGoals: goals };
+        } catch {
+          return contact;
+        }
+      }),
+    );
+  }
 
   const scope = (actor: M16ReadActor) => ({
     organizationId: actor.organizationId,
@@ -351,12 +387,17 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
       const gate = await resolveBereavementDisclosure(actor, plan.patientId, disclosurePort);
       const asOf = now();
 
-      return withOrgContext(db, scope(actor), async (tx) => {
+      const sealedGoals = new Map<string, string | null>();
+      const detail = await withOrgContext(db, scope(actor), async (tx) => {
         const contacts = await tx
           .select()
           .from(CONTACT)
           .where(eq(CONTACT.planId, planId))
           .orderBy(asc(CONTACT.createdAt), asc(CONTACT.id));
+        // ADR-0109 — only a reader the D10 scope permits gets goals; the sealed value is carried out of the tx to be opened.
+        if (gate.careGoalsAllowed) {
+          for (const c of contacts) sealedGoals.set(c.id, c.careGoalsCipher ?? null);
+        }
 
         const openOptOuts = await tx
           .select({
@@ -456,6 +497,10 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
         };
         return detail;
       });
+      return {
+        ...detail,
+        contacts: await withCareGoals(actor.organizationId, detail.contacts, sealedGoals),
+      };
     },
 
     // ── 10 — the §3.3.7 closure record ──────────────────────────────────────────────────────────────

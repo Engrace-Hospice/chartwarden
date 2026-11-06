@@ -53124,6 +53124,12 @@
                         }
                       ]
                     },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
                     "version": {
                       "type": "integer"
                     }
@@ -53244,6 +53250,360 @@
                   },
                   "volunteerVisibleOnly": {
                     "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/contacts/{contactId}/care-plan": {
+      "put": {
+        "operationId": "putApiV1BereavementContactsByContactIdCareplan",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "Record the contact's care goals (ADR-0109, #41) — at most 3 goals of 1..280 characters, sealed with the tenant DEK; `If-Match` and `Idempotency-Key` required; an empty list clears them; a volunteer neither reads nor writes them",
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "contactId",
+                    "planId",
+                    "status",
+                    "displayName",
+                    "relationshipCode",
+                    "preferredLanguageIso639",
+                    "portalAccountId",
+                    "consentRecordId",
+                    "allowedOutreachKinds",
+                    "volunteerVisibleOnly",
+                    "confirmedAt",
+                    "optedOutAt",
+                    "unreachableAt",
+                    "unreachableProposed",
+                    "unreachableProposedAt",
+                    "deceasedAt",
+                    "mayRescindOptOut",
+                    "mailingsAllowed",
+                    "version"
+                  ],
+                  "properties": {
+                    "contactId": {
+                      "type": "string"
+                    },
+                    "planId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "proposed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "opted_out",
+                          "type": "string"
+                        },
+                        {
+                          "const": "deceased",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unreachable",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ineligible_post_review",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "relationshipCode": {
+                      "anyOf": [
+                        {
+                          "const": "spouse",
+                          "type": "string"
+                        },
+                        {
+                          "const": "domestic_partner",
+                          "type": "string"
+                        },
+                        {
+                          "const": "parent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "child",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sibling",
+                          "type": "string"
+                        },
+                        {
+                          "const": "grandparent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "grandchild",
+                          "type": "string"
+                        },
+                        {
+                          "const": "aunt_uncle",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cousin",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_law",
+                          "type": "string"
+                        },
+                        {
+                          "const": "friend",
+                          "type": "string"
+                        },
+                        {
+                          "const": "neighbor",
+                          "type": "string"
+                        },
+                        {
+                          "const": "clergy",
+                          "type": "string"
+                        },
+                        {
+                          "const": "colleague",
+                          "type": "string"
+                        },
+                        {
+                          "const": "caregiver_non_family",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "preferredLanguageIso639": {
+                      "type": "string"
+                    },
+                    "portalAccountId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "consentRecordId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "allowedOutreachKinds": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "phone_call",
+                            "type": "string"
+                          },
+                          {
+                            "const": "in_person_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sympathy_card",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sympathy_letter",
+                            "type": "string"
+                          },
+                          {
+                            "const": "anniversary_letter",
+                            "type": "string"
+                          },
+                          {
+                            "const": "email",
+                            "type": "string"
+                          },
+                          {
+                            "const": "portal_message",
+                            "type": "string"
+                          },
+                          {
+                            "const": "group_support_invitation",
+                            "type": "string"
+                          },
+                          {
+                            "const": "external_referral",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "volunteerVisibleOnly": {
+                      "type": "boolean"
+                    },
+                    "confirmedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "optedOutAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "unreachableAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "unreachableProposed": {
+                      "type": "boolean"
+                    },
+                    "unreachableProposedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deceasedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mayRescindOptOut": {
+                      "type": "boolean"
+                    },
+                    "mailingsAllowed": {
+                      "type": "boolean"
+                    },
+                    "currentRiskTier": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "low",
+                              "type": "string"
+                            },
+                            {
+                              "const": "moderate",
+                              "type": "string"
+                            },
+                            {
+                              "const": "high",
+                              "type": "string"
+                            },
+                            {
+                              "const": "complicated",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "goals"
+                ],
+                "properties": {
+                  "goals": {
+                    "maxItems": 3,
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 280,
+                      "pattern": "\\S",
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -53557,6 +53917,12 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "version": {
                       "type": "integer"
@@ -53897,6 +54263,12 @@
                         }
                       ]
                     },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
                     "version": {
                       "type": "integer"
                     }
@@ -54235,6 +54607,12 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "version": {
                       "type": "integer"
@@ -54792,6 +55170,12 @@
                         }
                       ]
                     },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
                     "version": {
                       "type": "integer"
                     }
@@ -55140,6 +55524,12 @@
                         }
                       ]
                     },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
                     "version": {
                       "type": "integer"
                     }
@@ -55478,6 +55868,12 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "version": {
                       "type": "integer"
@@ -56008,6 +56404,12 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "version": {
                       "type": "integer"
@@ -59329,6 +59731,12 @@
                               }
                             ]
                           },
+                          "careGoals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
                           "version": {
                             "type": "integer"
                           }
@@ -60245,6 +60653,12 @@
                               }
                             ]
                           },
+                          "careGoals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
                           "version": {
                             "type": "integer"
                           }
@@ -61013,6 +61427,12 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "careGoals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           },
                           "version": {
                             "type": "integer"
@@ -61783,6 +62203,12 @@
                               }
                             ]
                           },
+                          "careGoals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
                           "version": {
                             "type": "integer"
                           }
@@ -62473,6 +62899,12 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "version": {
                       "type": "integer"
@@ -64098,6 +64530,12 @@
                               }
                             ]
                           },
+                          "careGoals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
                           "version": {
                             "type": "integer"
                           }
@@ -65551,6 +65989,12 @@
                               }
                             ]
                           },
+                          "careGoals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
                           "version": {
                             "type": "integer"
                           }
@@ -66600,6 +67044,12 @@
                                     "type": "null"
                                   }
                                 ]
+                              },
+                              "careGoals": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
                               },
                               "version": {
                                 "type": "integer"

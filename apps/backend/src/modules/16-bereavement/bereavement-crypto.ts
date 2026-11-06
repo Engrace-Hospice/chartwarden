@@ -1,5 +1,5 @@
-// apps/backend/src/modules/16-bereavement/bereavement-crypto.ts — the per-tenant DEK envelope for M16's four
-// `*_cipher` columns (GAP-129): `bereaved_contact.{email,phone,mailing_address}_cipher` and
+// apps/backend/src/modules/16-bereavement/bereavement-crypto.ts — the per-tenant DEK envelope for M16's five
+// `*_cipher` columns (GAP-129): `bereaved_contact.{email,phone,mailing_address,care_goals}_cipher` and
 // `bereavement_contact_log.contact_notes_cipher`.
 //
 // Mirrors M31's `portal-crypto.ts` / M39's `consent-crypto.ts` / M12's `body-crypto.ts`: AES-256-GCM, the tenant DEK
@@ -22,11 +22,12 @@ export interface BereavementKeyProvider {
   ): Promise<{ readonly version: string; readonly key: Buffer }>;
 }
 
-/** The four sealed columns. */
+/** The five sealed columns. */
 export type BereavementCipherColumn =
   | "bereaved_contact.email"
   | "bereaved_contact.phone"
   | "bereaved_contact.mailing_address"
+  | "bereaved_contact.care_goals"
   | "bereavement_contact_log.contact_notes";
 
 export interface BereavementCipher {

@@ -97,6 +97,12 @@ export interface BereavedContactRowView {
   readonly mailingsAllowed: boolean;
   /** Absent under the D10 volunteer scope / §7.13 redaction. */
   readonly currentRiskTier?: BereavementRiskTier | null;
+  /**
+   * ADR-0109 — the contact's 1-3 care goals (sealed free text). Present for a reader the D10 scope permits — `[]` when none
+   * are recorded — and ABSENT for a volunteer / portal session, and when the sealed value cannot be opened (never a
+   * partial list).
+   */
+  readonly careGoals?: readonly string[];
   readonly version: number;
 }
 
