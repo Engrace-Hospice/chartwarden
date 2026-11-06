@@ -177,13 +177,13 @@ export const EarlyCloseReason = Type.Union([
   Type.Literal("other_early"),
 ]);
 
-/** `bereavement_opt_out_kind` (§3.2 / §4.2). The enum also holds `no_mailings` (migration 1340, ADR-0109 D10),
- *  deliberately NOT accepted here yet: until the mailing-preference semantics land the opt-out machine would
- *  treat any kind as a full opt-out and close the contact, which is the opposite of "stop mailings, keep calls". */
+/** `bereavement_opt_out_kind` (§3.2 / §4.2). `no_mailings` (ADR-0109 D10) stops MAILINGS only: the contact stays `active`,
+ *  its calls and visits continue, the mailed floor items become calls, and it names no channel. */
 export const OptOutKind = Type.Union([
   Type.Literal("full"),
   Type.Literal("channel_specific"),
   Type.Literal("pause_temporarily"),
+  Type.Literal("no_mailings"),
 ]);
 
 /** §4.2 `OptOutBody.sourceKind` — the counselor / portal / written-request provenance. The fourth enum
@@ -620,6 +620,7 @@ export const BereavedContactRowViewResponseSchema = Type.Object({
   unreachableProposedAt: Nullable(Str),
   deceasedAt: Nullable(Str),
   mayRescindOptOut: Bool,
+  mailingsAllowed: Bool,
   currentRiskTier: Type.Optional(Nullable(RiskTier)),
   version: Int,
 });

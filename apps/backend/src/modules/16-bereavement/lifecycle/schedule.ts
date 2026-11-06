@@ -22,14 +22,17 @@ import {
   BEREAVEMENT_WINDOW_DAYS,
   type BereavementCadenceItem,
   type BereavementCadenceMark,
+  CONTACTABLE_OUTREACH_KINDS,
   OUTREACH_LATE_ATTEMPT_GRACE_DAYS,
   OUTREACH_MODALITY_RANK,
   effectiveCadence,
+  isMailingOutreachKind,
   isOutreachDueAtWithinCeiling,
   validateTenantCadence,
 } from "@chartwarden/bereavement";
 import type {
   BereavementAnniversaryMark,
+  BereavementOptOutKind,
   BereavementOutreachKind,
   BereavementRiskTier,
   IsoInstant,
@@ -95,6 +98,25 @@ export function resolveOutreachKind(
   const atOrAbove = ranked.find((k) => OUTREACH_MODALITY_RANK[k] >= floorRank);
   const chosen = atOrAbove ?? ranked[ranked.length - 1];
   return { kind: chosen as BereavementOutreachKind, substituted: true };
+}
+
+/**
+ * ADR-0109 D10 — a contact's allowed kinds once its OPEN opt-outs are applied. Pure. A `no_mailings` row strips the mailed
+ * kinds (cards, letters, invitations), so `resolveOutreachKind` re-modalizes a mailed floor item to a call: the touchpoint
+ * is still made, only not by post. Any other open kind (`full`, `channel_specific`, `pause_temporarily`) is NOT a mailing
+ * preference and changes nothing here — their semantics are a separate, ticketed concern.
+ *
+ * `prefs` undefined / empty is "no stated preference" (everything allowed): it becomes the contactable kinds minus the
+ * mailed ones. A contact who allowed ONLY mailed kinds ends up with phone, because a floor contact is never dropped.
+ */
+export function effectiveAllowedKinds(
+  prefs: ReadonlyArray<BereavementOutreachKind> | undefined,
+  openOptOuts: ReadonlyArray<{ readonly optOutKind: BereavementOptOutKind }>,
+): ReadonlyArray<BereavementOutreachKind> | undefined {
+  if (!openOptOuts.some((o) => o.optOutKind === "no_mailings")) return prefs;
+  const base = prefs && prefs.length > 0 ? prefs : CONTACTABLE_OUTREACH_KINDS;
+  const kept = base.filter((kind) => !isMailingOutreachKind(kind));
+  return kept.length > 0 ? kept : ["phone_call"];
 }
 
 /** Materialize one cadence item against a death anchor. */

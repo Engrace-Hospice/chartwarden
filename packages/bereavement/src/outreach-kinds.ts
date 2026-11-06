@@ -40,6 +40,35 @@ export function requiresArtifactRender(kind: BereavementOutreachKind): boolean {
 }
 
 /**
+ * ADR-0109 D10 — the kinds that reach a family as a MAILED piece (a printed card, letter or invitation). A `no_mailings`
+ * opt-out strips exactly these from a contact's allowed kinds, so a mailed floor item is re-modalized to a call. A
+ * referral letter (`external_referral`) is clinical care, not a mailing, and email / portal messages are not postal.
+ */
+export const MAILING_OUTREACH_KINDS: readonly BereavementOutreachKind[] = [
+  "sympathy_card",
+  "sympathy_letter",
+  "anniversary_letter",
+  "group_support_invitation",
+] as const;
+
+/** ADR-0109 D10 — true when the kind is delivered as a mailed piece (see {@link MAILING_OUTREACH_KINDS}). */
+export function isMailingOutreachKind(kind: BereavementOutreachKind): boolean {
+  return MAILING_OUTREACH_KINDS.includes(kind);
+}
+
+/**
+ * ADR-0109 D10 — the kinds a family can be reached by when it has stated no preference and stopped mailings: the live
+ * and electronic contacts, never a mailed piece and never a referral letter. A mailed floor item resolves UPWARD from
+ * here (the closest kind at or above its rank), which for every mailed kind is a phone call.
+ */
+export const CONTACTABLE_OUTREACH_KINDS: readonly BereavementOutreachKind[] = [
+  "phone_call",
+  "in_person_visit",
+  "email",
+  "portal_message",
+] as const;
+
+/**
  * §4.5 — the three kinds M22's `m22.document.rendered` callback may auto-complete. The other two rendering
  * kinds do NOT auto-complete: an invitation is only fulfilled when the family responds, and a referral is
  * only fulfilled when the counselor confirms the hand-off landed.

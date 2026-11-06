@@ -311,6 +311,9 @@ export const PortalInvitationIssueResponse = Type.Object({
   inviteUrl: Type.Optional(Type.String()),
 });
 /** GAP-092 — the public, token-authenticated acceptance of an invitation. */
+/** ADR-0109 D10 — the bereaved family's mailing preference: `false` stops mailings (calls continue), `true` resumes them. */
+export const BereavementMailingPreferenceRequest = Type.Object({ allowMailings: Type.Boolean() });
+
 export const PortalInvitationAcceptRequest = Type.Object({
   token: Type.String({ minLength: 40, maxLength: 200 }),
 });

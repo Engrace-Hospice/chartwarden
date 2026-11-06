@@ -52860,6 +52860,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -53091,6 +53092,9 @@
                       ]
                     },
                     "mayRescindOptOut": {
+                      "type": "boolean"
+                    },
+                    "mailingsAllowed": {
                       "type": "boolean"
                     },
                     "currentRiskTier": {
@@ -53290,6 +53294,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -53521,6 +53526,9 @@
                       ]
                     },
                     "mayRescindOptOut": {
+                      "type": "boolean"
+                    },
+                    "mailingsAllowed": {
                       "type": "boolean"
                     },
                     "currentRiskTier": {
@@ -53625,6 +53633,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -53856,6 +53865,9 @@
                       ]
                     },
                     "mayRescindOptOut": {
+                      "type": "boolean"
+                    },
+                    "mailingsAllowed": {
                       "type": "boolean"
                     },
                     "currentRiskTier": {
@@ -53960,6 +53972,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -54191,6 +54204,9 @@
                       ]
                     },
                     "mayRescindOptOut": {
+                      "type": "boolean"
+                    },
+                    "mailingsAllowed": {
                       "type": "boolean"
                     },
                     "currentRiskTier": {
@@ -54512,6 +54528,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -54743,6 +54760,9 @@
                       ]
                     },
                     "mayRescindOptOut": {
+                      "type": "boolean"
+                    },
+                    "mailingsAllowed": {
                       "type": "boolean"
                     },
                     "currentRiskTier": {
@@ -54856,6 +54876,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -55087,6 +55108,9 @@
                       ]
                     },
                     "mayRescindOptOut": {
+                      "type": "boolean"
+                    },
+                    "mailingsAllowed": {
                       "type": "boolean"
                     },
                     "currentRiskTier": {
@@ -55191,6 +55215,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -55424,6 +55449,9 @@
                     "mayRescindOptOut": {
                       "type": "boolean"
                     },
+                    "mailingsAllowed": {
+                      "type": "boolean"
+                    },
                     "currentRiskTier": {
                       "anyOf": [
                         {
@@ -55489,6 +55517,10 @@
                       },
                       {
                         "const": "pause_temporarily",
+                        "type": "string"
+                      },
+                      {
+                        "const": "no_mailings",
                         "type": "string"
                       }
                     ]
@@ -55713,6 +55745,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -55944,6 +55977,9 @@
                       ]
                     },
                     "mayRescindOptOut": {
+                      "type": "boolean"
+                    },
+                    "mailingsAllowed": {
                       "type": "boolean"
                     },
                     "currentRiskTier": {
@@ -59029,6 +59065,7 @@
                           "unreachableProposedAt",
                           "deceasedAt",
                           "mayRescindOptOut",
+                          "mailingsAllowed",
                           "version"
                         ],
                         "properties": {
@@ -59262,6 +59299,9 @@
                           "mayRescindOptOut": {
                             "type": "boolean"
                           },
+                          "mailingsAllowed": {
+                            "type": "boolean"
+                          },
                           "currentRiskTier": {
                             "anyOf": [
                               {
@@ -59433,6 +59473,176 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "redactedCategories": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "sud",
+                            "type": "string"
+                          },
+                          {
+                            "const": "clinical_risk",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/assessment-tasks": {
+      "get": {
+        "operationId": "getApiV1BereavementPlansByPlanIdAssessmenttasks",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "The plan's two assessment checkpoints per survivor (initial d28, midpoint d180) with the human-appended score that completed each; empty when the reader's scope holds no clinical content (ADR-0109 D3, #37)",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "redactedCategories"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "taskId",
+                          "planId",
+                          "contactId",
+                          "taskKind",
+                          "status",
+                          "dueAt",
+                          "lateGraceUntil",
+                          "completedAt",
+                          "completedByMembershipId",
+                          "riskScoreId",
+                          "assigneeUserId",
+                          "version"
+                        ],
+                        "properties": {
+                          "taskId": {
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "contactId": {
+                            "type": "string"
+                          },
+                          "taskKind": {
+                            "anyOf": [
+                              {
+                                "const": "initial_assessment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "midpoint_reassessment",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "scheduled",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "missed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "dueAt": {
+                            "type": "string"
+                          },
+                          "lateGraceUntil": {
+                            "type": "string"
+                          },
+                          "completedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "completedByMembershipId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "riskScoreId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "assigneeUserId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
                     },
                     "redactedCategories": {
                       "type": "array",
@@ -59771,6 +59981,7 @@
                           "unreachableProposedAt",
                           "deceasedAt",
                           "mayRescindOptOut",
+                          "mailingsAllowed",
                           "version"
                         ],
                         "properties": {
@@ -60002,6 +60213,9 @@
                             ]
                           },
                           "mayRescindOptOut": {
+                            "type": "boolean"
+                          },
+                          "mailingsAllowed": {
                             "type": "boolean"
                           },
                           "currentRiskTier": {
@@ -60536,6 +60750,7 @@
                           "unreachableProposedAt",
                           "deceasedAt",
                           "mayRescindOptOut",
+                          "mailingsAllowed",
                           "version"
                         ],
                         "properties": {
@@ -60767,6 +60982,9 @@
                             ]
                           },
                           "mayRescindOptOut": {
+                            "type": "boolean"
+                          },
+                          "mailingsAllowed": {
                             "type": "boolean"
                           },
                           "currentRiskTier": {
@@ -61301,6 +61519,7 @@
                           "unreachableProposedAt",
                           "deceasedAt",
                           "mayRescindOptOut",
+                          "mailingsAllowed",
                           "version"
                         ],
                         "properties": {
@@ -61532,6 +61751,9 @@
                             ]
                           },
                           "mayRescindOptOut": {
+                            "type": "boolean"
+                          },
+                          "mailingsAllowed": {
                             "type": "boolean"
                           },
                           "currentRiskTier": {
@@ -61988,6 +62210,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -62219,6 +62442,9 @@
                       ]
                     },
                     "mayRescindOptOut": {
+                      "type": "boolean"
+                    },
+                    "mailingsAllowed": {
                       "type": "boolean"
                     },
                     "currentRiskTier": {
@@ -63608,6 +63834,7 @@
                           "unreachableProposedAt",
                           "deceasedAt",
                           "mayRescindOptOut",
+                          "mailingsAllowed",
                           "version"
                         ],
                         "properties": {
@@ -63839,6 +64066,9 @@
                             ]
                           },
                           "mayRescindOptOut": {
+                            "type": "boolean"
+                          },
+                          "mailingsAllowed": {
                             "type": "boolean"
                           },
                           "currentRiskTier": {
@@ -64314,6 +64544,10 @@
                     "format": "uuid",
                     "type": "string"
                   },
+                  "assessmentTaskId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
                   "factors": {
                     "type": "object",
                     "required": [
@@ -64416,10 +64650,14 @@
                         ]
                       },
                       "pg13_score": {
-                        "type": "number"
+                        "minimum": 0,
+                        "maximum": 52,
+                        "type": "integer"
                       },
                       "ipgr_score": {
-                        "type": "number"
+                        "minimum": 0,
+                        "maximum": 200,
+                        "type": "integer"
                       },
                       "notes": {
                         "maxLength": 8000,
@@ -65049,6 +65287,7 @@
                           "unreachableProposedAt",
                           "deceasedAt",
                           "mayRescindOptOut",
+                          "mailingsAllowed",
                           "version"
                         ],
                         "properties": {
@@ -65280,6 +65519,9 @@
                             ]
                           },
                           "mayRescindOptOut": {
+                            "type": "boolean"
+                          },
+                          "mailingsAllowed": {
                             "type": "boolean"
                           },
                           "currentRiskTier": {
@@ -66095,6 +66337,7 @@
                               "unreachableProposedAt",
                               "deceasedAt",
                               "mayRescindOptOut",
+                              "mailingsAllowed",
                               "version"
                             ],
                             "properties": {
@@ -66326,6 +66569,9 @@
                                 ]
                               },
                               "mayRescindOptOut": {
+                                "type": "boolean"
+                              },
+                              "mailingsAllowed": {
                                 "type": "boolean"
                               },
                               "currentRiskTier": {
@@ -66772,6 +67018,564 @@
                             }
                           }
                         }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/pre-death-assessments/{admissionId}": {
+      "get": {
+        "operationId": "getApiV1BereavementPredeathassessmentsByAdmissionId",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "The pre-death risk-assessment draft for an admission — eight tri-state factors, an empty all-unknown draft at version 0 when nothing is recorded; the care-team MSW / chaplain / bereavement counselor or oversight only (ADR-0109 D5, #35)",
+        "parameters": [
+          {
+            "name": "admissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "admissionId",
+                    "exists",
+                    "factors",
+                    "lastEditedDiscipline",
+                    "lastEditedAt",
+                    "carriedScoreId",
+                    "carriedAt",
+                    "locked",
+                    "version",
+                    "redactedCategories"
+                  ],
+                  "properties": {
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "exists": {
+                      "type": "boolean"
+                    },
+                    "factors": {
+                      "type": "object",
+                      "required": [
+                        "ambivalent_relationship",
+                        "sudden_unexpected_death",
+                        "prior_unresolved_loss",
+                        "preexisting_mental_health",
+                        "social_isolation",
+                        "financial_strain",
+                        "primary_caregiver_role",
+                        "active_substance_use"
+                      ],
+                      "properties": {
+                        "ambivalent_relationship": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "sudden_unexpected_death": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "prior_unresolved_loss": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "preexisting_mental_health": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "social_isolation": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "financial_strain": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "primary_caregiver_role": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "active_substance_use": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "lastEditedDiscipline": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastEditedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "carriedScoreId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "carriedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "locked": {
+                      "type": "boolean"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "redactedCategories": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "sud",
+                            "type": "string"
+                          },
+                          {
+                            "const": "clinical_risk",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1BereavementPredeathassessmentsByAdmissionId",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "Record the pre-death risk-assessment draft — replaces the whole eight-factor vector; `If-Match` (0 for the first write) and `Idempotency-Key` required; the substance-use slot is stored `unknown` unless the writer is cleared for 42 CFR Part 2; 409 `DRAFT_LOCKED` once a bereavement plan exists (ADR-0109 D5, #36)",
+        "parameters": [
+          {
+            "name": "admissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "admissionId",
+                    "exists",
+                    "factors",
+                    "lastEditedDiscipline",
+                    "lastEditedAt",
+                    "carriedScoreId",
+                    "carriedAt",
+                    "locked",
+                    "version",
+                    "redactedCategories"
+                  ],
+                  "properties": {
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "exists": {
+                      "type": "boolean"
+                    },
+                    "factors": {
+                      "type": "object",
+                      "required": [
+                        "ambivalent_relationship",
+                        "sudden_unexpected_death",
+                        "prior_unresolved_loss",
+                        "preexisting_mental_health",
+                        "social_isolation",
+                        "financial_strain",
+                        "primary_caregiver_role",
+                        "active_substance_use"
+                      ],
+                      "properties": {
+                        "ambivalent_relationship": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "sudden_unexpected_death": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "prior_unresolved_loss": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "preexisting_mental_health": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "social_isolation": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "financial_strain": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "primary_caregiver_role": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "active_substance_use": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "lastEditedDiscipline": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastEditedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "carriedScoreId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "carriedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "locked": {
+                      "type": "boolean"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "redactedCategories": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "sud",
+                            "type": "string"
+                          },
+                          {
+                            "const": "clinical_risk",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "factors"
+                ],
+                "properties": {
+                  "factors": {
+                    "type": "object",
+                    "required": [
+                      "ambivalent_relationship",
+                      "sudden_unexpected_death",
+                      "prior_unresolved_loss",
+                      "preexisting_mental_health",
+                      "social_isolation",
+                      "financial_strain",
+                      "primary_caregiver_role",
+                      "active_substance_use"
+                    ],
+                    "properties": {
+                      "ambivalent_relationship": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "sudden_unexpected_death": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "prior_unresolved_loss": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "preexisting_mental_health": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "social_isolation": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "financial_strain": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "primary_caregiver_role": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "active_substance_use": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
                       }
                     }
                   }
@@ -255913,6 +256717,60 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/bereavement/mailing-preference": {
+      "post": {
+        "operationId": "postApiV1PortalBereavementMailingpreference",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Stop (allowMailings false) or resume (true) bereavement MAILINGS only — the contact stays in the program and calls continue (M16, ADR-0109 D10)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "allowMailings"
+                ],
+                "properties": {
+                  "allowMailings": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
           }
         }
       }

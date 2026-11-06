@@ -147,7 +147,7 @@ describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
 
 describe("M16-T06 §4.4 — the outbox catalog", () => {
   it("declares all 23 §4.4 events, every one owned by m16 and `mN.<resource>.<verb>` shaped", () => {
-    expect(M16_OUTBOX_EVENTS).toHaveLength(23);
+    expect(M16_OUTBOX_EVENTS).toHaveLength(24);
     for (const event of M16_OUTBOX_EVENTS) {
       expect(event.moduleOwner).toBe("m16");
       expect(event.eventName).toMatch(/^m16\.[a-z_]+\.[a-z0-9_]+$/);

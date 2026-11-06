@@ -1479,6 +1479,173 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     ).toBe(0);
   });
 
+  it("no_mailings: the contact stays active, mailed rows become calls, the event is the preference one, rescind restores it (ADR-0109 D10)", async () => {
+    const chris = contacts.Chris as string;
+    const optOutUrl = `/api/v1/bereavement/contacts/${chris}/opt-out`;
+    const stop = {
+      optOutKind: "no_mailings",
+      sourceKind: "counselor_recorded",
+      reason: "Asked us to stop the cards and letters",
+    };
+    const MAILED = [
+      "sympathy_card",
+      "sympathy_letter",
+      "anniversary_letter",
+      "group_support_invitation",
+    ];
+    const scheduled = async () =>
+      (
+        await admin.query(
+          "SELECT id, kind, cadence_mark FROM bereavement_outreach WHERE bereaved_contact_id=$1 AND status='scheduled' ORDER BY due_at, id",
+          [chris],
+        )
+      ).rows as { id: string; kind: string; cadence_mark: string | null }[];
+    const openRows = async (kind: string) =>
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM bereavement_opt_out WHERE bereaved_contact_id=$1 AND opt_out_kind=$2 AND rescinded_at IS NULL",
+          [chris, kind],
+        )
+      ).rows[0].n as number;
+    const chrisOnPlan = async () => {
+      const plan = await call("GET", `/api/v1/bereavement/plans/${planId}`, "don");
+      return (plan.json().contacts as Record<string, unknown>[]).find(
+        (c) => c.contactId === chris,
+      ) as {
+        status: string;
+        optedOutAt: string | null;
+        mayRescindOptOut: boolean;
+        mailingsAllowed: boolean;
+      };
+    };
+
+    const before = await scheduled();
+    const mailedBefore = before.filter((r) => MAILED.includes(r.kind));
+    expect(mailedBefore.length).toBeGreaterThan(0);
+    const optedOutEvents = await events("m16.bereavement.contact_opted_out");
+    const preferenceEvents = await events("m16.bereavement.contact_mailing_preference_changed");
+
+    // A channel list makes no sense for a class-wide stop (the machine refuses), and a proposed contact is not in the program.
+    expect(
+      (await call("POST", optOutUrl, "counselor", { ...stop, channelKinds: ["email"] })).statusCode,
+    ).toBe(422);
+    const proposed = await call(
+      "POST",
+      `/api/v1/bereavement/plans/${planId}/contacts`,
+      "counselor",
+      {
+        displayName: "Pia Proposed",
+        relationshipCode: "friend",
+      },
+    );
+    expect(proposed.statusCode).toBe(201);
+    expect(
+      (
+        await call(
+          "POST",
+          `/api/v1/bereavement/contacts/${proposed.json().contactId}/opt-out`,
+          "counselor",
+          stop,
+        )
+      ).statusCode,
+    ).toBe(409);
+
+    const res = await call("POST", optOutUrl, "counselor", stop);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      status: "active",
+      optedOutAt: null,
+      mailingsAllowed: false,
+    });
+    expect(await openRows("no_mailings")).toBe(1);
+    expect(await openRows("full")).toBe(0);
+    // The preference event, never the departure event (M36 would drop the family channel for that one).
+    expect(await events("m16.bereavement.contact_mailing_preference_changed")).toBe(
+      preferenceEvents + 1,
+    );
+    expect(await events("m16.bereavement.contact_opted_out")).toBe(optedOutEvents);
+
+    // Nothing is cancelled and no date moves: the same rows, the mailed ones now calls with the same floor mark.
+    const after = await scheduled();
+    expect(after.map((r) => r.id)).toEqual(before.map((r) => r.id));
+    expect(after.filter((r) => MAILED.includes(r.kind))).toEqual([]);
+    for (const row of mailedBefore) {
+      expect(after.find((r) => r.id === row.id)).toMatchObject({
+        kind: "phone_call",
+        cadence_mark: row.cadence_mark,
+      });
+    }
+
+    // The read model reads opt-outs BY KIND: the contact does not look opted out, and mailings are off.
+    expect(await chrisOnPlan()).toMatchObject({
+      status: "active",
+      optedOutAt: null,
+      mayRescindOptOut: false,
+      mailingsAllowed: false,
+    });
+    // Idempotent while one is open: no second row, no second event.
+    expect((await call("POST", optOutUrl, "counselor", stop)).statusCode).toBe(200);
+    expect(await openRows("no_mailings")).toBe(1);
+    expect(await events("m16.bereavement.contact_mailing_preference_changed")).toBe(
+      preferenceEvents + 1,
+    );
+
+    // A regenerated schedule keeps generating CALLS for the mailed floor items — the floor contact is never dropped.
+    expect(
+      (
+        await call("POST", `/api/v1/bereavement/plans/${planId}/regenerate-schedule`, "counselor", {
+          contactId: chris,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const regenerated = await scheduled();
+    expect(regenerated.filter((r) => MAILED.includes(r.kind))).toEqual([]);
+    expect(regenerated.length).toBeGreaterThanOrEqual(after.length);
+
+    // A FULL opt-out still works on top of it (the two coexist), and the D6 roster rule counts STATUS only: every active
+    // contact of the plan stopping mailings leaves the plan open.
+    for (const [name, id] of Object.entries(contacts)) {
+      if (id === chris) continue;
+      const row = (await admin.query("SELECT status FROM bereaved_contact WHERE id=$1", [id]))
+        .rows[0];
+      if (row?.status !== "active") continue;
+      expect(
+        (await call("POST", `/api/v1/bereavement/contacts/${id}/opt-out`, "counselor", stop))
+          .statusCode,
+      ).toBe(200);
+      void name;
+    }
+    expect(
+      (await admin.query("SELECT status FROM bereavement_plan WHERE id=$1", [planId])).rows[0]
+        .status,
+    ).toBe("active");
+    const preferenceEventsBeforeResume = await events(
+      "m16.bereavement.contact_mailing_preference_changed",
+    );
+
+    // Resume: the open no_mailings row is rescinded (no 90-day window for a mailing preference), mailings are on again,
+    // and the rows already turned into calls stay calls.
+    const rescind = await call(
+      "POST",
+      `/api/v1/bereavement/contacts/${chris}/rescind-opt-out`,
+      "counselor",
+      {},
+    );
+    expect(rescind.statusCode).toBe(200);
+    expect(rescind.json()).toMatchObject({ status: "active", mailingsAllowed: true });
+    expect(await openRows("no_mailings")).toBe(0);
+    expect(await events("m16.bereavement.contact_mailing_preference_changed")).toBe(
+      preferenceEventsBeforeResume + 1,
+    );
+    expect((await chrisOnPlan()).mailingsAllowed).toBe(true);
+    expect((await scheduled()).filter((r) => MAILED.includes(r.kind))).toEqual([]);
+    // Nothing left to rescind.
+    expect(
+      (await call("POST", `/api/v1/bereavement/contacts/${chris}/rescind-opt-out`, "counselor", {}))
+        .statusCode,
+    ).toBe(404);
+  });
+
   it("dashboards: the counselor sees her caseload; the supervisor board needs oversight", async () => {
     const mine = await call("GET", "/api/v1/bereavement/dashboard/counselor", "counselor");
     expect(mine.statusCode).toBe(200);

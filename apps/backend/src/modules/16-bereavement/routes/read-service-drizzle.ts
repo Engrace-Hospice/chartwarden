@@ -204,6 +204,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
     r: typeof CONTACT.$inferSelect,
     gate: BereavementDisclosureDecision,
     openOptOutAt: string | null,
+    mailingsAllowed: boolean,
     asOf: IsoInstant,
   ): BereavedContactRowView => ({
     contactId: r.id,
@@ -225,6 +226,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
       r.status === "opted_out" &&
       openOptOutAt !== null &&
       isWithinOptOutRescindWindow(openOptOutAt, asOf),
+    mailingsAllowed,
     ...(gate.clinicalRiskAllowed ? { currentRiskTier: r.currentRiskTier ?? null } : {}),
     version: r.version,
   });
@@ -357,10 +359,23 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
           .orderBy(asc(CONTACT.createdAt), asc(CONTACT.id));
 
         const openOptOuts = await tx
-          .select({ contactId: OPT_OUT.bereavedContactId, optedOutAt: OPT_OUT.optedOutAt })
+          .select({
+            contactId: OPT_OUT.bereavedContactId,
+            optedOutAt: OPT_OUT.optedOutAt,
+            optOutKind: OPT_OUT.optOutKind,
+          })
           .from(OPT_OUT)
           .where(and(eq(OPT_OUT.planId, planId), isNull(OPT_OUT.rescindedAt)));
-        const optOutAt = new Map(openOptOuts.map((o) => [o.contactId, iso(o.optedOutAt)]));
+        // ADR-0109 D10 — read BY KIND. An open `no_mailings` row is a mailing preference, not a departure: it must never
+        // make an active contact look opted out (or hold the rescind window open), it only turns `mailingsAllowed` off.
+        const optOutAt = new Map(
+          openOptOuts
+            .filter((o) => o.optOutKind !== "no_mailings")
+            .map((o) => [o.contactId, iso(o.optedOutAt)]),
+        );
+        const mailingsStopped = new Set(
+          openOptOuts.filter((o) => o.optOutKind === "no_mailings").map((o) => o.contactId),
+        );
 
         const [stats] = await tx
           .select({
@@ -416,7 +431,9 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
           externalSource: external,
           firstContactAllowed: verdict.allowed,
           firstContactGateReason: verdict.allowed ? null : verdict.code,
-          contacts: contacts.map((c) => toContactRow(c, gate, optOutAt.get(c.id) ?? null, asOf)),
+          contacts: contacts.map((c) =>
+            toContactRow(c, gate, optOutAt.get(c.id) ?? null, !mailingsStopped.has(c.id), asOf),
+          ),
           stats: outreachStats,
           ...(gate.clinicalRiskAllowed
             ? {

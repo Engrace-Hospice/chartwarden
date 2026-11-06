@@ -42,6 +42,7 @@ import {
 import type { PortalRouteDeps } from "./index";
 import {
   AmendmentSubmitRequest,
+  BereavementMailingPreferenceRequest,
   CaregiverAttestedAdministrationRequest,
   MessageSendRequest,
   NotificationPreferenceUpdateRequest,
@@ -533,6 +534,39 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         organizationId: actor.organizationId,
         userId: actor.userId,
         portalAccountId,
+      });
+      return { ok: true, ...result };
+    },
+  );
+
+  // bereavement mailing preference (ADR-0109 D10 → M16). Window-gated, same key as the opt-out: it is the same family
+  // member exercising a narrower choice. The contact stays in the program; only MAILINGS stop (calls continue).
+  app.post(
+    "/api/v1/portal/bereavement/mailing-preference",
+    {
+      preHandler: [
+        P("portal.bereavement.opt_out_own"),
+        ABAC_BEREAVED("portal.bereavement.opt_out_own"),
+        IDEMPOTENT,
+      ],
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const body = parse(BereavementMailingPreferenceRequest, request.body);
+      // A family member told "mailings stopped" while the next letter is still scheduled has been lied to: the change is
+      // M16's own transition, or the call refuses.
+      if (!deps.bereavementMailingPreference) {
+        throw new ChartWardenError(
+          "BEREAVEMENT_MAILING_PREFERENCE_UNAVAILABLE",
+          "Changing your mailing preference is not available right now. Please contact your care team.",
+          503,
+        );
+      }
+      const result = await deps.bereavementMailingPreference.setMailingPreference({
+        organizationId: actor.organizationId,
+        userId: actor.userId,
+        portalAccountId: portalAccountIdOf(actor),
+        allowMailings: body.allowMailings,
       });
       return { ok: true, ...result };
     },

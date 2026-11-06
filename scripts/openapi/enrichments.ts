@@ -2378,6 +2378,7 @@ import {
   AckResponse as M31AckResponse,
   AmendmentSubmitRequest as M31AmendmentSubmitRequest,
   AmendmentSubmitResponse as M31AmendmentSubmitResponse,
+  BereavementMailingPreferenceRequest as M31BereavementMailingPreferenceRequest,
   CarePlanSummaryResponse as M31CarePlanSummaryResponse,
   CareSummaryResponse as M31CareSummaryResponse,
   CaregiverAttestedAdministrationRequest as M31CaregiverAttestRequest,
@@ -4319,6 +4320,12 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   },
   "POST /api/v1/portal/bereavement/opt-out": {
     summary: "Self opt-out of the bereavement program (M16)",
+    response: M31AckResponse,
+  },
+  "POST /api/v1/portal/bereavement/mailing-preference": {
+    summary:
+      "Stop (allowMailings false) or resume (true) bereavement MAILINGS only — the contact stays in the program and calls continue (M16, ADR-0109 D10)",
+    body: M31BereavementMailingPreferenceRequest,
     response: M31AckResponse,
   },
   "GET /api/v1/portal/notification-preferences": {

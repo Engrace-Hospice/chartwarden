@@ -35,6 +35,7 @@
 //      counselor it was saved. Sealing runs before the transaction opens (the key provider has its own pool).
 import {
   COMPLICATED_GRIEF_SCREEN_THRESHOLD,
+  MAILING_OUTREACH_KINDS,
   type ManualRiskFactors,
   bereavementWindowEnd,
   generateAssessmentTasks,
@@ -80,6 +81,7 @@ import {
   checkOutreachKindAllowed,
   checkVersion,
   draftFactorsAsManual,
+  effectiveAllowedKinds,
   generateOutreachSchedule,
   planScheduleTopUp,
   stickyManualFactorsOf,
@@ -485,7 +487,7 @@ export function buildDrizzleM16WriteService(
       version: r.version,
     }) satisfies BereavementOutreachRowView;
 
-  const toContactView = (r: ContactRow): BereavedContactRowView => ({
+  const toContactView = (r: ContactRow, mailingsAllowed: boolean): BereavedContactRowView => ({
     contactId: r.id,
     planId: r.planId,
     status: r.status,
@@ -502,9 +504,27 @@ export function buildDrizzleM16WriteService(
     ...unreachableProposalOf(r),
     deceasedAt: isoN(r.deceasedAt) as IsoInstant | null,
     mayRescindOptOut: false,
+    mailingsAllowed,
     currentRiskTier: r.currentRiskTier ?? null,
     version: r.version,
   });
+
+  /** The contact's OPEN opt-out kinds (ADR-0109 D10: read by kind — an open `no_mailings` row is not a departure). */
+  async function openOptOutKinds(
+    tx: Tx,
+    contactId: string,
+  ): Promise<{ optOutKind: BereavementOptOutKind }[]> {
+    return tx
+      .select({ optOutKind: OPT_OUT.optOutKind })
+      .from(OPT_OUT)
+      .where(and(eq(OPT_OUT.bereavedContactId, contactId), isNull(OPT_OUT.rescindedAt)));
+  }
+
+  /** The row as the routes answer with it, `mailingsAllowed` read from the contact's open opt-outs. */
+  async function contactViewOf(tx: Tx, row: ContactRow): Promise<BereavedContactRowView> {
+    const open = await openOptOutKinds(tx, row.id);
+    return toContactView(row, !open.some((o) => o.optOutKind === "no_mailings"));
+  }
 
   const toClosureView = (r: typeof CLOSURE.$inferSelect): BereavementClosureView => ({
     closureId: r.id,
@@ -712,9 +732,15 @@ export function buildDrizzleM16WriteService(
     fromIso: string | undefined,
   ): Promise<OutreachRow[]> {
     const tier: BereavementRiskTier = contact.currentRiskTier ?? plan.currentRiskTier ?? "low";
+    // ADR-0109 D10 — an open `no_mailings` opt-out strips the mailed kinds, so a mailed floor item is generated as a
+    // call (the floor contact is never dropped). Empty = "no stated preference", exactly as before.
     const facts = {
       riskTier: tier,
-      allowedKinds: allowedKindsOf(contact.outreachPreferencesJsonb),
+      allowedKinds:
+        effectiveAllowedKinds(
+          allowedKindsOf(contact.outreachPreferencesJsonb),
+          await openOptOutKinds(tx, contact.id),
+        ) ?? [],
     };
     // ADR-0109 D3 — the assessment checkpoints ride every path that materializes the schedule (seed, resume, rescind,
     // regenerate, tier-change top-up), forward-only after the seed. They are tasks, not outreach rows.
@@ -1157,6 +1183,80 @@ export function buildDrizzleM16WriteService(
       .where(
         and(eq(IDG_FLAG.patientId, plan.patientId), eq(IDG_FLAG.status, "pending_assessment")),
       );
+  }
+
+  /** Who made a preference change: the survivor's own portal session carries no membership. */
+  const sourceOf = (actor: M16MutatingActor): "counselor_recorded" | "portal_self_service" =>
+    actor.membershipId === null ? "portal_self_service" : "counselor_recorded";
+
+  /**
+   * ADR-0109 D10 — the contact asked to stop MAILINGS: every `scheduled` (never started) outreach row that was to be a
+   * mailed piece becomes a phone call. A call outranks a letter on the modality ladder, so this is the same upward
+   * substitution the schedule generator makes, applied to the rows that already exist; nothing is cancelled and no due date
+   * moves. A row already in progress or done is history and is left alone.
+   */
+  async function remodalizeScheduledMailings(tx: Tx, contactId: string, at: string): Promise<void> {
+    await tx
+      .update(OUTREACH)
+      .set({ kind: "phone_call", version: sql`${OUTREACH.version} + 1`, updatedAt: new Date(at) })
+      .where(
+        and(
+          eq(OUTREACH.bereavedContactId, contactId),
+          eq(OUTREACH.status, "scheduled"),
+          inArray(OUTREACH.kind, [...MAILING_OUTREACH_KINDS]),
+        ),
+      );
+  }
+
+  /**
+   * ADR-0109 D10 — record an open `no_mailings` opt-out and answer with the contact. The contact stays `active`: no status
+   * change, no cancelled outreach, no `contact_opted_out` (M36 would drop the family channel for that one) — only the
+   * mailing-preference event, an opt-out row, and the already-scheduled mailed rows turned into calls. Idempotent: a second
+   * request while one is open changes nothing and publishes nothing. The machine has already refused a contact that is not
+   * `active`.
+   */
+  async function stopMailings(
+    tx: Tx,
+    actor: M16MutatingActor,
+    plan: PlanRow,
+    contact: ContactRow,
+    input: OptOutInput,
+    at: string,
+  ): Promise<BereavedContactRowView> {
+    const open = await openOptOutKinds(tx, contact.id);
+    if (open.some((o) => o.optOutKind === "no_mailings")) return toContactView(contact, false);
+    await runEffects(
+      tx,
+      [{ kind: "outbox", event: "m16.bereavement.contact_mailing_preference_changed" }],
+      effectCtx(actor, plan, at, {
+        "m16.bereavement.contact_mailing_preference_changed": {
+          planId: plan.id,
+          contactId: contact.id,
+          mailingsAllowed: false,
+          source: input.sourceKind,
+        },
+      }),
+    );
+    await tx.insert(OPT_OUT).values({
+      ...inherit(plan),
+      planId: plan.id,
+      bereavedContactId: contact.id,
+      optOutKind: "no_mailings",
+      reasonRedacted: input.reason ?? null,
+      optedOutAt: new Date(at),
+      recordedByUserId: actor.membershipId,
+      sourceKind: input.sourceKind,
+    });
+    await remodalizeScheduledMailings(tx, contact.id, at);
+    // The version moves so a concurrent write to this contact is detected, but the contact's status, `opted_out_at` and
+    // schedule are exactly as they were.
+    const [row] = await tx
+      .update(CONTACT)
+      .set({ version: contact.version + 1, updatedAt: new Date(at) })
+      .where(eq(CONTACT.id, contact.id))
+      .returning();
+    if (!row) throw new Error("m16: the mailing-preference update returned no row");
+    return toContactView(row, false);
   }
 
   /**
@@ -1675,7 +1775,7 @@ export function buildDrizzleM16WriteService(
           })
           .returning();
         if (!row) throw new Error("m16: the contact insert returned no row");
-        return toContactView(row);
+        return contactViewOf(tx, row);
       });
     },
 
@@ -1716,7 +1816,7 @@ export function buildDrizzleM16WriteService(
           .where(eq(CONTACT.id, contactId))
           .returning();
         if (!row) throw new Error("m16: the contact update returned no row");
-        return toContactView(row);
+        return contactViewOf(tx, row);
       });
     },
 
@@ -1775,7 +1875,7 @@ export function buildDrizzleM16WriteService(
         if (!row) throw new Error("m16: the confirm update returned no row");
         // §2.6 `recompute_risk` — the confirmed survivor now has a per-contact score.
         await appendScore(tx, actor, plan, row, {}, "scheduled_reassessment");
-        return toContactView(row);
+        return contactViewOf(tx, row);
       });
     },
 
@@ -1794,6 +1894,9 @@ export function buildDrizzleM16WriteService(
           reason: input.reason ?? "not stated",
           ...(input.channelKinds === undefined ? {} : { channelKinds: input.channelKinds }),
         });
+        if (input.optOutKind === "no_mailings") {
+          return stopMailings(tx, actor, plan, contact, input, at);
+        }
         const patch = await runEffects(
           tx,
           transition.effects,
@@ -1834,7 +1937,7 @@ export function buildDrizzleM16WriteService(
           .where(eq(CONTACT.id, contactId))
           .returning();
         if (!row) throw new Error("m16: the opt-out update returned no row");
-        return toContactView(row);
+        return contactViewOf(tx, row);
       });
     },
 
@@ -1845,10 +1948,20 @@ export function buildDrizzleM16WriteService(
         checkVersion(input.expectedVersion, contact.version);
         const plan = await planOr404(tx, contact.planId);
         const at = now();
+        // ADR-0109 D10 — the lookup is BY KIND. An `opted_out` contact rescinds its latest open departure (any kind but
+        // `no_mailings`); an `active` contact can only be holding an open `no_mailings` row, which is what it rescinds.
         const [open] = await tx
           .select()
           .from(OPT_OUT)
-          .where(and(eq(OPT_OUT.bereavedContactId, contactId), isNull(OPT_OUT.rescindedAt)))
+          .where(
+            and(
+              eq(OPT_OUT.bereavedContactId, contactId),
+              isNull(OPT_OUT.rescindedAt),
+              contact.status === "opted_out"
+                ? ne(OPT_OUT.optOutKind, "no_mailings")
+                : eq(OPT_OUT.optOutKind, "no_mailings"),
+            ),
+          )
           .orderBy(desc(OPT_OUT.optedOutAt))
           .limit(1);
         if (!open) throw new NotFoundError("no open bereavement opt-out to rescind");
@@ -1860,6 +1973,7 @@ export function buildDrizzleM16WriteService(
           // §2.3 — a COUNSELOR rescind with a documented reason is not bound by the D9 90-day window; the
           // survivor's own portal session is. `membershipId !== null` is exactly "this is staff".
           byCounselor: actor.membershipId !== null && (input.reason ?? "").trim().length > 0,
+          optOutKind: open.optOutKind,
         });
         const patch = await runEffects(
           tx,
@@ -1868,6 +1982,12 @@ export function buildDrizzleM16WriteService(
             "m16.bereavement.contact_opt_out_rescinded": {
               planId: plan.id,
               contactId: contact.id,
+            },
+            "m16.bereavement.contact_mailing_preference_changed": {
+              planId: plan.id,
+              contactId: contact.id,
+              mailingsAllowed: true,
+              source: sourceOf(actor),
             },
           }),
         );
@@ -1887,8 +2007,12 @@ export function buildDrizzleM16WriteService(
           .where(eq(CONTACT.id, contactId))
           .returning();
         if (!row) throw new Error("m16: the rescind update returned no row");
-        await materializeSchedule(tx, plan, row, at);
-        return toContactView(row);
+        // Re-enrolment regenerates the forward schedule; resuming MAILINGS does not (the contact never left the program,
+        // and a row already re-modalized to a call stays a call).
+        if (transition.effects.some((e) => e.kind === "regenerate_schedule")) {
+          await materializeSchedule(tx, plan, row, at);
+        }
+        return contactViewOf(tx, row);
       });
     },
 
@@ -1926,7 +2050,7 @@ export function buildDrizzleM16WriteService(
           .where(eq(CONTACT.id, contactId))
           .returning();
         if (!row) throw new Error("m16: the mark-deceased update returned no row");
-        return toContactView(row);
+        return contactViewOf(tx, row);
       });
     },
 
@@ -1977,7 +2101,7 @@ export function buildDrizzleM16WriteService(
           .where(eq(CONTACT.id, contactId))
           .returning();
         if (!row) throw new Error("m16: the mark-unreachable update returned no row");
-        return toContactView(row);
+        return contactViewOf(tx, row);
       });
     },
 
@@ -2005,7 +2129,7 @@ export function buildDrizzleM16WriteService(
           .where(eq(CONTACT.id, contactId))
           .returning();
         if (!row) throw new Error("m16: the dismiss-unreachable-proposal update returned no row");
-        return toContactView(row);
+        return contactViewOf(tx, row);
       });
     },
 
@@ -2076,7 +2200,7 @@ export function buildDrizzleM16WriteService(
           .where(eq(CONTACT.id, contactId))
           .returning();
         if (!row) throw new Error("m16: the complicated-grief update returned no row");
-        return toContactView(row);
+        return contactViewOf(tx, row);
       });
     },
 

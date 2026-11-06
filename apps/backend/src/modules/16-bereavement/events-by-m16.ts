@@ -215,6 +215,21 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m16.bereavement.contact_mailing_preference_changed",
+    moduleOwner: "m16",
+    description:
+      "ADR-0109 D10 — a survivor stopped (or resumed) MAILINGS only: the contact stays active and the calls continue. Deliberately not `contact_opted_out`, which would make M36 drop the family channel. Ids and a flag, no PHI.",
+    payloadSchema: Type.Object({
+      planId: Id,
+      contactId: Id,
+      mailingsAllowed: Type.Boolean(),
+      source: Str,
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m16.bereavement.contact_deceased",
     moduleOwner: "m16",
     description:
