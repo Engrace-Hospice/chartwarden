@@ -25,6 +25,12 @@ export type {
 } from "./write-service";
 export { type M16ReadDeps, buildDrizzleM16ReadService } from "./read-service-drizzle";
 export { type M16WriteDeps, buildDrizzleM16WriteService } from "./write-service-drizzle";
+export { type M16DraftDeps, buildDrizzleM16DraftService } from "./draft-service-drizzle";
+export type {
+  M16DraftService,
+  PreDeathDraftView,
+  PutPreDeathDraftInput,
+} from "./draft-service";
 export {
   type M16MutatingActor,
   type M16ReadActor,
@@ -58,11 +64,14 @@ export {
   runEffects,
 } from "./effects-runner";
 
+import type { M16DraftService } from "./draft-service";
 import type { M16ReadService } from "./read-service";
 import type { M16WriteService } from "./write-service";
 
-/** The two services every M16 route plugin composes over (bound to Drizzle, or in-memory in tests). */
+/** The services every M16 route plugin composes over (bound to Drizzle, or in-memory in tests). */
 export interface M16RouteServices {
   readonly readService: M16ReadService;
   readonly writeService: M16WriteService;
+  /** ADR-0109 D5 — the pre-death risk-assessment draft (addressed by admission, before any plan). */
+  readonly draftService: M16DraftService;
 }

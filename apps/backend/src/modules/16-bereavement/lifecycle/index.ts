@@ -24,6 +24,7 @@ export * from "./contact";
 export * from "./outreach";
 export * from "./schedule";
 export * from "./assessment-task";
+export * from "./pre-death-draft";
 export * from "./cascades";
 export * from "./validation";
 export * from "./early-close";

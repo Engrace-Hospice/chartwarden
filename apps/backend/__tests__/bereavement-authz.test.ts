@@ -121,7 +121,7 @@ const resolverFor = (
 
 describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
   it("registers exactly the §4.7 catalog, single-owner across the platform mirror", () => {
-    expect(M16_PERMISSION_KEY_LIST).toHaveLength(29);
+    expect(M16_PERMISSION_KEY_LIST).toHaveLength(31);
     const mirror = allPermissionMirrorRows().map((r) => r.key);
     for (const key of M16_PERMISSION_KEY_LIST) {
       expect(mirror.filter((k) => k === key)).toHaveLength(1);
@@ -339,8 +339,9 @@ describe("M16-T06 §4.8 — discipline_can_provide_bereavement", () => {
 describe("M16-T06 §4.8 — oversight and portal-self", () => {
   const predicates = buildBereavementAbacPredicates({ resolver: resolverFor() });
 
-  it("registers exactly the four names M16 owns", () => {
+  it("registers exactly the five names M16 owns", () => {
     expect([...M16_ABAC_PREDICATES].sort()).toEqual([
+      "bereavement_pre_death_assessor",
       "bereavement_window",
       "discipline_can_provide_bereavement",
       "org_scope_bereavement_oversight",

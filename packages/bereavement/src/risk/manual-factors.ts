@@ -56,6 +56,13 @@ export function factorsFromWire(
   return out;
 }
 
+/** A COMPLETE wire object (all eight keys, as the pre-death draft's PUT body guarantees) → the full rubric vector. */
+export function factorsFromFullWire(
+  wire: Readonly<Record<RiskFactorWireKey, BereavementFactorValue>>,
+): BereavementRiskFactorInputs {
+  return factorsFromWire(wire) as BereavementRiskFactorInputs; // every key is present by the argument type
+}
+
 /** Rubric vector → wire object (all eight keys). */
 export function factorsToWire(
   factors: BereavementRiskFactorInputs,

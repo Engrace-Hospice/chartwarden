@@ -803,6 +803,7 @@ import {
   M16_OUTBOX_EVENTS,
   M16_PLATFORM_JOB_ID,
   buildDrizzleBereavementAbacResolver,
+  buildDrizzleM16DraftService,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
   buildM16BereavementIntakeConsumer,
@@ -2219,6 +2220,25 @@ export function wireModuleSeams(
           roleGrants: createDbEffectivePermissionStore(deps.db),
         })
       : denyStubBereavementAbacResolver,
+    // ADR-0109 D5 — `bereavement_pre_death_assessor`: an admission resolves to its patient through M6's
+    // `AdmissionStatusReader`, and the caller's seat on that patient's care team through M5's `CareTeamProvider`
+    // (user-id space). Both are org-explicit seam reads resolved lazily per call; the predicate denies on any throw.
+    preDeathAssessor: {
+      async patientOfAdmission(organizationId, admissionId) {
+        const care = await getSeam("AdmissionStatusReader").getAdmissionPatientCare(
+          organizationId,
+          admissionId as never,
+        );
+        return care === null ? null : care.patientId;
+      },
+      async isOnCareTeam(organizationId, patientId, userId) {
+        const members = await getSeam("CareTeamProvider").careTeamMembers({
+          organizationId,
+          patientId,
+        });
+        return members.includes(userId);
+      },
+    },
     // §4.8's volunteer clause resolves through M15's published `VolunteerComplianceProvider` — the ONE
     // 42 CFR §418.78 gate implementation on the platform. Resolved lazily per call, fail-CLOSED on throw.
     volunteerGatesSatisfied: async ({ organizationId, volunteerMembershipId }) => {
@@ -6581,6 +6601,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           mountM16Routes(app, {
             readService: m16ReadService,
             writeService: m16WriteService,
+            // ADR-0109 D5 — the pre-death draft reads M6's admission (patient + siting) and M39's Part 2 verdict
+            // through the seam registry, resolved per call.
+            draftService: buildDrizzleM16DraftService(dbHandle.db),
           });
           // M21 (Supplies, DME & Comfort Kits) — mount the §4.1 route plugins over the Drizzle READ +
           // WRITE services. Every read opens its own withOrgContext (RLS scopes each statement to

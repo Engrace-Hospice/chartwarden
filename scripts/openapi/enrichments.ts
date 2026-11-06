@@ -284,6 +284,7 @@ import {
   OutreachOutcomeBody as M16OutreachOutcomeBody,
   PausePlanBody as M16PausePlanBody,
   PlanListQuerySchema as M16PlanListQuerySchema,
+  PreDeathDraftBody as M16PreDeathDraftBody,
   RecomputeRiskBody as M16RecomputeRiskBody,
   ReferExternalBody as M16ReferExternalBody,
   RegenerateScheduleBody as M16RegenerateScheduleBody,
@@ -1093,6 +1094,7 @@ import {
 // same M16* aliases — dedupe on merge) + the new §4.1 RESPONSE DTOs. Every symbol M16-aliased.
 import {
   // ── request bodies + list queries (§4.2) ──
+  BereavementAssessmentTaskListResponseSchema as M16AssessmentTaskListResponse,
   BereavementClosureViewResponseSchema as M16ClosureResponse,
   BereavementContactLogViewResponseSchema as M16ContactLogResponse,
   // ── §4.1 response DTOs (F0 enrichment; pinned to the read/write service views by Conforms) ──
@@ -1103,6 +1105,7 @@ import {
   PlanActivationViewResponseSchema as M16PlanActivationResponse,
   BereavementPlanDetailResponseSchema as M16PlanDetailResponse,
   BereavementPlanPageResponseSchema as M16PlanPageResponse,
+  PreDeathDraftViewResponseSchema as M16PreDeathDraftResponse,
   BereavementRiskScorePageResponseSchema as M16RiskScorePageResponse,
   BereavementRiskScoreViewResponseSchema as M16RiskScoreResponse,
   ScheduleRegenerationViewResponseSchema as M16ScheduleRegenResponse,
@@ -7819,6 +7822,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "The counselor's FIRST contact — D18-gated: an external-source plan awaiting its medical-director cosign is refused with the machine-readable gate reason, not a bare 403 (§4.1 #33)",
     body: M16InitiateContactBody,
     response: M16OutreachRowResponse,
+  },
+  "GET /api/v1/bereavement/plans/:planId/assessment-tasks": {
+    summary:
+      "The plan's two assessment checkpoints per survivor (initial d28, midpoint d180) with the human-appended score that completed each; empty when the reader's scope holds no clinical content (ADR-0109 D3, #37)",
+    response: M16AssessmentTaskListResponse,
+  },
+  "GET /api/v1/bereavement/pre-death-assessments/:admissionId": {
+    summary:
+      "The pre-death risk-assessment draft for an admission — eight tri-state factors, an empty all-unknown draft at version 0 when nothing is recorded; the care-team MSW / chaplain / bereavement counselor or oversight only (ADR-0109 D5, #35)",
+    response: M16PreDeathDraftResponse,
+  },
+  "PUT /api/v1/bereavement/pre-death-assessments/:admissionId": {
+    summary:
+      "Record the pre-death risk-assessment draft — replaces the whole eight-factor vector; `If-Match` (0 for the first write) and `Idempotency-Key` required; the substance-use slot is stored `unknown` unless the writer is cleared for 42 CFR Part 2; 409 `DRAFT_LOCKED` once a bereavement plan exists (ADR-0109 D5, #36)",
+    body: M16PreDeathDraftBody,
+    response: M16PreDeathDraftResponse,
   },
 
   // ── contacts.routes.ts ──

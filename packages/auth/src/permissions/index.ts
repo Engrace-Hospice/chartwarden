@@ -207,7 +207,7 @@ export {
   m15ContributedPermissionMirrorRows,
 } from "./contributed";
 
-// M16 — Module 16's twenty-nine Bereavement permission keys registered into M3's catalog (§4.7 handshake).
+// M16 — Module 16's thirty-one Bereavement permission keys registered into M3's catalog (§4.7 handshake).
 export {
   type M16ContributedPermissionKey,
   M16_CONTRIBUTED_PERMISSIONS,

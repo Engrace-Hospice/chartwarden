@@ -103,12 +103,14 @@ export {
   type BereavementAbacResolver,
   type BereavementPlanAbacFacts,
   type M16RegisteredAbacPredicate,
+  type PreDeathAssessorProbe,
   type VolunteerGatesProbe,
   BEREAVEMENT_CAPABLE_DISCIPLINES,
   BEREAVEMENT_OVERSIGHT_ROLES,
   BEREAVEMENT_VOLUNTEER_DISCIPLINE,
   DISCIPLINE_FOR_ROLE_KEY,
   M16_ABAC_PREDICATES,
+  PRE_DEATH_ASSESSOR_DISCIPLINES,
   buildBereavementAbacPredicates,
   decideBereavementWindow,
   denyStubBereavementAbacResolver,
@@ -124,6 +126,8 @@ export {
 
 // §4.1 — the route mount + the Drizzle-backed READ + WRITE service builders.
 export {
+  type M16DraftDeps,
+  type M16DraftService,
   type M16ReadDeps,
   type M16ReadService,
   type M16RouteServices,
@@ -131,6 +135,7 @@ export {
   type M16WriteService,
   type OutboxEmission as M16OutboxEmission,
   type WriteOutboxPort as M16WriteOutboxPort,
+  buildDrizzleM16DraftService,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
 } from "./routes/index";
