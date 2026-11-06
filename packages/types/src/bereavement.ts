@@ -192,6 +192,7 @@ export type M16TableName =
   | "bereavement_idg_risk_flag"
   | "bereavement_assessment_task"
   | "bereavement_risk_assessment_draft"
+  | "bereavement_physician_letter"
   | "tenant_bereavement_external_source_gate_override";
 
 /**
@@ -225,6 +226,7 @@ export const M16_AUDIT_DENYLIST: { readonly [K in M16TableName]: readonly string
   bereavement_idg_risk_flag: ["rationale_text"],
   bereavement_assessment_task: [],
   bereavement_risk_assessment_draft: [],
+  bereavement_physician_letter: ["decline_reason_redacted"],
   tenant_bereavement_external_source_gate_override: ["additional_rationale"],
 } as const;
 
@@ -275,6 +277,7 @@ export const M16_EVENT_NAMES = [
   "m16.bereavement.outreach_completed",
   "m16.bereavement.outreach_missed",
   "m16.bereavement.outreach_artifact_requested",
+  "m16.bereavement.document_requested",
   "m16.bereavement.risk_score_computed",
   "m16.bereavement.anniversary_due_in_14_days",
 ] as const;
@@ -537,6 +540,23 @@ export interface M16OutreachArtifactRequestedPayload {
   readonly payloadJsonb: unknown;
 }
 
+/** The plan-level documents M16 asks M22 to render through `m16.bereavement.document_requested` (ADR-0109 D6 / D9). */
+export type M16PlanDocumentKind = "physician_condolence_letter" | "discharge_summary";
+
+/** `m16.bereavement.document_requested` — the outbox-only handoff to M22 for the approved physician condolence letter (aggregate =
+ *  the letter) or the internal discharge summary (aggregate = the closure). M22 answers with `m22.document.rendered`. Consumer: M22. */
+export interface M16DocumentRequestedPayload {
+  readonly planId: BereavementPlanId;
+  /** The DECEDENT — the chart M22 files the rendered document against. */
+  readonly patientId: PatientId;
+  readonly documentKind: M16PlanDocumentKind;
+  /** The row the document is filed against and the back-ref stamps (letter id or closure id). */
+  readonly aggregateId: string;
+  readonly templateKey: string;
+  /** The typed render payload (`render-payloads/m16-bereavement`); typed `unknown` here because M22 owns the per-template shape. */
+  readonly payloadJsonb: unknown;
+}
+
 /** `m16.bereavement.risk_score_computed` — an immutable D3/D8 score row appended. M30's screening measure
  *  filters `dataCompleteness === 'minimal'` out of its denominator (D17). Consumers: M30, M32, M33. */
 export interface M16RiskScoreComputedPayload {
@@ -581,6 +601,7 @@ export interface M16EventPayloadMap {
   "m16.bereavement.outreach_completed": M16OutreachCompletedPayload;
   "m16.bereavement.outreach_missed": M16OutreachMissedPayload;
   "m16.bereavement.outreach_artifact_requested": M16OutreachArtifactRequestedPayload;
+  "m16.bereavement.document_requested": M16DocumentRequestedPayload;
   "m16.bereavement.risk_score_computed": M16RiskScoreComputedPayload;
   "m16.bereavement.anniversary_due_in_14_days": M16AnniversaryDueIn14DaysPayload;
 }

@@ -51,6 +51,8 @@ export interface BereavementEraseCounts {
   readonly assessmentTasks: number;
   /** `bereavement_risk_assessment_draft` rows deleted (ADR-0109 D5 — keyed on the patient, not on a plan). */
   readonly assessmentDrafts: number;
+  /** `bereavement_physician_letter` rows deleted (ADR-0109 D6). */
+  readonly physicianLetters: number;
   /** `bereaved_contact` rows deleted. */
   readonly contacts: number;
   /** `bereavement_plan` roots tombstoned (rows PRESERVED for FK integrity — not part of the tally). */
@@ -114,6 +116,7 @@ export async function eraseBereavementRecord(
     counts.anniversaryReminders +
     counts.assessmentTasks +
     counts.assessmentDrafts +
+    counts.physicianLetters +
     counts.contacts;
   return { erased, shredded, counts };
 }
@@ -126,6 +129,7 @@ const ZERO: BereavementEraseCounts = {
   anniversaryReminders: 0,
   assessmentTasks: 0,
   assessmentDrafts: 0,
+  physicianLetters: 0,
   contacts: 0,
   plansTombstoned: 0,
   closuresShredded: 0,
@@ -178,6 +182,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
   const REMINDER = schema.bereavementAnniversaryReminder;
   const TASK = schema.bereavementAssessmentTask;
   const DRAFT = schema.bereavementRiskAssessmentDraft;
+  const LETTER = schema.bereavementPhysicianLetter;
   const CLOSURE = schema.bereavementPlanClosure;
 
   /** The decedent's plan-root ids — every child table is keyed on `plan_id`, not on the patient. */
@@ -223,6 +228,13 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
           .where(inArray(LOG.planId, planIds))
           .returning({ id: LOG.id });
 
+        // ADR-0109 D6 — the reviewer's sealed note and the decline reason (the row's CHECK lets a declined letter's reason be NULL).
+        const letters = await tx
+          .update(LETTER)
+          .set({ personalNoteCipher: null, declineReasonRedacted: null })
+          .where(inArray(LETTER.planId, planIds))
+          .returning({ id: LETTER.id });
+
         // The score ledger is APPEND-ONLY and the M4 trigger refuses UPDATE on it in normal operation;
         // the destruction path is the one privileged writer, and it empties the factor vector rather than
         // deleting the row here (the delete follows in `erasePatientRecords`) so a partial failure still
@@ -259,6 +271,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
           drafts.length +
           contacts.length +
           logs.length +
+          letters.length +
           scores.length +
           optOuts.length +
           outreach.length +
@@ -287,6 +300,9 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
         );
         const assessmentTasks = await del(() =>
           tx.delete(TASK).where(inArray(TASK.planId, planIds)).returning({ id: TASK.id }),
+        );
+        const physicianLetters = await del(() =>
+          tx.delete(LETTER).where(inArray(LETTER.planId, planIds)).returning({ id: LETTER.id }),
         );
         const riskScores = await del(() =>
           tx.delete(SCORE).where(inArray(SCORE.planId, planIds)).returning({ id: SCORE.id }),
@@ -338,6 +354,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
           anniversaryReminders,
           assessmentTasks,
           assessmentDrafts,
+          physicianLetters,
           contacts,
           plansTombstoned: tombstoned.length,
           closuresShredded: closures.length,

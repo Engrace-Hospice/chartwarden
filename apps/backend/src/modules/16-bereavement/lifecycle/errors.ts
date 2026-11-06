@@ -85,6 +85,16 @@ export const M16_ERROR_STATUS = {
   CARE_GOALS_INVALID: 422,
   // ADR-0109 D5 — the pre-death draft is writable only while no plan exists for the admission.
   DRAFT_LOCKED: 409,
+  // ADR-0109 D6 — the physician condolence letter (an internal attending clinician; a human reviews it before it is disclosed)
+  PHYSICIAN_LETTER_NOT_FOUND: 404,
+  PHYSICIAN_LETTER_NOT_PENDING: 409,
+  PHYSICIAN_LETTER_ATTENDING_REQUIRED: 422,
+  /** The reviewer named a user who holds no active membership in this organization (the letter stays internal). */
+  PHYSICIAN_LETTER_ATTENDING_INVALID: 422,
+  PHYSICIAN_LETTER_NOTE_TOO_LONG: 422,
+  PHYSICIAN_LETTER_DECLINE_REASON_TOO_SHORT: 422,
+  /** Approval is refused with no cipher bound: a note sealed nowhere would be plaintext in a ciphertext column. */
+  PHYSICIAN_LETTER_NOTE_STORAGE_UNAVAILABLE: 503,
   // Optimistic concurrency (§2.5)
   STALE_VERSION: 412,
   // Structural — an event dispatched from a state that does not accept it (§2.2–§2.4 graphs).

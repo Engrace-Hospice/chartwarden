@@ -804,6 +804,7 @@ import {
   M16_PLATFORM_JOB_ID,
   buildDrizzleBereavementAbacResolver,
   buildDrizzleM16DraftService,
+  buildDrizzleM16LetterService,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
   buildM16BereavementIntakeConsumer,
@@ -6607,6 +6608,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // ADR-0109 D5 — the pre-death draft reads M6's admission (patient + siting) and M39's Part 2 verdict
             // through the seam registry, resolved per call.
             draftService: buildDrizzleM16DraftService(dbHandle.db),
+            // ADR-0109 D6 — the physician condolence letter review queue; approval emits `m16.bereavement.document_requested`
+            // on its own transaction and seals the reviewer's note with the same tenant-DEK envelope.
+            letterService: buildDrizzleM16LetterService(dbHandle.db, {
+              outbox: m16OutboxPublisher,
+              cipher: m16Cipher,
+            }),
           });
           // M21 (Supplies, DME & Comfort Kits) — mount the §4.1 route plugins over the Drizzle READ +
           // WRITE services. Every read opens its own withOrgContext (RLS scopes each statement to
@@ -11820,6 +11827,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             outbox: m16OutboxPublisher,
             // ADR-0109 D7 — `death_intake`: the oversight roles are told an `eligible` plan awaits a counselor.
             alerts: createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter),
+            // ADR-0109 D6 — the plan-opening delivery also creates the physician condolence letter, addressed to the care team's
+            // attending when M5 resolves one (else the reviewer picks an internal clinician at approval).
+            resolveAttendingUserId: (organizationId, patientId) =>
+              getSeam("CareTeamProvider").attendingUserId({ organizationId, patientId }),
             resolveAdmission: async (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),
@@ -11842,6 +11853,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             db: dbHandle.db,
             outbox: m16OutboxPublisher,
             alerts: createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter),
+            // ADR-0109 D6 — the plan-opening delivery also creates the physician condolence letter, addressed to the care team's
+            // attending when M5 resolves one (else the reviewer picks an internal clinician at approval).
+            resolveAttendingUserId: (organizationId, patientId) =>
+              getSeam("CareTeamProvider").attendingUserId({ organizationId, patientId }),
             resolveAdmission: async (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),

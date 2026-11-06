@@ -10,6 +10,7 @@
 import type { Static } from "@sinclair/typebox";
 import type { CursorPage } from "./concurrency";
 import type { PreDeathDraftView as SvcPreDeathDraftView } from "./draft-service";
+import type { PhysicianLetterView as SvcPhysicianLetterView } from "./letter-service";
 import type {
   BereavedContactRowViewResponseSchema,
   BereavementAssessmentTaskListResponseSchema,
@@ -23,6 +24,8 @@ import type {
   BereavementRiskScorePageResponseSchema,
   BereavementRiskScoreViewResponseSchema,
   CounselorDashboardViewResponseSchema,
+  PhysicianLetterPageResponseSchema,
+  PhysicianLetterViewResponseSchema,
   PlanActivationViewResponseSchema,
   PreDeathDraftViewResponseSchema,
   ScheduleRegenerationViewResponseSchema,
@@ -110,4 +113,12 @@ type _AssessmentTasks = Conforms<
 type _PreDeathDraft = Conforms<
   Static<typeof PreDeathDraftViewResponseSchema>,
   SvcPreDeathDraftView
+>;
+type _PhysicianLetter = Conforms<
+  Static<typeof PhysicianLetterViewResponseSchema>,
+  SvcPhysicianLetterView
+>;
+type _PhysicianLetterPage = Conforms<
+  Static<typeof PhysicianLetterPageResponseSchema>,
+  CursorPage<SvcPhysicianLetterView>
 >;

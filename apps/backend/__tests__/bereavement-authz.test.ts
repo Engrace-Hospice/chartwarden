@@ -121,7 +121,7 @@ const resolverFor = (
 
 describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
   it("registers exactly the §4.7 catalog, single-owner across the platform mirror", () => {
-    expect(M16_PERMISSION_KEY_LIST).toHaveLength(31);
+    expect(M16_PERMISSION_KEY_LIST).toHaveLength(33);
     const mirror = allPermissionMirrorRows().map((r) => r.key);
     for (const key of M16_PERMISSION_KEY_LIST) {
       expect(mirror.filter((k) => k === key)).toHaveLength(1);
@@ -147,7 +147,7 @@ describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
 
 describe("M16-T06 §4.4 — the outbox catalog", () => {
   it("declares all 23 §4.4 events, every one owned by m16 and `mN.<resource>.<verb>` shaped", () => {
-    expect(M16_OUTBOX_EVENTS).toHaveLength(24);
+    expect(M16_OUTBOX_EVENTS).toHaveLength(25);
     for (const event of M16_OUTBOX_EVENTS) {
       expect(event.moduleOwner).toBe("m16");
       expect(event.eventName).toMatch(/^m16\.[a-z_]+\.[a-z0-9_]+$/);
@@ -668,6 +668,7 @@ describe("M16-T06 §8.5 — the bereavement_record eraser", () => {
         outreach: 9,
         anniversaryReminders: 2,
         assessmentTasks: 4,
+        physicianLetters: 1,
         contacts: 2,
         plansTombstoned: 1,
         closuresShredded: 1,
@@ -677,7 +678,7 @@ describe("M16-T06 §8.5 — the bereavement_record eraser", () => {
     expect(locked).toEqual([PATIENT]);
     expect(result.shredded).toBe(7);
     // The tombstoned plan root and the surviving closure row are bookkeeping, NOT deletions.
-    expect(result.erased).toBe(4 + 3 + 1 + 9 + 2 + 4 + 2);
+    expect(result.erased).toBe(4 + 3 + 1 + 9 + 2 + 4 + 1 + 2);
     expect(result.counts.plansTombstoned).toBe(1);
     expect(result.counts.closuresShredded).toBe(1);
   });
