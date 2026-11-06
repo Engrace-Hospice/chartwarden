@@ -101,16 +101,20 @@ describe.skipIf(!DB_URL)("M34 tenant hub reads, LIVE Postgres on the real roles"
         [id, slug],
       );
     }
-    for (const [org, status] of [
-      [ORG_PROVISIONING, "provisioning"],
-      [ORG_ONBOARDING, "onboarding"],
-      [ORG_AWAITING, "onboarding"],
-      [ORG_ACTIVE, "active"],
-    ] as const) {
+    // Distinct creation times, a minute apart: the inventory pages by (createdAt, id), and accounts inserted within the same millisecond
+    // would make the page boundary depend on how the clock fell (the cursor carries milliseconds; the database orders microseconds).
+    for (const [index, [org, status]] of (
+      [
+        [ORG_PROVISIONING, "provisioning"],
+        [ORG_ONBOARDING, "onboarding"],
+        [ORG_AWAITING, "onboarding"],
+        [ORG_ACTIVE, "active"],
+      ] as const
+    ).entries()) {
       const [row] = await q<{ id: string }>(
-        `INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email)
-         VALUES ($1,$2,$3,'b@x.test','p@x.test') RETURNING id`,
-        [org, status, `Tenant ${status}`],
+        `INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email, created_at)
+         VALUES ($1,$2,$3,'b@x.test','p@x.test', now() - make_interval(mins => $4::int)) RETURNING id`,
+        [org, status, `Tenant ${status}`, index],
       );
       accountIds.set(org, (row as { id: string }).id);
     }
