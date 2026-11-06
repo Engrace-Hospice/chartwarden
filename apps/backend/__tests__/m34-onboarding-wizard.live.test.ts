@@ -1618,6 +1618,56 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       );
       expect(landed?.status).toBe("pending");
     });
+
+    // ── the onboarding-data advisory lock (routes/platform/tenant-onboarding-lock.ts) ──────────────────────
+    // An operator's onboarding-data write holds the SHARED lock from before it reads the tenant status until it commits.
+    // The go-live approval is the one thing that moves a tenant out of onboarding now, so it takes it EXCLUSIVE.
+    it("the approval waits for an onboarding-data write in flight, then activates", async () => {
+      const ORG_F = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbf01";
+      const T_F = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbf02";
+      await readyTenant(ORG_F, T_F, "wiz-f");
+      const officerF = await person(ORG_F, "officer-f", ["compliance_officer"]);
+      await assignOfficer(T_F, officerF.membershipId);
+      await wizard(false).attestGoLive(officerF, ORG_F, "all checks reviewed");
+
+      const writer = new Client({ connectionString: DB_URL });
+      await writer.connect();
+      await writer.query("BEGIN");
+      await writer.query(
+        "SELECT pg_advisory_xact_lock_shared(hashtextextended('tenant-onboarding:' || $1::text, 0))",
+        [ORG_F],
+      );
+      let released = false;
+      const release = async () => {
+        if (released) return;
+        released = true;
+        await writer.query("COMMIT");
+        await writer.end();
+      };
+      try {
+        const approval = wizard(false).approveGoLive(
+          "wiz-f",
+          opsTwo,
+          "reviewed the evidence and the BAA",
+        );
+        const settled = await Promise.race([
+          approval.then(
+            () => true,
+            () => true,
+          ),
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 750)),
+        ]);
+        expect(settled, "the approval must wait for the in-flight write").toBe(false);
+        expect(await tenantStatus(T_F)).toBe("onboarding");
+
+        await release();
+        const live = await approval;
+        expect(live.goLive.state).toBe("live");
+        expect(await tenantStatus(T_F)).toBe("active");
+      } finally {
+        await release();
+      }
+    });
   });
   // ── the Docker-stack smoke-test gaps (slice 1 fixes) ───────────────────────────────────────────────────────
   describe("smoke-test gaps: BAA register writes on the real platform carrier", () => {
