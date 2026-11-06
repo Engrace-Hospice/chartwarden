@@ -132,6 +132,32 @@ describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
     for (const key of M16_PERMISSION_KEY_LIST) expect(key.startsWith("bereavement.")).toBe(true);
   });
 
+  // ADR-0109 D6 — the physician letter is disclosed only after a human approves it, so the whole queue is oversight-only.
+  it("the two physician-letter keys are gated by bereavement oversight, never by a window or a portal self", () => {
+    for (const key of ["bereavement.letter.read", "bereavement.letter.review"] as const) {
+      expect(M16_PERMISSION_KEY_LIST).toContain(key);
+      expect(M16_CONTRIBUTED_PERMISSIONS[key].abac).toBe("org_scope_bereavement_oversight");
+      expect(M16_PORTAL_SELF_PERMISSION_KEYS as readonly string[]).not.toContain(key);
+    }
+  });
+
+  it("the catalog migration (1346) mirrors exactly the two physician-letter keys with the predicate that gates them", () => {
+    const sql = readFileSync(
+      new URL(
+        "../../../packages/db/migrations/1346_m16_physician_letter_permissions.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    for (const key of ["bereavement.letter.read", "bereavement.letter.review"] as const) {
+      const def = M16_CONTRIBUTED_PERMISSIONS[key];
+      expect(sql).toContain(
+        `('${key}', '${def.resource}', '${def.action}', '${def.category}', '${def.abac}', '')`,
+      );
+    }
+    expect([...sql.matchAll(/\('bereavement\./g)]).toHaveLength(2);
+  });
+
   it("the two portal-self keys are the ONLY §4.1 rows a bereaved family session may hold", () => {
     expect([...M16_PORTAL_SELF_PERMISSION_KEYS].sort()).toEqual([
       "bereavement.contact.opt_out",

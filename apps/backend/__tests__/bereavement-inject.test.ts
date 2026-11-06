@@ -583,6 +583,7 @@ function createFakeBackend() {
         cosignedAt: NOW,
         stats: zeroStats(),
         bereavementSummaryDocumentId: null,
+        dischargeSummaryDocumentId: null,
       };
       p.pendingEarlyClose = null;
       bump(p);
