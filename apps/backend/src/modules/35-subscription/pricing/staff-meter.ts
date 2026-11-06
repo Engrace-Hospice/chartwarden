@@ -8,43 +8,41 @@
 //       bound), and a ChartWarden SUPPORT session (M34 `support_session`, platform side) never write the ledger at all;
 //   (2) held a MEMBERSHIP of the organisation that was live at some point in the month: accepted before the month ended and not revoked
 //       before it began (`membership.accepted_at` / `revoked_at`). A pending, never-accepted invitation is not an account;
-//   (3) is NOT excluded: a membership is excluded only when it holds at least one role grant and EVERY grant it holds is a non-staff
-//       one: the organisation's SYSTEM `external_auditor` role (an auditor given a membership for an engagement) or a PLATFORM-OWNED
-//       role (`role.organization_id IS NULL` with a reserved `platform_*` key: ChartWarden operators are bound into a tenant
-//       organisation by `platform_alert_audience` purely so alerts reach them). A membership that also holds any staff role is staff.
+//   (3) is NOT excluded: the ledger row was not flagged `non_staff_observed`. That flag is written when each sign-in is OBSERVED (the
+//       `m2.session.created` consumer reads the membership's grants at that moment) and is true only when every sign-in of the month was
+//       by a membership whose grants were ALL non-staff: the organisation's SYSTEM `external_auditor` role or a PLATFORM-OWNED role
+//       (ChartWarden operators are bound into a tenant organisation by `platform_alert_audience` purely so alerts reach them). A
+//       membership that also holds any staff role is staff, and one staff sign-in makes the month staff. The exclusion is therefore
+//       decided by what the member WAS when they signed in, never by today's grants: a tenant administrator who swaps a member who
+//       worked as staff to auditor-only (in the month, or in the grace window before it finalizes) cannot take them off the bill.
 //       "The system auditor role" is the row M3's auditor grant creates: org-owned, key AND category `external_auditor`, and
-//       `system_default`. A tenant can create a role named `external_auditor`, but never a `system_default` one (role-store.ts writes
-//       it FALSE), so a tenant cannot shrink its billed staff by attaching its own look-alike role to staff. An expired grant counts.
+//       `system_default`; a tenant cannot create a role under that key (M3 refuses it, and so does the database), so it cannot attach a
+//       look-alike to staff either. An expired grant counts.
 // Two memberships of one user in one month (a revoked one and its replacement) count once.
 //
-// HOW. The ledger stores only `HMAC(key, membership_id)`, never an id (M35 D6), and cannot say what role a membership holds. So the
-// organisation's candidate memberships are read here (explicit columns, under the platform credential's column grants), the
-// excluded ones are dropped, and each survivor's pseudonym is recomputed under the ledger's key epoch and matched to the ledger.
-// Raw ids live in this function's memory only.
+// HOW. The ledger stores only `HMAC(key, membership_id)`, never an id (M35 D6). The organisation's candidate memberships are read here
+// (explicit columns, under the platform credential's column grants), each one's pseudonym is recomputed under the ledger's key epoch
+// and matched to the unflagged ledger rows, and a user with two memberships counts once. Raw ids live in this function's memory only.
 //
-// CEILING (flagged, like the patient census): the ledger can be matched only under the ACTIVE key epoch, and only when the month's
-// ledger holds ONE epoch. If the month's ledger spans more than one key epoch (a rotation mid-month: a member who signed in before and
-// after it has a different pseudonym under each key, so identities cannot be told apart across epochs), or its one epoch is no longer
-// the active one, the roles cannot be applied and the count falls back to the UNFILTERED ledger (`ledger_unfiltered`): the busiest
-// SINGLE epoch's distinct pseudonyms (never the sum, which would count a rotated member twice). The statement records the basis and is
-// flagged `needs_review`, so an operator sees it.
-import { isReservedPlatformRoleKey } from "@chartwarden/auth";
+// CEILING (flagged, like the patient census): memberships can be matched to the ledger only under the ACTIVE key epoch, and only when
+// the month's ledger holds ONE epoch. If it spans more than one key epoch (a rotation mid-month: a member who signed in before and after
+// it has a different pseudonym under each key, so identities cannot be told apart across epochs), or its one epoch is no longer the
+// active one, the count falls back to the UNMATCHED ledger (`ledger_unfiltered`): the busiest SINGLE epoch's distinct unflagged
+// pseudonyms (never the sum, which would count a rotated member twice; users are not deduplicated and liveness is not checked, but an
+// observed auditor or operator is still left out). The statement records the basis and is flagged `needs_review`.
+import { EXTERNAL_AUDITOR_ROLE_KEY, isReservedPlatformRoleKey } from "@chartwarden/auth";
 import { type DbClient, schema } from "@chartwarden/db";
 import {
   type PseudonymKeyProvider,
   computeBillingPseudonym,
   toBillingYearMonth,
 } from "@chartwarden/subscription-billing";
-import { and, eq, gt, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, lt, or } from "drizzle-orm";
 import type { MonthWindow } from "./statement-period";
 
 const UAP = schema.userActivePeriod;
 const MB = schema.memberships;
-const MR = schema.membershipRoles;
-const RL = schema.roles;
-
-/** The org-owned role an auditor's membership holds for the length of an engagement (M3 `auditor-access-grant.ts`). */
-export const EXTERNAL_AUDITOR_ROLE_KEY = "external_auditor";
+export { EXTERNAL_AUDITOR_ROLE_KEY };
 /** The `role_category` M3's auditor grant stamps on that role (a tenant may also pick this category for its own role). */
 const EXTERNAL_AUDITOR_ROLE_CATEGORY = "external_auditor";
 
@@ -85,14 +83,18 @@ export function nonStaffMembershipIds(
   return new Set([...onlyNonStaff].filter(([, only]) => only).map(([id]) => id));
 }
 
-/** The month's ledger: the distinct pseudonyms that signed in, per key epoch. */
-async function readLedgerByEpoch(
+/** The month's ledger: the distinct pseudonyms that signed in as STAFF (not flagged non-staff at sign-in), per key epoch. */
+async function readStaffLedgerByEpoch(
   tx: DbClient,
   organizationId: string,
   window: MonthWindow,
 ): Promise<ReadonlyMap<string, ReadonlySet<string>>> {
   const rows = await tx
-    .select({ epoch: UAP.pseudonymKeyEpoch, pseudonym: UAP.membershipPseudonym })
+    .select({
+      epoch: UAP.pseudonymKeyEpoch,
+      pseudonym: UAP.membershipPseudonym,
+      nonStaff: UAP.nonStaffObserved,
+    })
     .from(UAP)
     .where(
       and(
@@ -103,14 +105,16 @@ async function readLedgerByEpoch(
     );
   const byEpoch = new Map<string, Set<string>>();
   for (const row of rows) {
-    byEpoch.set(row.epoch, (byEpoch.get(row.epoch) ?? new Set<string>()).add(row.pseudonym));
+    const staff = byEpoch.get(row.epoch) ?? new Set<string>();
+    if (!row.nonStaff) staff.add(row.pseudonym);
+    byEpoch.set(row.epoch, staff);
   }
   return byEpoch;
 }
 
-/** Memberships that held at some point in the month, with every grant they hold: a membership is excluded only if ALL are non-staff. */
-async function liveMemberships(tx: DbClient, organizationId: string, window: MonthWindow) {
-  const candidates = await tx
+/** Memberships that were live at some point in the month: accepted before it ended and not revoked before it began. */
+function liveMemberships(tx: DbClient, organizationId: string, window: MonthWindow) {
+  return tx
     .select({ id: MB.id, userId: MB.userId })
     .from(MB)
     .where(
@@ -121,27 +125,6 @@ async function liveMemberships(tx: DbClient, organizationId: string, window: Mon
         or(isNull(MB.revokedAt), gt(MB.revokedAt, window.start)),
       ),
     );
-  if (candidates.length === 0) return { candidates, excluded: new Set<string>() };
-  const grants = await tx
-    .select({
-      membershipId: MR.membershipId,
-      key: RL.key,
-      organizationId: RL.organizationId,
-      category: RL.category,
-      systemDefault: RL.systemDefault,
-    })
-    .from(MR)
-    .innerJoin(RL, eq(MR.roleId, RL.id))
-    .where(
-      and(
-        eq(MR.organizationId, organizationId),
-        inArray(
-          MR.membershipId,
-          candidates.map((c) => c.id),
-        ),
-      ),
-    );
-  return { candidates, excluded: nonStaffMembershipIds(grants) };
 }
 
 export async function countActiveStaffForMonth(
@@ -150,7 +133,7 @@ export async function countActiveStaffForMonth(
   organizationId: string,
   window: MonthWindow,
 ): Promise<StaffCount> {
-  const byEpoch = await readLedgerByEpoch(tx, organizationId, window);
+  const byEpoch = await readStaffLedgerByEpoch(tx, organizationId, window);
   if (byEpoch.size === 0) return { count: 0, basis: "identity_filtered" };
   const key = await keyProvider.activeKey();
   const [onlyEpoch] = byEpoch.size === 1 ? [...byEpoch.keys()] : [undefined];
@@ -158,12 +141,10 @@ export async function countActiveStaffForMonth(
     const busiest = Math.max(...[...byEpoch.values()].map((pseudonyms) => pseudonyms.size));
     return { count: busiest, basis: "ledger_unfiltered" };
   }
-  const signedIn = byEpoch.get(onlyEpoch) ?? new Set<string>();
-  const { candidates, excluded } = await liveMemberships(tx, organizationId, window);
+  const signedInAsStaff = byEpoch.get(onlyEpoch) ?? new Set<string>();
   const staffUsers = new Set<string>();
-  for (const candidate of candidates) {
-    if (excluded.has(candidate.id)) continue;
-    if (signedIn.has(computeBillingPseudonym(key.keyMaterial, candidate.id))) {
+  for (const candidate of await liveMemberships(tx, organizationId, window)) {
+    if (signedInAsStaff.has(computeBillingPseudonym(key.keyMaterial, candidate.id))) {
       staffUsers.add(candidate.userId);
     }
   }
