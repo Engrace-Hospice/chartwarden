@@ -173,8 +173,11 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
       setEditing(null);
       setClientSecret("");
       await Promise.all([credentials.reload(true), ctx.refresh()]);
-    } else if (outcome.failure.kind === "conflict") {
-      // Someone changed it since it was read: show what it says now and make the operator enter the new value again.
+    } else if (outcome.failure.kind === "conflict" || outcome.failure.kind === "precondition") {
+      // Someone changed it since it was read (412), or no pin was sent (428): the form's pin is stale, so the prompt AND the form
+      // close, the record is read again, and the operator opens the form on what it says now and enters the secret again.
+      setAsking(false);
+      setEditing(null);
       setClientSecret("");
       await credentials.reload(true);
     }
@@ -251,6 +254,11 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
           </table>
         ) : null}
       </section>
+
+      {/* A refusal that closed the form (a stale pin) is still read: here, under the list, not in a form that is gone. */}
+      {write.failure && !editing && !asking ? (
+        <FailureNotice failure={write.failure} orgSlug={orgSlug} />
+      ) : null}
 
       {editing && canWrite ? (
         <section className="wx-drawer-card" aria-label="MAC credential form">

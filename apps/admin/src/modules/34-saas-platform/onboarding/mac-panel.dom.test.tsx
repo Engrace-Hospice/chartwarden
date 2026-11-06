@@ -134,6 +134,36 @@ describe("MacPanel", () => {
     expect(init.params.header["If-Match"]).toBe("3");
   });
 
+  it("closes the form on a version conflict (its pin is stale), says why, and reopens on what it says now", async () => {
+    mount([CRED], { POST: { [MAC]: () => refused(412, "VERSION_CONFLICT", "stale") } });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Replace credential for Beta Hospice" }),
+    );
+    fill();
+    save("Customer rotated their client key");
+    expect(await screen.findByText(/changed since you opened it/i)).toBeTruthy();
+    // the prompt AND the form are gone: nothing is left that could be confirmed against the stale version
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByLabelText("Submitter id")).toBeNull();
+    expect(screen.queryByLabelText(/^Client secret/)).toBeNull();
+  });
+
+  it("treats a missing If-Match (428) like a conflict: closes, reloads, says to enter the change again", async () => {
+    const { client } = mount([CRED], {
+      POST: { [MAC]: () => refused(428, "IF_MATCH_REQUIRED", "needs the version") },
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Replace credential for Beta Hospice" }),
+    );
+    fill();
+    save("Customer rotated their client key");
+    expect(await screen.findByText(/changed while you were looking at it/i)).toBeTruthy();
+    expect(screen.queryByLabelText("Submitter id")).toBeNull();
+    await waitFor(() =>
+      expect(client.GET.mock.calls.filter((c) => c[0] === MAC).length).toBeGreaterThan(1),
+    );
+  });
+
   it("explains a version conflict: someone changed it, it is reloaded, the key must be typed again", async () => {
     const { client } = mount([CRED], {
       POST: { [MAC]: () => refused(412, "VERSION_CONFLICT", "stale") },

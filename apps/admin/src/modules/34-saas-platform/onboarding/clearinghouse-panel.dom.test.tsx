@@ -233,6 +233,23 @@ describe("ClearinghousePanel: choosing", () => {
     expect((secretBox() as HTMLInputElement).value).toBe("");
   });
 
+  it("treats a missing If-Match (428) like a conflict: closes the form, reloads, says to enter the change again", async () => {
+    const { client } = mount(CLAIMMD, {
+      PUT: { [CH]: () => refused(428, "IF_MATCH_REQUIRED", "needs the version") },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Change" }));
+    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "test" } });
+    fireEvent.change(secretBox(), { target: { value: TYPED_VALUE } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("Customer moved to their sandbox account", "Save");
+    expect(await screen.findByText(/changed while you were looking at it/i)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByLabelText(/^Vendor credential/)).toBeNull();
+    await waitFor(() =>
+      expect(client.GET.mock.calls.filter((c) => c[0] === CH).length).toBeGreaterThan(1),
+    );
+  });
+
   it("never stashes the credential through a re-verify, and comes back to the form without the reason prompt", async () => {
     mount(NOTHING, { PUT: { [CH]: () => refused(403, "STEP_UP_REQUIRED") } });
     fireEvent.click(await screen.findByRole("button", { name: "Choose clearinghouse" }));

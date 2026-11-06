@@ -221,9 +221,9 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
       await settled();
     } else if (isAboutAnInput(outcome.failure)) {
       setDialog(null); // the form stays open with what was typed; the error is under its input
-    } else if (outcome.failure.kind === "conflict") {
-      // Someone changed it since it was read: the form closes (its pin is stale), the record is read again, and the operator opens the
-      // form anew on what it says now and enters the credential again.
+    } else if (outcome.failure.kind === "conflict" || outcome.failure.kind === "precondition") {
+      // Someone changed it since it was read (412), or no pin was sent (428): the form closes (its pin is stale), the record is
+      // read again, and the operator opens the form anew on what it says now and enters the credential again.
       setDialog(null);
       setEditing(false);
       setSecret("");
