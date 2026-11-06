@@ -999,7 +999,7 @@ jobs:
           # ADR-0097 (PROPOSED) / WP 6.8 - acknowledge-required broadcast as chartwarden_app: flag-off 404 before parsing, author-only create, open never acks, idempotent per-person ack, every non-acknowledger listed, ineligible apart, guard triggers refuse forged writes.
           - { name: "M36 ack broadcast", scripts: "test:m36:ack-broadcast:live" }
           - { name: "M36 emergency message", scripts: "test:m36:emergency:live" }
-          # ADR-0107 (PROPOSED) - group tags (@role, @care-team, @on-call) as chartwarden_app: flag-off refusal, team/role/on-call resolved to active channel members only and frozen, a gap or unavailable roster refuses the send, size limits, insert-only snapshot, RLS, edit keeps but cannot add a tag.
+          # ADR-0108 (PROPOSED) - group tags (@role, @care-team, @on-call) as chartwarden_app: flag-off refusal, team/role/on-call resolved to active channel members only and frozen, a gap or unavailable roster refuses the send, size limits, insert-only snapshot, RLS, edit keeps but cannot add a tag.
           - { name: "M36 group tags", scripts: "test:m36:group-tags:live" }
           # ADR-0102 (PROPOSED) / WP 6.10 - alarm ingest (watch only) as chartwarden_app: flag-off 404/401, a signed alarm becomes ONE in-app alert capped at warn with a fixed message and no response request or message, replay / concurrency / failed-emit retry alert once, unmapped kinds recorded and refused, rotated / disabled / stale / tampered requests are one 401, the secret is sealed and absent from audit rows, the guard triggers refuse delete / critical / re-enable / mapping edits, cross-tenant credentials and RLS.
           - { name: "M36 alarm ingest", scripts: "test:m36:alarm-ingest:live" }
@@ -1117,6 +1117,12 @@ jobs:
           - {
               name: "M22 staff mint access log",
               scripts: "test:m22:staff-mint-access-log:live",
+            }
+          # ADR-0109 D6/D9 — M16's physician letter and discharge summary are INTERNAL: read by role only (a caseload member of
+          # the decedent's chart gets 404 by id, mint and list), render-only (every hand write refused 422), and never in the portal.
+          - {
+              name: "M22 internal documents",
+              scripts: "test:m22:internal-documents:live",
             }
           # F-235 (#248) — the DocLens → M5 demographics chart writeback (F-231 decisions A1 + B): review
           # completion decrypts server-side, writes provenance and `m22.extraction.commit_requested`; the

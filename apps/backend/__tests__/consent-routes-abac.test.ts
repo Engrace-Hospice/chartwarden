@@ -606,11 +606,11 @@ describe("§4.11 discipline scope — which disciplines read which consent route
     await app.close();
   });
 
-  it("route 28 also admits bereavement_program_coordinator (M16 oversight role), nothing wider", async () => {
+  it("route 28 also admits bereavement_coordinator (M16 oversight role), nothing wider", async () => {
     const { app } = makeServer();
     const url = `/api/v1/consents/post-mortem-eligible/${P_ON}`;
     const read = (headers: Record<string, string>) => app.inject({ method: "GET", url, headers });
-    expect((await read(as("rn_on", "bereavement_program_coordinator"))).statusCode).toBe(200);
+    expect((await read(as("rn_on", "bereavement_coordinator"))).statusCode).toBe(200);
     expect((await read(as("rn_on", "director_of_nursing"))).statusCode).toBe(404);
     expect((await read(as("rn_on", "rn"))).statusCode).toBe(404);
     await app.close();
@@ -778,7 +778,7 @@ describe("§4.11 — the SERVICE layer enforces discipline scope and the on-call
     );
   });
 
-  it("route 17 / 28 service rules admit director_of_nursing / bereavement_program_coordinator", async () => {
+  it("route 17 / 28 service rules admit director_of_nursing / bereavement_coordinator", async () => {
     const s = svc(false);
     await expect(
       s.activePrimaryDpoa(staff("rn_on", ["director_of_nursing"]), ORG, P_ON, NOW),
@@ -790,7 +790,7 @@ describe("§4.11 — the SERVICE layer enforces discipline scope and the on-call
       /not found/i,
     );
     await expect(
-      s.listPostMortemEligible(staff("rn_on", ["bereavement_program_coordinator"]), ORG, P_ON),
+      s.listPostMortemEligible(staff("rn_on", ["bereavement_coordinator"]), ORG, P_ON),
     ).resolves.toBeDefined();
     await expect(
       s.listPostMortemEligible(staff("rn_on", ["director_of_nursing"]), ORG, P_ON),

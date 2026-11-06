@@ -108,6 +108,11 @@ export type DocumentAggregateType =
   | "spiritual_plan"
   | "volunteer_plan"
   | "bereavement_letter"
+  // ADR-0109 D6 / D9 (mig 1347) — M16's two INTERNAL bereavement documents (the approved physician condolence letter and the
+  // closure discharge summary). Each is its own type so M22 can refuse them by aggregate type: caseload membership never admits
+  // them and the portal allowlist never lists them.
+  | "bereavement_physician_letter"
+  | "bereavement_discharge_summary"
   | "visit_confirmation"
   | "evv_verification"
   | "patient_amendment_statement_of_disagreement"
@@ -409,6 +414,15 @@ export interface DocumentDigest {
   readonly createdAt: IsoInstant;
   readonly updatedAt: IsoInstant;
 }
+
+/**
+ * ADR-0109 D6 / D9 — the aggregate types that are INTERNAL to the agency (M16's physician condolence letter and discharge summary):
+ * read by role only, render-only (no hand write), never portal-facing and never enclosed in a payer filing. ONE definition: M22's
+ * internal-documents leaf re-exports it and M25's enclosure rule (`appealEnclosureRefusal`) reads it. A new internal template flags its
+ * renderer descriptor AND is added here (a test fails if they disagree).
+ */
+export const INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES: ReadonlySet<DocumentAggregateType> =
+  new Set<DocumentAggregateType>(["bereavement_physician_letter", "bereavement_discharge_summary"]);
 
 /** §4.3 — the portal-safe digest (internal-only tags stripped; SUD content filtered per consent by the
  * reader). M31 only ever sees this projection, never {@link DocumentDigest}. */

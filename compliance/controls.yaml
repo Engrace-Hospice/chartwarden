@@ -135,7 +135,7 @@ controls:
       - file: apps/backend/src/modules/31-portal/seams/signature-push-recipients.ts
       - file: apps/backend/__tests__/m31-signature-requests.live.test.ts
     gap:
-      reason: The portal list / detail / sign routes (TOTP step-up, Idempotency-Key, session-class permissions, grant ABAC, the per-grant matrix, the DPOA source-consent check through M39's ConsentEvaluator) the uploaded signed-copy attach (same authority matrix as signing, parked for review, never signed by the upload) and the staff create / list / void / review routes (portal.signature_request.create/read/void/review, caseload-or-scope patient guard, one open request per document, no signer text in staff views, read audit) are proven on a real database as chartwarden_app, including the M06 Election Statement and Notice of Rights seam against a real admission. The outbox events carry ids only (proven against the catalog-validating publisher). Accepting an uploaded copy records M39 as an uploaded signed PDF by the reviewer (NPP and Consent to Treat only; an election or notice-of-rights copy is recorded in the M06 admission workflow). The push to the people who can sign (a fixed generic line through M36's sanitizer, eligible people only - a live grant that may sign the document, an active portal account and a verified push device) and the daily reminder are built; the portal classes now hold notifications.endpoint.manage so a signer can register their own phone (self-only routes). The M36 recipient filter and default preferences admit only ACTIVE portal accounts, through a port M31 supplies. Delivery to a real phone through FCM, APNs or Web Push is not proven here (the plan and delivery rows are proven on a real database). Portal sessions may register only a phone's native push token (fcm or apns), never an sms, email or web-push target, and attaching a signed copy needs the same fresh step-up as signing. Accepting an uploaded copy signs an M39 consent, so it also needs M39's own sign gate (consent.sign plus a fresh step-up, proven live); rejecting only reopens the request and needs the review permission alone. Every document has wording the portal shows before signing; the Election Statement, Notice of Rights and Consent to Treat wording is a pending-legal-review placeholder, and one rule (portalSigningBlocker, keyed on the request's version and the current wording) keeps draft wording from being sent, signed, accepted as a paper copy or reminded unless PORTAL_ALLOW_UNREVIEWED_TEMPLATES is set, which is refused at a production boot (proven live). A paper copy staff reject is marked rejected and cannot be attached again, and one upload backs at most one request (unique index, proven live). The signer is recorded as the audit actor. Accepted for now - a paper copy uploaded by a caregiver or agent is accepted without the relationship and patient-unable reason the portal sign path collects, two reviewers racing on one upload can leave an extra active consent for staff to revoke, a portal person's push endpoints are not yet removed when the account is deactivated, the web-push target for staff sessions is not host-allowlisted (an existing M36 behavior), signer evidence columns are plaintext (scrubbed from audit images), there is no retention or legal-hold link for the table yet, and staff create / void do not require step-up (permission + patient scope + idempotency only) - so the control stays partial.
+      reason: The portal list / detail / sign routes (TOTP step-up, Idempotency-Key, session-class permissions, grant ABAC, the per-grant matrix, the DPOA source-consent check through M39's ConsentEvaluator) the uploaded signed-copy attach (same authority matrix as signing, parked for review, never signed by the upload) and the staff create / list / void / review routes (portal.signature_request.create/read/void/review, caseload-or-scope patient guard, one open request per document, no signer text in staff views, read audit) are proven on a real database as chartwarden_app, including the M06 Election Statement and Notice of Rights seam against a real admission. The outbox events carry ids only (proven against the catalog-validating publisher). Accepting an uploaded copy records M39 as an uploaded signed PDF by the reviewer (NPP and Consent to Treat only; an election or notice-of-rights copy is recorded in the M06 admission workflow). The push to the people who can sign (a fixed generic line through M36's sanitizer, eligible people only - a live grant that may sign the document, an active portal account and a verified push device) and the daily reminder are built; the portal classes now hold notifications.endpoint.manage so a signer can register their own phone (self-only routes). The M36 recipient filter and default preferences admit only ACTIVE portal accounts, through a port M31 supplies. Delivery to a real phone through FCM, APNs or Web Push is not proven here (the plan and delivery rows are proven on a real database). Portal sessions may register only a phone's native push token (fcm or apns), never an sms, email or web-push target, and attaching a signed copy needs the same fresh step-up as signing. The staff signature-request keys are held by default only by the two full-catalog roles (administrator, org_admin; migration 1312 backfills existing tenants); every other role gets them only as an admin assigns them. Accepting an uploaded copy signs an M39 consent, so it also needs M39's own sign gate (consent.sign plus a fresh step-up, proven live); rejecting needs the review permission alone. Every document has wording the portal shows before signing; the Election Statement, Notice of Rights and Consent to Treat wording is a pending-legal-review placeholder, and one rule (portalSigningBlocker, keyed on the request's version and the current wording) keeps draft wording from being sent, signed, accepted as a paper copy or reminded unless PORTAL_ALLOW_UNREVIEWED_TEMPLATES is set, which is refused at a production boot (proven live). A paper copy staff reject is marked rejected and cannot be attached again, and one upload backs at most one request (unique index, proven live). A consent an accept signs but cannot record, because the request was voided, rejected or accepted with another consent meanwhile, is revoked by the accept itself (proven live). A review names the copy the reviewer was shown, so a copy replaced since is neither accepted nor refused unseen (409, proven live). A consent left active by an accept that failed after M39 signed (a crash between the two transactions) records the copy it came from, is never reused for another copy, and is revoked by a reject of that copy, a withdrawal of the request or the next accept (proven live). That revoke happens under the review or void permission alone, not M39's revoke gate, because it can only reach a consent a failed accept of the same request left behind. If it fails after a reject or withdrawal has committed it is logged; after a reject the next accept revokes it, after a withdrawal nothing retries it, and a patient e-signing the reopened request does not revoke it. An accepted signed row must name its signer role, grant kind and the record it signed into (migration 1311). Push delivery re-checks the same draft-wording rule, so an event queued before a gate applied sends nothing. The signer is recorded as the audit actor. Accepted for now - a paper copy uploaded by a caregiver or agent is accepted without the relationship and patient-unable reason the portal sign path collects, a portal person's push endpoints are not yet removed when the account is deactivated, the web-push target for staff sessions is not host-allowlisted (an existing M36 behavior), signer evidence columns are plaintext (scrubbed from audit images), there is no retention or legal-hold link for the table yet, and staff create / void do not require step-up (permission + patient scope + idempotency only) - so the control stays partial.
       owner: engineering
       review_by: 2026-12-31
 
@@ -312,7 +312,7 @@ controls:
       - file: scripts/__tests__/harness-bypasses.test.ts
       - file: .github/CODEOWNERS
     gap:
-      reason: The PreToolUse guard is a set of shell-text heuristics for a cooperative agent, not a sandbox (a determined process can read a file through a construct the rules do not anticipate), and the local ledger is an unkeyed hash chain that catches accidents, not tampering. Closes with a filesystem sandbox or secrets kept outside the working tree, plus the ledger head published somewhere the agent cannot write, and code-owner review enforced on .claude/, scripts/harness/ and compliance/ (needs the branch protection in CW-CM-01).
+      reason: The PreToolUse guard is a set of shell-text heuristics for a cooperative agent, not a sandbox (a determined process can read a file through a construct the rules do not anticipate), and the local ledger is an unkeyed hash chain that catches accidents, not tampering. Remote shells are an ask, not a deny (owner decision 2026-11-05) - .claude/settings.json no longer denies ssh/scp/rsync outright, so a non-local ssh/scp/sftp/rsync relies on the guard's per-host human confirmation and on the human authorizing one named host for one session (.claude/rules/phi-and-secrets.md). Closes with a filesystem sandbox or secrets kept outside the working tree, plus the ledger head published somewhere the agent cannot write, and code-owner review enforced on .claude/, scripts/harness/ and compliance/ (needs the branch protection in CW-CM-01).
       owner: engineering
       review_by: 2027-01-31
 
@@ -386,6 +386,102 @@ controls:
       - script: arch:ai-messaging-readonly
       - script: test:m30:phi-scope:live
       - script: test:m32:kill-switch-role-key:live
+
+  # ---------------------------------------------------------------- M16 bereavement program (ADR-0109, PR 1)
+  - id: CW-BR-01
+    title: Bereavement physician condolence letter — a human holding a bereavement oversight role (clinical_supervisor, director_of_nursing, bereavement_coordinator, compliance_officer) approves it before anything is disclosed; the recipient (intake-resolved attending or the reviewer's pick) must be an ACTIVE member of this organization on every approve; the reviewer's note is sealed with the tenant DEK and never placed on the outbox (the render request carries the death date only and M22 pulls the note at render time through an org-explicit port); a decline reason is scrubbed from the audit trail; the letter is not delivered to the attending — it is an internal document readable only by oversight and the scope-bypass roles. The role-key fix (bereavement_coordinator, the key migration 1234 grants, replacing the spec's bereavement_program_coordinator that matched no role) now gives that role M16 oversight and M39 post-mortem access
+    hipaa: ["164.312(a)(1)", "164.312(b)", "164.312(a)(2)(iv)"]
+    soc2: ["CC6.1", "CC6.3", "C1.1"]
+    status: implemented
+    evidence:
+      - script: test:rls:live:m16
+      - script: test:m16:routes:live
+      - script: test:m16:bereavement-intake:live
+      - script: test:m16:document-rendered:live
+      - script: arch:audit-denylist-sync
+      - script: arch:abac-predicates
+      - file: apps/backend/src/modules/16-bereavement/routes/letter-service-drizzle.ts
+      - file: apps/backend/src/modules/16-bereavement/lifecycle/physician-letter.ts
+      - file: apps/backend/src/modules/16-bereavement/routes/physician-letter.routes.ts
+      - file: packages/db/migrations/1345_m16_physician_letter.sql
+      - file: apps/backend/__tests__/bereavement-physician-letter.test.ts
+      - script: test:m22:internal-documents:live
+      - file: apps/backend/src/modules/16-bereavement/seams/physician-letter-note-for-org.ts
+      - file: apps/backend/__tests__/document-render-consumer.test.ts
+
+  - id: CW-BR-02
+    title: Pre-death bereavement risk assessment — only an MSW, chaplain or bereavement counselor on the patient's care team (or bereavement oversight) reads or writes the draft; volunteers and every portal session are denied; an unresolvable admission or a failed read denies; the substance-use factor is stored unknown unless the writer is cleared for 42 CFR Part 2, and an uncleared writer's save keeps the stored substance-use value rather than overwriting it
+    hipaa: ["164.312(a)(1)", "164.308(a)(4)(ii)(B)", "164.312(b)"]
+    soc2: ["CC6.1", "CC6.3", "C1.1"]
+    status: implemented
+    evidence:
+      - script: arch:abac-predicates
+      - script: arch:abac-composed
+      - script: test:m16:routes:live
+      - script: test:rls:live:m16
+      - file: apps/backend/src/modules/16-bereavement/abac-predicates.ts
+      - file: apps/backend/__tests__/bereavement-pre-death-assessor.test.ts
+      - file: packages/db/migrations/1343_m16_risk_assessment_draft.sql
+
+  - id: CW-BR-03
+    title: Bereavement discharge summary and physician letter are INTERNAL documents — M22 admits only the scope-bypass roles and bereavement oversight to read them (never caseload membership, so not a bereavement volunteer who served the patient), refuses to make one patient-facing, never lists them to anyone else, and the portal reader refuses them whatever patient_facing says; they are render-only — every hand write (PATCH, tags, links, versions, uploads and verified uploads) is refused 422 DOCUMENT_INTERNAL_ONLY, or 404 to anyone who may not read them; they are refused as payer enclosures in M25 appeal/ADR/audit filings (appealEnclosureRefusal → internal_only); M22's oversight role set is pinned to M16's BEREAVEMENT_OVERSIGHT_ROLES; the summary labels contacts 'Contact N' with the relationship, never a name, and carries no contact notes, care goals, risk factors or substance-use data
+    hipaa: ["164.312(a)(1)", "164.308(a)(4)(ii)(B)", "164.312(c)(1)"]
+    soc2: ["CC6.1", "CC6.3", "C1.1"]
+    status: implemented
+    evidence:
+      - script: test
+      - script: test:m16:cron-workers:live
+      - script: test:m16:opt-out-changed:live
+      - script: test:m16:document-rendered:live
+      - script: arch:pdf-templates
+      - script: arch:outbox-bindings
+      - file: apps/backend/src/modules/22-documents/internal-documents.ts
+      - file: apps/backend/__tests__/m22-internal-documents.test.ts
+      - file: apps/backend/__tests__/document-readers.test.ts
+      - file: apps/backend/__tests__/m16-document-requests.test.ts
+      - file: apps/backend/src/modules/16-bereavement/render-payloads/discharge-summary.ts
+      - file: packages/types/src/render-payloads/m16-bereavement.ts
+      - script: test:m22:internal-documents:live
+      - file: apps/backend/__tests__/m22-internal-documents.live.test.ts
+      - file: packages/types/src/appeal-packet.ts
+      - file: apps/backend/src/modules/25-remittance/routes/appeal-packet-sources.ts
+      - file: apps/backend/__tests__/m22-adr-response-packet.test.ts
+
+  - id: CW-BR-04
+    title: Bereavement care goals are PHI sealed at rest with the tenant DEK (cipher column bereaved_contact.care_goals), withheld from the volunteer scope and every portal session, erased by the bereavement eraser, and never placed on an outbox event or in the discharge summary
+    hipaa: ["164.312(a)(2)(iv)", "164.312(a)(1)", "164.312(b)"]
+    soc2: ["CC6.1", "C1.1"]
+    status: implemented
+    evidence:
+      - script: test:m16:routes:live
+      - script: test:m16:cron-workers:live
+      - script: test:m34:tenant-key-provider:live
+      - file: apps/backend/src/modules/16-bereavement/care-goals.ts
+      - file: apps/backend/src/modules/16-bereavement/bereavement-crypto.ts
+      - file: apps/backend/src/modules/16-bereavement/erasers/bereavement-eraser.ts
+      - file: apps/backend/__tests__/bereavement-care-goals.test.ts
+
+  - id: CW-BR-05
+    title: Bereavement no_mailings opt-out is enforced, not advisory — the contact stays active and its calls continue, mailed floor items move to the contact's own allowed non-mail kinds (already-scheduled rows converted in place), the preference raises its own event so M36 keeps the family channel, a rescind restores it, and the portal self-service route can set it only for the session's own contact
+    hipaa: ["164.312(a)(1)", "164.312(b)"]
+    soc2: ["CC6.1", "CC6.3"]
+    status: implemented
+    evidence:
+      - script: test:m16:routes:live
+      - script: arch:abac-predicates
+      - file: packages/bereavement/src/outreach-kinds.ts
+      - file: apps/backend/src/modules/16-bereavement/lifecycle/contact.ts
+      - file: apps/backend/src/modules/31-portal/routes/write.routes.ts
+
+  - id: CW-BR-06
+    title: The bereavement_record eraser runs on the destruction role — migration 1348 grants it SELECT, DELETE and column-limited UPDATE on the shred columns with org-pinned policies, the append-only risk-score ledger admits a non-superuser destruction-role UPDATE only, and the app role is not widened
+    hipaa: ["164.310(d)(2)(i)", "164.312(a)(1)"]
+    soc2: ["CC6.5", "C1.2"]
+    status: implemented
+    evidence:
+      - script: test:m16:routes:live
+      - file: packages/db/migrations/1348_m16_destruction_grants.sql
+      - file: apps/backend/src/modules/16-bereavement/erasers/bereavement-eraser.ts
 
 # Every one of these must be cited by at least one row (the gate enforces it), so a row cannot be
 # deleted to make a gap disappear.

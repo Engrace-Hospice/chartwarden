@@ -238,6 +238,10 @@ describe.skipIf(!DB_URL)("F-134 — M16's discharge-death secondary verifier, LI
 
   const resolveAdmission = (organizationId: string, admissionId: string) =>
     admissionSchedulingContextForOrg(handle.db, organizationId, admissionId);
+  /** ADR-0109 D6 — the physician letters on a plan (the plan-opening delivery opens exactly one). */
+  const lettersFor = async (planId: string) =>
+    (await admin.query("SELECT * FROM bereavement_physician_letter WHERE plan_id=$1", [planId]))
+      .rows as Array<Record<string, unknown>>;
 
   it("opens the plan on its own when the primary consumer is not bound", async () => {
     const { admissionId, patientId } = await decedent(ORG_A, "2026-05-01");
@@ -258,6 +262,11 @@ describe.skipIf(!DB_URL)("F-134 — M16's discharge-death secondary verifier, LI
     expect(plans[0].patient_id).toBe(patientId);
     expect(plans[0].status).toBe("eligible");
     expect(plans[0].death_date).toBe("2026-05-01");
+    // ADR-0109 D6 — the safety net opens the physician letter too, pending review and due death + 2 days.
+    const letters = await lettersFor(plans[0].id);
+    expect(letters).toHaveLength(1);
+    expect(letters[0]).toMatchObject({ status: "pending_review", attending_user_id: null });
+    expect((letters[0].due_at as Date).toISOString()).toBe("2026-05-03T00:00:00.000Z");
   });
 
   it("is a true no-op when the primary consumer already opened the plan", async () => {
@@ -278,6 +287,7 @@ describe.skipIf(!DB_URL)("F-134 — M16's discharge-death secondary verifier, LI
     await dispatcher.tick();
     const plans = await plansFor(admissionId);
     expect(plans).toHaveLength(1); // never two, even though both consumers ran off the same death
+    expect(await lettersFor(plans[0].id)).toHaveLength(1); // nor two letters
   });
 
   it("a non-death discharge is a no-op with no seam read", async () => {
@@ -342,5 +352,7 @@ describe.skipIf(!DB_URL)("F-134 — M16's discharge-death secondary verifier, LI
     );
     await dispatcher.tick();
     expect(await plansFor(admissionId)).toHaveLength(1);
+    const [plan] = await plansFor(admissionId);
+    expect(await lettersFor(plan.id)).toHaveLength(1);
   });
 });

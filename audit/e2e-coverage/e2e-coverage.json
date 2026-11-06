@@ -1583,7 +1583,7 @@
       "axeReached": false
     }
   ],
-  "dynamicWebScreens": 114,
+  "dynamicWebScreens": 115,
   "dynamicAxeReachedCount": 28,
   "dynamicExcluded": [
     {
@@ -1679,6 +1679,11 @@
     {
       "id": "bereavement.plan.seed",
       "path": "/bereavement/plans/:planId/seed",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "bereavement.predeath",
+      "path": "/bereavement/pre-death/:admissionId",
       "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
     },
     {

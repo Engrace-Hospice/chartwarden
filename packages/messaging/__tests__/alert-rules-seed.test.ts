@@ -236,6 +236,10 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m30.alerts.cop_review_overdue",
       "mdm.baa_expiring",
       "mdm.physician_deactivated",
+      // ADR-0109 D7 — the M16 bereavement program's oversight alerts.
+      "m16.bereavement.death_intake",
+      "m16.bereavement.physician_letter_pending_review",
+      "m16.bereavement.risk_assessment_overdue",
     ]);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();

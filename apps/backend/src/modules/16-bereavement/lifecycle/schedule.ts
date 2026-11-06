@@ -22,14 +22,17 @@ import {
   BEREAVEMENT_WINDOW_DAYS,
   type BereavementCadenceItem,
   type BereavementCadenceMark,
+  CONTACTABLE_OUTREACH_KINDS,
   OUTREACH_LATE_ATTEMPT_GRACE_DAYS,
   OUTREACH_MODALITY_RANK,
   effectiveCadence,
+  isMailingOutreachKind,
   isOutreachDueAtWithinCeiling,
   validateTenantCadence,
 } from "@chartwarden/bereavement";
 import type {
   BereavementAnniversaryMark,
+  BereavementOptOutKind,
   BereavementOutreachKind,
   BereavementRiskTier,
   IsoInstant,
@@ -95,6 +98,25 @@ export function resolveOutreachKind(
   const atOrAbove = ranked.find((k) => OUTREACH_MODALITY_RANK[k] >= floorRank);
   const chosen = atOrAbove ?? ranked[ranked.length - 1];
   return { kind: chosen as BereavementOutreachKind, substituted: true };
+}
+
+/**
+ * ADR-0109 D10 — a contact's allowed kinds once its OPEN opt-outs are applied. Pure. A `no_mailings` row strips the mailed
+ * kinds (cards, letters, invitations), so `resolveOutreachKind` re-modalizes a mailed floor item to a call: the touchpoint
+ * is still made, only not by post. Any other open kind (`full`, `channel_specific`, `pause_temporarily`) is NOT a mailing
+ * preference and changes nothing here — their semantics are a separate, ticketed concern.
+ *
+ * `prefs` undefined / empty is "no stated preference" (everything allowed): it becomes the contactable kinds minus the
+ * mailed ones. A contact who allowed ONLY mailed kinds ends up with phone, because a floor contact is never dropped.
+ */
+export function effectiveAllowedKinds(
+  prefs: ReadonlyArray<BereavementOutreachKind> | undefined,
+  openOptOuts: ReadonlyArray<{ readonly optOutKind: BereavementOptOutKind }>,
+): ReadonlyArray<BereavementOutreachKind> | undefined {
+  if (!openOptOuts.some((o) => o.optOutKind === "no_mailings")) return prefs;
+  const base = prefs && prefs.length > 0 ? prefs : CONTACTABLE_OUTREACH_KINDS;
+  const kept = base.filter((kind) => !isMailingOutreachKind(kind));
+  return kept.length > 0 ? kept : ["phone_call"];
 }
 
 /** Materialize one cadence item against a death anchor. */
@@ -165,10 +187,36 @@ export function generateOutreachSchedule(
 }
 
 /**
+ * ADR-0109 D4 — the floor contacts a TIER CHANGE adds to a live schedule. Pure and forward-only, and it only
+ * ever ADDS: it returns the new tier's floor items (materialized exactly like the initial schedule: same
+ * due dates, same survivor modality resolution) whose mark the plan does not hold yet and whose due date is
+ * not before `fromIso`. It never cancels, moves or re-modalizes an existing row, so a family that moves from
+ * high back to low keeps every contact it was already given.
+ *
+ * `existingMarks` is the caller's judgement of what the plan already holds: the marks of every non-cancelled
+ * row (`cadence_mark`, or `inferLegacyMark` for a row written before the column).
+ */
+export function planScheduleTopUp(
+  deathDate: string,
+  contact: OutreachScheduleContact,
+  existingMarks: Iterable<BereavementCadenceMark>,
+  fromIso: IsoInstant,
+): ReadonlyArray<PlannedOutreach> {
+  const held = new Set(existingMarks);
+  // `one_month` is the deprecated alias of the day-28 initial outreach: a plan that still holds the old
+  // day-30 call is not given a second call two days earlier.
+  if (held.has("one_month")) held.add("initial_outreach");
+  return generateOutreachSchedule(deathDate, contact, { fromIso }).filter(
+    (row) => !held.has(row.mark),
+  );
+}
+
+/**
  * The `bereavement_anniversary_reminder` marks a plan seeds at open (§2.2 `seedRosterAndSchedule`). Derived
- * from the tier's cadence rather than hard-coded, so an elevated-risk plan gets the
- * `nine_month_high_risk_only` row and a low-risk plan does not — a hard-coded list would seed a reminder
- * for a touchpoint the cadence never scheduled, and the §4.9 lookahead cron would alert on a phantom.
+ * from the tier's cadence rather than hard-coded, so a reminder exists only for a touchpoint the cadence
+ * actually schedules — a hard-coded list would seed a reminder for a contact the cadence never made, and the
+ * §4.9 lookahead cron would alert on a phantom. Since ADR-0109 D2 every tier schedules the same four
+ * milestones (3, 6, 9 months and the anniversary).
  */
 export function anniversaryMarksForTier(
   tier: BereavementRiskTier,

@@ -49,6 +49,8 @@ export const M16_ERROR_STATUS = {
   CONSENT_RECORD_IN_USE: 409,
   OPT_OUT_REASON_REQUIRED: 422,
   OPT_OUT_CHANNEL_KINDS_REQUIRED: 422,
+  /** ADR-0109 D10 — `no_mailings` is about the mailed kinds as a class; it names no channel. */
+  OPT_OUT_CHANNEL_KINDS_NOT_ALLOWED: 422,
   OPT_OUT_RESCIND_WINDOW_EXPIRED: 409,
   UNREACHABLE_THRESHOLD_NOT_MET: 422,
   CONTACT_DEATH_VERIFICATION_REQUIRED: 422,
@@ -75,6 +77,27 @@ export const M16_ERROR_STATUS = {
   /** §4.6 — the Layer-2 write-back found no deterministic row to narrate. It refuses rather than appending an
    *  `llm_augmented` row whose `rule_tier` came from nowhere (M16-T05). */
   RISK_SCORE_NOT_FOUND: 404,
+  // ADR-0109 D3 — the assessment-task ledger (a human-appended score completes a checkpoint)
+  ASSESSMENT_TASK_NOT_FOUND: 404,
+  ASSESSMENT_TASK_NOT_OPEN: 409,
+  ASSESSMENT_TASK_CONTACT_MISMATCH: 422,
+  /** ADR-0109 — a contact has at most 3 care goals of 1 to 280 characters each. */
+  CARE_GOALS_INVALID: 422,
+  // ADR-0109 D5 — the pre-death draft is writable only while no plan exists for the admission.
+  DRAFT_LOCKED: 409,
+  // ADR-0109 D6 — the physician condolence letter (an internal attending clinician; a human reviews it before it is disclosed)
+  PHYSICIAN_LETTER_NOT_FOUND: 404,
+  PHYSICIAN_LETTER_NOT_PENDING: 409,
+  PHYSICIAN_LETTER_ATTENDING_REQUIRED: 422,
+  /** The reviewer named a user who holds no active membership in this organization (the letter stays internal). */
+  PHYSICIAN_LETTER_ATTENDING_INVALID: 422,
+  PHYSICIAN_LETTER_NOTE_TOO_LONG: 422,
+  PHYSICIAN_LETTER_DECLINE_REASON_TOO_SHORT: 422,
+  /** Approval is refused with no cipher bound: a note sealed nowhere would be plaintext in a ciphertext column. */
+  PHYSICIAN_LETTER_NOTE_STORAGE_UNAVAILABLE: 503,
+  /** Review follow-up — a schedule is materialized only for a contact still in the program (proposed / active); an opted-out, deceased,
+   *  unreachable or ineligible contact is refused rather than silently handed a fresh schedule. */
+  CONTACT_NOT_ENGAGEABLE: 409,
   // Optimistic concurrency (§2.5)
   STALE_VERSION: 412,
   // Structural — an event dispatched from a state that does not accept it (§2.2–§2.4 graphs).

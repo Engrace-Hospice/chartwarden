@@ -35,6 +35,7 @@ import type {
   MswRiskFactor,
   ScaleSeriesPoint,
 } from "@chartwarden/types";
+import { type ManualRiskFactors, mergeFactorValue } from "./manual-factors";
 
 // ── The M15 MSW vocabulary → the 8 D17 rubric slots ──────────────────────────────────────────────────
 
@@ -97,6 +98,12 @@ export const SUD_REDACTION_CATEGORY = "sud" as const;
 
 /** The rubric slot 42 CFR Part 2 redaction makes unknowable (the ONLY slot M15's SUD filter can empty). */
 export const SUD_GATED_FACTOR: BereavementRiskFactorName = "activeSubstanceUse";
+
+/** Drop the Part 2-gated slot from a human-stated vector (what an uncleared reader may not contribute). */
+export function omitGatedFactors(factors: ManualRiskFactors): ManualRiskFactors {
+  const { [SUD_GATED_FACTOR]: _gated, ...rest } = factors;
+  return rest;
+}
 
 /** Normalize an M15 factor string to the {@link MSW_FACTOR_ALIASES} key shape: lowercase, every run of
  *  non-alphanumerics collapsed to a single `_`, no leading/trailing `_`. */
@@ -179,6 +186,12 @@ export interface BereavementRiskEvidence {
    * removed any SUD finding, so `activeSubstanceUse` cannot be scored — not that there was none.
    */
   readonly sudDisclosureAllowed: boolean;
+  /**
+   * ADR-0109 D5 — slots a human stated (a counselor's recompute, the carried pre-death draft). Merged AFTER the
+   * derivation with "true wins" (see `manual-factors.ts`): they can fill an `unknown` or raise a slot, never lower a
+   * derived `true`. A manual `activeSubstanceUse` counts only when `sudDisclosureAllowed`.
+   */
+  readonly manualFactors?: ManualRiskFactors;
 }
 
 /** The derivation's result: the vector `computeBereavementRiskScore` consumes, plus the provenance the
@@ -250,10 +263,27 @@ export function deriveRiskFactors(evidence: BereavementRiskEvidence): DerivedRis
   };
 
   return {
-    factors,
+    factors: applyManualFactors(factors, evidence),
     redactedCategories: evidence.sudDisclosureAllowed ? [] : [SUD_REDACTION_CATEGORY],
     unmappedMswFactors: unmapped,
   };
+}
+
+/** ADR-0109 D5 — fold the human-stated slots into the derived vector ("true wins"; the SUD slot only when cleared). */
+function applyManualFactors(
+  derived: BereavementRiskFactorInputs,
+  evidence: BereavementRiskEvidence,
+): BereavementRiskFactorInputs {
+  const manual = evidence.manualFactors;
+  if (manual === undefined) return derived;
+  const merged: Record<BereavementRiskFactorName, BereavementFactorValue> = { ...derived };
+  for (const name of Object.keys(derived) as BereavementRiskFactorName[]) {
+    const stated = manual[name];
+    if (stated === undefined) continue;
+    if (name === SUD_GATED_FACTOR && !evidence.sudDisclosureAllowed) continue;
+    merged[name] = mergeFactorValue(derived[name], stated);
+  }
+  return merged;
 }
 
 /** An `unknown` from M9 still gets rule 1's second chance: an MSW that assessed the death circumstances and

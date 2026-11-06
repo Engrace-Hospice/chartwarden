@@ -4785,6 +4785,23 @@ export interface paths {
         patch: operations["patchApiV1BereavementContactsByContactId"];
         trace?: never;
     };
+    "/api/v1/bereavement/contacts/{contactId}/care-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Record the contact's care goals (ADR-0109, #41) — at most 3 goals of 1..280 characters, sealed with the tenant DEK; `If-Match` and `Idempotency-Key` required; an empty list clears them; a volunteer neither reads nor writes them */
+        put: operations["putApiV1BereavementContactsByContactIdCareplan"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bereavement/contacts/{contactId}/confirm": {
         parameters: {
             query?: never;
@@ -5074,6 +5091,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bereavement/physician-letters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The physician condolence-letter review queue (`?status=`), oldest due first, cursor-paginated; bereavement oversight only (ADR-0109 D6, #38) */
+        get: operations["getApiV1BereavementPhysicianletters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/physician-letters/{letterId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a pending letter and request its render in the same transaction — an optional personal note (at most 1000 characters, sealed at rest) and, when the care team resolved no attending, the internal clinician who should receive it (an active member of the organization); `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #39) */
+        post: operations["postApiV1BereavementPhysicianlettersByLetterIdApprove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/physician-letters/{letterId}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline a pending letter with a documented reason of at least 20 characters; `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #40) */
+        post: operations["postApiV1BereavementPhysicianlettersByLetterIdDecline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bereavement/plans": {
         parameters: {
             query?: never;
@@ -5100,6 +5168,23 @@ export interface paths {
         };
         /** Bereavement plan detail — the header with its rolled-up roster + risk; an off-caseload plan 404s (never 403) so the response can't reveal a patient died (§4.1 #2) */
         get: operations["getApiV1BereavementPlansByPlanId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/plans/{planId}/assessment-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The plan's two assessment checkpoints per survivor (initial d28, midpoint d180) with the human-appended score that completed each; empty when the reader's scope holds no clinical content (ADR-0109 D3, #37) */
+        get: operations["getApiV1BereavementPlansByPlanIdAssessmenttasks"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5166,7 +5251,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it (§4.1 #10) */
+        /** The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it; `dischargeSummaryDocumentId` (the internal discharge summary, once rendered) is shown to oversight only (§4.1 #10, ADR-0109 D9) */
         get: operations["getApiV1BereavementPlansByPlanIdClosure"];
         put?: never;
         post?: never;
@@ -5261,6 +5346,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bereavement/plans/{planId}/physician-letter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The plan's physician condolence letter; 404 for a plan that has none; bereavement oversight only (ADR-0109 D6, #38) */
+        get: operations["getApiV1BereavementPlansByPlanIdPhysicianletter"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bereavement/plans/{planId}/recompute-risk": {
         parameters: {
             query?: never;
@@ -5340,6 +5442,24 @@ export interface paths {
         put?: never;
         /** Seed the survivor roster from M5 and materialize the D4 platform-floor schedule — initiating → active (§4.1 #5) */
         post: operations["postApiV1BereavementPlansByPlanIdSeedrosterandschedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/pre-death-assessments/{admissionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The pre-death risk-assessment draft for an admission — eight tri-state factors, an empty all-unknown draft at version 0 when nothing is recorded; the care-team MSW / chaplain / bereavement counselor or oversight only (ADR-0109 D5, #35) */
+        get: operations["getApiV1BereavementPredeathassessmentsByAdmissionId"];
+        /** Record the pre-death risk-assessment draft — replaces the whole eight-factor vector; `If-Match` (0 for the first write) and `Idempotency-Key` required; the substance-use slot is stored `unknown` unless the writer is cleared for 42 CFR Part 2; 409 `DRAFT_LOCKED` once a bereavement plan exists (ADR-0109 D5, #36) */
+        put: operations["putApiV1BereavementPredeathassessmentsByAdmissionId"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -15810,7 +15930,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Search staff, the linked patient and (ADR-0107, PROPOSED; only while the tenant flag `messaging.group_tags` is on) the group tags `role`, `team` and `on_call` eligible for a structured reference. A group candidate is a label: who is behind it is never listed */
+        /** Search staff, the linked patient and (ADR-0108, PROPOSED; only while the tenant flag `messaging.group_tags` is on) the group tags `role`, `team` and `on_call` eligible for a structured reference. A group candidate is a label: who is behind it is never listed */
         get: operations["getApiV1MessagingChannelsByIdMentioncandidates"];
         put?: never;
         post?: never;
@@ -15847,7 +15967,7 @@ export interface paths {
         /** Paginated message history (bodies decrypted for entitled readers) */
         get: operations["getApiV1MessagingChannelsByIdMessages"];
         put?: never;
-        /** Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original). A reference of kind `role`, `team` or `on_call` is a group tag (ADR-0107, PROPOSED; tenant flag `messaging.group_tags`): the server resolves it to people who are active members of the channel, freezes them, and sends each one an ordinary mention notification. Typed 422: GROUP_TAGS_DISABLED, GROUP_TAG_INVALID, GROUP_TAG_EMPTY, GROUP_TAG_TOO_MANY (50 people per tag, 3 tags per message), GROUP_TAG_ON_CALL_UNRESOLVED (no confirmed on-call person; nothing is sent) */
+        /** Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original). A reference of kind `role`, `team` or `on_call` is a group tag (ADR-0108, PROPOSED; tenant flag `messaging.group_tags`): the server resolves it to people who are active members of the channel, freezes them, and sends each one an ordinary mention notification. Typed 422: GROUP_TAGS_DISABLED, GROUP_TAG_INVALID, GROUP_TAG_EMPTY, GROUP_TAG_TOO_MANY (50 people per tag, 3 tags per message), GROUP_TAG_ON_CALL_UNRESOLVED (no confirmed on-call person; nothing is sent) */
         post: operations["postApiV1MessagingChannelsByIdMessages"];
         delete?: never;
         options?: never;
@@ -21228,6 +21348,23 @@ export interface paths {
         get: operations["getApiV1PortalAssessmentsTrend"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/bereavement/mailing-preference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop (allowMailings false) or resume (true) bereavement MAILINGS only — the contact stays in the program and calls continue (M16, ADR-0109 D10) */
+        post: operations["postApiV1PortalBereavementMailingpreference"];
         delete?: never;
         options?: never;
         head?: never;
@@ -32278,6 +32415,8 @@ export interface operations {
             content: {
                 "application/json": {
                     decision: "accepted" | "rejected";
+                    /** Format: uuid */
+                    uploadedDocumentId: string;
                 };
             };
         };
@@ -41976,7 +42115,61 @@ export interface operations {
                         unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
+                        mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1BereavementContactsByContactIdCareplan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    goals: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        planId: string;
+                        status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                        displayName: string;
+                        relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                        preferredLanguageIso639: string;
+                        portalAccountId: string | null;
+                        consentRecordId: string | null;
+                        allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                        volunteerVisibleOnly: boolean;
+                        confirmedAt: string | null;
+                        optedOutAt: string | null;
+                        unreachableAt: string | null;
+                        unreachableProposed: boolean;
+                        unreachableProposedAt: string | null;
+                        deceasedAt: string | null;
+                        mayRescindOptOut: boolean;
+                        mailingsAllowed: boolean;
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -42027,7 +42220,9 @@ export interface operations {
                         unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
+                        mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -42077,7 +42272,9 @@ export interface operations {
                         unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
+                        mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -42131,7 +42328,9 @@ export interface operations {
                         unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
+                        mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -42228,7 +42427,9 @@ export interface operations {
                         unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
+                        mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -42278,7 +42479,9 @@ export interface operations {
                         unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
+                        mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -42299,7 +42502,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    optOutKind: "full" | "channel_specific" | "pause_temporarily";
+                    optOutKind: "full" | "channel_specific" | "pause_temporarily" | "no_mailings";
                     channelKinds?: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
                     reason?: string;
                     sourceKind: "counselor_recorded" | "portal_self_service" | "written_request_uploaded";
@@ -42331,7 +42534,9 @@ export interface operations {
                         unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
+                        mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -42424,7 +42629,9 @@ export interface operations {
                         unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
+                        mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -42462,6 +42669,7 @@ export interface operations {
                             kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                             status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                             anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                            cadenceMark: string | null;
                             dueAt: string;
                             lateGraceUntil: string;
                             startedAt: string | null;
@@ -42479,6 +42687,7 @@ export interface operations {
                             kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                             status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                             anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                            cadenceMark: string | null;
                             dueAt: string;
                             lateGraceUntil: string;
                             startedAt: string | null;
@@ -42601,6 +42810,7 @@ export interface operations {
                         kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                         status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                         anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        cadenceMark: string | null;
                         dueAt: string;
                         lateGraceUntil: string;
                         startedAt: string | null;
@@ -42660,6 +42870,7 @@ export interface operations {
                         kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                         status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                         anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        cadenceMark: string | null;
                         dueAt: string;
                         lateGraceUntil: string;
                         startedAt: string | null;
@@ -42706,6 +42917,7 @@ export interface operations {
                         kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                         status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                         anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        cadenceMark: string | null;
                         dueAt: string;
                         lateGraceUntil: string;
                         startedAt: string | null;
@@ -42750,6 +42962,7 @@ export interface operations {
                         kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                         status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                         anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        cadenceMark: string | null;
                         dueAt: string;
                         lateGraceUntil: string;
                         startedAt: string | null;
@@ -42796,6 +43009,7 @@ export interface operations {
                         kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                         status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                         anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        cadenceMark: string | null;
                         dueAt: string;
                         lateGraceUntil: string;
                         startedAt: string | null;
@@ -42840,6 +43054,7 @@ export interface operations {
                         kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                         status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                         anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        cadenceMark: string | null;
                         dueAt: string;
                         lateGraceUntil: string;
                         startedAt: string | null;
@@ -42848,6 +43063,138 @@ export interface operations {
                         assigneeUserId: string | null;
                         renderedDocumentId: string | null;
                         sourceEncounterId: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementPhysicianletters: {
+        parameters: {
+            query?: {
+                status?: "pending_review" | "approved" | "rendered" | "declined";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            letterId: string;
+                            planId: string;
+                            patientId: string;
+                            status: "pending_review" | "approved" | "rendered" | "declined";
+                            dueAt: string;
+                            createdAt: string;
+                            attendingUserId: string | null;
+                            hasPersonalNote: boolean;
+                            declineReason: string | null;
+                            reviewedAt: string | null;
+                            renderedDocumentId: string | null;
+                            version: number;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementPhysicianlettersByLetterIdApprove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                letterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    personalNote?: string;
+                    /** Format: uuid */
+                    attendingUserId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        letterId: string;
+                        planId: string;
+                        patientId: string;
+                        status: "pending_review" | "approved" | "rendered" | "declined";
+                        dueAt: string;
+                        createdAt: string;
+                        attendingUserId: string | null;
+                        hasPersonalNote: boolean;
+                        declineReason: string | null;
+                        reviewedAt: string | null;
+                        renderedDocumentId: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementPhysicianlettersByLetterIdDecline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                letterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        letterId: string;
+                        planId: string;
+                        patientId: string;
+                        status: "pending_review" | "approved" | "rendered" | "declined";
+                        dueAt: string;
+                        createdAt: string;
+                        attendingUserId: string | null;
+                        hasPersonalNote: boolean;
+                        declineReason: string | null;
+                        reviewedAt: string | null;
+                        renderedDocumentId: string | null;
                         version: number;
                     };
                 };
@@ -42972,7 +43319,9 @@ export interface operations {
                             unreachableProposedAt: string | null;
                             deceasedAt: string | null;
                             mayRescindOptOut: boolean;
+                            mailingsAllowed: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            careGoals?: string[];
                             version: number;
                         }[];
                         stats: {
@@ -42991,6 +43340,46 @@ export interface operations {
                         } | null;
                         version: number;
                         updatedAt: string;
+                        redactedCategories: ("sud" | "clinical_risk")[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementPlansByPlanIdAssessmenttasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            taskId: string;
+                            planId: string;
+                            contactId: string;
+                            taskKind: "initial_assessment" | "midpoint_reassessment";
+                            status: "scheduled" | "completed" | "missed" | "cancelled";
+                            dueAt: string;
+                            lateGraceUntil: string;
+                            completedAt: string | null;
+                            completedByMembershipId: string | null;
+                            riskScoreId: string | null;
+                            assigneeUserId: string | null;
+                            version: number;
+                        }[];
                         redactedCategories: ("sud" | "clinical_risk")[];
                     };
                 };
@@ -43073,7 +43462,9 @@ export interface operations {
                             unreachableProposedAt: string | null;
                             deceasedAt: string | null;
                             mayRescindOptOut: boolean;
+                            mailingsAllowed: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            careGoals?: string[];
                             version: number;
                         }[];
                         stats: {
@@ -43174,7 +43565,9 @@ export interface operations {
                             unreachableProposedAt: string | null;
                             deceasedAt: string | null;
                             mayRescindOptOut: boolean;
+                            mailingsAllowed: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            careGoals?: string[];
                             version: number;
                         }[];
                         stats: {
@@ -43273,7 +43666,9 @@ export interface operations {
                             unreachableProposedAt: string | null;
                             deceasedAt: string | null;
                             mayRescindOptOut: boolean;
+                            mailingsAllowed: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            careGoals?: string[];
                             version: number;
                         }[];
                         stats: {
@@ -43333,6 +43728,7 @@ export interface operations {
                             contactsOptedOutCount: number;
                         };
                         bereavementSummaryDocumentId: string | null;
+                        dischargeSummaryDocumentId: string | null;
                     };
                 };
             };
@@ -43392,7 +43788,9 @@ export interface operations {
                         unreachableProposedAt: string | null;
                         deceasedAt: string | null;
                         mayRescindOptOut: boolean;
+                        mailingsAllowed: boolean;
                         currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        careGoals?: string[];
                         version: number;
                     };
                 };
@@ -43440,6 +43838,7 @@ export interface operations {
                             contactsOptedOutCount: number;
                         };
                         bereavementSummaryDocumentId: string | null;
+                        dischargeSummaryDocumentId: string | null;
                     };
                 };
             };
@@ -43479,6 +43878,7 @@ export interface operations {
                         kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                         status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                         anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        cadenceMark: string | null;
                         dueAt: string;
                         lateGraceUntil: string;
                         startedAt: string | null;
@@ -43528,6 +43928,7 @@ export interface operations {
                             kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                             status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                             anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                            cadenceMark: string | null;
                             dueAt: string;
                             lateGraceUntil: string;
                             startedAt: string | null;
@@ -43620,7 +44021,9 @@ export interface operations {
                             unreachableProposedAt: string | null;
                             deceasedAt: string | null;
                             mayRescindOptOut: boolean;
+                            mailingsAllowed: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            careGoals?: string[];
                             version: number;
                         }[];
                         stats: {
@@ -43647,6 +44050,43 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BereavementPlansByPlanIdPhysicianletter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        letterId: string;
+                        planId: string;
+                        patientId: string;
+                        status: "pending_review" | "approved" | "rendered" | "declined";
+                        dueAt: string;
+                        createdAt: string;
+                        attendingUserId: string | null;
+                        hasPersonalNote: boolean;
+                        declineReason: string | null;
+                        reviewedAt: string | null;
+                        renderedDocumentId: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1BereavementPlansByPlanIdRecomputerisk: {
         parameters: {
             query?: never;
@@ -43661,6 +44101,8 @@ export interface operations {
                 "application/json": {
                     /** Format: uuid */
                     bereavedContactId?: string;
+                    /** Format: uuid */
+                    assessmentTaskId?: string;
                     factors?: {
                         ambivalent_relationship: boolean | "unknown";
                         sudden_unexpected_death: boolean | "unknown";
@@ -43750,6 +44192,7 @@ export interface operations {
                             kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                             status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                             anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                            cadenceMark: string | null;
                             dueAt: string;
                             lateGraceUntil: string;
                             startedAt: string | null;
@@ -43836,7 +44279,9 @@ export interface operations {
                             unreachableProposedAt: string | null;
                             deceasedAt: string | null;
                             mayRescindOptOut: boolean;
+                            mailingsAllowed: boolean;
                             currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            careGoals?: string[];
                             version: number;
                         }[];
                         stats: {
@@ -44001,7 +44446,9 @@ export interface operations {
                                 unreachableProposedAt: string | null;
                                 deceasedAt: string | null;
                                 mayRescindOptOut: boolean;
+                                mailingsAllowed: boolean;
                                 currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                                careGoals?: string[];
                                 version: number;
                             }[];
                             stats: {
@@ -44026,6 +44473,109 @@ export interface operations {
                         outreachScheduledCount: number;
                         anniversaryRemindersCount: number;
                         effects: ("audit" | "outbox" | "alert" | "set_timestamp" | "set_assignment" | "insert_closure" | "insert_opt_out" | "rescind_opt_out" | "cancel_future_outreach" | "regenerate_schedule" | "generate_schedule" | "seed_anniversary_reminders" | "recompute_risk" | "set_external_source_metadata" | "log_external_referral")[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementPredeathassessmentsByAdmissionId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                admissionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        admissionId: string;
+                        exists: boolean;
+                        factors: {
+                            ambivalent_relationship: boolean | "unknown";
+                            sudden_unexpected_death: boolean | "unknown";
+                            prior_unresolved_loss: boolean | "unknown";
+                            preexisting_mental_health: boolean | "unknown";
+                            social_isolation: boolean | "unknown";
+                            financial_strain: boolean | "unknown";
+                            primary_caregiver_role: boolean | "unknown";
+                            active_substance_use: boolean | "unknown";
+                        };
+                        lastEditedDiscipline: string | null;
+                        lastEditedAt: string | null;
+                        carriedScoreId: string | null;
+                        carriedAt: string | null;
+                        locked: boolean;
+                        version: number;
+                        redactedCategories: ("sud" | "clinical_risk")[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1BereavementPredeathassessmentsByAdmissionId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                admissionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    factors: {
+                        ambivalent_relationship: boolean | "unknown";
+                        sudden_unexpected_death: boolean | "unknown";
+                        prior_unresolved_loss: boolean | "unknown";
+                        preexisting_mental_health: boolean | "unknown";
+                        social_isolation: boolean | "unknown";
+                        financial_strain: boolean | "unknown";
+                        primary_caregiver_role: boolean | "unknown";
+                        active_substance_use: boolean | "unknown";
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        admissionId: string;
+                        exists: boolean;
+                        factors: {
+                            ambivalent_relationship: boolean | "unknown";
+                            sudden_unexpected_death: boolean | "unknown";
+                            prior_unresolved_loss: boolean | "unknown";
+                            preexisting_mental_health: boolean | "unknown";
+                            social_isolation: boolean | "unknown";
+                            financial_strain: boolean | "unknown";
+                            primary_caregiver_role: boolean | "unknown";
+                            active_substance_use: boolean | "unknown";
+                        };
+                        lastEditedDiscipline: string | null;
+                        lastEditedAt: string | null;
+                        carriedScoreId: string | null;
+                        carriedAt: string | null;
+                        locked: boolean;
+                        version: number;
+                        redactedCategories: ("sud" | "clinical_risk")[];
                     };
                 };
             };
@@ -91659,6 +92209,36 @@ export interface operations {
                         items: {
                             [key: string]: unknown;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PortalBereavementMailingpreference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    allowMailings: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
                     };
                 };
             };

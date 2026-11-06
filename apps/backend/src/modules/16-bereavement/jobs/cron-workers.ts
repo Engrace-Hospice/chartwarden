@@ -6,6 +6,9 @@
 //                                    future outreach + `plan_closed_completed` in ONE tx.
 //   · `m16-miss-deadline`         → `missDeadline` for every `scheduled` outreach whose `late_grace_until`
 //                                    passed; `outreach_missed` outbox + best-effort M36 alert in the same tx.
+//                                    A second pass does the same for the ADR-0109 D3 assessment checkpoints:
+//                                    `scheduled` tasks past their late grace become `missed` and raise the
+//                                    `risk_assessment_overdue` alert.
 //   · `m16-anniversary-lookahead` → `anniversary_due_in_14_days` for each unfired reminder landing in the next
 //                                    14 days; `alert_fired_at` is stamped in the SAME tx as the outbox write.
 //   · `m16-unreachable-detector` → PROPOSES `markUnreachable` (§2.3 / §4.9) for each active contact of an active
@@ -34,7 +37,14 @@ import type {
 } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
-import { transitionBereavementOutreach, transitionBereavementPlan } from "../lifecycle/index";
+import { emitAlertBestEffort } from "../alert-port";
+import {
+  isAssessmentTaskOverdue,
+  transitionBereavementOutreach,
+  transitionBereavementPlan,
+} from "../lifecycle/index";
+import { requestDischargeSummary } from "../render-payloads/index";
+import { settleOutstandingForClosure } from "../routes/closure-settlement";
 import { runEffects } from "../routes/effects-runner";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
 import {
@@ -52,8 +62,12 @@ const CLOSURE = schema.bereavementPlanClosure;
 const REMINDER = schema.bereavementAnniversaryReminder;
 const CONTACT = schema.bereavedContact;
 const LOG = schema.bereavementContactLog;
+const TASK = schema.bereavementAssessmentTask;
 
 const MS_PER_DAY = 86_400_000;
+
+/** One alert as the port takes it. */
+type AlertInput = Parameters<AlertPort["emit"]>[0];
 
 /** §3.3 — a cron-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention: an empty
  *  string reads back as SQL NULL through the audit trigger's actor lookup, which the `user` FK accepts). */
@@ -208,19 +222,14 @@ async function closeOnePlan(
     .returning({ id: PLAN.id });
   if (updated.length !== 1) throw new LostRaceError();
 
-  // `cancel_future_outreach` (plan scope) — future-dated scheduled rows only, the route-path parity.
-  await tx
-    .update(OUTREACH)
-    .set({
-      status: "cancelled",
-      cancelledAt: now,
-      cancellationReasonRedacted: "plan closed at 13 months",
-      version: sql`${OUTREACH.version} + 1`, // §2.5 (GAP-194)
-      updatedAt: now,
-    })
-    .where(
-      and(eq(OUTREACH.planId, plan.id), eq(OUTREACH.status, "scheduled"), gte(OUTREACH.dueAt, now)),
-    );
+  // Everything still `scheduled` is settled before the counts freeze and the discharge summary is built: due -> missed (the d390
+  // `closeout_letter` is still inside its grace window when the 13-month close fires), future -> cancelled. The miss cron only reads
+  // ACTIVE plans, so a row left `scheduled` on this closed plan would be stranded, and M30 would count it for ever.
+  await settleOutstandingForClosure(tx, {
+    planId: plan.id,
+    at: now,
+    cancelReason: "plan closed at 13 months",
+  });
 
   const [outreach] = await tx
     .select({
@@ -243,19 +252,38 @@ async function closeOnePlan(
     contactsOptedOutCount: contacts?.optedOut ?? 0,
   };
 
-  await tx.insert(CLOSURE).values({
-    organizationId: plan.organizationId,
-    providerEntityId: plan.providerEntityId,
-    locationId: plan.locationId,
-    planId: plan.id,
-    reason: "thirteen_month_completion",
-    closedAt: now,
-    closedByUserId: null,
-    closeKind: "auto",
-    outreachCompletedCount: stats.completedCount,
-    outreachMissedCount: stats.missedCount,
-    contactsActiveCount: stats.contactsActiveCount,
-    contactsOptedOutCount: stats.contactsOptedOutCount,
+  const [closure] = await tx
+    .insert(CLOSURE)
+    .values({
+      organizationId: plan.organizationId,
+      providerEntityId: plan.providerEntityId,
+      locationId: plan.locationId,
+      planId: plan.id,
+      reason: "thirteen_month_completion",
+      closedAt: now,
+      closedByUserId: null,
+      closeKind: "auto",
+      outreachCompletedCount: stats.completedCount,
+      outreachMissedCount: stats.missedCount,
+      contactsActiveCount: stats.contactsActiveCount,
+      contactsOptedOutCount: stats.contactsOptedOutCount,
+    })
+    .returning({ id: CLOSURE.id });
+  if (!closure) throw new Error("m16: the 13-month closure insert returned no row");
+  // ADR-0109 D9 — the internal discharge summary, requested on the closure's own transaction (future outreach is already cancelled).
+  await requestDischargeSummary(tx, deps.outbox, {
+    plan: {
+      id: plan.id,
+      organizationId: plan.organizationId,
+      patientId: plan.patientId,
+      deathDate: plan.deathDate,
+    },
+    closure: {
+      id: closure.id,
+      reason: "thirteen_month_completion",
+      closeKind: "auto",
+      closedAt: now,
+    },
   });
 
   await runEffects(tx, transition.effects, {
@@ -369,10 +397,56 @@ async function missOneOutreach(
   });
 }
 
-/** §4.9 `m16-miss-deadline` — fan out over active orgs; mark every overdue `scheduled` outreach `missed`. */
-export async function runMissDeadlineCron(deps: M16WorkerDeps): Promise<{ missed: number }> {
+/**
+ * ADR-0109 D3 — mark one overdue assessment checkpoint `missed`. The guarded UPDATE (`WHERE status = 'scheduled'`) makes two overlapping
+ * ticks race safely; the plan must be `active` and the contact still in the program (a contact that opted out, died or was referred out
+ * had its tasks cancelled, and a stray one is skipped here too). Returns the oversight alert to raise: the caller emits it AFTER the
+ * transaction commits, so an alert is never raised for a miss that then rolled back.
+ */
+async function missOneAssessmentTask(tx: DbClient, taskId: string, now: Date): Promise<AlertInput> {
+  const [row] = await tx
+    .select({
+      task: TASK,
+      planStatus: PLAN.status,
+      contactStatus: CONTACT.status,
+    })
+    .from(TASK)
+    .innerJoin(PLAN, eq(PLAN.id, TASK.planId))
+    .innerJoin(CONTACT, eq(CONTACT.id, TASK.bereavedContactId))
+    .where(eq(TASK.id, taskId))
+    .limit(1);
+  if (!row || !isAssessmentTaskOverdue(row.task, now)) throw new LostRaceError();
+  if (row.planStatus !== "active") throw new LostRaceError();
+  if (row.contactStatus !== "proposed" && row.contactStatus !== "active") throw new LostRaceError();
+
+  const updated = await tx
+    .update(TASK)
+    .set({ status: "missed", version: sql`${TASK.version} + 1`, updatedAt: now })
+    .where(and(eq(TASK.id, taskId), eq(TASK.status, "scheduled")))
+    .returning({ id: TASK.id });
+  if (updated.length !== 1) throw new LostRaceError();
+
+  return {
+    organizationId: row.task.organizationId,
+    kind: "risk_assessment_overdue",
+    payload: {
+      planId: row.task.planId,
+      contactId: row.task.bereavedContactId,
+      taskId: row.task.id,
+      taskKind: row.task.taskKind,
+      dueAt: row.task.dueAt.toISOString(),
+    },
+  };
+}
+
+/** §4.9 `m16-miss-deadline` — fan out over active orgs; mark every overdue `scheduled` outreach `missed`, then (ADR-0109
+ *  D3) every overdue assessment checkpoint. */
+export async function runMissDeadlineCron(
+  deps: M16WorkerDeps,
+): Promise<{ missed: number; assessmentsMissed: number }> {
   const now = (deps.now ?? (() => new Date()))();
   let missed = 0;
+  let assessmentsMissed = 0;
   for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
     const ids = await listInOrg(deps, organizationId, async (tx) =>
       (
@@ -398,8 +472,39 @@ export async function runMissDeadlineCron(deps: M16WorkerDeps): Promise<{ missed
       );
       if (won) missed += 1;
     }
+    const taskIds = await listInOrg(deps, organizationId, async (tx) =>
+      (
+        await tx
+          .select({ id: TASK.id })
+          .from(TASK)
+          .innerJoin(PLAN, eq(PLAN.id, TASK.planId))
+          // Only a contact still in the program can miss a checkpoint: an unreachable / ineligible contact's overdue row would be
+          // skipped by `missOneAssessmentTask` anyway, and would sit at the head of the oldest-first batch of 500 forever, clogging it.
+          .innerJoin(CONTACT, eq(CONTACT.id, TASK.bereavedContactId))
+          .where(
+            and(
+              eq(TASK.organizationId, organizationId),
+              eq(TASK.status, "scheduled"),
+              lt(TASK.lateGraceUntil, now),
+              eq(PLAN.status, "active"),
+              inArray(CONTACT.status, ["proposed", "active"]),
+            ),
+          )
+          .orderBy(asc(TASK.lateGraceUntil))
+          .limit(M16_CRON_BATCH_LIMIT)
+      ).map((r) => r.id),
+    );
+    for (const taskId of taskIds) {
+      const raised: { alert?: AlertInput } = {};
+      const won = await inRowTx(deps, organizationId, "miss-assessment", taskId, async (tx) => {
+        raised.alert = await missOneAssessmentTask(tx, taskId, now);
+      });
+      if (!won) continue;
+      assessmentsMissed += 1;
+      if (raised.alert) await emitAlertBestEffort(deps.alerts, raised.alert);
+    }
   }
-  return { missed };
+  return { missed, assessmentsMissed };
 }
 
 // ── m16-anniversary-lookahead ─────────────────────────────────────────────────────────────────────────

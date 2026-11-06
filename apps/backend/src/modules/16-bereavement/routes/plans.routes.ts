@@ -11,7 +11,9 @@
 // moments the plan is `eligible` or `initiating`, and §4.8 pins the window predicate to {active, paused}.
 // See `./guards.ts` for the full reasoning — it is the difference between a working assignment flow and a
 // permanent 403.
+import { factorsFromWire } from "@chartwarden/bereavement";
 import { NotFoundError } from "@chartwarden/types";
+import type { Static } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
@@ -42,7 +44,7 @@ import {
   parseQuery,
 } from "./m16-typebox";
 import type { M16ReadService } from "./read-service";
-import type { M16WriteService } from "./write-service";
+import type { M16WriteService, RecomputeRiskInput } from "./write-service";
 
 export interface PlanRouteDeps {
   readonly readService: M16ReadService;
@@ -51,6 +53,19 @@ export interface PlanRouteDeps {
 
 const IDEMPOTENT = requireIdempotencyKey();
 const NO_OFFSET = rejectOffsetPagination();
+
+/** Route 28's validated body → the service input: the wire `factors` (snake_case) become rubric-named manual factors. */
+function recomputeInputOf(body: Static<typeof RecomputeRiskBody>): RecomputeRiskInput {
+  const { factors, ...rest } = body;
+  if (factors === undefined) return rest;
+  const { pg13_score, ipgr_score, notes: _notes, ...wire } = factors;
+  return {
+    ...rest,
+    manualFactors: factorsFromWire(wire),
+    ...(pg13_score === undefined ? {} : { pg13Score: pg13_score }),
+    ...(ipgr_score === undefined ? {} : { ipgrScore: ipgr_score }),
+  };
+}
 
 /** The M4 read-audit declaration every PHI plan read carries (§8.1 / M4 §2.5). */
 const PLAN_READ = { resourceKind: "bereavement_plan", resourceIdParam: "planId" } as const;
@@ -100,8 +115,8 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const { planId } = parse(PlanParams, request.params);
       const body = parse(AssignCounselorBody, request.body);
       return writeService.assignCounselor(writeActorOf(request), planId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
@@ -121,8 +136,8 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const { planId } = parse(PlanParams, request.params);
       const body = parse(AssignVolunteerBody, request.body);
       return writeService.assignVolunteer(writeActorOf(request), planId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
@@ -142,8 +157,8 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const { planId } = parse(PlanParams, request.params);
       const body = parse(SeedRosterAndScheduleBody, request.body);
       return writeService.seedRosterAndSchedule(writeActorOf(request), planId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
@@ -162,8 +177,8 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const { planId } = parse(PlanParams, request.params);
       const body = parse(PausePlanBody, request.body);
       return writeService.pausePlan(writeActorOf(request), planId, {
-        expectedVersion: ifMatchVersion(request, true),
         ...body,
+        expectedVersion: ifMatchVersion(request, true),
       });
     },
   );
@@ -204,8 +219,8 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const { planId } = parse(PlanParams, request.params);
       const body = parse(CloseEarlyBody, request.body);
       return writeService.closeEarly(writeActorOf(request), planId, {
-        expectedVersion: ifMatchVersion(request, true),
         ...body,
+        expectedVersion: ifMatchVersion(request, true),
       });
     },
   );
@@ -226,8 +241,8 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const { planId } = parse(PlanParams, request.params);
       const body = parse(CosignCloseBody, request.body);
       return writeService.cosignClose(writeActorOf(request), planId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
@@ -284,8 +299,8 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const { planId } = parse(PlanParams, request.params);
       const body = parse(RegenerateScheduleBody, request.body);
       return writeService.regenerateSchedule(writeActorOf(request), planId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
@@ -304,7 +319,11 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
     async (request, reply) => {
       const { planId } = parse(PlanParams, request.params);
       const body = parse(RecomputeRiskBody, request.body);
-      const score = await writeService.recomputeRisk(writeActorOf(request), planId, body);
+      const score = await writeService.recomputeRisk(
+        writeActorOf(request),
+        planId,
+        recomputeInputOf(body),
+      );
       return reply.code(201).send(score);
     },
   );
@@ -329,6 +348,22 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       );
       if (!page) throw new NotFoundError("bereavement plan not found");
       return page;
+    },
+  );
+
+  // 37 — the plan's assessment checkpoints (ADR-0109 D3): the initial d28 and midpoint d180 assessment of each
+  //      contact, with the human-appended score that completed each. Clinical content, so a volunteer reads none.
+  app.get(
+    "/api/v1/bereavement/plans/:planId/assessment-tasks",
+    {
+      preHandler: [P("bereavement.risk.read"), ABAC_WINDOW_PLAN("bereavement.risk.read")],
+      config: { auditRead: PLAN_READ },
+    },
+    async (request) => {
+      const { planId } = parse(PlanParams, request.params);
+      const list = await readService.listAssessmentTasks(actorOf(request), planId);
+      if (!list) throw new NotFoundError("bereavement plan not found");
+      return list;
     },
   );
 

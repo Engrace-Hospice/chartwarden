@@ -47,5 +47,5 @@ export const ROLE_FOR_TEST_USER: Readonly<Record<string, string>> = {
   re_render_admin: "compliance_officer",
   cascade_admin: "compliance_officer",
   overlay_admin: "org_admin",
-  bereavement: "bereavement_program_coordinator",
+  bereavement: "bereavement_coordinator",
 };

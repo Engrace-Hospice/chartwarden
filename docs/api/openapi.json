@@ -13158,7 +13158,8 @@
                 "additionalProperties": false,
                 "type": "object",
                 "required": [
-                  "decision"
+                  "decision",
+                  "uploadedDocumentId"
                 ],
                 "properties": {
                   "decision": {
@@ -13172,6 +13173,10 @@
                         "type": "string"
                       }
                     ]
+                  },
+                  "uploadedDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
                   }
                 }
               }
@@ -52860,6 +52865,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -53093,6 +53099,9 @@
                     "mayRescindOptOut": {
                       "type": "boolean"
                     },
+                    "mailingsAllowed": {
+                      "type": "boolean"
+                    },
                     "currentRiskTier": {
                       "anyOf": [
                         {
@@ -53119,6 +53128,12 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "version": {
                       "type": "integer"
@@ -53248,13 +53263,13 @@
         }
       }
     },
-    "/api/v1/bereavement/contacts/{contactId}/confirm": {
-      "post": {
-        "operationId": "postApiV1BereavementContactsByContactIdConfirm",
+    "/api/v1/bereavement/contacts/{contactId}/care-plan": {
+      "put": {
+        "operationId": "putApiV1BereavementContactsByContactIdCareplan",
         "tags": [
           "16-bereavement"
         ],
-        "summary": "Confirm a survivor — proposed → active; the M39 consent verdict is resolved server-side and fails CLOSED (§4.1 #13)",
+        "summary": "Record the contact's care goals (ADR-0109, #41) — at most 3 goals of 1..280 characters, sealed with the tenant DEK; `If-Match` and `Idempotency-Key` required; an empty list clears them; a volunteer neither reads nor writes them",
         "parameters": [
           {
             "name": "contactId",
@@ -53290,6 +53305,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -53523,6 +53539,9 @@
                     "mayRescindOptOut": {
                       "type": "boolean"
                     },
+                    "mailingsAllowed": {
+                      "type": "boolean"
+                    },
                     "currentRiskTier": {
                       "anyOf": [
                         {
@@ -53549,6 +53568,366 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "goals"
+                ],
+                "properties": {
+                  "goals": {
+                    "maxItems": 3,
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 280,
+                      "pattern": "\\S",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/contacts/{contactId}/confirm": {
+      "post": {
+        "operationId": "postApiV1BereavementContactsByContactIdConfirm",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "Confirm a survivor — proposed → active; the M39 consent verdict is resolved server-side and fails CLOSED (§4.1 #13)",
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "contactId",
+                    "planId",
+                    "status",
+                    "displayName",
+                    "relationshipCode",
+                    "preferredLanguageIso639",
+                    "portalAccountId",
+                    "consentRecordId",
+                    "allowedOutreachKinds",
+                    "volunteerVisibleOnly",
+                    "confirmedAt",
+                    "optedOutAt",
+                    "unreachableAt",
+                    "unreachableProposed",
+                    "unreachableProposedAt",
+                    "deceasedAt",
+                    "mayRescindOptOut",
+                    "mailingsAllowed",
+                    "version"
+                  ],
+                  "properties": {
+                    "contactId": {
+                      "type": "string"
+                    },
+                    "planId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "proposed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "opted_out",
+                          "type": "string"
+                        },
+                        {
+                          "const": "deceased",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unreachable",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ineligible_post_review",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "relationshipCode": {
+                      "anyOf": [
+                        {
+                          "const": "spouse",
+                          "type": "string"
+                        },
+                        {
+                          "const": "domestic_partner",
+                          "type": "string"
+                        },
+                        {
+                          "const": "parent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "child",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sibling",
+                          "type": "string"
+                        },
+                        {
+                          "const": "grandparent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "grandchild",
+                          "type": "string"
+                        },
+                        {
+                          "const": "aunt_uncle",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cousin",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_law",
+                          "type": "string"
+                        },
+                        {
+                          "const": "friend",
+                          "type": "string"
+                        },
+                        {
+                          "const": "neighbor",
+                          "type": "string"
+                        },
+                        {
+                          "const": "clergy",
+                          "type": "string"
+                        },
+                        {
+                          "const": "colleague",
+                          "type": "string"
+                        },
+                        {
+                          "const": "caregiver_non_family",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "preferredLanguageIso639": {
+                      "type": "string"
+                    },
+                    "portalAccountId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "consentRecordId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "allowedOutreachKinds": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "phone_call",
+                            "type": "string"
+                          },
+                          {
+                            "const": "in_person_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sympathy_card",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sympathy_letter",
+                            "type": "string"
+                          },
+                          {
+                            "const": "anniversary_letter",
+                            "type": "string"
+                          },
+                          {
+                            "const": "email",
+                            "type": "string"
+                          },
+                          {
+                            "const": "portal_message",
+                            "type": "string"
+                          },
+                          {
+                            "const": "group_support_invitation",
+                            "type": "string"
+                          },
+                          {
+                            "const": "external_referral",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "volunteerVisibleOnly": {
+                      "type": "boolean"
+                    },
+                    "confirmedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "optedOutAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "unreachableAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "unreachableProposed": {
+                      "type": "boolean"
+                    },
+                    "unreachableProposedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deceasedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mayRescindOptOut": {
+                      "type": "boolean"
+                    },
+                    "mailingsAllowed": {
+                      "type": "boolean"
+                    },
+                    "currentRiskTier": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "low",
+                              "type": "string"
+                            },
+                            {
+                              "const": "moderate",
+                              "type": "string"
+                            },
+                            {
+                              "const": "high",
+                              "type": "string"
+                            },
+                            {
+                              "const": "complicated",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "version": {
                       "type": "integer"
@@ -53625,6 +54004,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -53858,6 +54238,9 @@
                     "mayRescindOptOut": {
                       "type": "boolean"
                     },
+                    "mailingsAllowed": {
+                      "type": "boolean"
+                    },
                     "currentRiskTier": {
                       "anyOf": [
                         {
@@ -53884,6 +54267,12 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "version": {
                       "type": "integer"
@@ -53960,6 +54349,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -54193,6 +54583,9 @@
                     "mayRescindOptOut": {
                       "type": "boolean"
                     },
+                    "mailingsAllowed": {
+                      "type": "boolean"
+                    },
                     "currentRiskTier": {
                       "anyOf": [
                         {
@@ -54219,6 +54612,12 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "version": {
                       "type": "integer"
@@ -54512,6 +54911,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -54745,6 +55145,9 @@
                     "mayRescindOptOut": {
                       "type": "boolean"
                     },
+                    "mailingsAllowed": {
+                      "type": "boolean"
+                    },
                     "currentRiskTier": {
                       "anyOf": [
                         {
@@ -54771,6 +55174,12 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "version": {
                       "type": "integer"
@@ -54856,6 +55265,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -55089,6 +55499,9 @@
                     "mayRescindOptOut": {
                       "type": "boolean"
                     },
+                    "mailingsAllowed": {
+                      "type": "boolean"
+                    },
                     "currentRiskTier": {
                       "anyOf": [
                         {
@@ -55115,6 +55528,12 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "version": {
                       "type": "integer"
@@ -55191,6 +55610,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -55424,6 +55844,9 @@
                     "mayRescindOptOut": {
                       "type": "boolean"
                     },
+                    "mailingsAllowed": {
+                      "type": "boolean"
+                    },
                     "currentRiskTier": {
                       "anyOf": [
                         {
@@ -55450,6 +55873,12 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "version": {
                       "type": "integer"
@@ -55489,6 +55918,10 @@
                       },
                       {
                         "const": "pause_temporarily",
+                        "type": "string"
+                      },
+                      {
+                        "const": "no_mailings",
                         "type": "string"
                       }
                     ]
@@ -55713,6 +56146,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -55946,6 +56380,9 @@
                     "mayRescindOptOut": {
                       "type": "boolean"
                     },
+                    "mailingsAllowed": {
+                      "type": "boolean"
+                    },
                     "currentRiskTier": {
                       "anyOf": [
                         {
@@ -55972,6 +56409,12 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "version": {
                       "type": "integer"
@@ -56072,6 +56515,7 @@
                           "kind",
                           "status",
                           "anniversaryMark",
+                          "cadenceMark",
                           "dueAt",
                           "lateGraceUntil",
                           "startedAt",
@@ -56189,6 +56633,16 @@
                                     "type": "string"
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cadenceMark": {
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -56278,6 +56732,7 @@
                           "kind",
                           "status",
                           "anniversaryMark",
+                          "cadenceMark",
                           "dueAt",
                           "lateGraceUntil",
                           "startedAt",
@@ -56395,6 +56850,16 @@
                                     "type": "string"
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cadenceMark": {
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -56763,6 +57228,7 @@
                     "kind",
                     "status",
                     "anniversaryMark",
+                    "cadenceMark",
                     "dueAt",
                     "lateGraceUntil",
                     "startedAt",
@@ -56880,6 +57346,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cadenceMark": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -57020,6 +57496,7 @@
                     "kind",
                     "status",
                     "anniversaryMark",
+                    "cadenceMark",
                     "dueAt",
                     "lateGraceUntil",
                     "startedAt",
@@ -57137,6 +57614,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cadenceMark": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -57439,6 +57926,7 @@
                     "kind",
                     "status",
                     "anniversaryMark",
+                    "cadenceMark",
                     "dueAt",
                     "lateGraceUntil",
                     "startedAt",
@@ -57556,6 +58044,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cadenceMark": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -57692,6 +58190,7 @@
                     "kind",
                     "status",
                     "anniversaryMark",
+                    "cadenceMark",
                     "dueAt",
                     "lateGraceUntil",
                     "startedAt",
@@ -57809,6 +58308,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cadenceMark": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -57940,6 +58449,7 @@
                     "kind",
                     "status",
                     "anniversaryMark",
+                    "cadenceMark",
                     "dueAt",
                     "lateGraceUntil",
                     "startedAt",
@@ -58057,6 +58567,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cadenceMark": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -58193,6 +58713,7 @@
                     "kind",
                     "status",
                     "anniversaryMark",
+                    "cadenceMark",
                     "dueAt",
                     "lateGraceUntil",
                     "startedAt",
@@ -58316,6 +58837,16 @@
                         }
                       ]
                     },
+                    "cadenceMark": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "dueAt": {
                       "type": "string"
                     },
@@ -58404,6 +58935,513 @@
               "schema": {
                 "type": "object",
                 "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/physician-letters": {
+      "get": {
+        "operationId": "getApiV1BereavementPhysicianletters",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "The physician condolence-letter review queue (`?status=`), oldest due first, cursor-paginated; bereavement oversight only (ADR-0109 D6, #38)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "pending_review",
+                  "type": "string"
+                },
+                {
+                  "const": "approved",
+                  "type": "string"
+                },
+                {
+                  "const": "rendered",
+                  "type": "string"
+                },
+                {
+                  "const": "declined",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "next_cursor",
+                    "has_more"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "letterId",
+                          "planId",
+                          "patientId",
+                          "status",
+                          "dueAt",
+                          "createdAt",
+                          "attendingUserId",
+                          "hasPersonalNote",
+                          "declineReason",
+                          "reviewedAt",
+                          "renderedDocumentId",
+                          "version"
+                        ],
+                        "properties": {
+                          "letterId": {
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending_review",
+                                "type": "string"
+                              },
+                              {
+                                "const": "approved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rendered",
+                                "type": "string"
+                              },
+                              {
+                                "const": "declined",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "dueAt": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "attendingUserId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "hasPersonalNote": {
+                            "type": "boolean"
+                          },
+                          "declineReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reviewedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "renderedDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "next_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    },
+                    "total_count": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/physician-letters/{letterId}/approve": {
+      "post": {
+        "operationId": "postApiV1BereavementPhysicianlettersByLetterIdApprove",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "Approve a pending letter and request its render in the same transaction — an optional personal note (at most 1000 characters, sealed at rest) and, when the care team resolved no attending, the internal clinician who should receive it (an active member of the organization); `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #39)",
+        "parameters": [
+          {
+            "name": "letterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "letterId",
+                    "planId",
+                    "patientId",
+                    "status",
+                    "dueAt",
+                    "createdAt",
+                    "attendingUserId",
+                    "hasPersonalNote",
+                    "declineReason",
+                    "reviewedAt",
+                    "renderedDocumentId",
+                    "version"
+                  ],
+                  "properties": {
+                    "letterId": {
+                      "type": "string"
+                    },
+                    "planId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rendered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "declined",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "attendingUserId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasPersonalNote": {
+                      "type": "boolean"
+                    },
+                    "declineReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reviewedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "renderedDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "personalNote": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "attendingUserId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/physician-letters/{letterId}/decline": {
+      "post": {
+        "operationId": "postApiV1BereavementPhysicianlettersByLetterIdDecline",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "Decline a pending letter with a documented reason of at least 20 characters; `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #40)",
+        "parameters": [
+          {
+            "name": "letterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "letterId",
+                    "planId",
+                    "patientId",
+                    "status",
+                    "dueAt",
+                    "createdAt",
+                    "attendingUserId",
+                    "hasPersonalNote",
+                    "declineReason",
+                    "reviewedAt",
+                    "renderedDocumentId",
+                    "version"
+                  ],
+                  "properties": {
+                    "letterId": {
+                      "type": "string"
+                    },
+                    "planId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rendered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "declined",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "attendingUserId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasPersonalNote": {
+                      "type": "boolean"
+                    },
+                    "declineReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reviewedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "renderedDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 20,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
               }
             }
           }
@@ -59029,6 +60067,7 @@
                           "unreachableProposedAt",
                           "deceasedAt",
                           "mayRescindOptOut",
+                          "mailingsAllowed",
                           "version"
                         ],
                         "properties": {
@@ -59262,6 +60301,9 @@
                           "mayRescindOptOut": {
                             "type": "boolean"
                           },
+                          "mailingsAllowed": {
+                            "type": "boolean"
+                          },
                           "currentRiskTier": {
                             "anyOf": [
                               {
@@ -59288,6 +60330,12 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "careGoals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           },
                           "version": {
                             "type": "integer"
@@ -59433,6 +60481,176 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "redactedCategories": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "sud",
+                            "type": "string"
+                          },
+                          {
+                            "const": "clinical_risk",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/assessment-tasks": {
+      "get": {
+        "operationId": "getApiV1BereavementPlansByPlanIdAssessmenttasks",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "The plan's two assessment checkpoints per survivor (initial d28, midpoint d180) with the human-appended score that completed each; empty when the reader's scope holds no clinical content (ADR-0109 D3, #37)",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "redactedCategories"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "taskId",
+                          "planId",
+                          "contactId",
+                          "taskKind",
+                          "status",
+                          "dueAt",
+                          "lateGraceUntil",
+                          "completedAt",
+                          "completedByMembershipId",
+                          "riskScoreId",
+                          "assigneeUserId",
+                          "version"
+                        ],
+                        "properties": {
+                          "taskId": {
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "contactId": {
+                            "type": "string"
+                          },
+                          "taskKind": {
+                            "anyOf": [
+                              {
+                                "const": "initial_assessment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "midpoint_reassessment",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "scheduled",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "missed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "dueAt": {
+                            "type": "string"
+                          },
+                          "lateGraceUntil": {
+                            "type": "string"
+                          },
+                          "completedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "completedByMembershipId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "riskScoreId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "assigneeUserId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
                     },
                     "redactedCategories": {
                       "type": "array",
@@ -59771,6 +60989,7 @@
                           "unreachableProposedAt",
                           "deceasedAt",
                           "mayRescindOptOut",
+                          "mailingsAllowed",
                           "version"
                         ],
                         "properties": {
@@ -60004,6 +61223,9 @@
                           "mayRescindOptOut": {
                             "type": "boolean"
                           },
+                          "mailingsAllowed": {
+                            "type": "boolean"
+                          },
                           "currentRiskTier": {
                             "anyOf": [
                               {
@@ -60030,6 +61252,12 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "careGoals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           },
                           "version": {
                             "type": "integer"
@@ -60536,6 +61764,7 @@
                           "unreachableProposedAt",
                           "deceasedAt",
                           "mayRescindOptOut",
+                          "mailingsAllowed",
                           "version"
                         ],
                         "properties": {
@@ -60769,6 +61998,9 @@
                           "mayRescindOptOut": {
                             "type": "boolean"
                           },
+                          "mailingsAllowed": {
+                            "type": "boolean"
+                          },
                           "currentRiskTier": {
                             "anyOf": [
                               {
@@ -60795,6 +62027,12 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "careGoals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           },
                           "version": {
                             "type": "integer"
@@ -61301,6 +62539,7 @@
                           "unreachableProposedAt",
                           "deceasedAt",
                           "mayRescindOptOut",
+                          "mailingsAllowed",
                           "version"
                         ],
                         "properties": {
@@ -61534,6 +62773,9 @@
                           "mayRescindOptOut": {
                             "type": "boolean"
                           },
+                          "mailingsAllowed": {
+                            "type": "boolean"
+                          },
                           "currentRiskTier": {
                             "anyOf": [
                               {
@@ -61560,6 +62802,12 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "careGoals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           },
                           "version": {
                             "type": "integer"
@@ -61786,7 +63034,7 @@
         "tags": [
           "16-bereavement"
         ],
-        "summary": "The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it (§4.1 #10)",
+        "summary": "The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it; `dischargeSummaryDocumentId` (the internal discharge summary, once rendered) is shown to oversight only (§4.1 #10, ADR-0109 D9)",
         "parameters": [
           {
             "name": "planId",
@@ -61814,7 +63062,8 @@
                     "cosignedByUserId",
                     "cosignedAt",
                     "stats",
-                    "bereavementSummaryDocumentId"
+                    "bereavementSummaryDocumentId",
+                    "dischargeSummaryDocumentId"
                   ],
                   "properties": {
                     "closureId": {
@@ -61931,6 +63180,16 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "dischargeSummaryDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -61988,6 +63247,7 @@
                     "unreachableProposedAt",
                     "deceasedAt",
                     "mayRescindOptOut",
+                    "mailingsAllowed",
                     "version"
                   ],
                   "properties": {
@@ -62221,6 +63481,9 @@
                     "mayRescindOptOut": {
                       "type": "boolean"
                     },
+                    "mailingsAllowed": {
+                      "type": "boolean"
+                    },
                     "currentRiskTier": {
                       "anyOf": [
                         {
@@ -62247,6 +63510,12 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "careGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     },
                     "version": {
                       "type": "integer"
@@ -62462,7 +63731,8 @@
                     "cosignedByUserId",
                     "cosignedAt",
                     "stats",
-                    "bereavementSummaryDocumentId"
+                    "bereavementSummaryDocumentId",
+                    "dischargeSummaryDocumentId"
                   ],
                   "properties": {
                     "closureId": {
@@ -62579,6 +63849,16 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "dischargeSummaryDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -62641,6 +63921,7 @@
                     "kind",
                     "status",
                     "anniversaryMark",
+                    "cadenceMark",
                     "dueAt",
                     "lateGraceUntil",
                     "startedAt",
@@ -62758,6 +64039,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cadenceMark": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -63075,6 +64366,7 @@
                           "kind",
                           "status",
                           "anniversaryMark",
+                          "cadenceMark",
                           "dueAt",
                           "lateGraceUntil",
                           "startedAt",
@@ -63192,6 +64484,16 @@
                                     "type": "string"
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cadenceMark": {
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -63608,6 +64910,7 @@
                           "unreachableProposedAt",
                           "deceasedAt",
                           "mayRescindOptOut",
+                          "mailingsAllowed",
                           "version"
                         ],
                         "properties": {
@@ -63841,6 +65144,9 @@
                           "mayRescindOptOut": {
                             "type": "boolean"
                           },
+                          "mailingsAllowed": {
+                            "type": "boolean"
+                          },
                           "currentRiskTier": {
                             "anyOf": [
                               {
@@ -63867,6 +65173,12 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "careGoals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           },
                           "version": {
                             "type": "integer"
@@ -64075,6 +65387,140 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/physician-letter": {
+      "get": {
+        "operationId": "getApiV1BereavementPlansByPlanIdPhysicianletter",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "The plan's physician condolence letter; 404 for a plan that has none; bereavement oversight only (ADR-0109 D6, #38)",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "letterId",
+                    "planId",
+                    "patientId",
+                    "status",
+                    "dueAt",
+                    "createdAt",
+                    "attendingUserId",
+                    "hasPersonalNote",
+                    "declineReason",
+                    "reviewedAt",
+                    "renderedDocumentId",
+                    "version"
+                  ],
+                  "properties": {
+                    "letterId": {
+                      "type": "string"
+                    },
+                    "planId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rendered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "declined",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "attendingUserId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasPersonalNote": {
+                      "type": "boolean"
+                    },
+                    "declineReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reviewedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "renderedDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -64314,6 +65760,10 @@
                     "format": "uuid",
                     "type": "string"
                   },
+                  "assessmentTaskId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
                   "factors": {
                     "type": "object",
                     "required": [
@@ -64416,10 +65866,14 @@
                         ]
                       },
                       "pg13_score": {
-                        "type": "number"
+                        "minimum": 0,
+                        "maximum": 52,
+                        "type": "integer"
                       },
                       "ipgr_score": {
-                        "type": "number"
+                        "minimum": 0,
+                        "maximum": 200,
+                        "type": "integer"
                       },
                       "notes": {
                         "maxLength": 8000,
@@ -64512,6 +65966,7 @@
                           "kind",
                           "status",
                           "anniversaryMark",
+                          "cadenceMark",
                           "dueAt",
                           "lateGraceUntil",
                           "startedAt",
@@ -64629,6 +66084,16 @@
                                     "type": "string"
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cadenceMark": {
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -65049,6 +66514,7 @@
                           "unreachableProposedAt",
                           "deceasedAt",
                           "mayRescindOptOut",
+                          "mailingsAllowed",
                           "version"
                         ],
                         "properties": {
@@ -65282,6 +66748,9 @@
                           "mayRescindOptOut": {
                             "type": "boolean"
                           },
+                          "mailingsAllowed": {
+                            "type": "boolean"
+                          },
                           "currentRiskTier": {
                             "anyOf": [
                               {
@@ -65308,6 +66777,12 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "careGoals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           },
                           "version": {
                             "type": "integer"
@@ -66095,6 +67570,7 @@
                               "unreachableProposedAt",
                               "deceasedAt",
                               "mayRescindOptOut",
+                              "mailingsAllowed",
                               "version"
                             ],
                             "properties": {
@@ -66328,6 +67804,9 @@
                               "mayRescindOptOut": {
                                 "type": "boolean"
                               },
+                              "mailingsAllowed": {
+                                "type": "boolean"
+                              },
                               "currentRiskTier": {
                                 "anyOf": [
                                   {
@@ -66354,6 +67833,12 @@
                                     "type": "null"
                                   }
                                 ]
+                              },
+                              "careGoals": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
                               },
                               "version": {
                                 "type": "integer"
@@ -66772,6 +68257,564 @@
                             }
                           }
                         }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/pre-death-assessments/{admissionId}": {
+      "get": {
+        "operationId": "getApiV1BereavementPredeathassessmentsByAdmissionId",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "The pre-death risk-assessment draft for an admission — eight tri-state factors, an empty all-unknown draft at version 0 when nothing is recorded; the care-team MSW / chaplain / bereavement counselor or oversight only (ADR-0109 D5, #35)",
+        "parameters": [
+          {
+            "name": "admissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "admissionId",
+                    "exists",
+                    "factors",
+                    "lastEditedDiscipline",
+                    "lastEditedAt",
+                    "carriedScoreId",
+                    "carriedAt",
+                    "locked",
+                    "version",
+                    "redactedCategories"
+                  ],
+                  "properties": {
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "exists": {
+                      "type": "boolean"
+                    },
+                    "factors": {
+                      "type": "object",
+                      "required": [
+                        "ambivalent_relationship",
+                        "sudden_unexpected_death",
+                        "prior_unresolved_loss",
+                        "preexisting_mental_health",
+                        "social_isolation",
+                        "financial_strain",
+                        "primary_caregiver_role",
+                        "active_substance_use"
+                      ],
+                      "properties": {
+                        "ambivalent_relationship": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "sudden_unexpected_death": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "prior_unresolved_loss": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "preexisting_mental_health": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "social_isolation": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "financial_strain": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "primary_caregiver_role": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "active_substance_use": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "lastEditedDiscipline": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastEditedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "carriedScoreId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "carriedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "locked": {
+                      "type": "boolean"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "redactedCategories": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "sud",
+                            "type": "string"
+                          },
+                          {
+                            "const": "clinical_risk",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1BereavementPredeathassessmentsByAdmissionId",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "Record the pre-death risk-assessment draft — replaces the whole eight-factor vector; `If-Match` (0 for the first write) and `Idempotency-Key` required; the substance-use slot is stored `unknown` unless the writer is cleared for 42 CFR Part 2; 409 `DRAFT_LOCKED` once a bereavement plan exists (ADR-0109 D5, #36)",
+        "parameters": [
+          {
+            "name": "admissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "admissionId",
+                    "exists",
+                    "factors",
+                    "lastEditedDiscipline",
+                    "lastEditedAt",
+                    "carriedScoreId",
+                    "carriedAt",
+                    "locked",
+                    "version",
+                    "redactedCategories"
+                  ],
+                  "properties": {
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "exists": {
+                      "type": "boolean"
+                    },
+                    "factors": {
+                      "type": "object",
+                      "required": [
+                        "ambivalent_relationship",
+                        "sudden_unexpected_death",
+                        "prior_unresolved_loss",
+                        "preexisting_mental_health",
+                        "social_isolation",
+                        "financial_strain",
+                        "primary_caregiver_role",
+                        "active_substance_use"
+                      ],
+                      "properties": {
+                        "ambivalent_relationship": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "sudden_unexpected_death": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "prior_unresolved_loss": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "preexisting_mental_health": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "social_isolation": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "financial_strain": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "primary_caregiver_role": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "active_substance_use": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "lastEditedDiscipline": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastEditedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "carriedScoreId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "carriedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "locked": {
+                      "type": "boolean"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "redactedCategories": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "sud",
+                            "type": "string"
+                          },
+                          {
+                            "const": "clinical_risk",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "factors"
+                ],
+                "properties": {
+                  "factors": {
+                    "type": "object",
+                    "required": [
+                      "ambivalent_relationship",
+                      "sudden_unexpected_death",
+                      "prior_unresolved_loss",
+                      "preexisting_mental_health",
+                      "social_isolation",
+                      "financial_strain",
+                      "primary_caregiver_role",
+                      "active_substance_use"
+                    ],
+                    "properties": {
+                      "ambivalent_relationship": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "sudden_unexpected_death": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "prior_unresolved_loss": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "preexisting_mental_health": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "social_isolation": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "financial_strain": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "primary_caregiver_role": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "active_substance_use": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
                       }
                     }
                   }
@@ -188844,7 +190887,7 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "Search staff, the linked patient and (ADR-0107, PROPOSED; only while the tenant flag `messaging.group_tags` is on) the group tags `role`, `team` and `on_call` eligible for a structured reference. A group candidate is a label: who is behind it is never listed",
+        "summary": "Search staff, the linked patient and (ADR-0108, PROPOSED; only while the tenant flag `messaging.group_tags` is on) the group tags `role`, `team` and `on_call` eligible for a structured reference. A group candidate is a label: who is behind it is never listed",
         "parameters": [
           {
             "name": "id",
@@ -189552,7 +191595,7 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original). A reference of kind `role`, `team` or `on_call` is a group tag (ADR-0107, PROPOSED; tenant flag `messaging.group_tags`): the server resolves it to people who are active members of the channel, freezes them, and sends each one an ordinary mention notification. Typed 422: GROUP_TAGS_DISABLED, GROUP_TAG_INVALID, GROUP_TAG_EMPTY, GROUP_TAG_TOO_MANY (50 people per tag, 3 tags per message), GROUP_TAG_ON_CALL_UNRESOLVED (no confirmed on-call person; nothing is sent)",
+        "summary": "Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original). A reference of kind `role`, `team` or `on_call` is a group tag (ADR-0108, PROPOSED; tenant flag `messaging.group_tags`): the server resolves it to people who are active members of the channel, freezes them, and sends each one an ordinary mention notification. Typed 422: GROUP_TAGS_DISABLED, GROUP_TAG_INVALID, GROUP_TAG_EMPTY, GROUP_TAG_TOO_MANY (50 people per tag, 3 tags per message), GROUP_TAG_ON_CALL_UNRESOLVED (no confirmed on-call person; nothing is sent)",
         "parameters": [
           {
             "name": "id",
@@ -255913,6 +257956,60 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/bereavement/mailing-preference": {
+      "post": {
+        "operationId": "postApiV1PortalBereavementMailingpreference",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Stop (allowMailings false) or resume (true) bereavement MAILINGS only — the contact stays in the program and calls continue (M16, ADR-0109 D10)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "allowMailings"
+                ],
+                "properties": {
+                  "allowMailings": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
           }
         }
       }

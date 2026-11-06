@@ -152,7 +152,7 @@ const ORG_ADMIN_ROLES = ["org_admin"] as const;
 const BEREAVEMENT_OVERSIGHT_ROLES = [
   "clinical_supervisor",
   "director_of_nursing",
-  "bereavement_program_coordinator",
+  "bereavement_coordinator",
   "compliance_officer",
 ] as const;
 
@@ -263,12 +263,7 @@ const DISCIPLINE_ROLES: Readonly<Record<ConsentDisciplineScope, readonly string[
   consent_management: [...CLINICAL_DISCIPLINES, "director_of_nursing"],
   dpoa_clinical: [...CLINICAL_DISCIPLINES, "director_of_nursing"],
   delegated_access: [...CLINICAL_DISCIPLINES, "bereavement_counselor"],
-  post_mortem: [
-    "bereavement_counselor",
-    "bereavement_program_coordinator",
-    "msw",
-    "clinical_supervisor",
-  ],
+  post_mortem: ["bereavement_counselor", "bereavement_coordinator", "msw", "clinical_supervisor"],
 };
 
 /** §4.11: the on-call window applies to every governed read except the post-mortem surface. */

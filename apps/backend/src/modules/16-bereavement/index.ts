@@ -80,6 +80,13 @@ export {
   decideRenderedBackref,
 } from "./outbox-consumers/m22-document-rendered";
 
+// ADR-0109 D7 — the real `AlertPort` over the M36 `AlertEmitter` seam (routed kinds only).
+export {
+  type M16AlertEmitterLike,
+  M16_ALERT_ROUTES,
+  createM16AlertPort,
+} from "./alert-port";
+
 // §4.7 — the twenty-nine permission keys M16 contributes to M3's catalog.
 export {
   type M16ContributedPermissionKey,
@@ -96,12 +103,14 @@ export {
   type BereavementAbacResolver,
   type BereavementPlanAbacFacts,
   type M16RegisteredAbacPredicate,
+  type PreDeathAssessorProbe,
   type VolunteerGatesProbe,
   BEREAVEMENT_CAPABLE_DISCIPLINES,
   BEREAVEMENT_OVERSIGHT_ROLES,
   BEREAVEMENT_VOLUNTEER_DISCIPLINE,
   DISCIPLINE_FOR_ROLE_KEY,
   M16_ABAC_PREDICATES,
+  PRE_DEATH_ASSESSOR_DISCIPLINES,
   buildBereavementAbacPredicates,
   decideBereavementWindow,
   denyStubBereavementAbacResolver,
@@ -117,6 +126,10 @@ export {
 
 // §4.1 — the route mount + the Drizzle-backed READ + WRITE service builders.
 export {
+  type M16DraftDeps,
+  type M16DraftService,
+  type M16LetterDeps,
+  type M16LetterService,
   type M16ReadDeps,
   type M16ReadService,
   type M16RouteServices,
@@ -124,6 +137,8 @@ export {
   type M16WriteService,
   type OutboxEmission as M16OutboxEmission,
   type WriteOutboxPort as M16WriteOutboxPort,
+  buildDrizzleM16DraftService,
+  buildDrizzleM16LetterService,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
 } from "./routes/index";

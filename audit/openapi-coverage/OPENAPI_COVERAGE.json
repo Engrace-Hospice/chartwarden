@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1903,
-    "enriched": 1903,
+    "routes": 1912,
+    "enriched": 1912,
     "deficit": 0,
-    "mutating": 1086,
+    "mutating": 1091,
     "mutatingNoBody": 1,
-    "gets": 764,
+    "gets": 768,
     "getsNoResponse": 9
   },
   "modules": [
@@ -151,12 +151,12 @@
     },
     {
       "module": "16-bereavement",
-      "routes": 34,
-      "enriched": 34,
+      "routes": 42,
+      "enriched": 42,
       "deficit": 0,
-      "mutating": 27,
+      "mutating": 31,
       "mutatingNoBody": 0,
-      "gets": 7,
+      "gets": 11,
       "getsNoResponse": 0
     },
     {
@@ -301,10 +301,10 @@
     },
     {
       "module": "31-portal",
-      "routes": 67,
-      "enriched": 67,
+      "routes": 68,
+      "enriched": 68,
       "deficit": 0,
-      "mutating": 33,
+      "mutating": 34,
       "mutatingNoBody": 0,
       "gets": 34,
       "getsNoResponse": 0

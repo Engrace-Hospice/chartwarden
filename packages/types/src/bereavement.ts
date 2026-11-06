@@ -138,8 +138,13 @@ export type BereavementPlanClosureReason =
   | "family_legal_action"
   | "other_early";
 
-/** D9 per-contact opt-out granularity (mirrors `bereavement_opt_out_kind`). */
-export type BereavementOptOutKind = "full" | "channel_specific" | "pause_temporarily";
+/** D9 per-contact opt-out granularity (mirrors `bereavement_opt_out_kind`). `no_mailings` (ADR-0109)
+ *  stops mailings only: the contact stays active and calls continue. */
+export type BereavementOptOutKind =
+  | "full"
+  | "channel_specific"
+  | "pause_temporarily"
+  | "no_mailings";
 
 /** The §2.2 pause taxonomy (mirrors `bereavement_plan_pause_kind`). */
 export type BereavementPlanPauseKind =
@@ -185,6 +190,9 @@ export type M16TableName =
   | "bereavement_plan_closure"
   | "bereavement_opt_out"
   | "bereavement_idg_risk_flag"
+  | "bereavement_assessment_task"
+  | "bereavement_risk_assessment_draft"
+  | "bereavement_physician_letter"
   | "tenant_bereavement_external_source_gate_override";
 
 /**
@@ -216,6 +224,9 @@ export const M16_AUDIT_DENYLIST: { readonly [K in M16TableName]: readonly string
   bereavement_plan_closure: ["reason_narrative_redacted"],
   bereavement_opt_out: ["reason_redacted"],
   bereavement_idg_risk_flag: ["rationale_text"],
+  bereavement_assessment_task: [],
+  bereavement_risk_assessment_draft: [],
+  bereavement_physician_letter: ["decline_reason_redacted"],
   tenant_bereavement_external_source_gate_override: ["additional_rationale"],
 } as const;
 
@@ -257,6 +268,7 @@ export const M16_EVENT_NAMES = [
   "m16.bereavement.contact_active",
   "m16.bereavement.contact_opted_out",
   "m16.bereavement.contact_opt_out_rescinded",
+  "m16.bereavement.contact_mailing_preference_changed",
   "m16.bereavement.contact_deceased",
   "m16.bereavement.contact_unreachable",
   "m16.bereavement.contact_unreachable_proposed",
@@ -265,6 +277,7 @@ export const M16_EVENT_NAMES = [
   "m16.bereavement.outreach_completed",
   "m16.bereavement.outreach_missed",
   "m16.bereavement.outreach_artifact_requested",
+  "m16.bereavement.document_requested",
   "m16.bereavement.risk_score_computed",
   "m16.bereavement.anniversary_due_in_14_days",
 ] as const;
@@ -447,6 +460,17 @@ export interface M16ContactOptOutRescindedPayload {
   readonly contactId: BereavedContactId;
 }
 
+/** `m16.bereavement.contact_mailing_preference_changed` — ADR-0109 D10. A bereaved contact stopped (or resumed) MAILINGS
+ *  only; the contact stays active and calls continue, which is why this is not `contact_opted_out` (M36 would drop the
+ *  family channel for that one). Ids and a flag, no PHI. Consumers: M33 (seam). */
+export interface M16ContactMailingPreferenceChangedPayload {
+  readonly planId: BereavementPlanId;
+  readonly contactId: BereavedContactId;
+  /** False = the family asked to stop mailings; true = mailings resumed. */
+  readonly mailingsAllowed: boolean;
+  readonly source: BereavementOptOutSourceKind;
+}
+
 /** `m16.bereavement.contact_deceased` — the bereaved contact themselves died. Consumers: M33, M36. */
 export interface M16ContactDeceasedPayload {
   readonly planId: BereavementPlanId;
@@ -516,6 +540,23 @@ export interface M16OutreachArtifactRequestedPayload {
   readonly payloadJsonb: unknown;
 }
 
+/** The plan-level documents M16 asks M22 to render through `m16.bereavement.document_requested` (ADR-0109 D6 / D9). */
+export type M16PlanDocumentKind = "physician_condolence_letter" | "discharge_summary";
+
+/** `m16.bereavement.document_requested` — the outbox-only handoff to M22 for the approved physician condolence letter (aggregate =
+ *  the letter) or the internal discharge summary (aggregate = the closure). M22 answers with `m22.document.rendered`. Consumer: M22. */
+export interface M16DocumentRequestedPayload {
+  readonly planId: BereavementPlanId;
+  /** The DECEDENT — the chart M22 files the rendered document against. */
+  readonly patientId: PatientId;
+  readonly documentKind: M16PlanDocumentKind;
+  /** The row the document is filed against and the back-ref stamps (letter id or closure id). */
+  readonly aggregateId: string;
+  readonly templateKey: string;
+  /** The typed render payload (`render-payloads/m16-bereavement`); typed `unknown` here because M22 owns the per-template shape. */
+  readonly payloadJsonb: unknown;
+}
+
 /** `m16.bereavement.risk_score_computed` — an immutable D3/D8 score row appended. M30's screening measure
  *  filters `dataCompleteness === 'minimal'` out of its denominator (D17). Consumers: M30, M32, M33. */
 export interface M16RiskScoreComputedPayload {
@@ -551,6 +592,7 @@ export interface M16EventPayloadMap {
   "m16.bereavement.contact_active": M16ContactActivePayload;
   "m16.bereavement.contact_opted_out": M16ContactOptedOutPayload;
   "m16.bereavement.contact_opt_out_rescinded": M16ContactOptOutRescindedPayload;
+  "m16.bereavement.contact_mailing_preference_changed": M16ContactMailingPreferenceChangedPayload;
   "m16.bereavement.contact_deceased": M16ContactDeceasedPayload;
   "m16.bereavement.contact_unreachable": M16ContactUnreachablePayload;
   "m16.bereavement.contact_unreachable_proposed": M16ContactUnreachableProposedPayload;
@@ -559,6 +601,7 @@ export interface M16EventPayloadMap {
   "m16.bereavement.outreach_completed": M16OutreachCompletedPayload;
   "m16.bereavement.outreach_missed": M16OutreachMissedPayload;
   "m16.bereavement.outreach_artifact_requested": M16OutreachArtifactRequestedPayload;
+  "m16.bereavement.document_requested": M16DocumentRequestedPayload;
   "m16.bereavement.risk_score_computed": M16RiskScoreComputedPayload;
   "m16.bereavement.anniversary_due_in_14_days": M16AnniversaryDueIn14DaysPayload;
 }
@@ -626,7 +669,31 @@ export interface BereavementCloseEarlyPendingCosignAlert {
   readonly reason: string;
 }
 
-/** The §4.10 discriminated union of every typed alert M16 emits to M36. */
+/** ADR-0109 D7 — a death opened a bereavement plan (`eligible`); oversight assigns a counselor. Ids and the
+ *  death date only: no name, no cause. */
+export interface BereavementDeathIntakeAlert {
+  readonly kind: "death_intake";
+  readonly planId: BereavementPlanId;
+  readonly deathDate: LocalDate;
+}
+
+/** ADR-0109 D6/D7 — the condolence letter to the attending clinician is waiting for a human review. */
+export interface BereavementPhysicianLetterPendingReviewAlert {
+  readonly kind: "physician_letter_pending_review";
+  readonly planId: BereavementPlanId;
+}
+
+/** ADR-0109 D3/D7 — an assessment checkpoint passed its late grace uncompleted (the task is now `missed`). */
+export interface BereavementRiskAssessmentOverdueAlert {
+  readonly kind: "risk_assessment_overdue";
+  readonly planId: BereavementPlanId;
+  readonly contactId: BereavedContactId;
+  readonly taskId: string;
+  readonly taskKind: "initial_assessment" | "midpoint_reassessment";
+  readonly dueAt: IsoInstant;
+}
+
+/** The §4.10 discriminated union of every typed alert M16 emits to M36 (+ the ADR-0109 D7 kinds). */
 export type BereavementAlertPayload =
   | BereavementAnniversaryDueAlert
   | BereavementOutreachMissedAlert
@@ -634,7 +701,10 @@ export type BereavementAlertPayload =
   | BereavementComplicatedGriefReferralAlert
   | BereavementConsentRevokedCascadeAlert
   | BereavementRiskTierEscalatedAlert
-  | BereavementCloseEarlyPendingCosignAlert;
+  | BereavementCloseEarlyPendingCosignAlert
+  | BereavementDeathIntakeAlert
+  | BereavementPhysicianLetterPendingReviewAlert
+  | BereavementRiskAssessmentOverdueAlert;
 
 // ── §4.6 read DTOs ────────────────────────────────────────────────────────────────────────────────────
 
@@ -815,6 +885,8 @@ export interface BereavedPortalScope {
   readonly mayOptOut: boolean;
   /** D9 — true only inside the 90-day self-service rescind window. */
   readonly mayRescindOptOut: boolean;
+  /** ADR-0109 D10 — false while the contact holds an open `no_mailings` opt-out (calls continue). */
+  readonly mailingsAllowed: boolean;
 }
 
 // ── §4.6 / D13 seams this module publishes (impls injected at boot in M16-T05) ────────────────────────

@@ -59,6 +59,9 @@ type SeedIds = {
   optOut: string;
   gateOverride: string;
   idgRiskFlag: string;
+  assessmentTask: string;
+  assessmentDraft: string;
+  physicianLetter: string;
 };
 
 /** The 9 manifest-owned M16 tables, each with the seeded row the isolation case looks for. */
@@ -73,6 +76,9 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "bereavement_opt_out", key: "optOut" },
   { table: "tenant_bereavement_external_source_gate_override", key: "gateOverride" },
   { table: "bereavement_idg_risk_flag", key: "idgRiskFlag" },
+  { table: "bereavement_assessment_task", key: "assessmentTask" },
+  { table: "bereavement_risk_assessment_draft", key: "assessmentDraft" },
+  { table: "bereavement_physician_letter", key: "physicianLetter" },
 ];
 
 describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -229,6 +235,33 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
         ],
       )
     ).rows[0].id as string;
+    const assessmentTask = (
+      await db.query(
+        `INSERT INTO bereavement_assessment_task (organization_id, provider_entity_id, location_id, plan_id,
+           bereaved_contact_id, task_kind, status, due_at, late_grace_until)
+         VALUES ($1,$2,$3,$4,$5,'initial_assessment','scheduled', now() + interval '2 days',
+           now() + interval '9 days') RETURNING id`,
+        [org, pe, location, plan, contact],
+      )
+    ).rows[0].id as string;
+    // A pre-death draft keys on the ADMISSION and exists before any plan (no FK to one).
+    const assessmentDraft = (
+      await db.query(
+        `INSERT INTO bereavement_risk_assessment_draft (organization_id, provider_entity_id, location_id,
+           patient_id, admission_id, last_edited_by_membership_id, last_edited_discipline)
+         VALUES ($1,$2,$3,$4,$5,$6,'medical_social_worker') RETURNING id`,
+        [org, pe, location, patient, `6666666${n}-6666-4666-8666-666666666666`, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
+    // ADR-0109 D6 — the plan's physician condolence letter (one per plan).
+    const physicianLetter = (
+      await db.query(
+        `INSERT INTO bereavement_physician_letter (organization_id, provider_entity_id, location_id, plan_id,
+           patient_id, due_at)
+         VALUES ($1,$2,$3,$4,$5, now() + interval '2 days') RETURNING id`,
+        [org, pe, location, plan, patient],
+      )
+    ).rows[0].id as string;
     return {
       pe,
       location,
@@ -242,6 +275,9 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       optOut,
       gateOverride,
       idgRiskFlag,
+      assessmentTask,
+      assessmentDraft,
+      physicianLetter,
     };
   }
 
@@ -274,6 +310,9 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
     const rls = [
       "0102_bereavement_m16_rls_audit_triggers.sql",
       "0168_idg_downstream_consumer_projections.sql",
+      "1342_m16_assessment_task.sql",
+      "1343_m16_risk_assessment_draft.sql",
+      "1345_m16_physician_letter.sql",
     ]
       .map((file) => readFileSync(join(MIGRATIONS_DIR, file), "utf8"))
       .join("\n");
@@ -393,6 +432,158 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       a.risk,
     ]);
     expect(check.rows[0].rule_tier).toBe("moderate");
+  });
+
+  it("an assessment task is `completed` only with the human score and instant that completed it (CHECK)", async () => {
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query("UPDATE bereavement_assessment_task SET status = 'completed' WHERE id=$1", [
+          a.assessmentTask,
+        ]),
+      ),
+    ).rejects.toThrow(/berv_assessment_task_completion_chk/);
+    const done = await withOrg(ORG_A, () =>
+      db.query(
+        `UPDATE bereavement_assessment_task SET status = 'completed', completed_at = now(), risk_score_id = $2
+         WHERE id=$1`,
+        [a.assessmentTask, a.risk],
+      ),
+    );
+    expect(done.rowCount).toBe(1);
+  });
+
+  it("the assessment-task ledger holds one checkpoint of each kind per contact", async () => {
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO bereavement_assessment_task (organization_id, provider_entity_id, plan_id,
+             bereaved_contact_id, task_kind, due_at, late_grace_until)
+           VALUES ($1,$2,$3,$4,'initial_assessment', now(), now())`,
+          [ORG_A, a.pe, a.plan, a.contact],
+        ),
+      ),
+    ).rejects.toThrow(/berv_assessment_task_contact_kind_uniq/);
+  });
+
+  it("a pre-death draft defaults to eight unknowns, pins its key set and is one per admission", async () => {
+    const defaults = await db.query(
+      "SELECT factors_jsonb FROM bereavement_risk_assessment_draft WHERE id=$1",
+      [a.assessmentDraft],
+    );
+    expect(Object.keys(defaults.rows[0].factors_jsonb).sort()).toEqual(
+      [
+        "activeSubstanceUse",
+        "ambivalentRelationship",
+        "financialStrain",
+        "preExistingMentalHealth",
+        "priorUnresolvedLoss",
+        "primaryCaregiverRole",
+        "socialIsolation",
+        "suddenUnexpectedDeath",
+      ].sort(),
+    );
+    expect(Object.values(defaults.rows[0].factors_jsonb)).toEqual(Array(8).fill("unknown"));
+    // a vector that drops a key (or is not an object) is refused by the CHECK
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          "UPDATE bereavement_risk_assessment_draft SET factors_jsonb = '{\"financialStrain\": true}'::jsonb WHERE id=$1",
+          [a.assessmentDraft],
+        ),
+      ),
+    ).rejects.toThrow(/berv_assessment_draft_factors_chk/);
+    // a draft is carried with BOTH the score and the instant, or neither
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query("UPDATE bereavement_risk_assessment_draft SET carried_at = now() WHERE id=$1", [
+          a.assessmentDraft,
+        ]),
+      ),
+    ).rejects.toThrow(/berv_assessment_draft_carried_chk/);
+    // one draft per (organization, admission)
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO bereavement_risk_assessment_draft (organization_id, provider_entity_id, patient_id,
+             admission_id, last_edited_by_membership_id, last_edited_discipline)
+           VALUES ($1,$2,$3,'66666661-6666-4666-8666-666666666666',$4,'chaplain')`,
+          [ORG_A, a.pe, "44444441-4444-4444-4444-444444444444", MEMBERSHIP],
+        ),
+      ),
+    ).rejects.toThrow(/berv_assessment_draft_admission_uniq/);
+  });
+
+  it("a physician letter pins its lifecycle: one per plan, a reviewer on every decision, a recipient before approval", async () => {
+    // pending_review names no reviewer; any other status must
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query("UPDATE bereavement_physician_letter SET status='declined' WHERE id=$1", [
+          a.physicianLetter,
+        ]),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_review_chk/);
+    // an approved letter goes to an internal clinician and carries the render request instant
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `UPDATE bereavement_physician_letter SET status='approved', reviewed_at=now(),
+             reviewed_by_membership_id=$2, m22_render_requested_at=now() WHERE id=$1`,
+          [a.physicianLetter, MEMBERSHIP],
+        ),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_attending_chk/);
+    // a decline reason is prose of at least 20 characters, and only a declined letter carries one
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `UPDATE bereavement_physician_letter SET status='declined', reviewed_at=now(),
+             reviewed_by_membership_id=$2, decline_reason_redacted='too short' WHERE id=$1`,
+          [a.physicianLetter, MEMBERSHIP],
+        ),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_decline_chk/);
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query("UPDATE bereavement_physician_letter SET decline_reason_redacted=$2 WHERE id=$1", [
+          a.physicianLetter,
+          "x".repeat(25),
+        ]),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_decline_chk/);
+    // a sealed note rides only an approved or rendered letter
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          "UPDATE bereavement_physician_letter SET personal_note_cipher='v1.x' WHERE id=$1",
+          [a.physicianLetter],
+        ),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_note_chk/);
+    // the whole legal path: decline with a real reason, and the audit row scrubs it
+    await withOrg(ORG_A, () =>
+      db.query(
+        `UPDATE bereavement_physician_letter SET status='declined', reviewed_at=now(),
+           reviewed_by_membership_id=$2, decline_reason_redacted=$3, version=version+1 WHERE id=$1`,
+        [a.physicianLetter, MEMBERSHIP, "The attending retired last spring."],
+      ),
+    );
+    const audit = await db.query(
+      `SELECT after FROM audit_event WHERE resource_kind='bereavement_physician_letter' AND resource_id=$1
+       ORDER BY created_at DESC LIMIT 1`,
+      [a.physicianLetter],
+    );
+    expect(audit.rows[0].after.status).toBe("declined");
+    expect(JSON.stringify(audit.rows[0].after)).not.toContain("retired last spring");
+    // one letter per plan
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO bereavement_physician_letter (organization_id, provider_entity_id, plan_id, patient_id, due_at)
+           SELECT organization_id, provider_entity_id, plan_id, patient_id, due_at FROM bereavement_physician_letter WHERE id=$1`,
+          [a.physicianLetter],
+        ),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_plan_uniq/);
   });
 
   it("chartwarden_app holds no DELETE on the M16 tables — destruction runs through the eraser (§8.5)", async () => {

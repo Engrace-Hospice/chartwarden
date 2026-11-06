@@ -1,4 +1,4 @@
-// M36 ADR-0107 (PROPOSED) - the people a group tag (@role, @care-team, @on-call) resolved to at send (migration 1302). Insert-only, written in the sending
+// M36 ADR-0108 (PROPOSED) - the people a group tag (@role, @care-team, @on-call) resolved to at send (migration 1302). Insert-only, written in the sending
 // transaction; ids and instants only. The application writes only active channel members.
 import { sql } from "drizzle-orm";
 import {
