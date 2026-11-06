@@ -199,7 +199,7 @@ export function buildDrizzleAddonService(db: DbClient, deps: AddonServiceDeps = 
 
   async function loadSubscription(tx: WriteTx, subscriptionId: string) {
     const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).limit(1);
-    if (!sub) throw new NotFoundError("subscription not found");
+    if (!sub) throw new NotFoundError("subscription", subscriptionId);
     return sub;
   }
 

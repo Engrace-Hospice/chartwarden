@@ -21,7 +21,7 @@ const conflict = (code: string, message: string): ChartWardenError =>
 export async function lockSubscription(tx: WriteTx, subscriptionId: string): Promise<SubRow> {
   const S = schema.subscriptionRow;
   const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).for("update").limit(1);
-  if (!sub) throw new NotFoundError("subscription not found");
+  if (!sub) throw new NotFoundError("subscription", subscriptionId);
   return sub;
 }
 
