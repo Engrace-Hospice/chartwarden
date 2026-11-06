@@ -557,6 +557,41 @@ describe("CLEARINGHOUSE_VENDOR (ADR-0053 D3)", () => {
   });
 });
 
+describe("CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS (ADR-0053 amendment 2026-11-06)", () => {
+  const ORG = "11111111-1111-4111-8111-111111111111";
+  const OTHER = "22222222-2222-4222-8222-222222222222";
+  const problemsFor = (override: Record<string, string>) =>
+    collectEnvProblems({ ...GOOD, ...override }).map((p) => `${p.key}: ${p.problem}`);
+
+  it("is optional: unset or blank names no organization", () => {
+    expect(problemsFor({})).toEqual([]);
+    expect(problemsFor({ CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: "  " })).toEqual([]);
+  });
+  it("accepts organization uuids once a platform vendor is bound", () => {
+    expect(
+      problemsFor({
+        CLEARINGHOUSE_VENDOR: "stedi",
+        CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: ` ${ORG}, ${OTHER} `,
+      }),
+    ).toEqual([]);
+  });
+  it("refuses anything that is not a uuid list, and naming organizations with no vendor bound", () => {
+    expect(
+      problemsFor({ CLEARINGHOUSE_VENDOR: "stedi", CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: "demo" }),
+    ).toEqual([
+      "CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: must be a comma-separated list of organization uuids",
+    ]);
+    expect(problemsFor({ CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: ORG })).toEqual([
+      "CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: names organizations but CLEARINGHOUSE_VENDOR is not set",
+    ]);
+  });
+  it("is not validated outside production", () => {
+    expect(
+      collectEnvProblems({ NODE_ENV: "development", CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: "demo" }),
+    ).toEqual([]);
+  });
+});
+
 describe("TENANT_BASE_DOMAIN (ADR-0049 D2 / D4, ADR-0088)", () => {
   const keysFor = (extra: EnvLike) => collectEnvProblems({ ...GOOD, ...extra }).map((p) => p.key);
   it("is optional: unset is single-host mode (the demo)", () => {
