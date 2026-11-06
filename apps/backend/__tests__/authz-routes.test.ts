@@ -257,6 +257,70 @@ describe("M3-T08 authorization route inventory", () => {
       },
     );
 
+    it.each(["clinical_staff", "external_auditor", "admin_executive"])(
+      "slice 2: a tenant cannot create a role under the system-managed key external_auditor, whatever the category ($0) → 422 RESERVED_ROLE",
+      async (category) => {
+        const { app, auditSink } = makeServer();
+        const res = await app.inject({
+          method: "POST",
+          url: "/api/v1/roles",
+          headers: ADMIN,
+          // Zero permissions: anti-escalation passes trivially, so the key itself must be refused (a real auditor must always land on
+          // the SYSTEM role M3's auditor grant creates, never on a tenant-written look-alike).
+          payload: { key: "external_auditor", category, name: "Auditor", permissionKeys: [] },
+        });
+        expect(res.statusCode).toBe(422);
+        expect(res.json().error.code).toBe("RESERVED_ROLE");
+        expect(auditSink.rows.some((r) => r.eventType === "m3.role.created")).toBe(false);
+        await app.close();
+      },
+    );
+
+    it("slice 2: a tenant can still create an ordinary role, and a role whose key merely CONTAINS the word is not the reserved key", async () => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/roles",
+        headers: ADMIN,
+        payload: {
+          key: "external_auditor_liaison",
+          category: "operations",
+          name: "Liaison",
+          permissionKeys: [],
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      await app.close();
+    });
+
+    it("slice 2: a role's KEY cannot be changed by PATCH (so a role cannot be renamed INTO the reserved key): the body is refused", async () => {
+      const { app } = makeServer();
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/v1/roles",
+        headers: ADMIN,
+        payload: {
+          key: "ordinary_role",
+          category: "operations",
+          name: "Ordinary",
+          permissionKeys: [],
+        },
+      });
+      expect(created.statusCode).toBe(201);
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/roles/${created.json().roleId}`,
+        headers: ADMIN,
+        payload: { key: "external_auditor" },
+      });
+      expect(res.statusCode).toBe(422);
+      const after = await app.inject({ method: "GET", url: "/api/v1/roles", headers: ADMIN });
+      expect(after.json().roles.map((r: { key: string }) => r.key)).not.toContain(
+        "external_auditor",
+      );
+      await app.close();
+    });
+
     it.each([
       { key: "platform_admin", category: "operations" },
       { key: "platform_ops", category: "operations" },

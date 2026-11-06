@@ -25,6 +25,7 @@ import {
   ORG_WIDE_SCOPE_ROLES,
   allPermissionMirrorRows,
   isSystemLocked,
+  isSystemManagedRoleKey,
   isTenantRoleReserved,
   requirePermission,
   requireSession,
@@ -146,6 +147,16 @@ const orgWideKeyReserved = () =>
     422,
   );
 
+// Slice 2: `external_auditor` is the role M3's auditor grant creates in a tenant org (system_default), and a real auditor must always
+// land on THAT row. A tenant-written role under the same key is never system_default; the grant would find it by key and attach an
+// auditor to a tenant-editable role, and the staff meter would not treat it as the auditor exclusion.
+const systemManagedKeyReserved = () =>
+  new ChartWardenError(
+    "RESERVED_ROLE",
+    "this role key is created and managed by the system and cannot be created by a tenant",
+    422,
+  );
+
 export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRouteDeps): void {
   const breakGlassTtlSec = deps.breakGlassTtlSec ?? DEFAULT_BREAK_GLASS_TTL_SEC;
 
@@ -195,6 +206,7 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       // enrichment reader and the migration 0318 CHECK enforce the same rule below this route.
       if (isTenantRoleReserved(body)) throw reservedRole();
       if (ORG_WIDE_SCOPE_ROLES.includes(body.key)) throw orgWideKeyReserved();
+      if (isSystemManagedRoleKey(body.key)) throw systemManagedKeyReserved();
 
       await assertNoEscalation(request, organizationId, userId, permissionKeys);
 

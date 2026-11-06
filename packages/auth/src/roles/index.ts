@@ -69,6 +69,11 @@ export {
   roleConfersKey,
 } from "./platform-reserved";
 export {
+  EXTERNAL_AUDITOR_ROLE_KEY,
+  SYSTEM_MANAGED_ROLE_KEYS,
+  isSystemManagedRoleKey,
+} from "./system-managed";
+export {
   FULL_CATALOG_ROLE_KEYS,
   type MirrorPermission,
   PLATFORM_PERMISSION_CATEGORY,

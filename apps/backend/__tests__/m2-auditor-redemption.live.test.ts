@@ -629,6 +629,36 @@ describe.skipIf(!DB_URL)("M2/M3 auditor magic-link redemption — LIVE Postgres"
     expect((await redeem(ORG_A, token)).statusCode).toBe(200); // corrected ⇒ the SAME link still works
   });
 
+  it("refuses to attach an auditor to a role under the auditor key that is NOT the system role (a legacy tenant-written look-alike), and a corrected role lets the SAME link through", async () => {
+    const eng = await engagement(ORG_A);
+    const { token } = await link(ORG_A, eng);
+    // Simulate a look-alike written before migration 1345 existed: the guard trigger is off for this one transaction.
+    const asLookAlike = async (systemDefault: boolean) => {
+      await admin.query("BEGIN");
+      await admin.query("SET LOCAL session_replication_role = replica");
+      await admin.query(
+        "UPDATE role SET system_default=$2 WHERE organization_id=$1 AND key='external_auditor'",
+        [ORG_A, systemDefault],
+      );
+      await admin.query("COMMIT");
+    };
+    await asLookAlike(false);
+    try {
+      const res = await redeem(ORG_A, token);
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error?.code ?? res.json().code).toBe("AUDITOR_ROLE_MISCONFIGURED");
+      const attached = await admin.query(
+        `SELECT 1 FROM membership_role mr JOIN role r ON r.id = mr.role_id
+          WHERE r.organization_id=$1 AND r.key='external_auditor' AND mr.scope->>'engagementId' = $2`,
+        [ORG_A, eng.id],
+      );
+      expect(attached.rowCount).toBe(0); // nobody was attached to the look-alike
+    } finally {
+      await asLookAlike(true);
+    }
+    expect((await redeem(ORG_A, token)).statusCode).toBe(200);
+  });
+
   it("the session dies with the engagement window (server-side enforcement)", async () => {
     const eng = await engagement(ORG_A);
     const { cookie } = await activeSession(ORG_A, eng);
