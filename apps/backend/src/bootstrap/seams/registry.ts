@@ -763,6 +763,7 @@ export const REQUIRED_SEAMS = [
     ownerModule: 25,
     phi: false,
     denyStub: netCollectionsReaderDenyStub,
+  },
   // ADR-0053 amendment 2026-11-06 — the clearinghouse the org chose (stedi | claimmd | outside); M35 pricing reads it.
   {
     key: "TenantClearinghouseReader",
