@@ -21091,7 +21091,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Verify the vendor BAA the tenant recorded for its own clearinghouse account (409 CLEARINGHOUSE_BAA_NOT_RECORDED if it has not; idempotent). tenant_clearinghouse.verify_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. NOT limited to an onboarding tenant (a live tenant that changed vendor needs it too); an AI actor is refused */
+        /** Verify the vendor BAA the tenant recorded for its own clearinghouse account (409 CLEARINGHOUSE_BAA_NOT_RECORDED if it has not; idempotent). Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; the audit row names the document reference and effective date verified. tenant_clearinghouse.verify_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. NOT limited to an onboarding tenant (a live tenant that changed vendor needs it too); an AI actor is refused */
         post: operations["postApiV1PlatformTenantsByOrgSlugClearinghouseBaaVerify"];
         delete?: never;
         options?: never;
@@ -92333,6 +92333,8 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
+                /** @description The `baa.recordedAt` (UTC ISO timestamp) of the BAA record the operator read from the clearinghouse view; a changed record is refused with 409 CLEARINGHOUSE_BAA_CHANGED. */
+                "If-Match": string;
             };
             path: {
                 orgSlug: string;
