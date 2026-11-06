@@ -11289,6 +11289,98 @@
         }
       }
     },
+    "/api/v1/admin/dosespot-prescribers/{membershipId}/dosespot-enrollment": {
+      "post": {
+        "operationId": "postApiV1AdminDosespotprescribersByMembershipIdDosespotenrollment",
+        "tags": [
+          "12-dosespot"
+        ],
+        "summary": "Register a roster prescriber with DoseSpot and record the vendor's id (the link transmission sends under). Needs a verified or active registration (409 DOSESPOT_NOT_READY); the NPI is checked by its check digit; idempotent for a prescriber already linked; the vendor call runs with no transaction open. Never starts EPCS or IAL2. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+        "parameters": [
+          {
+            "name": "membershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "membershipId",
+                    "enrolledWithDoseSpot"
+                  ],
+                  "properties": {
+                    "membershipId": {
+                      "type": "string"
+                    },
+                    "enrolledWithDoseSpot": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "npi",
+                  "firstName",
+                  "lastName"
+                ],
+                "properties": {
+                  "npi": {
+                    "pattern": "^[0-9]{10}$",
+                    "description": "The prescriber's 10-digit NPI (validated by its check digit).",
+                    "type": "string"
+                  },
+                  "firstName": {
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "type": "string"
+                  },
+                  "lastName": {
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/dosespot-prescribers/{membershipId}/enroll": {
       "post": {
         "operationId": "postApiV1AdminDosespotprescribersByMembershipIdEnroll",
@@ -258712,6 +258804,1565 @@
         }
       }
     },
+    "/api/v1/platform/tenants/{orgSlug}/dosespot": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantsByOrgSlugDosespot",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "A tenant's DoseSpot registration, masked (hasSecret; no credential is ever returned) — platform ops; read is audited",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "status",
+                    "environment",
+                    "clinicId",
+                    "serviceClinicianId",
+                    "hasSecret",
+                    "registeredAt",
+                    "verifiedAt",
+                    "activatedAt",
+                    "lastTest",
+                    "prescribersEnrolled",
+                    "queuedTransmissions",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "registered",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "environment": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "sandbox",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "clinicId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "serviceClinicianId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "type": "boolean"
+                    },
+                    "registeredAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "prescribersEnrolled": {
+                      "type": "integer"
+                    },
+                    "queuedTransmissions": {
+                      "type": "integer"
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1PlatformTenantsByOrgSlugDosespot",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Register a tenant's DoseSpot clinic on its behalf: create (201) or version-checked change (200, If-Match). Platform support may set the clinic's own Subscription-Key; draft -> registered -> verified -> active: only an ACTIVE registration transmits (an org with no registration of its own keeps its DOSESPOT_TENANT_CONFIGS env entry, if it has one; a registration that exists is served by itself alone). The clinic key (and a Subscription-Key) are write-only, sealed under the tenant's own key and never returned. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "description": "The registration's current integer version; required to change an existing registration, absent on a first save.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "status",
+                    "environment",
+                    "clinicId",
+                    "serviceClinicianId",
+                    "hasSecret",
+                    "registeredAt",
+                    "verifiedAt",
+                    "activatedAt",
+                    "lastTest",
+                    "prescribersEnrolled",
+                    "queuedTransmissions",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "registered",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "environment": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "sandbox",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "clinicId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "serviceClinicianId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "type": "boolean"
+                    },
+                    "registeredAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "prescribersEnrolled": {
+                      "type": "integer"
+                    },
+                    "queuedTransmissions": {
+                      "type": "integer"
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "environment",
+                  "reason"
+                ],
+                "properties": {
+                  "environment": {
+                    "description": "The DoseSpot environment the clinic lives in. A name, never a URL: the host is platform configuration. Production needs the platform to have enabled it.",
+                    "anyOf": [
+                      {
+                        "const": "sandbox",
+                        "type": "string"
+                      },
+                      {
+                        "const": "production",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "clinicId": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "serviceClinicianId": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "clinicKey": {
+                    "minLength": 8,
+                    "maxLength": 512,
+                    "description": "Write-only: sealed under the tenant's own key and never returned.",
+                    "type": "string"
+                  },
+                  "subscriptionKey": {
+                    "minLength": 8,
+                    "maxLength": 512,
+                    "description": "Write-only. Platform support may set the clinic's own Subscription-Key; a tenant administrator may only rotate one that was set.",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/activate": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugDosespotActivate",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Activate a tenant's verified DoseSpot registration; settles wizard step 10 once every earlier step allows it. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "status",
+                    "environment",
+                    "clinicId",
+                    "serviceClinicianId",
+                    "hasSecret",
+                    "registeredAt",
+                    "verifiedAt",
+                    "activatedAt",
+                    "lastTest",
+                    "prescribersEnrolled",
+                    "queuedTransmissions",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "registered",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "environment": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "sandbox",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "clinicId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "serviceClinicianId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "type": "boolean"
+                    },
+                    "registeredAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "prescribersEnrolled": {
+                      "type": "integer"
+                    },
+                    "queuedTransmissions": {
+                      "type": "integer"
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/deactivate": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugDosespotDeactivate",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Take a tenant's active DoseSpot registration out of service (back to verified). NOT limited to an onboarding tenant: a live tenant needs it too. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` are required; an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "status",
+                    "environment",
+                    "clinicId",
+                    "serviceClinicianId",
+                    "hasSecret",
+                    "registeredAt",
+                    "verifiedAt",
+                    "activatedAt",
+                    "lastTest",
+                    "prescribersEnrolled",
+                    "queuedTransmissions",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "registered",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "environment": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "sandbox",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "clinicId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "serviceClinicianId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "type": "boolean"
+                    },
+                    "registeredAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "prescribersEnrolled": {
+                      "type": "integer"
+                    },
+                    "queuedTransmissions": {
+                      "type": "integer"
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/prescribers": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantsByOrgSlugDosespotPrescribers",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "A tenant's prescriber roster and whether each prescriber is linked to DoseSpot (no NPI, no DEA number, no vendor id) — platform ops; read is audited",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "membershipId",
+                          "onRoster",
+                          "enrolledWithDoseSpot",
+                          "vendorEnrollmentRequestedAt"
+                        ],
+                        "properties": {
+                          "membershipId": {
+                            "type": "string"
+                          },
+                          "onRoster": {
+                            "type": "boolean"
+                          },
+                          "enrolledWithDoseSpot": {
+                            "type": "boolean"
+                          },
+                          "vendorEnrollmentRequestedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/prescribers/{membershipId}/enroll": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugDosespotPrescribersByMembershipIdEnroll",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Register a roster prescriber with DoseSpot on the tenant's behalf and record the vendor's id (409 DOSESPOT_NOT_READY until the registration is verified or active; idempotent for a linked prescriber; never starts EPCS). tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "membershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "membershipId",
+                    "enrolledWithDoseSpot"
+                  ],
+                  "properties": {
+                    "membershipId": {
+                      "type": "string"
+                    },
+                    "enrolledWithDoseSpot": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "npi",
+                  "firstName",
+                  "lastName",
+                  "reason"
+                ],
+                "properties": {
+                  "npi": {
+                    "pattern": "^[0-9]{10}$",
+                    "type": "string"
+                  },
+                  "firstName": {
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "type": "string"
+                  },
+                  "lastName": {
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/verify": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugDosespotVerify",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Test a tenant's DoseSpot connection (a no-PHI token mint; a failed test is a 200 with the outcome); 6 requests/min per target tenant. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "config",
+                    "test"
+                  ],
+                  "properties": {
+                    "config": {
+                      "type": "object",
+                      "required": [
+                        "source",
+                        "status",
+                        "environment",
+                        "clinicId",
+                        "serviceClinicianId",
+                        "hasSecret",
+                        "registeredAt",
+                        "verifiedAt",
+                        "activatedAt",
+                        "lastTest",
+                        "prescribersEnrolled",
+                        "queuedTransmissions",
+                        "version",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "source": {
+                          "anyOf": [
+                            {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "platform_env",
+                              "type": "string"
+                            },
+                            {
+                              "const": "none",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "registered",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "verified",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "active",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "environment": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "sandbox",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "production",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "clinicId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "serviceClinicianId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "hasSecret": {
+                          "type": "boolean"
+                        },
+                        "registeredAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "verifiedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "activatedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastTest": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "outcome",
+                                "at"
+                              ],
+                              "properties": {
+                                "outcome": {
+                                  "anyOf": [
+                                    {
+                                      "const": "ok",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "credential_rejected",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "unreachable",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "at": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "prescribersEnrolled": {
+                          "type": "integer"
+                        },
+                        "queuedTransmissions": {
+                          "type": "integer"
+                        },
+                        "version": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "updatedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "test": {
+                      "type": "object",
+                      "required": [
+                        "outcome"
+                      ],
+                      "properties": {
+                        "outcome": {
+                          "anyOf": [
+                            {
+                              "const": "ok",
+                              "type": "string"
+                            },
+                            {
+                              "const": "credential_rejected",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unreachable",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/platform/tenants/{orgSlug}/go-live/approve": {
       "post": {
         "operationId": "postApiV1PlatformTenantsByOrgSlugGoliveApprove",
@@ -330281,6 +331932,1284 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/dosespot": {
+      "get": {
+        "operationId": "getApiV1TenantDosespot",
+        "tags": [
+          "12-dosespot"
+        ],
+        "summary": "The organization's DoseSpot registration, masked (hasSecret; no credential is ever returned; prescribersEnrolled and queuedTransmissions are shown, neither gates anything) — draft -> registered -> verified -> active: only an ACTIVE registration transmits (an org with no registration of its own keeps its DOSESPOT_TENANT_CONFIGS env entry, if it has one; a registration that exists is served by itself alone). The clinic key (and a Subscription-Key) are write-only, sealed under the tenant's own key and never returned. prescribing.clinic.read (org-level)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "status",
+                    "environment",
+                    "clinicId",
+                    "serviceClinicianId",
+                    "hasSecret",
+                    "registeredAt",
+                    "verifiedAt",
+                    "activatedAt",
+                    "lastTest",
+                    "prescribersEnrolled",
+                    "queuedTransmissions",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "registered",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "environment": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "sandbox",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "clinicId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "serviceClinicianId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "type": "boolean"
+                    },
+                    "registeredAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "prescribersEnrolled": {
+                      "description": "Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation.",
+                      "type": "integer"
+                    },
+                    "queuedTransmissions": {
+                      "description": "Signed orders waiting to transmit; they pause while the registration is not active.",
+                      "type": "integer"
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1TenantDosespot",
+        "tags": [
+          "12-dosespot"
+        ],
+        "summary": "Save the DoseSpot registration: create (201) or version-checked change (200, If-Match). Complete input is `registered`, incomplete stays `draft` (save and resume); ANY change to the environment, clinic, clinician or a key sends the row back and clears the test and activation (a change of environment or clinic also drops the stored key). The environment is a name, never a URL. A tenant administrator cannot introduce a Subscription-Key (422 DOSESPOT_SUBSCRIPTION_KEY_PLATFORM_ONLY) but may rotate one platform support set — draft -> registered -> verified -> active: only an ACTIVE registration transmits (an org with no registration of its own keeps its DOSESPOT_TENANT_CONFIGS env entry, if it has one; a registration that exists is served by itself alone). The clinic key (and a Subscription-Key) are write-only, sealed under the tenant's own key and never returned. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "description": "The registration's current integer version; required to change an existing registration, absent on a first save.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "status",
+                    "environment",
+                    "clinicId",
+                    "serviceClinicianId",
+                    "hasSecret",
+                    "registeredAt",
+                    "verifiedAt",
+                    "activatedAt",
+                    "lastTest",
+                    "prescribersEnrolled",
+                    "queuedTransmissions",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "registered",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "environment": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "sandbox",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "clinicId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "serviceClinicianId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "type": "boolean"
+                    },
+                    "registeredAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "prescribersEnrolled": {
+                      "description": "Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation.",
+                      "type": "integer"
+                    },
+                    "queuedTransmissions": {
+                      "description": "Signed orders waiting to transmit; they pause while the registration is not active.",
+                      "type": "integer"
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "environment"
+                ],
+                "properties": {
+                  "environment": {
+                    "description": "Which DoseSpot environment the clinic lives in. A name, never a URL: the host is platform configuration. Production is available only when the platform has enabled it.",
+                    "anyOf": [
+                      {
+                        "const": "sandbox",
+                        "type": "string"
+                      },
+                      {
+                        "const": "production",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "clinicId": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "description": "The clinic id DoseSpot issued (1-64 letters, digits, dots, dashes or underscores).",
+                    "type": "string"
+                  },
+                  "serviceClinicianId": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "description": "The DoseSpot clinician the service token is minted for (patient sync, history, status polling).",
+                    "type": "string"
+                  },
+                  "clinicKey": {
+                    "minLength": 8,
+                    "maxLength": 512,
+                    "description": "The clinic key DoseSpot issued. Write-only: it is sealed under the tenant's own key and never returned. Omit it to keep the stored one.",
+                    "type": "string"
+                  },
+                  "subscriptionKey": {
+                    "minLength": 8,
+                    "maxLength": 512,
+                    "description": "The DoseSpot Subscription-Key, when the clinic has its own. Write-only. Platform support may set it; a tenant administrator may only rotate one that platform support set.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/dosespot/activate": {
+      "post": {
+        "operationId": "postApiV1TenantDosespotActivate",
+        "tags": [
+          "12-dosespot"
+        ],
+        "summary": "Activate a verified registration: e-prescribing then transmits for the organization (409 DOSESPOT_NOT_VERIFIED before a passed test; production only when the platform enabled it; idempotent once active). prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "status",
+                    "environment",
+                    "clinicId",
+                    "serviceClinicianId",
+                    "hasSecret",
+                    "registeredAt",
+                    "verifiedAt",
+                    "activatedAt",
+                    "lastTest",
+                    "prescribersEnrolled",
+                    "queuedTransmissions",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "registered",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "environment": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "sandbox",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "clinicId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "serviceClinicianId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "type": "boolean"
+                    },
+                    "registeredAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "prescribersEnrolled": {
+                      "description": "Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation.",
+                      "type": "integer"
+                    },
+                    "queuedTransmissions": {
+                      "description": "Signed orders waiting to transmit; they pause while the registration is not active.",
+                      "type": "integer"
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/dosespot/deactivate": {
+      "post": {
+        "operationId": "postApiV1TenantDosespotDeactivate",
+        "tags": [
+          "12-dosespot"
+        ],
+        "summary": "Take an active registration out of service (back to verified; the credential is unchanged, so no new test is owed). Newly signed orders then activate locally and queued ones wait. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "status",
+                    "environment",
+                    "clinicId",
+                    "serviceClinicianId",
+                    "hasSecret",
+                    "registeredAt",
+                    "verifiedAt",
+                    "activatedAt",
+                    "lastTest",
+                    "prescribersEnrolled",
+                    "queuedTransmissions",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "registered",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "environment": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "sandbox",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "clinicId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "serviceClinicianId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "type": "boolean"
+                    },
+                    "registeredAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "prescribersEnrolled": {
+                      "description": "Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation.",
+                      "type": "integer"
+                    },
+                    "queuedTransmissions": {
+                      "description": "Signed orders waiting to transmit; they pause while the registration is not active.",
+                      "type": "integer"
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/dosespot/verify": {
+      "post": {
+        "operationId": "postApiV1TenantDosespotVerify",
+        "tags": [
+          "12-dosespot"
+        ],
+        "summary": "Test the DoseSpot connection: one service-clinician token mint with the stored credential, no patient data. The probe runs with no transaction open (409 DOSESPOT_CHANGED_DURING_VERIFY if the registration moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome (credential_rejected or unreachable) and leaves the status where it was; production is refused (409 DOSESPOT_PRODUCTION_NOT_ENABLED) until the platform enables it. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "config",
+                    "test"
+                  ],
+                  "properties": {
+                    "config": {
+                      "type": "object",
+                      "required": [
+                        "source",
+                        "status",
+                        "environment",
+                        "clinicId",
+                        "serviceClinicianId",
+                        "hasSecret",
+                        "registeredAt",
+                        "verifiedAt",
+                        "activatedAt",
+                        "lastTest",
+                        "prescribersEnrolled",
+                        "queuedTransmissions",
+                        "version",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "source": {
+                          "anyOf": [
+                            {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "platform_env",
+                              "type": "string"
+                            },
+                            {
+                              "const": "none",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "registered",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "verified",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "active",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "environment": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "sandbox",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "production",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "clinicId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "serviceClinicianId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "hasSecret": {
+                          "type": "boolean"
+                        },
+                        "registeredAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "verifiedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "activatedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastTest": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "outcome",
+                                "at"
+                              ],
+                              "properties": {
+                                "outcome": {
+                                  "anyOf": [
+                                    {
+                                      "const": "ok",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "credential_rejected",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "unreachable",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "at": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "prescribersEnrolled": {
+                          "description": "Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation.",
+                          "type": "integer"
+                        },
+                        "queuedTransmissions": {
+                          "description": "Signed orders waiting to transmit; they pause while the registration is not active.",
+                          "type": "integer"
+                        },
+                        "version": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "updatedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "test": {
+                      "type": "object",
+                      "required": [
+                        "outcome"
+                      ],
+                      "properties": {
+                        "outcome": {
+                          "anyOf": [
+                            {
+                              "const": "ok",
+                              "type": "string"
+                            },
+                            {
+                              "const": "credential_rejected",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unreachable",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

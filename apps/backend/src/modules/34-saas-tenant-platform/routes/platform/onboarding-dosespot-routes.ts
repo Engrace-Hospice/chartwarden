@@ -57,56 +57,75 @@ export function registerOnboardingDoseSpotRoutes(
     : WRITE;
   const slugOf = (request: FastifyRequest): string =>
     parse(OrgSlugParamsSchema, request.params).orgSlug;
-  const BASE = "/api/v1/platform/tenants/:orgSlug/dosespot";
 
   // GET — the tenant's registration, masked (`hasSecret`, never the credential). One audited read.
-  app.get(BASE, { preHandler: [...READ] }, async (request) =>
-    service.getDoseSpot(operatorOf(request), slugOf(request)),
+  app.get(
+    "/api/v1/platform/tenants/:orgSlug/dosespot",
+    { preHandler: [...READ] },
+    async (request) => service.getDoseSpot(operatorOf(request), slugOf(request)),
   );
 
   // PUT — save the registration. 201 on the first save, 200 on a version-checked change.
-  app.put(BASE, { preHandler: [...WRITE] }, async (request, reply) => {
-    const op = operatorOf(request);
-    const { reason, fields } = splitReason(parse(OnboardingDoseSpotPutRequest, request.body));
-    const { created, view } = await service.putDoseSpot(
-      op,
-      slugOf(request),
-      fields,
-      reason,
-      optionalIfMatch(request),
-    );
-    return reply.code(created ? 201 : 200).send(view);
-  });
+  app.put(
+    "/api/v1/platform/tenants/:orgSlug/dosespot",
+    { preHandler: [...WRITE] },
+    async (request, reply) => {
+      const op = operatorOf(request);
+      const { reason, fields } = splitReason(parse(OnboardingDoseSpotPutRequest, request.body));
+      const { created, view } = await service.putDoseSpot(
+        op,
+        slugOf(request),
+        fields,
+        reason,
+        optionalIfMatch(request),
+      );
+      return reply.code(created ? 201 : 200).send(view);
+    },
+  );
 
   // POST verify — the connection test (a no-PHI token mint): registered -> verified.
-  app.post(`${BASE}/verify`, { preHandler: [...VERIFY] }, async (request) => {
-    const op = operatorOf(request);
-    const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
-    return service.verifyDoseSpot(op, slugOf(request), reason);
-  });
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/dosespot/verify",
+    { preHandler: [...VERIFY] },
+    async (request) => {
+      const op = operatorOf(request);
+      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+      return service.verifyDoseSpot(op, slugOf(request), reason);
+    },
+  );
 
   // POST activate — verified -> active.
-  app.post(`${BASE}/activate`, { preHandler: [...WRITE] }, async (request) => {
-    const op = operatorOf(request);
-    const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
-    return service.activateDoseSpot(op, slugOf(request), reason);
-  });
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/dosespot/activate",
+    { preHandler: [...WRITE] },
+    async (request) => {
+      const op = operatorOf(request);
+      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+      return service.activateDoseSpot(op, slugOf(request), reason);
+    },
+  );
 
   // POST deactivate — active -> verified. NOT gated on the tenant's onboarding status: a live tenant needs this too.
-  app.post(`${BASE}/deactivate`, { preHandler: [...WRITE] }, async (request) => {
-    const op = operatorOf(request);
-    const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
-    return service.deactivateDoseSpot(op, slugOf(request), reason);
-  });
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/dosespot/deactivate",
+    { preHandler: [...WRITE] },
+    async (request) => {
+      const op = operatorOf(request);
+      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+      return service.deactivateDoseSpot(op, slugOf(request), reason);
+    },
+  );
 
   // GET prescribers — the roster and whether each prescriber is linked to DoseSpot (no NPI, no DEA, no vendor id).
-  app.get(`${BASE}/prescribers`, { preHandler: [...READ] }, async (request) =>
-    service.listDoseSpotPrescribers(operatorOf(request), slugOf(request)),
+  app.get(
+    "/api/v1/platform/tenants/:orgSlug/dosespot/prescribers",
+    { preHandler: [...READ] },
+    async (request) => service.listDoseSpotPrescribers(operatorOf(request), slugOf(request)),
   );
 
   // POST prescribers/:membershipId/enroll — register a roster prescriber with DoseSpot and record the vendor's id.
   app.post(
-    `${BASE}/prescribers/:membershipId/enroll`,
+    "/api/v1/platform/tenants/:orgSlug/dosespot/prescribers/:membershipId/enroll",
     { preHandler: [...WRITE] },
     async (request) => {
       const op = operatorOf(request);

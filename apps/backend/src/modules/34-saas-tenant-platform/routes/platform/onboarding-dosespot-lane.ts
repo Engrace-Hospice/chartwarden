@@ -18,21 +18,44 @@ import {
   type OnboardingAuditTarget,
   type OnboardingOperator,
 } from "./onboarding-data-audit";
-import type { OnboardingDataService, OnboardingFields } from "./onboarding-data-service";
+
+/** A body field set with the platform `reason` already removed, ready for M12's own validators (the service's `OnboardingFields`). */
+type Fields = Readonly<Record<string, unknown>>;
 
 const KIND = "dosespot_clinic_registration";
 const PRESCRIBER_KIND = "dosespot_prescriber";
 
-export type DoseSpotLaneMethods = Pick<
-  OnboardingDataService,
-  | "getDoseSpot"
-  | "putDoseSpot"
-  | "verifyDoseSpot"
-  | "activateDoseSpot"
-  | "deactivateDoseSpot"
-  | "listDoseSpotPrescribers"
-  | "enrollDoseSpotPrescriber"
->;
+/**
+ * The DoseSpot methods of the onboarding-data service. DECLARED HERE and extended by `OnboardingDataService` (the dependency runs
+ * service -> lane, never back). The credential is write-only on every one of them.
+ */
+export interface DoseSpotLaneMethods {
+  /** The tenant's DoseSpot registration, masked (`hasSecret`, never the credential). One audited read. */
+  getDoseSpot(op: OnboardingOperator, orgSlug: string): Promise<unknown>;
+  putDoseSpot(
+    op: OnboardingOperator,
+    orgSlug: string,
+    fields: Fields,
+    reason: string,
+    expectedVersion: number | undefined,
+  ): Promise<{ readonly created: boolean; readonly view: unknown }>;
+  verifyDoseSpot(
+    op: OnboardingOperator,
+    orgSlug: string,
+    reason: string,
+  ): Promise<{ readonly config: unknown; readonly test: unknown }>;
+  activateDoseSpot(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
+  /** NOT gated on the tenant's onboarding status: a live tenant needs it too. */
+  deactivateDoseSpot(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
+  listDoseSpotPrescribers(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
+  enrollDoseSpotPrescriber(
+    op: OnboardingOperator,
+    orgSlug: string,
+    membershipId: string,
+    fields: Fields,
+    reason: string,
+  ): Promise<unknown>;
+}
 
 /** The pieces of the main service this lane reuses; no behaviour of its own is duplicated. */
 export interface DoseSpotLaneHelpers {
@@ -104,7 +127,7 @@ export function buildDoseSpotLane(h: DoseSpotLaneHelpers): DoseSpotLaneMethods {
       return items[0];
     },
 
-    async putDoseSpot(op, orgSlug, fields: OnboardingFields, reason, expectedVersion) {
+    async putDoseSpot(op, orgSlug, fields, reason, expectedVersion) {
       let organizationId = "";
       let after: (() => Promise<void>) | undefined;
       const result = await h.write(

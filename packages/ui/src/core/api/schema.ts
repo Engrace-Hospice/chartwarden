@@ -1206,6 +1206,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/dosespot-prescribers/{membershipId}/dosespot-enrollment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a roster prescriber with DoseSpot and record the vendor's id (the link transmission sends under). Needs a verified or active registration (409 DOSESPOT_NOT_READY); the NPI is checked by its check digit; idempotent for a prescriber already linked; the vendor call runs with no transaction open. Never starts EPCS or IAL2. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        post: operations["postApiV1AdminDosespotprescribersByMembershipIdDosespotenrollment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/dosespot-prescribers/{membershipId}/enroll": {
         parameters: {
             query?: never;
@@ -21150,6 +21167,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's DoseSpot registration, masked (hasSecret; no credential is ever returned) — platform ops; read is audited */
+        get: operations["getApiV1PlatformTenantsByOrgSlugDosespot"];
+        /** Register a tenant's DoseSpot clinic on its behalf: create (201) or version-checked change (200, If-Match). Platform support may set the clinic's own Subscription-Key; draft -> registered -> verified -> active: only an ACTIVE registration transmits (an org with no registration of its own keeps its DOSESPOT_TENANT_CONFIGS env entry, if it has one; a registration that exists is served by itself alone). The clinic key (and a Subscription-Key) are write-only, sealed under the tenant's own key and never returned. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused */
+        put: operations["putApiV1PlatformTenantsByOrgSlugDosespot"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a tenant's verified DoseSpot registration; settles wizard step 10 once every earlier step allows it. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugDosespotActivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take a tenant's active DoseSpot registration out of service (back to verified). NOT limited to an onboarding tenant: a live tenant needs it too. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` are required; an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugDosespotDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/prescribers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's prescriber roster and whether each prescriber is linked to DoseSpot (no NPI, no DEA number, no vendor id) — platform ops; read is audited */
+        get: operations["getApiV1PlatformTenantsByOrgSlugDosespotPrescribers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/prescribers/{membershipId}/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a roster prescriber with DoseSpot on the tenant's behalf and record the vendor's id (409 DOSESPOT_NOT_READY until the registration is verified or active; idempotent for a linked prescriber; never starts EPCS). tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugDosespotPrescribersByMembershipIdEnroll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test a tenant's DoseSpot connection (a no-PHI token mint; a failed test is a 200 with the outcome); 6 requests/min per target tenant. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugDosespotVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/go-live/approve": {
         parameters: {
             query?: never;
@@ -27087,6 +27207,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenant/dosespot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's DoseSpot registration, masked (hasSecret; no credential is ever returned; prescribersEnrolled and queuedTransmissions are shown, neither gates anything) — draft -> registered -> verified -> active: only an ACTIVE registration transmits (an org with no registration of its own keeps its DOSESPOT_TENANT_CONFIGS env entry, if it has one; a registration that exists is served by itself alone). The clinic key (and a Subscription-Key) are write-only, sealed under the tenant's own key and never returned. prescribing.clinic.read (org-level) */
+        get: operations["getApiV1TenantDosespot"];
+        /** Save the DoseSpot registration: create (201) or version-checked change (200, If-Match). Complete input is `registered`, incomplete stays `draft` (save and resume); ANY change to the environment, clinic, clinician or a key sends the row back and clears the test and activation (a change of environment or clinic also drops the stored key). The environment is a name, never a URL. A tenant administrator cannot introduce a Subscription-Key (422 DOSESPOT_SUBSCRIPTION_KEY_PLATFORM_ONLY) but may rotate one platform support set — draft -> registered -> verified -> active: only an ACTIVE registration transmits (an org with no registration of its own keeps its DOSESPOT_TENANT_CONFIGS env entry, if it has one; a registration that exists is served by itself alone). The clinic key (and a Subscription-Key) are write-only, sealed under the tenant's own key and never returned. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        put: operations["putApiV1TenantDosespot"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/dosespot/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a verified registration: e-prescribing then transmits for the organization (409 DOSESPOT_NOT_VERIFIED before a passed test; production only when the platform enabled it; idempotent once active). prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required */
+        post: operations["postApiV1TenantDosespotActivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/dosespot/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take an active registration out of service (back to verified; the credential is unchanged, so no new test is owed). Newly signed orders then activate locally and queued ones wait. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required */
+        post: operations["postApiV1TenantDosespotDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/dosespot/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test the DoseSpot connection: one service-clinician token mint with the stored credential, no patient data. The probe runs with no transaction open (409 DOSESPOT_CHANGED_DURING_VERIFY if the registration moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome (credential_rejected or unreachable) and leaves the status where it was; production is refused (409 DOSESPOT_PRODUCTION_NOT_ENABLED) until the platform enables it. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required */
+        post: operations["postApiV1TenantDosespotVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenant/dsar-export-jobs": {
         parameters: {
             query?: never;
@@ -32339,6 +32528,46 @@ export interface operations {
                             ial2Status: string;
                             externalPhysicianMdmId: string | null;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminDosespotprescribersByMembershipIdDosespotenrollment: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                membershipId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The prescriber's 10-digit NPI (validated by its check digit). */
+                    npi: string;
+                    firstName: string;
+                    lastName: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        membershipId: string;
+                        /** @constant */
+                        enrolledWithDoseSpot: true;
                     };
                 };
             };
@@ -92581,6 +92810,349 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformTenantsByOrgSlugDosespot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        prescribersEnrolled: number;
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1PlatformTenantsByOrgSlugDosespot: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The registration's current integer version; required to change an existing registration, absent on a first save. */
+                "If-Match"?: string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The DoseSpot environment the clinic lives in. A name, never a URL: the host is platform configuration. Production needs the platform to have enabled it. */
+                    environment: "sandbox" | "production";
+                    clinicId?: string;
+                    serviceClinicianId?: string;
+                    /** @description Write-only: sealed under the tenant's own key and never returned. */
+                    clinicKey?: string;
+                    /** @description Write-only. Platform support may set the clinic's own Subscription-Key; a tenant administrator may only rotate one that was set. */
+                    subscriptionKey?: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        prescribersEnrolled: number;
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugDosespotActivate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        prescribersEnrolled: number;
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugDosespotDeactivate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        prescribersEnrolled: number;
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugDosespotPrescribers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            membershipId: string;
+                            onRoster: boolean;
+                            enrolledWithDoseSpot: boolean;
+                            vendorEnrollmentRequestedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugDosespotPrescribersByMembershipIdEnroll: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+                membershipId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    npi: string;
+                    firstName: string;
+                    lastName: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        membershipId: string;
+                        /** @constant */
+                        enrolledWithDoseSpot: true;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugDosespotVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        config: {
+                            source: "tenant" | "platform_env" | "none";
+                            status: ("draft" | "registered" | "verified" | "active") | null;
+                            environment: ("sandbox" | "production") | null;
+                            clinicId: string | null;
+                            serviceClinicianId: string | null;
+                            hasSecret: boolean;
+                            registeredAt: string | null;
+                            verifiedAt: string | null;
+                            activatedAt: string | null;
+                            lastTest: {
+                                outcome: "ok" | "credential_rejected" | "unreachable";
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            prescribersEnrolled: number;
+                            queuedTransmissions: number;
+                            version: number | null;
+                            updatedAt: string | null;
+                        };
+                        test: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PlatformTenantsByOrgSlugGoliveApprove: {
         parameters: {
             query?: never;
@@ -110157,6 +110729,255 @@ export interface operations {
                 content: {
                     "application/json": {
                         complianceOfficerMembershipId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TenantDosespot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation. */
+                        prescribersEnrolled: number;
+                        /** @description Signed orders waiting to transmit; they pause while the registration is not active. */
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1TenantDosespot: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The registration's current integer version; required to change an existing registration, absent on a first save. */
+                "If-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Which DoseSpot environment the clinic lives in. A name, never a URL: the host is platform configuration. Production is available only when the platform has enabled it. */
+                    environment: "sandbox" | "production";
+                    /** @description The clinic id DoseSpot issued (1-64 letters, digits, dots, dashes or underscores). */
+                    clinicId?: string;
+                    /** @description The DoseSpot clinician the service token is minted for (patient sync, history, status polling). */
+                    serviceClinicianId?: string;
+                    /** @description The clinic key DoseSpot issued. Write-only: it is sealed under the tenant's own key and never returned. Omit it to keep the stored one. */
+                    clinicKey?: string;
+                    /** @description The DoseSpot Subscription-Key, when the clinic has its own. Write-only. Platform support may set it; a tenant administrator may only rotate one that platform support set. */
+                    subscriptionKey?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation. */
+                        prescribersEnrolled: number;
+                        /** @description Signed orders waiting to transmit; they pause while the registration is not active. */
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantDosespotActivate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation. */
+                        prescribersEnrolled: number;
+                        /** @description Signed orders waiting to transmit; they pause while the registration is not active. */
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantDosespotDeactivate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation. */
+                        prescribersEnrolled: number;
+                        /** @description Signed orders waiting to transmit; they pause while the registration is not active. */
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantDosespotVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        config: {
+                            source: "tenant" | "platform_env" | "none";
+                            status: ("draft" | "registered" | "verified" | "active") | null;
+                            environment: ("sandbox" | "production") | null;
+                            clinicId: string | null;
+                            serviceClinicianId: string | null;
+                            hasSecret: boolean;
+                            registeredAt: string | null;
+                            verifiedAt: string | null;
+                            activatedAt: string | null;
+                            lastTest: {
+                                outcome: "ok" | "credential_rejected" | "unreachable";
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation. */
+                            prescribersEnrolled: number;
+                            /** @description Signed orders waiting to transmit; they pause while the registration is not active. */
+                            queuedTransmissions: number;
+                            version: number | null;
+                            updatedAt: string | null;
+                        };
+                        test: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                        };
                     };
                 };
             };

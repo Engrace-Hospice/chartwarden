@@ -56,7 +56,7 @@ import {
   type OnboardingOperator,
   recordOnboardingAudit,
 } from "./onboarding-data-audit";
-import { buildDoseSpotLane } from "./onboarding-dosespot-lane";
+import { type DoseSpotLaneMethods, buildDoseSpotLane } from "./onboarding-dosespot-lane";
 import { ONBOARDING_WRITABLE_STATUSES, lockTenantOnboardingShared } from "./tenant-onboarding-lock";
 
 export type { OnboardingOperator } from "./onboarding-data-audit";
@@ -64,7 +64,8 @@ export type { OnboardingOperator } from "./onboarding-data-audit";
 /** A body field set with the platform `reason` already removed, ready for the tenant's own validators. */
 export type OnboardingFields = Readonly<Record<string, unknown>>;
 
-export interface OnboardingDataService {
+/** Tenant onboarding slice 4 (ADR-0110): the DoseSpot methods come from the lane (`onboarding-dosespot-lane.ts`). */
+export interface OnboardingDataService extends DoseSpotLaneMethods {
   listProviderEntities(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
   createProviderEntity(
     op: OnboardingOperator,
@@ -147,32 +148,6 @@ export interface OnboardingDataService {
     op: OnboardingOperator,
     orgSlug: string,
     fields: OnboardingFields & { providerEntityId: string },
-    reason: string,
-  ): Promise<unknown>;
-  // ── tenant onboarding slice 4 (ADR-0110): the tenant's DoseSpot clinic registration (the credential is write-only) ──
-  /** The tenant's DoseSpot registration, masked (`hasSecret`, never the credential). One audited read. */
-  getDoseSpot(op: OnboardingOperator, orgSlug: string): Promise<unknown>;
-  putDoseSpot(
-    op: OnboardingOperator,
-    orgSlug: string,
-    fields: OnboardingFields,
-    reason: string,
-    expectedVersion: number | undefined,
-  ): Promise<{ readonly created: boolean; readonly view: unknown }>;
-  verifyDoseSpot(
-    op: OnboardingOperator,
-    orgSlug: string,
-    reason: string,
-  ): Promise<{ readonly config: unknown; readonly test: unknown }>;
-  activateDoseSpot(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
-  /** NOT gated on the tenant's onboarding status: a live tenant needs it too. */
-  deactivateDoseSpot(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
-  listDoseSpotPrescribers(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
-  enrollDoseSpotPrescriber(
-    op: OnboardingOperator,
-    orgSlug: string,
-    membershipId: string,
-    fields: OnboardingFields,
     reason: string,
   ): Promise<unknown>;
 }

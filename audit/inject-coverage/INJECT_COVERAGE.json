@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1939,
-    "coveredRoutes": 1939,
-    "directRoutesReferenced": 1766
+    "routes": 1952,
+    "coveredRoutes": 1952,
+    "directRoutesReferenced": 1779
   },
   "modules": [
     {
@@ -239,18 +239,19 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 34,
+      "routes": 40,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/cop27-hospice-coverage.test.ts",
         "apps/backend/__tests__/dosespot-routes.test.ts",
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
+        "apps/backend/__tests__/m12-tenant-dosespot-routes.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
         "apps/backend/__tests__/m36-medication-question-no-order-route.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 27
+      "directRoutesReferenced": 33
     },
     {
       "module": "13-emar",
@@ -553,19 +554,20 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 87,
+      "routes": 94,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
         "apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-data-routes.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
+        "apps/backend/__tests__/m34-onboarding-dosespot-routes.test.ts",
         "apps/backend/__tests__/m34-onboarding-wizard-routes.test.ts",
         "apps/backend/__tests__/m34-ops-routes-inject.test.ts",
         "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/saas-tenant-platform-inject.test.ts"
       ],
-      "directRoutesReferenced": 86
+      "directRoutesReferenced": 93
     },
     {
       "module": "35-subscription",

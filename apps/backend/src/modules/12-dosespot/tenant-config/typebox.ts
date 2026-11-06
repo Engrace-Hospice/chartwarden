@@ -110,6 +110,5 @@ export type EnrollPrescriberVendorBody = Static<typeof EnrollPrescriberVendorBod
 
 export const PrescriberVendorEnrollmentViewSchema = Type.Object({
   membershipId: Type.String(),
-  enrolledWithDoseSpot: Type.Boolean(),
-  vendorEnrollmentRequestedAt: Nullable(Iso),
+  enrolledWithDoseSpot: Type.Literal(true),
 });

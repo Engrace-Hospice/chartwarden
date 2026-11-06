@@ -3,7 +3,7 @@
 // The bodies are M12's own (`PutClinicBodySchema`, `EnrollPrescriberVendorBodySchema`, which M34 may not import); M12 re-validates
 // each with its schema, so these are the published copies plus the operator's `reason`. Credentials are write-only. Each is ONE
 // flat object with `additionalProperties: false` (a Composite drops that flag, so an extra field would slip through).
-import { Type } from "@sinclair/typebox";
+import { type TSchema, Type } from "@sinclair/typebox";
 import { OnboardingReasonSchema } from "./onboarding-data-typebox";
 
 const { reason } = OnboardingReasonSchema.properties;
@@ -51,4 +51,60 @@ export const OnboardingDoseSpotEnrollRequest = Type.Object(
 export const OnboardingDoseSpotMembershipParamsSchema = Type.Object({
   orgSlug: Type.String({ minLength: 1, maxLength: 128 }),
   membershipId: Type.String({ pattern: UUID_PATTERN }),
+});
+
+// ── response copies (M12's own views, published here because M34 may not import M12) ──
+const Nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
+const Iso = Type.String({ format: "date-time" });
+const ProbeOutcome = Type.Union([
+  Type.Literal("ok"),
+  Type.Literal("credential_rejected"),
+  Type.Literal("unreachable"),
+]);
+
+/** The tenant's DoseSpot registration, masked: `hasSecret`, never the credential. */
+export const OnboardingDoseSpotViewSchema = Type.Object({
+  source: Type.Union([Type.Literal("tenant"), Type.Literal("platform_env"), Type.Literal("none")]),
+  status: Nullable(
+    Type.Union([
+      Type.Literal("draft"),
+      Type.Literal("registered"),
+      Type.Literal("verified"),
+      Type.Literal("active"),
+    ]),
+  ),
+  environment: Nullable(Type.Union([Type.Literal("sandbox"), Type.Literal("production")])),
+  clinicId: Nullable(Type.String()),
+  serviceClinicianId: Nullable(Type.String()),
+  hasSecret: Type.Boolean(),
+  registeredAt: Nullable(Iso),
+  verifiedAt: Nullable(Iso),
+  activatedAt: Nullable(Iso),
+  lastTest: Type.Union([Type.Object({ outcome: ProbeOutcome, at: Iso }), Type.Null()]),
+  prescribersEnrolled: Type.Integer(),
+  queuedTransmissions: Type.Integer(),
+  version: Nullable(Type.Integer()),
+  updatedAt: Nullable(Iso),
+});
+
+export const OnboardingDoseSpotVerifyResponseSchema = Type.Object({
+  config: OnboardingDoseSpotViewSchema,
+  test: Type.Object({ outcome: ProbeOutcome }),
+});
+
+export const OnboardingDoseSpotEnrollViewSchema = Type.Object({
+  membershipId: Type.String(),
+  enrolledWithDoseSpot: Type.Literal(true),
+});
+
+/** The roster and whether each prescriber is linked to DoseSpot. No NPI, no DEA number, no vendor id. */
+export const OnboardingDoseSpotPrescriberListSchema = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      membershipId: Type.String(),
+      onRoster: Type.Boolean(),
+      enrolledWithDoseSpot: Type.Boolean(),
+      vendorEnrollmentRequestedAt: Nullable(Iso),
+    }),
+  ),
 });
