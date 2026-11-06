@@ -89,7 +89,9 @@ export interface M35WorkerDeps {
 
 /**
  * One org's statement step: first the outside-mode reconcile, then the statement. A reconcile that fails is logged and NEVER blocks the
- * statement (the statement would then be computed on the old mode, which the next hourly sweep corrects while the month is a draft).
+ * statement: it is computed on the mode as it stands, and the next hourly sweep tries the reconcile again. What that retry corrects
+ * depends on the tenant: while it is onboarding (nothing billed) the change applies at once; for a LIVE tenant the change is dated the
+ * 1st of next month, like any mode change, so it cannot reprice the month being drafted.
  */
 export async function reconcileThenStatement(
   reconcile: ((organizationId: string) => Promise<void>) | undefined,
