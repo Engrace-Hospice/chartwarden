@@ -14,7 +14,11 @@ import type {
   TenantRef,
   WizardMember,
 } from "./model";
-import { GO_LIVE_DATA_CHANGED_REVOKE_REASON, GO_LIVE_TEMPLATE_KEY } from "./model";
+import {
+  GO_LIVE_DATA_CHANGED_REVOKE_REASON,
+  GO_LIVE_TEMPLATE_KEY,
+  SYSTEM_MEMBERSHIP_ID,
+} from "./model";
 import type { OrgProfile, OrgProfilePatch, OrgProfilePort } from "./org-profile";
 import type { PlatformAuditEntry, TaskPatch, WizardRunner, WizardStore } from "./wizard-store";
 
@@ -102,8 +106,16 @@ export function memoryTask(
 
 function publicTask(row: MemoryWizardState["tasks"][number]): StepTask {
   const { tenantAccountId: _t, completionEvidence, ...task } = row;
-  const skip = (completionEvidence.skip as { rationale?: string } | undefined)?.rationale ?? null;
-  return { ...task, skipRationale: row.status === "skipped" ? skip : null };
+  const skipRecord = completionEvidence.skip as
+    | { rationale?: string; skippedByMembershipId?: string }
+    | undefined;
+  const skip = skipRecord?.rationale ?? null;
+  return {
+    ...task,
+    skipRationale: row.status === "skipped" ? skip : null,
+    skippedBySystem:
+      row.status === "skipped" && skipRecord?.skippedByMembershipId === SYSTEM_MEMBERSHIP_ID,
+  };
 }
 
 export function createMemoryWizardStore(

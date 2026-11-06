@@ -23,6 +23,7 @@ import { normalizeReason } from "./evidence";
 import {
   ONBOARDING_STATUS,
   type PlatformActor,
+  SYSTEM_MEMBERSHIP_ID,
   type StepTask,
   type StepTemplate,
   type TenantActor,
@@ -71,7 +72,7 @@ export type {
 export const OUTSIDE_BILLING_STEP_KEYS: readonly string[] = ["mac_configured", "payer_enrollment"];
 /** The reason recorded on a system skip: also how a later reopen recognises the skips that are the system's to undo. */
 export const OUTSIDE_SKIP_RATIONALE = "bills outside ChartWarden";
-const SYSTEM_MEMBERSHIP = "system";
+const SYSTEM_MEMBERSHIP = SYSTEM_MEMBERSHIP_ID;
 const SYSTEM_ACTOR: PlatformActor = {
   kind: "platform",
   membershipId: SYSTEM_MEMBERSHIP,

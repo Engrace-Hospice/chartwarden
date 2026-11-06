@@ -1623,6 +1623,31 @@ describe("choosing outside ChartWarden: the billing steps follow (D5)", () => {
     expect(JSON.stringify(state.tasks)).toBe(before);
   });
 
+  it("marks a skip the system made with a flag the console reads, and never one a person typed the same words for", async () => {
+    settle("organisation", "clearinghouse_selected");
+    await billingWizard().syncClearinghouseSteps(ORG);
+    const view = await billingWizard().getPlatform("acme");
+    expect(view.steps.find((s) => s.key === "mac_configured")).toMatchObject({
+      status: "skipped",
+      skipRationale: SKIP_REASON,
+      systemSkipped: true,
+    });
+    // an operator who types the very same rationale on another step is a person's skip, not the system's
+    state.tasks = state.tasks.map((t) =>
+      t.templateKey === "payer_enrollment"
+        ? { ...t, status: "pending" as const, completionEvidence: {} }
+        : t,
+    );
+    await billingWizard().skipPlatform("acme", taskId("payer_enrollment"), OPS, SKIP_REASON);
+    const after = await billingWizard().getPlatform("acme");
+    expect(after.steps.find((s) => s.key === "payer_enrollment")).toMatchObject({
+      status: "skipped",
+      skipRationale: SKIP_REASON,
+      systemSkipped: false,
+    });
+    expect(after.steps.find((s) => s.key === "organisation")?.systemSkipped).toBe(false);
+  });
+
   it("keeps the strict sequence: while an earlier gating step is open nothing is skipped, and it is not an error", async () => {
     settle("organisation"); // clearinghouse_selected is still open
     await expect(billingWizard().syncClearinghouseSteps(ORG)).resolves.toBeUndefined();

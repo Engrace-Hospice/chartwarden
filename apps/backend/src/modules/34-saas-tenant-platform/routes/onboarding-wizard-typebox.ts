@@ -85,6 +85,10 @@ export const WizardStepViewSchema = Type.Object({
   completedAt: Nullable(Instant),
   blockerReason: Nullable(Type.String()),
   skipRationale: Nullable(Type.String()),
+  systemSkipped: Type.Boolean({
+    description:
+      "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+  }),
   createdAt: Nullable(Instant),
   templateKey: Type.String(),
   isCanonical: Type.Boolean(),

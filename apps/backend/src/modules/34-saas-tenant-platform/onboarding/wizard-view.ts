@@ -51,6 +51,8 @@ export interface WizardStepView {
   readonly completedAt: string | null;
   readonly blockerReason: string | null;
   readonly skipRationale: string | null;
+  /** The skip was made by the system (the tenant bills outside ChartWarden), not typed by a person: read this, never the rationale text. */
+  readonly systemSkipped: boolean;
   readonly createdAt: string | null;
   // The names the first onboarding screens already read (kept so they do not break).
   readonly templateKey: string;
@@ -131,6 +133,7 @@ export function toWizardStepView(
     completedAt: iso(task?.completedAt ?? null),
     blockerReason: task?.blockerReason ?? null,
     skipRationale: task?.status === "skipped" ? (task.skipRationale ?? null) : null,
+    systemSkipped: task?.status === "skipped" && task.skippedBySystem === true,
     createdAt: iso(task?.createdAt ?? null),
     templateKey: template.key,
     isCanonical: template.canonical,

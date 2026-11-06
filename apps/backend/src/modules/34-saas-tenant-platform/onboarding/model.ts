@@ -54,7 +54,12 @@ export interface StepTask {
   readonly attestedAt: Date | null;
   /** The platform-ops skip rationale, when the step was skipped. */
   readonly skipRationale: string | null;
+  /** The skip was made by the SYSTEM (a tenant that bills outside ChartWarden), not typed by a person. Absent = false. */
+  readonly skippedBySystem?: boolean;
 }
+
+/** The membership id the system acts under (the clearinghouse sync's skip and reopen); a person's membership is never this. */
+export const SYSTEM_MEMBERSHIP_ID = "system";
 
 /** The two kinds of caller the wizard serves. */
 export interface PlatformActor {

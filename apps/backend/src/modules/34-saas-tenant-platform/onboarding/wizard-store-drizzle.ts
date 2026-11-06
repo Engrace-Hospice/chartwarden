@@ -22,6 +22,7 @@ import {
   lockTenantOnboardingShared,
 } from "../routes/platform/tenant-onboarding-lock";
 import { voidPendingGoLiveForDataChange as voidPendingGoLive } from "./go-live-void";
+import { SYSTEM_MEMBERSHIP_ID } from "./model";
 import type {
   CompletionMode,
   GoLiveAttestation,
@@ -87,6 +88,10 @@ export const toTask = (row: schema.OnboardingTask): StepTask => ({
       ? ((row.completionEvidence as { skip?: { rationale?: string } } | null)?.skip?.rationale ??
         null)
       : null,
+  skippedBySystem:
+    row.status === "skipped" &&
+    (row.completionEvidence as { skip?: { skippedByMembershipId?: string } } | null)?.skip
+      ?.skippedByMembershipId === SYSTEM_MEMBERSHIP_ID,
 });
 
 export const toGoLive = (row: schema.TenantGoLiveAttestation): GoLiveAttestation => ({

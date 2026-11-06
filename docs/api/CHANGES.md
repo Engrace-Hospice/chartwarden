@@ -20,6 +20,9 @@ its full description there. Newest first.
   active, `closed` once past onboarding), read for the requested page only. On the overview the older
   `onboarding.{totalTasks,doneTasks,currentStep}` now follow the same rule: they used to count every task row, retired history
   included, and to name whichever pending row came back first.
+- Every wizard step (`GET /api/v1/platform/tenants/{orgSlug}/onboarding`, `GET /api/v1/tenant/onboarding` and the step answers) carries
+  `systemSkipped`: true only when the SYSTEM skipped the step because the tenant bills outside ChartWarden. Read it, never the
+  `skipRationale` text: a person can type the same words.
 - `POST /api/v1/platform/tenants` no longer requires `planLabel`. The retired flat tier is replaced by the census-banded contract signed at
   onboarding step 2, so an omitted label is stored as `"unassigned"`. A label that is sent must still be `starter`, `standard` or `enterprise`.
 
