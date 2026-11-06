@@ -1039,6 +1039,14 @@ import {
 import { buildM22ConsentRevokedConsumer } from "./modules/22-documents/outbox-consumers/m39-consent-revoked";
 import { createDrizzleAckCursorStore } from "./modules/23-billing-medicare/clearinghouse-ack-cursor-store";
 import { createDrizzleAttemptStore } from "./modules/23-billing-medicare/clearinghouse-attempt-store";
+import { createClaimMdEvidenceCipher } from "./modules/23-billing-medicare/claimmd-evidence/cipher";
+import { createClaimMdSubmissionEvidenceStore } from "./modules/23-billing-medicare/claimmd-evidence/store";
+import { createClaimMdInboxCipher } from "./modules/23-billing-medicare/claimmd-capture/cipher";
+import { createClaimMdCandidateProvider } from "./modules/23-billing-medicare/claimmd-identity/candidate-provider";
+import { claimMdIdentityResolutionEnabled, claimMdInboxKeyRingFromEnv } from "./modules/23-billing-medicare/claimmd-identity/config";
+import { createClaimMdIdentityStore } from "./modules/23-billing-medicare/claimmd-identity/store";
+import { createClaimMdIdentityResolver, createClaimMdIdentityWorker } from "./modules/23-billing-medicare/claimmd-identity/service";
+import { CLAIMMD_IDENTITY_JOB_ID, startClaimMdIdentityWorker, type IdentityWorkerSummary } from "./modules/23-billing-medicare/claimmd-identity/worker";
 import {
   bindPlatformClearinghouse,
   describeClearinghouseBinding,
@@ -3916,6 +3924,63 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // Claim.MD's 100-a-minute limit is per account, shared by every process: spend it from the cluster-wide store.
     claimMdRequestCounter: rateLimitStore ?? null,
   });
+  const claimMdSubmissionEvidence = clearinghouseBinding.vendor === "claimmd" && dbHandle
+    ? createClaimMdSubmissionEvidenceStore({
+        db: dbHandle.db,
+        accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE!.trim(),
+        usage: process.env.CLAIMMD_ACCOUNT_USAGE as "test" | "production",
+        cipher: createClaimMdEvidenceCipher({
+          dekForOrg: (organizationId) => getTenantKeyProvider().dekForOrg(organizationId),
+          dekForOrgVersion: (organizationId, version) => getTenantKeyProvider().dekForOrgVersion(organizationId, version),
+        }),
+      })
+    : undefined;
+  const claimMdResolverEnabled = claimMdIdentityResolutionEnabled(process.env);
+  let claimMdIdentityWorker: ReturnType<typeof createClaimMdIdentityWorker> | undefined;
+  let claimMdIdentitySummary: (() => Promise<IdentityWorkerSummary>) | undefined;
+  if (claimMdResolverEnabled && role !== "api") {
+    if (clearinghouseBinding.vendor !== "claimmd" || !dbHandle || !platformDbHandle || !claimMdSubmissionEvidence)
+      throw new Error("Claim.MD identity resolver requires Claim.MD binding and both tenant/platform database clients");
+    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
+    if (!accountReference || !/^[A-Za-z0-9._:-]{1,128}$/.test(accountReference) || (usage !== "test" && usage !== "production"))
+      throw new Error("Claim.MD identity resolver account reference or usage is invalid");
+    const inboxKeyRing = claimMdInboxKeyRingFromEnv(process.env);
+    if (!inboxKeyRing) throw new Error("Claim.MD identity resolver inbox key ring is unavailable or invalid");
+    // Resolve the existing M34 tenant keyring now; candidate decryption remains lazy and candidate-scoped.
+    const tenantKeys = getTenantKeyProvider();
+    const inboxCipher = createClaimMdInboxCipher(inboxKeyRing);
+    registerPlatformJob(CLAIMMD_IDENTITY_JOB_ID);
+    const claimMdCandidates = createClaimMdCandidateProvider({ platformDb: platformDbHandle.db,
+      auditBypass: m34PlatformBypassAuditor, cipher: createClaimMdEvidenceCipher({
+        dekForOrg: (organizationId) => tenantKeys.dekForOrg(organizationId),
+        dekForOrgVersion: (organizationId, version) => tenantKeys.dekForOrgVersion(organizationId, version),
+      }), accountReference, usage });
+    const identityStore = createClaimMdIdentityStore({ platformDb: platformDbHandle.db, auditBypass: m34PlatformBypassAuditor,
+      cipher: inboxCipher, accountReference, usage, candidates: (event) => claimMdCandidates.findClaimMdSubmissionCandidates(event) });
+    claimMdIdentitySummary = () => identityStore.summary();
+    // Explicit schema/permission readiness probe. A missing migration/grant fails startup when the operator explicitly enables this worker.
+    await withPlatformContext(platformDbHandle.db, { jobId: CLAIMMD_IDENTITY_JOB_ID,
+      reason: "Claim.MD identity resolver startup schema and privilege preflight", crossTenant: true }, m34PlatformBypassAuditor, async (tx) => {
+      await tx.select({ id: schema.claimmdResponseEvents.id }).from(schema.claimmdResponseEvents).limit(0);
+      const [stream] = await tx.select({ id: schema.claimmdResponseStreams.id }).from(schema.claimmdResponseStreams)
+        .where(and(eq(schema.claimmdResponseStreams.accountReference, accountReference), eq(schema.claimmdResponseStreams.usage, usage),
+          eq(schema.claimmdResponseStreams.streamType, "claim_responses"))).limit(1);
+      if (!stream) throw new Error("Claim.MD identity resolver response stream is not bootstrapped");
+      await tx.select({ id: schema.claimmdResponseBatches.id }).from(schema.claimmdResponseBatches).limit(0);
+      await tx.select({ id: schema.claimmdResponseResolutions.id }).from(schema.claimmdResponseResolutions).limit(0);
+      await tx.select({ id: schema.claimmdResponseResolutionHistory.id }).from(schema.claimmdResponseResolutionHistory).limit(0);
+      await tx.select({ id: schema.claimmdSubmissionEvidence.id }).from(schema.claimmdSubmissionEvidence).limit(0);
+      await tx.select({ id: schema.claimmdSubmissionReceiptObservations.id }).from(schema.claimmdSubmissionReceiptObservations).limit(0);
+      await tx.select({ id: schema.claimSubmission.id }).from(schema.claimSubmission).limit(0);
+      await tx.select({ id: schema.commercialSubmissions.id }).from(schema.commercialSubmissions).limit(0);
+      await tx.select({ id: schema.clearinghouseSubmissionAttempts.organizationId }).from(schema.clearinghouseSubmissionAttempts).limit(0);
+      await tx.select({ id: schema.providerEntities.id }).from(schema.providerEntities).limit(0);
+      await tx.select({ id: schema.locations.id }).from(schema.locations).limit(0);
+    });
+    const resolver = createClaimMdIdentityResolver(identityStore);
+    claimMdIdentityWorker = createClaimMdIdentityWorker({ enabled: true, queue: identityStore, resolver, batchSize: 25, leaseMs: 60_000 });
+  }
   // M36 WP 4.1/4.2 - the urgent and acknowledgment-request limiters fall back to per-replica memory without a shared store: N
   // replicas then allow N times the budget. That is bounded but weaker, so say so loudly in production instead of silently.
   if (!rateLimitStore && process.env.NODE_ENV === "production") {
@@ -7589,6 +7654,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       });
   }
 
+  if (claimMdIdentityWorker && claimMdIdentitySummary) {
+    const stop = startClaimMdIdentityWorker({ worker: claimMdIdentityWorker, summarize: claimMdIdentitySummary,
+      log: (event) => app.log.info(event, "Claim.MD identity resolution tick") });
+    app.addHook("onClose", async () => stop());
+    app.log.info({ enabled: true, batchSize: 25, concurrency: 1 }, "Claim.MD identity resolver worker started");
+  }
+
   // ── worker-runner section (the M4-T11 BullMQ worker-construction precedent) ──────────────────────────
   // Construct the §4.3 M34 BullMQ Workers + the four cron-schedule Queue producers, and tear them down on
   // app close. Guarded by a Valkey connection (constructing a Worker opens the connection — never at import,
@@ -8694,6 +8766,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       transport: {
         binding: clearinghouseBinding,
         attempts: createDrizzleAttemptStore(dbHandle.db),
+        ...(claimMdSubmissionEvidence ? { claimMdEvidence: claimMdSubmissionEvidence } : {}),
         ackCursors: createDrizzleAckCursorStore(dbHandle.db),
         // #714 - a rejected clearinghouse credential raises one critical alert per scope and holds further calls.
         alerts: m23AlertPort,
@@ -9208,6 +9281,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       db: dbHandle.db,
       binding: clearinghouseBinding,
       contexts: buildCommercialContextPort({ env: process.env, providerNpi: m25PayeeNpi }),
+      ...(claimMdSubmissionEvidence ? { claimMdEvidence: claimMdSubmissionEvidence } : {}),
       renderer: buildCommercial837iRenderer(
         dbHandle.db,
         buildCommercialRenderPorts({

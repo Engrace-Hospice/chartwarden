@@ -66,6 +66,8 @@ export type {
 
 // ─── MAC portal clients — launch case + six deny-stubs (from ./mac-portal/*) ─────────────────────
 export { createNgsJ6PortalClient, NgsJ6PortalClient } from "./mac-portal/ngs-j6";
+export { captureAccountResponsePage, createClaimMdAccountResponseReader } from "./clearinghouse/claimmd-account-response";
+export type { AccountResponsePage, AccountResponseRead, CapturedResponseEvent, ClaimMdUsage } from "./clearinghouse/claimmd-account-response";
 export type {
   NgsJ6PortalHttpPort,
   NgsJ6PortalHttpRequest,
@@ -356,6 +358,8 @@ export {
 export type { ClaimMdAnomaly, ClaimMdTransportOptions } from "./clearinghouse/claimmd-transport";
 export type { ClaimMdRequestCounter } from "./clearinghouse/claimmd-rate-limit";
 export { scopeKey } from "./clearinghouse/submission-identity";
+export { extractX12SubmissionEvidence, X12EvidenceError } from "./clearinghouse/submission-evidence";
+export type { X12ClaimEvidence, X12SubmissionEvidence } from "./clearinghouse/submission-evidence";
 export {
   CredentialRejectedError,
   DirectMacTransport,

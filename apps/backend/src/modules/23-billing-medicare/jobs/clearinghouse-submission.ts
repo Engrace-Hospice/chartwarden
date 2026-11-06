@@ -15,7 +15,9 @@ import type {
 } from "@chartwarden/x12-837-client";
 import {
   CH,
+  claimMdFilename,
   compareStediClaimJsonToX12,
+  extractX12SubmissionEvidence,
   routeAckEvent,
   scopeKey,
 } from "@chartwarden/x12-837-client";
@@ -24,6 +26,7 @@ import {
   type CredentialGuardDeps,
   withCredentialGuard,
 } from "./clearinghouse-credential-guard";
+import type { ClaimMdSubmissionEvidencePort } from "../claimmd-evidence/store";
 
 /** Resolves the per-call clearinghouse context (the composition root reads provider entity + MAC credential). */
 export interface ClearinghouseContextPort {
@@ -42,6 +45,8 @@ export interface M23TransportDeps {
    * (filed or not filed); absent, an in-doubt attempt can never be judged settled and the retry stays blocked.
    */
   readonly attempts?: SubmissionAttemptStore;
+  /** Mandatory for Claim.MD; committed before the vendor transport is invoked. */
+  readonly claimMdEvidence?: ClaimMdSubmissionEvidencePort;
   /** Durable ack cursors (#749); absent, every ack pull starts from a null cursor. */
   readonly ackCursors?: AckCursorStore;
   /** Raised once per scope when the vendor rejects the credential (#714); absent, only the log line is written. */
@@ -100,6 +105,10 @@ export type TransportUpload = (input: {
   /** The same claim as Stedi's JSON; used for a Stedi claim, where it replaces the raw X12 (no ISA13 to match). */
   readonly stediJson?: StediClaimJson;
   readonly controlNumber: string;
+  readonly claimId?: string;
+  readonly submissionId?: string;
+  readonly attemptIndex?: number;
+  readonly locationId?: string | null;
 }) => Promise<{ readonly accepted: boolean; readonly generatedFileUri: string }>;
 
 /**
@@ -146,6 +155,33 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
       );
     }
     const ctx = await transport.contexts.contextFor(input.organizationId, input.providerEntityId);
+    let evidenceId: string | null = null;
+    if (transport.binding.vendor === "claimmd") {
+      const evidenceStore = transport.claimMdEvidence;
+      if (!evidenceStore || !input.claimId || !input.submissionId || input.attemptIndex === undefined) {
+        throw failure(kind, CH.NOT_WIRED, "Claim.MD submission evidence is not configured for this attempt");
+      }
+      if (ctx.usage !== evidenceStore.usage) throw failure(kind, CH.INVALID_REQUEST, "Claim.MD account environment does not match submission context");
+      const exact = payloadFor(transport.binding.vendor, kind, input);
+      if (exact.format !== "x12") throw failure(kind, CH.INVALID_REQUEST, "Claim.MD evidence requires the final X12 payload");
+      let parsed;
+      try { parsed = extractX12SubmissionEvidence(exact.x12, undefined); }
+      catch { throw failure(kind, CH.INVALID_REQUEST, "Claim.MD outbound X12 identity is incomplete or unsupported"); }
+      if (parsed.claims.length !== 1) throw failure(kind, CH.INVALID_REQUEST, "Claim.MD send requires one claim identity per submission");
+      const outbound = parsed.claims[0]!;
+      if (outbound.pcn !== input.controlNumber || (ctx.billingNpi && outbound.billingNpi !== ctx.billingNpi)) {
+        throw failure(kind, CH.INVALID_REQUEST, "Claim.MD outbound X12 identity conflicts with the validated submission context");
+      }
+      try {
+        evidenceId = await evidenceStore.reserve({ organizationId: input.organizationId, providerEntityId: input.providerEntityId,
+          locationId: input.locationId ?? null, claimId: input.claimId, billingModule: "M23", submissionId: input.submissionId,
+          attemptKey: `${input.submissionId}:${input.attemptIndex}`, accountReference: evidenceStore.accountReference,
+          usage: ctx.usage, x12Claim: outbound, payloadSha256: parsed.payloadSha256,
+          outboundReference: claimMdFilename(scopeKey(ctx), submissionKeyFor(kind, input.controlNumber), "x12"), reservedAt: new Date() });
+      } catch {
+        throw failure(kind, CH.UNAVAILABLE, "immutable Claim.MD evidence could not be reserved");
+      }
+    }
     const submission = {
       kind,
       controlNumber: input.controlNumber,
@@ -158,6 +194,26 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
         : transport.binding.transport.submitNotice(ctx, submission),
     );
     if (!result.ok) throw failure(kind, result.degraded.code, result.degraded.reason);
+    if (evidenceId && transport.claimMdEvidence) {
+      const value = result.data.clearinghouseSubmissionId;
+      const fieldNamespace: Record<string, "file" | "batch" | "claim" | "remote_claim" | "pcn" | "message" | "opaque_submission"> = {
+        fileid: "file", inboundid: "file", batchid: "batch", claimid: "claim", claimmd_id: "remote_claim",
+        remote_claimid: "remote_claim", pcn: "pcn",
+      };
+      const identifiers = result.data.vendorIdentifiers?.flatMap(({ field, value: identifier }) => {
+        const namespace = fieldNamespace[field];
+        return namespace ? [{ field: field as import("../claimmd-evidence/store").ClaimMdReceiptIdentifier["field"], namespace, value: identifier }] : [];
+      }) ?? [{ field: "clearinghouseSubmissionId" as const, namespace: "opaque_submission" as const, value }];
+      try {
+        await transport.claimMdEvidence.observe({ evidenceId, organizationId: input.organizationId,
+          accountReference: transport.claimMdEvidence.accountReference, usage: ctx.usage,
+          identifiers,
+          source: result.data.vendorIdentifiers ? (result.data.replayed ? "upload_reconciliation" : "upload_response") : "attempt_store_replay",
+          sourceReference: input.submissionId ?? input.controlNumber, observedAt: new Date() });
+      } catch {
+        throw failure(kind, CH.IN_DOUBT, "Claim.MD accepted the upload but receipt evidence could not be recorded");
+      }
+    }
     return {
       accepted: true,
       generatedFileUri: `clearinghouse:${transport.binding.vendor}:${result.data.clearinghouseSubmissionId}`,

@@ -49,5 +49,8 @@ export * from "./mac-submitter-credential";
 export * from "./eligibility-check";
 export * from "./unmapped-taxonomy-occurrence";
 export * from "./clearinghouse-ack-cursor";
+export * from "./claimmd-response-inbox";
 export * from "./clearinghouse-interchange-number";
 export * from "./billing-edi-profile";
+export * from "./claimmd-response-resolution";
+export * from "./claimmd-submission-evidence";

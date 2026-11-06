@@ -280,6 +280,11 @@ export interface MacPortalPort {
     /** The same claim as Stedi's JSON; a Stedi-bound transport sends this instead of the raw X12. */
     readonly stediJson?: StediClaimJson;
     readonly controlNumber: string;
+    /** Present for claim submissions so Claim.MD evidence binds the real M23 source attempt. */
+    readonly claimId?: string;
+    readonly submissionId?: string;
+    readonly attemptIndex?: number;
+    readonly locationId?: string | null;
   }): Promise<{
     readonly accepted: boolean;
     readonly generatedFileUri: string;
@@ -965,6 +970,9 @@ export async function runClaimSubmit(
       x12: generated.x12,
       stediJson: generated.stediJson,
       controlNumber: job.claimControlNumber,
+      claimId: job.claimId,
+      submissionId: job.submissionId,
+      attemptIndex: job.attemptIndex,
     });
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
@@ -1198,6 +1206,9 @@ export async function runClaimSubmitRetry(
         x12: generated.x12,
         stediJson: generated.stediJson,
         controlNumber: claimControlNumber,
+        claimId: job.claimId,
+        submissionId: job.submissionId,
+        attemptIndex,
       });
       if (!uploaded.accepted) failureReason = "MAC portal rejected the retry upload";
     }
