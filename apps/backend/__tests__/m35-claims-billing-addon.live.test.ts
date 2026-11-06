@@ -20,7 +20,10 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { buildDrizzleAddonService } from "../src/modules/35-subscription/addon/addon-service";
-import { createDrizzleClaimsBillingEntitlementReader } from "../src/modules/35-subscription/addon/entitlement";
+import {
+  createDrizzleClaimsBillingEntitlementReader,
+  createDrizzleSubscriptionWorkBlockReader,
+} from "../src/modules/35-subscription/addon/entitlement";
 import { M35_OUTBOX_EVENTS } from "../src/modules/35-subscription/events-by-m35";
 import type { M35WriteActor } from "../src/modules/35-subscription/routes/actor";
 import type {
@@ -304,5 +307,32 @@ describe.skipIf(!DB_URL)("ADR-0108 claims-billing add-on — LIVE Postgres", () 
       [ORG_B],
     );
     expect(rows.map((r) => r.status)).toEqual(["canceled", "active"]);
+  });
+
+  // Owner decision D1: the claims-billing decision (M23) asks this seam whether the subscription is suspended / paused / canceled.
+  it("the SubscriptionWorkBlockReader reads each org's own subscription on the app role: blocked only for suspended, paused, canceled; an org with no subscription is not blocked", async () => {
+    const reader = createDrizzleSubscriptionWorkBlockReader(app.db);
+    const NO_SUBSCRIPTION = "c3000000-0000-4000-8000-000000000003";
+    const setStatus = (org: string, status: string) =>
+      admin.query("UPDATE subscription SET status=$1 WHERE organization_id=$2", [status, org]);
+    try {
+      for (const status of ["trialing", "active", "past_due", "at_risk"]) {
+        await setStatus(ORG_A, status);
+        expect(await reader.blockForOrg(ORG_A), status).toEqual({ blocked: false });
+      }
+      for (const [status, reason] of [
+        ["suspended", "subscription_suspended"],
+        ["paused", "subscription_paused"],
+        ["canceled", "subscription_canceled"],
+      ] as const) {
+        await setStatus(ORG_A, status);
+        expect(await reader.blockForOrg(ORG_A), status).toEqual({ blocked: true, reason });
+        // RLS: ORG_A's state never reaches ORG_B's read
+        expect(await reader.blockForOrg(ORG_B), status).toEqual({ blocked: false });
+      }
+      expect(await reader.blockForOrg(NO_SUBSCRIPTION)).toEqual({ blocked: false });
+    } finally {
+      await setStatus(ORG_A, "active");
+    }
   });
 });
