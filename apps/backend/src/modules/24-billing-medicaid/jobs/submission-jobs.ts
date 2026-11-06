@@ -23,8 +23,10 @@ import { medicaidClaimMachine } from "@chartwarden/medicaid-adapters";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq } from "drizzle-orm";
+import { holdUnlessClaimsBillingEntitled } from "../../../bootstrap/claims-billing-gate";
 import type { CredentialCipherPort } from "../credential-crypto";
 import { isUsableCipher } from "../credential-crypto";
+import { isVoidM24Claim } from "../void-claim";
 import { M24_QUEUES, M24_QUEUE_PARAMS } from "./queues";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -593,6 +595,12 @@ async function writeAck(
   return inserted[0]!.id;
 }
 
+/** ADR-0108 D7 — the M24 queues that start new claims-billing work (the poll queue finishes in-flight work). */
+export const M24_CLAIMS_BILLING_GATED_QUEUES: ReadonlySet<string> = new Set([
+  M24_QUEUES.submit,
+  M24_QUEUES.submitRetry,
+]);
+
 /** Construct the submit + poll workers. Requires a real adapter registry + credential resolver (the
  * composition root only calls this when a launch gateway is configured — RULE 4 mirrors M23). */
 export function registerM24LaunchWorkers(deps: M24SubmissionWorkerDeps): Worker[] {
@@ -603,9 +611,21 @@ export function registerM24LaunchWorkers(deps: M24SubmissionWorkerDeps): Worker[
   ) =>
     new Worker(
       queue,
-      async (job) => {
+      async (job, token) => {
         const data = job.data as D;
         if (!data.organizationId) throw new Error(`M24 ${queue}: job.data.organizationId missing`);
+        // ADR-0108 D7 — a claim submit for an org without the claims-billing add-on is held, not failed (poll runs);
+        // a VOID claim (read from the stored row under the job's org) still goes out.
+        if (M24_CLAIMS_BILLING_GATED_QUEUES.has(queue)) {
+          const { organizationId } = data;
+          const claimId = (data as { claimId?: unknown }).claimId;
+          await holdUnlessClaimsBillingEntitled(job, token, organizationId, queue, {
+            exempt:
+              typeof claimId === "string"
+                ? () => isVoidM24Claim(deps.db, organizationId, claimId)
+                : undefined,
+          });
+        }
         await withOrgContext(
           deps.db,
           { organizationId: data.organizationId, userId: M24_WORKER_SYSTEM_USER_ID },

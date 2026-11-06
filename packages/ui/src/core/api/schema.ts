@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/admin/addons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the add-on catalog (admin) */
+        get: operations["getApiAdminAddons"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/dunning": {
         parameters: {
             query?: never;
@@ -761,6 +778,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/subscriptions/{id}/addons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a subscription's add-ons (admin) */
+        get: operations["getApiAdminSubscriptionsByIdAddons"];
+        put?: never;
+        /** Grant or start a trial of an add-on */
+        post: operations["postApiAdminSubscriptionsByIdAddons"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/subscriptions/{id}/addons/{addonId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel an add-on */
+        post: operations["postApiAdminSubscriptionsByIdAddonsByAddonIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/subscriptions/{id}/apply_promo": {
         parameters: {
             query?: never;
@@ -1028,6 +1080,57 @@ export interface paths {
         get: operations["getApiV1AdminBillingDdeprovider"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/billing/npi-verifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List every tenant's provider entities with the platform verification state of their current NPI (the Claim.MD sweep routes enrollment reports only to a verified one); platform-admin + platform-ops role (ADR-0053 amendment) */
+        get: operations["getApiV1AdminBillingNpiverifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/billing/npi-verifications/{providerEntityId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke the live NPI verification (enrollment reports for it become unroutable) — 409 NOT_VERIFIED when none; platform-admin + step-up (ADR-0053 amendment) */
+        post: operations["postApiV1AdminBillingNpiverificationsByProviderEntityIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/billing/npi-verifications/{providerEntityId}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record that platform staff verified the provider entity owns its current NPI — 409 NPI_CHANGED when it is no longer the NPI checked, ALREADY_VERIFIED when live; platform-admin + step-up (ADR-0053 amendment) */
+        post: operations["postApiV1AdminBillingNpiverificationsByProviderEntityIdVerify"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5921,6 +6024,40 @@ export interface paths {
         get: operations["getApiV1BillingCommercialEligibilityLatest"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/enrollment-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Advisory enrollment statuses a clearinghouse reported for a provider entity (Claim.MD webhook), newest first (commercial_billing.read; provider entity scope). A report never changes a send gate: staff apply it through the enrollments routes */
+        get: operations["getApiV1BillingCommercialEnrollmentreports"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/enrollment-reports/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close an enrollment report as applied (after the enrollment was recorded through the enrollments routes) or dismissed (commercial_billing.manage_enrollment; provider entity scope). Idempotent; 409 when it was already resolved the other way or superseded */
+        post: operations["postApiV1BillingCommercialEnrollmentreportsByIdResolve"];
         delete?: never;
         options?: never;
         head?: never;
@@ -27891,6 +28028,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks/claimmd/production": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inbound Claim.MD webhook, production account (Auth-Signature-Base64 HMAC-verified) */
+        post: operations["postApiV1WebhooksClaimmdProduction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/claimmd/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inbound Claim.MD webhook, test account (Auth-Signature-Base64 HMAC-verified) */
+        post: operations["postApiV1WebhooksClaimmdTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/webhooks/minio/access-log": {
         parameters: {
             query?: never;
@@ -28432,6 +28603,39 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getApiAdminAddons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        entitlementKey: string;
+                        meterEventType: string;
+                        unitPriceCents: number | null;
+                        currencyCode: string;
+                        isActive: boolean;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiAdminDunning: {
         parameters: {
             query?: {
@@ -30576,6 +30780,149 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiAdminSubscriptionsByIdAddons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        subscriptionId: string;
+                        /** Format: uuid */
+                        addonId: string;
+                        addonSlug: string;
+                        addonName: string;
+                        status: "trialing" | "active" | "canceled";
+                        live: boolean;
+                        trialEndsAt: string | null;
+                        /** Format: date-time */
+                        startedAt: string;
+                        endsAt: string | null;
+                        canceledAt: string | null;
+                        grantedByMembershipId: string | null;
+                        grantReason: string;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminSubscriptionsByIdAddons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    addonSlug: string;
+                    mode: "grant" | "trial";
+                    /** Format: date-time */
+                    trialEndsAt?: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        subscriptionId: string;
+                        /** Format: uuid */
+                        addonId: string;
+                        addonSlug: string;
+                        addonName: string;
+                        status: "trialing" | "active" | "canceled";
+                        live: boolean;
+                        trialEndsAt: string | null;
+                        /** Format: date-time */
+                        startedAt: string;
+                        endsAt: string | null;
+                        canceledAt: string | null;
+                        grantedByMembershipId: string | null;
+                        grantReason: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminSubscriptionsByIdAddonsByAddonIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                addonId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        subscriptionId: string;
+                        /** Format: uuid */
+                        addonId: string;
+                        addonSlug: string;
+                        addonName: string;
+                        status: "trialing" | "active" | "canceled";
+                        live: boolean;
+                        trialEndsAt: string | null;
+                        /** Format: date-time */
+                        startedAt: string;
+                        endsAt: string | null;
+                        canceledAt: string | null;
+                        grantedByMembershipId: string | null;
+                        grantReason: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiAdminSubscriptionsByIdApplypromo: {
         parameters: {
             query?: never;
@@ -30826,6 +31173,17 @@ export interface operations {
                             projectedOverageCostCents: number;
                             thresholdState: "ok" | "warning" | "breached";
                         }[];
+                    } & {
+                        claimsBillingAddon: {
+                            addonSlug: string;
+                            /** Format: date-time */
+                            periodStart: string;
+                            /** Format: date-time */
+                            periodEnd: string;
+                            activePatientCount: number;
+                            unitPriceCents: number | null;
+                            computedAt: string | null;
+                        } | null;
                     };
                 };
             };
@@ -31194,6 +31552,124 @@ export interface operations {
                     "application/json": {
                         provider: "manual" | "in_memory" | "episode_alert";
                         wired: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdminBillingNpiverifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        providerEntityId: string;
+                        organizationId: string;
+                        organizationName: string;
+                        legalName: string;
+                        npi: string;
+                        state: "verified" | "unverified" | "revoked";
+                        verificationId: string | null;
+                        evidence: string | null;
+                        verifiedAt: string | null;
+                        verifiedByMembershipId: string | null;
+                        revokedAt: string | null;
+                        revokedByMembershipId: string | null;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminBillingNpiverificationsByProviderEntityIdRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerEntityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        providerEntityId: string;
+                        organizationId: string;
+                        organizationName: string;
+                        legalName: string;
+                        npi: string;
+                        state: "verified" | "unverified" | "revoked";
+                        verificationId: string | null;
+                        evidence: string | null;
+                        verifiedAt: string | null;
+                        verifiedByMembershipId: string | null;
+                        revokedAt: string | null;
+                        revokedByMembershipId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminBillingNpiverificationsByProviderEntityIdVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerEntityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The NPI the operator checked. */
+                    npi: string;
+                    /** @description How ownership was confirmed (for the audit record; no patient information). */
+                    evidence: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        providerEntityId: string;
+                        organizationId: string;
+                        organizationName: string;
+                        legalName: string;
+                        npi: string;
+                        state: "verified" | "unverified" | "revoked";
+                        verificationId: string | null;
+                        evidence: string | null;
+                        verifiedAt: string | null;
+                        verifiedByMembershipId: string | null;
+                        revokedAt: string | null;
+                        revokedByMembershipId: string | null;
                     };
                 };
             };
@@ -45734,6 +46210,90 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingCommercialEnrollmentreports: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                state?: "open" | "applied" | "dismissed" | "superseded";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            payerId: string | null;
+                            clearinghouseKey: string;
+                            clearinghousePayerId: string | null;
+                            enrollType: "era" | "1500" | "500" | "ub" | "elig" | "attach" | "unrecognized";
+                            vendorStatus: string;
+                            suggestedStatus: "enrolled" | null;
+                            vendorEnrollId: string | null;
+                            reportedAt: string;
+                            state: "open" | "applied" | "dismissed" | "superseded";
+                            resolvedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialEnrollmentreportsByIdResolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    providerEntityId: string;
+                    resolution: "applied" | "dismissed";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        payerId: string | null;
+                        clearinghouseKey: string;
+                        clearinghousePayerId: string | null;
+                        enrollType: "era" | "1500" | "500" | "ub" | "elig" | "attach" | "unrecognized";
+                        vendorStatus: string;
+                        suggestedStatus: "enrolled" | null;
+                        vendorEnrollId: string | null;
+                        reportedAt: string;
+                        state: "open" | "applied" | "dismissed" | "superseded";
+                        resolvedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingCommercialEnrollments: {
         parameters: {
             query: {
@@ -48351,6 +48911,14 @@ export interface operations {
                         daysUntilSuspension: number | null;
                         hasValidPaymentMethod: boolean;
                         paymentMethodExpiresAt: string | null;
+                        claimsBilling?: {
+                            entitled: boolean;
+                            status: "none" | "trialing" | "active" | "canceled";
+                            reason: ("never_purchased" | "lapsed" | "subscription_suspended" | "subscription_canceled" | "subscription_paused") | null;
+                            trialEndsAt: string | null;
+                            activePatientCount: number | null;
+                            enforced: boolean;
+                        };
                     };
                 };
             };
@@ -112166,6 +112734,96 @@ export interface operations {
                         ratio: number | null;
                         status: "unavailable" | "green" | "yellow" | "red";
                         reason?: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1WebhooksClaimmdProduction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    UTCTime?: string;
+                    acct_number: string | number;
+                    remote_acct_number?: string;
+                    events: ({
+                        eventid: string | number;
+                        /** @description enroll | appeal | test (the list is not documented) */
+                        event_type: string;
+                        event_time?: string;
+                        event_data?: {
+                            [key: string]: unknown;
+                        };
+                    } & {
+                        [key: string]: unknown;
+                    })[];
+                } & {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1WebhooksClaimmdTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    UTCTime?: string;
+                    acct_number: string | number;
+                    remote_acct_number?: string;
+                    events: ({
+                        eventid: string | number;
+                        /** @description enroll | appeal | test (the list is not documented) */
+                        event_type: string;
+                        event_time?: string;
+                        event_data?: {
+                            [key: string]: unknown;
+                        };
+                    } & {
+                        [key: string]: unknown;
+                    })[];
+                } & {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: number;
                     };
                 };
             };

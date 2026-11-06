@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1892,
-    "coveredRoutes": 1892,
-    "directRoutesReferenced": 1725
+    "routes": 1903,
+    "coveredRoutes": 1903,
+    "directRoutesReferenced": 1733
   },
   "modules": [
     {
@@ -386,12 +386,14 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 96,
+      "routes": 101,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-clinical-site-scope.test.ts",
         "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/billing-medicare-inject.test.ts",
+        "apps/backend/__tests__/m23-claimmd-webhook-route.test.ts",
+        "apps/backend/__tests__/m23-claimmd-webhook.live.test.ts",
         "apps/backend/__tests__/m23-clearinghouse-attempt-routes.test.ts",
         "apps/backend/__tests__/m23-dde-daily-change.live.test.ts",
         "apps/backend/__tests__/m23-dde-provider-identity-aging.live.test.ts",
@@ -401,6 +403,7 @@
         "apps/backend/__tests__/m23-dde-queue.live.test.ts",
         "apps/backend/__tests__/m23-eligibility-read-audit.live.test.ts",
         "apps/backend/__tests__/m23-mac-credential-cipher.live.test.ts",
+        "apps/backend/__tests__/m23-npi-verification-routes.test.ts",
         "apps/backend/__tests__/m23-rate-table-routes.test.ts",
         "apps/backend/__tests__/m23-sequestration-policy-routes.test.ts",
         "apps/backend/__tests__/m23-validation-override.live.test.ts",
@@ -413,9 +416,10 @@
         "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
+        "apps/backend/__tests__/m41-enrollment-reports.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 68
+      "directRoutesReferenced": 71
     },
     {
       "module": "24-billing-medicaid",
@@ -552,13 +556,14 @@
     },
     {
       "module": "35-subscription",
-      "routes": 54,
+      "routes": 58,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m23-npi-verification-routes.test.ts",
         "apps/backend/__tests__/m35-stripe-webhook-route.test.ts",
         "apps/backend/__tests__/subscription-inject.test.ts"
       ],
-      "directRoutesReferenced": 54
+      "directRoutesReferenced": 58
     },
     {
       "module": "36-messaging",
@@ -709,16 +714,17 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 26,
+      "routes": 28,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m41-ack-quarantine-routes.test.ts",
         "apps/backend/__tests__/m41-commercial-eligibility-routes.test.ts",
         "apps/backend/__tests__/m41-commercial-queue-routes.test.ts",
         "apps/backend/__tests__/m41-commercial-routes.live.test.ts",
-        "apps/backend/__tests__/m41-commercial-submission-routes.test.ts"
+        "apps/backend/__tests__/m41-commercial-submission-routes.test.ts",
+        "apps/backend/__tests__/m41-enrollment-reports.live.test.ts"
       ],
-      "directRoutesReferenced": 18
+      "directRoutesReferenced": 19
     }
   ]
 }

@@ -425,6 +425,7 @@ export const MODULES: ModuleDef[] = [
       "commercial_payer_route", // #721 - the payer id each clearinghouse routes a plan on
       "commercial_contract_rate", // #721 - contract rate terms per level of care
       "commercial_payer_enrollment",
+      "commercial_enrollment_report", // ADR-0053 D7 - advisory clearinghouse enrollment reports (staff confirm)
       "commercial_authorization",
       "commercial_eligibility_check",
       "commercial_claim",
@@ -931,6 +932,9 @@ export const MODULES: ModuleDef[] = [
     dependsOn: [1, 6, 8, 22, 38, 40],
     ownedTables: [
       "billing_edi_profile",
+      "claimmd_webhook_event",
+      // ADR-0053 amendment precondition 2 (migration 1326): platform-verified NPI ownership the Claim.MD sweep routes on.
+      "provider_npi_verification",
       "claim",
       "claim_acknowledgment",
       "claim_line",
@@ -1035,6 +1039,7 @@ export const MODULES: ModuleDef[] = [
       "payer_appeal_path_level",
       "payer_appeal_case",
       "payer_appeal_case_event",
+      "payer_appeal_vendor_report", // ADR-0053 D7 - clearinghouse-reported appeal events and the case each bound
       "representative_form_version",
       "representative_appointment",
       "beneficiary_appeal",
@@ -1323,6 +1328,7 @@ export const MODULES: ModuleDef[] = [
     dependsOn: [1],
     /* ADR-0025: M34<->M35 seam-based both ways (no edge); minimal edge set finalized in M35's ADR-0005 D5 pass */ ownedTables:
       [
+        "addon", // ADR-0108 claims-billing add-on catalog (platform-shared)
         "dunning_state",
         "invoice",
         "invoice_line",
@@ -1340,6 +1346,7 @@ export const MODULES: ModuleDef[] = [
         "stripe_api_call_audit",
         "stripe_webhook_event",
         "subscription",
+        "subscription_addon", // ADR-0108 (tenant read-only; platform-runner writes)
         "subscription_state_history",
         "usage_event",
         "usage_period_aggregate",

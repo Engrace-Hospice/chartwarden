@@ -4,8 +4,10 @@
 // API takes a patient and a plan and resolves the member id server side from M5's coverage, so no member id is ever on the wire.
 // No response schema has a member-id field.
 import {
+  CLEARINGHOUSE_ENROLL_TYPE_VALUES,
   COMMERCIAL_ELIGIBILITY_OUTCOME_VALUES,
   COMMERCIAL_ELIGIBILITY_STALENESS_POLICY_VALUES,
+  COMMERCIAL_ENROLLMENT_REPORT_STATE_VALUES,
   COMMERCIAL_ENROLLMENT_STATUS_VALUES,
   MAX_ELIGIBILITY_MAX_AGE_DAYS,
   ValidationError,
@@ -157,4 +159,37 @@ export const EnrollmentResponseSchema = Type.Object({
 });
 export const EnrollmentListResponseSchema = Type.Object({
   items: Type.Array(EnrollmentResponseSchema),
+});
+
+// Migration 1323 - advisory clearinghouse enrollment reports (staff confirm; nothing here changes a send gate).
+export const EnrollmentReportListQuerySchema = Type.Object(
+  {
+    providerEntityId: Uuid,
+    state: Type.Optional(lit(COMMERCIAL_ENROLLMENT_REPORT_STATE_VALUES)),
+  },
+  { additionalProperties: false },
+);
+export const ResolveEnrollmentReportBodySchema = Type.Object(
+  {
+    providerEntityId: Uuid,
+    resolution: Type.Union([Type.Literal("applied"), Type.Literal("dismissed")]),
+  },
+  { additionalProperties: false },
+);
+export const EnrollmentReportResponseSchema = Type.Object({
+  id: Type.String(),
+  providerEntityId: Type.String(),
+  payerId: Type.Union([Type.String(), Type.Null()]),
+  clearinghouseKey: Type.String(),
+  clearinghousePayerId: Type.Union([Type.String(), Type.Null()]),
+  enrollType: lit(CLEARINGHOUSE_ENROLL_TYPE_VALUES),
+  vendorStatus: Type.String(),
+  suggestedStatus: Type.Union([Type.Literal("enrolled"), Type.Null()]),
+  vendorEnrollId: Type.Union([Type.String(), Type.Null()]),
+  reportedAt: Type.String(),
+  state: lit(COMMERCIAL_ENROLLMENT_REPORT_STATE_VALUES),
+  resolvedAt: Type.Union([Type.String(), Type.Null()]),
+});
+export const EnrollmentReportListResponseSchema = Type.Object({
+  items: Type.Array(EnrollmentReportResponseSchema),
 });

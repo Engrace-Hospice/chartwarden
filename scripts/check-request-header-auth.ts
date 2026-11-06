@@ -114,6 +114,13 @@ export const REGISTERED_HEADERS: Readonly<Record<string, RegisteredHeader>> = {
     reason:
       "HMAC over the raw body, verified against the endpoint's webhook secret before the payload is believed (M35 webhooks.routes.ts).",
   },
+  "auth-signature-base64": {
+    classification: "verified",
+    reason:
+      "Claim.MD webhook HMAC-SHA256 over the raw body bytes, keyed with the account key, verified (canonical base64, " +
+      "timing-safe) before anything is stored (M23 claimmd-webhook/routes.ts). Built from Claim.MD's docs; not yet " +
+      "checked against a real delivery, so the ingress stays off by default (CLAIMMD_WEBHOOK_ENABLED).",
+  },
   "x-dosespot-signature": {
     classification: "verified",
     reason:

@@ -1,5 +1,6 @@
 import {
   Button,
+  ClaimsBillingNotice,
   EmptyState,
   Glyph,
   InlineAlert,
@@ -8,6 +9,7 @@ import {
   Panel,
   StatusPill,
   useApiClient,
+  useClaimsBilling,
 } from "@chartwarden/ui";
 import type { paths } from "@chartwarden/ui";
 // apps/web/src/modules/41-billing-commercial — COMMERCIAL CLAIM DETAIL (M41, issue #726; spec section 5). One claim with the four
@@ -71,6 +73,8 @@ const ACTION_NOTICE: Record<Action, string> = {
 
 function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
   const client = useApiClient();
+  // ADR-0108 — marking ready (and so sending) is new claims-billing work; validate and void stay open.
+  const claimsBilling = useClaimsBilling();
   const navigate = useNavigate();
   const permissions = useSession()?.permissions ?? [];
   const [load, setLoad] = useState<Load>({ status: "loading" });
@@ -222,7 +226,10 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
                 >
                   {busy === "validate" ? "Validating…" : "Re-validate"}
                 </Button>
-                <Button disabled={busy !== null} onClick={() => void run("ready")}>
+                <Button
+                  disabled={busy !== null || claimsBilling.blocked}
+                  onClick={() => void run("ready")}
+                >
                   {busy === "ready" ? "Checking…" : "Mark ready"}
                 </Button>
               </>
@@ -251,6 +258,7 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
             ) : null}
           </div>
         </header>
+        <ClaimsBillingNotice />
 
         <BillingTabs />
 

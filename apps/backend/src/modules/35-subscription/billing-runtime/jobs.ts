@@ -271,16 +271,50 @@ interface UsageWindow {
   readonly end: Date;
 }
 
-/** The subscription's billing window containing `now`; calendar month (UTC) when the mirror has no period. */
+/** The subscription's billing window containing `now`. An instant before the mirrored period (a death date) gets the
+ *  earlier window on the same anchor, never the current one; calendar month (UTC) when the mirror has no period or
+ *  `now` is past its end. */
 export function usageWindowFor(
   sub: { currentPeriodStart: Date | null; currentPeriodEnd: Date | null },
   now: Date,
 ): UsageWindow {
   if (sub.currentPeriodStart && sub.currentPeriodEnd && sub.currentPeriodEnd > now) {
-    return { start: sub.currentPeriodStart, end: sub.currentPeriodEnd };
+    let window: UsageWindow = { start: sub.currentPeriodStart, end: sub.currentPeriodEnd };
+    while (window.start > now) window = previousUsageWindow(window);
+    return window;
   }
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   return { start, end: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)) };
+}
+
+/**
+ * The window that ended where `current` starts: as many calendar months back as `current` spans (1 monthly, 12
+ * annual) on the same UTC day/time, clamped to the shorter month's last day (a 31st anchor gives Feb 28/29, as Stripe
+ * does). Never `start - (end - start)`: months differ in length, so a duration lands on Jan 29 for March and on Mar 31
+ * for May.
+ */
+export function previousUsageWindow(current: UsageWindow): UsageWindow {
+  const s = current.start;
+  const e = current.end;
+  const span = Math.max(
+    1,
+    (e.getUTCFullYear() - s.getUTCFullYear()) * 12 + e.getUTCMonth() - s.getUTCMonth(),
+  );
+  const year = s.getUTCFullYear();
+  const month = s.getUTCMonth() - span;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const start = new Date(
+    Date.UTC(
+      year,
+      month,
+      Math.min(s.getUTCDate(), lastDay),
+      s.getUTCHours(),
+      s.getUTCMinutes(),
+      s.getUTCSeconds(),
+      s.getUTCMilliseconds(),
+    ),
+  );
+  return { start, end: current.start };
 }
 
 async function meterTotal(
@@ -344,12 +378,7 @@ export async function runUsageAggregationForOrg(
         .from(schema.planMeter)
         .where(eq(schema.planMeter.planId, sub.planId));
       const current = usageWindowFor(sub, now);
-      const previous: UsageWindow = {
-        start: new Date(
-          current.start.getTime() - (current.end.getTime() - current.start.getTime()),
-        ),
-        end: current.start,
-      };
+      const previous = previousUsageWindow(current);
       for (const [window, finalize] of [
         [previous, true],
         [current, false],

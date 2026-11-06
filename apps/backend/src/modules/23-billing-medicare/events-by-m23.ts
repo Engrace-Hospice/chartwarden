@@ -52,6 +52,60 @@ const payerStatusDateSource = Type.Union([
   Type.Literal("dde_provider"),
 ]);
 
+// ── Claim.MD webhook reports (ADR-0053 amendment D7/D8) ───────────────────────────────────────────────
+// Published by the claimmd-webhook sweep once a receipt resolves to a tenant that holds the Billing add-on. Ids, the
+// control number, enroll_type and ONE bounded vendor status word only: never the vendor's free text, never a TIN.
+// The sweep publishes and marks the receipt `published` in ONE savepoint, so a receipt publishes at most once; the
+// receipt's own arrival (the webhook's insert) is an earlier transaction. Consumers still dedupe on `sourceEventKey`
+// (usage:acct:eventid), the usual at-least-once outbox delivery contract.
+const claimMdReportBase = {
+  sourceEventKey: Type.String({ minLength: 1, maxLength: 240 }),
+  usage: Type.Union([Type.Literal("test"), Type.Literal("production")]),
+  vendor: Type.Literal("claimmd"),
+  providerEntityId: id,
+  vendorStatus: Type.String({ pattern: "^[a-z][a-z0-9_]{0,31}$" }),
+  reportedAt: isoInstant,
+  eventTime: nullableStr,
+};
+const CLAIMMD_REPORT_EVENTS: ModuleEventContribution = [
+  {
+    eventName: "m23.clearinghouse.enrollment_reported",
+    moduleOwner: "m23",
+    description:
+      "Claim.MD reported an enrollment status for a provider entity (advisory: staff confirm before any send gate changes).",
+    payloadSchema: Type.Object({
+      ...claimMdReportBase,
+      vendorEnrollId: nullableStr,
+      enrollType: Type.Union([
+        Type.Literal("era"),
+        Type.Literal("1500"),
+        Type.Literal("500"),
+        Type.Literal("ub"),
+        Type.Literal("elig"),
+        Type.Literal("attach"),
+        Type.Literal("unrecognized"),
+      ]),
+      clearinghousePayerId: nullableStr,
+    }),
+    declaredConsumers: ["m41"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m23.clearinghouse.appeal_reported",
+    moduleOwner: "m23",
+    description:
+      "Claim.MD reported an appeal event for a claim we submitted (matched by our control number).",
+    payloadSchema: Type.Object({
+      ...claimMdReportBase,
+      controlNumber: Type.String({ minLength: 1, maxLength: 64 }),
+      vendorAppealId: nullableStr,
+      appealType: Type.String({ pattern: "^[a-z][a-z0-9_]{0,31}$" }),
+    }),
+    declaredConsumers: ["m25"],
+    isOutboxOnly: true,
+  },
+];
+
 export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   // ── claim lifecycle (§2.2 / §4.10) ────────────────────────────────────────────────────────────────
   {
@@ -853,4 +907,5 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
+  ...CLAIMMD_REPORT_EVENTS,
 ];

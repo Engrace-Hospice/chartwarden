@@ -2686,6 +2686,14 @@
     },
     {
       "app": "admin",
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "admin.billing.npi-verifications",
+      "path": "/admin/billing/npi-verifications",
+      "permission": "billing.rule_config.platform_admin"
+    },
+    {
+      "app": "admin",
       "module": "32-ai-platform",
       "moduleId": 32,
       "id": "admin.ai-capabilities",

@@ -187,3 +187,8 @@ export {
   createRemittanceEraser,
   registerRemittanceErasers,
 } from "./erasers/remittance-eraser";
+export {
+  CLEARINGHOUSE_APPEAL_ALERT,
+  M25_APPEAL_REPORTED_EVENT,
+  buildM25AppealReportConsumer,
+} from "./outbox-consumers/m23-appeal-reported";

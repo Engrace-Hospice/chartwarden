@@ -501,6 +501,8 @@ jobs:
           - { name: "M23 Ack cursor", scripts: "test:m23:ack-cursor:live" }
           # M23 durable clearinghouse attempt store: the package contract run against the real table as chartwarden_app, plus RLS isolation, the identity/final-row guard and no-delete.
           - { name: "M23 Clearinghouse attempts", scripts: "test:m23:clearinghouse-attempts:live" }
+          # ADR-0053 amendment D7 - Claim.MD webhook intake: signature refusals, atomic batch, dedupe, encryption, platform-only table.
+          - { name: "M23 Claim.MD webhook", scripts: "test:m23:claimmd-webhook:live" }
           # M23 per-(provider entity, route) EDI profile (migration 1269): the compare-and-set upsert, FORCEd RLS as chartwarden_app, the CHECKs, no delete, the audit row.
           - { name: "M23 EDI profile", scripts: "test:m23:edi-profile:live" }
           # M23 submit/retry workers and the 999/277CA crons over the bound clearinghouse transport (in-memory), real catalog-validating publisher, legacy portal forbidden (#707).
@@ -847,6 +849,8 @@ jobs:
           - { name: "M25 ADR readiness", scripts: "test:m25:adr-readiness:live" }
           # Milestone 12a-1 - payer (commercial / Medicare Advantage) appeal paths written by a person and verified by a second one, a payer appeal case per level on a claim-less denial, deadlines computed only from a complete path row, the denial-keyed case view.
           - { name: "M25 payer appeals", scripts: "test:m25:payer-appeal:live test:m25:payer-seam:live" }
+          # ADR-0053 amendment D7 - Claim.MD appeal reports: real publisher + dispatcher; open/link/timeline/record-only, never a decision.
+          - { name: "M25 Claim.MD appeal reports", scripts: "test:m25:appeal-reports:live" }
           # Milestone 13a - beneficiary-filed appeals and appointments of representative (record-keeping only): a second person with step-up activates an appointment (the database refuses recorder = activator), signed documents are validated against the M22 active version, no computed beneficiary deadline, no portal / consent / caregiver side effects.
           - { name: "M25 beneficiary and representative", scripts: "test:m25:beneficiary-representative:live" }
           # Milestone 9a-1 - the org-authored denial playbook library (nothing seeded; review before publish; advisory ticks).
@@ -857,6 +861,8 @@ jobs:
           - { name: "M41 commercial claim", scripts: "test:m41:commercial-claim:live" }
           # M41 commercial routes (#722) - the HTTP layer: guards, step-up, AI block, idempotency, error envelope, read audit.
           - { name: "M41 commercial routes", scripts: "test:m41:commercial-routes:live" }
+          # ADR-0053 amendment D7 - advisory Claim.MD enrollment reports: real publisher + dispatcher, payer mapping, supersede, send gate unchanged until staff apply, route chain.
+          - { name: "M41 enrollment reports", scripts: "test:m41:enrollment-reports:live" }
           # M41 commercial eligibility (270/271) and enrollment (#724) - tenant isolation as chartwarden_app, append-only checks, no member id column, the send gate end to end (unbound / not routed / not enrolled never reach the transport).
           - { name: "M41 eligibility", scripts: "test:m41:eligibility:live" }
           # M41 commercial submission (ADR-0053 D10) - the send gate, the submit transaction (queued row + event, claim stays ready), the drain through the in-memory transport (ready -> submitted only on a receipt), idempotency, RLS as chartwarden_app.
@@ -1381,6 +1387,10 @@ jobs:
           # GAP-058/059/060/061 - M35 billing runtime: payment-method trust, refund cap + execution, signed
           # webhook -> dunning -> suspension, expiry watch, usage thresholds, revenue snapshot, reconciler.
           - { name: "M35 billing runtime", scripts: "test:m35:billing-runtime:live" }
+          # ADR-0108 - claims-billing add-on: no tenant self-grant as chartwarden_app, RLS isolation, one live row, audit + real-publisher events.
+          - { name: "M35 claims-billing add-on", scripts: "test:m35:claims-billing-addon:live" }
+          # ADR-0108 D8 - census pull: active-only, add-on orgs only, idempotent rerun, pseudonyms only, two-org RLS, reconcile drift.
+          - { name: "M35 claims-billing census", scripts: "test:m35:claims-billing-census:live" }
           # GAP-057 - M34's two recipient resolvers registered on the real emitter; platform-owner reader.
           - { name: "M34 alert resolvers", scripts: "test:m34:alert-resolvers:live" }
           # GAP-050: M33 scheduled-report create/update/resume over the real `cron-parser` adapter —
@@ -1410,6 +1420,8 @@ jobs:
           # M23 and M27 once shared a BullMQ queue named `validation-run` (an M27 worker failed M23 jobs into the DLQ). Real
           # producers, one consumer per module: a job reaches only its own module; stranded legacy jobs are moved, not dropped.
           - { name: "M23/M27 validation queue isolation", scripts: "test:m23:validation-queue-isolation:live" }
+          # ADR-0108 D7 - a held claims-billing job is delayed on real BullMQ, no attempt spent, never failed (needs Valkey).
+          - { name: "Claims-billing worker hold", scripts: "test:claims-billing:worker-hold:live" }
     services:
       # F-025 (#59): four of the newly-wired suites gate on `CHARTWARDEN_TEST_REDIS_URL` as well as the
       # database — `test:m30:scheduled-jobs:live`, `test:m33:scheduled-jobs:live`,

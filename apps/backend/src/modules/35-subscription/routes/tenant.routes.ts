@@ -7,6 +7,7 @@
 // (`request.context` via `actorOf`/`writeActorOf`), NEVER read off the body. `GET /api/v1/billing/status`
 // sits under the read-audit-governed `/api/v1/billing` prefix, so it carries a justified no-PHI waiver.
 import type { FastifyInstance } from "fastify";
+import type { AddonService } from "../addon/addon-service";
 import { actorOf, writeActorOf } from "./actor";
 import { BILLING_SCOPE, IDEMPOTENT, P, STEP_UP } from "./guards";
 import type { M35RouteService } from "./service";
@@ -22,6 +23,8 @@ import {
 
 export interface TenantRouteDeps {
   readonly service: M35RouteService;
+  /** ADR-0108 — adds the tenant's claims-billing add-on posture to `GET /api/v1/billing/status`. */
+  readonly addons?: AddonService;
 }
 
 /** Register the §4.1 tenant subscription-billing routes. */
@@ -242,6 +245,14 @@ export function registerTenantRoutes(app: FastifyInstance, deps: TenantRouteDeps
         },
       },
     },
-    async (request) => service.getBillingStatus(actorOf(request)),
+    async (request) => {
+      const actor = actorOf(request);
+      const status = await service.getBillingStatus(actor);
+      if (!deps.addons) return status;
+      return {
+        ...status,
+        claimsBilling: await deps.addons.claimsBillingForOrg(actor.organizationId),
+      };
+    },
   );
 }

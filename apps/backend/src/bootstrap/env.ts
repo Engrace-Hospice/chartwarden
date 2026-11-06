@@ -25,6 +25,31 @@ export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = [
   "claimmd",
 ];
 
+/** ADR-0108 D6 — the claims-billing add-on enforcement mode (the gate lives in ./claims-billing-gate.ts). */
+export const CLAIMS_BILLING_ENFORCEMENT_ENV = "CLAIMS_BILLING_ENFORCEMENT";
+export const CLAIMS_BILLING_ENFORCEMENT_MODES = ["off", "shadow", "enforce"] as const;
+export type ClaimsBillingEnforcementMode = (typeof CLAIMS_BILLING_ENFORCEMENT_MODES)[number];
+export const DEFAULT_CLAIMS_BILLING_ENFORCEMENT: ClaimsBillingEnforcementMode = "shadow";
+
+/** Parse the mode; unset → shadow; anything else than the three values throws (fail closed at boot). */
+export function parseClaimsBillingEnforcement(
+  env: Readonly<Record<string, string | undefined>>,
+): ClaimsBillingEnforcementMode {
+  const raw = env[CLAIMS_BILLING_ENFORCEMENT_ENV]?.trim().toLowerCase();
+  if (!raw) return DEFAULT_CLAIMS_BILLING_ENFORCEMENT;
+  if ((CLAIMS_BILLING_ENFORCEMENT_MODES as readonly string[]).includes(raw)) {
+    return raw as ClaimsBillingEnforcementMode;
+  }
+  throw new Error(
+    `${CLAIMS_BILLING_ENFORCEMENT_ENV} must be one of ${CLAIMS_BILLING_ENFORCEMENT_MODES.join(", ")} (got '${raw}')`,
+  );
+}
+/** Claim.MD webhook intake switch: only the exact value `true` turns it on (default off until a real delivery is seen). */
+export const CLAIMMD_WEBHOOK_ENABLED_ENV = "CLAIMMD_WEBHOOK_ENABLED";
+export function claimMdWebhookEnabled(env: EnvLike): boolean {
+  return env[CLAIMMD_WEBHOOK_ENABLED_ENV] === "true";
+}
+
 /** One unmet production requirement. */
 export interface EnvProblem {
   readonly key: string;
@@ -212,6 +237,30 @@ const REQUIREMENTS: readonly Requirement[] = [
     key: "CLAIMMD_ACCOUNT_USAGE",
     rule: (v) => (v === "test" || v === "production" ? null : "must be 'test' or 'production'"),
     when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
+  },
+  // Claim.MD webhook intake (ADR-0053 amendment, D7). Off unless CLAIMMD_WEBHOOK_ENABLED=true; once on it needs the
+  // account key (the HMAC key), its usage, and the 32-byte key that encrypts each stored event at rest.
+  {
+    key: CLAIMMD_WEBHOOK_ENABLED_ENV,
+    rule: (v) => (v === "true" || v === "false" ? null : "must be 'true' or 'false'"),
+    when: (env) =>
+      env[CLAIMMD_WEBHOOK_ENABLED_ENV] !== undefined && env[CLAIMMD_WEBHOOK_ENABLED_ENV] !== "",
+  },
+  {
+    key: "CLAIMMD_ACCOUNT_KEY",
+    when: (env) =>
+      claimMdWebhookEnabled(env) && env[CLEARINGHOUSE_VENDOR_ENV]?.trim() !== "claimmd",
+  },
+  {
+    key: "CLAIMMD_ACCOUNT_USAGE",
+    rule: (v) => (v === "test" || v === "production" ? null : "must be 'test' or 'production'"),
+    when: (env) =>
+      claimMdWebhookEnabled(env) && env[CLEARINGHOUSE_VENDOR_ENV]?.trim() !== "claimmd",
+  },
+  {
+    key: "CLAIMMD_WEBHOOK_PAYLOAD_KEY",
+    rule: (v) => (Buffer.from(v, "base64").length === 32 ? null : "must decode to 32 base64 bytes"),
+    when: claimMdWebhookEnabled,
   },
   {
     key: "M23_X12_GATEWAY_URL",
@@ -514,6 +563,14 @@ export function collectEnvProblems(env: EnvLike): EnvProblem[] {
     if (value && value !== "true" && value !== "false") {
       problems.push({ key, problem: "must be 'true' or 'false'" });
     }
+  }
+  try {
+    parseClaimsBillingEnforcement(env);
+  } catch {
+    problems.push({
+      key: CLAIMS_BILLING_ENFORCEMENT_ENV,
+      problem: `must be one of ${CLAIMS_BILLING_ENFORCEMENT_MODES.join(", ")} (or unset for shadow)`,
+    });
   }
   const clearinghouseVendor = env[CLEARINGHOUSE_VENDOR_ENV]?.trim();
   if (clearinghouseVendor && !PRODUCTION_CLEARINGHOUSE_VENDORS.includes(clearinghouseVendor)) {

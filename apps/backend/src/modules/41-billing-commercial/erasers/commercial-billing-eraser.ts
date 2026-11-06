@@ -42,6 +42,7 @@ const AFTER_RUN_POINTER: readonly Pass[] = [
   ["commercial_claim", S.commercialClaims],
   ["commercial_authorization", S.commercialAuthorizations],
   ["commercial_eligibility_check", S.commercialEligibilityCheck],
+  ["commercial_enrollment_report", S.commercialEnrollmentReport],
   ["commercial_payer_enrollment", S.commercialPayerEnrollment],
   ["commercial_contract_rate", S.commercialContractRate],
   ["commercial_payer_route", S.commercialPayerRoute],

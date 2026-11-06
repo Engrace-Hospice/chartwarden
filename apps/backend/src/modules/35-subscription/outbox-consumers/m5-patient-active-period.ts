@@ -24,12 +24,13 @@ import type { DbClient } from "@chartwarden/db";
 import {
   type PseudonymKeyProvider,
   computeBillingPseudonym,
-  toBillingYearMonth,
 } from "@chartwarden/subscription-billing";
+import { withOrgContext } from "@chartwarden/tenancy";
 import {
   createDrizzleActivePeriodStore,
   markPatientInactiveForOrg,
 } from "../active-period-store-drizzle";
+import { activePeriodKeyFor, latestSubscriptionWindow } from "../billing-runtime/census";
 
 export const M35_PATIENT_ACTIVE_PERIOD_CONSUMER = {
   eventNames: ["m5.patient.deceased", "m5.patient.merged"] as const,
@@ -60,6 +61,14 @@ function deceasedDateOf(payload: unknown): Date | null {
 export function buildM35PatientActivePeriodConsumer(deps: PatientActivePeriodConsumerDeps) {
   const now = deps.now ?? (() => new Date());
   const activePeriodStore = createDrizzleActivePeriodStore(deps.db);
+  // ADR-0108 D8 — the period key comes from the same window helper as the census sweep and the usage aggregator.
+  const periodKey = (organizationId: string, at: Date) =>
+    withOrgContext(deps.db, { organizationId, userId: "" }, async (tx) =>
+      activePeriodKeyFor(
+        await latestSubscriptionWindow(tx as unknown as DbClient, organizationId),
+        at,
+      ),
+    );
 
   return {
     consumerName: M35_PATIENT_ACTIVE_PERIOD_CONSUMER.consumerName,
@@ -82,7 +91,7 @@ export function buildM35PatientActivePeriodConsumer(deps: PatientActivePeriodCon
           organizationId: event.organizationId,
           patientPseudonym,
           pseudonymKeyEpoch: key.keyEpoch,
-          periodYearMonth: toBillingYearMonth(at),
+          periodYearMonth: await periodKey(event.organizationId, at),
           becameActiveAt: at,
         });
         return;
@@ -96,7 +105,7 @@ export function buildM35PatientActivePeriodConsumer(deps: PatientActivePeriodCon
           organizationId: event.organizationId,
           patientPseudonym,
           pseudonymKeyEpoch: key.keyEpoch,
-          periodYearMonth: toBillingYearMonth(deceasedAt),
+          periodYearMonth: await periodKey(event.organizationId, deceasedAt),
           becameInactiveAt: deceasedAt,
           reason: "died",
         });

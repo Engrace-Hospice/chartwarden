@@ -11,7 +11,7 @@
 // AI-BLOCK (D13): Module 32 cannot create/modify/witness/resolve any M23 row. The per-route
 // `actor_kind='ai_*'` reject guard ({@link rejectAiActor}) is composed on every MUTATING route alongside
 // the §4.6 permission + §4.7 ABAC gates, so an AI principal can never reach a write handler.
-import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
+import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 /** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
@@ -87,17 +87,5 @@ export function writeActorOf(request: FastifyRequest): M23WriteActor {
   };
 }
 
-/**
- * §D13 AI-BLOCK preHandler — refuse any request whose server-assembled `actor_kind` is an `ai_*` principal
- * BEFORE it reaches a mutating handler. Composed on every M23 write route. Fail-closed: an unknown/missing
- * actor kind is treated as a user (the kind is only ever `ai_*` when M32 set it), but any `ai_` prefix is
- * rejected with a structured 403.
- */
-export function rejectAiActor(): PreHandler {
-  return async (request) => {
-    const kind = request.context?.attributes?.actorKind;
-    if (typeof kind === "string" && kind.startsWith("ai_")) {
-      throw new ForbiddenError("AI principals cannot create or modify billing records (D13)");
-    }
-  };
-}
+// §D13 AI-BLOCK preHandler, composed on every M23 write route. It lives in bootstrap so M35's add-on writes reuse it.
+export { rejectAiActor } from "../../../bootstrap/reject-ai-actor";

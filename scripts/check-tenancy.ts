@@ -321,6 +321,10 @@ const NON_ORG_SCOPED = new Set<string>([
   "stripe_webhook_event",
   "platform_retained_invoice",
   "platform_retained_invoice_line",
+  // ADR-0108 — `addon`, the platform-owned add-on catalog (the `plan` shape, D11: platform pricing, no tenant
+  // overlay). Read-all `USING (true)` TO chartwarden_app, writes only via chartwarden_admin (migration 1321). Its
+  // tenant half, `subscription_addon`, carries organization_id with app.org_id RLS and is NOT listed here.
+  "addon",
   // M29 External Interfaces (§3.3 / §3.5): the two NPPES cache tables carry NO organization_id BY DESIGN —
   // the CMS NPPES registry is the same public provider directory for every tenant. `nppes_provider` (keyed
   // by the 10-char NPI) and `nppes_sync_run` are read-all `USING (true)` TO chartwarden_app, written only via
@@ -328,6 +332,10 @@ const NON_ORG_SCOPED = new Set<string>([
   // code_system precedent). The other nine M29 tables carry organization_id and get standard app.org_id RLS.
   "nppes_provider",
   "nppes_sync_run",
+  // M23 Claim.MD webhook receipts (ADR-0053 amendment D7/D8): one Claim.MD account serves every tenant, so a delivery
+  // has no tenant until the sweep resolves it (unique NPI / platform-unique control number). Platform-only like
+  // stripe_webhook_event: RLS FORCEd, no chartwarden_app grant, `derived_organization_id` is best-effort, not RLS.
+  "claimmd_webhook_event",
 ]);
 // PHI signal: a table referencing a patient is PHI-bearing and MUST be fully org-scoped.
 const PHI_SIGNAL_RE =

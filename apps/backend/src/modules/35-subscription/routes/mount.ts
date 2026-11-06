@@ -6,6 +6,8 @@
 // {@link M35RouteService}), and the §4.3 webhook surface (over the injected ingest handler) — are also
 // re-exported so a route test can mount one group over a fresh in-memory backend.
 import type { FastifyInstance } from "fastify";
+import type { AddonService } from "../addon/addon-service";
+import { registerAddonRoutes } from "./addon.routes";
 import { type AdminRouteDeps, registerAdminRoutes } from "./admin.routes";
 import type { M35RouteService } from "./service";
 import { type TenantRouteDeps, registerTenantRoutes } from "./tenant.routes";
@@ -24,6 +26,8 @@ export {
 export interface M35MountDeps {
   readonly service: M35RouteService;
   readonly webhook?: WebhookRouteDeps;
+  /** ADR-0108 — the claims-billing add-on service (admin grant/cancel + the tenant billing-status posture). */
+  readonly addons?: AddonService;
 }
 
 /**
@@ -31,9 +35,16 @@ export interface M35MountDeps {
  * authenticate/security/error chain as the other modules (the `mountM27Routes` precedent).
  */
 export function mountM35Routes(app: FastifyInstance, deps: M35MountDeps): void {
-  const tenant: TenantRouteDeps = { service: deps.service };
-  const admin: AdminRouteDeps = { service: deps.service };
+  const tenant: TenantRouteDeps = {
+    service: deps.service,
+    ...(deps.addons ? { addons: deps.addons } : {}),
+  };
+  const admin: AdminRouteDeps = {
+    service: deps.service,
+    ...(deps.addons ? { addons: deps.addons } : {}),
+  };
   registerTenantRoutes(app, tenant);
   registerAdminRoutes(app, admin);
+  if (deps.addons) registerAddonRoutes(app, { addons: deps.addons });
   registerWebhookRoutes(app, deps.webhook ?? {});
 }

@@ -267,7 +267,76 @@ one tenant and scope.
 pre-upload checks only. `checkEligibility` calls Claim.MD `eligdata` with the request's transient `EligibilitySearchFacts`
 (subscriber name, DOB, billing EIN), which M41 reads per call only when Claim.MD is the bound vendor and never stores or
 logs; they go to Claim.MD under the BAA (CW-BA-01). `verifyAndParseEvent` (Claim.MD pushes enrollment and appeal events
-only) answers `CH_NOT_WIRED`.
+only) answers `CH_NOT_WIRED`; those reports enter through M23's own ingress (amendment 2026-11-05 below).
 Conformance: the five submit-side cases pass; the receive cases are skipped by name and replaced by Claim.MD-specific
 tests, because the shared cases give every tenant the same NPI.
 
+
+## Amendment 2026-11-05 — Claim.MD webhook intake (enrollment and appeal reports)
+
+**Status: built, OFF by default** (`CLAIMMD_WEBHOOK_ENABLED` must be exactly `true`). No real Claim.MD delivery has been
+captured yet; the shape is from Claim.MD's documentation (`https://api.claim.md/`, Webhook Events, read 2026-11-05) and
+the contract doc's webhook rows say what is D and what is U. Turn it on only when all three hold:
+
+1. Claim.MD support has activated the URL, and one real delivery has been read against those rows.
+2. **NPI ownership is platform-verified** (owner decision 2026-11-05). Today any tenant `org.manage` user can register
+   any Luhn-valid NPI on a `provider_entity`, so a tenant that registers another hospice's public NPI first would receive
+   that hospice's enrollment reports (no PHI, but another provider's vendor data) and lock the real owner out with
+   `NPI_TAKEN`. Before enabling, the sweep must route an enrollment only to a provider entity whose NPI platform staff
+   have verified, and answer `unroutable_npi` for an unverified one. Appeal routing (by our own platform-sequence control
+   number) is not affected.
+   **Built 2026-11-05.** M23's `provider_npi_verification` (migration 1326) records "platform staff verified that provider
+   entity P owns NPI N", with the evidence, the verifying membership and time, and a revoke (membership and time); rows
+   are never deleted. It is a separate table, not a column on `provider_entity`, because tenants can update that row. RLS
+   is FORCEd: a tenant reads its own org's rows and writes none; only the platform login writes, through the audited
+   `m23.npi_verification` platform context (M1 baseline write-audit trigger). The sweep routes an enrollment only when a
+   live row matches the entity's CURRENT NPI, so changing the NPI stops routing (switching back to the same NPI counts
+   again only if no other entity has been verified for it since: verifying an NPI closes every other entity's live row
+   for it). Platform staff list, verify and
+   revoke at `GET /api/v1/admin/billing/npi-verifications` and `POST …/:providerEntityId/verify|revoke`
+   (`billing.rule_config.platform_admin` + a platform-ops role; writes add a fresh step-up, the AI-actor block and
+   `Idempotency-Key`; verify must name the NPI the operator checked, so a value changed since is refused `NPI_CHANGED`),
+   in the admin console under Medicare billing → NPI verification. Before turning the intake on, verify every live
+   tenant's NPI there; until then their enrollment reports land as `unroutable_npi`.
+3. The Billing add-on binding below is in the mode the operator intends (`CLAIMS_BILLING_ENFORCEMENT`).
+
+**D7 as applied to Claim.MD: a push is a vendor REPORT, not event-then-fetch.** Claim.MD pushes only enrollment and appeal
+updates, with their content inline; there is nothing to fetch back, and none of it is an acknowledgment, a claim status or
+an ERA. So `ClaimMdTransport.verifyAndParseEvent` stays `CH_NOT_WIRED` (its message names the ingress), the port is
+unchanged, and every poll (`/response/`, `eralist`) is unchanged. The reports enter through a Claim.MD-specific ingress
+owned by M23 (it owns the D3 binding; M25 and M41 depend on M23, never the reverse):
+
+- `POST /api/v1/webhooks/claimmd/<usage>` (only the configured usage is mounted), CSRF-exempt, anonymous rate tier, 1 MiB.
+  `Auth-Signature-Base64` = base64(HMAC-SHA256(key = the account key's Latin-1 bytes, message = the raw body bytes)),
+  checked in canonical form and timing-safe (`packages/x12-837-client/src/clearinghouse/claimmd-webhook.ts`); an absent
+  header (an account with no active key) is refused like any other failure: one `401 INVALID_SIGNATURE`.
+- 200 `{received:n}` only after ONE statement stored the whole batch in the platform-only `claimmd_webhook_event`
+  (migration 1322), keyed `(usage, acct_number, eventid)`, each element AES-256-GCM encrypted
+  (`CLAIMMD_WEBHOOK_PAYLOAD_KEY`); a database failure is a 5xx and Claim.MD retries. After a valid signature content is
+  never refused: an unsplittable body is one `malformed` row keyed `body:<sha256>`, an element without a usable eventid
+  `x:<sha256(element)>`.
+- A one-minute sweep (`claimmd-webhook-sweep`) settles receipts and publishes `m23.clearinghouse.enrollment_reported`
+  (consumer M41) or `m23.clearinghouse.appeal_reported` (consumer M25), ids and one bounded vendor word only, in the same
+  transaction that marks the receipt `published`. Test events are settled on receipt (`test_ack`).
+
+**D8 as applied to Claim.MD: tenant resolution never trusts the payload's claims about a tenant.** An enrollment resolves
+by `prov_npi` to the one `provider_entity` with that NPI (unique platform-wide), and only when that NPI is platform-verified
+(precondition 2); an appeal by `remote_claimid` to the one
+live `clearinghouse_submission_attempt` with that `(usage, control_number)` (unique per usage platform-wide). An unknown
+NPI or claim is terminal `unroutable_npi` / `unroutable_claim`, logged with ids only. Caveat: Claim.MD documents
+`remote_claimid` as the 837 `REF*D9`, which our 837I does not send today, so appeal reports for X12 uploads resolve only
+once we send our control number there (or Claim.MD confirms it echoes CLM01); until then they land as `unroutable_claim`.
+
+**The Billing add-on.** After resolution the sweep asks a `BillingEntitlementPort`; an org without the add-on keeps its
+receipt encrypted as `awaiting_entitlement`, re-checked hourly and published once the add-on is granted, and becomes
+`expired_not_entitled` 90 days after receipt. The port is bound to ADR-0108's `isClaimsBillingEntitled`, so it follows
+`CLAIMS_BILLING_ENFORCEMENT`: `off`/`shadow` publish for every resolved org; `enforce` reads M35, and a failed read retries
+without spending an attempt.
+
+**What the reports may change.** Enrollment: nothing by itself; M41 lists an advisory report and staff confirm it through
+the existing, step-up-guarded enrollment routes (ADR-0100 note). Appeal: M25 records every report, alerts billing staff,
+and only on the exact word `created` for exactly one live non-Medicare denial opens an unconfirmed draft level or links an
+in-flight one; it never decides, closes or withdraws.
+
+**Retention.** A settled receipt's cipher is cleared 90 days after processing; the digest, ids and outcome stay. Provider
+TINs (which can be SSNs) and vendor free text exist only inside that cipher.

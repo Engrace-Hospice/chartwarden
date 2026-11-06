@@ -96,6 +96,10 @@ export const BILLING_CAP_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   // approaching, and an open level with no due date of either kind (a typed deadline rides deadline.recorded_approaching).
   rule("payer_appeal.deadline_approaching", "warn", BILLING_MANAGERS),
   rule("payer_appeal.no_deadline", "warn", BILLING_MANAGERS),
+  // ADR-0053 amendment D7: a clearinghouse (Claim.MD) reported an enrollment status (M41 lists it for staff to confirm) or
+  // an appeal event (M25 records it and opens/links a draft level only in the narrow cases its consumer names).
+  rule("clearinghouse.enrollment_reported", "info", BILLING_MANAGERS),
+  rule("clearinghouse.appeal_reported", "info", BILLING_MANAGERS),
   // ── M26 band escalations (GAP-040): raised by M36's `cap-threshold-alerts` consumer of
   // `m26.cap.threshold_crossed`. Watch/warn page finance leads; a breach also pages compliance + org admins.
   ...(["agency", "patient"] as const).flatMap((family) => [

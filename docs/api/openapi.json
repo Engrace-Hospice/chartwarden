@@ -6,6 +6,92 @@
     "description": "Generated from backend routes + TypeBox enrichments (ADR-0032). Source of truth for the typed frontend client until routes are wired to Fastify schema."
   },
   "paths": {
+    "/api/admin/addons": {
+      "get": {
+        "operationId": "getApiAdminAddons",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "List the add-on catalog (admin)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "slug",
+                      "name",
+                      "description",
+                      "entitlementKey",
+                      "meterEventType",
+                      "unitPriceCents",
+                      "currencyCode",
+                      "isActive"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "slug": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "entitlementKey": {
+                        "type": "string"
+                      },
+                      "meterEventType": {
+                        "type": "string"
+                      },
+                      "unitPriceCents": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "currencyCode": {
+                        "type": "string"
+                      },
+                      "isActive": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/admin/dunning": {
       "get": {
         "operationId": "getApiAdminDunning",
@@ -7721,6 +7807,500 @@
         }
       }
     },
+    "/api/admin/subscriptions/{id}/addons": {
+      "get": {
+        "operationId": "getApiAdminSubscriptionsByIdAddons",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "List a subscription's add-ons (admin)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "organizationId",
+                      "subscriptionId",
+                      "addonId",
+                      "addonSlug",
+                      "addonName",
+                      "status",
+                      "live",
+                      "trialEndsAt",
+                      "startedAt",
+                      "endsAt",
+                      "canceledAt",
+                      "grantedByMembershipId",
+                      "grantReason"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "organizationId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "subscriptionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "addonId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "addonSlug": {
+                        "type": "string"
+                      },
+                      "addonName": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "trialing",
+                            "type": "string"
+                          },
+                          {
+                            "const": "active",
+                            "type": "string"
+                          },
+                          {
+                            "const": "canceled",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "trialEndsAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "startedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "endsAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "canceledAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "grantedByMembershipId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "grantReason": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiAdminSubscriptionsByIdAddons",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Grant or start a trial of an add-on",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "subscriptionId",
+                    "addonId",
+                    "addonSlug",
+                    "addonName",
+                    "status",
+                    "live",
+                    "trialEndsAt",
+                    "startedAt",
+                    "endsAt",
+                    "canceledAt",
+                    "grantedByMembershipId",
+                    "grantReason"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "subscriptionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "addonId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "addonSlug": {
+                      "type": "string"
+                    },
+                    "addonName": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "trialing",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "canceled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "trialEndsAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "startedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "endsAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canceledAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "grantedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "grantReason": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "addonSlug",
+                  "mode",
+                  "reason"
+                ],
+                "properties": {
+                  "addonSlug": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "mode": {
+                    "anyOf": [
+                      {
+                        "const": "grant",
+                        "type": "string"
+                      },
+                      {
+                        "const": "trial",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "trialEndsAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 3,
+                    "maxLength": 500,
+                    "pattern": "\\S",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/subscriptions/{id}/addons/{addonId}/cancel": {
+      "post": {
+        "operationId": "postApiAdminSubscriptionsByIdAddonsByAddonIdCancel",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Cancel an add-on",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "addonId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "subscriptionId",
+                    "addonId",
+                    "addonSlug",
+                    "addonName",
+                    "status",
+                    "live",
+                    "trialEndsAt",
+                    "startedAt",
+                    "endsAt",
+                    "canceledAt",
+                    "grantedByMembershipId",
+                    "grantReason"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "subscriptionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "addonId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "addonSlug": {
+                      "type": "string"
+                    },
+                    "addonName": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "trialing",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "canceled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "trialEndsAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "startedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "endsAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canceledAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "grantedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "grantReason": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/admin/subscriptions/{id}/apply_promo": {
       "post": {
         "operationId": "postApiAdminSubscriptionsByIdApplypromo",
@@ -8695,76 +9275,144 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "periodStart",
-                    "periodEnd",
-                    "meters"
-                  ],
-                  "properties": {
-                    "periodStart": {
-                      "format": "date-time",
-                      "type": "string"
-                    },
-                    "periodEnd": {
-                      "format": "date-time",
-                      "type": "string"
-                    },
-                    "meters": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "required": [
-                          "eventType",
-                          "label",
-                          "totalQuantity",
-                          "inclusiveQuantity",
-                          "overageQuantity",
-                          "overageUnitPriceCents",
-                          "projectedOverageCostCents",
-                          "thresholdState"
-                        ],
-                        "properties": {
-                          "eventType": {
-                            "type": "string"
-                          },
-                          "label": {
-                            "type": "string"
-                          },
-                          "totalQuantity": {
-                            "type": "integer"
-                          },
-                          "inclusiveQuantity": {
-                            "type": "integer"
-                          },
-                          "overageQuantity": {
-                            "type": "integer"
-                          },
-                          "overageUnitPriceCents": {
-                            "type": "integer"
-                          },
-                          "projectedOverageCostCents": {
-                            "type": "integer"
-                          },
-                          "thresholdState": {
-                            "anyOf": [
-                              {
-                                "const": "ok",
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "periodStart",
+                        "periodEnd",
+                        "meters"
+                      ],
+                      "properties": {
+                        "periodStart": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "periodEnd": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "meters": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "eventType",
+                              "label",
+                              "totalQuantity",
+                              "inclusiveQuantity",
+                              "overageQuantity",
+                              "overageUnitPriceCents",
+                              "projectedOverageCostCents",
+                              "thresholdState"
+                            ],
+                            "properties": {
+                              "eventType": {
                                 "type": "string"
                               },
-                              {
-                                "const": "warning",
+                              "label": {
                                 "type": "string"
                               },
-                              {
-                                "const": "breached",
-                                "type": "string"
+                              "totalQuantity": {
+                                "type": "integer"
+                              },
+                              "inclusiveQuantity": {
+                                "type": "integer"
+                              },
+                              "overageQuantity": {
+                                "type": "integer"
+                              },
+                              "overageUnitPriceCents": {
+                                "type": "integer"
+                              },
+                              "projectedOverageCostCents": {
+                                "type": "integer"
+                              },
+                              "thresholdState": {
+                                "anyOf": [
+                                  {
+                                    "const": "ok",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "warning",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "breached",
+                                    "type": "string"
+                                  }
+                                ]
                               }
-                            ]
+                            }
                           }
                         }
                       }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "claimsBillingAddon"
+                      ],
+                      "properties": {
+                        "claimsBillingAddon": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "addonSlug",
+                                "periodStart",
+                                "periodEnd",
+                                "activePatientCount",
+                                "unitPriceCents",
+                                "computedAt"
+                              ],
+                              "properties": {
+                                "addonSlug": {
+                                  "type": "string"
+                                },
+                                "periodStart": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "periodEnd": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "activePatientCount": {
+                                  "type": "integer"
+                                },
+                                "unitPriceCents": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "computedAt": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -9836,6 +10484,460 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/billing/npi-verifications": {
+      "get": {
+        "operationId": "getApiV1AdminBillingNpiverifications",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "List every tenant's provider entities with the platform verification state of their current NPI (the Claim.MD sweep routes enrollment reports only to a verified one); platform-admin + platform-ops role (ADR-0053 amendment)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "providerEntityId",
+                      "organizationId",
+                      "organizationName",
+                      "legalName",
+                      "npi",
+                      "state",
+                      "verificationId",
+                      "evidence",
+                      "verifiedAt",
+                      "verifiedByMembershipId",
+                      "revokedAt",
+                      "revokedByMembershipId"
+                    ],
+                    "properties": {
+                      "providerEntityId": {
+                        "type": "string"
+                      },
+                      "organizationId": {
+                        "type": "string"
+                      },
+                      "organizationName": {
+                        "type": "string"
+                      },
+                      "legalName": {
+                        "type": "string"
+                      },
+                      "npi": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "anyOf": [
+                          {
+                            "const": "verified",
+                            "type": "string"
+                          },
+                          {
+                            "const": "unverified",
+                            "type": "string"
+                          },
+                          {
+                            "const": "revoked",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "verificationId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "evidence": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "verifiedAt": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "verifiedByMembershipId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "revokedAt": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "revokedByMembershipId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/billing/npi-verifications/{providerEntityId}/revoke": {
+      "post": {
+        "operationId": "postApiV1AdminBillingNpiverificationsByProviderEntityIdRevoke",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Revoke the live NPI verification (enrollment reports for it become unroutable) — 409 NOT_VERIFIED when none; platform-admin + step-up (ADR-0053 amendment)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "providerEntityId",
+                    "organizationId",
+                    "organizationName",
+                    "legalName",
+                    "npi",
+                    "state",
+                    "verificationId",
+                    "evidence",
+                    "verifiedAt",
+                    "verifiedByMembershipId",
+                    "revokedAt",
+                    "revokedByMembershipId"
+                  ],
+                  "properties": {
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "organizationName": {
+                      "type": "string"
+                    },
+                    "legalName": {
+                      "type": "string"
+                    },
+                    "npi": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "verified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unverified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "revoked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "verificationId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "evidence": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revokedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revokedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/billing/npi-verifications/{providerEntityId}/verify": {
+      "post": {
+        "operationId": "postApiV1AdminBillingNpiverificationsByProviderEntityIdVerify",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Record that platform staff verified the provider entity owns its current NPI — 409 NPI_CHANGED when it is no longer the NPI checked, ALREADY_VERIFIED when live; platform-admin + step-up (ADR-0053 amendment)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "providerEntityId",
+                    "organizationId",
+                    "organizationName",
+                    "legalName",
+                    "npi",
+                    "state",
+                    "verificationId",
+                    "evidence",
+                    "verifiedAt",
+                    "verifiedByMembershipId",
+                    "revokedAt",
+                    "revokedByMembershipId"
+                  ],
+                  "properties": {
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "organizationName": {
+                      "type": "string"
+                    },
+                    "legalName": {
+                      "type": "string"
+                    },
+                    "npi": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "verified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unverified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "revoked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "verificationId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "evidence": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revokedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revokedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "npi",
+                  "evidence"
+                ],
+                "properties": {
+                  "npi": {
+                    "pattern": "^[0-9]{10}$",
+                    "description": "The NPI the operator checked.",
+                    "type": "string"
+                  },
+                  "evidence": {
+                    "minLength": 3,
+                    "maxLength": 500,
+                    "pattern": "\\S",
+                    "description": "How ownership was confirmed (for the audit record; no patient information).",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -72994,6 +74096,418 @@
         }
       }
     },
+    "/api/v1/billing/commercial/enrollment-reports": {
+      "get": {
+        "operationId": "getApiV1BillingCommercialEnrollmentreports",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Advisory enrollment statuses a clearinghouse reported for a provider entity (Claim.MD webhook), newest first (commercial_billing.read; provider entity scope). A report never changes a send gate: staff apply it through the enrollments routes",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "open",
+                  "type": "string"
+                },
+                {
+                  "const": "applied",
+                  "type": "string"
+                },
+                {
+                  "const": "dismissed",
+                  "type": "string"
+                },
+                {
+                  "const": "superseded",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "providerEntityId",
+                          "payerId",
+                          "clearinghouseKey",
+                          "clearinghousePayerId",
+                          "enrollType",
+                          "vendorStatus",
+                          "suggestedStatus",
+                          "vendorEnrollId",
+                          "reportedAt",
+                          "state",
+                          "resolvedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "type": "string"
+                          },
+                          "payerId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "clearinghouseKey": {
+                            "type": "string"
+                          },
+                          "clearinghousePayerId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "enrollType": {
+                            "anyOf": [
+                              {
+                                "const": "era",
+                                "type": "string"
+                              },
+                              {
+                                "const": "1500",
+                                "type": "string"
+                              },
+                              {
+                                "const": "500",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ub",
+                                "type": "string"
+                              },
+                              {
+                                "const": "elig",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attach",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unrecognized",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "vendorStatus": {
+                            "type": "string"
+                          },
+                          "suggestedStatus": {
+                            "anyOf": [
+                              {
+                                "const": "enrolled",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "vendorEnrollId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reportedAt": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "applied",
+                                "type": "string"
+                              },
+                              {
+                                "const": "dismissed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "superseded",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "resolvedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/enrollment-reports/{id}/resolve": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialEnrollmentreportsByIdResolve",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Close an enrollment report as applied (after the enrollment was recorded through the enrollments routes) or dismissed (commercial_billing.manage_enrollment; provider entity scope). Idempotent; 409 when it was already resolved the other way or superseded",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "providerEntityId",
+                    "payerId",
+                    "clearinghouseKey",
+                    "clearinghousePayerId",
+                    "enrollType",
+                    "vendorStatus",
+                    "suggestedStatus",
+                    "vendorEnrollId",
+                    "reportedAt",
+                    "state",
+                    "resolvedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "payerId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "clearinghouseKey": {
+                      "type": "string"
+                    },
+                    "clearinghousePayerId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "enrollType": {
+                      "anyOf": [
+                        {
+                          "const": "era",
+                          "type": "string"
+                        },
+                        {
+                          "const": "1500",
+                          "type": "string"
+                        },
+                        {
+                          "const": "500",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ub",
+                          "type": "string"
+                        },
+                        {
+                          "const": "elig",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attach",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unrecognized",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "vendorStatus": {
+                      "type": "string"
+                    },
+                    "suggestedStatus": {
+                      "anyOf": [
+                        {
+                          "const": "enrolled",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "vendorEnrollId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reportedAt": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "applied",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dismissed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "resolvedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "resolution"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "resolution": {
+                    "anyOf": [
+                      {
+                        "const": "applied",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dismissed",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/commercial/enrollments": {
       "get": {
         "operationId": "getApiV1BillingCommercialEnrollments",
@@ -85256,6 +86770,97 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "claimsBilling": {
+                      "type": "object",
+                      "required": [
+                        "entitled",
+                        "status",
+                        "reason",
+                        "trialEndsAt",
+                        "activePatientCount",
+                        "enforced"
+                      ],
+                      "properties": {
+                        "entitled": {
+                          "type": "boolean"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "none",
+                              "type": "string"
+                            },
+                            {
+                              "const": "trialing",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            },
+                            {
+                              "const": "canceled",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "never_purchased",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "lapsed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "subscription_suspended",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "subscription_canceled",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "subscription_paused",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "trialEndsAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "activePatientCount": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "enforced": {
+                          "type": "boolean"
+                        }
+                      }
                     }
                   }
                 }
@@ -347747,6 +349352,220 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/claimmd/production": {
+      "post": {
+        "operationId": "postApiV1WebhooksClaimmdProduction",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Inbound Claim.MD webhook, production account (Auth-Signature-Base64 HMAC-verified)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "received"
+                  ],
+                  "properties": {
+                    "received": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "required": [
+                  "acct_number",
+                  "events"
+                ],
+                "properties": {
+                  "UTCTime": {
+                    "type": "string"
+                  },
+                  "acct_number": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "remote_acct_number": {
+                    "type": "string"
+                  },
+                  "events": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object",
+                      "required": [
+                        "eventid",
+                        "event_type"
+                      ],
+                      "properties": {
+                        "eventid": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "event_type": {
+                          "description": "enroll | appeal | test (the list is not documented)",
+                          "type": "string"
+                        },
+                        "event_time": {
+                          "type": "string"
+                        },
+                        "event_data": {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {}
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/claimmd/test": {
+      "post": {
+        "operationId": "postApiV1WebhooksClaimmdTest",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Inbound Claim.MD webhook, test account (Auth-Signature-Base64 HMAC-verified)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "received"
+                  ],
+                  "properties": {
+                    "received": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "required": [
+                  "acct_number",
+                  "events"
+                ],
+                "properties": {
+                  "UTCTime": {
+                    "type": "string"
+                  },
+                  "acct_number": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "remote_acct_number": {
+                    "type": "string"
+                  },
+                  "events": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object",
+                      "required": [
+                        "eventid",
+                        "event_type"
+                      ],
+                      "properties": {
+                        "eventid": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "event_type": {
+                          "description": "enroll | appeal | test (the list is not documented)",
+                          "type": "string"
+                        },
+                        "event_time": {
+                          "type": "string"
+                        },
+                        "event_data": {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {}
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

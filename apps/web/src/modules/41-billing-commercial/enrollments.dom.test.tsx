@@ -23,6 +23,24 @@ const CREATE = "POST /api/v1/billing/commercial/enrollments";
 const PATCH = `PATCH /api/v1/billing/commercial/enrollments/${ENROLLMENT_ID}`;
 const BASE = `${PATH}?entity=${ENTITY_ID}`;
 const MANAGE = ["commercial_billing.read", "commercial_billing.manage_enrollment"];
+const REPORTS = "GET /api/v1/billing/commercial/enrollment-reports";
+const REPORT_ID = "77777777-7777-4777-8777-777777777777";
+const RESOLVE = `POST /api/v1/billing/commercial/enrollment-reports/${REPORT_ID}/resolve`;
+const reportRow = (over: Record<string, unknown> = {}) => ({
+  id: REPORT_ID,
+  providerEntityId: ENTITY_ID,
+  payerId: PAYER_ID,
+  clearinghouseKey: "claimmd",
+  clearinghousePayerId: "SYN01",
+  enrollType: "era",
+  vendorStatus: "enrolled",
+  suggestedStatus: "enrolled",
+  vendorEnrollId: "77",
+  reportedAt: "2026-11-05T12:00:00.000Z",
+  state: "open",
+  resolvedAt: null,
+  ...over,
+});
 
 function mount(
   list: Responder,
@@ -33,6 +51,8 @@ function mount(
     write?: Responder;
     plans?: Responder;
     entities?: Responder;
+    reports?: Responder;
+    resolve?: Responder;
   } = {},
 ): ReturnType<typeof mountScreen> {
   const write = opts.write ?? (() => ({ status: 201, body: enrollmentRow() }));
@@ -43,6 +63,8 @@ function mount(
         opts.plans ?? (() => ({ body: { items: [planRow(), planRow({ id: "p2" })] } })),
       [`GET /api/v1/mdm/payer/${PAYER_ID}`]: payerNameRoute,
       [LIST]: list,
+      [REPORTS]: opts.reports ?? (() => ({ body: { items: [] } })),
+      [RESOLVE]: opts.resolve ?? (() => ({ body: reportRow({ state: "applied" }) })),
       [CREATE]: write,
       [PATCH]: write,
     },
@@ -376,5 +398,95 @@ describe("CommercialEnrollments", () => {
     expect(screen.queryByText("Enrollments unavailable")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(screen.queryByText(/could not be reloaded/)).toBeNull());
+  });
+});
+
+describe("CommercialEnrollments: clearinghouse reports", () => {
+  const reports = () => ({ body: { items: [reportRow()] } });
+
+  it("lists an open report as one bounded line and asks only for open reports of this entity", async () => {
+    const calls: Call[] = [];
+    mount(ok([]), { reports, calls });
+    await screen.findByText("Claim.MD reports enrolled (era) — confirm");
+    const read = calls.find((c) => c.path.endsWith("/enrollment-reports"));
+    expect(read?.query.get("providerEntityId")).toBe(ENTITY_ID);
+    expect(read?.query.get("state")).toBe("open");
+    // Read-only users see the report but cannot act on it.
+    expect(screen.queryByRole("button", { name: /^Confirm:/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Dismiss:/ })).toBeNull();
+  });
+
+  it("confirm pre-fills the add form, saves only on the user's submit, then closes the report as applied", async () => {
+    const calls: Call[] = [];
+    mount(ok([]), { manage: true, reports, calls });
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Confirm: Claim.MD reports enrolled/ }),
+    );
+    const drawer = await screen.findByLabelText("Add enrollment", { selector: "aside" });
+    await within(drawer).findByRole("option", { name: "Synthetic Health Plan" });
+    expect((within(drawer).getByLabelText(/Clearinghouse key/) as HTMLInputElement).value).toBe(
+      "claimmd",
+    );
+    expect((within(drawer).getByLabelText(/Evidence/) as HTMLInputElement).value).toBe(
+      "claimmd:77",
+    );
+    expect((within(drawer).getByLabelText(/Status/) as HTMLSelectElement).value).toBe("enrolled");
+    expect(writes(calls)).toHaveLength(0); // nothing is recorded by opening the form
+    fireEvent.submit(drawer.querySelector("form") as HTMLFormElement);
+    await screen.findByText("Enrollment added.");
+    const [create, resolve] = writes(calls);
+    expect(create?.path).toBe("/api/v1/billing/commercial/enrollments");
+    expect(create?.body).toMatchObject({
+      payerId: PAYER_ID,
+      clearinghouseKey: "claimmd",
+      status: "enrolled",
+      evidenceRef: "claimmd:77",
+    });
+    expect(resolve?.path).toBe(
+      `/api/v1/billing/commercial/enrollment-reports/${REPORT_ID}/resolve`,
+    );
+    expect(resolve?.body).toEqual({ providerEntityId: ENTITY_ID, resolution: "applied" });
+  });
+
+  it("confirm edits the existing enrollment on that payer and clearinghouse", async () => {
+    mount(ok([enrollmentRow({ clearinghouseKey: "claimmd", status: "pending" })]), {
+      manage: true,
+      reports,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /^Confirm:/ }));
+    const drawer = await screen.findByLabelText("Edit enrollment", { selector: "aside" });
+    expect((within(drawer).getByLabelText(/Status/) as HTMLSelectElement).value).toBe("enrolled");
+  });
+
+  it("does not close the report when the enrollment save fails", async () => {
+    const calls: Call[] = [];
+    mount(ok([]), {
+      manage: true,
+      reports,
+      calls,
+      write: () => ({ status: 403, body: { error: { code: "STEP_UP_REQUIRED" } } }),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /^Confirm:/ }));
+    const drawer = await screen.findByLabelText("Add enrollment", { selector: "aside" });
+    await within(drawer).findByRole("option", { name: "Synthetic Health Plan" });
+    fireEvent.submit(drawer.querySelector("form") as HTMLFormElement);
+    await waitFor(() => expect(writes(calls)).toHaveLength(1));
+    expect(writes(calls).some((c) => c.path.endsWith("/resolve"))).toBe(false);
+  });
+
+  it("dismisses a report", async () => {
+    const calls: Call[] = [];
+    mount(ok([]), {
+      manage: true,
+      reports,
+      calls,
+      resolve: () => ({ body: reportRow({ state: "dismissed" }) }),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /^Dismiss:/ }));
+    await screen.findByText("Report dismissed.");
+    expect(writes(calls)[0]?.body).toEqual({
+      providerEntityId: ENTITY_ID,
+      resolution: "dismissed",
+    });
   });
 });

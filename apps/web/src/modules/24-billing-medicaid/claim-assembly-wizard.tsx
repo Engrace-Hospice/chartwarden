@@ -1,11 +1,13 @@
 import {
   Button,
+  ClaimsBillingNotice,
   GateStepper,
   Glyph,
   PageHeader,
   StatusPill,
   StepperWorkflowLayout,
   useApiClient,
+  useClaimsBilling,
 } from "@chartwarden/ui";
 import type { GateItem } from "@chartwarden/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the MEDICAID ASSEMBLY WIZARD (R2, §5.1 #4). The stepped
@@ -59,6 +61,8 @@ export function MedicaidAssemblyWizard(): JSX.Element {
   const [eligibility, setEligibility] = useState<EligibilityCheck | null>(null);
   const [eligibilityChecked, setEligibilityChecked] = useState(false);
   const [busy, setBusy] = useState(false);
+  // ADR-0108 — creating a claim is new claims-billing work: paused without the add-on (when enforced).
+  const claimsBilling = useClaimsBilling();
   const [error, setError] = useState<string | null>(null);
   const [assembledId, setAssembledId] = useState<string | null>(null);
 
@@ -201,6 +205,9 @@ export function MedicaidAssemblyWizard(): JSX.Element {
           <div style={{ marginTop: "0.75rem" }}>
             <MedicaidBillingTabs />
           </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <ClaimsBillingNotice />
+          </div>
         </PageHeader>
       }
       steps={<GateStepper items={gates} surfaceBlockersFirst={false} ariaLabel="Assembly steps" />}
@@ -227,7 +234,11 @@ export function MedicaidAssemblyWizard(): JSX.Element {
               Continue
             </Button>
           ) : (
-            <Button onClick={() => void assemble()} disabled={!stepValid || busy} loading={busy}>
+            <Button
+              onClick={() => void assemble()}
+              disabled={!stepValid || busy || claimsBilling.blocked}
+              loading={busy}
+            >
               {busy ? "Assembling…" : "Assemble draft"}
             </Button>
           )}

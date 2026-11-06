@@ -355,6 +355,14 @@ export {
 } from "./clearinghouse/claimmd-transport";
 export type { ClaimMdAnomaly, ClaimMdTransportOptions } from "./clearinghouse/claimmd-transport";
 export type { ClaimMdRequestCounter } from "./clearinghouse/claimmd-rate-limit";
+export {
+  CLAIMMD_EVENT_ID_MAX,
+  CLAIMMD_MAX_SPLIT_EVENTS,
+  CLAIMMD_SIGNATURE_HEADER,
+  parseClaimMdDelivery,
+  verifyClaimMdSignature,
+} from "./clearinghouse/claimmd-webhook";
+export type { ClaimMdDelivery, ClaimMdDeliveryEvent } from "./clearinghouse/claimmd-webhook";
 export { scopeKey } from "./clearinghouse/submission-identity";
 export {
   CredentialRejectedError,

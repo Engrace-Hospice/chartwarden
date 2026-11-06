@@ -110,6 +110,7 @@ export const USAGE_EVENT_TYPES = [
   "fhir_egress_request",
   "hl7_message_inbound",
   "hl7_message_outbound",
+  "billing_addon_patient", // ADR-0108 (migration 1320): the claims-billing add-on monthly census
 ] as const satisfies readonly UsageEventType[];
 
 export const USAGE_EVENT_SOURCE_MODULES = [

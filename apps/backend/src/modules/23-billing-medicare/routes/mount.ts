@@ -27,6 +27,7 @@ import { registerMacCredentialRoutes } from "./mac-credentials.routes";
 import { registerMetricsRoutes } from "./metrics.routes";
 import { registerNoeRoutes } from "./noe.routes";
 import { registerNotrRoutes } from "./notr.routes";
+import { registerNpiVerificationRoutes } from "./npi-verification.routes";
 import { registerPlatformAdminRoutes } from "./platform-admin.routes";
 import { registerRateTableRoutes } from "./rate-table.routes";
 import { registerRuleConfigRoutes } from "./rule-config.routes";
@@ -135,6 +136,10 @@ export function mountM23Routes(
   // GAP-144 — platform-only admin (platform-rules #41, wage-index load #42).
   if (services.platformAdminService) {
     registerPlatformAdminRoutes(app, { platformAdminService: services.platformAdminService });
+  }
+  // ADR-0053 amendment precondition 2 — platform-verified NPI ownership (the Claim.MD sweep routes only on it).
+  if (services.npiVerificationService) {
+    registerNpiVerificationRoutes(app, { npiVerificationService: services.npiVerificationService });
   }
   // Route group F — AR dashboard + metrics (read-only) + the system-principal internal seams (M25/M26/M27).
   registerMetricsRoutes(app, { readService });

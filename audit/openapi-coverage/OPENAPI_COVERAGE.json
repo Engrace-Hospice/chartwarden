@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1903,
-    "enriched": 1903,
+    "routes": 1914,
+    "enriched": 1914,
     "deficit": 0,
-    "mutating": 1086,
+    "mutating": 1093,
     "mutatingNoBody": 1,
-    "gets": 764,
+    "gets": 768,
     "getsNoResponse": 9
   },
   "modules": [
@@ -221,12 +221,12 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 96,
-      "enriched": 96,
+      "routes": 101,
+      "enriched": 101,
       "deficit": 0,
-      "mutating": 49,
+      "mutating": 53,
       "mutatingNoBody": 0,
-      "gets": 45,
+      "gets": 46,
       "getsNoResponse": 0
     },
     {
@@ -341,12 +341,12 @@
     },
     {
       "module": "35-subscription",
-      "routes": 54,
-      "enriched": 54,
+      "routes": 58,
+      "enriched": 58,
       "deficit": 0,
-      "mutating": 30,
+      "mutating": 32,
       "mutatingNoBody": 1,
-      "gets": 23,
+      "gets": 25,
       "getsNoResponse": 0
     },
     {
@@ -401,12 +401,12 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 26,
-      "enriched": 26,
+      "routes": 28,
+      "enriched": 28,
       "deficit": 0,
-      "mutating": 16,
+      "mutating": 17,
       "mutatingNoBody": 0,
-      "gets": 10,
+      "gets": 11,
       "getsNoResponse": 0
     },
     {

@@ -29,7 +29,7 @@ import {
   NotFoundError,
   type OrganizationReader,
 } from "@chartwarden/types";
-import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import type { M35ReadActor, M35WriteActor } from "./actor";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf } from "./concurrency";
 import { redeemPromoInTx } from "./promo-redemption";
@@ -599,7 +599,8 @@ export function buildDrizzleM35RouteService(
         const [agg] = await tx
           .select()
           .from(AGG)
-          .where(eq(AGG.subscriptionId, sub.id))
+          // ADR-0108 — the add-on census aggregate is not a plan meter; it never feeds these totals.
+          .where(and(eq(AGG.subscriptionId, sub.id), ne(AGG.eventType, "billing_addon_patient")))
           .orderBy(desc(AGG.periodStart))
           .limit(1);
         const periodStart = agg?.periodStart ?? sub.currentPeriodStart ?? now();
@@ -637,7 +638,12 @@ export function buildDrizzleM35RouteService(
         const rows = await tx
           .select()
           .from(AGG)
-          .where(eq(AGG.organizationId, actor.organizationId))
+          .where(
+            and(
+              eq(AGG.organizationId, actor.organizationId),
+              ne(AGG.eventType, "billing_addon_patient"),
+            ),
+          )
           .orderBy(desc(AGG.periodStart), desc(AGG.id));
         const page = pageOf(rows, (r) => isoReq(r.periodStart), cursor, limit);
         return {
@@ -1862,7 +1868,8 @@ export function buildDrizzleM35RouteService(
         const [agg] = await tx
           .select()
           .from(AGG)
-          .where(eq(AGG.subscriptionId, sub.id))
+          // ADR-0108 — the add-on census aggregate is not a plan meter; it never feeds these totals.
+          .where(and(eq(AGG.subscriptionId, sub.id), ne(AGG.eventType, "billing_addon_patient")))
           .orderBy(desc(AGG.periodStart))
           .limit(1);
         const periodStart = agg?.periodStart ?? sub.currentPeriodStart ?? now();

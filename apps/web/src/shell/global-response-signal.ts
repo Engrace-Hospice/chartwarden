@@ -4,6 +4,7 @@
 // (401 → /expired, 503 → /maintenance). Kept outside React so it can be fed from `main.tsx` before
 // the router exists, and read with `useSyncExternalStore` from anywhere inside it.
 
+import { noteClaimsBillingRefusal } from "@chartwarden/ui";
 import { clearAllDrafts } from "./ceremony-drafts";
 
 /** Why a tenant address cannot be used (ADR-0049): the organization left, is suspended, or never existed. */
@@ -87,12 +88,24 @@ export async function tenantSignalFromResponse(response: Response): Promise<Glob
  * unreadable or different body is false, so the caller keeps treating the 401 as a dead session (fail safe).
  */
 export async function isOrgNotSelectedResponse(response: Response): Promise<boolean> {
+  return (await errorCodeOf(response)) === "ORGANIZATION_NOT_SELECTED";
+}
+
+/**
+ * ADR-0108 — the claims-billing gate's fail-closed 503 (`BILLING_ENTITLEMENT_UNAVAILABLE`) refuses one action; the rest
+ * of the app works. It is not an outage, so it must not navigate to /maintenance and lose the form the user is on.
+ */
+const NOT_AN_OUTAGE_ON_503 = ["BILLING_ENTITLEMENT_UNAVAILABLE"];
+
+/** The envelope's `error.code`, read from a clone; undefined for a non-JSON or unreadable body. */
+async function errorCodeOf(response: Response): Promise<string | undefined> {
   try {
-    if (!response.headers.get("content-type")?.includes("json")) return false;
+    if (!response.headers.get("content-type")?.includes("json")) return undefined;
     const body = (await response.clone().json()) as { error?: { code?: unknown } } | null;
-    return body?.error?.code === "ORGANIZATION_NOT_SELECTED";
+    const code = body?.error?.code;
+    return typeof code === "string" ? code : undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -126,8 +139,19 @@ export function handleObservedResponse(
         setGlobalResponseSignal(signal);
       }
     });
+  } else if (signal?.kind === "service-unavailable") {
+    void errorCodeOf(response).then((code) => {
+      if (code === undefined || !NOT_AN_OUTAGE_ON_503.includes(code)) setGlobalResponseSignal(signal);
+    });
   } else if (signal) {
     setGlobalResponseSignal(signal); // only 401/503 notify - don't re-render on every 2xx
+  } else if (status === 402) {
+    // ADR-0108 — a claims-billing add-on refusal flips every ClaimsBillingNotice / gated action at once.
+    void response
+      .clone()
+      .json()
+      .then((body: unknown) => noteClaimsBillingRefusal(body))
+      .catch(() => undefined);
   } else if (mayCarryTenantRefusal(status, url)) {
     void tenantSignalFromResponse(response).then((tenantSignal) => {
       if (tenantSignal) setGlobalResponseSignal(tenantSignal);

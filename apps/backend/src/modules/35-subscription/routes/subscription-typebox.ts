@@ -309,6 +309,31 @@ export const UsagePeriodDto = Type.Object({
 });
 export const UsageHistoryResponseDto = cursorPage(UsagePeriodDto);
 
+// ADR-0108 — the tenant's claims-billing add-on posture (the web ClaimsBillingNotice reads it). `status` is the
+// latest add-on row's status (`none` = never held); `reason` is set iff `entitled` is false. `activePatientCount` is
+// the current period's census count (null until the first census sweep for the org).
+export const ClaimsBillingDenyReasonLit = Type.Union([
+  Type.Literal("never_purchased"),
+  Type.Literal("lapsed"),
+  Type.Literal("subscription_suspended"),
+  Type.Literal("subscription_canceled"),
+  Type.Literal("subscription_paused"),
+]);
+export const ClaimsBillingStatusDto = Type.Object({
+  entitled: Type.Boolean(),
+  status: Type.Union([
+    Type.Literal("none"),
+    Type.Literal("trialing"),
+    Type.Literal("active"),
+    Type.Literal("canceled"),
+  ]),
+  reason: Type.Union([ClaimsBillingDenyReasonLit, Type.Null()]),
+  trialEndsAt: isoNull(),
+  activePatientCount: intNull(),
+  /** True when the server enforces the add-on (`CLAIMS_BILLING_ENFORCEMENT=enforce`); false in off/shadow. */
+  enforced: Type.Boolean(),
+});
+
 export const BillingStatusDto = Type.Object({
   status: Type.String(),
   isBlockedByBilling: Type.Boolean(),
@@ -316,6 +341,8 @@ export const BillingStatusDto = Type.Object({
   daysUntilSuspension: intNull(),
   hasValidPaymentMethod: Type.Boolean(),
   paymentMethodExpiresAt: dateNull(),
+  /** ADR-0108 — present whenever the add-on service is bound (always on a db boot). */
+  claimsBilling: Type.Optional(ClaimsBillingStatusDto),
 });
 
 export const PlanAdminDto = Type.Intersect([
@@ -437,6 +464,62 @@ export const WebhookReceiptDto = Type.Object({
 });
 export const WebhookReceiptListResponseDto = cursorPage(WebhookReceiptDto);
 export const AckResponseDto = Type.Object({ ok: Type.Boolean() });
+
+// ── ADR-0108 the claims-billing add-on (platform-ops) ──────────────────────────────────────────────────
+
+export const AddonDto = Type.Object({
+  id: uuid(),
+  slug: Type.String(),
+  name: Type.String(),
+  description: strNull(),
+  entitlementKey: Type.String(),
+  meterEventType: Type.String(),
+  /** Null until platform ops prices it; Stripe charging is deferred (ADR-0108 D7). */
+  unitPriceCents: intNull(),
+  currencyCode: Type.String(),
+  isActive: Type.Boolean(),
+});
+export const AddonListResponseDto = Type.Array(AddonDto);
+export const SubscriptionAddonDto = Type.Object({
+  id: uuid(),
+  organizationId: uuid(),
+  subscriptionId: uuid(),
+  addonId: uuid(),
+  addonSlug: Type.String(),
+  addonName: Type.String(),
+  status: Type.Union([Type.Literal("trialing"), Type.Literal("active"), Type.Literal("canceled")]),
+  /** True while the row still entitles (trial not over, not ended, not canceled). */
+  live: Type.Boolean(),
+  trialEndsAt: isoNull(),
+  startedAt: Type.String({ format: "date-time" }),
+  endsAt: isoNull(),
+  canceledAt: isoNull(),
+  grantedByMembershipId: Type.Union([uuid(), Type.Null()]),
+  grantReason: Type.String(),
+});
+export const SubscriptionAddonListResponseDto = Type.Array(SubscriptionAddonDto);
+export const GrantAddonBodySchema = Type.Object({
+  addonSlug: Type.String({ minLength: 1, maxLength: 64 }),
+  mode: Type.Union([Type.Literal("grant"), Type.Literal("trial")]),
+  /** Required for `trial`, refused for `grant`. */
+  trialEndsAt: Type.Optional(Type.String({ format: "date-time" })),
+  // Not whitespace-only: the service trims, and the DB CHECK refuses ''.
+  reason: Type.String({ minLength: 3, maxLength: 500, pattern: "\\S" }),
+});
+export const SubscriptionAddonParamsSchema = Type.Object({ id: uuid(), addonId: uuid() });
+/** The add-on census line on the admin usage drill-down (null when the org never held the add-on). */
+export const AddonUsageDto = Type.Object({
+  addonSlug: Type.String(),
+  periodStart: Type.String({ format: "date-time" }),
+  periodEnd: Type.String({ format: "date-time" }),
+  activePatientCount: Type.Integer(),
+  unitPriceCents: intNull(),
+  computedAt: isoNull(),
+});
+export const AdminUsageCurrentResponseDto = Type.Intersect([
+  UsageCurrentResponseDto,
+  Type.Object({ claimsBillingAddon: Type.Union([AddonUsageDto, Type.Null()]) }),
+]);
 
 // ── validate helper ─────────────────────────────────────────────────────────────────────────────────────
 

@@ -69,6 +69,7 @@ export {
   buildDrizzleVisitChargeService,
   buildDrizzleWageIndexService,
   buildDrizzlePlatformAdminService,
+  buildDrizzleNpiVerificationService,
   buildDrizzleSequestrationPolicyService,
   buildDrizzleEdiProfileService,
 } from "./routes/index";
@@ -162,7 +163,12 @@ export {
   type HetsProviderPort,
   type M23HetsConfig,
 } from "./jobs/index";
-export { M23_PLATFORM_JOB_ID, wireM23Tenancy } from "./wiring";
+export {
+  M23_CLAIMMD_WEBHOOK_JOB_ID,
+  M23_NPI_VERIFICATION_JOB_ID,
+  M23_PLATFORM_JOB_ID,
+  wireM23Tenancy,
+} from "./wiring";
 export { buildClaimValidationContextPort } from "./services/claim-validation-context-port";
 export { buildClaimStateService } from "./services/claim-state-service";
 export { buildClaimValidationService } from "./services/claim-validation-service";

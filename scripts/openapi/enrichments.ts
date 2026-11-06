@@ -469,6 +469,11 @@ import {
   UpsertEdiProfileBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/edi-profile-typebox";
 import {
+  NpiVerificationListSchema,
+  NpiVerificationViewSchema,
+  VerifyNpiBodySchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/npi-verification-typebox";
+import {
   LoadWageIndexesBodySchema,
   LoadWageIndexesResultSchema,
   RegisterPlatformRuleBodySchema,
@@ -2437,7 +2442,9 @@ import {
 import {
   AckResponseDto as M35AckResponseDto,
   AddMeterBodySchema as M35AddMeterBody,
+  AddonListResponseDto as M35AddonListResponseDto,
   AdminSubscriptionListQuerySchema as M35AdminSubscriptionListQuery,
+  AdminUsageCurrentResponseDto as M35AdminUsageCurrentResponseDto,
   ApplyPromoBodySchema as M35ApplyPromoBody,
   AttachPaymentMethodBodySchema as M35AttachPaymentMethodBody,
   BillingStatusDto as M35BillingStatusDto,
@@ -2450,6 +2457,7 @@ import {
   DunningDto as M35DunningDto,
   DunningListQuerySchema as M35DunningListQuery,
   DunningListResponseDto as M35DunningListResponseDto,
+  GrantAddonBodySchema as M35GrantAddonBody,
   InvoiceDetailDto as M35InvoiceDetailDto,
   InvoiceListResponseDto as M35InvoiceListResponseDto,
   ListQuerySchema as M35ListQuery,
@@ -2471,6 +2479,8 @@ import {
   RevenueSnapshotListResponseDto as M35RevenueSnapshotListResponseDto,
   RevokePromoBodySchema as M35RevokePromoBody,
   SetupIntentResponseDto as M35SetupIntentResponseDto,
+  SubscriptionAddonDto as M35SubscriptionAddonDto,
+  SubscriptionAddonListResponseDto as M35SubscriptionAddonListResponseDto,
   SubscriptionAdminListResponseDto as M35SubscriptionAdminListResponseDto,
   SubscriptionAdminResponseDto as M35SubscriptionAdminResponseDto,
   SubscriptionResponseDto as M35SubscriptionResponseDto,
@@ -2481,6 +2491,32 @@ import {
   UsageHistoryResponseDto as M35UsageHistoryResponseDto,
   WebhookReceiptListResponseDto as M35WebhookReceiptListResponseDto,
 } from "../../apps/backend/src/modules/35-subscription/routes/subscription-typebox";
+
+// Claim.MD's webhook delivery (https://api.claim.md/, Webhook Events, read 2026-11-05). Documentation of the VENDOR's
+// shape only: the route HMACs the raw bytes and stores every signed body, valid or not (M23 claimmd-webhook/routes.ts).
+const ClaimMdWebhookDeliveryDoc = Type.Object(
+  {
+    UTCTime: Type.Optional(Type.String()),
+    acct_number: Type.Union([Type.String(), Type.Integer()]),
+    remote_acct_number: Type.Optional(Type.String()),
+    events: Type.Array(
+      Type.Object(
+        {
+          eventid: Type.Union([Type.String(), Type.Integer()]),
+          event_type: Type.String({
+            description: "enroll | appeal | test (the list is not documented)",
+          }),
+          event_time: Type.Optional(Type.String()),
+          event_data: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+        },
+        { additionalProperties: true },
+      ),
+      { maxItems: 100 },
+    ),
+  },
+  { additionalProperties: true },
+);
+const ClaimMdWebhookReceivedDoc = Type.Object({ received: Type.Integer({ minimum: 0 }) });
 
 // M36 service view shapes (packages/messaging/src/interfaces/route-service.ts + provider.ts). The
 // routes return TS service results (not TypeBox), so the response shapes are declared here for the client.
@@ -3120,6 +3156,24 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: M35SubscriptionAdminResponseDto,
     summary: "Pause subscription",
   },
+  // ADR-0108 — the claims-billing add-on (platform-ops).
+  "GET /api/admin/addons": {
+    response: M35AddonListResponseDto,
+    summary: "List the add-on catalog (admin)",
+  },
+  "GET /api/admin/subscriptions/:id/addons": {
+    response: M35SubscriptionAddonListResponseDto,
+    summary: "List a subscription's add-ons (admin)",
+  },
+  "POST /api/admin/subscriptions/:id/addons": {
+    body: M35GrantAddonBody,
+    response: M35SubscriptionAddonDto,
+    summary: "Grant or start a trial of an add-on",
+  },
+  "POST /api/admin/subscriptions/:id/addons/:addonId/cancel": {
+    response: M35SubscriptionAddonDto,
+    summary: "Cancel an add-on",
+  },
   "POST /api/admin/subscriptions/:id/apply_promo": {
     body: M35ApplyPromoBody,
     response: M35PromoApplicationDto,
@@ -3178,7 +3232,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Recompute MRR/ARR",
   },
   "GET /api/admin/usage/:organizationId/current": {
-    response: M35UsageCurrentResponseDto,
+    response: M35AdminUsageCurrentResponseDto,
     summary: "Tenant usage drill-down",
   },
   "GET /api/admin/webhooks/stripe/recent": {
@@ -3191,6 +3245,16 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Replay a webhook",
   },
   "POST /api/v1/webhooks/stripe": { summary: "Inbound Stripe webhook (HMAC-verified)" },
+  "POST /api/v1/webhooks/claimmd/test": {
+    summary: "Inbound Claim.MD webhook, test account (Auth-Signature-Base64 HMAC-verified)",
+    body: ClaimMdWebhookDeliveryDoc,
+    response: ClaimMdWebhookReceivedDoc,
+  },
+  "POST /api/v1/webhooks/claimmd/production": {
+    summary: "Inbound Claim.MD webhook, production account (Auth-Signature-Base64 HMAC-verified)",
+    body: ClaimMdWebhookDeliveryDoc,
+    response: ClaimMdWebhookReceivedDoc,
+  },
 
   // ── M30 HQRP & Quality (§4.1–4.2). 47 routes across seven sub-surfaces (CAHPS / CoP / incidents /
   // infection / measures / mortality / QAPI / SRA / risk register) published with NO request contract:
@@ -13174,6 +13238,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
       wired: Type.Boolean(),
     }),
   },
+  "GET /api/v1/admin/billing/npi-verifications": {
+    summary:
+      "List every tenant's provider entities with the platform verification state of their current NPI (the Claim.MD sweep routes enrollment reports only to a verified one); platform-admin + platform-ops role (ADR-0053 amendment)",
+    response: NpiVerificationListSchema,
+  },
+  "POST /api/v1/admin/billing/npi-verifications/:providerEntityId/verify": {
+    summary:
+      "Record that platform staff verified the provider entity owns its current NPI — 409 NPI_CHANGED when it is no longer the NPI checked, ALREADY_VERIFIED when live; platform-admin + step-up (ADR-0053 amendment)",
+    body: VerifyNpiBodySchema,
+    response: NpiVerificationViewSchema,
+  },
+  "POST /api/v1/admin/billing/npi-verifications/:providerEntityId/revoke": {
+    summary:
+      "Revoke the live NPI verification (enrollment reports for it become unroutable) — 409 NOT_VERIFIED when none; platform-admin + step-up (ADR-0053 amendment)",
+    response: NpiVerificationViewSchema,
+  },
   "POST /api/v1/admin/billing/wage-indexes/load": {
     summary:
       "Load the annual CMS hospice wage index into the platform table — all-or-nothing; platform-admin + step-up (§4.1 #42)",
@@ -15016,11 +15096,15 @@ import {
   EligibilityPolicyResponseSchema as M41EligibilityPolicyResponseSchema,
   EnrollmentListQuerySchema as M41EnrollmentListQuerySchema,
   EnrollmentListResponseSchema as M41EnrollmentListResponseSchema,
+  EnrollmentReportListQuerySchema as M41EnrollmentReportListQuerySchema,
+  EnrollmentReportListResponseSchema as M41EnrollmentReportListResponseSchema,
+  EnrollmentReportResponseSchema as M41EnrollmentReportResponseSchema,
   EnrollmentResponseSchema as M41EnrollmentResponseSchema,
   LatestEligibilityResponseSchema as M41LatestEligibilityResponseSchema,
   LatestQuerySchema as M41LatestQuerySchema,
   PatchEnrollmentBodySchema as M41PatchEnrollmentBodySchema,
   PatientPlanQuerySchema as M41PatientPlanQuerySchema,
+  ResolveEnrollmentReportBodySchema as M41ResolveEnrollmentReportBodySchema,
 } from "../../apps/backend/src/modules/41-billing-commercial/routes/typebox";
 
 Object.assign(ROUTE_ENRICHMENTS, {
@@ -15063,6 +15147,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
     headers: IDEMPOTENCY_KEY_HEADER,
     response: M41EnrollmentResponseSchema,
     status: 201,
+  },
+  "GET /api/v1/billing/commercial/enrollment-reports": {
+    summary:
+      "Advisory enrollment statuses a clearinghouse reported for a provider entity (Claim.MD webhook), newest first (commercial_billing.read; provider entity scope). A report never changes a send gate: staff apply it through the enrollments routes",
+    query: M41EnrollmentReportListQuerySchema,
+    response: M41EnrollmentReportListResponseSchema,
+  },
+  "POST /api/v1/billing/commercial/enrollment-reports/:id/resolve": {
+    summary:
+      "Close an enrollment report as applied (after the enrollment was recorded through the enrollments routes) or dismissed (commercial_billing.manage_enrollment; provider entity scope). Idempotent; 409 when it was already resolved the other way or superseded",
+    body: M41ResolveEnrollmentReportBodySchema,
+    response: M41EnrollmentReportResponseSchema,
   },
   "PATCH /api/v1/billing/commercial/enrollments/:id": {
     summary:

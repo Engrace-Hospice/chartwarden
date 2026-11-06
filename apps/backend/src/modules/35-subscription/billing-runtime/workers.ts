@@ -5,6 +5,7 @@
 // tests) and only when the platform pool exists (the org enumerator and the platform-only tables need it).
 // Every queue is a repeatable SWEEP over durable rows, not a per-request job: a lost job loses nothing.
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import { type CensusDeps, aggregateAddonForOrg, runPatientCensusForOrg } from "./census";
 import {
   type M35JobDeps,
   runDunningForOrg,
@@ -29,6 +30,8 @@ export const M35_QUEUES = {
   invoiceReconciler: "m35.subscription-reconciler",
   webhookHandler: "m35.stripe-webhook-handler",
   refundExecutor: "m35.refund-executor",
+  // ADR-0108 D8 — the claims-billing add-on census pull (M5 PatientCensusReader → patient_active_period).
+  patientCensus: "m35.patient-census",
 } as const;
 
 /** Cron patterns (UTC). Sweeps that wait on Stripe-driven state run often; calendar jobs run once. */
@@ -40,6 +43,7 @@ export const M35_SCHEDULES = {
   invoiceReconciler: "0 4 * * *",
   webhookHandler: "* * * * *",
   refundExecutor: "*/5 * * * *",
+  patientCensus: "0 */6 * * *",
 } as const;
 
 export interface M35WorkerDeps {
@@ -49,6 +53,8 @@ export interface M35WorkerDeps {
   readonly cipher?: WebhookPayloadCipher;
   /** Present when `STRIPE_SECRET_KEY` is configured - without it refunds are NOT executed (stay approved). */
   readonly refunds?: RefundExecutorDeps;
+  /** ADR-0108 — present when the pseudonym key provider is bound; without it no census runs (nothing is counted). */
+  readonly census?: Pick<CensusDeps, "census" | "keyProvider">;
 }
 
 /** One Worker per bound queue. */
@@ -71,7 +77,11 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
     worker(M35_QUEUES.usageAggregator, () =>
       runM35Fanout(
         jobs,
-        (o) => runUsageAggregationForOrg(jobs, o).then(() => undefined),
+        // ADR-0108 — the claims-billing add-on aggregate rides the same sweep (plan meters first, then the add-on).
+        (o) =>
+          runUsageAggregationForOrg(jobs, o)
+            .then(() => aggregateAddonForOrg(jobs, o))
+            .then(() => undefined),
         "usage_aggregator",
       ),
     ),
@@ -94,13 +104,30 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
     const refunds = deps.refunds;
     workers.push(worker(M35_QUEUES.refundExecutor, () => runRefundExecutionSweep(refunds)));
   }
+  if (deps.census) {
+    const census: CensusDeps = {
+      db: jobs.db,
+      ...deps.census,
+      ...(jobs.now ? { now: jobs.now } : {}),
+      ...(jobs.log ? { log: jobs.log } : {}),
+    };
+    workers.push(
+      worker(M35_QUEUES.patientCensus, () =>
+        runM35Fanout(
+          jobs,
+          (o) => runPatientCensusForOrg(census, o).then(() => undefined),
+          "patient_census",
+        ),
+      ),
+    );
+  }
   return workers;
 }
 
 /** Register the repeatable triggers for the queues {@link registerM35Workers} constructs. */
 export async function scheduleM35Jobs(
   connection: ConnectionOptions,
-  opts: { webhookHandler: boolean; refundExecutor: boolean },
+  opts: { webhookHandler: boolean; refundExecutor: boolean; patientCensus?: boolean },
 ): Promise<Queue[]> {
   const specs: Array<{ name: string; pattern: string }> = [
     { name: M35_QUEUES.dunningEngine, pattern: M35_SCHEDULES.dunningEngine },
@@ -113,6 +140,9 @@ export async function scheduleM35Jobs(
       : []),
     ...(opts.refundExecutor
       ? [{ name: M35_QUEUES.refundExecutor, pattern: M35_SCHEDULES.refundExecutor }]
+      : []),
+    ...(opts.patientCensus
+      ? [{ name: M35_QUEUES.patientCensus, pattern: M35_SCHEDULES.patientCensus }]
       : []),
   ];
   const queues: Queue[] = [];

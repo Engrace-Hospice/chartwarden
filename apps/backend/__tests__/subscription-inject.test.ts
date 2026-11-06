@@ -46,6 +46,7 @@ import { NotFoundError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import type { AddonService } from "../src/modules/35-subscription/addon/addon-service";
 import {
   type M35WebhookIngest,
   M35_PERMISSION_KEY_LIST,
@@ -110,6 +111,8 @@ function headerAuth(request: FastifyRequest): void {
   if (request.headers["x-test-step-up"] === "1") {
     request.context.attributes.stepUpRecent = true;
   }
+  const kind = request.headers["x-test-actor-kind"];
+  if (typeof kind === "string") request.context.attributes.actorKind = kind;
 }
 
 // ── fixed ids (the M15/M26 style — distinct, valid-`uuid`-format constants where a route's TypeBox schema
@@ -1066,9 +1069,59 @@ function makeServer() {
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  mountM35Routes(app, { service: backend.service, webhook: { ingest: fakeIngest } });
+  mountM35Routes(app, {
+    service: backend.service,
+    webhook: { ingest: fakeIngest },
+    addons: fakeAddons,
+  });
   return { app, backend };
 }
+
+// ADR-0108 — a canned add-on service: the route smoke proves the wiring + guards, the live suite proves the data.
+const ADDON_ID = "55555555-5555-4555-8555-555555555555";
+const fakeSubscriptionAddon = {
+  id: "66666666-6666-4666-8666-666666666666",
+  organizationId: ORG,
+  subscriptionId: SUB_ID,
+  addonId: ADDON_ID,
+  addonSlug: "claims_billing",
+  addonName: "Claims billing",
+  status: "active" as const,
+  live: true,
+  trialEndsAt: null,
+  startedAt: "2026-11-05T00:00:00.000Z",
+  endsAt: null,
+  canceledAt: null,
+  grantedByMembershipId: null,
+  grantReason: "signed order form",
+};
+const fakeAddons: AddonService = {
+  listAddons: async () => [
+    {
+      id: ADDON_ID,
+      slug: "claims_billing",
+      name: "Claims billing",
+      description: null,
+      entitlementKey: "claims_billing",
+      meterEventType: "billing_addon_patient",
+      unitPriceCents: null,
+      currencyCode: "USD",
+      isActive: true,
+    },
+  ],
+  listSubscriptionAddons: async () => [fakeSubscriptionAddon],
+  grantAddon: async () => fakeSubscriptionAddon,
+  cancelAddon: async () => ({ ...fakeSubscriptionAddon, status: "canceled", live: false }),
+  adminAddonUsage: async () => null,
+  claimsBillingForOrg: async () => ({
+    entitled: false,
+    status: "none",
+    reason: "never_purchased",
+    trialEndsAt: null,
+    activePatientCount: null,
+    enforced: false,
+  }),
+};
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -1363,6 +1416,37 @@ const ROUTE_CASES: readonly RouteCase[] = [
     headers: SUPER_HEADERS,
     expectStatus: 200,
   },
+  // ADR-0108 — the claims-billing add-on admin routes.
+  {
+    label: "ADR-0108 GET /admin/addons",
+    method: "GET",
+    url: "/api/admin/addons",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "ADR-0108 GET /admin/subscriptions/:id/addons",
+    method: "GET",
+    url: `/api/admin/subscriptions/${SUB_ID}/addons`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "ADR-0108 POST /admin/subscriptions/:id/addons",
+    method: "POST",
+    url: `/api/admin/subscriptions/${SUB_ID}/addons`,
+    headers: { ...SUPER_HEADERS, ...IDEMP() },
+    payload: { addonSlug: "claims_billing", mode: "grant", reason: "signed order form" },
+    expectStatus: 201,
+  },
+  {
+    label: "ADR-0108 POST /admin/subscriptions/:id/addons/:addonId/cancel",
+    method: "POST",
+    url: `/api/admin/subscriptions/${SUB_ID}/addons/${ADDON_ID}/cancel`,
+    headers: { ...SUPER_HEADERS, ...IDEMP() },
+    payload: {},
+    expectStatus: 200,
+  },
   {
     label: "30 POST /admin/subscriptions/:id/pause",
     method: "POST",
@@ -1598,6 +1682,72 @@ describe.each(ROUTE_CASES)("M35 route smoke — $label", (c) => {
 
 // ── the §4.2 platform-ops surface is refused for a caller holding the permission key but NO platform-ops
 // role — proves `platform_billing_scope` actually runs (RBAC alone is not enough for /api/admin). ─────────
+describe("ADR-0108 — the add-on routes and the billing-status block", () => {
+  it("GET /api/v1/billing/status carries the tenant's claimsBilling posture", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/billing/status",
+      headers: SUPER_HEADERS,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().claimsBilling).toMatchObject({ entitled: false, reason: "never_purchased" });
+    await app.close();
+  });
+
+  it("refuses a grant without an Idempotency-Key and one from a caller without the permission", async () => {
+    const { app } = makeServer();
+    const body = { addonSlug: "claims_billing", mode: "grant", reason: "signed order form" };
+    const noKey = await app.inject({
+      method: "POST",
+      url: `/api/admin/subscriptions/${SUB_ID}/addons`,
+      headers: SUPER_HEADERS,
+      payload: body,
+    });
+    expect(noKey.statusCode).toBeGreaterThanOrEqual(400);
+    const noPerm = await app.inject({
+      method: "POST",
+      url: `/api/admin/subscriptions/${SUB_ID}/addons`,
+      headers: { ...NONE_HEADERS, ...IDEMP() },
+      payload: body,
+    });
+    expect(noPerm.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("403s an AI actor on the add-on grant and cancel writes", async () => {
+    const { app } = makeServer();
+    const ai = { ...SUPER_HEADERS, "x-test-actor-kind": "ai_agent" };
+    const grant = await app.inject({
+      method: "POST",
+      url: `/api/admin/subscriptions/${SUB_ID}/addons`,
+      headers: { ...ai, ...IDEMP() },
+      payload: { addonSlug: "claims_billing", mode: "grant", reason: "signed order form" },
+    });
+    expect(grant.statusCode).toBe(403);
+    const cancel = await app.inject({
+      method: "POST",
+      url: `/api/admin/subscriptions/${SUB_ID}/addons/${ADDON_ID}/cancel`,
+      headers: { ...ai, ...IDEMP() },
+      payload: {},
+    });
+    expect(cancel.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("422s a whitespace-only grant reason (it would trim to '' and hit the DB CHECK as a 500)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/admin/subscriptions/${SUB_ID}/addons`,
+      headers: { ...SUPER_HEADERS, ...IDEMP() },
+      payload: { addonSlug: "claims_billing", mode: "grant", reason: "    " },
+    });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+});
+
 describe("M35 route smoke — the /api/admin `platform_billing_scope` lock", () => {
   it("403s a tenant-role session holding plan.admin.read but no platform-ops role", async () => {
     const backend = createM35Backend();
