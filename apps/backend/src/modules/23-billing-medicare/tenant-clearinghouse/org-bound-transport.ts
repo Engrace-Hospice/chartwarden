@@ -4,6 +4,11 @@
 // The transport holds ONE organization's own vendor credential. Every call carries a `ClearinghouseContext`; a caller that
 // names a DIFFERENT organization (a mis-routed job, a cached binding handed to the wrong tenant) must never reach the vendor
 // under this credential, so the call is refused with `CH_INVALID_REQUEST` before any request is made.
+//
+// It is bound to the vendor MODE of the config row it was built from as well. The call's context carries the usage the caller
+// read from the org's config, in a read of its own; if the org moved between test and production in between, the call would
+// name one mode and the credential open the other (a test envelope into a production account, or the reverse). Such a call is
+// refused, retryably (`CH_UNAVAILABLE`), before any request: the retry reads the new mode and meets the new binding.
 import {
   CH,
   type ClearinghouseContext,
@@ -13,20 +18,28 @@ import {
 } from "@chartwarden/x12-837-client";
 
 export const WRONG_ORG_REASON = "this clearinghouse binding belongs to another organization";
+export const MODE_CHANGED_REASON =
+  "this organization's clearinghouse mode changed since the call was prepared; retry";
 
 export function bindTransportToOrg(
   transport: ClearinghouseTransport,
   organizationId: string,
+  mode?: ClearinghouseContext["usage"],
 ): ClearinghouseTransport {
   const owner = organizationId.toLowerCase();
   const guard =
     <A extends unknown[], R>(
       call: (ctx: ClearinghouseContext, ...args: A) => Promise<X12WorkerResult<R>>,
     ) =>
-    (ctx: ClearinghouseContext, ...args: A): Promise<X12WorkerResult<R>> =>
-      ctx.organizationId.toLowerCase() === owner
-        ? call.call(transport, ctx, ...args)
-        : Promise.resolve(degraded<R>(CH.INVALID_REQUEST, WRONG_ORG_REASON));
+    (ctx: ClearinghouseContext, ...args: A): Promise<X12WorkerResult<R>> => {
+      if (ctx.organizationId.toLowerCase() !== owner) {
+        return Promise.resolve(degraded<R>(CH.INVALID_REQUEST, WRONG_ORG_REASON));
+      }
+      if (mode !== undefined && ctx.usage !== mode) {
+        return Promise.resolve(degraded<R>(CH.UNAVAILABLE, MODE_CHANGED_REASON));
+      }
+      return call.call(transport, ctx, ...args);
+    };
   return {
     vendor: transport.vendor,
     checkEligibility: guard(transport.checkEligibility),

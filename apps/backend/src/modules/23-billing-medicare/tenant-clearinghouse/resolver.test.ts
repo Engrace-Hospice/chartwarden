@@ -13,6 +13,7 @@ import type { ClearinghouseBinding } from "@chartwarden/x12-837-client";
 import { createInMemoryHarness } from "@chartwarden/x12-837-client/testing";
 import { describe, expect, it } from "vitest";
 import type { ConfigRow } from "./config-store";
+import { bindTransportToOrg } from "./org-bound-transport";
 import { createTenantClearinghouseRuntime, withOrgOnAnomaly } from "./resolver";
 import { buildClearinghouseSecretCipher } from "./secret-cipher";
 
@@ -178,6 +179,37 @@ describe("per-organization clearinghouse binding", () => {
     }
   });
 
+  it("refuses a call whose usage is not the mode of the very row the binding was built from, retryably and before any request (re-review L2)", async () => {
+    const { runtime, put } = await setup();
+    await put(ORG_A, { vendor: "claimmd", mode: "test", secret: KEY });
+    const a = await runtime.binding.forOrg?.(ORG_A);
+    const ctx = {
+      organizationId: ORG_A,
+      providerEntityId: "44444444-4444-4444-8444-444444444444",
+      payerId: "PAYER",
+      correlationId: "c-1",
+      usage: "production" as const, // the context was read when the org was in production; the binding is the TEST account
+    };
+    const submission = {
+      kind: "claim" as const,
+      controlNumber: "CTRL1",
+      idempotencyKey: "k1",
+      payload: { format: "x12" as const, x12: "ISA*00~" },
+    };
+    const results = [
+      await a?.transport.submitClaim(ctx, submission),
+      await a?.transport.submitNotice(ctx, { ...submission, kind: "noe" as const }),
+      await a?.transport.fetchAcknowledgments(ctx, null),
+      await a?.transport.fetchRemittances(ctx, null),
+      await a?.transport.fetchClaimStatus(ctx, "CTRL1"),
+      await a?.transport.checkEligibility(ctx, {} as never),
+    ];
+    for (const result of results) {
+      expect(result && !result.ok && result.degraded.code).toBe(CH.UNAVAILABLE);
+      expect(result && !result.ok && result.degraded.reason).toMatch(/mode changed/);
+    }
+  });
+
   it("reports an org's live mode, and nothing for a config that is not live", async () => {
     const { runtime, put } = await setup();
     await put(ORG_A, { vendor: "stedi", mode: "production", secret: KEY });
@@ -203,5 +235,35 @@ describe("transport anomalies name the organization", () => {
 
   it("is absent when no sink is configured", () => {
     expect(withOrgOnAnomaly(undefined, ORG_A)).toBeUndefined();
+  });
+});
+
+describe("bindTransportToOrg usage guard", () => {
+  const ctx = (usage: "test" | "production") => ({
+    organizationId: ORG_A,
+    providerEntityId: "44444444-4444-4444-8444-444444444444",
+    payerId: "PAYER",
+    correlationId: "c-1",
+    usage,
+  });
+
+  it("lets a call through only when its usage is the bound mode", async () => {
+    const reached: string[] = [];
+    const inner = {
+      vendor: "claimmd",
+      fetchClaimStatus: async (c: { usage: string }) => {
+        reached.push(c.usage);
+        return { ok: true, value: null };
+      },
+    } as never;
+    const bound = bindTransportToOrg(
+      { ...(inner as object), checkEligibility: async () => ({ ok: true }) } as never,
+      ORG_A,
+      "test",
+    );
+    await bound.fetchClaimStatus(ctx("test"), "CTRL1").catch(() => undefined);
+    const refused = await bound.fetchClaimStatus(ctx("production"), "CTRL1").catch(() => undefined);
+    expect(reached).toEqual(["test"]);
+    expect(refused && !refused.ok && refused.degraded.code).toBe(CH.UNAVAILABLE);
   });
 });

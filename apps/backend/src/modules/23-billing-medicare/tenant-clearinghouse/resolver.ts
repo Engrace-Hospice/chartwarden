@@ -89,6 +89,10 @@ function scopedCounter(
   };
 }
 
+/** The vendor mode of a LIVE (active, transmitting) row, else null: the one rule behind both the binding and `usageFor`. */
+const liveModeOf = (row: ConfigRow | null): TenantClearinghouseMode | null =>
+  row?.status === "active" && (row.mode === "test" || row.mode === "production") ? row.mode : null;
+
 export function createTenantClearinghouseRuntime(
   deps: TenantBindingDeps,
 ): TenantClearinghouseRuntime {
@@ -139,8 +143,9 @@ export function createTenantClearinghouseRuntime(
                 : {}),
             },
           );
-    // Bound to this organization: a call naming another one is refused before it reaches the vendor.
-    return { vendor, transport: bindTransportToOrg(transport, row.organizationId) };
+    // Bound to this organization AND to the mode of this very row: a call naming another org, or another mode, is refused
+    // before it reaches the vendor (L2: the usage a context carries is read apart from this binding).
+    return { vendor, transport: bindTransportToOrg(transport, row.organizationId, mode) };
   }
 
   async function forOrg(organizationId: string): Promise<ClearinghouseBinding> {
@@ -166,10 +171,7 @@ export function createTenantClearinghouseRuntime(
     // The top level is deliberately unbound: only `forOrg` names an organization's transport.
     binding: { vendor: null, transport: NOT_WIRED_TRANSPORT, forOrg },
     async usageFor(organizationId) {
-      const row = await readRow(organizationId);
-      return row?.status === "active" && (row.mode === "test" || row.mode === "production")
-        ? row.mode
-        : null;
+      return liveModeOf(await readRow(organizationId));
     },
   };
 }

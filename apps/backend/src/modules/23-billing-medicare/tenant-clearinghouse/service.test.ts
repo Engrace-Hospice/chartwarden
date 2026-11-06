@@ -352,12 +352,17 @@ describe("tenant clearinghouse service: choosing", () => {
       probes: {},
       waitingWork: async () => waiting,
     });
-    const first = await service.put(
+    // an ACTIVE config: only a vendor that is live can drain what is queued on it (re-review M3: see the draft test below)
+    await service.put(
       store,
       ACTOR,
       { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
       undefined,
     );
+    await verify(service, store, ACTOR, ATTEST);
+    await service.recordBaa(store, ACTOR, BAA);
+    await verifyBaaSeen(service, store);
+    const first = { view: await service.activate(store, ACTOR) };
     const version = first.view.version as number;
     for (const input of [
       { vendor: "outside" },
@@ -389,6 +394,77 @@ describe("tenant clearinghouse service: choosing", () => {
     expect(
       await codeOf(service.put(store, ACTOR, { vendor: "outside" }, next.version as number)),
     ).toBe("no error");
+  });
+
+  it("counts waiting work only for an ACTIVE config: a draft or verified one cannot drain it, so refusing the switch would strand the tenant (re-review M3)", async () => {
+    const waiting = { claims: 3, commercialSubmissions: 2 };
+    const service = createTenantClearinghouseService({
+      cipher: buildClearinghouseSecretCipher(randomBytes(32)),
+      probes: {},
+      waitingWork: async () => waiting,
+    });
+    // draft: chosen, nothing verified; the claims queued meanwhile are held and no vendor is able to send them
+    const draftStore = createInMemoryConfigStore();
+    const draft = await service.put(
+      draftStore,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    // verified: the connection is tested, the BAA is not yet in place, still nothing is sent
+    const verifiedStore = createInMemoryConfigStore();
+    await service.put(
+      verifiedStore,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    const verified = await verify(service, verifiedStore, ACTOR, ATTEST);
+    expect(verified.view.status).toBe("verified");
+
+    expect(
+      await codeOf(
+        service.put(
+          draftStore,
+          ACTOR,
+          { vendor: "stedi", mode: "test", secret: FAKE_KEY },
+          draft.view.version as number,
+        ),
+      ),
+    ).toBe("no error");
+    expect(
+      await codeOf(
+        service.put(verifiedStore, ACTOR, { vendor: "outside" }, verified.view.version as number),
+      ),
+    ).toBe("no error");
+  });
+
+  it("reads the waiting work on the store's own transaction, never a second pooled connection while the row is locked (re-review L5)", async () => {
+    const scope = { name: "the open org-scoped transaction" };
+    const store = Object.assign(createInMemoryConfigStore(), { tx: scope });
+    const seen: unknown[] = [];
+    const service = createTenantClearinghouseService({
+      cipher: buildClearinghouseSecretCipher(randomBytes(32)),
+      probes: {},
+      waitingWork: async (_organizationId, tx) => {
+        seen.push(tx);
+        return { claims: 0, commercialSubmissions: 0 };
+      },
+    });
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    await verify(service, store, ACTOR, ATTEST);
+    await service.recordBaa(store, ACTOR, BAA);
+    await verifyBaaSeen(service, store);
+    const live = await service.activate(store, ACTOR);
+
+    await service.put(store, ACTOR, { vendor: "outside" }, live.version as number);
+
+    expect(seen).toEqual([scope]);
   });
 
   it("locks vendor and mode once a production submission exists, but still allows a rotation", async () => {

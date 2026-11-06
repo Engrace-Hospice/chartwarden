@@ -5,17 +5,25 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 
-/** Queued submissions of the org, read under its own RLS scope. */
+/** Queued submissions of the org, on a transaction already scoped to it (the config service's own: one pooled connection). */
+export async function countQueuedCommercialSubmissionsOn(
+  tx: DbClient,
+  organizationId: string,
+): Promise<number> {
+  const S = schema.commercialSubmissions;
+  const [row] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(S)
+    .where(and(eq(S.organizationId, organizationId), eq(S.status, "queued")));
+  return row?.n ?? 0;
+}
+
+/** Queued submissions of the org, read under its own RLS scope (a pooled connection of its own: never inside another transaction). */
 export async function countQueuedCommercialSubmissions(
   db: DbClient,
   organizationId: string,
 ): Promise<number> {
-  const S = schema.commercialSubmissions;
-  return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-    const [row] = await (tx as unknown as DbClient)
-      .select({ n: sql<number>`count(*)::int` })
-      .from(S)
-      .where(and(eq(S.organizationId, organizationId), eq(S.status, "queued")));
-    return row?.n ?? 0;
-  });
+  return withOrgContext(db, { organizationId, userId: "" }, (tx) =>
+    countQueuedCommercialSubmissionsOn(tx as unknown as DbClient, organizationId),
+  );
 }
