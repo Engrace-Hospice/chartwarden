@@ -1969,7 +1969,7 @@ export * from "./bootstrap/index";
  * resolver + ONE §2.5 invalidation cache (a second instance would split them). Module-scope because
  * both closures live in this file; bootSeams runs before registerModuleRoutes inside buildServer.
  */
-let liveRbacHandle: RbacEngineHandle | undefined;
+const liveRbac = lateBound<RbacEngineHandle>("the live RBAC engine");
 
 export function wireModuleSeams(
   deps: {
@@ -2022,7 +2022,8 @@ export function wireModuleSeams(
   // turning `requirePermission` from fail-closed to real resolution. Slice/tests keep the default.
   // TASK-004 — the handle is CAPTURED so the M3 route mount binds the SAME resolver + §2.5
   // invalidation cache for /me/permissions, anti-escalation, and grant/revoke cache drops.
-  if (deps.db) liveRbacHandle = registerDbEffectivePermissionResolver(deps.db);
+  if (deps.db) liveRbac.bind(registerDbEffectivePermissionResolver(deps.db));
+  else liveRbac.decline("no database: the in-memory permission resolver stays in use");
   // M3 — SupervisorReader (membership location scope + derived supervision) for M33/M36; deny-stub without a db.
   registerAuthorizationSeams({ db: deps.db });
   // M3 — register M3's own `step_up_recent` ABAC predicate (§4.2.1 — the step-up freshness gate every
@@ -4069,13 +4070,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // built and passed INTO buildServer() before that. This ref lets the probe's outbox-depth check
   // close over the eventual dispatcher instance rather than needing it to exist yet; undefined
   // (no DATABASE_PLATFORM_URL / dispatcher disabled) reports "ok" — nothing to be unready about.
-  let outboxDispatcherRef: OutboxDispatcher | undefined;
+  const outboxDispatcherHolder = lateBound<OutboxDispatcher>("the outbox dispatcher");
   // WP 1.1 / ADR-0054 — the Socket.IO transport is OPT-IN per environment (the web client keeps polling until the
-  // flag is on). `realtimeRef` is late-bound like the dispatcher ref: the readiness probe is built before the
+  // flag is on). `realtimeHolder` is late-bound like the dispatcher holder: the readiness probe is built before the
   // server exists. Consumers (worker side) never hold the Server: they reach every api node through the Valkey
   // emitter (addendum A1), on a dedicated connection; the emitter port refuses to publish unless it is ready, so the dispatcher retries.
   const realtimeEnabled = process.env.REALTIME_ENABLED === "true";
-  let realtimeRef: RealtimeHandle | undefined;
+  const realtimeHolder = lateBound<RealtimeHandle>("the realtime server");
   const realtimeEmitterClient =
     realtimeEnabled && queueConnection
       ? new Redis({ ...(queueConnection as RedisOptions), maxRetriesPerRequest: null })
@@ -4087,7 +4088,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // TASK-040C (OPS-005/006) — shared by BOTH the readiness probe (below) and the metrics registry's
   // `chartwarden_outbox_pending_depth` gauge, so the "no dispatcher running yet/at all → 0" fallback is
   // defined exactly once instead of duplicated at each call site.
-  const outboxPendingDepth = () => outboxDispatcherRef?.pendingDepth() ?? Promise.resolve(0);
+  const outboxPendingDepth = () =>
+    outboxDispatcherHolder.find()?.pendingDepth() ?? Promise.resolve(0);
   // M1-T10 — assemble the FULL transactional-outbox catalog (M1 folded in by the helper + the passed
   // M30/M33/M34 contributions) and build the catalog-validating tx publisher. The publisher is threaded
   // into the M30 + M33 write services below so their §4.10 `m30.*`/`m33.*` emits persist into
@@ -4679,7 +4681,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   });
   // GAP-032 - the M20 SOS-terminus effect bag. Built where the cron workers are wired (it needs the queue-side
   // deps); the route layer's readiness probe reads it lazily through this holder.
-  let m20TerminusBag: ReturnType<typeof buildM20TerminusDeps> | undefined;
+  const m20Terminus = lateBound<ReturnType<typeof buildM20TerminusDeps>>(
+    "the M20 SOS-terminus effect bag",
+  );
   // TASK-030 — the web app's origin, for building the M2 invite-accept link (`${origin}/invite/:token`).
   // `WEB_APP_URL` is an explicit override; `BETTER_AUTH_URL` (already production-required, §bootstrap/
   // env.ts) is reused as the same-origin-SPA default per its own baseURL comment above; dev falls back
@@ -4931,11 +4935,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // WP 6.5 (ADR-0095, PROPOSED) - AI thread summaries and reply drafts. Off by default per tenant (`messaging.ai.enabled`) and answers "AI unavailable"
   // until M32's governed pipeline is bound to the port below (a configured model backend, the prompt registry, and - inside the pipeline - ai.full, the
   // capability lifecycle, tenant opt-in, kill switch and BAA/ZDR routing). The port is resolved lazily: wireModuleSeams runs after this mount.
-  const m36AiPortRef: { current?: MessagingAiPort } = {};
+  const m36AiPortHolder = lateBound<MessagingAiPort>("M32's governed AI port");
   const m36AiPort: MessagingAiPort = {
-    summarize: (request) => (m36AiPortRef.current ?? UNAVAILABLE_AI_PORT).summarize(request),
-    draftReply: (request) => (m36AiPortRef.current ?? UNAVAILABLE_AI_PORT).draftReply(request),
-    recordOutcome: (input) => (m36AiPortRef.current ?? UNAVAILABLE_AI_PORT).recordOutcome(input),
+    summarize: (request) => (m36AiPortHolder.find() ?? UNAVAILABLE_AI_PORT).summarize(request),
+    draftReply: (request) => (m36AiPortHolder.find() ?? UNAVAILABLE_AI_PORT).draftReply(request),
+    recordOutcome: (input) => (m36AiPortHolder.find() ?? UNAVAILABLE_AI_PORT).recordOutcome(input),
   };
   if (dbHandle && !rateLimitStore) {
     console.warn(
@@ -5176,7 +5180,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         m24AsyncWorkers: m24SubmissionQueues ? "ready" : "disabled",
         m34AsyncWorkers: m34ProvisionQueue ? "ready" : "disabled",
         // The Socket.IO server runs in the api role only; "degraded" = Valkey fan-out is down (polling still works).
-        realtime: realtimeRef ? realtimeRef.state() : "disabled",
+        realtime: realtimeHolder.find()?.state() ?? "disabled",
       }),
     }),
     // Postgres-backed idempotency. The bootstrap default is an in-memory Map, and nothing ever
@@ -5196,7 +5200,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           mountAuthorizationRoutes(
             app,
             dbHandle.db,
-            liveRbacHandle,
+            liveRbac.find(),
             m3OutboxPublisher as M3OutboxPublisher,
             // The minted auditor link is emailed (M2 `auth.send_magic_link`); without a web origin the
             // delivery throws and the enrolment route answers 503 rather than reporting a phantom invite.
@@ -5218,7 +5222,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // GAP-011 — engagements (createDbEngagementStore) and auditor sessions (M2's durable
           // `auditor_magic_link` issuer behind the AuditorSessionMinter seam) are both durable now; the
           // break-glass Compliance notification is durable via the m3.breakglass.invoked outbox event (GAP-010).
-          if (!liveRbacHandle) {
+          if (!liveRbac.find()) {
             // Should be unreachable on a db boot (wireModuleSeams runs first inside buildServer) —
             // recorded rather than assumed, so a future boot-order change cannot silently revert
             // /me/permissions to a fixed empty set.
@@ -5237,7 +5241,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // and returned, so every invitation the platform has ever issued produced a membership with no
           // role grants. M3 owns the grant, so M3's attacher is bound here rather than imported inside
           // M2 (which is `dependsOn: [1]`).
-          const rbacForProposals = liveRbacHandle;
+          const rbacForProposals = liveRbac.find();
           const proposedRoleResolver: ActorPermissionResolver = rbacForProposals
             ? ({ organizationId, userId }) =>
                 rbacForProposals.resolver({ organizationId, userId } as Parameters<
@@ -5402,7 +5406,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 sessions: createAuditorSessionIssuer(auth),
                 access: auditorAccess,
                 onRedeemed: (organizationId, userId) =>
-                  liveRbacHandle?.invalidateActor(organizationId, userId),
+                  liveRbac.find()?.invalidateActor(organizationId, userId),
               },
               ipLimiter: auditorLimiter("auditor-redeem:ip", 20),
               orgLimiter: auditorLimiter("auditor-redeem:org", 200),
@@ -5414,7 +5418,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 db: dbHandle.db,
                 access: auditorAccess,
                 onActivated: (organizationId, userId) =>
-                  liveRbacHandle?.invalidateActor(organizationId, userId),
+                  liveRbac.find()?.invalidateActor(organizationId, userId),
               }),
               ipLimiter: auditorLimiter("auditor-enrol:ip", 60),
               userLimiter: auditorLimiter("auditor-enrol:user", 30),
@@ -6121,12 +6125,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               // anti-escalation). Tenant pool under the tenant's RLS, audited; the member's cached permissions are dropped.
               bindComplianceOfficerRole: createComplianceOfficerRoleBinder(
                 dbHandle.db,
-                (organizationId, userId) => liveRbacHandle?.invalidateActor(organizationId, userId),
+                (organizationId, userId) =>
+                  liveRbac.find()?.invalidateActor(organizationId, userId),
               ),
               // If the assignment fails after the bind committed, the grant is expired again (best effort, audited).
               unbindComplianceOfficerRole: createComplianceOfficerRoleUnbinder(
                 dbHandle.db,
-                (organizationId, userId) => liveRbacHandle?.invalidateActor(organizationId, userId),
+                (organizationId, userId) =>
+                  liveRbac.find()?.invalidateActor(organizationId, userId),
               ),
               // Go-live approval opens the organization (it stays `created` through onboarding): the real M2 lifecycle
               // writer, so the status flip, `m2.organization.activated` audit + outbox event and cache eviction match the
@@ -7263,7 +7269,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             terminus: {
               db: dbHandle.db,
               jurisdictions: () => getSeam("EmergencyServiceJurisdictionReader"),
-              terminus: () => m20TerminusBag,
+              terminus: () => m20Terminus.find(),
             },
             readService: m20ReadService,
             writeService: buildDrizzleM20WriteService(dbHandle.db, m20ReadService, {
@@ -7658,7 +7664,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         messageBodyCipher: m36MessageBodyCipher,
         ...(m36Promotions ? { promotionSource: m36Promotions.sourceReader } : {}),
         onMessagingAiPort: (port) => {
-          m36AiPortRef.current = port;
+          m36AiPortHolder.bind(port);
         },
       }),
     registerModuleErasers: () =>
@@ -10507,13 +10513,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       jobId: M20_PLATFORM_JOB_ID,
       reason: "M20 §4.8 SOS SLA watchdog cron fan-out (active-org enumeration)",
     });
-    m20TerminusBag = buildM20TerminusDeps({
+    const m20TerminusDeps = buildM20TerminusDeps({
       env: process.env,
       db: dbHandle.db,
       caller: createSosContactCaller(outOfBandBinding.transports.voice),
       decipher: createSafetyCiphers(lazyTenantKeys(getTenantKeyProvider)).decipher,
       log: (line) => process.stderr.write(`${line}\n`),
     });
+    m20Terminus.bind(m20TerminusDeps);
     const m20WorkerDeps = buildM20WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
@@ -10523,7 +10530,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       // to the consented emergency contact (gated OFF by CHARTWARDEN_SOS_CONTACT_DIAL), and the M40 PSAP
       // lookup. An unbound port degrades to a RECORDED ledger skip and a loud boot line - it never stops
       // the terminus being entered (see 20-field-safety/terminus/build.ts).
-      terminus: m20TerminusBag,
+      terminus: m20TerminusDeps,
       activeOrgs: m20ActiveOrgs,
       // GAP-061 — the overdue detector's D14 after-hours zone, through M1's owner reader (M20 reads no
       // `location` row itself).
@@ -12203,6 +12210,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     app.addHook("onClose", async () => {
       await Promise.all(metricsQueues.map((q) => q.close()));
     });
+  } else {
+    m20Terminus.decline("this process builds no cron workers (api role, no database, or no queue)");
   }
 
   // ── TASK-006 (OPS-001) — the transactional-outbox DISPATCHER ────────────────────────────────────
@@ -14231,14 +14240,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       outboxDispatcher.start();
       // TASK-040B — the readiness probe's outbox-depth check closes over this ref (set now that the
       // real instance exists; the probe itself was built earlier, before buildServer()).
-      outboxDispatcherRef = outboxDispatcher;
+      outboxDispatcherHolder.bind(outboxDispatcher);
       app.addHook("onClose", () => outboxDispatcher.stop());
       app.log.info("TASK-006 outbox dispatcher polling (per-org, RLS-scoped)");
     } else {
       console.warn(
         "⚠️  outbox dispatcher NOT running: DATABASE_PLATFORM_URL is not configured (the relay needs the platform credential to enumerate active orgs). Outbox rows will accumulate as pending.",
       );
+      outboxDispatcherHolder.decline("DATABASE_PLATFORM_URL is not configured");
     }
+  } else {
+    outboxDispatcherHolder.decline(
+      "this process does not run the relay (api role), has no database, or OUTBOX_DISPATCHER_DISABLED=1",
+    );
   }
 
   // TASK-040A (OPS-003) — graceful shutdown. Every teardown this process needs already exists as an
@@ -14291,6 +14305,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       app.log.warn(
         "REALTIME_ENABLED is set but auth, the database or Valkey is unavailable; not starting",
       );
+      realtimeHolder.decline("auth, the database or Valkey is unavailable");
     } else {
       const sessionEnforcer = createDbSessionTimeoutEnforcer(dbHandle.db);
       const messagingService = createDbMessagingRouteService(dbHandle.db);
@@ -14301,7 +14316,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       const subClient = pubClient.duplicate();
       pubClient.on("error", () => {});
       subClient.on("error", () => {});
-      realtimeRef = startRealtimeServer({
+      const realtime = startRealtimeServer({
         httpServer: app.server,
         pubClient,
         subClient,
@@ -14313,7 +14328,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         // the TCP peer really is one of TRUSTED_PROXY_CIDRS (otherwise the header is the caller's own).
         clientKey: realtimeClientKey(parseTrustedProxies(process.env.TRUSTED_PROXY_CIDRS)),
         log: createRealtimeTelemetry(metricsRegistry, {
-          handle: () => realtimeRef,
+          handle: () => realtimeHolder.find(),
           log: (event, context) => app.log.info(context, event),
           audit: createRealtimeAuditWriter(dbHandle.db),
           onAuditError: (err) => app.log.error({ err }, "realtime audit write failed"),
@@ -14369,12 +14384,17 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           return Boolean(actor?.membershipId);
         },
       });
+      realtimeHolder.bind(realtime);
       app.addHook("onClose", async () => {
-        await realtimeRef?.close();
+        await realtimeHolder.find()?.close();
         pubClient.disconnect();
         subClient.disconnect();
       });
     }
+  } else {
+    realtimeHolder.decline(
+      "REALTIME_ENABLED is off, or this process is a worker or the MLLP listener",
+    );
   }
   if (realtimeEmitterClient) app.addHook("onClose", () => realtimeEmitterClient.quit());
   // CW-RUST-M02 P1 — the daily parity sweep (spec v0.3), in the process that holds the signing key and the socket.
@@ -14422,6 +14442,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     );
     app.addHook("onClose", async () => stopSweep());
   }
+  // M36 AI: with no governed pipeline bound, summaries and drafts answer "AI unavailable". That is a configuration, so it is decided and logged
+  // here, never an invisible default.
+  if (!m36AiPortHolder.find()) {
+    m36AiPortHolder.decline("no governed AI pipeline is bound");
+    app.log.info(
+      "M36 AI port: no governed pipeline is bound; summaries and drafts answer 'AI unavailable'",
+    );
+  }
+  // Every optional holder was either bound or explicitly declined by the wiring above: a path that did neither is a lost wiring, and it
+  // stops the process here rather than showing up later as a silently skipped behavior (the readiness probe, the relay, realtime...).
+  outboxDispatcherHolder.assertResolved();
+  realtimeHolder.assertResolved();
+  m20Terminus.assertResolved();
+  liveRbac.assertResolved();
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
     app.log.error(err);
     process.exit(1);
