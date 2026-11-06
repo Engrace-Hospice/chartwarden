@@ -1,0 +1,721 @@
+/**
+ * M23 — each tenant's own clearinghouse (ADR-0053 amendment 2026-11-06), LIVE Postgres on the real roles.
+ *
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m23:tenant-clearinghouse:live   (SUPERUSER url, THROWAWAY database)
+ *
+ * The tenant surface runs as the NOBYPASSRLS `chartwarden_app` (a superuser connection would make every cross-tenant
+ * assertion vacuous); the slug lookup of the platform surface runs on the BYPASSRLS `chartwarden_platform_login` built by
+ * `scripts/db/provision-runtime-roles.ts` itself. Vendor calls are mocks (no network, obvious fake credentials). Proves:
+ *   - a tenant chooses, verifies and activates its own clearinghouse; the credential is sealed, never returned, never in the
+ *     table in the clear, never in an audit row (the trigger scrubs it);
+ *   - RLS: a tenant reads and writes only its own row; it cannot delete, cannot rewrite another org's, and an insert for
+ *     another org is refused;
+ *   - per-org transport resolution against the real table picks each org's OWN vendor and mode, and nothing for `outside`, a
+ *     draft, or an org with no row (the env fallback serves only the org an operator named);
+ *   - the claims-billing gate allows / refuses per choice (enforce), through the real seams;
+ *   - a platform operator sets the same config on the tenant's behalf only while it is onboarding (409 after), with an audit
+ *     row naming operator + org + reason, and wizard step 7 settles through the real advance pass;
+ *   - vendor and mode lock once a production submission exists, a credential rotation does not.
+ */
+import { spawnSync } from "node:child_process";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import {
+  createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
+  registerAbacRegistry,
+  registerEffectivePermissionResolver,
+  resetAbacRegistry,
+  resetAuthorizationContract,
+  resetRbacEngine,
+} from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
+import type { AlertEmitter } from "@chartwarden/messaging";
+import { registerPlatformJob } from "@chartwarden/tenancy";
+import { InMemoryAttemptStore } from "@chartwarden/x12-837-client";
+import { createInMemoryHarness } from "@chartwarden/x12-837-client/testing";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { Client } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  claimsBillingVerdict,
+  configureClaimsBillingGate,
+} from "../src/bootstrap/claims-billing-gate";
+import { buildServer } from "../src/bootstrap/index";
+import {
+  buildOrgAdminCountReader,
+  buildOrgSeedFactsReader,
+} from "../src/bootstrap/org-spine-facts";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { getSeam } from "../src/bootstrap/seams/registry";
+import { m34PlatformBypassAuditor } from "../src/index";
+import {
+  buildDrizzleOrgMacJurisdictionReader,
+  buildMacFeedConfiguredReader,
+} from "../src/modules/23-billing-medicare/jobs/mac-jurisdictions";
+import { buildTenantClearinghouseOnboardingPort } from "../src/modules/23-billing-medicare/tenant-clearinghouse/onboarding-port";
+import { registerM23TenantClearinghouseSeams } from "../src/modules/23-billing-medicare/tenant-clearinghouse/register";
+import { createTenantClearinghouseRuntime } from "../src/modules/23-billing-medicare/tenant-clearinghouse/resolver";
+import { registerTenantClearinghouseRoutes } from "../src/modules/23-billing-medicare/tenant-clearinghouse/routes";
+import { buildClearinghouseSecretCipher } from "../src/modules/23-billing-medicare/tenant-clearinghouse/secret-cipher";
+import { createTenantClearinghouseService } from "../src/modules/23-billing-medicare/tenant-clearinghouse/service";
+import { buildDrizzleTenantClearinghouseRouteService } from "../src/modules/23-billing-medicare/tenant-clearinghouse/tenant-service";
+import { M34_OUTBOX_EVENTS } from "../src/modules/34-saas-tenant-platform/events-by-m34";
+import {
+  buildDrizzleOnboardingDataService,
+  buildPlatformTenantResolver,
+  mountTenantPlatformRoutes,
+} from "../src/modules/34-saas-tenant-platform/index";
+import { createOnboardingAdvancer } from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
+import { createSettleOnboardingForOrg } from "../src/modules/34-saas-tenant-platform/onboarding/settle-for-org";
+import {
+  appRoleConnectionString,
+  appRoleUrl,
+  dropLiveRoles,
+  resetPublicSchema,
+} from "./_live-app-role";
+
+const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
+const PLATFORM_PASSWORD = "platform-live-password-clearinghouse";
+const JOB_ID = "m23-tenant-clearinghouse-live-test";
+
+const PLATFORM_ORG = "a0000000-0000-4000-8000-0000000000a0";
+const ORG_A = "a1000000-0000-4000-8000-0000000000a1"; // an ACTIVE tenant: claimmd, chosen through its own routes
+const ORG_B = "b2000000-0000-4000-8000-0000000000b2"; // onboarding: set by the platform operator
+const ORG_C = "c3000000-0000-4000-8000-0000000000c3"; // outside
+const ORG_D = "d4000000-0000-4000-8000-0000000000d4"; // chose nothing
+const ORG_E = "e5000000-0000-4000-8000-0000000000e5"; // named in the env fallback list, no row
+const ORG_F = "f6000000-0000-4000-8000-0000000000f6"; // onboarding: chooses outside through the platform route
+const ORG_G = "a7000000-0000-4000-8000-0000000000a7"; // stedi, active
+const OPERATOR = "c9000000-0000-4000-8000-0000000000c9";
+const MEMBERSHIP = "e9000000-0000-4000-8000-0000000000e9";
+const TENANT_ADMIN = "7a000000-0000-4000-8000-0000000000a7";
+const REASON = "Customer asked support to set up their clearinghouse, ticket CHG-5001";
+
+const KEY_A = "fake-claimmd-key-A#live-1";
+const KEY_A2 = "fake-claimmd-key-A#live-2-rotated";
+const KEY_B = "fake-claimmd-key-B#live-1";
+const KEY_G = "fake-stedi-key-G-live-1";
+const KEY_BAD = "fake-bad-key-live-1";
+
+function headerAuth(request: FastifyRequest): void {
+  const user = request.headers["x-test-user"];
+  if (typeof user !== "string" || user.length === 0) return;
+  request.context.userId = user;
+  request.context.organizationId = String(request.headers["x-test-org"] ?? "");
+  const roles = request.headers["x-test-roles"];
+  request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  request.context.attributes.membershipId = MEMBERSHIP;
+  if (request.headers["x-step-up"] === "fresh") request.context.attributes.stepUpRecent = true;
+}
+
+describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real roles", () => {
+  let admin: Client;
+  let tenantPool: ReturnType<typeof createDbClient>;
+  let platformPool: ReturnType<typeof createDbClient>;
+  let server: FastifyInstance;
+  let seq = 0;
+  const probed: { secret: string; mode: string }[] = [];
+  const cipher = buildClearinghouseSecretCipher(Buffer.alloc(32, 11));
+
+  const q = async <T = Record<string, unknown>>(text: string, params: unknown[] = []) =>
+    (await admin.query(text, params)).rows as T[];
+  const errorCode = (res: { json: () => Record<string, unknown> }): unknown => {
+    const body = res.json();
+    return (body.error as { code?: string } | undefined)?.code ?? body.code;
+  };
+  const OPS = {
+    "x-test-user": OPERATOR,
+    "x-test-org": PLATFORM_ORG,
+    "x-test-roles": "platform_ops",
+  };
+  const opsWrite = () => ({ ...OPS, "x-step-up": "fresh", "idempotency-key": `live-${++seq}` });
+  const tenantRead = (org: string) => ({
+    "x-test-user": TENANT_ADMIN,
+    "x-test-org": org,
+    "x-test-roles": "org_admin",
+  });
+  const tenantWrite = (org: string) => ({
+    ...tenantRead(org),
+    "x-step-up": "fresh",
+    "idempotency-key": `live-${++seq}`,
+  });
+  const tenantCall = (
+    method: "GET" | "PUT" | "POST",
+    org: string,
+    path: string,
+    payload?: object,
+    extra: Record<string, string> = {},
+  ) =>
+    server.inject({
+      method,
+      url: `/api/v1/tenant/clearinghouse${path}`,
+      headers: { ...(method === "GET" ? tenantRead(org) : tenantWrite(org)), ...extra },
+      ...(payload ? { payload } : {}),
+    });
+  const platformCall = (
+    method: "GET" | "PUT" | "POST",
+    slug: string,
+    path: string,
+    payload?: object,
+    extra: Record<string, string> = {},
+  ) =>
+    server.inject({
+      method,
+      url: `/api/v1/platform/tenants/${slug}/clearinghouse${path}`,
+      headers: { ...(method === "GET" ? OPS : opsWrite()), ...extra },
+      ...(payload ? { payload } : {}),
+    });
+
+  /** One query on the REAL `chartwarden_app` role, scoped to `org` exactly as a tenant request is. */
+  const asTenant = async <T>(org: string, sql: string): Promise<T[]> => {
+    const client = new Client({ connectionString: appRoleUrl(DB_URL as string) });
+    await client.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT set_config('app.org_id', $1, true)", [org]);
+      const { rows } = await client.query(sql);
+      await client.query("ROLLBACK");
+      return rows as T[];
+    } finally {
+      await client.end();
+    }
+  };
+  const step7 = (org: string) =>
+    q<{ status: string }>(
+      "SELECT status FROM onboarding_task WHERE organization_id=$1 AND template_key='clearinghouse_selected'",
+      [org],
+    );
+
+  beforeAll(async () => {
+    admin = new Client({ connectionString: DB_URL });
+    await admin.connect();
+    await resetPublicSchema(admin);
+    await admin.query("CREATE SCHEMA IF NOT EXISTS public");
+    await dropLiveRoles(admin);
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
+      await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
+    }
+    for (const [id, slug] of [
+      [PLATFORM_ORG, "cw-platform"],
+      [ORG_A, "ch-a"],
+      [ORG_B, "ch-b"],
+      [ORG_C, "ch-c"],
+      [ORG_D, "ch-d"],
+      [ORG_E, "ch-e"],
+      [ORG_F, "ch-f"],
+      [ORG_G, "ch-g"],
+    ] as const) {
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
+        [id, slug],
+      );
+    }
+    // The row-audit trigger writes app.user_id to audit_event.actor_user_id (a foreign key to user): both actors are real users.
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'ops-clearinghouse@test.test')`, [
+      OPERATOR,
+    ]);
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'admin-clearinghouse@test.test')`, [
+      TENANT_ADMIN,
+    ]);
+    for (const [org, status] of [
+      [ORG_A, "active"],
+      [ORG_B, "onboarding"],
+      [ORG_F, "onboarding"],
+    ] as const) {
+      await admin.query(
+        "INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,$3,'b@x.test','p@x.test')",
+        [org, status, `Tenant ${status}`],
+      );
+    }
+    // Wizard tasks for the two onboarding tenants; steps 1-6 are done so step 7 (clearinghouse_selected) is the one in play.
+    for (const org of [ORG_B, ORG_F]) {
+      await admin.query(
+        `INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key)
+         SELECT $1, (SELECT id FROM tenant_account WHERE organization_id=$1), key FROM onboarding_task_template WHERE retired_at IS NULL`,
+        [org],
+      );
+      await admin.query(
+        "UPDATE onboarding_task SET status='done' WHERE organization_id=$1 AND template_key = ANY($2)",
+        [
+          org,
+          [
+            "account_created",
+            "plan_contract",
+            "baa_executed",
+            "provisioning_complete",
+            "ccn_registered",
+            "locations_seeded",
+          ],
+        ],
+      );
+    }
+
+    tenantPool = createDbClient({
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
+    });
+    const provisioned = spawnSync("bun", ["run", "scripts/db/provision-runtime-roles.ts"], {
+      cwd: join(__dirname, "../../.."),
+      env: {
+        ...process.env,
+        PROVISION_DATABASE_URL: DB_URL,
+        CHARTWARDEN_PLATFORM_PASSWORD: PLATFORM_PASSWORD,
+      },
+      encoding: "utf8",
+    });
+    expect(provisioned.status, provisioned.stderr).toBe(0);
+    const platformUrl = new URL(DB_URL as string);
+    platformUrl.username = "chartwarden_platform_login";
+    platformUrl.password = PLATFORM_PASSWORD;
+    platformPool = createDbClient({ connectionString: platformUrl.toString() });
+    registerPlatformJob(JOB_ID);
+
+    // The seams the gate and the wizard read, over the real tenant pool; the env fallback names ORG_E only.
+    registerM23TenantClearinghouseSeams({
+      db: tenantPool.db,
+      env: { CLEARINGHOUSE_VENDOR: "in_memory", CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: ORG_E },
+    });
+    configureClaimsBillingGate({ mode: "enforce", log: () => {} });
+
+    // The real advance pass, with the clearinghouse fact read through the real seam.
+    const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M34_OUTBOX_EVENTS]));
+    const alerts: AlertEmitter = {
+      async emit() {
+        return { alertId: "a", resolvedRecipientCount: 0 };
+      },
+    };
+    const advance = createOnboardingAdvancer({
+      db: tenantPool.db,
+      outbox: {
+        publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m34" } as never),
+      },
+      alerts,
+      facts: {
+        orgSeed: buildOrgSeedFactsReader(tenantPool.db),
+        orgAdminCount: buildOrgAdminCountReader(tenantPool.db),
+        macFeedConfigured: buildMacFeedConfiguredReader(
+          buildDrizzleOrgMacJurisdictionReader(tenantPool.db),
+        ),
+        clearinghouseSettled: async (orgId) => {
+          const choice = await getSeam("TenantClearinghouseReader").choiceForOrg(orgId);
+          return choice.vendor !== null && choice.status === "active";
+        },
+      },
+    });
+    const settleOnboarding = createSettleOnboardingForOrg({
+      db: tenantPool.db,
+      advance: async ({ tenantAccountId, organizationId }) => {
+        await advance({ tenantAccountId, orgId: organizationId });
+      },
+    });
+
+    const service = createTenantClearinghouseService({
+      cipher,
+      // The Claim.MD connection test is a mock: no network. It records what it was handed.
+      probes: {
+        claimmd: async (secret, mode) => {
+          probed.push({ secret, mode });
+          return secret.includes("bad") ? "credential_rejected" : "ok";
+        },
+      },
+    });
+    const dataService = buildDrizzleOnboardingDataService({
+      db: tenantPool.db,
+      resolveTenant: buildPlatformTenantResolver({
+        platformDb: platformPool.db,
+        auditBypass: m34PlatformBypassAuditor,
+        platformJobId: JOB_ID,
+      }),
+      clearinghouse: buildTenantClearinghouseOnboardingPort({ db: tenantPool.db, service }),
+      settleOnboarding,
+    });
+
+    resetAuthorizationContract();
+    resetRbacEngine();
+    resetAbacRegistry();
+    registerEffectivePermissionResolver(
+      createInMemoryEffectivePermissionStore([
+        {
+          orgId: PLATFORM_ORG,
+          userId: OPERATOR,
+          grants: [
+            {
+              roleKey: "platform_ops",
+              enabled: true,
+              expiresAt: null,
+              permissionKeys: [
+                "tenant_clearinghouse.read_platform",
+                "tenant_clearinghouse.write_platform",
+              ],
+            },
+          ],
+        },
+        ...[ORG_A, ORG_B].map((orgId) => ({
+          orgId,
+          userId: TENANT_ADMIN,
+          grants: [
+            {
+              roleKey: "org_admin",
+              enabled: true,
+              expiresAt: null,
+              permissionKeys: ["billing.mac_credential.read", "billing.mac_credential.admin"],
+            },
+          ],
+        })),
+        { orgId: ORG_D, userId: TENANT_ADMIN, grants: [] },
+      ]).store,
+    );
+    const reg = createPredicateRegistry();
+    reg.register("tenant_lifecycle_platform_ops", async (c) => c.roles.includes("platform_ops"));
+    reg.register("step_up_recent", async (c) => c.attributes.stepUpRecent === true);
+    registerAbacRegistry(reg);
+    server = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+    mountTenantPlatformRoutes(server, tenantPool.db, { onboardingData: { service: dataService } });
+    registerTenantClearinghouseRoutes(server, {
+      tenantClearinghouseService: buildDrizzleTenantClearinghouseRouteService({
+        db: tenantPool.db,
+        service,
+        onChanged: settleOnboarding,
+      }),
+    });
+  }, 300_000);
+
+  afterAll(async () => {
+    await server?.close();
+    resetAuthorizationContract();
+    resetRbacEngine();
+    resetAbacRegistry();
+    configureClaimsBillingGate({ mode: "shadow" });
+    await tenantPool?.close();
+    await platformPool?.close();
+    await admin?.end();
+  });
+
+  it("a tenant admin chooses Claim.MD: 201 draft, the credential sealed and never returned", async () => {
+    expect((await tenantCall("GET", ORG_A, "")).json()).toMatchObject({
+      vendor: null,
+      source: "none",
+    });
+    const res = await tenantCall("PUT", ORG_A, "", {
+      vendor: "claimmd",
+      mode: "test",
+      secret: KEY_A,
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json()).toMatchObject({
+      vendor: "claimmd",
+      mode: "test",
+      status: "draft",
+      hasSecret: true,
+      source: "tenant",
+    });
+    expect(res.body).not.toContain(KEY_A);
+    const [row] = await q<{ secret_cipher: string }>(
+      "SELECT secret_cipher FROM tenant_clearinghouse_config WHERE organization_id=$1",
+      [ORG_A],
+    );
+    expect(row?.secret_cipher).toBeTruthy();
+    expect(row?.secret_cipher).not.toContain(KEY_A);
+    expect((await tenantCall("GET", ORG_A, "")).body).not.toContain(KEY_A);
+  });
+
+  it("verifies with the connection test on the unsealed key, then activates; the gate follows (draft refused, active allowed)", async () => {
+    expect(await claimsBillingVerdict(ORG_A, {})).toEqual({
+      allow: false,
+      reason: "clearinghouse_not_active",
+    });
+    const verify = await tenantCall("POST", ORG_A, "/verify", {});
+    expect(verify.statusCode, verify.body).toBe(200);
+    expect(verify.json()).toMatchObject({
+      config: { status: "verified", verification: { kind: "connection_test" } },
+      test: { outcome: "ok" },
+    });
+    expect(probed.at(-1)).toEqual({ secret: KEY_A, mode: "test" });
+    expect(await claimsBillingVerdict(ORG_A, {})).toEqual({
+      allow: false,
+      reason: "clearinghouse_not_active",
+    });
+    const activate = await tenantCall("POST", ORG_A, "/activate", {});
+    expect(activate.statusCode, activate.body).toBe(200);
+    expect(activate.json()).toMatchObject({ status: "active" });
+    expect(await claimsBillingVerdict(ORG_A, {})).toEqual({ allow: true });
+  });
+
+  it("the gate refuses outside and nothing-chosen, and allows the org named in the env fallback list", async () => {
+    await q(
+      "INSERT INTO tenant_clearinghouse_config (organization_id, vendor, status, set_by_membership_id) VALUES ($1,'outside','active',$2)",
+      [ORG_C, MEMBERSHIP],
+    );
+    expect(await claimsBillingVerdict(ORG_C, {})).toEqual({
+      allow: false,
+      reason: "clearinghouse_outside",
+    });
+    expect(await claimsBillingVerdict(ORG_D, {})).toEqual({
+      allow: false,
+      reason: "clearinghouse_not_chosen",
+    });
+    expect(await claimsBillingVerdict(ORG_E, {})).toEqual({ allow: true });
+    expect(await getSeam("TenantClearinghouseReader").choiceForOrg(ORG_E)).toMatchObject({
+      vendor: "in_memory",
+      source: "platform_env",
+    });
+    expect(await getSeam("TenantClearinghouseReader").choiceForOrg(ORG_C)).toMatchObject({
+      vendor: "outside",
+      status: "active",
+      source: "tenant",
+    });
+  });
+
+  it("RLS: a tenant sees only its own row, cannot rewrite or delete another org's, and cannot insert for another org", async () => {
+    const count = async (org: string) =>
+      Number(
+        (
+          await asTenant<{ n: number }>(
+            org,
+            "SELECT count(*)::int AS n FROM tenant_clearinghouse_config",
+          )
+        )[0]?.n,
+      );
+    expect(await count(ORG_A)).toBe(1);
+    expect(await count(ORG_D)).toBe(0);
+    expect(
+      await asTenant(ORG_D, "UPDATE tenant_clearinghouse_config SET vendor='outside' RETURNING id"),
+    ).toHaveLength(0);
+    const client = new Client({ connectionString: appRoleUrl(DB_URL as string) });
+    await client.connect();
+    const inTx = async (org: string, sql: string, params: unknown[] = []) => {
+      await client.query("BEGIN");
+      try {
+        await client.query("SELECT set_config('app.org_id', $1, true)", [org]);
+        await client.query(sql, params);
+      } finally {
+        await client.query("ROLLBACK");
+      }
+    };
+    try {
+      await expect(
+        inTx(
+          ORG_D,
+          "INSERT INTO tenant_clearinghouse_config (organization_id, vendor, status, set_by_membership_id) VALUES ($1,'outside','active',$2)",
+          [ORG_A, MEMBERSHIP],
+        ),
+      ).rejects.toThrow(/row-level security/);
+      await expect(inTx(ORG_A, "DELETE FROM tenant_clearinghouse_config")).rejects.toThrow(
+        /permission denied/,
+      );
+      await expect(
+        inTx(ORG_A, "UPDATE tenant_clearinghouse_config SET organization_id=organization_id"),
+      ).rejects.toThrow(/permission denied/);
+    } finally {
+      await client.end();
+    }
+  });
+
+  it("the table's own CHECKs refuse an impossible row (an active transmitting config with no secret)", async () => {
+    await expect(
+      q(
+        "INSERT INTO tenant_clearinghouse_config (organization_id, vendor, mode, status, set_by_membership_id) VALUES ($1,'stedi','test','active',$2)",
+        [ORG_D, MEMBERSHIP],
+      ),
+    ).rejects.toThrow(/violates check constraint/);
+  });
+
+  it("resolves each org's OWN transport from the real table: its vendor and mode, nothing for outside, draft or no row", async () => {
+    // a credential rotation (same vendor and mode, a new key) with the version last read: verify and activate bumped it to 3
+    const rotation = await tenantCall(
+      "PUT",
+      ORG_A,
+      "",
+      { vendor: "claimmd", mode: "test", secret: KEY_A },
+      { "if-match": '"3"' },
+    );
+    expect(rotation.statusCode, rotation.body).toBe(200);
+    await q(
+      `INSERT INTO tenant_clearinghouse_config (organization_id, vendor, mode, status, secret_cipher, secret_dek_version,
+         verification_kind, verified_at, verified_by_membership_id, activated_at, activated_by_membership_id, set_by_membership_id)
+       VALUES ($1,'stedi','production','active',$2,1,'attested',now(),$3,now(),$3,$3)`,
+      [
+        ORG_G,
+        (await cipher.encrypt(ORG_G, KEY_G, { vendor: "stedi", mode: "production" })).cipher,
+        MEMBERSHIP,
+      ],
+    );
+    const platformBinding = {
+      vendor: "in_memory" as const,
+      transport: createInMemoryHarness().transport,
+    };
+    const runtime = createTenantClearinghouseRuntime({
+      db: tenantPool.db,
+      cipher,
+      attempts: new InMemoryAttemptStore(),
+      platformBinding,
+      fallbackOrgIds: new Set([ORG_E]),
+    });
+    const forOrg = runtime.binding.forOrg;
+    expect((await forOrg?.(ORG_A))?.transport.vendor).toBe("claimmd");
+    expect((await forOrg?.(ORG_G))?.transport.vendor).toBe("stedi");
+    expect((await forOrg?.(ORG_C))?.vendor).toBeNull();
+    expect((await forOrg?.(ORG_D))?.vendor).toBeNull();
+    expect(await forOrg?.(ORG_E)).toBe(platformBinding);
+    expect(await runtime.usageFor(ORG_A)).toBe("test");
+    expect(await runtime.usageFor(ORG_G)).toBe("production");
+    expect(await runtime.usageFor(ORG_C)).toBeNull();
+    expect((await forOrg?.(ORG_A))?.transport).not.toBe((await forOrg?.(ORG_G))?.transport);
+  });
+
+  it("locks vendor and mode once a production submission exists, but still allows a credential rotation", async () => {
+    await q(
+      `INSERT INTO clearinghouse_submission_attempt (organization_id, provider_entity_id, scope, usage, idempotency_key, control_number, kind, identity, status, reserved_at)
+       VALUES ($1, gen_random_uuid(), 'scope-a', 'production', 'k-1', '000000001', 'claim', repeat('a',64), 'reserved', now())`,
+      [ORG_A],
+    );
+    const [current] = await q<{ version: number }>(
+      "SELECT version FROM tenant_clearinghouse_config WHERE organization_id=$1",
+      [ORG_A],
+    );
+    const version = String(current?.version);
+    const swap = await tenantCall(
+      "PUT",
+      ORG_A,
+      "",
+      { vendor: "stedi", mode: "production", secret: KEY_G },
+      { "if-match": version },
+    );
+    expect(swap.statusCode).toBe(409);
+    expect(errorCode(swap)).toBe("CLEARINGHOUSE_VENDOR_LOCKED");
+    const rotate = await tenantCall(
+      "PUT",
+      ORG_A,
+      "",
+      { vendor: "claimmd", mode: "test", secret: KEY_A2 },
+      { "if-match": version },
+    );
+    expect(rotate.statusCode, rotate.body).toBe(200);
+    expect(rotate.json()).toMatchObject({ status: "active", lastTest: null });
+  });
+
+  it("a tenant admin without the key is refused (403)", async () => {
+    expect((await tenantCall("GET", ORG_D, "")).statusCode).toBe(403);
+    expect((await tenantCall("PUT", ORG_D, "", { vendor: "outside" })).statusCode).toBe(403);
+  });
+
+  it("a platform operator sets a tenant's clearinghouse while it is onboarding: audited, sealed, and step 7 settles after activation", async () => {
+    const put = await platformCall("PUT", "ch-b", "", {
+      vendor: "claimmd",
+      mode: "test",
+      secret: KEY_B,
+      reason: REASON,
+    });
+    expect(put.statusCode, put.body).toBe(201);
+    expect(put.body).not.toContain(KEY_B);
+    expect((await step7(ORG_B))[0]?.status).toBe("pending"); // chosen, but only a draft
+    const verify = await platformCall("POST", "ch-b", "/verify", { reason: REASON });
+    expect(verify.json()).toMatchObject({ test: { outcome: "ok" } });
+    expect((await step7(ORG_B))[0]?.status).toBe("pending"); // verified is not active
+    const activate = await platformCall("POST", "ch-b", "/activate", { reason: REASON });
+    expect(activate.statusCode, activate.body).toBe(200);
+    expect((await step7(ORG_B))[0]?.status).toBe("done"); // the real advance pass settled it
+
+    const [audit] = await q<{
+      actor_user_id: string;
+      actor_role: string;
+      outcome: string;
+      context: Record<string, unknown>;
+    }>(
+      "SELECT actor_user_id, actor_role, outcome, context FROM audit_event WHERE organization_id=$1 AND event_type='m34.tenant_onboarding.clearinghouse_set'",
+      [ORG_B],
+    );
+    expect(audit).toMatchObject({
+      actor_user_id: OPERATOR,
+      actor_role: "platform_ops",
+      outcome: "success",
+    });
+    expect(audit?.context).toMatchObject({
+      reason: REASON,
+      targetOrganizationId: ORG_B,
+      changedFields: ["vendor", "mode", "secret"],
+    });
+    const verifyAudit = await q<{ context: Record<string, unknown> }>(
+      "SELECT context FROM audit_event WHERE organization_id=$1 AND event_type='m34.tenant_onboarding.clearinghouse_verified'",
+      [ORG_B],
+    );
+    expect(verifyAudit[0]?.context).toMatchObject({
+      verificationKind: "connection_test",
+      testOutcome: "ok",
+    });
+    expect(await claimsBillingVerdict(ORG_B, {})).toEqual({ allow: true });
+  });
+
+  it("choosing `outside` through the platform route settles step 7 at once", async () => {
+    const res = await platformCall("PUT", "ch-f", "", { vendor: "outside", reason: REASON });
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json()).toMatchObject({ vendor: "outside", status: "active", hasSecret: false });
+    expect((await step7(ORG_F))[0]?.status).toBe("done");
+    expect(await claimsBillingVerdict(ORG_F, {})).toEqual({
+      allow: false,
+      reason: "clearinghouse_outside",
+    });
+  });
+
+  it("refuses the platform write once the tenant is active (409), with nothing written and the refusal audited", async () => {
+    const before = await q(
+      "SELECT version FROM tenant_clearinghouse_config WHERE organization_id=$1",
+      [ORG_A],
+    );
+    const res = await platformCall(
+      "PUT",
+      "ch-a",
+      "",
+      { vendor: "outside", reason: REASON },
+      { "if-match": '"1"' },
+    );
+    expect(res.statusCode).toBe(409);
+    expect(errorCode(res)).toBe("TENANT_NOT_ONBOARDING");
+    expect(
+      await q("SELECT version FROM tenant_clearinghouse_config WHERE organization_id=$1", [ORG_A]),
+    ).toEqual(before);
+    const refused = await q(
+      "SELECT 1 FROM audit_event WHERE organization_id=$1 AND event_type='m34.tenant_onboarding.write_refused'",
+      [ORG_A],
+    );
+    expect(refused.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("a failing connection test leaves the config at draft and records the outcome", async () => {
+    const bad = await platformCall(
+      "PUT",
+      "ch-f",
+      "",
+      { vendor: "claimmd", mode: "test", secret: KEY_BAD, reason: REASON },
+      { "if-match": '"1"' },
+    );
+    expect(bad.statusCode, bad.body).toBe(200);
+    const verify = await platformCall("POST", "ch-f", "/verify", { reason: REASON });
+    expect(verify.json()).toMatchObject({
+      config: { status: "draft", lastTest: { outcome: "credential_rejected" } },
+      test: { outcome: "credential_rejected" },
+    });
+  });
+
+  it("no plaintext credential is in the table, any response or any audit row; the trigger scrubs the sealed value", async () => {
+    const dump = JSON.stringify(await q("SELECT t::text AS t FROM tenant_clearinghouse_config t"));
+    const audits = JSON.stringify(
+      await q("SELECT before, after, context FROM audit_event WHERE organization_id = ANY($1)", [
+        [ORG_A, ORG_B, ORG_F, ORG_G],
+      ]),
+    );
+    for (const secret of [KEY_A, KEY_A2, KEY_B, KEY_G, KEY_BAD]) {
+      expect(dump).not.toContain(secret);
+      expect(audits).not.toContain(secret);
+    }
+    const triggerRows = await q<{ after: Record<string, unknown> }>(
+      "SELECT after FROM audit_event WHERE organization_id=$1 AND resource_kind='tenant_clearinghouse_config' AND event_type LIKE 'tenant_clearinghouse_config.%'",
+      [ORG_A],
+    );
+    expect(triggerRows.length).toBeGreaterThan(0);
+    for (const row of triggerRows) expect(row.after.secret_cipher).toBe("<changed>");
+  });
+});
