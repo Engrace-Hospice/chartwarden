@@ -961,7 +961,8 @@ export interface BereavedPortalScopeProvider {
   ): Promise<readonly BereavedPortalScope[]>;
   /** M31's `bereaved_portal_window_open` predicate: does this account hold a contact on a plan for
    *  `patientId` that is inside its D4 window at `asOf`? The contact's own status does not matter here
-   *  (an opted-out contact still reaches the rescind route); the route decides what the contact may do. */
+   *  (an opted-out contact still reads the program and gets the idempotent opt-out answer); each route
+   *  decides what the contact may do from `scopeForPortalAccount`. */
   isWindowOpen(args: {
     readonly organizationId: string;
     readonly portalAccountId: BereavedPortalAccountId;
