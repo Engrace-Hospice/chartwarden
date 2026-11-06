@@ -350,6 +350,12 @@ jobs:
               name: "M12 DoseSpot crons",
               scripts: "test:m12:crons-transmit:live test:m12:crons-housekeeping:live",
             }
+          # Tenant onboarding slice 4 (ADR-0110) - a tenant's DoseSpot clinic registration on the real roles: RLS + grants + CHECKs, the
+          # clinic key sealed under the REAL tenant key ring (never in the clear, bound to org / environment / clinic), the
+          # draft -> registered -> verified -> active lifecycle through the tenant lane and the platform-operator lane (onboarding-only,
+          # deactivate excepted, audited with a reason), the layered resolver on the real adapter (a row is never served from the env map),
+          # the sign gate (live registration AND a linked prescriber), a prescriber's vendor enrolment, and wizard step 10 settling.
+          - { name: "M12 tenant DoseSpot", scripts: "test:m12:tenant-dosespot:live" }
           - {
               name: "M13 eMAR",
               scripts: "test:m13:read:live test:m13:write:live test:m13:rn-case-manager:live",
