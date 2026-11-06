@@ -1,9 +1,9 @@
-import { EXTERNAL_NOTICE_FILING_LIST_CAP } from "@chartwarden/types";
 // apps/admin/src/modules/34-saas-platform — the notices a tenant recorded as "filed outside ChartWarden" (NOEs and NOTRs), and the
 // operator's way to take a mistaken or false record back. The tenant cannot undo such a record and a cancel refuses to hide a notice that
 // is on file with Medicare, so without this a wrong record would be permanent. The withdrawal is PINNED to the record the operator read
 // (If-Match = its recordedAt): a record the tenant re-recorded meanwhile is shown anew and needs a second, deliberate confirm; a record
 // that is already gone closes the prompt. Ids, a state and dates only: nothing here names a patient.
+import { EXTERNAL_NOTICE_FILING_LIST_CAP } from "@chartwarden/types";
 import {
   Button,
   Glyph,
