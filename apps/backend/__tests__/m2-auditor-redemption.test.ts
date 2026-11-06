@@ -1,6 +1,3 @@
-// M2/M3 auditor link redemption — the pure / port-level units (the database behaviour is proven in
-// m2-auditor-redemption.live.test.ts).
-import { liveOrganizationStage } from "./_live-organization-stage";
 import { createHmac } from "node:crypto";
 import {
   AuditorSessionIssueError,
@@ -21,6 +18,9 @@ import {
   hashAuditorToken,
 } from "../src/modules/02-identity/auditor-magic-link-store";
 import { auditorRefusalError } from "../src/modules/02-identity/auditor-redemption";
+// M2/M3 auditor link redemption — the pure / port-level units (the database behaviour is proven in
+// m2-auditor-redemption.live.test.ts).
+import { liveOrganizationStage } from "./_live-organization-stage";
 
 const T0 = new Date("2026-10-07T12:00:00Z");
 const at = (minutes: number) => new Date(T0.getTime() + minutes * 60_000);
@@ -249,7 +249,7 @@ describe("authenticate hook — auditor sessions are read-only and stage-gated",
       attributes: {} as Record<string, unknown>,
     };
     const hook = createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+      organizationStage: liveOrganizationStage,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
       getResolver: () =>
         ({

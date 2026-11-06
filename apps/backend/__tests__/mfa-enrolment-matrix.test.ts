@@ -1,9 +1,3 @@
-// apps/backend/__tests__/mfa-enrolment-matrix.test.ts — GAP-003 / GAP-005: the server-side MFA matrix (M2 §2.3).
-//
-// Unit-level proof of the three enforcement points over stub ports (the live lane, m2-auth-hardening.live,
-// proves the same against real Better Auth + Postgres): the pure matrix, the gate, `select-organization`, the
-// authenticate-stage hold, and the `two-factor/disable` guard.
-import { liveOrganizationStage } from "./_live-organization-stage";
 import {
   evaluateMfa,
   mfaRequirementFor,
@@ -20,6 +14,12 @@ import Fastify, { type FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";
 import { createMfaEnrolmentGate } from "../src/modules/02-identity/mfa-enrolment-gate";
+// apps/backend/__tests__/mfa-enrolment-matrix.test.ts — GAP-003 / GAP-005: the server-side MFA matrix (M2 §2.3).
+//
+// Unit-level proof of the three enforcement points over stub ports (the live lane, m2-auth-hardening.live,
+// proves the same against real Better Auth + Postgres): the pure matrix, the gate, `select-organization`, the
+// authenticate-stage hold, and the `two-factor/disable` guard.
+import { liveOrganizationStage } from "./_live-organization-stage";
 
 const NONE = { totp: false, passkey: false };
 
@@ -200,7 +200,7 @@ const requestAt = (url: string) =>
 describe("the authenticate-stage hold (GAP-003)", () => {
   const hookFor = (actor: ResolvedActor, satisfied: boolean) =>
     createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+      organizationStage: liveOrganizationStage,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
       getResolver: () => resolver(actor),
       mfaEnrolment: { check: async () => ({ satisfied, requirement: "second_factor" }) },

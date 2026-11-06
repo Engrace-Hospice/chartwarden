@@ -45,7 +45,10 @@ function sequenceClient(...postures: unknown[]) {
       status: 200,
       headers: { "content-type": "application/json" },
     });
-  return { client: createApiClient({ baseUrl: "http://localhost", fetch: fetchStub }), calls: () => i };
+  return {
+    client: createApiClient({ baseUrl: "http://localhost", fetch: fetchStub }),
+    calls: () => i,
+  };
 }
 
 const submit = () => screen.getByRole("button", { name: "Submit claim" }) as HTMLButtonElement;

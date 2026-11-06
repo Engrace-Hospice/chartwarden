@@ -1,26 +1,3 @@
-/**
- * M36 WP 5.5 (ADR-0083, PROPOSED) - session and device controls, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role and a LIVE Valkey.
- *
- * The production composition, not a shim: REAL Better Auth sessions behind the REAL Fastify bridge and authenticate hook, the REAL DB permission
- * resolver and session-context store (so the REAL step-up predicate reads the session row), the REAL device routes, the REAL endpoint
- * registration route, and the REAL Socket.IO realtime server on the same HTTP server with the REAL Valkey emitter closing a revoked
- * session's room. Nothing about authentication is injected.
- *
- *   1. LIST       the owner sees only their own sessions, the current one marked, a coarse label, push flag; no token / IP / raw user agent.
- *   2. REVOKE     the revoked session's next REST call is 401; its live socket is closed (the realtime recheck is set to 10 minutes, so the
- *                 close is the revoke's doing); the endpoint it registered is expired while the other session's stays verified; the other
- *                 session and its socket keep working; one audit row names actor and target and carries no secret.
- *   3. IDOR       another user's revoke is the SAME 404 as an unknown id and changes nothing; a repeat revoke is that 404 too.
- *   4. ADMIN      messaging.sessions.manage lists/revokes another user's session in the organisation (audited, endpoint expired under the
- *                 target's user RLS scope); refused 403 without the key; a stale step-up is refused; another tenant's officer gets an empty list
- *                 and a 404 and nothing changes.
- *   5. RE-REGISTER the same push endpoint re-registered from a new session is verified again and linked to it (no unique-index failure).
- *   6. CURRENT    revoking the current session says so, and the next call is 401.
- *
- *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... CHARTWARDEN_TEST_REDIS_URL=redis://... bun run test:m36:session-devices:live
- * Use a PRIVATE pgvector/pgvector:pg18 container and a PRIVATE valkey/valkey:8: the suite resets the public schema and the chartwarden_* roles.
- */
-import { liveOrganizationStage } from "./_live-organization-stage";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import type { AddressInfo } from "node:net";
@@ -56,6 +33,29 @@ import {
 import { wireModuleSeams } from "../src/index";
 import { mountMessagingRoutes } from "../src/modules/36-messaging/index";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
+/**
+ * M36 WP 5.5 (ADR-0083, PROPOSED) - session and device controls, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role and a LIVE Valkey.
+ *
+ * The production composition, not a shim: REAL Better Auth sessions behind the REAL Fastify bridge and authenticate hook, the REAL DB permission
+ * resolver and session-context store (so the REAL step-up predicate reads the session row), the REAL device routes, the REAL endpoint
+ * registration route, and the REAL Socket.IO realtime server on the same HTTP server with the REAL Valkey emitter closing a revoked
+ * session's room. Nothing about authentication is injected.
+ *
+ *   1. LIST       the owner sees only their own sessions, the current one marked, a coarse label, push flag; no token / IP / raw user agent.
+ *   2. REVOKE     the revoked session's next REST call is 401; its live socket is closed (the realtime recheck is set to 10 minutes, so the
+ *                 close is the revoke's doing); the endpoint it registered is expired while the other session's stays verified; the other
+ *                 session and its socket keep working; one audit row names actor and target and carries no secret.
+ *   3. IDOR       another user's revoke is the SAME 404 as an unknown id and changes nothing; a repeat revoke is that 404 too.
+ *   4. ADMIN      messaging.sessions.manage lists/revokes another user's session in the organisation (audited, endpoint expired under the
+ *                 target's user RLS scope); refused 403 without the key; a stale step-up is refused; another tenant's officer gets an empty list
+ *                 and a 404 and nothing changes.
+ *   5. RE-REGISTER the same push endpoint re-registered from a new session is verified again and linked to it (no unique-index failure).
+ *   6. CURRENT    revoking the current session says so, and the next call is 401.
+ *
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... CHARTWARDEN_TEST_REDIS_URL=redis://... bun run test:m36:session-devices:live
+ * Use a PRIVATE pgvector/pgvector:pg18 container and a PRIVATE valkey/valkey:8: the suite resets the public schema and the chartwarden_* roles.
+ */
+import { liveOrganizationStage } from "./_live-organization-stage";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
@@ -271,7 +271,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         db: handle.db as never,
         security: { rateLimitEnabled: false },
         authenticate: createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+          organizationStage: liveOrganizationStage,
           getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
           getResolver: () => resolver,
         }),

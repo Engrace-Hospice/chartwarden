@@ -1,26 +1,3 @@
-/**
- * M2 §7.7 auditor ENROLMENT (BAA terms + second factor) — LIVE Postgres as the real NOBYPASSRLS `chartwarden_app`
- * role, through a real Better Auth instance, the real authenticate hook, the real RBAC resolver and the real
- * audit writer. Proves, end to end:
- *   1. redeeming a link yields ONLY an enrolment session: it can call the enrolment routes, cannot read the
- *      engagement, cannot write, holds no role and no step-up;
- *   2. the BAA acceptance and a first-time TOTP enrolment (either order) upgrade it to the read-only active
- *      session: acceptance evidence (who/when/ip/terms version+hash/engagement), recovery codes shown once and
- *      stored HASHED, the TOTP secret sealed at rest, the role granted only now, step-up stamped;
- *   3. stale terms are refused; a wrong code never activates; five wrong codes LOCK the factor (429 +
- *      Retry-After, a correct code refused while locked), and the lock expires;
- *   4. a SECOND redemption (another engagement) cannot re-enrol — it must PRESENT the factor, a TOTP code
- *      cannot be replayed within its step, and an expired lock lets the right code through;
- *   5. a recovery code works exactly once and does not stamp a TOTP step-up;
- *   6. org isolation: the acceptance rows are invisible to another tenant, an org-B link for the same auditor
- *      starts un-accepted, and the table is append-only for the app role;
- *   7. every step lands in the M4 audit trail, with no code or secret in it;
- *   8. a cancelled engagement refuses the enrolment steps (fail closed, audited); the attempt budget answers
- *      429; an ACTIVE session cannot re-run the enrolment mutations.
- *
- *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m2:auditor-enrolment:live
- */
-import { liveOrganizationStage } from "./_live-organization-stage";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -49,6 +26,29 @@ import { registerIdentitySeams } from "../src/modules/02-identity/seams";
 import { createDbAuditorAccessGrantor } from "../src/modules/03-authorization/index";
 import { enrolFirstTime, enrolmentHttp, totpCode } from "./_auditor-enrol-helper";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
+/**
+ * M2 §7.7 auditor ENROLMENT (BAA terms + second factor) — LIVE Postgres as the real NOBYPASSRLS `chartwarden_app`
+ * role, through a real Better Auth instance, the real authenticate hook, the real RBAC resolver and the real
+ * audit writer. Proves, end to end:
+ *   1. redeeming a link yields ONLY an enrolment session: it can call the enrolment routes, cannot read the
+ *      engagement, cannot write, holds no role and no step-up;
+ *   2. the BAA acceptance and a first-time TOTP enrolment (either order) upgrade it to the read-only active
+ *      session: acceptance evidence (who/when/ip/terms version+hash/engagement), recovery codes shown once and
+ *      stored HASHED, the TOTP secret sealed at rest, the role granted only now, step-up stamped;
+ *   3. stale terms are refused; a wrong code never activates; five wrong codes LOCK the factor (429 +
+ *      Retry-After, a correct code refused while locked), and the lock expires;
+ *   4. a SECOND redemption (another engagement) cannot re-enrol — it must PRESENT the factor, a TOTP code
+ *      cannot be replayed within its step, and an expired lock lets the right code through;
+ *   5. a recovery code works exactly once and does not stamp a TOTP step-up;
+ *   6. org isolation: the acceptance rows are invisible to another tenant, an org-B link for the same auditor
+ *      starts un-accepted, and the table is append-only for the app role;
+ *   7. every step lands in the M4 audit trail, with no code or secret in it;
+ *   8. a cancelled engagement refuses the enrolment steps (fail closed, audited); the attempt budget answers
+ *      429; an ACTIVE session cannot re-run the enrolment mutations.
+ *
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m2:auditor-enrolment:live
+ */
+import { liveOrganizationStage } from "./_live-organization-stage";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -172,7 +172,7 @@ describe.skipIf(!DB_URL)("M2 §7.7 auditor enrolment — LIVE Postgres", () => {
     registerAbacRegistry();
 
     const authenticate = createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+      organizationStage: liveOrganizationStage,
       getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
       getResolver: () => getSeam("SessionContextResolver"),
       sessionTimeout: createDbSessionTimeoutEnforcer(handle.db),

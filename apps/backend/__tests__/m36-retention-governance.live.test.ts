@@ -1,29 +1,3 @@
-/**
- * M36 WP 5.6 S4 (ADR-0086, PROPOSED) - retention and legal-hold governance routes, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
- *
- * The production composition: REAL Better Auth sessions behind the REAL authenticate hook and DB permission resolver, the REAL governance
- * routes (permission `messaging.retention.manage`, fresh step-up), M4's REAL apply/release seam (same row, same `data.legal_hold_*` audit event,
- * same outbox payload), the REAL overlay materialiser and the REAL weekly scan for the overview.
- *
- *   1. ACCESS    401 anonymous; 403 without the key (every route); 403 STEP_UP_REQUIRED without a fresh step-up (apply and release).
- *   2. VALIDATION 422 short reason / empty scope / org-wide with ids; another tenant's hold and an unknown id are the same 404.
- *   3. APPLY     201, overlay materialised in the same transaction, audited with the reason (data.legal_hold_applied), read audit lands.
- *   4. BACKSTOP  editing a held message is a typed 409 MESSAGE_UNDER_LEGAL_HOLD (not a 500) and the body is untouched; allowed after release.
- *   5. PREVIEW   eligible_on_release = past the window AND held by no other active hold.
- *   6. RELEASE   stale confirmed count => 409 RELEASE_PREVIEW_STALE (nothing changes); right count => released + audited with the reason;
- *                a second release => 409 ALREADY_RELEASED.
- *   7. OVERVIEW  periods read-only, next scan is Sunday 02:00 UTC, the last scan's counts and pending certificate; destruction_mode off
- *                (the tenant ops flag is absent), then dry_run with the flag on, then live with the deployment key too.
- *   8. NO PII    every response carries only the contract's keys: no body, no email, no patient. The only person name is the placing staff
- *                member's display name (`placed_by_name`, through the identity directory port: this tenant's members only).
- *   9. REDACTION the routes: 401 / 403 without the key, 403 STEP_UP_REQUIRED on approve, the requester cannot approve (403), a second person
- *                can, the message is then masked for the author's own read, a HELD message can be redacted (cipher kept), org B is a 404.
- *  10. CHIP      the message list carries `legalHold: true` for the officer only, never for the author.
- *
- *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:retention-governance:live
- * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
- */
-import { liveOrganizationStage } from "./_live-organization-stage";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -72,6 +46,32 @@ import { mountMessagingRoutes } from "../src/modules/36-messaging/index";
 import { countHoldOverlayMessages } from "../src/modules/36-messaging/jobs/retention-hold-sql";
 import { runRetentionScanForOrg } from "../src/modules/36-messaging/jobs/retention-scan";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
+/**
+ * M36 WP 5.6 S4 (ADR-0086, PROPOSED) - retention and legal-hold governance routes, LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
+ *
+ * The production composition: REAL Better Auth sessions behind the REAL authenticate hook and DB permission resolver, the REAL governance
+ * routes (permission `messaging.retention.manage`, fresh step-up), M4's REAL apply/release seam (same row, same `data.legal_hold_*` audit event,
+ * same outbox payload), the REAL overlay materialiser and the REAL weekly scan for the overview.
+ *
+ *   1. ACCESS    401 anonymous; 403 without the key (every route); 403 STEP_UP_REQUIRED without a fresh step-up (apply and release).
+ *   2. VALIDATION 422 short reason / empty scope / org-wide with ids; another tenant's hold and an unknown id are the same 404.
+ *   3. APPLY     201, overlay materialised in the same transaction, audited with the reason (data.legal_hold_applied), read audit lands.
+ *   4. BACKSTOP  editing a held message is a typed 409 MESSAGE_UNDER_LEGAL_HOLD (not a 500) and the body is untouched; allowed after release.
+ *   5. PREVIEW   eligible_on_release = past the window AND held by no other active hold.
+ *   6. RELEASE   stale confirmed count => 409 RELEASE_PREVIEW_STALE (nothing changes); right count => released + audited with the reason;
+ *                a second release => 409 ALREADY_RELEASED.
+ *   7. OVERVIEW  periods read-only, next scan is Sunday 02:00 UTC, the last scan's counts and pending certificate; destruction_mode off
+ *                (the tenant ops flag is absent), then dry_run with the flag on, then live with the deployment key too.
+ *   8. NO PII    every response carries only the contract's keys: no body, no email, no patient. The only person name is the placing staff
+ *                member's display name (`placed_by_name`, through the identity directory port: this tenant's members only).
+ *   9. REDACTION the routes: 401 / 403 without the key, 403 STEP_UP_REQUIRED on approve, the requester cannot approve (403), a second person
+ *                can, the message is then masked for the author's own read, a HELD message can be redacted (cipher kept), org B is a 404.
+ *  10. CHIP      the message list carries `legalHold: true` for the officer only, never for the author.
+ *
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:retention-governance:live
+ * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
+ */
+import { liveOrganizationStage } from "./_live-organization-stage";
 import { catalogOutbox } from "./_m36-handoff-live-kit";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -343,7 +343,7 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
       db: handle.db as never,
       security: { rateLimitEnabled: false },
       authenticate: createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+        organizationStage: liveOrganizationStage,
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => resolver,
       }),

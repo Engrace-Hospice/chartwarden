@@ -1,27 +1,3 @@
-/**
- * M31 portal invitee SIGN-IN, end to end over HTTP, LIVE Postgres, as the RLS-enforced `chartwarden_app` role.
- *
- * The production composition, not a header shim: REAL Better Auth (a REAL emailed magic link is requested and followed,
- * and a REAL password + TOTP-less sign-in is used for the "unverified email" case), the REAL `createSessionAuthenticate`
- * over the REAL `session` row, the REAL M2 `m31_list_own_portal_accounts` SECURITY DEFINER read, the REAL atomic session
- * bind, the REAL effective-permission resolver wrapped with the session-class permission set, the REAL M31 ABAC
- * predicates over the REAL Drizzle store, and the REAL catalog-validating outbox publisher for the select-patient event.
- *
- * What it proves (each assertion is on the database row or the HTTP answer, never on a mock):
- *   - a pre-org session becomes a portal session ONLY through the user's OWN, eligible account; the `session` row carries
- *     the org, the class and `scope.portalAccountId` together, and the next request is stamped from that row;
- *   - invited / suspended / unverified / inactive-tenant / no-live-grant accounts are refused with the typed reason and
- *     the `session` row is byte-for-byte unchanged (and the refusal is audited where the tenant is known);
- *   - a session bound as something else (a staff session) is never re-scoped; a replay of the identical bind is a 200;
- *   - two accounts => 409 until one is named; naming ANOTHER user's account id answers as "no account";
- *   - a portal session holds portal keys only: a user who is also a clinician cannot reach clinical routes from it;
- *   - failed binds trip the §5.3.1 budget (429 + Retry-After);
- *   - the definer function reveals only the passed user's accounts, and a bare chartwarden_app read of portal_account with
- *     no tenant bound still returns nothing (RLS is intact).
- *
- *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m31:portal-signin:live
- */
-import { liveOrganizationStage } from "./_live-organization-stage";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -63,6 +39,30 @@ import { registerPortalSessionRoutes } from "../src/modules/31-portal/routes/ses
 import { registerPortalSignInRoutes } from "../src/modules/31-portal/routes/sign-in.routes";
 import { buildDrizzlePortalStore } from "../src/modules/31-portal/routes/store";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
+/**
+ * M31 portal invitee SIGN-IN, end to end over HTTP, LIVE Postgres, as the RLS-enforced `chartwarden_app` role.
+ *
+ * The production composition, not a header shim: REAL Better Auth (a REAL emailed magic link is requested and followed,
+ * and a REAL password + TOTP-less sign-in is used for the "unverified email" case), the REAL `createSessionAuthenticate`
+ * over the REAL `session` row, the REAL M2 `m31_list_own_portal_accounts` SECURITY DEFINER read, the REAL atomic session
+ * bind, the REAL effective-permission resolver wrapped with the session-class permission set, the REAL M31 ABAC
+ * predicates over the REAL Drizzle store, and the REAL catalog-validating outbox publisher for the select-patient event.
+ *
+ * What it proves (each assertion is on the database row or the HTTP answer, never on a mock):
+ *   - a pre-org session becomes a portal session ONLY through the user's OWN, eligible account; the `session` row carries
+ *     the org, the class and `scope.portalAccountId` together, and the next request is stamped from that row;
+ *   - invited / suspended / unverified / inactive-tenant / no-live-grant accounts are refused with the typed reason and
+ *     the `session` row is byte-for-byte unchanged (and the refusal is audited where the tenant is known);
+ *   - a session bound as something else (a staff session) is never re-scoped; a replay of the identical bind is a 200;
+ *   - two accounts => 409 until one is named; naming ANOTHER user's account id answers as "no account";
+ *   - a portal session holds portal keys only: a user who is also a clinician cannot reach clinical routes from it;
+ *   - failed binds trip the §5.3.1 budget (429 + Retry-After);
+ *   - the definer function reveals only the passed user's accounts, and a bare chartwarden_app read of portal_account with
+ *     no tenant bound still returns nothing (RLS is intact).
+ *
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m31:portal-signin:live
+ */
+import { liveOrganizationStage } from "./_live-organization-stage";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -306,7 +306,7 @@ describe.skipIf(!DB_URL)("M31 portal invitee sign-in, LIVE Postgres", () => {
       db: handle.db as never,
       security: { rateLimitEnabled: false },
       authenticate: createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+        organizationStage: liveOrganizationStage,
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => resolver,
       }),
