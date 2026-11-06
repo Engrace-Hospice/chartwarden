@@ -197,42 +197,9 @@ controls:
       - file: apps/backend/src/modules/41-billing-commercial/services/enrollment-report-service.ts
       - file: apps/backend/src/modules/25-remittance/outbox-consumers/m23-appeal-reported.ts
 
-  - id: CW-AC-13
-    title: Tenant go-live is two-party — the tenant's compliance officer attests readiness (go_live.attest, a fresh step-up, a human (non-AI) actor), then a different human user, a platform operator, approves (go_live.approve_platform, a fresh step-up, a human actor, a written reason); the two sides are compared by user id as well as membership id and enforced by a database CHECK (409 GO_LIVE_SAME_PERSON); approval re-checks the activation guards and that the attester is still active, still holds compliance_officer and is still the assigned officer (409 GO_LIVE_ATTESTATION_STALE); a pending attestation expires after 14 days and is revoked when the officer is reassigned; neither the advance sweep nor the status route can activate an onboarding tenant (409 GO_LIVE_TWO_PARTY_REQUIRED); the tenant role can only insert a pending attestation, for an attester who is a member of its own organization, and never approve it; its only write on tenant_account is a column-level UPDATE of its own compliance officer, who must be an active member holding the compliance_officer role; a platform officer assignment requires a reason and is audited with the operator; while the tenant is onboarding it also binds the compliance_officer role to the chosen active member, on the tenant pool under the tenant's own RLS scope, audited as m3.role.assigned with operator, organization and reason (the tenant's org_admin still cannot grant it and the tenant route still requires the role); go-live approval activates the tenant's organization, which stays `created` until then
-    hipaa: ["164.308(a)(3)(ii)(A)", "164.308(a)(4)(ii)(B)", "164.312(b)"]
-    soc2: ["CC6.1", "CC6.3", "CC8.1"]
-    status: implemented
-    evidence:
-      - script: test:m34:onboarding-wizard:live
-      - ci: "M34 onboarding wizard v2"
-      - file: packages/db/migrations/1328_m34_tenant_go_live_attestation.sql
-      - file: apps/backend/src/modules/34-saas-tenant-platform/onboarding/go-live.ts
-      - file: apps/backend/src/bootstrap/bind-compliance-officer-role.ts
-
-  - id: CW-AC-14
-    title: The platform BAA register is written only by a platform operator holding platform_tenant_baa.write_platform with a fresh step-up and a human (non-AI) actor; the read key no longer permits writes; the platform carrier's UPDATE on the register is column-level (status, dates, breach contacts, document link) so it can never rewrite tenant, organization, version or the tenant officer's attestation, and the write names the operator as audit actor
-    hipaa: ["164.308(b)(1)", "164.314(a)(1)"]
-    soc2: ["CC6.1", "CC9.2"]
-    status: implemented
-    evidence:
-      - script: test:m34:onboarding-wizard:live
-      - ci: "Unit + integration suite (bun run test)"
-      - file: apps/backend/src/modules/34-saas-tenant-platform/routes/platform/baa-register.ts
-      - file: apps/backend/__tests__/saas-tenant-platform-inject.test.ts
-      - file: packages/db/migrations/1332_m34_platform_baa_register_write_grant.sql
-
-  - id: CW-AC-15
-    title: Tenant onboarding steps are strictly ordered on the server (409 ONBOARDING_STEP_OUT_OF_ORDER on both the platform and tenant routes), and a human settles a step only with required evidence (a note, plus an optional reference) recorded on the task with the attester and time and audited by the row trigger; a tenant actor must hold the step's owner role, and go-live cannot be skipped or attested as an ordinary step
-    hipaa: ["164.308(a)(1)(ii)(D)", "164.312(b)"]
-    soc2: ["CC5.2", "CC8.1"]
-    status: implemented
-    evidence:
-      - script: test:m34:onboarding-wizard:live
-      - ci: "M34 onboarding wizard v2"
-      - file: apps/backend/src/modules/34-saas-tenant-platform/onboarding/wizard-service.ts
-      - file: packages/db/migrations/1327_m34_onboarding_wizard_v2.sql
   - id: CW-AC-12
-    title: Platform operators enter a tenant's onboarding data (provider entity and EIN, locations, MAC and state Medicaid credentials) only inside that tenant's own row-level-security scope (the NOBYPASSRLS app pool under the target organization's app.org_id, never a bypass write), behind a platform-ops role, the tenant_onboarding_data.write_platform key, a fresh step-up, a human (non-AI) actor, an Idempotency-Key and a recorded reason; only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING once active, and the refusal is audited); every successful write leaves an audit row naming the operator, the target organization and the reason in the same transaction; a refused or failed write, and every read, leaves an audit row naming the operator and the target organization in a separate best-effort transaction, and a failure to write that row is logged; the EIN and credential secrets are sealed and never returned
+    title: >-
+      Platform operators enter a tenant's onboarding data (provider entity and EIN, locations, MAC and state Medicaid credentials) only inside that tenant's own row-level-security scope (the NOBYPASSRLS app pool under the target organization's app.org_id, never a bypass write), behind a platform-ops role, the tenant_onboarding_data.write_platform key, a fresh step-up, a human (non-AI) actor, an Idempotency-Key and a recorded reason that is screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI); only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING once active; the status is checked under the shared onboarding advisory lock, so a go-live approval cannot overtake the check); every successful write, and every refusal because the tenant is no longer onboarding, leaves an audit row naming the operator, the target organization and the reason in the same transaction as the check or write, and the same transaction revokes a pending go-live attestation that the write makes stale; a failed write (404, 409, 422, 5xx) rolls back and is audited afterwards as a denied write_failed row in a separate best-effort transaction whose failure is logged; every read is audited in its own transaction after the data is read and is withheld (the request fails) if that audit row cannot be written; the EIN and credential secrets are sealed and never returned; after a write commits the onboarding advance runs best effort (a failure is warned with the error redacted)
     hipaa: ["164.312(a)(1)", "164.312(b)", "164.308(a)(4)"]
     soc2: ["CC6.1", "CC6.3", "CC7.2"]
     status: implemented
@@ -243,9 +210,64 @@ controls:
       - file: apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-routes.ts
       - file: apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-service.ts
       - file: apps/backend/__tests__/m34-onboarding-data-routes.test.ts
+      - file: apps/backend/src/modules/34-saas-tenant-platform/onboarding/go-live-void.ts
+      - file: apps/backend/__tests__/m34-onboarding-reason.test.ts
+
+  - id: CW-AC-13
+    title: >-
+      Tenant go-live is two-party: the tenant's compliance officer attests readiness (go_live.attest, a fresh step-up, a human (non-AI) actor), then a different human user, a platform operator, approves (go_live.approve_platform, a fresh step-up, a human actor, a written reason that the approval and the organization activation both record in the same cleaned form). The two sides are compared by user id as well as membership id (application check 409 GO_LIVE_SAME_PERSON, repeated by a database CHECK on the approved row). Neither the compliance officer nor the attester can be ChartWarden platform staff (the acting operator, a member bound to platform_alert_audience, or a live holder of any platform-owned role the platform-role reader reports, including ai_safety_owner): 422 COMPLIANCE_OFFICER_PLATFORM_STAFF on assignment, on the role bind and on attestation, and an attestation whose attester became staff is stale at approval. Approval takes the exclusive onboarding advisory lock as its first statement (data writers hold it shared, so approval and a writer cannot deadlock) and judges everything under that lock: the activation guards; that the attester is still an active member, still holds compliance_officer, is not platform staff and, when an officer is assigned, is still that officer (409 GO_LIVE_ATTESTATION_STALE, re-checked again inside the activation itself); and that the approver did not record or last change the governing BAA (409 GO_LIVE_APPROVER_WROTE_BAA). A deadlock or serialization failure that still occurs is a retryable 409 CONCURRENT_UPDATE. An attestation more than 14 days old can no longer be approved (409 GO_LIVE_ATTESTATION_EXPIRED) and platform operations must revoke it before the officer attests again. A pending attestation is revoked when the officer is reassigned (in the same transaction on the platform route; in a best-effort platform transaction after commit on the tenant route, the approval re-check being the guard that does not depend on it) and in the same transaction as any write to the onboarding data it attested: provider entities, locations, MAC and Medicaid credentials, the organization's names (the org profile and PATCH /orgs/:id), the platform BAA register and platform NPI verification (reason "onboarding data changed after attestation", recording the revoking user, and the revoking membership only when it is that user's own active membership of the organization). Neither the advance sweep nor either status route (the M34 tenant status route, the M2 organization status route) can open an onboarding tenant (409 GO_LIVE_TWO_PARTY_REQUIRED). The tenant role can insert a pending attestation through a column-level INSERT grant (attester identity and note only, so status, attested_at and the approve and revoke columns always take their defaults; the policy pins the attester to the session user and to an active membership of its own organization) and void its own pending attestation (a column-level UPDATE under a pending-to-revoked policy pinned to the session user, an optional own-organization active membership, and a reason of at least 8 characters), and can never approve it. Its only write on tenant_account is a column-level UPDATE of its own compliance officer, whom the application checks to be an active member holding compliance_officer. A platform officer assignment requires a reason and is audited with the operator; while the tenant is onboarding it also binds the compliance_officer role to the chosen active member on the tenant pool under the tenant's RLS scope, audited as m3.role.assigned with operator, organization and reason, and expires that grant again (m3.role.revoked) if the assignment then fails. The tenant's org_admin still cannot grant the role, and the tenant route still requires it. Go-live approval then activates the tenant's organization in a separate transaction; the organization stays `created` until then, and repeating the approval or the daily sweep finishes it if that step failed (503 ORGANIZATION_ACTIVATION_FAILED)
+    hipaa: ["164.308(a)(3)(ii)(A)", "164.308(a)(4)(ii)(B)", "164.312(b)"]
+    soc2: ["CC6.1", "CC6.3", "CC8.1"]
+    status: implemented
+    evidence:
+      - script: test:m34:onboarding-wizard:live
+      - ci: "M34 onboarding wizard v2"
+      - file: packages/db/migrations/1328_m34_tenant_go_live_attestation.sql
+      - file: apps/backend/src/modules/34-saas-tenant-platform/onboarding/go-live.ts
+      - file: apps/backend/src/bootstrap/bind-compliance-officer-role.ts
+      - script: test:m2:organization-lifecycle:live
+      - ci: "M2 organization-lifecycle — real chartwarden_app role"
+      - file: apps/backend/src/modules/34-saas-tenant-platform/onboarding/wizard-go-live.ts
+      - file: apps/backend/src/modules/34-saas-tenant-platform/onboarding/go-live-void.ts
+      - file: apps/backend/src/modules/02-identity/organization-lifecycle.ts
+      - file: apps/backend/src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker.ts
+      - file: apps/backend/src/modules/02-identity/org-data-write-scope.ts
+      - file: apps/backend/src/modules/23-billing-medicare/routes/npi-verification-service.ts
+      - file: packages/db/migrations/1333_m34_platform_role_holders_by_key.sql
+
+  - id: CW-AC-14
+    title: >-
+      The platform BAA register is written only by a platform operator holding platform_tenant_baa.write_platform with a fresh step-up and a human (non-AI) actor; the read key no longer permits writes. An executed BAA must reference its executed document (422 BAA_DOCUMENT_REQUIRED, on create and update). Each row records the user who filed it and the user who last changed it, and go-live approval refuses an approver who wrote the governing record (409 GO_LIVE_APPROVER_WROTE_BAA). The platform carrier's INSERT and UPDATE on the register are column-level (INSERT: tenant, organization, version, status, dates, breach contacts, document, filer; UPDATE: status, dates, breach contacts, document link, last writer), so it can never rewrite tenant, organization, version, filer, the subcontractor disclosure set or the tenant officer's attestation; the repository inserts through a narrow table object so the column grant is usable. A write names the operator as audit actor and revokes a pending go-live attestation in the same transaction. A duplicate (tenant, addendum version) is a 409.
+    hipaa: ["164.308(b)(1)", "164.314(a)(1)"]
+    soc2: ["CC6.1", "CC9.2"]
+    status: implemented
+    evidence:
+      - script: test:m34:onboarding-wizard:live
+      - ci: "Unit + integration suite (bun run test)"
+      - file: apps/backend/src/modules/34-saas-tenant-platform/routes/platform/baa-register.ts
+      - file: apps/backend/__tests__/saas-tenant-platform-inject.test.ts
+      - file: packages/db/migrations/1332_m34_platform_baa_register_write_grant.sql
+      - file: apps/backend/src/modules/34-saas-tenant-platform/routes/platform/baa-guards.ts
+      - file: packages/saas-tenant-platform/src/repositories/baa-register.ts
+      - file: scripts/db/provision-runtime-roles.ts
+
+  - id: CW-AC-15
+    title: >-
+      Tenant onboarding steps are strictly ordered on the server (409 ONBOARDING_STEP_OUT_OF_ORDER on both the platform and tenant routes), and a human settles a step only with required evidence (a note, plus an optional reference) recorded on the task with the attester and time and audited by the row trigger; a tenant actor must hold the step's owner role; go-live cannot be skipped or attested as an ordinary step. An `either` step may be attested by its owner (the tenant's org_admin or platform ops) even when its automatic fact does not hold: the go-live approver reviews that evidence, and any later change to the onboarding data revokes a pending go-live attestation. Every free text the wizard stores (evidence, reasons, skip rationale, blocker reason, go-live note, the operator's onboarding-data reason) is cleaned and screened for patient identifiers.
+    hipaa: ["164.308(a)(1)(ii)(D)", "164.312(b)"]
+    soc2: ["CC5.2", "CC8.1"]
+    status: implemented
+    evidence:
+      - script: test:m34:onboarding-wizard:live
+      - ci: "M34 onboarding wizard v2"
+      - file: apps/backend/src/modules/34-saas-tenant-platform/onboarding/wizard-service.ts
+      - file: packages/db/migrations/1327_m34_onboarding_wizard_v2.sql
+      - file: apps/backend/src/modules/34-saas-tenant-platform/onboarding/evidence.ts
+      - file: apps/backend/src/modules/34-saas-tenant-platform/onboarding/wizard-steps.ts
 
   - id: CW-AC-16
-    title: A session on an organization that is created but not yet activated (a new tenant during onboarding) reaches only the onboarding, go-live, account and identity allowlist; every clinical, PHI, billing and messaging route and the realtime socket answer 403 ORGANIZATION_ONBOARDING, an unreadable status fails the request, and go-live approval activates the organization
+    title: >-
+      A session on an organization that is not active (created, suspended, closed, or a status that cannot be read, which fails the request) is confined to an exact list of METHOD + route-template pairs, matched on the template Fastify resolved: sign-in, session and step-up plumbing; the M34 tenant wizard (onboarding steps, org profile, compliance officer, go-live attestation, account, BAA attestation); and the members, invitations, role-grant, provider-entity and location routes its staffing steps need. Every other route answers 403 ORGANIZATION_ONBOARDING, including the tenant DSAR and tenant export downloads, support-consent grants, care-team staff, member credentials and direct user provisioning, a request that matched no route, and every clinical, PHI, billing and messaging route. The realtime handshake is refused. The only wildcard admitted is Better Auth's /api/auth/* for a path that decodes cleanly under it. Go-live approval then activates the organization (a repeated approval or the daily sweep finishes it if that step failed), and the M2 organization status route refuses to activate an organization whose tenant is still onboarding (409 GO_LIVE_TWO_PARTY_REQUIRED). The authenticate hook cannot be built without the gate: the stage reader is a required dependency and boot fails if it is missing.
     hipaa: ["164.312(a)(1)", "164.308(a)(4)(ii)(B)"]
     soc2: ["CC6.1", "CC6.3"]
     status: implemented
@@ -254,6 +276,7 @@ controls:
       - ci: "M34 onboarding wizard v2"
       - file: apps/backend/src/bootstrap/onboarding-org-gate.ts
       - file: apps/backend/__tests__/onboarding-org-gate.test.ts
+      - file: apps/backend/__tests__/onboarding-org-gate-routes.test.ts
 
   - id: CW-AU-01
     title: Audit controls — PHI reads and writes leave an integrity-checked trail
