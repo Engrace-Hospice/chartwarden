@@ -2043,9 +2043,41 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     });
     expect(await events("m16.bereavement.plan_closed_early")).toBe(1);
 
+    // ADR-0109 D9 — the cosign is a closure writer: it requests the internal discharge summary against ITS closure, on the same
+    // transaction, and the closure route shows the rendered document to oversight only once M22's back-ref has stamped it.
+    const summaryRequests = (
+      await admin.query(
+        "SELECT aggregate_kind, aggregate_id, payload FROM outbox_event WHERE event_type='m16.bereavement.document_requested' AND payload->>'planId'=$1",
+        [planId],
+      )
+    ).rows as Array<{
+      aggregate_kind: string;
+      aggregate_id: string;
+      payload: Record<string, unknown>;
+    }>;
+    expect(summaryRequests).toHaveLength(1);
+    expect(summaryRequests[0]).toMatchObject({
+      aggregate_kind: "bereavement_plan_closure",
+      aggregate_id: cosigned.json().closureId,
+    });
+    expect(summaryRequests[0]?.payload).toMatchObject({
+      documentKind: "discharge_summary",
+      templateKey: "bereavement_discharge_summary_internal",
+      payloadJsonb: { closureReason: "geographic_relocation", closeKind: "manual" },
+    });
+    expect(cosigned.json().dischargeSummaryDocumentId).toBeNull();
+
     const closure = await call("GET", `/api/v1/bereavement/plans/${planId}/closure`, "don");
     expect(closure.statusCode).toBe(200);
     expect(closure.json().closureId).toBe(cosigned.json().closureId);
+    expect(closure.json().dischargeSummaryDocumentId).toBeNull();
+    const rendered = randomUUID();
+    await admin.query(
+      "UPDATE bereavement_plan_closure SET discharge_summary_document_id=$2 WHERE id=$1",
+      [cosigned.json().closureId, rendered],
+    );
+    const shown = await call("GET", `/api/v1/bereavement/plans/${planId}/closure`, "don");
+    expect(shown.json().dischargeSummaryDocumentId).toBe(rendered);
     // closed is outside the window: the counselor can no longer read or write it
     expect((await call("GET", `/api/v1/bereavement/plans/${planId}`, "counselor")).statusCode).toBe(
       404,

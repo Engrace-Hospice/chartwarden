@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
+import { assertBereavementDischargeSummaryRenderPayload } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -320,6 +321,110 @@ describe.skipIf(!DB_URL)("GAP-048 — M16 §4.9 cron workers, LIVE", () => {
         ).n,
       ).toBe(1);
       expect(await events("m16.bereavement.plan_closed_completed", "planId", old)).toHaveLength(1);
+    });
+  });
+
+  // ADR-0109 D9 — every closure writer requests the internal discharge summary on the closure's own transaction.
+  describe("m16-close-13mo — the internal discharge summary request", () => {
+    it("emits one document_requested naming the CLOSURE, with the typed offered-versus-delivered payload and nothing sealed", async () => {
+      // death 397 days ago: the window (396 days) has elapsed while a closeout letter due at +400d is still ahead of now.
+      const plan = await seedPlan(ORG, "CURRENT_DATE - 397");
+      const pat = await seedContact(ORG, plan);
+      const sam = await seedContact(ORG, plan);
+      // sealed columns the summary must never read: a care goal, a counselor note, an opt-out reason
+      await admin.query(
+        "UPDATE bereaved_contact SET care_goals_cipher='SECRET-CARE-CIPHER' WHERE id=$1",
+        [pat],
+      );
+      await admin.query(
+        "UPDATE bereaved_contact SET status='unreachable', unreachable_at=now() WHERE id=$1",
+        [sam],
+      );
+      const done = await seedOutreach(ORG, plan, pat, 2);
+      await admin.query(
+        `UPDATE bereavement_outreach SET status='completed', completed_at=due_at + interval '1 hour',
+           cadence_mark='condolence_letter' WHERE id=$1`,
+        [done],
+      );
+      const missed = await seedOutreach(ORG, plan, pat, 90);
+      await admin.query(
+        "UPDATE bereavement_outreach SET status='missed', cadence_mark='three_month' WHERE id=$1",
+        [missed],
+      );
+      const future = await seedOutreach(ORG, plan, pat, 400); // still ahead at close: cancelled by it
+      await admin.query(
+        "UPDATE bereavement_outreach SET cadence_mark='closeout_letter' WHERE id=$1",
+        [future],
+      );
+      const attempt = await seedOutreach(ORG, plan, sam, 28);
+      await seedLog(ORG, plan, sam, attempt, "no_response", 50);
+      await seedLog(ORG, plan, sam, attempt, "voicemail_left", 10);
+      await admin.query(
+        "UPDATE bereavement_contact_log SET contact_notes_cipher='SECRET-NOTES-CIPHER' WHERE bereaved_contact_id=$1",
+        [sam],
+      );
+      await seedTask(ORG, plan, pat, 28, "initial_assessment", "missed");
+      await admin.query(
+        `INSERT INTO bereavement_opt_out (organization_id, provider_entity_id, bereaved_contact_id, plan_id, opt_out_kind,
+           reason_redacted, source_kind)
+         VALUES ($1,$2,$3,$4,'no_mailings','SECRET-OPT-OUT-REASON','counselor_recorded')`,
+        [ORG, providerEntity[ORG], pat, plan],
+      );
+
+      await runClose13MonthsCron(deps);
+      await runClose13MonthsCron(deps); // a second tick closes nothing and requests nothing more
+
+      const closure = await one<{ id: string }>(
+        "SELECT id FROM bereavement_plan_closure WHERE plan_id=$1",
+        [plan],
+      );
+      const rows = (
+        await admin.query(
+          "SELECT organization_id, aggregate_kind, aggregate_id, payload FROM outbox_event WHERE event_type='m16.bereavement.document_requested' AND payload->>'planId'=$1",
+          [plan],
+        )
+      ).rows as Array<{
+        organization_id: string;
+        aggregate_kind: string;
+        aggregate_id: string;
+        payload: Record<string, unknown>;
+      }>;
+      expect(rows).toHaveLength(1);
+      const [event] = rows;
+      expect(event).toMatchObject({
+        organization_id: ORG,
+        aggregate_kind: "bereavement_plan_closure",
+        aggregate_id: closure.id,
+      });
+      expect(event?.payload).toMatchObject({
+        documentKind: "discharge_summary",
+        aggregateId: closure.id,
+        templateKey: "bereavement_discharge_summary_internal",
+      });
+      const summary = assertBereavementDischargeSummaryRenderPayload(event?.payload.payloadJsonb);
+      expect(summary).toMatchObject({
+        closureReason: "thirteen_month_completion",
+        closeKind: "auto",
+      });
+      const patRow = summary.contacts.find((c) => c.status === "active");
+      expect(patRow?.touchpoints.map((t) => [t.cadenceMark, t.status])).toEqual([
+        ["condolence_letter", "completed"],
+        ["three_month", "missed"],
+        ["closeout_letter", "cancelled"], // cancelled by the close, before the summary was read
+      ]);
+      expect(patRow?.mailingsAllowed).toBe(false);
+      expect(patRow?.assessmentTasks).toMatchObject([
+        { taskKind: "initial_assessment", status: "missed" },
+      ]);
+      const samRow = summary.contacts.find((c) => c.status === "unreachable");
+      expect(samRow?.unreachable?.attemptCount).toBe(2);
+      expect(samRow?.unreachable?.lastAttemptAt).not.toBeNull();
+      expect(summary.totals).toMatchObject({ offered: 4, delivered: 1, cancelled: 1 });
+      // nothing sealed or free-text rides the event
+      const wire = JSON.stringify(event?.payload);
+      for (const secret of ["SECRET-CARE-CIPHER", "SECRET-NOTES-CIPHER", "SECRET-OPT-OUT-REASON"]) {
+        expect(wire).not.toContain(secret);
+      }
     });
   });
 

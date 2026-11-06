@@ -57,6 +57,7 @@ import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { decidePatientOptOutFlip } from "../lifecycle/cascades";
 import type { BereavementSideEffect } from "../lifecycle/effects";
 import { transitionBereavementPlan } from "../lifecycle/index";
+import { requestDischargeSummary } from "../render-payloads/index";
 import { type EffectContext, runEffects } from "../routes/effects-runner";
 import type { WriteOutboxPort } from "../routes/write-service";
 
@@ -153,6 +154,7 @@ export function buildM16PatientOptOutChangedConsumer(deps: PatientOptOutChangedD
                   },
                 },
                 cancelOutreach: false,
+                requestSummary: false,
               });
               // F-206 (#248) — the user's own decision: a pre-death patient opt-out counts as CoP 418.64(d)
               // coverage SATISFIED, not silently absent from `copOutreachCounts`'s denominator. Idempotent
@@ -195,6 +197,7 @@ export function buildM16PatientOptOutChangedConsumer(deps: PatientOptOutChangedD
                 },
               },
               cancelOutreach: true,
+              requestSummary: true,
             });
           }
         },
@@ -214,6 +217,8 @@ interface CloseOptions {
   readonly cosignedByUserId: null;
   readonly outboxPayload: Record<string, Record<string, unknown>>;
   readonly cancelOutreach: boolean;
+  /** ADR-0109 D9 — request the internal discharge summary. False for the pre-death SKIP: that plan never had a roster or a schedule. */
+  readonly requestSummary: boolean;
 }
 
 async function closePlan(
@@ -243,20 +248,40 @@ async function closePlan(
 
   const stats = await closeoutStats(tx, plan.id);
 
-  await tx.insert(CLOSURE).values({
-    organizationId: plan.organizationId,
-    providerEntityId: plan.providerEntityId,
-    locationId: plan.locationId,
-    planId: plan.id,
-    reason: opts.reason,
-    reasonNarrativeRedacted: null,
-    closedAt: new Date(at),
-    closedByUserId: null,
-    closeKind: opts.closeKind,
-    cosignedByUserId: opts.cosignedByUserId,
-    cosignedAt: null,
-    ...stats,
-  });
+  const [closure] = await tx
+    .insert(CLOSURE)
+    .values({
+      organizationId: plan.organizationId,
+      providerEntityId: plan.providerEntityId,
+      locationId: plan.locationId,
+      planId: plan.id,
+      reason: opts.reason,
+      reasonNarrativeRedacted: null,
+      closedAt: new Date(at),
+      closedByUserId: null,
+      closeKind: opts.closeKind,
+      cosignedByUserId: opts.cosignedByUserId,
+      cosignedAt: null,
+      ...stats,
+    })
+    .returning({ id: CLOSURE.id });
+  if (!closure) throw new Error("m16: the patient-opt-out closure insert returned no row");
+  if (opts.requestSummary) {
+    await requestDischargeSummary(tx, outbox, {
+      plan: {
+        id: plan.id,
+        organizationId: plan.organizationId,
+        patientId: plan.patientId,
+        deathDate: plan.deathDate,
+      },
+      closure: {
+        id: closure.id,
+        reason: opts.reason,
+        closeKind: opts.closeKind,
+        closedAt: new Date(at),
+      },
+    });
+  }
 
   await tx
     .update(PLAN)

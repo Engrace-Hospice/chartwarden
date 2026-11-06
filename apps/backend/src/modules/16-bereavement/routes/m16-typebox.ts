@@ -713,6 +713,8 @@ export const BereavementClosureViewResponseSchema = Type.Object({
   cosignedAt: Nullable(Str),
   stats: OutreachStatsSchema,
   bereavementSummaryDocumentId: Nullable(Str),
+  /** ADR-0109 D9 — the internal discharge summary's M22 document, for oversight readers once it has rendered. */
+  dischargeSummaryDocumentId: Nullable(Str),
 });
 
 /** Routes 19 / 20–25 / 33 — one scheduled or historical touchpoint. */
