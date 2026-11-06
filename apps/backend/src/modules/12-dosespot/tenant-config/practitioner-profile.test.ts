@@ -147,6 +147,14 @@ describe("the practitioner profile", () => {
       }
     });
 
+    it("a surname with no Latin letter reduces to an empty key and is REFUSED, not matched (two such names must not 'agree')", async () => {
+      for (const lastName of ["李", "Юрьев", "-' "]) {
+        await expect(
+          profileFor(activeRecord({ lastName }), nppesRow({ basic: { lastName } })),
+        ).rejects.toMatchObject({ statusCode: 409, code: "DOSESPOT_NPPES_MISMATCH" });
+      }
+    });
+
     it("tolerates case, spacing, hyphens, apostrophes and accents in the surname, and the raw API's snake_case key", async () => {
       const cases: ReadonlyArray<readonly [string, unknown]> = [
         ["Lovelace", { lastName: "LOVELACE" }],

@@ -70,7 +70,10 @@ export function isValidNpi(npi: string): boolean {
 const refuse = (code: string, message: string, status: 409 | 422 = 409): ChartWardenError =>
   new ChartWardenError(code, message, status);
 
-/** A surname as NPPES and a master-data record may spell it differently: case, spaces, hyphens, apostrophes and accents are not a mismatch. */
+/**
+ * A surname as NPPES and a master-data record may spell it differently: case, spaces, hyphens, apostrophes and accents are not a mismatch.
+ * A name with no Latin letter in it (a non-Latin surname) reduces to the EMPTY key, which proves nothing: the caller refuses it.
+ */
 const surnameKey = (name: string): string =>
   name
     .normalize("NFKD")
@@ -99,7 +102,9 @@ function crossCheckNppes(
     throw refuse("DOSESPOT_NPPES_MISMATCH", "NPPES lists this NPI as deactivated");
   }
   const listed = nppesLastName(row.basic);
-  if (listed === null || surnameKey(listed) !== surnameKey(recordLastName)) {
+  const listedKey = listed === null ? "" : surnameKey(listed);
+  const recordKey = surnameKey(recordLastName);
+  if (listedKey === "" || recordKey === "" || listedKey !== recordKey) {
     throw refuse(
       "DOSESPOT_NPPES_MISMATCH",
       "the last name NPPES lists for this NPI does not match the practitioner record",
