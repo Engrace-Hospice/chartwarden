@@ -9,7 +9,7 @@
 //   onboarding (platform ops; `subscription.pricing_read_platform` / `subscription.onboard_platform`)
 //     GET  /api/v1/platform/pricing/plans                    the published, current versions an operator may sign
 //     POST /api/v1/platform/pricing/preview                  the price of a plan for entered inputs (no write)
-//     GET  /api/v1/platform/tenants/:orgSlug/subscription    a tenant's contract and statements
+//     GET  /api/v1/platform/tenants/:orgSlug/subscription    a tenant's contract and statements (writes a read-audit row naming the operator)
 //     POST /api/v1/platform/tenants/:orgSlug/subscription    onboarding step 2: sign the tenant and settle `plan_contract`
 //     PUT  /api/v1/platform/tenants/:orgSlug/subscription/billing-service-mode
 //   tenant (`subscription.read`)
@@ -170,13 +170,16 @@ export function registerPricingRoutes(app: FastifyInstance, deps: PricingRouteDe
         averageDailyCensus: body.averageDailyCensus,
         expectedNetCollectionsCents: body.expectedNetCollectionsCents,
         billingServiceMode: body.billingServiceMode,
+        ...(body.plannedGoLiveOn ? { plannedGoLiveOn: body.plannedGoLiveOn } : {}),
       });
     },
   );
   app.get(
     "/api/v1/platform/tenants/:orgSlug/subscription",
     { preHandler: PRICING_READ_GUARDS },
-    async (request) => contracts.platformView(parse(OrgSlugParams, request.params).orgSlug),
+    async (request) =>
+      // writeActorOf: the operator's membership is part of the read-audit row (who looked at which tenant)
+      contracts.platformView(writeActorOf(request), parse(OrgSlugParams, request.params).orgSlug),
   );
   app.post(
     "/api/v1/platform/tenants/:orgSlug/subscription",

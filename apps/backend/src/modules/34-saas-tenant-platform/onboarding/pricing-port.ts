@@ -37,6 +37,20 @@ export interface PricingOnboardingPort {
   }): Promise<void>;
 }
 
+/**
+ * When the tenant went live: `tenant_account.activated_at`, which the lifecycle machine stamps on the `onboarding -> active` transition
+ * (the go-live approval). null = not live yet. M35's statement run reads it through its `GoLiveReader` port, on the platform transaction
+ * it already holds: a tenant is charged from its go-live day, not from the day its contract was signed.
+ */
+export async function readTenantGoLive(tx: DbClient, organizationId: string): Promise<Date | null> {
+  const [account] = await tx
+    .select({ activatedAt: ACCOUNT.activatedAt })
+    .from(ACCOUNT)
+    .where(eq(ACCOUNT.organizationId, organizationId))
+    .limit(1);
+  return account?.activatedAt ?? null;
+}
+
 export function buildPricingOnboardingPort(deps: {
   readonly wizard: Pick<OnboardingWizard, "getPlatform" | "attestPlatform">;
 }): PricingOnboardingPort {

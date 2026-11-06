@@ -10,15 +10,15 @@
 //   `averageDailyCensusHundredths`). A day nobody observed is not a zero: it is left out of the mean and reported (`adcDaysObserved`
 //   vs `adcDaysInPeriod` on the statement), so a sweep outage shows as thin coverage, not as a falsely low census.
 //
-// Only organisations that signed a census_banded contract are recorded (nothing is stored for everyone else), through the platform
-// runner: a tenant holds SELECT on the table and can never write the census it is billed on.
+// Only organisations with a LIVE census_banded contract (the shared selector, scope "live": a subscription that is neither canceled nor
+// paused) are recorded, through the platform runner: a tenant holds SELECT on the table and can never write the census it is billed on.
 import { schema } from "@chartwarden/db";
 import type { PatientCensusReader } from "@chartwarden/types";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import type { PlatformRunner, WriteTx } from "../routes/service-drizzle";
+import { selectNewestContract } from "./contract-select";
 
 const PCD = schema.patientCensusDaily;
-const SC = schema.subscriptionContract;
 
 export interface DailyCensusDeps {
   readonly platformRunner: PlatformRunner;
@@ -35,18 +35,6 @@ export interface DailyCensusResult {
 /** `YYYY-MM-DD` of the UTC day containing `at`. */
 export const utcDateOf = (at: Date): string => at.toISOString().slice(0, 10);
 
-/**
- * The organisations that signed a census_banded contract: ONE platform transaction for the whole sweep. The sweeps fan out over every
- * active org, and every platform-runner call is an audited bypass entry, so the sweep asks once who is contracted instead of probing
- * each org (most orgs have no contract).
- */
-export async function listContractedOrgIds(runner: PlatformRunner): Promise<ReadonlySet<string>> {
-  const rows = await runner((tx) =>
-    tx.selectDistinct({ organizationId: SC.organizationId }).from(SC),
-  );
-  return new Set(rows.map((r) => r.organizationId));
-}
-
 export async function recordDailyCensusForOrg(
   deps: DailyCensusDeps,
   organizationId: string,
@@ -57,13 +45,9 @@ export async function recordDailyCensusForOrg(
   const count = await deps.census.activePatientCount(organizationId);
   const censusDate = utcDateOf(at);
   return deps.platformRunner(async (tx) => {
-    // One transaction: only an org that signed a contract is recorded (the sweep passes only those; this is the backstop).
-    const [contract] = await tx
-      .select({ id: SC.id })
-      .from(SC)
-      .where(eq(SC.organizationId, organizationId))
-      .limit(1);
-    if (!contract) return { recorded: false };
+    // One transaction: only an org with a live contract is recorded. The sweep passes only those; this is the backstop, and it asks
+    // the same shared question (a canceled contract is not "a contract": see contract-select.ts).
+    if (!(await selectNewestContract(tx, "live", at, organizationId))) return { recorded: false };
     await tx
       .insert(PCD)
       .values({ organizationId, censusDate, activePatientCount: count, observedAt: at })

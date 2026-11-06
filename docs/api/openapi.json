@@ -5211,7 +5211,7 @@
         "tags": [
           "35-subscription"
         ],
-        "summary": "Default census band thresholds (a form's starting point, never a price)",
+        "summary": "Default census band thresholds: the five bands 0, 10, 17, 26 and 30 (a form's starting point, never a price)",
         "parameters": [],
         "responses": {
           "200": {
@@ -5767,7 +5767,7 @@
                   },
                   "perUserPriceCents": {
                     "minimum": 0,
-                    "maximum": 100000000000,
+                    "maximum": 1000000000,
                     "type": "integer"
                   },
                   "bands": {
@@ -6365,7 +6365,7 @@
                   },
                   "perUserPriceCents": {
                     "minimum": 0,
-                    "maximum": 100000000000,
+                    "maximum": 1000000000,
                     "type": "integer"
                   },
                   "bands": {
@@ -255819,7 +255819,7 @@
         "tags": [
           "35-subscription"
         ],
-        "summary": "Price a plan for entered staff, census, collections and billing service mode (no write)",
+        "summary": "Price a plan for entered staff, census, collections and billing service mode (no write); a planned go-live date prices the first month by the days live",
         "parameters": [],
         "responses": {
           "200": {
@@ -255837,6 +255837,8 @@
                     "monthlyCents",
                     "implementationFeeCents",
                     "firstMonthCents",
+                    "firstMonthDaysLive",
+                    "firstMonthDaysInPeriod",
                     "contractTermMonths"
                   ],
                   "properties": {
@@ -255918,6 +255920,10 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        "plannedGoLiveOn": {
+                          "format": "date",
+                          "type": "string"
                         }
                       }
                     },
@@ -256012,6 +256018,26 @@
                     "firstMonthCents": {
                       "type": "integer"
                     },
+                    "firstMonthDaysLive": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "firstMonthDaysInPeriod": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "contractTermMonths": {
                       "type": "integer"
                     }
@@ -256076,6 +256102,10 @@
                         "type": "string"
                       }
                     ]
+                  },
+                  "plannedGoLiveOn": {
+                    "format": "date",
+                    "type": "string"
                   }
                 }
               }
@@ -263952,7 +263982,7 @@
         "tags": [
           "35-subscription"
         ],
-        "summary": "A tenant's signed contract and statements (platform)",
+        "summary": "A tenant's signed contract and statements (platform; writes a read-audit row naming the operator)",
         "parameters": [
           {
             "name": "orgSlug",
@@ -263984,6 +264014,7 @@
                             "plan",
                             "billingServiceMode",
                             "billingBps",
+                            "pendingBillingServiceMode",
                             "contractStartOn",
                             "contractTermMonths",
                             "contractEndsOn",
@@ -264048,6 +264079,42 @@
                             },
                             "billingBps": {
                               "type": "integer"
+                            },
+                            "pendingBillingServiceMode": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "billingServiceMode",
+                                    "effectiveOn"
+                                  ],
+                                  "properties": {
+                                    "billingServiceMode": {
+                                      "anyOf": [
+                                        {
+                                          "const": "none",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "billing_software",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "managed_billing",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "effectiveOn": {
+                                      "format": "date",
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             },
                             "contractStartOn": {
                               "format": "date",
@@ -264150,9 +264217,12 @@
                           "terms",
                           "platformFee",
                           "billingFeeCents",
+                          "priorPeriodLines",
+                          "priorPeriodFeeCents",
                           "oneTimeFeeCents",
                           "minimumAdjustmentCents",
                           "totalCents",
+                          "needsReview",
                           "computedAt",
                           "finalizedAt"
                         ],
@@ -264195,6 +264265,7 @@
                               "averageDailyCensus",
                               "adcDaysObserved",
                               "adcDaysInPeriod",
+                              "daysLive",
                               "billingServiceMode",
                               "netCollectionsCents",
                               "netCollectionsRemittanceCount",
@@ -264223,6 +264294,9 @@
                                 "type": "integer"
                               },
                               "adcDaysInPeriod": {
+                                "type": "integer"
+                              },
+                              "daysLive": {
                                 "type": "integer"
                               },
                               "billingServiceMode": {
@@ -264321,6 +264395,56 @@
                           "billingFeeCents": {
                             "type": "integer"
                           },
+                          "priorPeriodLines": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "sourceYearMonth",
+                                "netCollectionsCents",
+                                "remittanceCount",
+                                "billingServiceMode",
+                                "billingBps",
+                                "feeCents"
+                              ],
+                              "properties": {
+                                "sourceYearMonth": {
+                                  "type": "string"
+                                },
+                                "netCollectionsCents": {
+                                  "type": "integer"
+                                },
+                                "remittanceCount": {
+                                  "type": "integer"
+                                },
+                                "billingServiceMode": {
+                                  "anyOf": [
+                                    {
+                                      "const": "none",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "billing_software",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "managed_billing",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "billingBps": {
+                                  "type": "integer"
+                                },
+                                "feeCents": {
+                                  "type": "integer"
+                                }
+                              }
+                            }
+                          },
+                          "priorPeriodFeeCents": {
+                            "type": "integer"
+                          },
                           "oneTimeFeeCents": {
                             "type": "integer"
                           },
@@ -264329,6 +264453,9 @@
                           },
                           "totalCents": {
                             "type": "integer"
+                          },
+                          "needsReview": {
+                            "type": "boolean"
                           },
                           "computedAt": {
                             "format": "date-time",
@@ -264406,6 +264533,7 @@
                         "plan",
                         "billingServiceMode",
                         "billingBps",
+                        "pendingBillingServiceMode",
                         "contractStartOn",
                         "contractTermMonths",
                         "contractEndsOn",
@@ -264470,6 +264598,42 @@
                         },
                         "billingBps": {
                           "type": "integer"
+                        },
+                        "pendingBillingServiceMode": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "billingServiceMode",
+                                "effectiveOn"
+                              ],
+                              "properties": {
+                                "billingServiceMode": {
+                                  "anyOf": [
+                                    {
+                                      "const": "none",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "billing_software",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "managed_billing",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "effectiveOn": {
+                                  "format": "date",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "contractStartOn": {
                           "format": "date",
@@ -264657,7 +264821,7 @@
         "tags": [
           "35-subscription"
         ],
-        "summary": "Change a tenant's billing service mode (none, billing_software, managed_billing)",
+        "summary": "Change a tenant's billing service mode (none, billing_software, managed_billing); it takes effect from the 1st of the next month, immediately only while onboarding with no statement yet",
         "parameters": [
           {
             "name": "orgSlug",
@@ -264689,6 +264853,7 @@
                     "plan",
                     "billingServiceMode",
                     "billingBps",
+                    "pendingBillingServiceMode",
                     "contractStartOn",
                     "contractTermMonths",
                     "contractEndsOn",
@@ -264753,6 +264918,42 @@
                     },
                     "billingBps": {
                       "type": "integer"
+                    },
+                    "pendingBillingServiceMode": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "billingServiceMode",
+                            "effectiveOn"
+                          ],
+                          "properties": {
+                            "billingServiceMode": {
+                              "anyOf": [
+                                {
+                                  "const": "none",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "billing_software",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "managed_billing",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "effectiveOn": {
+                              "format": "date",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "contractStartOn": {
                       "format": "date",
@@ -310090,6 +310291,7 @@
                             "plan",
                             "billingServiceMode",
                             "billingBps",
+                            "pendingBillingServiceMode",
                             "contractStartOn",
                             "contractTermMonths",
                             "contractEndsOn",
@@ -310151,6 +310353,42 @@
                             },
                             "billingBps": {
                               "type": "integer"
+                            },
+                            "pendingBillingServiceMode": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "billingServiceMode",
+                                    "effectiveOn"
+                                  ],
+                                  "properties": {
+                                    "billingServiceMode": {
+                                      "anyOf": [
+                                        {
+                                          "const": "none",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "billing_software",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "managed_billing",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "effectiveOn": {
+                                      "format": "date",
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             },
                             "contractStartOn": {
                               "format": "date",
@@ -310236,9 +310474,12 @@
                             "terms",
                             "platformFee",
                             "billingFeeCents",
+                            "priorPeriodLines",
+                            "priorPeriodFeeCents",
                             "oneTimeFeeCents",
                             "minimumAdjustmentCents",
                             "totalCents",
+                            "needsReview",
                             "computedAt",
                             "finalizedAt"
                           ],
@@ -310281,6 +310522,7 @@
                                 "averageDailyCensus",
                                 "adcDaysObserved",
                                 "adcDaysInPeriod",
+                                "daysLive",
                                 "billingServiceMode",
                                 "netCollectionsCents",
                                 "netCollectionsRemittanceCount",
@@ -310309,6 +310551,9 @@
                                   "type": "integer"
                                 },
                                 "adcDaysInPeriod": {
+                                  "type": "integer"
+                                },
+                                "daysLive": {
                                   "type": "integer"
                                 },
                                 "billingServiceMode": {
@@ -310407,6 +310652,56 @@
                             "billingFeeCents": {
                               "type": "integer"
                             },
+                            "priorPeriodLines": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "sourceYearMonth",
+                                  "netCollectionsCents",
+                                  "remittanceCount",
+                                  "billingServiceMode",
+                                  "billingBps",
+                                  "feeCents"
+                                ],
+                                "properties": {
+                                  "sourceYearMonth": {
+                                    "type": "string"
+                                  },
+                                  "netCollectionsCents": {
+                                    "type": "integer"
+                                  },
+                                  "remittanceCount": {
+                                    "type": "integer"
+                                  },
+                                  "billingServiceMode": {
+                                    "anyOf": [
+                                      {
+                                        "const": "none",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "billing_software",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "managed_billing",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "billingBps": {
+                                    "type": "integer"
+                                  },
+                                  "feeCents": {
+                                    "type": "integer"
+                                  }
+                                }
+                              }
+                            },
+                            "priorPeriodFeeCents": {
+                              "type": "integer"
+                            },
                             "oneTimeFeeCents": {
                               "type": "integer"
                             },
@@ -310415,6 +310710,9 @@
                             },
                             "totalCents": {
                               "type": "integer"
+                            },
+                            "needsReview": {
+                              "type": "boolean"
                             },
                             "computedAt": {
                               "format": "date-time",

@@ -5,8 +5,10 @@
 // TENANT-SCOPED, SELECT-ONLY to the app role. Money is integer cents, rates integer basis points, ADC hundredths of a patient.
 import {
   bigint,
+  boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -16,6 +18,19 @@ import {
 import { plan } from "./plan";
 import { subscriptionRow } from "./subscription";
 import type { BillingServiceModeValue } from "./subscription-contract";
+
+/**
+ * One prior-period line: net collections of a CLOSED month that posted after that month's statement finalized, billed on the next
+ * open statement and stored with their SOURCE month (the rate is the source month's own, so it is never re-priced).
+ */
+export interface PriorPeriodLine {
+  readonly sourceYearMonth: string;
+  readonly netCollectionsCents: number;
+  readonly remittanceCount: number;
+  readonly billingServiceMode: BillingServiceModeValue;
+  readonly billingBps: number;
+  readonly feeCents: number;
+}
 
 export const subscriptionStatement = pgTable(
   "subscription_statement",
@@ -40,6 +55,8 @@ export const subscriptionStatement = pgTable(
     adcHundredths: integer("adc_hundredths").notNull(),
     adcDaysObserved: integer("adc_days_observed").notNull(),
     adcDaysInPeriod: integer("adc_days_in_period").notNull(),
+    // days of the month the subscription was live and billable; the platform fee and minimum are charged by days_live / adc_days_in_period
+    daysLive: integer("days_live").notNull(),
     billingServiceMode: text("billing_service_mode").$type<BillingServiceModeValue>().notNull(),
     netCollectionsCents: bigint("net_collections_cents", { mode: "number" }).notNull(),
     netCollectionsRemittanceCount: integer("net_collections_remittance_count").notNull(),
@@ -57,7 +74,13 @@ export const subscriptionStatement = pgTable(
     billingFeeCents: bigint("billing_fee_cents", { mode: "number" }).notNull(),
     oneTimeFeeCents: bigint("one_time_fee_cents", { mode: "number" }).notNull(),
     minimumAdjustmentCents: bigint("minimum_adjustment_cents", { mode: "number" }).notNull(),
+    priorPeriodLines: jsonb("prior_period_lines")
+      .$type<readonly PriorPeriodLine[]>()
+      .notNull()
+      .default([]),
+    priorPeriodFeeCents: bigint("prior_period_fee_cents", { mode: "number" }).notNull().default(0),
     totalCents: bigint("total_cents", { mode: "number" }).notNull(),
+    needsReview: boolean("needs_review").notNull().default(false),
     computedAt: timestamp("computed_at", { withTimezone: true }).notNull(),
     finalizedAt: timestamp("finalized_at", { withTimezone: true }),
     stripeUsageRecordId: text("stripe_usage_record_id"),

@@ -7,7 +7,9 @@
 import type { PseudonymKeyProvider } from "@chartwarden/subscription-billing";
 import type { NetCollectionsReader, PatientCensusReader } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { listContractedOrgIds, recordDailyCensusForOrg } from "../pricing/census-daily";
+import { recordDailyCensusForOrg } from "../pricing/census-daily";
+import { listContractedOrgIds } from "../pricing/contract-select";
+import type { GoLiveReader } from "../pricing/ports";
 import { type StatementStripePort, runStatementsForOrg } from "../pricing/statement-service";
 import { type CensusDeps, aggregateAddonForOrg, runPatientCensusForOrg } from "./census";
 import {
@@ -22,6 +24,8 @@ import {
 import { type RefundExecutorDeps, runRefundExecutionSweep } from "./refund-executor";
 import { runWebhookHandlerSweep } from "./webhook-handler";
 import type { WebhookPayloadCipher } from "./webhook-payload-crypto";
+
+const nowOf = (jobs: { readonly now?: () => Date }): Date => (jobs.now ?? (() => new Date()))();
 
 /** The platform job id the active-org enumeration enters `withPlatformContext` under (registered at boot). */
 export const M35_JOBS_PLATFORM_JOB_ID = "m35.jobs";
@@ -71,6 +75,8 @@ export interface M35WorkerDeps {
     readonly census: Pick<PatientCensusReader, "activePatientCount">;
     readonly keyProvider: PseudonymKeyProvider;
     readonly netCollections: NetCollectionsReader;
+    /** When a tenant went live (M34's tenant activation): statements are charged from the go-live day. */
+    readonly goLive: GoLiveReader;
     readonly stripe?: StatementStripePort;
   };
 }
@@ -134,7 +140,7 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
       worker(M35_QUEUES.patientCensus, async () => {
         // Slice 2 asks ONCE who is contracted (one audited platform call per sweep, not one per org).
         const contracted = pricing
-          ? await listContractedOrgIds(jobs.platformRunner)
+          ? await listContractedOrgIds(jobs.platformRunner, "live", nowOf(jobs))
           : new Set<string>();
         await runM35Fanout(
           jobs,
@@ -161,12 +167,17 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
     const pricing = deps.pricing;
     workers.push(
       worker(M35_QUEUES.pricingStatement, async () => {
-        const contracted = await listContractedOrgIds(jobs.platformRunner);
+        // NOT the active-organisation list: a suspended or closed organisation's last month, and a canceled subscription's final month,
+        // must still finalize. The ONE shared contract selector says which orgs can still need a statement.
+        const contracted = await listContractedOrgIds(
+          jobs.platformRunner,
+          "statements",
+          nowOf(jobs),
+        );
         await runM35Fanout(
           {
             ...jobs,
-            listOrgs: async () =>
-              (await jobs.listOrgs()).filter((o) => contracted.has(o.organizationId)),
+            listOrgs: async () => [...contracted].map((organizationId) => ({ organizationId })),
           },
           (o) =>
             runStatementsForOrg(
@@ -174,6 +185,7 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
                 platformRunner: jobs.platformRunner,
                 keyProvider: pricing.keyProvider,
                 netCollections: pricing.netCollections,
+                goLive: pricing.goLive,
                 ...(pricing.stripe ? { stripe: pricing.stripe } : {}),
                 ...(jobs.now ? { now: jobs.now } : {}),
                 ...(jobs.log ? { log: jobs.log } : {}),

@@ -5,11 +5,12 @@
  * `db:reset` leaves `GET /api/v1/plans` empty and the billing plan screen shows "No plans are available".
  * The flat starter / professional / enterprise tiers are RETIRED (slice 2, migration 1341): they are still seeded, as archived rows with
  * their usage meters, so a dev database shows what production holds (old rows stay readable) but no new tenant is offered one. What a
- * tenant signs now is a census-banded plan: one DEMO version is seeded and published below, with the owner's default bands
- * (0-9, 10-16, 17-25, 26+ patients) and DEMO prices that are not the price list; real plans are made in the pricing plan editor.
+ * tenant signs now is a census-banded plan: one DEMO version is seeded below as a DRAFT, so it is NOT offered (a draft cannot be signed,
+ * and nothing seeds it live): with the owner's five default bands (0-9, 10-16, 17-25, 26-29 and 30+ patients) and DEMO prices that are not
+ * the price list. An operator reviews and publishes it in the pricing plan editor (or makes the real plans there).
  *
- * Idempotent: flat plans upsert on `slug`, meters on `(plan_id, event_type)`; the published demo plan is frozen by the database, so a
- * re-run leaves it exactly as it is. Prereq: DB migrated. Run: bun run db:seed:plans
+ * Idempotent: flat plans upsert on `slug`, meters on `(plan_id, event_type)`; the demo plan is created once and a re-run leaves it exactly
+ * as it is (a draft an operator edited, or a published version the database froze). Prereq: DB migrated. Run: bun run db:seed:plans
  */
 import { Client } from "pg";
 
@@ -79,13 +80,14 @@ export const PLANS: readonly PlanSeed[] = [
   },
 ];
 
-/** The demo census-banded plan: DEMO prices, the owner's default band thresholds. Created as a draft, banded, then published. */
+/** The demo census-banded plan: DEMO prices, the owner's default band thresholds. Created as a DRAFT and left one: not offered until an operator publishes it. */
 const DEMO_FAMILY = "demo-census-banded";
 const DEMO_BANDS: readonly { readonly minAdc: number; readonly monthlyFeeCents: number }[] = [
   { minAdc: 0, monthlyFeeCents: 150_000 },
   { minAdc: 10, monthlyFeeCents: 275_000 },
   { minAdc: 17, monthlyFeeCents: 400_000 },
   { minAdc: 26, monthlyFeeCents: 550_000 },
+  { minAdc: 30, monthlyFeeCents: 700_000 },
 ];
 
 async function seedDemoCensusBandedPlan(db: Client): Promise<string> {
@@ -113,8 +115,7 @@ async function seedDemoCensusBandedPlan(db: Client): Promise<string> {
       [planId, band.minAdc, band.monthlyFeeCents],
     );
   }
-  await db.query("UPDATE plan SET published_at = now(), is_active = true WHERE id = $1", [planId]);
-  return "published";
+  return "created as a draft (not offered; publish it in the pricing plan editor)";
 }
 
 async function main(): Promise<void> {

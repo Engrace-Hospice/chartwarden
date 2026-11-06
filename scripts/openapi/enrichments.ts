@@ -3210,7 +3210,8 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   // Slice 2 (tenant pricing) — the census_banded plan editor (platform billing roles).
   "GET /api/admin/pricing/defaults": {
     response: M35PricingDefaultsDto,
-    summary: "Default census band thresholds (a form's starting point, never a price)",
+    summary:
+      "Default census band thresholds: the five bands 0, 10, 17, 26 and 30 (a form's starting point, never a price)",
   },
   "GET /api/admin/pricing/plans": {
     response: M35PricingPlanListDto,
@@ -3261,11 +3262,12 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     body: M35PricePreviewBody,
     response: M35PricePreviewDto,
     summary:
-      "Price a plan for entered staff, census, collections and billing service mode (no write)",
+      "Price a plan for entered staff, census, collections and billing service mode (no write); a planned go-live date prices the first month by the days live",
   },
   "GET /api/v1/platform/tenants/:orgSlug/subscription": {
     response: M35PlatformPricingDto,
-    summary: "A tenant's signed contract and statements (platform)",
+    summary:
+      "A tenant's signed contract and statements (platform; writes a read-audit row naming the operator)",
   },
   "POST /api/v1/platform/tenants/:orgSlug/subscription": {
     body: M35CreateTenantContractBody,
@@ -3279,7 +3281,8 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     body: M35SetBillingServiceModeBody,
     response: M35PlatformContractDto,
     headers: IDEMPOTENCY_KEY_HEADER,
-    summary: "Change a tenant's billing service mode (none, billing_software, managed_billing)",
+    summary:
+      "Change a tenant's billing service mode (none, billing_software, managed_billing); it takes effect from the 1st of the next month, immediately only while onboarding with no statement yet",
   },
   "GET /api/v1/subscription/pricing": {
     response: M35TenantPricingDto,
