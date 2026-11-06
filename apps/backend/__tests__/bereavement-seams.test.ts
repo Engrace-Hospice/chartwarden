@@ -23,7 +23,6 @@ import type {
   BereavementRiskFactorInputs,
 } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
-import { seamPortalAbacPorts } from "../src/modules/31-portal/abac-predicates";
 import { REQUIRED_SEAMS, __resetSeamsForTest, validateSeams } from "../src/bootstrap/index";
 import {
   type BereavementPlanFacts,
@@ -47,6 +46,7 @@ import {
   planViewOf,
   registerBereavementSeams,
 } from "../src/modules/16-bereavement/index";
+import { seamPortalAbacPorts } from "../src/modules/31-portal/abac-predicates";
 
 const ORG = "11111111-1111-1111-1111-111111111111";
 const PATIENT = "22222222-2222-2222-2222-222222222222";
@@ -248,7 +248,10 @@ describe("M16-T05 — registration into the M1 seam registry (§4.6 / D13)", () 
   it("M31's production predicate port reaches the registered M16 provider (no fake ports)", async () => {
     // The PR #960 bug: the port called a method M16 never registered, and the swallowed TypeError denied.
     __resetSeamsForTest();
-    const { store } = createInMemoryBereavementSeamStore({ plans: [plan()], contacts: [contact()] });
+    const { store } = createInMemoryBereavementSeamStore({
+      plans: [plan()],
+      contacts: [contact()],
+    });
     registerBereavementSeams({ store, clock });
     const ask = (patientId: string) =>
       seamPortalAbacPorts.bereavedWindowOpen({
@@ -625,7 +628,10 @@ describe("BereavedPortalScopeProvider — the M31 bereaved-family scope (§4.6 /
   });
 
   it("isWindowOpen answers M31's predicate: own account, that patient, plan in window", async () => {
-    const ask = (store: ReturnType<typeof createInMemoryBereavementSeamStore>["store"], over = {}) =>
+    const ask = (
+      store: ReturnType<typeof createInMemoryBereavementSeamStore>["store"],
+      over = {},
+    ) =>
       createBereavedPortalScopeProvider(store, clock).isWindowOpen({
         organizationId: ORG,
         portalAccountId: PORTAL_ACCOUNT,
@@ -633,7 +639,10 @@ describe("BereavedPortalScopeProvider — the M31 bereaved-family scope (§4.6 /
         asOf: NOW,
         ...over,
       });
-    const open = createInMemoryBereavementSeamStore({ plans: [plan()], contacts: [contact()] }).store;
+    const open = createInMemoryBereavementSeamStore({
+      plans: [plan()],
+      contacts: [contact()],
+    }).store;
     expect(await ask(open)).toBe(true);
     // An opted-out contact still reaches the rescind route while the plan's window is open.
     const optedOut = createInMemoryBereavementSeamStore({
@@ -659,7 +668,12 @@ describe("BereavedPortalScopeProvider — the M31 bereaved-family scope (§4.6 /
   });
 
   it("offers opt-out only to an active contact", async () => {
-    for (const status of ["proposed", "unreachable", "ineligible_post_review", "deceased"] as const) {
+    for (const status of [
+      "proposed",
+      "unreachable",
+      "ineligible_post_review",
+      "deceased",
+    ] as const) {
       const { store } = createInMemoryBereavementSeamStore({
         plans: [plan()],
         contacts: [contact({ status })],
