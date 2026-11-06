@@ -30,11 +30,17 @@ import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 // platform credential — they run through the injected {@link PlatformRunner}. The composition root binds it
 // to M1's gated `withPlatformContext` (the M34 platform-runner precedent); until a platform pool is bound
 // it fails closed (PLATFORM_CONTEXT_UNAVAILABLE), never silently reading nothing under tenant RLS.
-import type { PlatformAuditPort, PlatformRunner, WriteTx } from "../pricing/ports";
+import {
+  type PlatformAuditPort,
+  type PlatformRunner,
+  type WriteTx,
+  requireAuditPort,
+} from "../pricing/ports";
 
 // The two handles live in pricing/ports (the leaf both files read); re-exported so existing importers keep this path.
 export type { PlatformRunner, WriteTx };
 import type { M35ReadActor, M35WriteActor } from "./actor";
+import { lockSubscription, refuseAdminTransition } from "./admin-transition";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf } from "./concurrency";
 import { redeemPromoInTx } from "./promo-redemption";
 import type {
@@ -118,7 +124,8 @@ export interface M35RouteServiceDeps {
   /**
    * The PLATFORM-scoped audit writer. A platform operator's pause / resume / cancel of a tenant's subscription writes a structured row
    * naming the operator and the tenant here; the tenant-readable `subscription_state_history` row (and its `audit_event` copy) carries NO
-   * operator. Optional: unbound, the action still runs (the legacy admin surface) and only the platform bypass row records it.
+   * operator. Unbound, those admin actions FAIL CLOSED (503 AUDIT_UNBOUND), like every pricing write: an operator action that cannot name
+   * the operator is not performed.
    */
   readonly audit?: PlatformAuditPort;
   readonly now?: () => Date;
@@ -419,17 +426,18 @@ export function buildDrizzleM35RouteService(
   const platform = deps.platformRunner ?? failClosedPlatformRunner;
 
   /**
-   * A platform operator's action on a tenant's subscription: the operator is named in the PLATFORM-scoped audit row (when the audit
-   * writer is bound). The tenant-readable `subscription_state_history` row and its `audit_event` copy carry NO operator membership.
+   * A platform operator's action on a tenant's subscription: the operator is named in the PLATFORM-scoped audit row (the callers
+   * have already refused when the audit writer is unbound). The tenant-readable `subscription_state_history` row and its `audit_event` copy carry NO operator membership.
    */
   async function auditOperatorAction(
+    audit: PlatformAuditPort,
     tx: WriteTx,
     actor: { readonly userId: string; readonly membershipId: string },
     sub: { readonly id: string; readonly organizationId: string; readonly status: string },
     eventType: string,
     reasonCode: string,
   ): Promise<void> {
-    await deps.audit?.record(tx, {
+    await audit.record(tx, {
       eventType,
       resourceKind: "subscription",
       resourceId: sub.id,
@@ -1413,9 +1421,11 @@ export function buildDrizzleM35RouteService(
     },
 
     async adminPauseSubscription(actor, subscriptionId, pausedUntil) {
+      // fail closed BEFORE the runner is opened: an operator action that cannot be audited is not performed
+      const audit = requireAuditPort(deps.audit);
       return platform(async (tx) => {
-        const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).limit(1);
-        if (!sub) throw new NotFoundError("subscription not found");
+        const sub = await lockSubscription(tx, subscriptionId);
+        refuseAdminTransition(sub, "pause");
         const at = now();
         const until = pausedUntil ? new Date(pausedUntil) : null;
         await tx
@@ -1433,6 +1443,7 @@ export function buildDrizzleM35RouteService(
           reasonCode: "platform_ops_pause",
         });
         await auditOperatorAction(
+          audit,
           tx,
           actor,
           sub,
@@ -1465,9 +1476,11 @@ export function buildDrizzleM35RouteService(
     },
 
     async adminResumeSubscription(actor, subscriptionId) {
+      // fail closed BEFORE the runner is opened: an operator action that cannot be audited is not performed
+      const audit = requireAuditPort(deps.audit);
       return platform(async (tx) => {
-        const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).limit(1);
-        if (!sub) throw new NotFoundError("subscription not found");
+        const sub = await lockSubscription(tx, subscriptionId);
+        refuseAdminTransition(sub, "resume");
         const at = now();
         await tx
           .update(S)
@@ -1484,6 +1497,7 @@ export function buildDrizzleM35RouteService(
           reasonCode: "platform_ops_resume",
         });
         await auditOperatorAction(
+          audit,
           tx,
           actor,
           sub,
@@ -1511,9 +1525,11 @@ export function buildDrizzleM35RouteService(
     },
 
     async adminCancelSubscription(actor, subscriptionId) {
+      // fail closed BEFORE the runner is opened: an operator action that cannot be audited is not performed
+      const audit = requireAuditPort(deps.audit);
       return platform(async (tx) => {
-        const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).limit(1);
-        if (!sub) throw new NotFoundError("subscription not found");
+        const sub = await lockSubscription(tx, subscriptionId);
+        refuseAdminTransition(sub, "cancel");
         const at = now();
         await tx
           .update(S)
@@ -1530,6 +1546,7 @@ export function buildDrizzleM35RouteService(
           reasonCode: "platform_ops_cancel_immediate",
         });
         await auditOperatorAction(
+          audit,
           tx,
           actor,
           sub,

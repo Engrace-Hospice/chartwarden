@@ -31,6 +31,10 @@ rates are basis points.
 - `POST /api/v1/subscription` and `PATCH /api/v1/subscription` answer `404` for a `census_banded` slug (exactly what a plan that does not
   exist answers), and `403 PLAN_ASSIGNED_BY_OPERATIONS` for a tenant that is already on one; so does `POST /api/v1/subscription/cancel`: a
   contracted plan is assigned and ended by ChartWarden operations.
+- `POST /api/admin/subscriptions/{id}/pause`, `/resume` and `/cancel` now check the subscription's status under a row lock and answer
+  `409` with a stable code instead of acting on any status: `SUBSCRIPTION_NOT_PAUSED` (resume of a subscription that is not paused),
+  `SUBSCRIPTION_CANCELED` (pause or cancel of a canceled subscription: it is final), `SUBSCRIPTION_ALREADY_PAUSED` (pause of a paused
+  one). A refused request writes nothing. They answer `503 AUDIT_UNBOUND` when the platform audit writer is not bound.
 - `POST /api/admin/plans` no longer accepts `tier: census_banded`; `activate`, `deprecate` and `meters` on such a plan answer
   `403 PLAN_ASSIGNED_BY_OPERATIONS` (use the pricing plan editor below), and the legacy edit and activate answer `409` for a retired flat plan.
 
