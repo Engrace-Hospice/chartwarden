@@ -494,7 +494,7 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
-  // ── ADR-0108 the claims-billing add-on (platform-ops grant / cancel) ─────────────────────────────────
+  // ── ADR-0111 the claims-billing add-on (platform-ops grant / cancel) ─────────────────────────────────
   // Ids, status and the effective instant only (no operator reason, no price). Record-only today: the
   // entitlement is a PULL (`ClaimsBillingEntitlementReader`), so nothing must react to the push.
   {

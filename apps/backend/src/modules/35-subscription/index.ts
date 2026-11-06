@@ -88,7 +88,7 @@ export {
 } from "./billing-runtime/workers";
 export type { M35JobDeps } from "./billing-runtime/jobs";
 
-// ADR-0108 — the claims-billing add-on: the entitlement reader (registered as the `ClaimsBillingEntitlementReader`
+// ADR-0111 — the claims-billing add-on: the entitlement reader (registered as the `ClaimsBillingEntitlementReader`
 // seam) and the platform-ops add-on service the route mount binds.
 export {
   type AddonService,

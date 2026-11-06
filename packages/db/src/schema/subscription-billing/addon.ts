@@ -1,7 +1,7 @@
-// @chartwarden/db — `addon` (M35, ADR-0108). The platform-owned add-on catalog, shaped like `plan` (D11: platform
+// @chartwarden/db — `addon` (M35, ADR-0111). The platform-owned add-on catalog, shaped like `plan` (D11: platform
 // pricing, no tenant overlay). PLATFORM-SHARED: no organization_id BY DESIGN; read-all to chartwarden_app, writes only
 // as chartwarden_admin (migration 1321). Listed in check-tenancy's NON_ORG_SCOPED set. `unitPriceCents` is null until
-// platform ops prices it (Stripe charging is deferred, ADR-0108 D7).
+// platform ops prices it (Stripe charging is deferred, ADR-0111 D7).
 //
 // Exported as `addonRow` (not `addon`): the arch:tables ownership scanner keys on the Drizzle const name with a word
 // boundary, and "addon" is ordinary prose elsewhere (the `subscriptionRow` / `dunningStateRow` precedent).

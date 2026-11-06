@@ -43,7 +43,7 @@ export function isOrgIdList(raw: string): boolean {
   return raw.split(",").every((id) => ORG_ID_SHAPE.test(id.trim()));
 }
 
-/** ADR-0108 D6 — the claims-billing add-on enforcement mode (the gate lives in ./claims-billing-gate.ts). */
+/** ADR-0111 D6 — the claims-billing add-on enforcement mode (the gate lives in ./claims-billing-gate.ts). */
 export const CLAIMS_BILLING_ENFORCEMENT_ENV = "CLAIMS_BILLING_ENFORCEMENT";
 export const CLAIMS_BILLING_ENFORCEMENT_MODES = ["off", "shadow", "enforce"] as const;
 export type ClaimsBillingEnforcementMode = (typeof CLAIMS_BILLING_ENFORCEMENT_MODES)[number];

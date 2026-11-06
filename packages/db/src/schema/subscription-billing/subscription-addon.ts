@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-// @chartwarden/db — `subscription_addon` (M35, ADR-0108). Which tenant subscription holds which add-on, and since when.
+// @chartwarden/db — `subscription_addon` (M35, ADR-0111). Which tenant subscription holds which add-on, and since when.
 // TENANT-SCOPED on organization_id (logical uuid, M35-F04; no PHI, so provider_entity_id/location_id do not attach).
 // RLS ENABLE + FORCE with a SELECT-ONLY policy for chartwarden_app (migration 1321): grants and cancels are written only
 // through M35's platform runner, so a tenant can never grant itself the add-on. At most one live (trialing/active)

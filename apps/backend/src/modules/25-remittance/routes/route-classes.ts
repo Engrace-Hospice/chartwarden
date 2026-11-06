@@ -1,4 +1,4 @@
-// apps/backend/src/modules/25-remittance/routes/route-classes.ts — ADR-0108 D5: in M25 only a NEW reopening (create,
+// apps/backend/src/modules/25-remittance/routes/route-classes.ts — ADR-0111 D5: in M25 only a NEW reopening (create,
 // submit) is new claims-billing work. Remittance, denials, appeals, ADR / audit responses, TPE, representatives,
 // playbooks and the recording of an already-made submission stay open. Ordered, first match wins.
 import type { RouteClassRule } from "../../../bootstrap/claims-billing-gate";

@@ -1,5 +1,5 @@
 // apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/choice.ts — what an organization chose, and what the
-// claims-billing gate makes of it (ADR-0053 amendment 2026-11-06; ADR-0108 repurposed).
+// claims-billing gate makes of it (ADR-0053 amendment 2026-11-06; ADR-0111 repurposed).
 //
 //   TenantClearinghouseReader         the fact: the org's config row (or the platform-env fallback), read on the tenant pool
 //                                     under the org's own RLS scope. No cache.

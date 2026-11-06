@@ -138,7 +138,7 @@ export function registerPatientSeams(deps: PatientSeamDeps = {}): void {
   // GAP-020 -- the wristband verdict M13's BCMA wrong_patient arm reads. db-less boot keeps the deny-stub (throws).
   if (deps.db) registerSeam("PatientWristbandVerifier", buildPatientWristbandVerifier(deps.db));
   if (deps.db) registerSeam("PatientPrivacyFlagReader", buildPatientPrivacyFlagReader(deps.db));
-  // ADR-0108 — the active-patient census page the M35 claims-billing add-on pulls (db boots only; the stub throws).
+  // ADR-0111 — the active-patient census page the M35 claims-billing add-on pulls (db boots only; the stub throws).
   if (deps.db) registerSeam("PatientCensusReader", buildPatientCensusReader(deps.db));
   if (deps.db)
     registerSeam("PatientAdmissionClearanceReader", buildPatientAdmissionClearanceReader(deps.db));

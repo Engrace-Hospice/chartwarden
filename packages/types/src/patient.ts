@@ -763,7 +763,7 @@ export interface PatientAddressCoordinate {
   readonly lng: number;
 }
 
-// ── PatientCensusReader seam (ADR-0108 — the M35 claims-billing add-on census) ─────────────────────────
+// ── PatientCensusReader seam (ADR-0111 — the M35 claims-billing add-on census) ─────────────────────────
 
 /** One page of active-patient ids, keyset-ordered by id. `nextAfter` is null on the last page. */
 export interface PatientCensusPage {
@@ -772,7 +772,7 @@ export interface PatientCensusPage {
 }
 
 /**
- * ADR-0108 D8 — the census M35 PULLS for the claims-billing add-on (amends M35 D21: M5 never pushes
+ * ADR-0111 D8 — the census M35 PULLS for the claims-billing add-on (amends M35 D21: M5 never pushes
  * `m5.patient.created`/`.status_changed` to M35). Ids only, of patients whose status is `active`, paged by id;
  * the caller pseudonymizes each id in memory and never stores it. `activePatientCount` is M5's own count, used
  * only to reconcile M35's pseudonymized census.

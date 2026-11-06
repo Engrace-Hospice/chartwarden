@@ -1,4 +1,4 @@
-// @chartwarden/ui — ClaimsBillingNotice + useClaimsBilling (ADR-0108). The tenant's claims-billing add-on posture, shown
+// @chartwarden/ui — ClaimsBillingNotice + useClaimsBilling (ADR-0111). The tenant's claims-billing add-on posture, shown
 // atop the Medicare, Medicaid, remittance and commercial billing areas. One shared store: the app shell primes it per org
 // and re-reads it after CLAIMS_BILLING_POSTURE_TTL_MS (`primeClaimsBilling`, GET /api/v1/billing/status); a 402 CLAIMS_BILLING_ADDON_REQUIRED observed anywhere
 // (`noteClaimsBillingRefusal`, fed from the app's response hook or a screen's error path) flips every reader to

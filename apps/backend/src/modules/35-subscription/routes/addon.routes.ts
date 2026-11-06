@@ -1,4 +1,4 @@
-// apps/backend/src/modules/35-subscription/routes/addon.routes.ts — ADR-0108 the claims-billing add-on, platform-ops
+// apps/backend/src/modules/35-subscription/routes/addon.routes.ts — ADR-0111 the claims-billing add-on, platform-ops
 // surface (`/api/admin`). Reads gate on `subscription.admin.read` + `platform_billing_scope`; grant / cancel reuse
 // `subscription.admin.write` + platform scope + a fresh step-up + the AI-actor block + `Idempotency-Key` (no new permission keys). The
 // acting membership is taken from `request.context`, never the body. Writes run on the platform runner only.
