@@ -13,7 +13,7 @@ import type { ClearinghouseBinding } from "@chartwarden/x12-837-client";
 import { createInMemoryHarness } from "@chartwarden/x12-837-client/testing";
 import { describe, expect, it } from "vitest";
 import type { ConfigRow } from "./config-store";
-import { createTenantClearinghouseRuntime } from "./resolver";
+import { createTenantClearinghouseRuntime, withOrgOnAnomaly } from "./resolver";
 import { buildClearinghouseSecretCipher } from "./secret-cipher";
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
@@ -172,7 +172,9 @@ describe("per-organization clearinghouse binding", () => {
     ];
     for (const result of calls) {
       expect(result && !result.ok && result.degraded.code).toBe(CH.INVALID_REQUEST);
-      expect(result && !result.ok && result.degraded.reason).toMatch(/belongs to another organization/);
+      expect(result && !result.ok && result.degraded.reason).toMatch(
+        /belongs to another organization/,
+      );
     }
   });
 
@@ -183,5 +185,23 @@ describe("per-organization clearinghouse binding", () => {
     expect(await runtime.usageFor(ORG_A)).toBe("production");
     expect(await runtime.usageFor(ORG_B)).toBeNull();
     expect(await runtime.usageFor(ORG_C)).toBeNull();
+  });
+});
+
+describe("transport anomalies name the organization", () => {
+  it("hands the anomaly sink the organization whose transport raised it (a per-org account's warning must be attributable)", () => {
+    const seen: { anomaly: unknown; context: unknown }[] = [];
+    const sink = withOrgOnAnomaly((anomaly, context) => seen.push({ anomaly, context }), ORG_A);
+    sink?.({ type: "reconciled_from_upload_list", idempotencyKey: "k1" });
+    expect(seen).toEqual([
+      {
+        anomaly: { type: "reconciled_from_upload_list", idempotencyKey: "k1" },
+        context: { organizationId: ORG_A },
+      },
+    ]);
+  });
+
+  it("is absent when no sink is configured", () => {
+    expect(withOrgOnAnomaly(undefined, ORG_A)).toBeUndefined();
   });
 });

@@ -4005,7 +4005,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         attempts: createDrizzleAttemptStore(dbHandle.db),
         platformBinding: platformClearinghouseBinding,
         fallbackOrgIds: clearinghouseFallback.orgIds,
-        onAnomaly: (anomaly) => app.log.warn({ anomaly }, "Clearinghouse anomaly"),
+        // a tenant's own account raised it: the warning names the organization
+        onAnomaly: (anomaly, context) =>
+          app.log.warn({ anomaly, ...context }, "Clearinghouse anomaly"),
         claimMdRequestCounter: rateLimitStore ?? null,
       })
     : null;
@@ -4442,7 +4444,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           {
             jobId: M23_CLAIMMD_WEBHOOK_JOB_ID,
             reason:
-              "M23 Claim.MD webhook receipts (platform-only table, one vendor account for every tenant)",
+              "M23 Claim.MD webhook receipts (platform-only table; the intake serves the PLATFORM Claim.MD account only, a tenant's own account does not deliver through it)",
             crossTenant: true,
           },
           m34PlatformBypassAuditor,

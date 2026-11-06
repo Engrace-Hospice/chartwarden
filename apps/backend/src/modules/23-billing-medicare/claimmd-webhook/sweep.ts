@@ -1,6 +1,8 @@
 // apps/backend/src/modules/23-billing-medicare/claimmd-webhook/sweep.ts — settles stored Claim.MD webhook receipts
-// (ADR-0053 amendment D7/D8). Runs on the platform role (the receipt table is platform-only; one Claim.MD account serves
-// every tenant), every minute, over at most 100 rows taken FOR UPDATE SKIP LOCKED.
+// (ADR-0053 amendment D7/D8). Runs on the platform role (the receipt table is platform-only), every minute, over at most 100
+// rows taken FOR UPDATE SKIP LOCKED. The intake is the PLATFORM Claim.MD account's webhook (its HMAC key is the platform account
+// key): a tenant that brings its own Claim.MD account (ADR-0053 amendment 2026-11-06) does not deliver enrollment or appeal
+// reports through it, and per-tenant webhooks are not built. So this resolves tenants only for what the platform account receives.
 //
 // Tenant resolution (D8), never from the payload's own claims about a tenant:
 //   enroll  → prov_npi       → provider_entity (NPI is unique platform-wide) → organization + provider entity, ONLY

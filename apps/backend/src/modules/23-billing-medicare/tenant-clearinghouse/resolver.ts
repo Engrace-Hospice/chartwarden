@@ -52,7 +52,11 @@ export interface TenantBindingDeps {
   /** The platform's env binding that serves the orgs named in `fallbackOrgIds`; unbound when none is configured. */
   readonly platformBinding: ClearinghouseBinding;
   readonly fallbackOrgIds: ReadonlySet<string>;
-  readonly onAnomaly?: (anomaly: StediAnomaly | ClaimMdAnomaly) => void;
+  /** A transport signal (ids and codes only) with the organization whose account raised it. */
+  readonly onAnomaly?: (
+    anomaly: StediAnomaly | ClaimMdAnomaly,
+    context: { readonly organizationId: string },
+  ) => void;
   /** Claim.MD's request budget (shared Valkey counter); each tenant's account spends its own budget. */
   readonly claimMdRequestCounter?: ClaimMdRequestCounter | null;
   /** Test seam: replaces the RLS-scoped Drizzle read of the org's row. */
@@ -66,6 +70,14 @@ export interface TenantClearinghouseRuntime {
 }
 
 const C = schema.tenantClearinghouseConfig;
+
+/** The anomaly sink of ONE organization's transport: every signal arrives with that organization's id (undefined when none is set). */
+export function withOrgOnAnomaly(
+  sink: TenantBindingDeps["onAnomaly"],
+  organizationId: string,
+): ((anomaly: StediAnomaly | ClaimMdAnomaly) => void) | undefined {
+  return sink ? (anomaly) => sink(anomaly, { organizationId }) : undefined;
+}
 
 /** One account's own counter: Claim.MD limits a request rate per ACCOUNT, and every tenant now has its own. */
 function scopedCounter(
@@ -112,7 +124,8 @@ export function createTenantClearinghouseRuntime(
     } catch {
       throw credentialUnreadable(); // the cause is the cipher's generic refusal; nothing about the key leaks
     }
-    const onAnomaly = deps.onAnomaly ? { onAnomaly: deps.onAnomaly } : {};
+    const sink = withOrgOnAnomaly(deps.onAnomaly, row.organizationId);
+    const onAnomaly = sink ? { onAnomaly: sink } : {};
     const transport =
       vendor === "stedi"
         ? createStediTransportFromEnv({ STEDI_API_KEY: secret }, deps.attempts, onAnomaly)
