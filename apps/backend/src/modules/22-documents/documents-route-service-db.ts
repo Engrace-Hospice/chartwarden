@@ -39,7 +39,7 @@ import {
   NotFoundError,
   type OrgId,
 } from "@chartwarden/types";
-import { and, desc, eq, exists, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, desc, eq, exists, gte, inArray, isNull, lte, notInArray, sql } from "drizzle-orm";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "./abac-predicates";
 import { otherBatchHoldsSudFlag } from "./extraction/batch-identity";
 import { commitClinicalWriteback } from "./extraction/writeback-commit-clinical-db";
@@ -49,6 +49,7 @@ import {
 } from "./extraction/writeback-commit-db";
 import { commitReviewDiagnosisWriteback } from "./extraction/writeback-commit-dx-db";
 import { isDiagnosisFieldPath } from "./extraction/writeback-plan-dx";
+import { assertNotInternalOnlyForPatientFacing } from "./internal-documents";
 import { markReceivedOnArrival, recordsRequestConflicts } from "./records-request/inbound-match";
 import { type CursorPage, paginate } from "./routes/concurrency";
 import type { ServerUploadService } from "./routes/server-upload";
@@ -336,6 +337,10 @@ export function createDbDocumentRouteService(
             : undefined,
           filter.patientId ? eq(DOC.patientId, filter.patientId) : undefined,
           filter.aggregateType ? eq(DOC.aggregateType, filter.aggregateType as never) : undefined,
+          // ADR-0109 — internal-only documents are listed to their readers only.
+          filter.excludeAggregateTypes && filter.excludeAggregateTypes.length > 0
+            ? notInArray(DOC.aggregateType, [...filter.excludeAggregateTypes] as never[])
+            : undefined,
           filter.aggregateId ? eq(DOC.aggregateId, filter.aggregateId) : undefined,
           filter.retentionClass
             ? eq(DOC.retentionClass, filter.retentionClass as never)
@@ -744,6 +749,14 @@ export function createDbDocumentRouteService(
       return withOrgAs(db, organizationId, actor, async (tx) => {
         await lockDocForWrite(tx, organizationId, documentId, basis);
         await assertNoHold(tx, documentId);
+        if (patch.patientFacing === true) {
+          const [current] = await tx
+            .select({ aggregateType: DOC.aggregateType })
+            .from(DOC)
+            .where(eq(DOC.id, documentId))
+            .limit(1);
+          assertNotInternalOnlyForPatientFacing(current?.aggregateType);
+        }
         const set: Record<string, unknown> = { updatedAt: new Date() };
         if (patch.title !== undefined) set.title = patch.title;
         if (patch.patientFacing !== undefined) set.patientFacing = patch.patientFacing;
@@ -1330,7 +1343,12 @@ export function createDbDocumentAbacResolver(db: DbClient): DocumentAbacResolver
     async loadDocument(organizationId, documentId): Promise<DocumentAbacFacts | null> {
       return withOrg(db, organizationId, async (tx) => {
         const [d] = await tx
-          .select({ id: DOC.id, patientId: DOC.patientId, retentionClass: DOC.retentionClass })
+          .select({
+            id: DOC.id,
+            patientId: DOC.patientId,
+            retentionClass: DOC.retentionClass,
+            aggregateType: DOC.aggregateType,
+          })
           .from(DOC)
           .where(eq(DOC.id, documentId))
           .limit(1);
@@ -1345,6 +1363,7 @@ export function createDbDocumentAbacResolver(db: DbClient): DocumentAbacResolver
           documentId: d.id,
           patientId: d.patientId,
           retentionClass: d.retentionClass,
+          aggregateType: d.aggregateType,
           legalHoldActive: !!hold,
           // The patient discharge instant is an M6 cross-module fact (no seam bound in the read wire);
           // the care-team read window stays open (null) until M22L binds the AdmissionStatus reader.

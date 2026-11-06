@@ -43,6 +43,12 @@ export interface TemplateDescriptor {
   readonly aggregateType: DocumentAggregateType;
   readonly retentionClass: DocumentRetentionClass;
   readonly defaultTitle: string;
+  /**
+   * ADR-0109 — the document is INTERNAL to the agency: read by role (scope-bypass and bereavement oversight), never by caseload
+   * membership, never patient-facing, never in the portal. The read path keys on `aggregateType`
+   * (`internal-documents.ts`); a test pins the flagged descriptors to that set.
+   */
+  readonly internalOnly?: true;
 }
 
 /**
@@ -192,6 +198,23 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     aggregateType: "bereavement_letter",
     retentionClass: "bereavement",
     defaultTitle: "Bereavement Welcome Packet",
+  },
+  // ADR-0109 D6 — the approved physician condolence letter M16 requests through `m16.bereavement.document_requested` once a human
+  // reviewer approves it. INTERNAL: it goes to the patient's attending clinician, never to the family or the portal. Its own
+  // aggregate type (the letter id), under the `bereavement` retention class like every other bereavement artifact.
+  bereavement_physician_condolence_letter: {
+    aggregateType: "bereavement_physician_letter",
+    retentionClass: "bereavement",
+    defaultTitle: "Physician Condolence Letter",
+    internalOnly: true,
+  },
+  // ADR-0109 D9 — the internal discharge summary M16 requests at EVERY closure writer (aggregate = the closure row). INTERNAL: an
+  // auditor's offered-versus-delivered record, with no contact notes, care goals, risk factors or substance-use data.
+  bereavement_discharge_summary_internal: {
+    aggregateType: "bereavement_discharge_summary",
+    retentionClass: "bereavement",
+    defaultTitle: "Bereavement Program Discharge Summary (Internal)",
+    internalOnly: true,
   },
   // M20 — `compliance`, not `operational`: an OSHA-recordable workplace-injury report is retained
   // evidence, and the patient-safety ones feed M30's QAPI review.

@@ -19,6 +19,10 @@
 import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
 import type { DocumentRetentionClass } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
+import {
+  INTERNAL_DOCUMENT_OVERSIGHT_ROLES,
+  isInternalOnlyAggregateType,
+} from "./internal-documents";
 
 /** The §4.7 predicate names M22 owns (registered into M3). Single-owner across the platform registry. */
 export const M22_ABAC_PREDICATES = [
@@ -37,6 +41,8 @@ export interface DocumentAbacFacts {
   /** `null` for org-level operational documents (no patient bind). */
   readonly patientId: string | null;
   readonly retentionClass: DocumentRetentionClass;
+  /** The document's aggregate type: an internal-only one (ADR-0109) is read by role, never by caseload. Absent => not internal. */
+  readonly aggregateType?: string;
   /** Any active `document_legal_hold` row exists for the document (gates write actions, §4.7). */
   readonly legalHoldActive: boolean;
   /** The patient's discharge instant, if discharged — drives the 13-month post-discharge read window. */
@@ -85,6 +91,17 @@ export const SCOPE_BYPASS_ROLES: readonly string[] = [
 ];
 const isScopeBypass = (context: AbacContext): boolean =>
   SCOPE_BYPASS_ROLES.some((r) => hasRole(context, r));
+
+/**
+ * ADR-0109 D6 / D9 — may these roles read an INTERNAL-ONLY document (M16's physician letter and discharge summary)? The §4.7
+ * scope-bypass roles and bereavement oversight; caseload membership never admits. Shared by the predicate, the by-id and list
+ * scope in the routes, so there is one rule.
+ */
+export function canReadInternalDocuments(roles: readonly string[]): boolean {
+  return roles.some(
+    (role) => SCOPE_BYPASS_ROLES.includes(role) || INTERNAL_DOCUMENT_OVERSIGHT_ROLES.includes(role),
+  );
+}
 
 /**
  * §4.7 — the credential kinds eligible to review high-risk medication/allergy/dx fields (RN-or-above).
@@ -178,6 +195,10 @@ export function buildDocumentAbacPredicates(
     context: AbacContext,
     facts: DocumentAbacFacts,
   ): Promise<boolean> => {
+    // ADR-0109 — an internal-only document is read by ROLE; being on the decedent's chart does not admit.
+    if (isInternalOnlyAggregateType(facts.aggregateType)) {
+      return canReadInternalDocuments(context.roles);
+    }
     if (isScopeBypass(context)) return true;
     if (facts.patientId === null) return false; // org-level doc — only scope-bypass roles (above)
     if (!context.userId) return false;

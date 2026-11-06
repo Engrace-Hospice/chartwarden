@@ -108,6 +108,11 @@ export type DocumentAggregateType =
   | "spiritual_plan"
   | "volunteer_plan"
   | "bereavement_letter"
+  // ADR-0109 D6 / D9 (mig 1347) — M16's two INTERNAL bereavement documents (the approved physician condolence letter and the
+  // closure discharge summary). Each is its own type so M22 can refuse them by aggregate type: caseload membership never admits
+  // them and the portal allowlist never lists them.
+  | "bereavement_physician_letter"
+  | "bereavement_discharge_summary"
   | "visit_confirmation"
   | "evv_verification"
   | "patient_amendment_statement_of_disagreement"

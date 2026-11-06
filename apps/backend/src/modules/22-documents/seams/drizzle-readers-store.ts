@@ -18,7 +18,12 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import { DegradedError } from "@chartwarden/types";
-import type { DocumentDigest, IntakeMetrics, ProvenanceRecord } from "@chartwarden/types";
+import type {
+  DocumentAggregateType,
+  DocumentDigest,
+  IntakeMetrics,
+  ProvenanceRecord,
+} from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import type { StaffMintAccessLogPort } from "../routes/signed-url-service";
 import type { DocumentReaderStore, PortalAccessLogPort } from "./readers-store";
@@ -233,6 +238,7 @@ export function createDrizzleDocumentReaderStore(db: DbClient): DocumentReaderSt
             documentId: DV.documentId,
             patientId: DOC.patientId,
             patientFacing: DOC.patientFacing,
+            aggregateType: DOC.aggregateType,
             activeVersionId: DOC.activeVersionId,
             status: DOC.status,
             // F-225 (#248) — the version's REAL stored object key (the portal URL presigns it).
@@ -252,6 +258,7 @@ export function createDrizzleDocumentReaderStore(db: DbClient): DocumentReaderSt
           documentId: row.documentId,
           patientId: row.patientId,
           patientFacing: row.patientFacing,
+          aggregateType: row.aggregateType as DocumentAggregateType,
           isSudClass: metadata?.sudRedacted === true,
           status: row.status as DocumentDigest["status"],
           objectKey: row.objectKey,
