@@ -38,7 +38,7 @@ Claims billing (claim assembly and submission, eligibility checks, DDE work, reo
 work exactly when it has chosen `stedi` or `claimmd` and that config is `active` (ADR-0053 amendment 2026-11-06); `outside`,
 nothing chosen, and a `draft` or `verified` config are refused. The carve-outs (NOE / NOTR / transfer notices, voids, in-flight
 work, reads and configuration), D5's list of blocked work, D6's `CLAIMS_BILLING_ENFORCEMENT=off|shadow|enforce` semantics and
-D7's mount-boundary gate, worker hold and void exemption are unchanged.
+D7's mount-boundary gate, worker hold and void exemption are unchanged. The default stays `shadow` (owner decision, 2026-11-05); a production boot that runs any mode but `enforce` logs a warning saying so (the deploy env files are not touched here).
 
 **What changed.** D1-D3 (the add-on, its grant and its entitlement rule) no longer decide anything. The `ClaimsBillingEntitlementReader`
 seam is now owned and registered by M23 and decides from `TenantClearinghouseReader` (D4): `{ entitled: true }` for an active
