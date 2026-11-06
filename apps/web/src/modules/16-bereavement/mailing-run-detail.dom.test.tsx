@@ -10,6 +10,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { MailingRunDetail } from "./mailing-run-detail";
 
+/** jest-dom's `toBeDisabled`: the control itself, or a descendant of a disabled fieldset (how these screens make a whole form inert). */
+const inert = (el: HTMLElement): boolean =>
+  (el as HTMLInputElement).disabled || el.closest("fieldset:disabled") !== null;
+
 const RUN_ID = "11111111-1111-4111-8111-111111111111";
 const PLAN_ID = "22222222-2222-4222-8222-222222222222";
 const CONTACT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -597,7 +601,7 @@ describe("mailing run — editing the wording and the items list", () => {
     fireEvent.change(within(dialog).getByLabelText("Title"), { target: { value: "Changed" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save wording" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
-    expect((within(dialog).getByLabelText("Title") as HTMLInputElement).disabled).toBe(true);
+    expect(inert(within(dialog).getByLabelText("Title"))).toBe(true);
     expect(
       (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
     ).toBe(true);

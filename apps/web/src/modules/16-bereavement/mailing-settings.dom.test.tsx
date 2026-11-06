@@ -10,6 +10,10 @@ import { describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { MailingSettings } from "./mailing-settings";
 
+/** jest-dom's `toBeDisabled`: the control itself, or a descendant of a disabled fieldset (how these screens make a whole form inert). */
+const inert = (el: HTMLElement): boolean =>
+  (el as HTMLInputElement).disabled || el.closest("fieldset:disabled") !== null;
+
 const MANAGER = ["bereavement.mailing.read", "bereavement.mailing.manage"];
 const CONFIG_PATH = "/api/v1/bereavement/mailings/config";
 const WORDING = {
@@ -171,7 +175,7 @@ describe("mailing settings — what it shows", () => {
     expect(await screen.findByText(/You can read these settings but not change them/)).toBeTruthy();
     const december = await card("December holiday card settings");
     expect(december.queryByRole("button", { name: /Save/ })).toBeNull();
-    expect((december.getByLabelText("Lead time in days") as HTMLInputElement).disabled).toBe(true);
+    expect(inert(december.getByLabelText("Lead time in days"))).toBe(true);
   });
 });
 
@@ -421,12 +425,10 @@ describe("mailing settings — saving", () => {
     const save = december.getByRole("button", { name: "Save December holiday card settings" });
     fireEvent.click(save);
     await waitFor(() => expect(puts(calls)).toHaveLength(1));
-    expect((december.getByLabelText("Lead time in days") as HTMLInputElement).disabled).toBe(true);
-    expect((december.getByLabelText("Send this mailing") as HTMLInputElement).disabled).toBe(true);
-    expect(
-      (december.getByLabelText("December holiday card title") as HTMLInputElement).disabled,
-    ).toBe(true);
-    expect((save as HTMLInputElement).disabled).toBe(true);
+    expect(inert(december.getByLabelText("Lead time in days"))).toBe(true);
+    expect(inert(december.getByLabelText("Send this mailing"))).toBe(true);
+    expect(inert(december.getByLabelText("December holiday card title"))).toBe(true);
+    expect(inert(save)).toBe(true);
     expect(save.getAttribute("aria-busy")).toBe("true");
     fireEvent.click(save);
     expect(puts(calls)).toHaveLength(1);
