@@ -292,6 +292,7 @@ function createM23TestBackend(): {
         electionEffectiveDate: "2026-01-01",
         windowTargetAt: NOW,
         windowBreachedAt: null,
+        externalFiling: null,
         noeControlNumber: "NOE0000001",
         payerNoeControlNumber: null,
         acceptedAt: null,
@@ -330,6 +331,7 @@ function createM23TestBackend(): {
         effectiveEndDate: "2026-02-01",
         windowTargetAt: NOW,
         windowBreachedAt: null,
+        externalFiling: null,
         state: "ready",
         notrControlNumber: "NOTR0000001",
         payerNotrControlNumber: null,
@@ -714,6 +716,11 @@ function createM23TestBackend(): {
     async submitNoe() {
       return { submissionId: "noe-submission-1", jobId: "job-noe-1", kind: "noe" };
     },
+    async recordNoeExternalFiling(_actor, noeId) {
+      const row = noes.get(noeId);
+      if (!row) throw new NotFoundError("noe_record", noeId);
+      return row;
+    },
     async cancelNoe(_actor, noeId) {
       const row = noes.get(noeId);
       if (!row) throw new NotFoundError("noe_record", noeId);
@@ -731,6 +738,11 @@ function createM23TestBackend(): {
     },
     async submitNotr() {
       return { submissionId: "notr-submission-1", jobId: "job-notr-1", kind: "notr" };
+    },
+    async recordNotrExternalFiling(_actor, notrId) {
+      const row = notrs.get(notrId);
+      if (!row) throw new NotFoundError("notr_record", notrId);
+      return row;
     },
     async cancelNotr(_actor, notrId) {
       const row = notrs.get(notrId);

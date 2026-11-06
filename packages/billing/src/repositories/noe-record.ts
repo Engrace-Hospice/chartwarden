@@ -31,6 +31,13 @@ import {
 
 const N = schema.noeRecord;
 
+/**
+ * A notice its tenant recorded as filed outside ChartWarden (`external_filing_status = 'filed'`) has met, or breached on record,
+ * its deadline: it leaves the window watch and the DDE watchdog. `pending` and unmarked notices stay on both. NOT `<>`: that
+ * would drop every unmarked (NULL) notice too.
+ */
+const NOT_FILED_EXTERNALLY = sql`${N.externalFilingStatus} IS DISTINCT FROM 'filed'`;
+
 /** The domain-cased `noe_record` row: identical to `schema.NoeRecord` except `state` is lowercase `NoticeState`. */
 export interface NoeRecord extends Omit<schema.NoeRecord, "state"> {
   readonly state: NoticeState;
@@ -63,6 +70,10 @@ export type NoeTransitionPatch = Partial<
     | "rejectionCodes"
     | "payerStatusDate"
     | "payerStatusDateSource"
+    | "externalFilingStatus"
+    | "filedExternallyOn"
+    | "filedExternallyRecordedAt"
+    | "filedExternallyByMembershipId"
   >
 >;
 
@@ -195,6 +206,7 @@ export class NoeRepository {
           eq(N.organizationId, organizationId),
           notInArray(N.state, NOE_TERMINAL_DB),
           lte(N.windowTargetAt, throughDate),
+          NOT_FILED_EXTERNALLY,
           // Notices the DDE watch should (still) queue work for, decided in the query so a LIMIT can never be filled by
           // already-served ones: no item of this type yet, OR (no OPEN item AND the latest item is `closed` with no MAC
           // acceptance AND that closure has not been respawned yet). A cancelled latest item never qualifies, a closed
@@ -240,6 +252,7 @@ export class NoeRepository {
           notInArray(N.state, NOE_TERMINAL_DB),
           lte(N.windowTargetAt, asOf),
           isNull(N.windowBreachedAt),
+          NOT_FILED_EXTERNALLY,
         ),
       )
       .orderBy(desc(N.windowTargetAt))

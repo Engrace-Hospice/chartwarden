@@ -82,6 +82,12 @@ import {
 import { clearinghouseStateFor, holdJobWhileUnbound } from "./clearinghouse-unbound-hold";
 import { type AckPayerDates, applyNoticeAck, sanitizeAckReasonCodes } from "./notice-ack-jobs";
 import {
+  M23_NOTICE_PARK_QUEUES,
+  assertNoticeMayTransmit,
+  noticeIdOfJob,
+  parkNoticeForExternalFiling,
+} from "./notice-external-filing";
+import {
   type M23CronQueueName,
   M23_CRON_QUEUES,
   M23_JOB_SCHEDULES,
@@ -1302,6 +1308,8 @@ export async function runNoeSubmit(
   const submissions = new ClaimSubmissionRepository(tx);
   const now = (deps.now ?? (() => new Date()))();
 
+  // Owner decision D4: never generate or upload for an org whose clearinghouse is not live (the worker pre-flight parks or holds).
+  await assertNoticeMayTransmit(deps, job.organizationId, "noe");
   const noe = await noes.findById(job.noeId);
   if (!noe) throw new Error(`noe_record ${job.noeId} not found`);
 
@@ -1363,6 +1371,7 @@ export async function runNotrSubmit(
   const submissions = new ClaimSubmissionRepository(tx);
   const now = (deps.now ?? (() => new Date()))();
 
+  await assertNoticeMayTransmit(deps, job.organizationId, "notr");
   const notr = await notrs.findById(job.notrId);
   if (!notr) throw new Error(`notr_record ${job.notrId} not found`);
 
@@ -2545,32 +2554,51 @@ async function holdNewClaimsWork(
 }
 
 /**
- * The queues whose jobs send a claim through the org's own clearinghouse. Such a job for an org whose clearinghouse is not live
- * (nothing chosen yet, a draft / verified config, or `outside`) is HELD, not failed: the tenant has not finished setup, and the
- * work is fine. (`eligibility.refresh` is HETS, not the clearinghouse, so it is not here.)
+ * The queues whose jobs send a claim (or a Medicare transfer notice, 8xC / 8xD) through the org's own clearinghouse. Such a job for
+ * an org whose clearinghouse is not live (nothing chosen yet, a draft / verified config, or `outside`) is HELD, not failed: the
+ * tenant has not finished setup (or files elsewhere), and the work is fine. The transfer notice has no "filed outside" marker of its
+ * own, so an `outside` org's stays held rather than parked. (`eligibility.refresh` is HETS, not the clearinghouse, so it is not
+ * here; the NOE / NOTR queues are `M23_NOTICE_PARK_QUEUES`: they are held too, except that `outside` PARKS the notice.)
  */
 export const M23_CLAIM_TRANSPORT_QUEUES: ReadonlySet<string> = new Set([
   M23_QUEUES.claimSubmit,
   M23_QUEUES.claimSubmitRetry,
+  M23_QUEUES.transferNoticeSubmit,
 ]);
 
 /**
- * Everything a worker asks BEFORE it opens the job's transaction: the claims-billing gate (ADR-0108 D7), then, for the claim
- * queues, whether the org's clearinghouse is live. Either answer holds the job (moved back to delayed, no attempt spent, no
- * DLQ) by throwing BullMQ's DelayedError. Returns normally when the job may run.
+ * Everything a worker asks BEFORE it opens the job's transaction: the claims-billing gate (ADR-0108 D7), then, for the claim,
+ * transfer-notice and NOE / NOTR queues, whether the org's clearinghouse is live. Either answer holds the job (moved back to
+ * delayed, no attempt spent, no DLQ) by throwing BullMQ's DelayedError. Returns undefined when the job may run, and `"parked"`
+ * when it is DONE without running: a NOE / NOTR job of an org that bills outside ChartWarden (owner decision D4) parks the notice
+ * for the tenant to file itself and transmits nothing; the caller completes the job.
  */
 export async function holdBeforeRun(
   deps: Pick<M23WorkerDeps, "db" | "transport" | "alerts" | "logger">,
   job: HoldableJob,
   token: string | undefined,
   queue: string,
-  data: { readonly organizationId: string; readonly claimId?: unknown },
-): Promise<void> {
+  data: {
+    readonly organizationId: string;
+    readonly claimId?: unknown;
+    readonly noeId?: unknown;
+    readonly notrId?: unknown;
+  },
+): Promise<"parked" | undefined> {
   await holdNewClaimsWork(deps, job, token, queue, data);
-  if (!M23_CLAIM_TRANSPORT_QUEUES.has(queue)) return;
+  const noticeKind = M23_NOTICE_PARK_QUEUES.get(queue);
+  if (!noticeKind && !M23_CLAIM_TRANSPORT_QUEUES.has(queue)) return undefined;
   const state = await clearinghouseStateFor(deps, data.organizationId);
-  if (state.state === "bound") return;
-  await holdJobWhileUnbound({
+  if (state.state === "bound") return undefined;
+  if (noticeKind && state.reason === "outside") {
+    await parkNoticeForExternalFiling(deps, {
+      organizationId: data.organizationId,
+      kind: noticeKind,
+      noticeId: noticeIdOfJob(noticeKind, data),
+    });
+    return "parked";
+  }
+  return holdJobWhileUnbound({
     deps,
     job,
     token,
@@ -2603,7 +2631,8 @@ export function registerM23Workers(deps: M23WorkerDeps): Worker[] {
             `M23 worker ${queue}: job.data.organizationId missing (the JobEnqueuePort must enrich it)`,
           );
         }
-        await holdBeforeRun(deps, job, token, queue, data);
+        // "parked": a NOE / NOTR of an org that bills outside ChartWarden was parked for the tenant; the job is done.
+        if ((await holdBeforeRun(deps, job, token, queue, data)) === "parked") return;
         return withOrgContext(
           deps.db,
           {
@@ -2806,7 +2835,7 @@ export function registerM23LaunchWorkers(
       async (job, token) => {
         const data = job.data as D;
         if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
-        await holdBeforeRun(deps, job, token, queue, data);
+        if ((await holdBeforeRun(deps, job, token, queue, data)) === "parked") return;
         await withOrgContext(
           deps.db,
           {

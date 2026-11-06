@@ -3,7 +3,8 @@
 // the CWF, i.e. until the previous stay's NOTR (8xB) or its final claim has been filed (Claims Processing Manual
 // ch. 11 §20.1.6). Read over M23's OWN tables only:
 //
-//   NOTR filed         a notr_record of the admission that left our hands (SUBMITTED / ACK_PENDING / ACK_ACCEPTED)
+//   NOTR filed         a notr_record of the admission that left our hands (SUBMITTED / ACK_PENDING / ACK_ACCEPTED), or that
+//                      a tenant billing outside ChartWarden recorded as filed itself (`external_filing_status = 'filed'`)
 //   final claim filed  a claim of the admission with a discharge type of bill (811 admit-through-discharge, 814 final)
 //                      that left our hands (submitted, acknowledged, paid / denied — not draft, rejected, voided,
 //                      replaced)
@@ -14,7 +15,7 @@ import type { BillingDb } from "@chartwarden/billing";
 import * as schema from "@chartwarden/db/schema";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 
 const NOTR = schema.notrRecord;
 const CLAIM = schema.claim;
@@ -47,7 +48,16 @@ export async function priorElectionClosureTx(
   const [notr] = await tx
     .select({ id: NOTR.id })
     .from(NOTR)
-    .where(and(eq(NOTR.admissionId, q.admissionId), inArray(NOTR.state, [...NOTR_FILED_STATES])))
+    .where(
+      and(
+        eq(NOTR.admissionId, q.admissionId),
+        or(
+          inArray(NOTR.state, [...NOTR_FILED_STATES]),
+          // A tenant that bills outside ChartWarden files the NOTR itself; it never leaves draft / ready here (owner decision D4).
+          eq(NOTR.externalFilingStatus, "filed"),
+        ),
+      ),
+    )
     .limit(1);
   const [finalClaim] = await tx
     .select({ id: CLAIM.id })
