@@ -174,6 +174,7 @@ export const PLATFORM_ONBOARDING_DATA_KEYS = [
   // onboarding data entered on its behalf, with the same predicate, step-up and reason.
   "tenant_clearinghouse.read_platform",
   "tenant_clearinghouse.write_platform",
+  "tenant_clearinghouse.verify_baa_platform",
 ] as const;
 const PLATFORM_ONBOARDING_DATA_ROLES: readonly PlatformOpsRoleKey[] = ["platform_ops"];
 

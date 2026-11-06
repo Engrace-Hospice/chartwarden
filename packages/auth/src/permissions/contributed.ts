@@ -3023,6 +3023,14 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // Owner decision D2: verifying the vendor BAA a tenant recorded for its own account is a separable duty (and, unlike the
+  // writes above, not limited to a tenant that is still onboarding: a live tenant that changes vendor needs it too).
+  "tenant_clearinghouse.verify_baa_platform": {
+    resource: "tenant_clearinghouse",
+    action: "verify_baa_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M34 contributed permission keys. */
@@ -3437,6 +3445,22 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
     action: "admin",
     category: "billing",
     abac: "provider_entity_billing_scope",
+  },
+  // --- clearinghouse choice surface (ADR-0053 amendment 2026-11-06; owner decision D3) ---
+  // ORG-LEVEL on purpose, unlike the provider-entity-scoped `billing.mac_credential.*` above: choosing the clearinghouse
+  // re-routes EVERY provider entity's claims (PHI) to another vendor, so a billing manager scoped to one entity must not hold
+  // it. Granted to the org-wide admin roles only (`org_admin`, `administrator`; migration 1354 + the full-catalog template).
+  "billing.clearinghouse.read": {
+    resource: "billing_clearinghouse",
+    action: "read",
+    category: "billing",
+    abac: "none",
+  },
+  "billing.clearinghouse.admin": {
+    resource: "billing_clearinghouse",
+    action: "admin",
+    category: "billing",
+    abac: "none",
   },
   // --- hospice rate-table surface (F-210: tenant-entered CMS per-diem rates) ---
   "billing.rate_table.read": {
