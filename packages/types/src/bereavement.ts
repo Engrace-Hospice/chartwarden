@@ -117,7 +117,24 @@ export type BereavementContactLogOutcome =
   | "requested_no_further_contact"
   | "crisis_referral"
   /** GAP-130 — system-only: the §4.5 M22 render callback's log row for an auto-completed card/letter. */
-  | "artifact_rendered";
+  | "artifact_rendered"
+  /** ADR-0109 D10 — PROGRAM ACTIVITY outcomes (an activity row only): a mailing sent, an email sent, a session or memorial attended. */
+  | "mailed"
+  | "emailed"
+  | "attended";
+
+/** ADR-0109 D10 — what a program-activity contact-log row was (`bereavement_contact_log.activity_kind`, a closed CHECK list). */
+export const BEREAVEMENT_ACTIVITY_KINDS = [
+  "newsletter_mailing",
+  "holiday_mailing",
+  "memorial_invitation_mailing",
+  "support_group_session",
+  "memorial_service_attendance",
+] as const;
+export type BereavementActivityKind = (typeof BEREAVEMENT_ACTIVITY_KINDS)[number];
+
+/** ADR-0109 D10 — the outcomes only an activity row may carry (write routes refuse them; the unreachable streak ignores them). */
+export const BEREAVEMENT_ACTIVITY_OUTCOMES = ["mailed", "emailed", "attended"] as const;
 
 /** The D3 risk tier driving the D4 cadence (mirrors `bereavement_risk_tier`). The deterministic rubric only
  *  reaches `high`; `complicated` is a D8 screen-driven promotion. */
@@ -177,6 +194,57 @@ export type BereavementOptOutSourceKind =
 /** §3.3.7 — who drove the closure. `cascade` is the all-contacts-opted-out / patient-opt-out path. */
 export type BereavementCloseKind = "auto" | "manual" | "cascade";
 
+// ── ADR-0109 D10 — the mailing program (mirrors the `bereavement_mailing_*` text + CHECK value sets, migration 1374) ─────────────────────
+
+/** `bereavement_mailing_config.mailing_key`. `decedent_birthday` is DEFERRED (M16 holds no date of birth): kept in the CHECK, built by nothing. */
+export const BEREAVEMENT_MAILING_KEYS = [
+  "newsletter_quarterly",
+  "holiday_december",
+  "mothers_day",
+  "fathers_day",
+  "decedent_birthday",
+] as const;
+export type BereavementMailingKey = (typeof BEREAVEMENT_MAILING_KEYS)[number];
+/** The keys a tenant can configure and the sweep drafts runs for (everything but the deferred birthday mailing). */
+export const BEREAVEMENT_BUILT_MAILING_KEYS = [
+  "newsletter_quarterly",
+  "holiday_december",
+  "mothers_day",
+  "fathers_day",
+] as const satisfies readonly BereavementMailingKey[];
+
+export type BereavementMailingRunKind = "newsletter" | "holiday" | "memorial_invitation";
+export type BereavementMailingRunStatus =
+  | "draft"
+  | "generating"
+  | "ready"
+  | "mailed"
+  | "cancelled"
+  | "failed";
+export type BereavementMailingChannel = "postal" | "email";
+export type BereavementMailingItemStatus =
+  | "included"
+  | "excluded"
+  | "logged"
+  | "excluded_after_render"
+  | "email_sent"
+  | "email_failed";
+/** Why a contact was left out of a run (the item CHECK mirrors this list; the pure `decideMailingEligibility` returns exactly these). */
+export const BEREAVEMENT_MAILING_EXCLUSION_REASONS = [
+  "plan_not_active",
+  "contact_not_engageable",
+  "opted_out",
+  "no_mailings",
+  "channel_opted_out",
+  "channel_not_allowed",
+  "no_mailing_address",
+  "no_email_address",
+  "email_channel_unavailable",
+  "not_in_audience",
+] as const;
+export type BereavementMailingExclusionReason =
+  (typeof BEREAVEMENT_MAILING_EXCLUSION_REASONS)[number];
+
 // ── §3.3 owned tables + D11 audit denylists ───────────────────────────────────────────────────────────
 
 /** M16's owned tables (the manifest `ownedTables` set). */
@@ -193,6 +261,9 @@ export type M16TableName =
   | "bereavement_assessment_task"
   | "bereavement_risk_assessment_draft"
   | "bereavement_physician_letter"
+  | "bereavement_mailing_config"
+  | "bereavement_mailing_run"
+  | "bereavement_mailing_item"
   | "tenant_bereavement_external_source_gate_override";
 
 /**
@@ -227,6 +298,10 @@ export const M16_AUDIT_DENYLIST: { readonly [K in M16TableName]: readonly string
   bereavement_assessment_task: [],
   bereavement_risk_assessment_draft: [],
   bereavement_physician_letter: ["decline_reason_redacted"],
+  // ADR-0109 D10 — the agency-authored wording of a mailing is prose, so the audit row records `<changed>` instead of it.
+  bereavement_mailing_config: ["content_jsonb"],
+  bereavement_mailing_run: ["content_jsonb"],
+  bereavement_mailing_item: [],
   tenant_bereavement_external_source_gate_override: ["additional_rationale"],
 } as const;
 
@@ -278,6 +353,7 @@ export const M16_EVENT_NAMES = [
   "m16.bereavement.outreach_missed",
   "m16.bereavement.outreach_artifact_requested",
   "m16.bereavement.document_requested",
+  "m16.bereavement.mailing_run_mailed",
   "m16.bereavement.risk_score_computed",
   "m16.bereavement.anniversary_due_in_14_days",
 ] as const;

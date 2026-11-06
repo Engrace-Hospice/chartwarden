@@ -23,9 +23,10 @@ import {
 } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
-import { canReadInternalDocuments } from "../abac-predicates";
+import { canReadInternalDocument, canReadInternalDocuments } from "../abac-predicates";
 import {
   INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES,
+  SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES,
   assertNotInternalOnlyForWrite,
   isInternalOnlyAggregateType,
 } from "../internal-documents";
@@ -294,7 +295,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     // ADR-0109 — an internal-only document (M16's physician letter / discharge summary) is read by ROLE, never by caseload.
     if (isInternalOnlyAggregateType(doc.aggregateType)) {
       // 404 for a caller who may not read it (an id probe learns nothing); 422 for one who may but tries to WRITE (render-only).
-      if (!canReadInternalDocuments(actorOf(request).roles)) throw new NotFoundError("document");
+      // (a seam-only type, the mailing batch, is a 404 for EVERY role: its one door is OrgDocumentAccessProvider)
+      if (!canReadInternalDocument(doc.aggregateType, actorOf(request).roles)) {
+        throw new NotFoundError("document");
+      }
       if (purpose === "write") assertNotInternalOnlyForWrite(doc.aggregateType);
       return;
     }
@@ -490,9 +494,12 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
           patientId: q.patientId,
           aggregateType: q.aggregateType,
           // ADR-0109 — internal-only documents are listed to the roles that may read them, and to nobody else.
-          ...(canReadInternalDocuments(roles)
-            ? {}
-            : { excludeAggregateTypes: [...INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES] }),
+          // a seam-only type is never listed, to anyone
+          excludeAggregateTypes: [
+            ...(canReadInternalDocuments(roles)
+              ? SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES
+              : INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES),
+          ],
           aggregateId: q.aggregateId,
           retentionClass: q.retentionClass,
           tagKey: q.tagKey,

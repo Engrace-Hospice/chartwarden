@@ -92,6 +92,7 @@ import {
   useActionStatus,
   useIdempotencyKey,
 } from "./bereavement-ui";
+import { ProgramActivityCard } from "./program-activity-card";
 
 /** What a refused write on this page means: the contact moved (or was decided) under the reader, so the page reloads. */
 const CONTACT_MOVED =
@@ -133,6 +134,8 @@ function ContactForPlan({
   const [resumeError, setResumeError] = useState<string | null>(null);
   // ADR-0109 — this contact's own schedule (null until the first load).
   const [schedule, setSchedule] = useState<Schedule | null>(null);
+  // Bumped when a write adds a timeline entry (a logged direct contact), so the Program activity card reads again.
+  const [timelineTick, setTimelineTick] = useState(0);
   const { announce, region } = useActionStatus();
   const keepTryingKey = useIdempotencyKey();
   const resumeKey = useIdempotencyKey();
@@ -396,6 +399,9 @@ function ContactForPlan({
         <ContactSchedule schedule={schedule} onRetry={() => void load()} />
       </Card>
 
+      {/* ADR-0109 D10 — touchpoints and program activities (mailings, sessions); renders nothing for a reader the server refuses. */}
+      <ProgramActivityCard contactId={contactId} refreshKey={timelineTick} />
+
       <Card title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           {contact.status === "proposed" ? (
@@ -457,7 +463,14 @@ function ContactForPlan({
         <UnreachableModal contact={contact} onClose={() => setCeremony(null)} onDone={refresh} />
       ) : null}
       {ceremony === "log" ? (
-        <LogDirectModal contact={contact} onClose={() => setCeremony(null)} onDone={refresh} />
+        <LogDirectModal
+          contact={contact}
+          onClose={() => setCeremony(null)}
+          onDone={() => {
+            setTimelineTick((n) => n + 1);
+            refresh();
+          }}
+        />
       ) : null}
       {ceremony === "channels" ? (
         <ChannelsModal contact={contact} onClose={() => setCeremony(null)} onDone={refresh} />

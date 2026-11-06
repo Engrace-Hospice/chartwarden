@@ -14,8 +14,10 @@ import type {
   BereavedContactId,
   BereavedContactRelationship,
   BereavedContactStatus,
+  BereavementActivityKind,
   BereavementAnniversaryMark,
   BereavementConfidenceBand,
+  BereavementContactLogOutcome,
   BereavementDataCompleteness,
   BereavementExternalSourceMetadata,
   BereavementOutreachId,
@@ -48,6 +50,7 @@ import type {
   RiskScoreListQuery,
   SupervisorDashboardQuery,
 } from "./m16-typebox";
+import type { ContactTimelineQuery } from "./mailing-typebox";
 
 /** Route 1 — one row of the plan worklist. */
 export interface BereavementPlanListItem {
@@ -265,6 +268,25 @@ export interface SupervisorDashboardView {
 }
 
 /**
+ * Route 52 — one entry of a contact's program timeline: a touchpoint (an outreach row's log) or a program activity (a mailing, a group session, a
+ * memorial attendance; ADR-0109 D10). Activity entries satisfy no cadence item and are never counted in M30. The sealed notes are never returned.
+ * `outcome` is ABSENT on an outreach entry for a bereavement volunteer: what happened on a call is clinical content (D10).
+ */
+export interface ContactTimelineEntry {
+  readonly entryId: string;
+  readonly at: IsoInstant;
+  readonly source: "outreach" | "program_activity";
+  readonly kind: BereavementOutreachKind | null;
+  readonly activityKind: BereavementActivityKind | null;
+  readonly outcome?: BereavementContactLogOutcome;
+}
+
+export interface ContactTimelinePage extends CursorPage<ContactTimelineEntry> {
+  /** §7.13 / D10 — what the caller is not cleared for on this contact's plan. */
+  readonly redactedCategories: readonly BereavementRedactedCategory[];
+}
+
+/**
  * The §4.1 GET surface. Implemented over Drizzle in prod (RLS-scoped per `withOrgContext`).
  *
  * Every plan-scoped read answers `null` when the plan is absent OR outside the caller's reach, and the
@@ -293,6 +315,12 @@ export interface M16ReadService {
     actor: M16ReadActor,
     planId: string,
   ): Promise<BereavementAssessmentTaskList | null>;
+  /** Route 52 — the contact's touchpoints and program activities, newest first (cursor-paginated). `null` = contact absent / out of reach. */
+  listContactTimeline(
+    actor: M16ReadActor,
+    contactId: string,
+    query: ContactTimelineQuery,
+  ): Promise<ContactTimelinePage | null>;
   counselorDashboard(
     actor: M16ReadActor,
     query: CounselorDashboardQuery,

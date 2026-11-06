@@ -2235,6 +2235,7 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   // by aggregate type (the portal allowlist never lists them, and the §4.7 caseload rule never admits them).
   "bereavement_physician_letter", // the approved condolence letter to the internal attending clinician
   "bereavement_discharge_summary", // the internal discharge summary an auditor reads at closure
+  "bereavement_mailing_batch", // ADR-0109 D10 (mig 1375) — the internal mailing batch PDF (every recipient's name and address)
   "visit_confirmation",
   "evv_verification",
   "patient_amendment_statement_of_disagreement",
@@ -2702,6 +2703,10 @@ export const bereavementContactLogOutcome = pgEnum("bereavement_contact_log_outc
   "requested_no_further_contact",
   "crisis_referral",
   "artifact_rendered",
+  // ADR-0109 D10 (mig 1370-1372) — PROGRAM ACTIVITY outcomes: only an activity row (`activity_kind` set) carries one, the write routes never accept them.
+  "mailed",
+  "emailed",
+  "attended",
 ]);
 
 /** `bereavement_risk_tier` — the D3 deterministic tier that drives the D4 cadence. The rubric itself only

@@ -3,6 +3,8 @@
 // the composition root binds (the M15/M24/M25/M26 routes/index.ts precedent).
 export type {
   BereavedContactRowView,
+  ContactTimelineEntry,
+  ContactTimelinePage,
   BereavementAssessmentTaskList,
   BereavementAssessmentTaskView,
   BereavementClosureView,
@@ -32,6 +34,18 @@ export type {
   PutPreDeathDraftInput,
 } from "./draft-service";
 export { type M16LetterDeps, buildDrizzleM16LetterService } from "./letter-service-drizzle";
+export { type M16MailingDeps, buildDrizzleM16MailingService } from "./mailing-service-drizzle";
+export type {
+  ListMailingItemsInput,
+  ListMailingRunsInput,
+  M16MailingService,
+  MailingConfigView,
+  MailingDownloadView,
+  MailingItemCounts,
+  MailingItemView,
+  MailingRunView,
+  PutMailingConfigInput,
+} from "./mailing-service";
 export type {
   ApprovePhysicianLetterInput,
   DeclinePhysicianLetterInput,
@@ -75,6 +89,7 @@ export {
 
 import type { M16DraftService } from "./draft-service";
 import type { M16LetterService } from "./letter-service";
+import type { M16MailingService } from "./mailing-service";
 import type { M16ReadService } from "./read-service";
 import type { M16WriteService } from "./write-service";
 
@@ -86,4 +101,6 @@ export interface M16RouteServices {
   readonly draftService: M16DraftService;
   /** ADR-0109 D6 — the physician condolence letter review queue (bereavement oversight only). */
   readonly letterService: M16LetterService;
+  /** ADR-0109 D10 — the mailing program: configs, runs, the batch download and confirm-mailed (bereavement oversight only). */
+  readonly mailingService: M16MailingService;
 }

@@ -450,7 +450,7 @@ controls:
       - file: packages/db/migrations/1343_m16_risk_assessment_draft.sql
 
   - id: CW-BR-03
-    title: Bereavement discharge summary and physician letter are INTERNAL documents — M22 admits only the scope-bypass roles and bereavement oversight to read them (never caseload membership, so not a bereavement volunteer who served the patient), refuses to make one patient-facing, never lists them to anyone else, and the portal reader refuses them whatever patient_facing says; they are render-only — every hand write (PATCH, tags, links, versions, uploads and verified uploads) is refused 422 DOCUMENT_INTERNAL_ONLY, or 404 to anyone who may not read them; they are refused as payer enclosures in M25 appeal/ADR/audit filings (appealEnclosureRefusal → internal_only); M22's oversight role set is pinned to M16's BEREAVEMENT_OVERSIGHT_ROLES; the summary labels contacts 'Contact N' with the relationship, never a name, and carries no contact notes, care goals, risk factors or substance-use data
+    title: Bereavement discharge summary and physician letter are INTERNAL documents (a third internal type, the mailing batch bereavement_mailing_batch, is SEAM-ONLY — no M22 route admits it to any role; see CW-BR-07) — M22 admits only the scope-bypass roles and bereavement oversight to read them (never caseload membership, so not a bereavement volunteer who served the patient), refuses to make one patient-facing, never lists them to anyone else, and the portal reader refuses them whatever patient_facing says; they are render-only — every hand write (PATCH, tags, links, versions, uploads and verified uploads) is refused 422 DOCUMENT_INTERNAL_ONLY, or 404 to anyone who may not read them; they are refused as payer enclosures in M25 appeal/ADR/audit filings (appealEnclosureRefusal → internal_only); M22's oversight role set is pinned to M16's BEREAVEMENT_OVERSIGHT_ROLES; the summary labels contacts 'Contact N' with the relationship, never a name, and carries no contact notes, care goals, risk factors or substance-use data
     hipaa: ["164.312(a)(1)", "164.308(a)(4)(ii)(B)", "164.312(c)(1)"]
     soc2: ["CC6.1", "CC6.3", "C1.1"]
     status: implemented
@@ -488,13 +488,15 @@ controls:
       - file: apps/backend/__tests__/bereavement-care-goals.test.ts
 
   - id: CW-BR-05
-    title: Bereavement no_mailings opt-out is enforced, not advisory — the contact stays active and its calls continue, mailed floor items move to the contact's own allowed non-mail kinds (already-scheduled rows converted in place), the preference raises its own event so M36 keeps the family channel, a rescind restores it, and the portal self-service route can set it only for the session's own contact
+    title: Bereavement no_mailings opt-out is enforced, not advisory — the contact stays active and its calls continue, mailed floor items move to the contact's own allowed non-mail kinds (already-scheduled rows converted in place), the preference raises its own event so M36 keeps the family channel, a rescind restores it, the portal self-service route can set it only for the session's own contact, and every bereavement mailing honours it (mailings/eligibility.ts; see CW-BR-08)
     hipaa: ["164.312(a)(1)", "164.312(b)"]
     soc2: ["CC6.1", "CC6.3"]
     status: implemented
     evidence:
       - script: test:m16:routes:live
+      - script: test:m16:mailings:live
       - script: arch:abac-predicates
+      - file: apps/backend/src/modules/16-bereavement/mailings/eligibility.ts
       - file: packages/bereavement/src/outreach-kinds.ts
       - file: apps/backend/src/modules/16-bereavement/lifecycle/contact.ts
       - file: apps/backend/src/modules/31-portal/routes/write.routes.ts
@@ -508,6 +510,70 @@ controls:
       - script: test:m16:routes:live
       - file: packages/db/migrations/1348_m16_destruction_grants.sql
       - file: apps/backend/src/modules/16-bereavement/erasers/bereavement-eraser.ts
+
+  # ---------------------------------------------------------------- M16 bereavement program (ADR-0109, PR 2: mailings)
+  - id: CW-BR-07
+    title: The bereavement mailing batch PDF holds the name and mailing address of every recipient across the WHOLE TENANT (one batch spans every provider entity) and is therefore an INTERNAL and SEAM-ONLY M22 document (aggregate type bereavement_mailing_batch, a member of SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES, so no generic M22 read (by-id, list, content mint, ABAC predicate) admits it for ANY role, org_admin included, and neither M16 render event may name its template) — the whole mailing surface (config, runs, items, generate, download, confirm-mailed) is bereavement oversight only (keys bereavement.mailing.read|manage|dispatch plus org_scope_bereavement_oversight; holding the keys outside the oversight roles is a 403); the download additionally needs a FRESH step-up; addresses are decrypted in-process in the generate worker and handed to DocumentRenderer in memory, so they appear on no outbox event, job payload, log line, audit row, run column or item; the batch leaves only through the M22 org-level OrgDocumentAccessProvider seam, which intersects the caller's types with the seam-only set, refuses a patient's document, derives the accessor membership from the request context (never a caller-supplied id), writes the document_access_log row before the URL and signs the URL as an attachment, with a read audit that names the run
+    hipaa: ["164.312(a)(1)", "164.312(b)", "164.312(a)(2)(iv)", "164.312(d)"]
+    soc2: ["CC6.1", "CC6.3", "C1.1"]
+    status: implemented
+    evidence:
+      - script: test:m16:mailings:live
+      - script: test:m22:internal-documents:live
+      - script: test:rls:live:m16
+      - script: arch:abac-predicates
+      - script: arch:audit-denylist-sync
+      - script: arch:pdf-templates
+      - file: apps/backend/src/modules/16-bereavement/jobs/mailing-workers.ts
+      - file: apps/backend/src/modules/16-bereavement/routes/mailing-service-drizzle.ts
+      - file: apps/backend/src/modules/16-bereavement/routes/mailing.routes.ts
+      - file: apps/backend/src/modules/22-documents/seams/org-document-access.ts
+      - file: apps/backend/src/modules/22-documents/internal-documents.ts
+      - file: apps/backend/src/modules/22-documents/outbox-consumers/render-consumer.ts
+      - file: apps/backend/__tests__/m22-internal-documents.test.ts
+      - file: apps/backend/__tests__/m16-document-requests.test.ts
+      - file: packages/db/migrations/1374_m16_mailings.sql
+      - file: apps/backend/__tests__/bereavement-mailing-batch.test.ts
+
+  - id: CW-BR-08
+    title: A bereavement mailing batch that names a family who declined it does not leave the system — decideMailingEligibility (mailings/eligibility.ts) reads the contact's OPEN opt-out rows (full, pause and no_mailings block; channel_specific blocks only the channel it names; an unconfirmed, deceased or referred-out contact is not written to; a family whose stated preference is email only is never mailed on paper) at generate (set-based selection), AGAIN in the render worker just before rendering (whoever dropped out is excluded with the reason and not printed), and AGAIN at download of a ready batch, where a batch naming anyone no longer eligible is refused (409 MAILING_RUN_STALE, a count only) until it is regenerated; confirm-mailed re-checks once more as BOOKKEEPING only (a family who opted out after the download is flagged excluded_after_render and never logged as mailed, and each letter prints a Ref number staff can pull it by; nothing recalls a letter already posted); activity rows are exclusive of outreach rows, so a mailing satisfies no cadence item and never counts in M30
+    hipaa: ["164.312(a)(1)", "164.522(b)"]
+    soc2: ["CC6.1", "CC6.3"]
+    status: implemented
+    evidence:
+      - script: test:m16:mailings:live
+      - script: test:rls:live:m16
+      - file: apps/backend/src/modules/16-bereavement/mailings/eligibility.ts
+      - file: apps/backend/__tests__/bereavement-mailing-eligibility.test.ts
+      - file: apps/backend/src/modules/16-bereavement/mailings/facts-drizzle.ts
+      - file: apps/backend/src/modules/16-bereavement/jobs/mailing-workers.ts
+      - file: apps/backend/src/modules/16-bereavement/routes/mailing-service-drizzle.ts
+      - file: apps/backend/src/modules/22-documents/render-pdf/bereavement-mailing-batch-doc.ts
+      - file: packages/db/migrations/1373_m16_contact_log_program_activity.sql
+
+  - id: CW-BR-09
+    title: A decedent's mailing items (the only mailing table that names a plan and a contact) are deleted by the bereavement eraser on the destruction role — migration 1376 grants chartwarden_destruction SELECT and DELETE on bereavement_mailing_item with an org-pinned policy and nothing on the org-level config and run tables, and the app role holds no DELETE on any mailing table; the org-level batch PDF carries retention class `bereavement` (a floor; purge deferred, see CW-BR-10)
+    hipaa: ["164.310(d)(2)(i)", "164.312(a)(1)"]
+    soc2: ["CC6.5", "C1.2"]
+    status: implemented
+    evidence:
+      - script: test:m16:mailings:live
+      - script: test:rls:live:m16
+      - file: packages/db/migrations/1376_m16_mailing_destruction_grants.sql
+      - file: apps/backend/src/modules/16-bereavement/erasers/bereavement-eraser.ts
+
+  - id: CW-BR-10
+    title: The rendered bereavement mailing batch PDFs (every recipient's name and address, org-level, retention class bereavement; one document per render attempt) have no purge or eraser path — the bereavement_record eraser deletes a decedent's mailing items and contact rows but cannot reach a patient-less PDF, and a regenerate detaches the old PDF from the run but leaves it stored, as is the unreferenced PDF of a render attempt that lost the run's compare-and-set or abandoned its claim
+    hipaa: ["164.310(d)(2)(i)"]
+    soc2: ["CC6.5", "C1.2"]
+    status: partial
+    evidence:
+      - script: test:m22:internal-documents:live
+      - file: apps/backend/src/modules/22-documents/internal-documents.ts
+    gap:
+      reason: "Purge or redaction of org-level bereavement_mailing_batch documents and their versions is deferred (ADR-0109 deferred list: compliance decides the retention period); until it ships, a destruction certificate for a decedent leaves that family's name and address inside the batch PDF, readable only through the oversight-only, step-up download seam."
+      owner: compliance
+      review_by: 2027-03-31
 
 # Every one of these must be cited by at least one row (the gate enforces it), so a row cannot be
 # deleted to make a gap disappear.

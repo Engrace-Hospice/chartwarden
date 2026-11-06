@@ -16,6 +16,7 @@ import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import {
   M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS,
   M22_DOCUMENT_REQUEST_EVENTS,
+  MalformedRenderRequestError,
   normalizeDocumentRequest,
 } from "../src/modules/22-documents/index";
 import { renderPdfForTemplate } from "../src/modules/22-documents/render-pdf";
@@ -161,6 +162,34 @@ describe("m16.bereavement.document_requested is a live M22 subscription", () => 
     expect(payload.templateKey).toBe("bereavement_discharge_summary_internal");
     expect(payload.aggregateId).toBe(CLOSURE);
     expect(payload.content).toEqual(SUMMARY);
+  });
+
+  it("neither M16 render event can name the seam-only mailing batch (or any key outside its own list): a malformed request, never a render", () => {
+    const ask = (eventType: string, templateKey: string) => () =>
+      normalizeDocumentRequest({
+        eventType,
+        organizationId: ORG,
+        payload: {
+          planId: PLAN,
+          patientId: PATIENT,
+          outreachId: LETTER,
+          aggregateId: LETTER,
+          templateKey,
+          payloadJsonb: {},
+        },
+      });
+    for (const eventType of [
+      "m16.bereavement.document_requested",
+      "m16.bereavement.outreach_artifact_requested",
+    ]) {
+      for (const key of ["bereavement_mailing_batch", "medication_reconciliation_worksheet"]) {
+        expect(ask(eventType, key), `${eventType} ${key}`).toThrow(MalformedRenderRequestError);
+      }
+    }
+    expect(ask("m16.bereavement.outreach_artifact_requested", "bereavement_letter")).not.toThrow();
+    expect(
+      ask("m16.bereavement.outreach_artifact_requested", "bereavement_physician_condolence_letter"),
+    ).toThrow(MalformedRenderRequestError);
   });
 
   it("resolves both templates to internal aggregate types under the bereavement retention class", () => {

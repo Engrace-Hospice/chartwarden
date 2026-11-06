@@ -22,6 +22,7 @@ import { getSeam } from "../../bootstrap/index";
 import {
   INTERNAL_DOCUMENT_OVERSIGHT_ROLES,
   isInternalOnlyAggregateType,
+  isSeamOnlyAggregateType,
 } from "./internal-documents";
 
 /** The §4.7 predicate names M22 owns (registered into M3). Single-owner across the platform registry. */
@@ -101,6 +102,18 @@ export function canReadInternalDocuments(roles: readonly string[]): boolean {
   return roles.some(
     (role) => SCOPE_BYPASS_ROLES.includes(role) || INTERNAL_DOCUMENT_OVERSIGHT_ROLES.includes(role),
   );
+}
+
+/**
+ * ADR-0109 D6 / D9 / D10 — may these roles read THIS internal-only document through the generic M22 routes? A seam-only type (M16's mailing batch:
+ * every family's name and address) is admitted to NO role here: it is handed out only by `OrgDocumentAccessProvider`. Every other internal type is
+ * {@link canReadInternalDocuments}.
+ */
+export function canReadInternalDocument(
+  aggregateType: string | null | undefined,
+  roles: readonly string[],
+): boolean {
+  return !isSeamOnlyAggregateType(aggregateType) && canReadInternalDocuments(roles);
 }
 
 /**
@@ -197,7 +210,7 @@ export function buildDocumentAbacPredicates(
   ): Promise<boolean> => {
     // ADR-0109 — an internal-only document is read by ROLE; being on the decedent's chart does not admit.
     if (isInternalOnlyAggregateType(facts.aggregateType)) {
-      return canReadInternalDocuments(context.roles);
+      return canReadInternalDocument(facts.aggregateType, context.roles);
     }
     if (isScopeBypass(context)) return true;
     if (facts.patientId === null) return false; // org-level doc — only scope-bypass roles (above)

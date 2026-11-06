@@ -4351,8 +4351,8 @@ export const M15_CONTRIBUTED_PERMISSIONS = {
 export type M15ContributedPermissionKey = keyof typeof M15_CONTRIBUTED_PERMISSIONS;
 
 /**
- * M16-T06 — the thirty-three §4.7 Bereavement permission keys Module 16 registers into M3's catalog (twenty-nine from the
- * original spec, the two ADR-0109 D5 pre-death-draft keys and the two D6 physician-letter keys).
+ * M16-T06 — the thirty-six §4.7 Bereavement permission keys Module 16 registers into M3's catalog (twenty-nine from the
+ * original spec, the two ADR-0109 D5 pre-death-draft keys, the two D6 physician-letter keys and the three D10 mailing keys).
  *
  * `abac` names the DEFAULT predicate the M3 catalog records for the key; the §4.1 route table is what
  * actually binds a guard, and it may bind a different (or no) predicate per route. Four of the five §4.8
@@ -4574,9 +4574,30 @@ export const M16_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "org_scope_bereavement_oversight",
   },
+  // ADR-0109 D10 — the mailing program. The batch PDF holds EVERY recipient's name and address, so all three keys are bereavement oversight
+  // only: `read` the configs and runs, `manage` the configs and a draft's wording, `dispatch` (generate, download, confirm mailed) a run.
+  // Migration 1377 mirrors them into the permission catalog.
+  "bereavement.mailing.read": {
+    resource: "bereavement_mailing_run",
+    action: "read",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.mailing.manage": {
+    resource: "bereavement_mailing_run",
+    action: "manage",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.mailing.dispatch": {
+    resource: "bereavement_mailing_run",
+    action: "dispatch",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
 } satisfies Record<string, PermissionDef>;
 
-/** Union of the M16 contributed permission keys (thirty-three). */
+/** Union of the M16 contributed permission keys (thirty-six). */
 export type M16ContributedPermissionKey = keyof typeof M16_CONTRIBUTED_PERMISSIONS;
 
 /**

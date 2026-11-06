@@ -16,7 +16,12 @@
 // per-event adapter into it. An event whose payload does not normalize THROWS — the dispatcher retries then
 // dead-letters it (§7.2), which is the honest outcome for a malformed render request; it is never a silent
 // no-op that would leave a signed clinical artifact permanently un-rendered with a green outbox.
-import { RENDER_PAYLOAD_VERSION } from "@chartwarden/types";
+import {
+  BEREAVEMENT_CLOSEOUT_LETTER_TEMPLATE_KEY,
+  BEREAVEMENT_DISCHARGE_SUMMARY_TEMPLATE_KEY,
+  BEREAVEMENT_PHYSICIAN_CONDOLENCE_TEMPLATE_KEY,
+  RENDER_PAYLOAD_VERSION,
+} from "@chartwarden/types";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,
@@ -52,6 +57,10 @@ interface RequestShape {
   readonly templateKey?: string;
   /** Payload field holding the source's own template name, used when {@link templateKey} is absent. */
   readonly templateKeyField?: string;
+  /** The ONLY keys a {@link templateKeyField} may name for this event. A payload-named key outside it is a malformed request (a throw):
+   *  without it a producer bug (or a forged row) could ask this event to render ANY published template, including a seam-only one
+   *  (M16's `bereavement_mailing_batch`) under an ordinary aggregate type. */
+  readonly allowedTemplateKeys?: readonly string[];
   /** One event carrying SEVERAL artifacts, discriminated by a payload field: `{field, map}` resolves the
    *  M22 template key from the discriminator's value. A value absent from the map is a malformed request
    *  (a throw), never a guess — rendering the wrong document under a real patient's chart is worse than
@@ -94,6 +103,8 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   "m11.order.document_requested": {
     aggregateIdFields: ["orderId"],
     templateKeyField: "formTemplate",
+    // the one key both M11 emit sites (orders-route-service-db.ts, routes/service.ts) name: a payload-named key is never trusted further
+    allowedTemplateKeys: ["order_record"],
     contentField: "renderPayload",
     // GAP-033 Wave 2: `order_record` is a compiled form drawn from the producer's typed payload.
     requiresRenderPayload: true,
@@ -102,6 +113,8 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   "m12.medication_order.document_requested": {
     aggregateIdFields: ["orderId"],
     templateKeyField: "formTemplate",
+    // the one key the M12 emit site (dosespot-route-service-db.ts) names
+    allowedTemplateKeys: ["medication_order"],
     contentField: "renderPayload",
     requiresRenderPayload: true,
   },
@@ -171,6 +184,11 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   "m16.bereavement.outreach_artifact_requested": {
     aggregateIdFields: ["outreachId", "planId"],
     templateKeyField: "templateKey",
+    allowedTemplateKeys: [
+      "bereavement_welcome_packet",
+      "bereavement_letter",
+      BEREAVEMENT_CLOSEOUT_LETTER_TEMPLATE_KEY,
+    ],
     contentField: "payloadJsonb",
   },
   // ADR-0109 D6 / D9 — M16's two plan-level documents behind ONE event. The aggregate is `aggregateId` (the letter, or the
@@ -180,6 +198,10 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   "m16.bereavement.document_requested": {
     aggregateIdFields: ["aggregateId"],
     templateKeyField: "templateKey",
+    allowedTemplateKeys: [
+      BEREAVEMENT_PHYSICIAN_CONDOLENCE_TEMPLATE_KEY,
+      BEREAVEMENT_DISCHARGE_SUMMARY_TEMPLATE_KEY,
+    ],
     contentField: "payloadJsonb",
   },
   // M20 §4.10 — "M22's renderer consumes it; M20 ships no PDF code". `renderTargetKind` is a literal
@@ -619,6 +641,12 @@ export function normalizeDocumentRequest(delivered: NormalizeInput): {
     throw new MalformedRenderRequestError(
       eventType,
       `payload names no template (expected '${shape.templateKeyField ?? byField?.field}')`,
+    );
+  }
+  if (shape.allowedTemplateKeys !== undefined && !shape.allowedTemplateKeys.includes(templateKey)) {
+    throw new MalformedRenderRequestError(
+      eventType,
+      `template '${templateKey}' is not one this event may request`,
     );
   }
 

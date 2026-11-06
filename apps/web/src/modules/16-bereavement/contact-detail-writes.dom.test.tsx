@@ -2,7 +2,7 @@
 // page and says the contact moved; a lost response is retried under the same Idempotency-Key; a reload never unmounts the page or
 // eats what the reader typed into the care goals; an unreadable schedule is said (403) or flagged (anything else) with a retry.
 import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
@@ -71,9 +71,14 @@ interface Sent {
   readonly headers: Headers;
 }
 
-function mount(opts: Opts = {}): { sent: Sent[]; planGets: () => number } {
+function mount(opts: Opts = {}): {
+  sent: Sent[];
+  planGets: () => number;
+  timelineGets: () => number;
+} {
   const sent: Sent[] = [];
   let planGets = 0;
+  let timelineGets = 0;
   let rejected = false;
   const stub = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const req = input instanceof Request ? input : null;
@@ -102,6 +107,11 @@ function mount(opts: Opts = {}): { sent: Sent[]; planGets: () => number } {
         ? reply({ error: { code: "FORBIDDEN", message: "forbidden" } }, opts.outreachStatus)
         : reply({ data: [], next_cursor: null, has_more: false });
     }
+    // The page's "Program activity" card reads the contact's timeline once; it is not a plan read.
+    if (url.pathname.endsWith("/timeline")) {
+      timelineGets += 1;
+      return reply({ data: [], next_cursor: null, has_more: false, redactedCategories: [] });
+    }
     planGets += 1;
     return reply(plan(sent.length > 0 && opts.afterWrite ? opts.afterWrite : contact()));
   };
@@ -119,7 +129,7 @@ function mount(opts: Opts = {}): { sent: Sent[]; planGets: () => number } {
       </SessionProvider>
     </ApiClientProvider>,
   );
-  return { sent, planGets: () => planGets };
+  return { sent, planGets: () => planGets, timelineGets: () => timelineGets };
 }
 
 beforeEach(() => {
@@ -168,6 +178,18 @@ describe("contact page — refused and lost writes", () => {
     const status = await screen.findByText("Mailings resumed.");
     await waitFor(() => expect(document.activeElement).toBe(status));
     expect(screen.getByRole("heading", { name: "Care plan" })).toBe(heading);
+  });
+});
+
+describe("contact page — the Program activity card follows a logged contact", () => {
+  it("reads the timeline again after an ad-hoc contact is logged", async () => {
+    const { timelineGets } = mount({ write: { status: 201, body: {} } });
+    await screen.findByRole("heading", { name: "Program activity" });
+    expect(timelineGets()).toBe(1);
+    fireEvent.click(await screen.findByRole("button", { name: "Log an ad-hoc contact" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Log contact" }));
+    await waitFor(() => expect(timelineGets()).toBe(2));
   });
 });
 

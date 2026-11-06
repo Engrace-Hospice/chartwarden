@@ -109,6 +109,28 @@ export type ScheduleRegeneration = Ok<
 /** Routes 21/26/32's answer: the `bereavement_contact_log` row the transition wrote. */
 export type ContactLogRow = Ok<operations["postApiV1BereavementContactsByContactIdLogdirect"]>;
 
+/** Routes 42-52 (ADR-0109 D10) — the mailing program. No wire shape here carries a recipient name or address. */
+export type MailingConfig = Ok<operations["getApiV1BereavementMailingsConfig"]>[number];
+export type MailingConfigBody = ReqBody<
+  operations["putApiV1BereavementMailingsConfigByMailingKey"]
+>;
+export type MailingContent = ReqBody<
+  operations["patchApiV1BereavementMailingsRunsByRunIdContent"]
+>["content"];
+export type MailingLocaleContent = NonNullable<MailingContent["en"]>;
+export type MailingRun = Ok<operations["getApiV1BereavementMailingsRunsByRunId"]>;
+export type MailingRunPage = Ok<operations["getApiV1BereavementMailingsRuns"]>;
+export type MailingRunStatus = MailingRun["status"];
+export type MailingItemPage = Ok<operations["getApiV1BereavementMailingsRunsByRunIdItems"]>;
+export type MailingItem = MailingItemPage["data"][number];
+export type MailingItemStatus = MailingItem["status"];
+export type MailingExclusionReason = NonNullable<MailingItem["exclusionReason"]>;
+export type MailingDownload = Ok<operations["getApiV1BereavementMailingsRunsByRunIdDownload"]>;
+export type MailingKey = MailingConfig["mailingKey"];
+/** Route 52 — the contact's program timeline (touchpoints and program activities, newest first). */
+export type ContactTimelinePage = Ok<operations["getApiV1BereavementContactsByContactIdTimeline"]>;
+export type TimelineEntry = ContactTimelinePage["data"][number];
+
 /** One roster addition (§4.2 `AdditionalContactBody`, shared by routes 5 and 11). */
 export type ContactDraft = ReqBody<operations["postApiV1BereavementPlansByPlanIdContacts"]>;
 
@@ -887,4 +909,169 @@ export async function lateAttemptOutreach(
   });
   if (res.error) return { outreach: null, error: res.error };
   return { outreach: res.data, error: null };
+}
+
+// ── the mailing program (routes 42-52, ADR-0109 D10) ───────────────────────────────────────────────────
+// Oversight only. Every write carries `Idempotency-Key` AND `If-Match` (the version the caller READ: the header decides, no body
+// field carries one); every read reports the HTTP `status`, so a screen can tell 403 (show nothing) from a failure (say so).
+
+/** Route 42 — the four configurable mailings, each merged with its stored config (version 0 = never configured). */
+export async function listMailingConfigs(
+  client: ApiClient,
+): Promise<{ configs: MailingConfig[] | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/mailings/config"),
+  );
+  return { configs: data, error, status };
+}
+
+/** Route 43 — upsert one mailing's config. `version` is the one the caller READ (0 for the first write); a 412 means it moved. */
+export async function putMailingConfig(
+  client: ApiClient,
+  mailingKey: string,
+  version: number,
+  body: MailingConfigBody,
+  idempotencyKey?: string,
+): Promise<{ config: MailingConfig | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.PUT("/api/v1/bereavement/mailings/config/{mailingKey}", {
+      params: { path: { mailingKey } },
+      headers: writeHeaders(version, idempotencyKey),
+      body,
+    }),
+  );
+  return { config: data, error, status };
+}
+
+/** Route 44 — the mailing runs, newest first, cursor-paginated. */
+export async function listMailingRuns(
+  client: ApiClient,
+  query: ReqQuery<operations["getApiV1BereavementMailingsRuns"]>,
+): Promise<{ page: MailingRunPage | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/mailings/runs", { params: { query } }),
+  );
+  return { page: data, error, status };
+}
+
+/** Route 45 — one run. */
+export async function getMailingRun(
+  client: ApiClient,
+  runId: string,
+): Promise<{ run: MailingRun | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/mailings/runs/{runId}", { params: { path: { runId } } }),
+  );
+  return { run: data, error, status };
+}
+
+/** Route 46 — the run's items (a contact, its channel and why it was included or left out: never a name or an address). */
+export async function listMailingItems(
+  client: ApiClient,
+  runId: string,
+  query: ReqQuery<operations["getApiV1BereavementMailingsRunsByRunIdItems"]>,
+): Promise<{ page: MailingItemPage | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/mailings/runs/{runId}/items", {
+      params: { path: { runId }, query },
+    }),
+  );
+  return { page: data, error, status };
+}
+
+/** Route 47 — replace a DRAFT run's wording (409 once it is no longer a draft). */
+export async function updateMailingRunContent(
+  client: ApiClient,
+  runId: string,
+  version: number,
+  content: MailingContent,
+  idempotencyKey?: string,
+): Promise<{ run: MailingRun | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.PATCH("/api/v1/bereavement/mailings/runs/{runId}/content", {
+      params: { path: { runId } },
+      headers: writeHeaders(version, idempotencyKey),
+      body: { content },
+    }),
+  );
+  return { run: data, error, status };
+}
+
+/** Route 48 — draft|failed → generating; the render runs in a worker. 422 `MAILING_CONTENT_EMPTY` when no wording was written. */
+export async function generateMailingRun(
+  client: ApiClient,
+  runId: string,
+  version: number,
+  idempotencyKey?: string,
+): Promise<{ run: MailingRun | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.POST("/api/v1/bereavement/mailings/runs/{runId}/generate", {
+      params: { path: { runId } },
+      headers: writeHeaders(version, idempotencyKey),
+    }),
+  );
+  return { run: data, error, status };
+}
+
+/**
+ * Route 49 — a short-lived URL of the rendered batch (409 unless ready|mailed). The URL is a credential to a document that holds
+ * every addressee: the caller opens it and drops it, and `no-store` keeps it out of any HTTP cache.
+ */
+export async function downloadMailingRun(
+  client: ApiClient,
+  runId: string,
+): Promise<{ download: MailingDownload | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/mailings/runs/{runId}/download", {
+      params: { path: { runId } },
+      cache: "no-store",
+    }),
+  );
+  return { download: data, error, status };
+}
+
+/** Route 50 — ready → mailed. Eligibility is re-checked: a family who became ineligible is flagged `excluded_after_render` and NOT logged as mailed. */
+export async function confirmMailingRunMailed(
+  client: ApiClient,
+  runId: string,
+  version: number,
+  idempotencyKey?: string,
+): Promise<{ run: MailingRun | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.POST("/api/v1/bereavement/mailings/runs/{runId}/confirm-mailed", {
+      params: { path: { runId } },
+      headers: writeHeaders(version, idempotencyKey),
+    }),
+  );
+  return { run: data, error, status };
+}
+
+/** Route 51 — cancel a draft, ready or failed run. */
+export async function cancelMailingRun(
+  client: ApiClient,
+  runId: string,
+  version: number,
+  idempotencyKey?: string,
+): Promise<{ run: MailingRun | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.POST("/api/v1/bereavement/mailings/runs/{runId}/cancel", {
+      params: { path: { runId } },
+      headers: writeHeaders(version, idempotencyKey),
+    }),
+  );
+  return { run: data, error, status };
+}
+
+/** Route 52 — the contact's touchpoints and program activities, newest first. A bereavement volunteer's entries carry no `outcome`. */
+export async function listContactTimeline(
+  client: ApiClient,
+  contactId: string,
+  query: ReqQuery<operations["getApiV1BereavementContactsByContactIdTimeline"]>,
+): Promise<{ page: ContactTimelinePage | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/contacts/{contactId}/timeline", {
+      params: { path: { contactId }, query },
+    }),
+  );
+  return { page: data, error, status };
 }

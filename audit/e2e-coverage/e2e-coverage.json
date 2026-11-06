@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 211,
+  "totalStaticWebScreens": 213,
   "e2eReachedCount": 26,
-  "axeReachedCount": 199,
+  "axeReachedCount": 201,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -193,6 +193,22 @@
       "module": "16-bereavement",
       "path": "/bereavement/eligible",
       "permission": "bereavement.plan.assign_counselor",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "bereavement.mailings",
+      "module": "16-bereavement",
+      "path": "/bereavement/mailings",
+      "permission": "bereavement.mailing.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "bereavement.mailings.settings",
+      "module": "16-bereavement",
+      "path": "/bereavement/mailings/settings",
+      "permission": "bereavement.mailing.manage",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1583,7 +1599,7 @@
       "axeReached": false
     }
   ],
-  "dynamicWebScreens": 115,
+  "dynamicWebScreens": 116,
   "dynamicAxeReachedCount": 28,
   "dynamicExcluded": [
     {
@@ -1639,6 +1655,11 @@
     {
       "id": "admission.transfer-in",
       "path": "/admissions/:id/transfer-in",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "bereavement.mailings.run",
+      "path": "/bereavement/mailings/runs/:runId",
       "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
     },
     {
@@ -2228,6 +2249,22 @@
       "module": "16-bereavement",
       "path": "/bereavement/eligible",
       "permission": "bereavement.plan.assign_counselor",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "bereavement.mailings",
+      "module": "16-bereavement",
+      "path": "/bereavement/mailings",
+      "permission": "bereavement.mailing.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "bereavement.mailings.settings",
+      "module": "16-bereavement",
+      "path": "/bereavement/mailings/settings",
+      "permission": "bereavement.mailing.manage",
       "e2eReached": false,
       "axeReached": true
     },

@@ -57,6 +57,8 @@ export interface BereavementEraseCounts {
   readonly assessmentDrafts: number;
   /** `bereavement_physician_letter` rows deleted (ADR-0109 D6). */
   readonly physicianLetters: number;
+  /** `bereavement_mailing_item` rows deleted (ADR-0109 D10: the only mailing table that names a plan and a contact; a RESTRICT FK on the contact). */
+  readonly mailingItems: number;
   /** `bereaved_contact` rows deleted. */
   readonly contacts: number;
   /** `bereavement_plan` roots tombstoned (rows PRESERVED for FK integrity — not part of the tally). */
@@ -121,6 +123,7 @@ export async function eraseBereavementRecord(
     counts.assessmentTasks +
     counts.assessmentDrafts +
     counts.physicianLetters +
+    counts.mailingItems +
     counts.contacts;
   return { erased, shredded, counts };
 }
@@ -134,6 +137,7 @@ const ZERO: BereavementEraseCounts = {
   assessmentTasks: 0,
   assessmentDrafts: 0,
   physicianLetters: 0,
+  mailingItems: 0,
   contacts: 0,
   plansTombstoned: 0,
   closuresShredded: 0,
@@ -187,6 +191,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
   const TASK = schema.bereavementAssessmentTask;
   const DRAFT = schema.bereavementRiskAssessmentDraft;
   const LETTER = schema.bereavementPhysicianLetter;
+  const MAILING_ITEM = schema.bereavementMailingItem;
   const CLOSURE = schema.bereavementPlanClosure;
 
   /** The decedent's plan-root ids — every child table is keyed on `plan_id`, not on the patient. */
@@ -328,6 +333,14 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
             .where(inArray(REMINDER.planId, planIds))
             .returning({ id: REMINDER.id }),
         );
+        // ADR-0109 D10 — a mailing item names a plan and a contact (RESTRICT), so it goes before the contacts. It holds ids only (nothing to shred);
+        // the run it belongs to is org-level and the batch PDF is an M22 document under the `bereavement` retention class.
+        const mailingItems = await del(() =>
+          tx
+            .delete(MAILING_ITEM)
+            .where(inArray(MAILING_ITEM.planId, planIds))
+            .returning({ id: MAILING_ITEM.id }),
+        );
         const contacts = await del(() =>
           tx.delete(CONTACT).where(inArray(CONTACT.planId, planIds)).returning({ id: CONTACT.id }),
         );
@@ -368,6 +381,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
           assessmentTasks,
           assessmentDrafts,
           physicianLetters,
+          mailingItems,
           contacts,
           plansTombstoned: tombstoned.length,
           closuresShredded: closures.length,

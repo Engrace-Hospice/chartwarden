@@ -10,6 +10,7 @@ import { registerBereavementAssessmentDraftRoutes } from "./assessment-draft.rou
 import { registerBereavedContactRoutes } from "./contacts.routes";
 import { registerBereavementDashboardRoutes } from "./dashboard.routes";
 import type { M16RouteServices } from "./index";
+import { registerBereavementMailingRoutes } from "./mailing.routes";
 import { registerBereavementOutreachRoutes } from "./outreach.routes";
 import { registerBereavementPhysicianLetterRoutes } from "./physician-letter.routes";
 import { registerBereavementPlanRoutes } from "./plans.routes";
@@ -26,14 +27,16 @@ export {
   type LetterRouteDeps,
 } from "./physician-letter.routes";
 export { registerBereavementDashboardRoutes, type DashboardRouteDeps } from "./dashboard.routes";
+export { registerBereavementMailingRoutes, type MailingRouteDeps } from "./mailing.routes";
 
 /** Mount every M16 §4.1 route plugin over the Drizzle-backed (or in-memory) read + write services. */
 export function mountM16Routes(app: FastifyInstance, services: M16RouteServices): void {
-  const { readService, writeService, draftService, letterService } = services;
+  const { readService, writeService, draftService, letterService, mailingService } = services;
   registerBereavementPlanRoutes(app, { readService, writeService });
-  registerBereavedContactRoutes(app, { writeService });
+  registerBereavedContactRoutes(app, { writeService, readService });
   registerBereavementOutreachRoutes(app, { writeService });
   registerBereavementDashboardRoutes(app, { readService });
   registerBereavementAssessmentDraftRoutes(app, { draftService });
   registerBereavementPhysicianLetterRoutes(app, { letterService });
+  registerBereavementMailingRoutes(app, { mailingService });
 }

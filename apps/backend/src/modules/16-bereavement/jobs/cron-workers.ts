@@ -11,6 +11,8 @@
 //                                    `risk_assessment_overdue` alert.
 //   · `m16-anniversary-lookahead` → `anniversary_due_in_14_days` for each unfired reminder landing in the next
 //                                    14 days; `alert_fired_at` is stamped in the SAME tx as the outbox write.
+//   · `m16-mailing-sweep` (*/5)   → ADR-0109 D10: drafts mailing runs, re-sends a lost render hand-off and writes the activity log (jobs/mailing-workers.ts);
+//                                    `m16-mailing-generate` is its job-driven sibling, the batch render worker.
 //   · `m16-unreachable-detector` → PROPOSES `markUnreachable` (§2.3 / §4.9) for each active contact of an active
 //                                    plan whose newest 3 touchpoint-log rows are all `no_response`: stamps
 //                                    `unreachable_proposed_through_at` and emits
@@ -38,11 +40,13 @@ import type {
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { emitAlertBestEffort } from "../alert-port";
+import type { BereavementCipher } from "../bereavement-crypto";
 import {
   isAssessmentTaskOverdue,
   transitionBereavementOutreach,
   transitionBereavementPlan,
 } from "../lifecycle/index";
+import type { MailingGenerateEnqueuePort } from "../mailings/enqueue-port";
 import { requestDischargeSummary } from "../render-payloads/index";
 import { settleOutstandingForClosure } from "../routes/closure-settlement";
 import { runEffects } from "../routes/effects-runner";
@@ -55,6 +59,11 @@ import {
   M16_QUEUES,
   M16_QUEUE_PARAMS,
 } from "./index";
+import {
+  type MailingBatchRenderer,
+  registerM16MailingGenerateWorker,
+  runMailingSweepCron,
+} from "./mailing-workers";
 
 const PLAN = schema.bereavementPlan;
 const OUTREACH = schema.bereavementOutreach;
@@ -85,6 +94,12 @@ export interface M16WorkerDeps {
   readonly outbox: WriteOutboxPort;
   readonly alerts?: AlertPort;
   readonly activeOrgs?: ActiveOrgListPort;
+  /** ADR-0109 D10 — the tenant-DEK envelope the mailing generate worker opens addresses with. Unbound => a generate job fails closed. */
+  readonly cipher?: BereavementCipher;
+  /** ADR-0109 D10 — re-sends a run stuck in `generating` (the route service's enqueue port). */
+  readonly mailingEnqueue?: MailingGenerateEnqueuePort;
+  /** ADR-0109 D10 — the batch renderer hand-off (defaults to the registry's `DocumentRenderer`; tests inject one). */
+  readonly render?: MailingBatchRenderer;
   now?: () => Date;
 }
 
@@ -108,6 +123,9 @@ export function buildM16WorkerDeps(deps: {
   outbox: WriteOutboxPort;
   alerts?: AlertPort;
   activeOrgs?: ActiveOrgListPort;
+  cipher?: BereavementCipher;
+  mailingEnqueue?: MailingGenerateEnqueuePort;
+  render?: MailingBatchRenderer;
 }): M16WorkerDeps {
   return {
     connection: deps.connection,
@@ -115,6 +133,9 @@ export function buildM16WorkerDeps(deps: {
     outbox: deps.outbox,
     ...(deps.alerts ? { alerts: deps.alerts } : {}),
     activeOrgs: deps.activeOrgs,
+    ...(deps.cipher ? { cipher: deps.cipher } : {}),
+    ...(deps.mailingEnqueue ? { mailingEnqueue: deps.mailingEnqueue } : {}),
+    ...(deps.render ? { render: deps.render } : {}),
     now: () => new Date(),
   };
 }
@@ -611,12 +632,15 @@ async function latestOutcomes(
   contactId: string,
   limit: number,
 ): Promise<{ outcome: string; contactAt: Date }[]> {
-  return tx
-    .select({ outcome: LOG.outcome, contactAt: LOG.contactAt })
-    .from(LOG)
-    .where(eq(LOG.bereavedContactId, contactId))
-    .orderBy(desc(LOG.contactAt))
-    .limit(limit);
+  return (
+    tx
+      .select({ outcome: LOG.outcome, contactAt: LOG.contactAt })
+      .from(LOG)
+      // ADR-0109 D10 — a program-activity row (a mailing, a session) is not a touchpoint attempt: it neither extends nor breaks a streak.
+      .where(and(eq(LOG.bereavedContactId, contactId), isNull(LOG.activityKind)))
+      .orderBy(desc(LOG.contactAt))
+      .limit(limit)
+  );
 }
 
 /** Consecutive newest `no_response` rows (the route-17 guard's count, so proposal and acceptance agree). */
@@ -717,10 +741,11 @@ export async function runUnreachableDetectorCron(
               eq(PLAN.status, "active"),
               sql`(select count(*) filter (where t.outcome = 'no_response')
                      from (select l.outcome from ${LOG} l
-                            where l.bereaved_contact_id = ${CONTACT.id}
+                            where l.bereaved_contact_id = ${CONTACT.id} and l.activity_kind is null
                             order by l.contact_at desc limit ${threshold}) t) = ${threshold}`,
               sql`(${CONTACT.unreachableProposedThroughAt} is null or ${CONTACT.unreachableProposedThroughAt} <
-                     (select max(l.contact_at) from ${LOG} l where l.bereaved_contact_id = ${CONTACT.id}))`,
+                     (select max(l.contact_at) from ${LOG} l
+                       where l.bereaved_contact_id = ${CONTACT.id} and l.activity_kind is null))`,
             ),
           )
           .orderBy(asc(CONTACT.updatedAt))
@@ -739,7 +764,7 @@ export async function runUnreachableDetectorCron(
 
 // ── BullMQ construction (the M20/M9 registerMxCronWorkers / scheduleMxJobs template) ───────────────────
 
-/** Construct the four §4.9 cron `Worker`s (the caller owns lifecycle — `close()` on shutdown). */
+/** Construct the §4.9 cron `Worker`s plus the ADR-0109 D10 mailing sweep and render worker (the caller owns lifecycle — `close()` on shutdown). */
 export function registerM16CronWorkers(deps: M16WorkerDeps): Worker[] {
   const make = (
     queue: string,
@@ -763,6 +788,9 @@ export function registerM16CronWorkers(deps: M16WorkerDeps): Worker[] {
       M16_QUEUE_PARAMS.unreachableDetector,
       runUnreachableDetectorCron,
     ),
+    // ADR-0109 D10 — the mailing sweep (cron) and the render worker (one job per claimed run).
+    make(M16_QUEUES.mailingSweep, M16_QUEUE_PARAMS.mailingSweep, runMailingSweepCron),
+    registerM16MailingGenerateWorker(deps),
   ];
 }
 
@@ -773,6 +801,7 @@ export async function scheduleM16Jobs(connection: ConnectionOptions): Promise<Qu
     ["anniversaryLookahead"],
     ["missDeadline"],
     ["unreachableDetector"],
+    ["mailingSweep"],
   ] as const;
   const queues: Queue[] = [];
   for (const [key] of entries) {

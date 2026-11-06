@@ -13,6 +13,7 @@ import {
   ChartWardenError,
   type DocumentAggregateType,
   INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES,
+  SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES,
 } from "@chartwarden/types";
 
 /** The aggregate types that are internal-only (one definition in `@chartwarden/types`; M25's payer-enclosure rule reads it too). */
@@ -23,6 +24,18 @@ export const isInternalOnlyAggregateType = (aggregateType: string | null | undef
   aggregateType !== null &&
   aggregateType !== undefined &&
   INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES.has(aggregateType as DocumentAggregateType);
+
+/**
+ * ADR-0109 D10 — true for an internal type that NO generic read admits (M16's mailing batch: every family's name and address). The only door is
+ * `OrgDocumentAccessProvider`, called by the oversight-only `bereavement.mailing.dispatch` download route.
+ */
+export const isSeamOnlyAggregateType = (aggregateType: string | null | undefined): boolean =>
+  aggregateType !== null &&
+  aggregateType !== undefined &&
+  SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES.has(aggregateType as DocumentAggregateType);
+
+/** The seam-only types, for the list exclusion. */
+export { SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES };
 
 /**
  * Bereavement oversight roles that read internal documents in addition to the §4.7 scope-bypass roles (M22 `dependsOn` stays [1, 5],

@@ -144,6 +144,30 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     expect(payload.aggregateId).toBe(ORDER);
   });
 
+  it("M11 and M12 may name only their own formTemplate: any other key (the seam-only mailing batch included) is malformed", () => {
+    const ask = (eventType: string, formTemplate: string) => () =>
+      normalizeDocumentRequest({
+        eventType,
+        organizationId: ORG,
+        payload: {
+          orderId: ORDER,
+          formTemplate,
+          renderPayload: { schemaVersion: 2, patientId: PAT },
+        },
+      });
+    const own: Record<string, string> = {
+      "m11.order.document_requested": "order_record",
+      "m12.medication_order.document_requested": "medication_order",
+    };
+    for (const [eventType, key] of Object.entries(own)) {
+      expect(ask(eventType, key)).not.toThrow();
+      const others = [...Object.values(own).filter((k) => k !== key), "bereavement_mailing_batch"];
+      for (const other of others) {
+        expect(ask(eventType, other), `${eventType} ${other}`).toThrow(MalformedRenderRequestError);
+      }
+    }
+  });
+
   // M13's `formTemplate` is M13's OWN form name, not an M22 published key — the shape table fixes the key.
   it("maps M13's reconciliation_worksheet_v1 onto M22's published template key", () => {
     const { payload } = normalizeDocumentRequest({
@@ -821,21 +845,22 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
 
   // §7.2 — a template that has not been published YET may be published in a minute; the request must
   // survive until then, so this is a throw (retry → DLQ), not a silent completion.
+  // (The event's own key, unpublished in this table: a key outside the event's allowlist is refused before the table is consulted.)
   it("throws (retry-then-DLQ) on an unpublished template key, rendering nothing", async () => {
-    const h = harness();
+    const h = harness({ templates: {} });
     await expect(
       h.consumer.handle(
         delivered({
           payload: {
             orderId: ORDER,
-            formTemplate: "no_such_template",
+            formTemplate: "order_record",
             renderPayload: { schemaVersion: 2 },
           },
         }),
       ),
     ).rejects.toThrow(MalformedRenderRequestError);
     expect(h.rendered).toHaveLength(0);
-    expect(h.refusals).toEqual([{ kind: "unknown_template", detail: "no_such_template" }]);
+    expect(h.refusals).toEqual([{ kind: "unknown_template", detail: "order_record" }]);
   });
 
   // §7.16 — a settled refusal, NOT a delivery failure: retrying could never conjure a consent, and a

@@ -39,6 +39,13 @@ const BereavementGriefScreen = lazy(() =>
 const BereavementIntakeQueue = lazy(() =>
   import("./intake-queue").then((m) => ({ default: m.BereavementIntakeQueue })),
 );
+const MailingRunDetail = lazy(() =>
+  import("./mailing-run-detail").then((m) => ({ default: m.MailingRunDetail })),
+);
+const MailingRuns = lazy(() => import("./mailing-runs").then((m) => ({ default: m.MailingRuns })));
+const MailingSettings = lazy(() =>
+  import("./mailing-settings").then((m) => ({ default: m.MailingSettings })),
+);
 const BereavementOutreachPlanner = lazy(() =>
   import("./outreach-planner").then((m) => ({ default: m.BereavementOutreachPlanner })),
 );
@@ -112,6 +119,29 @@ export const bereavementScreens: ScreenRegistryModule<ComponentType> = {
       title: "Bereavement Closeout",
       requiredPermission: "bereavement.plan.read",
       screen: BereavementCloseoutView,
+    },
+    // --- the mailing program (ADR-0109 D10, routes 42-51): bereavement oversight only; the server enforces every key ---
+    {
+      id: "bereavement.mailings",
+      path: "/bereavement/mailings",
+      title: "Bereavement Mailings",
+      navGroup: "Bereavement",
+      requiredPermission: "bereavement.mailing.read",
+      screen: MailingRuns,
+    },
+    {
+      id: "bereavement.mailings.settings",
+      path: "/bereavement/mailings/settings",
+      title: "Mailing Settings",
+      requiredPermission: "bereavement.mailing.manage",
+      screen: MailingSettings,
+    },
+    {
+      id: "bereavement.mailings.run",
+      path: "/bereavement/mailings/runs/:runId",
+      title: "Mailing Run",
+      requiredPermission: "bereavement.mailing.read",
+      screen: MailingRunDetail,
     },
     // --- the touchpoint book (§5.1 #9, with the #10 / #11 modals) ---
     {

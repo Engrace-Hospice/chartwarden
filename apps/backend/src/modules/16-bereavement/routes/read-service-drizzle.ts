@@ -77,6 +77,7 @@ import type {
   SupervisorDashboardView,
 } from "./read-service";
 import { unreachableProposalOf } from "./read-service";
+import { listContactTimeline } from "./timeline-read";
 
 const iso = (d: Date | string): string =>
   d instanceof Date ? d.toISOString() : new Date(d).toISOString();
@@ -665,6 +666,14 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
         ),
         redactedCategories: gate.redactedCategories,
       };
+    },
+
+    // ── 52 — a contact's touchpoints and program activities (ADR-0109 D10) ─────────────────────────────
+    async listContactTimeline(actor, contactId, query) {
+      return listContactTimeline(db, actor, contactId, query, {
+        mayReachPlan: actorMayReachPlan,
+        disclosure: (a, patientId) => resolveBereavementDisclosure(a, patientId, disclosurePort),
+      });
     },
 
     // ── 30 — the counselor's own caseload + what is coming due ───────────────────────────────────────

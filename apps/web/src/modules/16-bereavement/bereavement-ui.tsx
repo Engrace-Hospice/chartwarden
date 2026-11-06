@@ -163,6 +163,12 @@ export const ghostButtonStyle: CSSProperties = {
   fontWeight: 600,
   textDecoration: "none",
 };
+/** The confirming button of a destructive dialog (cancel a run): the kit's danger tone. */
+export const dangerButtonStyle: CSSProperties = {
+  ...primaryButtonStyle,
+  background: t.error,
+  color: t.onEmphasis,
+};
 export const disabledButtonStyle: CSSProperties = {
   ...ghostButtonStyle,
   cursor: "not-allowed",
@@ -390,6 +396,9 @@ export function Modal({
   children,
   busy = false,
   dirty = false,
+  role = "dialog",
+  describedBy,
+  cancelLabel = "Cancel",
 }: {
   title: string;
   onClose: () => void;
@@ -397,6 +406,12 @@ export function Modal({
   children: ReactNode;
   busy?: boolean;
   dirty?: boolean;
+  /** `alertdialog` for a destructive ceremony (cancel a run): read out with its description. */
+  role?: "dialog" | "alertdialog";
+  /** The id of the element inside the dialog that says what the action does. */
+  describedBy?: string;
+  /** The dismiss button's words ("Keep run" where "Cancel" would read as the destructive action). */
+  cancelLabel?: string;
 }): JSX.Element {
   return (
     <SharedModal
@@ -404,6 +419,8 @@ export function Modal({
       onClose={busy ? undefined : onClose}
       dismissOnScrim={!busy && !dirty}
       ariaLabel={title}
+      role={role}
+      {...(describedBy ? { ariaDescribedBy: describedBy } : {})}
       width="34rem"
     >
       <div style={{ display: "flex", flexDirection: "column", gap: t.space4, padding: t.space5 }}>
@@ -416,7 +433,7 @@ export function Modal({
             disabled={busy}
             style={busy ? disabledButtonStyle : ghostButtonStyle}
           >
-            Cancel
+            {cancelLabel}
           </button>
           {footer}
         </div>
@@ -468,7 +485,8 @@ export function useIdempotencyKey(): {
  * Empty it is visually hidden (the live region stays in the page so the next message is announced).
  */
 export function useActionStatus(): {
-  announce: (message: string) => void;
+  /** `focus: false` for a message nobody acted for (a poll noticed it): it is announced, but focus stays where the reader is. */
+  announce: (message: string, opts?: { readonly focus?: boolean }) => void;
   region: JSX.Element;
 } {
   const [message, setMessage] = useState("");
@@ -476,11 +494,12 @@ export function useActionStatus(): {
   const ref = useRef<HTMLOutputElement>(null);
   // An effect, not a direct call: it runs after the closing modal's cleanup has restored (and lost) focus.
   useEffect(() => {
-    if (focusRequests > 0) ref.current?.focus();
+    // preventScroll: the status line sits at the top of the page; a save lower down must not jump the reader there.
+    if (focusRequests > 0) ref.current?.focus({ preventScroll: true });
   }, [focusRequests]);
-  const announce = useCallback((next: string): void => {
+  const announce = useCallback((next: string, opts?: { readonly focus?: boolean }): void => {
     setMessage(next);
-    setFocusRequests((n) => n + 1);
+    if (opts?.focus !== false) setFocusRequests((n) => n + 1);
   }, []);
   const region = (
     <output ref={ref} tabIndex={-1} style={message ? mutedStyle : visuallyHidden}>

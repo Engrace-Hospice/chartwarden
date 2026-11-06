@@ -209,3 +209,69 @@ export const assertBereavementDischargeSummaryRenderPayload = (
     BereavementDischargeSummaryRenderPayload,
     p,
   );
+
+// ── ADR-0109 D10 — the mailing BATCH (one letter per recipient) ─────────────────────────────────────────────────────────────────────
+// Rendered by M16's `m16-mailing-generate` worker through `getSeam("DocumentRenderer").render(...)` DIRECTLY (not over the outbox): the recipient
+// names and mailing addresses are decrypted in-process in the worker and handed to the renderer in memory, and they exist in no other place.
+// The PDF therefore holds EVERY addressee, and the document is filed under the INTERNAL-only aggregate type `bereavement_mailing_batch`.
+
+/** The M22 template key of the batch (the renderer table key). */
+export const BEREAVEMENT_MAILING_BATCH_TEMPLATE_KEY = "bereavement_mailing_batch" as const;
+
+/** Size limits of a mailing's agency-authored wording (the route bodies, the generate guard and the batch payload share them). */
+export const BEREAVEMENT_MAILING_CONTENT_LIMITS = {
+  title: 200,
+  greeting: 200,
+  paragraph: 2000,
+  paragraphs: 12,
+  signoff: 400,
+} as const;
+
+/** The wording of ONE mailing in one language: a greeting (`{name}` is replaced by the recipient's display name), paragraphs and a sign-off. */
+export const BereavementMailingLocaleContent = Type.Object({
+  title: Type.String({ maxLength: BEREAVEMENT_MAILING_CONTENT_LIMITS.title }),
+  greeting: Type.String({ maxLength: BEREAVEMENT_MAILING_CONTENT_LIMITS.greeting }),
+  paragraphs: Type.Array(Type.String({ maxLength: BEREAVEMENT_MAILING_CONTENT_LIMITS.paragraph }), {
+    maxItems: BEREAVEMENT_MAILING_CONTENT_LIMITS.paragraphs,
+  }),
+  signoff: Type.String({ maxLength: BEREAVEMENT_MAILING_CONTENT_LIMITS.signoff }),
+});
+export type BereavementMailingLocaleContent = Static<typeof BereavementMailingLocaleContent>;
+
+/** `content_jsonb` of a config / run: `{ en: {...} }` (one language today; multi-language wording is deferred). Empty `{}` = nothing written yet. */
+export const BereavementMailingContent = Type.Object({
+  en: Type.Optional(BereavementMailingLocaleContent),
+});
+export type BereavementMailingContent = Static<typeof BereavementMailingContent>;
+
+/** One letter of the batch: its reference, the addressee, the address block (one string per line) and the already-personalized greeting. */
+export const BereavementMailingBatchLetter = Type.Object({
+  /** The item's ordinal (1-based position in the batch), printed as "Ref N" so a letter flagged after the download can be pulled. Not PHI. */
+  ref: Type.Integer({ minimum: 1 }),
+  recipientName: text,
+  addressLines: Type.Array(text, { minItems: 1, maxItems: 8 }),
+  greeting: text,
+});
+export type BereavementMailingBatchLetter = Static<typeof BereavementMailingBatchLetter>;
+
+export const BereavementMailingBatchRenderPayload = Type.Object({
+  /** A fresh id PER RENDER ATTEMPT (not the run id): each attempt files its own document, and the run's `rendered_document_id` names the winner's. */
+  aggregateId: text,
+  /** The letter's heading (the agency's own wording). Deliberately NOT named `title`: the renderer reads `title` as the document row's title, which stays the generic default. */
+  heading: text,
+  paragraphs: Type.Array(text, { minItems: 1 }),
+  /** Optional: no default wording ships, so an empty sign-off is omitted, not replaced. */
+  signoff: Type.Optional(text),
+  letters: Type.Array(BereavementMailingBatchLetter, { minItems: 1 }),
+});
+export type BereavementMailingBatchRenderPayload = Static<
+  typeof BereavementMailingBatchRenderPayload
+>;
+export const assertBereavementMailingBatchRenderPayload = (
+  p: unknown,
+): BereavementMailingBatchRenderPayload =>
+  assertRenderPayload(
+    BEREAVEMENT_MAILING_BATCH_TEMPLATE_KEY,
+    BereavementMailingBatchRenderPayload,
+    p,
+  );

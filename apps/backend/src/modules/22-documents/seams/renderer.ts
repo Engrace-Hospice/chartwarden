@@ -224,6 +224,15 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     defaultTitle: "Bereavement Program Discharge Summary (Internal)",
     internalOnly: true,
   },
+  // ADR-0109 D10 — the mailing batch M16's generate worker renders directly (one letter per recipient; aggregate = a fresh id per render attempt, the run names the winner's document). SEAM-ONLY: it holds EVERY
+  // recipient's name and mailing address across the tenant, so no M22 document route serves it to any role (not even a scope-bypass role) and it never
+  // reaches the portal or a caseload read; the one door is M16's route 49 through `OrgDocumentAccessProvider`.
+  bereavement_mailing_batch: {
+    aggregateType: "bereavement_mailing_batch",
+    retentionClass: "bereavement",
+    defaultTitle: "Bereavement Mailing Batch (Internal)",
+    internalOnly: true,
+  },
   // M20 — `compliance`, not `operational`: an OSHA-recordable workplace-injury report is retained
   // evidence, and the patient-safety ones feed M30's QAPI review.
   safety_incident_report: {

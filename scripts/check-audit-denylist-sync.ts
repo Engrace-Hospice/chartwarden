@@ -161,6 +161,8 @@ const MODULES: ReadonlyArray<{
       "packages/db/migrations/1343_m16_risk_assessment_draft.sql",
       // ADR-0109 D6 — the physician condolence letter (the decline reason is prose and is scrubbed).
       "packages/db/migrations/1345_m16_physician_letter.sql",
+      // ADR-0109 D10 — the mailing program (the agency-authored wording of config and run is prose and is scrubbed).
+      "packages/db/migrations/1374_m16_mailings.sql",
     ],
   },
   {

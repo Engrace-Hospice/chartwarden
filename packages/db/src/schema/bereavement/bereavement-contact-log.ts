@@ -19,7 +19,16 @@
 // (M8), artifact_document_id (M22), logged_by_user_id (M2 membership) and external_resource_id_from_m40
 // (M40) are LOGICAL uuid, app-validated at the write boundary.
 import { sql } from "drizzle-orm";
-import { boolean, check, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { bereavementContactLogOutcome, bereavementOutreachKind } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
@@ -45,12 +54,14 @@ export const bereavementContactLog = pgTable(
     bereavedContactId: uuid("bereaved_contact_id")
       .notNull()
       .references(() => bereavedContact.id, { onDelete: "restrict" }),
-    outreachId: uuid("outreach_id")
-      .notNull()
-      .references(() => bereavementOutreach.id, { onDelete: "restrict" }),
+    // ADR-0109 D10 (migration 1373) — NULL on a PROGRAM ACTIVITY row (a mailing, a group session, a memorial attendance), which carries
+    // `activity_kind` + `activity_ref_id` instead. The shape CHECK keeps the two row families exclusive.
+    outreachId: uuid("outreach_id").references(() => bereavementOutreach.id, {
+      onDelete: "restrict",
+    }),
 
     contactAt: timestamp("contact_at", { withTimezone: true }).notNull(), // PARTITION KEY
-    kind: bereavementOutreachKind("kind").notNull(),
+    kind: bereavementOutreachKind("kind"), // NULL on a program-activity row
     outcome: bereavementContactLogOutcome("outcome").notNull(),
 
     // D15 — populated iff kind = 'in_person_visit'; the M8 `bereavement_contact` encounter that owns the
@@ -71,6 +82,11 @@ export const bereavementContactLog = pgTable(
 
     externalResourceIdFromM40: uuid("external_resource_id_from_m40"), // kind = 'external_referral'
 
+    // ADR-0109 D10 (migration 1373) — what a program-activity row was, and the run / session / service it belongs to (logical uuid, no FK:
+    // each target table is its own unpartitioned parent and the log is partitioned). Both NULL on an outreach row.
+    activityKind: text("activity_kind"),
+    activityRefId: uuid("activity_ref_id"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -85,6 +101,22 @@ export const bereavementContactLog = pgTable(
       .on(t.sourceEncounterId)
       .where(sql`source_encounter_id IS NOT NULL`),
 
+    // The idempotency key of the activity log write (the partition key is part of any unique index on this table).
+    activityUniq: uniqueIndex("berv_log_activity_uniq")
+      .on(t.activityRefId, t.bereavedContactId, t.activityKind, t.contactAt)
+      .where(sql`activity_ref_id IS NOT NULL`),
+    activityShape: check(
+      "berv_log_activity_shape_chk",
+      sql`(outreach_id IS NOT NULL AND kind IS NOT NULL AND activity_kind IS NULL AND activity_ref_id IS NULL) OR (outreach_id IS NULL AND kind IS NULL AND activity_kind IS NOT NULL AND activity_ref_id IS NOT NULL)`,
+    ),
+    activityKindValues: check(
+      "berv_log_activity_kind_chk",
+      sql`activity_kind IS NULL OR activity_kind IN ('newsletter_mailing','holiday_mailing','memorial_invitation_mailing','support_group_session','memorial_service_attendance')`,
+    ),
+    activityOutcome: check(
+      "berv_log_activity_outcome_chk",
+      sql`(activity_kind IS NULL) = (outcome NOT IN ('mailed','emailed','attended'))`,
+    ),
     inPersonRequiresEncounter: check(
       "berv_log_in_person_requires_encounter",
       sql`kind <> 'in_person_visit' OR source_encounter_id IS NOT NULL`,

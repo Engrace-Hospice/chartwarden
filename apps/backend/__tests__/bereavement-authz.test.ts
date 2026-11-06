@@ -121,7 +121,7 @@ const resolverFor = (
 
 describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
   it("registers exactly the §4.7 catalog, single-owner across the platform mirror", () => {
-    expect(M16_PERMISSION_KEY_LIST).toHaveLength(33);
+    expect(M16_PERMISSION_KEY_LIST).toHaveLength(36);
     const mirror = allPermissionMirrorRows().map((r) => r.key);
     for (const key of M16_PERMISSION_KEY_LIST) {
       expect(mirror.filter((k) => k === key)).toHaveLength(1);
@@ -158,6 +158,37 @@ describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
     expect([...sql.matchAll(/\('bereavement\./g)]).toHaveLength(2);
   });
 
+  // ADR-0109 D10 — the mailing batch PDF holds every recipient's address, so the whole mailing surface is oversight-only.
+  it("the three mailing keys are gated by bereavement oversight, never by a window or a portal self", () => {
+    for (const key of [
+      "bereavement.mailing.read",
+      "bereavement.mailing.manage",
+      "bereavement.mailing.dispatch",
+    ] as const) {
+      expect(M16_PERMISSION_KEY_LIST).toContain(key);
+      expect(M16_CONTRIBUTED_PERMISSIONS[key].abac).toBe("org_scope_bereavement_oversight");
+      expect(M16_PORTAL_SELF_PERMISSION_KEYS as readonly string[]).not.toContain(key);
+    }
+  });
+
+  it("the catalog migration (1377) mirrors exactly the three mailing keys with the predicate that gates them", () => {
+    const sql = readFileSync(
+      new URL("../../../packages/db/migrations/1377_m16_mailing_permissions.sql", import.meta.url),
+      "utf8",
+    );
+    for (const key of [
+      "bereavement.mailing.read",
+      "bereavement.mailing.manage",
+      "bereavement.mailing.dispatch",
+    ] as const) {
+      const def = M16_CONTRIBUTED_PERMISSIONS[key];
+      expect(sql).toContain(
+        `('${key}', '${def.resource}', '${def.action}', '${def.category}', '${def.abac}', '')`,
+      );
+    }
+    expect([...sql.matchAll(/\('bereavement\./g)]).toHaveLength(3);
+  });
+
   it("the two portal-self keys are the ONLY §4.1 rows a bereaved family session may hold", () => {
     expect([...M16_PORTAL_SELF_PERMISSION_KEYS].sort()).toEqual([
       "bereavement.contact.opt_out",
@@ -173,7 +204,7 @@ describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
 
 describe("M16-T06 §4.4 — the outbox catalog", () => {
   it("declares all 23 §4.4 events, every one owned by m16 and `mN.<resource>.<verb>` shaped", () => {
-    expect(M16_OUTBOX_EVENTS).toHaveLength(25);
+    expect(M16_OUTBOX_EVENTS).toHaveLength(26);
     for (const event of M16_OUTBOX_EVENTS) {
       expect(event.moduleOwner).toBe("m16");
       expect(event.eventName).toMatch(/^m16\.[a-z_]+\.[a-z0-9_]+$/);
@@ -695,6 +726,7 @@ describe("M16-T06 §8.5 — the bereavement_record eraser", () => {
         anniversaryReminders: 2,
         assessmentTasks: 4,
         physicianLetters: 1,
+        mailingItems: 3,
         contacts: 2,
         plansTombstoned: 1,
         closuresShredded: 1,
@@ -704,7 +736,7 @@ describe("M16-T06 §8.5 — the bereavement_record eraser", () => {
     expect(locked).toEqual([PATIENT]);
     expect(result.shredded).toBe(7);
     // The tombstoned plan root and the surviving closure row are bookkeeping, NOT deletions.
-    expect(result.erased).toBe(4 + 3 + 1 + 9 + 2 + 4 + 1 + 2);
+    expect(result.erased).toBe(4 + 3 + 1 + 9 + 2 + 4 + 1 + 3 + 2);
     expect(result.counts.plansTombstoned).toBe(1);
     expect(result.counts.closuresShredded).toBe(1);
   });

@@ -903,7 +903,8 @@ export function buildDrizzleM16WriteService(
     const rows = await tx
       .select({ outcome: LOG.outcome, contactAt: LOG.contactAt })
       .from(LOG)
-      .where(eq(LOG.bereavedContactId, contactId))
+      // ADR-0109 D10 — program-activity rows (mailings, sessions) are not touchpoint attempts and never count toward the streak.
+      .where(and(eq(LOG.bereavedContactId, contactId), isNull(LOG.activityKind)))
       .orderBy(desc(LOG.contactAt))
       .limit(20);
     let streak = 0;
@@ -2632,8 +2633,8 @@ export function buildDrizzleM16WriteService(
           contactLogId: log.id,
           planId: log.planId,
           contactId: log.bereavedContactId,
-          outreachId: log.outreachId,
-          kind: log.kind,
+          outreachId: outreach.id,
+          kind: input.kind,
           outcome: log.outcome,
           contactAt: iso(log.contactAt),
           artifactDocumentId: log.artifactDocumentId ?? null,
@@ -2761,8 +2762,8 @@ export function buildDrizzleM16WriteService(
           contactLogId: log.id,
           planId: log.planId,
           contactId: log.bereavedContactId,
-          outreachId: log.outreachId,
-          kind: log.kind,
+          outreachId: outreach.id,
+          kind: "external_referral",
           outcome: log.outcome,
           contactAt: iso(log.contactAt),
           artifactDocumentId: null,

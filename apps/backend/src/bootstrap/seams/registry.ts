@@ -130,6 +130,7 @@ import {
   onboardingStatusProviderDenyStub,
   orderProviderDenyStub,
   orderSignatureProviderDenyStub,
+  orgDocumentAccessProviderDenyStub,
   organizationReaderDenyStub,
   patientAddressReaderDenyStub,
   patientAdmissionClearanceReaderDenyStub,
@@ -378,6 +379,13 @@ export const REQUIRED_SEAMS = [
     ownerModule: 22,
     phi: true,
     denyStub: extractionProvenanceReaderDenyStub,
+  },
+  // ADR-0109 D10 — the org-level (patient-less) document download mint. PHI: the document it hands out is M16's mailing batch (every addressee).
+  {
+    key: "OrgDocumentAccessProvider",
+    ownerModule: 22,
+    phi: true,
+    denyStub: orgDocumentAccessProviderDenyStub,
   },
   { key: "ConsentEvaluator", ownerModule: 39, phi: true, denyStub: consentEvaluatorDenyStub },
   // M2 published seams (§4.7): authenticated request context + auditor session minter. Not PHI
