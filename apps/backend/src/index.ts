@@ -244,7 +244,6 @@ import {
   runParitySweep,
   scheduleDailyUtc,
 } from "./bootstrap/rust-bridge/index";
-import { createDrizzleSiteAdminRepository } from "./bootstrap/site-admin-repository";
 import { siteDisplayForOrg } from "./bootstrap/site-display-for-org";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
@@ -387,6 +386,7 @@ import {
   createDbPublicTenantLookups,
   createDrizzleIdentityEraserStore,
   createLinkDelivery,
+  createOrgDataWriteScope,
   createOrgScopedAuditExecutor,
   createOrganizationActivator,
   createOrganizationStatusReader,
@@ -4719,7 +4719,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         // GAP-002 — SESSION_POLICY idle/absolute timeouts, enforced server-side on every request.
         ...(dbHandle ? { sessionTimeout: createDbSessionTimeoutEnforcer(dbHandle.db) } : {}),
         // A session on a not-yet-live organization reaches only the onboarding routes (403 ORGANIZATION_ONBOARDING otherwise).
-        ...(organizationStage ? { organizationStage } : {}),
+        // Required: Better Auth exists only with a database, and the stage reader exists whenever there is one, so a missing reader
+        // is a boot error, never a hook that silently skips the gate.
+        organizationStage: (() => {
+          if (!organizationStage) {
+            throw new Error(
+              "the organization stage reader is unavailable: refusing to build the session authenticate hook without the not-yet-live organization gate",
+            );
+          }
+          return organizationStage;
+        })(),
         // TASK-013 — the M23 #39/#40 / M15 `/internal/...` system-principal routes' only path to
         // reachability. Unset (dev/no secret configured) → `systemCredential` is undefined and the
         // machine-credential branch never runs, exactly today's fail-closed posture.
@@ -5226,24 +5235,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           mountOrgAdminRoutes(app, dbHandle.db, {
             outbox: m2OutboxPublisher,
             taxIdCipher,
-            // A provider-entity / location write also voids a pending go-live attestation in the SAME transaction (the
-            // attestation said the data was ready; this write makes that stale). M34's helper, M2's routes, joined here.
-            siteWriteScope: (scope, run) =>
-              withOrgContext(
-                dbHandle.db,
-                { organizationId: scope.organizationId, userId: scope.userId },
-                async (tx) => {
-                  const result = await run(
-                    createDrizzleSiteAdminRepository(tx as unknown as DbClient, scope.userId),
-                  );
-                  await voidPendingGoLiveForDataChange(tx as unknown as DbClient, {
-                    organizationId: scope.organizationId,
-                    revokedByUserId: scope.userId,
-                    revokedByMembershipId: scope.membershipId,
-                  });
-                  return result;
-                },
-              ),
+            // A provider-entity, location or organization-name write also voids a pending go-live attestation in the SAME
+            // transaction (the attestation said the data was ready; this write makes that stale). M34's helper, M2's routes.
+            orgWriteScope: createOrgDataWriteScope(dbHandle.db, async (tx, scope) => {
+              await voidPendingGoLiveForDataChange(tx, {
+                organizationId: scope.organizationId,
+                revokedByUserId: scope.userId,
+                revokedByMembershipId: scope.membershipId,
+              });
+            }),
           });
           // M2 (ADR-0023 D2 / SecHardening §12.2/§12.4) — the device-attestation write path. This is what
           // puts rows in `device_attestation`, which is what lets the authenticate hook stamp
@@ -6336,8 +6336,17 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 // ADR-0053 amendment precondition 2 — platform-verified NPI ownership. Cross-tenant list and platform-only
                 // writes, so one allowlisted, audited withPlatformContext per call; no platform pool => 503, never a
                 // tenant-pool read.
-                npiVerificationService: buildDrizzleNpiVerificationService(
-                  platformDbHandle
+                npiVerificationService: buildDrizzleNpiVerificationService({
+                  // A verify or revoke is the `ccn_registered` step's data: it also voids a pending go-live attestation, in the
+                  // SAME platform transaction (M34's helper; M23 does not import M34).
+                  onVerificationChanged: async (tx, change) => {
+                    await voidPendingGoLiveForDataChange(tx, {
+                      organizationId: change.organizationId,
+                      revokedByUserId: change.userId,
+                      revokedByMembershipId: change.membershipId,
+                    });
+                  },
+                  ...(platformDbHandle
                     ? {
                         runner: (fn) =>
                           withPlatformContext(
@@ -6351,8 +6360,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                             fn,
                           ),
                       }
-                    : {},
-                ),
+                    : {}),
+                }),
                 ddeProviderVendor: ddeBinding.vendor,
                 // F-212 — the tenant-entered sequestration policy (`/billing/sequestration-policies`); the SAME table the
                 // assembly service's `referenceData.activeSequestrationPolicy` reads (M23-owned, over `dbHandle.db`).

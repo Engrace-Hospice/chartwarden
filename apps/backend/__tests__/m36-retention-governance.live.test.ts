@@ -23,6 +23,7 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:retention-governance:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
+import { liveOrganizationStage } from "./_live-organization-stage";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -342,6 +343,7 @@ describe.skipIf(!DB_URL)("M36 WP 5.6 retention and legal-hold governance, LIVE P
       db: handle.db as never,
       security: { rateLimitEnabled: false },
       authenticate: createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => resolver,
       }),

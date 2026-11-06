@@ -209,6 +209,8 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
       );
     registerPlatformJob(M23_NPI_VERIFICATION_JOB_ID);
     npiAdmin = buildDrizzleNpiVerificationService({
+      // This suite is about Claim.MD routing, not go-live; an explicit no-op change hook.
+      onVerificationChanged: async () => undefined,
       runner: (fn) =>
         withPlatformContext(
           platform.db,

@@ -2,6 +2,7 @@
 // Unit-tests the authenticate hook factory with a stub snapshot reader + stub SessionContextResolver
 // (no better-auth / no DB). The real session read + DB-backed resolver are verified in the AUTH-T06
 // live-PG lane; the DB-backed SessionContextStore reconciliation lands in AUTH-T05.
+import { liveOrganizationStage } from "./_live-organization-stage";
 import {
   type ResolvedActor,
   STEP_UP_POLICY,
@@ -71,6 +72,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
   it("populates context for an org-bound session via the resolver", async () => {
     const { req, ctx } = reqWith();
     const hook = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
       getResolver: () => resolverReturning(ORG_BOUND_ACTOR),
     });
@@ -110,6 +112,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
   it("stamps stepUpRecent TRUE for a session that stepped up inside the policy window (F-029)", async () => {
     const { req, ctx } = reqWith();
     const hook = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
       getResolver: () => resolverReturning(ORG_BOUND_ACTOR, 30), // 30s ago, floor allows 300s
     });
@@ -120,6 +123,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
   it("stamps stepUpRecent FALSE for a step-up outside the window — the fact is resolved, not assumed", async () => {
     const { req, ctx } = reqWith();
     const hook = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
       getResolver: () => resolverReturning(ORG_BOUND_ACTOR, 86_400), // a day ago
     });
@@ -135,6 +139,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
     const { req, ctx } = reqWith();
     let calls = 0;
     const hook = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
       getResolver: () => {
         calls++;
@@ -149,6 +154,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
   it("leaves context anonymous when there is no session", async () => {
     const { req, ctx } = reqWith();
     const hook = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
       getSnapshot: async () => null,
       getResolver: () => resolverReturning(null),
     });
@@ -166,6 +172,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
   it("sets userId only for a pre-org session (no org binding yet)", async () => {
     const { req, ctx } = reqWith();
     const hook = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: null }),
       getResolver: () => resolverReturning(null),
     });
@@ -186,6 +193,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
   it("drops the org binding when the resolver returns null (session/org mismatch)", async () => {
     const { req, ctx } = reqWith();
     const hook = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "orgX" }),
       getResolver: () => resolverReturning(null),
     });
@@ -211,6 +219,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
         "x-internal-org-id": "org-9",
       });
       const hook = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
         getSnapshot: async () => {
           throw new Error("must not read the interactive session on the machine-credential path");
         },
@@ -231,6 +240,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
     it("falls through to the interactive path when no shared secret is configured", async () => {
       const { req, ctx } = reqWith({ "x-internal-service-token": "anything" });
       const hook = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
         getSnapshot: async () => null,
         getResolver: () => resolverReturning(null),
         // systemCredential intentionally omitted — the header alone must never authenticate.
@@ -245,6 +255,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
         "x-internal-org-id": "org-9",
       });
       const hook = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
         getSnapshot: async () => null,
         getResolver: () => resolverReturning(null),
         systemCredential: { token: "s3cret-internal-token-value-32chars!!" },
@@ -263,6 +274,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
     it("never grants system status without the header, even when configured", async () => {
       const { req, ctx } = reqWith();
       const hook = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
         getSnapshot: async () => null,
         getResolver: () => resolverReturning(null),
         systemCredential: { token: "s3cret-internal-token-value-32chars!!" },
@@ -281,6 +293,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
         const { req, ctx } = reqWith();
         const enforced: string[] = [];
         const hook = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
           getSnapshot: snapshot,
           getResolver: () => resolverReturning(ORG_BOUND_ACTOR),
           sessionTimeout: {
@@ -302,6 +315,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
     it("a background poll is checked for timeout but not recorded as activity", async () => {
       const calls: unknown[] = [];
       const hook = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
         getSnapshot: snapshot,
         getResolver: () => resolverReturning(ORG_BOUND_ACTOR),
         sessionTimeout: {
@@ -320,6 +334,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
     it("an active session resolves exactly as before", async () => {
       const { req, ctx } = reqWith();
       const hook = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
         getSnapshot: snapshot,
         getResolver: () => resolverReturning(ORG_BOUND_ACTOR),
         sessionTimeout: { enforce: async () => "active" },

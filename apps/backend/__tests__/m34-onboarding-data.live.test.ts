@@ -68,6 +68,7 @@ import {
   createOnboardingWizard,
   mountTenantPlatformRoutes,
 } from "../src/modules/34-saas-tenant-platform/index";
+import { voidPendingGoLiveForDataChange } from "../src/modules/34-saas-tenant-platform/onboarding/go-live-void";
 import { registerOnboardingRoutes } from "../src/modules/34-saas-tenant-platform/routes/tenant/onboarding-tasks";
 import {
   appRoleConnectionString,
@@ -918,6 +919,7 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
 
   it("makes the new provider entity visible to the #952 NPI-verification screen, unverified, on the platform credential", async () => {
     const service = buildDrizzleNpiVerificationService({
+      onVerificationChanged: async () => undefined,
       runner: (fn) => platformPool.db.transaction((tx) => fn(tx as unknown as DbClient)),
     });
     const list = await service.list();
@@ -1090,8 +1092,61 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
         status: "revoked",
         revoke_reason: "onboarding data changed after attestation",
         revoked_by_user_id: OPERATOR,
-        revoked_by_membership_id: MEMBERSHIP,
+        // the operator's membership is in their home organisation: only their USER is recorded on a tenant-scoped void
+        revoked_by_membership_id: null,
       });
+    });
+
+    it("re-review M1: an NPI verify and revoke (the ccn_registered step's data) void a pending attestation in the same platform transaction", async () => {
+      const npiService = buildDrizzleNpiVerificationService({
+        onVerificationChanged: async (tx, change) => {
+          await voidPendingGoLiveForDataChange(tx, {
+            organizationId: change.organizationId,
+            revokedByUserId: change.userId,
+            revokedByMembershipId: change.membershipId,
+          });
+        },
+        runner: (fn) => platformPool.db.transaction((tx) => fn(tx as unknown as DbClient)),
+      });
+      const actor = {
+        organizationId: PLATFORM_ORG,
+        userId: OPERATOR,
+        roles: ["platform_ops"],
+        membershipId: MEMBERSHIP,
+        stepUpRecent: true,
+        actorKind: "user",
+      };
+      const clearAttestations = () =>
+        q("DELETE FROM tenant_go_live_attestation WHERE organization_id=$1", [ORG_F]);
+      await clearAttestations();
+      await pendingAttestation();
+      await npiService.verify(actor, peF, {
+        npi: "1245319599",
+        evidence: "checked against the NPPES registry",
+      });
+      expect(await attestationStatus()).toMatchObject({
+        status: "revoked",
+        revoke_reason: "onboarding data changed after attestation",
+        revoked_by_user_id: OPERATOR,
+        revoked_by_membership_id: null,
+      });
+
+      await clearAttestations();
+      await pendingAttestation();
+      await npiService.revoke(actor, peF);
+      expect(await attestationStatus()).toMatchObject({ status: "revoked" });
+
+      // a refused verify (the NPI changed under the operator) voids nothing and leaves the attestation pending
+      await clearAttestations();
+      await pendingAttestation();
+      await expect(
+        npiService.verify(actor, peF, {
+          npi: "1679576722",
+          evidence: "checked against the registry",
+        }),
+      ).rejects.toMatchObject({ code: "NPI_CHANGED" });
+      expect(await attestationStatus()).toMatchObject({ status: "pending" });
+      await clearAttestations();
     });
 
     it("a write that FAILS rolls the void back: the attestation stays pending", async () => {
@@ -1152,6 +1207,7 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
       ]).store,
     );
     const wizard = createOnboardingWizard({
+      activateOrganization: async () => undefined,
       runner: createDrizzleWizardRunner({
         db: tenantPool.db,
         platformDb: platformPool.db,

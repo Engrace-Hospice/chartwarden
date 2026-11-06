@@ -111,8 +111,26 @@ const failClosedRunner: NpiVerificationRunner = async () => {
   );
 };
 
+/** What a verify or revoke tells the composition root, inside the same platform transaction as the change. */
+export interface NpiVerificationChange {
+  readonly organizationId: string;
+  readonly userId: string;
+  readonly membershipId: string;
+}
+
+export interface NpiVerificationDeps {
+  readonly runner?: NpiVerificationRunner;
+  readonly now?: () => Date;
+  /**
+   * Runs in the SAME platform transaction as every verify and revoke. The verification is the `ccn_registered` step's data (the
+   * entity's NPI verified against the registry): M34 revokes a pending go-live attestation it makes stale there (M23 does not
+   * import M34). REQUIRED: unbound, a verification change would leave a stale attestation approvable.
+   */
+  readonly onVerificationChanged: (tx: DbClient, change: NpiVerificationChange) => Promise<void>;
+}
+
 export function buildDrizzleNpiVerificationService(
-  deps: { readonly runner?: NpiVerificationRunner; readonly now?: () => Date } = {},
+  deps: NpiVerificationDeps,
 ): NpiVerificationService {
   const platform = deps.runner ?? failClosedRunner;
   const now = deps.now ?? (() => new Date());
@@ -140,6 +158,15 @@ export function buildDrizzleNpiVerificationService(
       .for("update");
     return row;
   }
+
+  const changeOf = (
+    actor: M23WriteActor,
+    entity: PlatformProviderEntity,
+  ): NpiVerificationChange => ({
+    organizationId: entity.organizationId,
+    userId: actor.userId,
+    membershipId: actor.membershipId,
+  });
 
   async function viewOf(tx: DbClient, entity: PlatformProviderEntity) {
     return deriveNpiVerification(entity, await rowsFor(tx, [entity.id]));
@@ -189,6 +216,7 @@ export function buildDrizzleNpiVerificationService(
           createdAt: at,
           updatedAt: at,
         });
+        await deps.onVerificationChanged(tx, changeOf(actor, entity));
         return viewOf(tx, entity);
       }),
 
@@ -208,6 +236,7 @@ export function buildDrizzleNpiVerificationService(
           .update(V)
           .set({ revokedAt: at, revokedByMembershipId: actor.membershipId, updatedAt: at })
           .where(eq(V.id, live.id));
+        await deps.onVerificationChanged(tx, changeOf(actor, entity));
         return viewOf(tx, entity);
       }),
   };

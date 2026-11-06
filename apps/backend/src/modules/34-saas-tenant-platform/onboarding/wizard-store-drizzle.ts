@@ -17,7 +17,10 @@ import {
 } from "@chartwarden/tenancy";
 import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { pickGoverningBaa } from "../routes/platform/activation-guards";
-import { lockTenantOnboardingShared } from "../routes/platform/tenant-onboarding-lock";
+import {
+  lockTenantOnboardingExclusive,
+  lockTenantOnboardingShared,
+} from "../routes/platform/tenant-onboarding-lock";
 import { voidPendingGoLiveForDataChange as voidPendingGoLive } from "./go-live-void";
 import type {
   CompletionMode,
@@ -173,8 +176,9 @@ export function createDrizzleWizardStore(
       return rows.map(toGoLive);
     },
     async insertGoLive(input) {
-      const [row] = await tx
-        .insert(G)
+      // Names only the columns the tenant role may INSERT (`tenantGoLiveAttestationCreate`); the row is read back whole.
+      const [created] = await tx
+        .insert(schema.tenantGoLiveAttestationCreate)
         .values({
           organizationId: input.organizationId,
           tenantAccountId: input.tenantAccountId,
@@ -182,7 +186,8 @@ export function createDrizzleWizardStore(
           attestedByUserId: input.attestedByUserId,
           attestationNote: input.attestationNote,
         })
-        .returning();
+        .returning({ id: sql<string>`id` });
+      const [row] = created ? await tx.select().from(G).where(eq(G.id, created.id)).limit(1) : [];
       if (!row) throw new Error("tenant_go_live_attestation insert returned no row");
       return toGoLive(row);
     },
@@ -290,6 +295,9 @@ export function createDrizzleWizardStore(
     },
     async lockOnboardingShared(organizationId) {
       await lockTenantOnboardingShared(tx, organizationId);
+    },
+    async lockOnboardingExclusive(organizationId) {
+      await lockTenantOnboardingExclusive(tx, organizationId);
     },
     async updateOrgProfile(organizationId, patch, actorUserId) {
       if (!orgProfileFor) throw new Error("this wizard store has no org profile port");

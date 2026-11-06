@@ -367,6 +367,7 @@ describe("M34 best-effort warn sinks log a database error through the redacting 
       tasks: [memoryTask("t-1", "organisation")],
     });
     const wizard = createOnboardingWizard({
+      activateOrganization: async () => undefined,
       runner: createMemoryWizardRunner(state),
       orgProfile: createMemoryOrgProfile(state),
       advance: async () => {

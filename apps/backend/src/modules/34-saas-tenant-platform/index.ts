@@ -365,6 +365,8 @@ export function mountTenantPlatformRoutes(
   const sliceState = createMemoryWizardState();
   const { wizard } = services?.onboarding ?? {
     wizard: createOnboardingWizard({
+      // The in-memory slice has no M2 organization to open: an explicit no-op, never reached with a bound composition root.
+      activateOrganization: async () => undefined,
       runner: createMemoryWizardRunner(sliceState),
       orgProfile: createMemoryOrgProfile(sliceState),
     }),

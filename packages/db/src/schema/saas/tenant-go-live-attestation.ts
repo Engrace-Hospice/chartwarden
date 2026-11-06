@@ -56,9 +56,29 @@ export const tenantGoLiveAttestation = pgTable(
     pendingUnique: uniqueIndex(PENDING_ATTESTATION_IDX)
       .on(t.tenantAccountId)
       .where(sql`status = 'pending'`),
-    tenantIdx: index("tenant_go_live_attestation_tenant_ix").on(t.tenantAccountId, t.attestedAt),
+    // Leads with the composite FK's columns (fk-index-coverage); the attested_at tail serves "newest first".
+    tenantIdx: index("tenant_go_live_attestation_tenant_ix").on(
+      t.tenantAccountId,
+      t.organizationId,
+      t.attestedAt,
+    ),
   }),
 );
+
+/**
+ * The columns the tenant role may INSERT (migration 1328's column-level grant), as a narrower table object over the same table:
+ * the attester and the note. Drizzle lists EVERY column of the table it inserts into (`values (default, $1, default, ...)`) and
+ * `DEFAULT` still needs INSERT privilege on its column, so a column grant is only usable through an insert that names just these;
+ * `status`, `attested_at` and the approve/revoke columns then take their database defaults.
+ */
+export const tenantGoLiveAttestationCreate = pgTable("tenant_go_live_attestation", {
+  organizationId: uuid("organization_id").notNull(),
+  tenantAccountId: uuid("tenant_account_id").notNull(),
+  attestedByMembershipId: uuid("attested_by_membership_id").notNull(),
+  attestedByUserId: uuid("attested_by_user_id").notNull(),
+  attestationNote: text("attestation_note"),
+});
+export type NewTenantGoLiveAttestationCreate = typeof tenantGoLiveAttestationCreate.$inferInsert;
 
 export type TenantGoLiveAttestation = typeof tenantGoLiveAttestation.$inferSelect;
 export type NewTenantGoLiveAttestation = typeof tenantGoLiveAttestation.$inferInsert;

@@ -15,6 +15,7 @@ import { GO_LIVE_DATA_CHANGED_REVOKE_REASON, GO_LIVE_TEMPLATE_KEY } from "./mode
 
 const G = schema.tenantGoLiveAttestation;
 const K = schema.onboardingTask;
+const M = schema.memberships;
 
 export async function voidPendingGoLiveForDataChange(
   tx: DbClient,
@@ -25,12 +26,16 @@ export async function voidPendingGoLiveForDataChange(
   },
 ): Promise<boolean> {
   const at = new Date();
+  // The revoking MEMBERSHIP is recorded only when it is an active membership of the revoking user in THIS organisation (the tenant
+  // role's policy requires exactly that). A platform operator's own membership is in their home organisation, so an operator's
+  // void records the user alone; the row audit still names them.
+  const membershipId = await membershipInOrganization(tx, input);
   const [voided] = await tx
     .update(G)
     .set({
       status: "revoked",
       revokedByUserId: input.revokedByUserId,
-      revokedByMembershipId: input.revokedByMembershipId,
+      revokedByMembershipId: membershipId,
       revokedAt: at,
       revokeReason: GO_LIVE_DATA_CHANGED_REVOKE_REASON,
       updatedAt: at,
@@ -51,4 +56,28 @@ export async function voidPendingGoLiveForDataChange(
       ),
     );
   return true;
+}
+
+async function membershipInOrganization(
+  tx: DbClient,
+  input: {
+    readonly organizationId: string;
+    readonly revokedByUserId: string;
+    readonly revokedByMembershipId: string | null;
+  },
+): Promise<string | null> {
+  if (!input.revokedByMembershipId) return null;
+  const [member] = await tx
+    .select({ id: M.id })
+    .from(M)
+    .where(
+      and(
+        eq(M.id, input.revokedByMembershipId),
+        eq(M.organizationId, input.organizationId),
+        eq(M.userId, input.revokedByUserId),
+        eq(M.status, "active"),
+      ),
+    )
+    .limit(1);
+  return member?.id ?? null;
 }

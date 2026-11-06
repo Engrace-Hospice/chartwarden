@@ -79,6 +79,8 @@ const UNIQUE_VIOLATION = "23505";
 /** PostgreSQL EXCLUDE violation. M17's partition-local visit overlap constraints carry a generated
  * partition prefix, so they cannot be registered as one exact static constraint name. */
 const EXCLUSION_VIOLATION = "23P01";
+/** Postgres `deadlock_detected` and `serialization_failure`: the transaction lost to a concurrent one and may simply run again. */
+const RETRYABLE_SQLSTATES = ["40P01", "40001"] as const;
 /** How far down a `.cause` chain to look. Drizzle wraps once; a repository may wrap once more. */
 const MAX_CAUSE_DEPTH = 5;
 
@@ -117,6 +119,25 @@ export function classifyDatabaseError(err: unknown): BusinessRuleViolation | nul
         reason: "CLINICIAN_SCHEDULE_CONFLICT",
       };
     }
+    cursor = (cursor as { cause?: unknown }).cause;
+  }
+  return null;
+}
+
+/**
+ * A deadlock (`40P01`) or serialization failure (`40001`): the database aborted THIS transaction because a concurrent one got in
+ * its way, and nothing it did was kept. It is the caller's cue to retry, not a server fault, so the error handler answers a
+ * retryable 409 instead of a 500. Walks `.cause` like {@link classifyDatabaseError}; the raw error must not be logged after
+ * mapping (a `DrizzleQueryError` embeds the query and its bound parameters).
+ */
+export function classifyRetryableDatabaseError(
+  err: unknown,
+): { readonly sqlstate: (typeof RETRYABLE_SQLSTATES)[number] } | null {
+  let cursor: unknown = err;
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH && cursor instanceof Error; depth++) {
+    const code = (cursor as { code?: unknown }).code;
+    const found = RETRYABLE_SQLSTATES.find((sqlstate) => sqlstate === code);
+    if (found) return { sqlstate: found };
     cursor = (cursor as { cause?: unknown }).cause;
   }
   return null;

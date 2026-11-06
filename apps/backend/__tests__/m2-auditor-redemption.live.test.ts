@@ -20,6 +20,7 @@
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m2:auditor-redemption:live
  */
+import { liveOrganizationStage } from "./_live-organization-stage";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -205,6 +206,7 @@ describe.skipIf(!DB_URL)("M2/M3 auditor magic-link redemption — LIVE Postgres"
     registerAbacRegistry(); // the shared registry: `auditor_enrolment_session` registers on route mount
 
     const authenticate = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
       getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
       getResolver: () => getSeam("SessionContextResolver"),
       sessionTimeout: createDbSessionTimeoutEnforcer(handle.db),

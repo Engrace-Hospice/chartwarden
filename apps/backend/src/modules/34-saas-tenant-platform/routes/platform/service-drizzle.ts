@@ -1438,11 +1438,17 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
   };
 
   /**
-   * `onboarding → active` for an approved go-live, inside the wizard's open platform transaction. The tenant row is
-   * locked and re-read so two approvals cannot both apply, the lifecycle machine re-judges its own guards over the tasks
-   * the wizard has just settled, and the `m34.tenant.onboarding_completed` event commits with the transition.
+   * `onboarding → active` for an approved go-live, inside the wizard's open platform transaction. The exclusive onboarding lock
+   * is taken FIRST (the wizard already holds it: advisory transaction locks are re-entrant), then the tenant row is locked and
+   * re-read so two approvals cannot both apply. UNDER THE LOCK the approved attestation is judged once more against the live
+   * tenant: when an officer is assigned, the attester must still be that officer (409 GO_LIVE_ATTESTATION_STALE), so an officer
+   * reassigned between the wizard's read and this commit cannot be taken live on the old officer's word. The lifecycle machine
+   * re-judges its own guards over the tasks the wizard has just settled, and the `m34.tenant.onboarding_completed` event commits
+   * with the transition.
    */
   const activateApprovedTenant: WizardActivation = async (tx, input) => {
+    // Waits for in-flight operator onboarding-data writes to commit; later ones see `active` (tenant-onboarding-lock.ts).
+    await lockTenantOnboardingExclusive(tx, input.tenant.organizationId);
     const [account] = await tx
       .select()
       .from(A)
@@ -1451,6 +1457,42 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       .for("update");
     if (!account || account.status !== "onboarding") {
       throw new ChartWardenError("TENANT_NOT_ONBOARDING", "the tenant is not in onboarding", 409);
+    }
+    const [approval] = await tx
+      .select({ attestedByMembershipId: schema.tenantGoLiveAttestation.attestedByMembershipId })
+      .from(schema.tenantGoLiveAttestation)
+      .where(
+        and(
+          eq(schema.tenantGoLiveAttestation.tenantAccountId, account.id),
+          eq(schema.tenantGoLiveAttestation.organizationId, account.organizationId),
+          eq(schema.tenantGoLiveAttestation.status, "approved"),
+        ),
+      )
+      .orderBy(desc(schema.tenantGoLiveAttestation.approvedAt))
+      .limit(1);
+    if (!approval) {
+      throw new ChartWardenError(
+        "GO_LIVE_NOT_ATTESTED",
+        "a tenant goes active only on an approved go-live attestation",
+        409,
+      );
+    }
+    if (
+      account.complianceOfficerMembershipId !== null &&
+      account.complianceOfficerMembershipId !== approval.attestedByMembershipId
+    ) {
+      throw new ChartWardenError(
+        "GO_LIVE_ATTESTATION_STALE",
+        "the go-live attestation is stale: the attester is no longer the assigned compliance officer; platform operations must revoke it and the compliance officer attest again",
+        409,
+        [
+          {
+            field: "attestation",
+            code: "attester_not_assigned_officer",
+            message: "the attester is no longer the assigned compliance officer",
+          },
+        ],
+      );
     }
     const event = await activateEventFor(tx, account.id, input.reason, "platform_ops");
     const activated = await applyTransition(

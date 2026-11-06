@@ -272,7 +272,9 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
       );
       return (await changed(out)).out;
     },
-    approveGoLive: async (orgSlug, actor, reason) => {
+    approveGoLive: async (orgSlug, actor, reasonInput) => {
+      // Validated and cleaned ONCE: the approval records it and the M2 activation is handed exactly the same text.
+      const reason = normalizeReason(reasonInput);
       const approved = await platform(
         "platform-ops go-live approval",
         orgSlug,
@@ -283,7 +285,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
         }),
         actor,
       );
-      await activateOrganizationAfterApproval(approved, actor, reason.trim());
+      await activateOrganizationAfterApproval(approved, actor, reason);
       return approved.wizard;
     },
     revokeGoLive: async (orgSlug, actor, reason) =>

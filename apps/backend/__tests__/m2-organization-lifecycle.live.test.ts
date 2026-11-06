@@ -119,7 +119,11 @@ describe.skipIf(!DB_URL)(
       const rawPublisher: OrganizationLifecycleOutboxPort = {
         publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m2" }),
       };
-      return createDrizzleOrganizationLifecycleWriter(handle.db, rawPublisher);
+      return createDrizzleOrganizationLifecycleWriter(handle.db, {
+        // This suite is about the transitions themselves; the activation guard has its own cases below.
+        activationGuard: { isOnboarding: async () => false },
+        outbox: rawPublisher,
+      });
     }
 
     it("suspend: writes status, revokes bound sessions, lands the outbox row, audits the transition", async () => {
@@ -244,12 +248,12 @@ describe.skipIf(!DB_URL)(
       };
       const guarded = () => {
         const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M2_OUTBOX_EVENTS]));
-        return createDrizzleOrganizationLifecycleWriter(
-          handle.db,
-          { publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m2" }) },
-          undefined,
-          createOnboardingTenantReader(handle.db),
-        );
+        return createDrizzleOrganizationLifecycleWriter(handle.db, {
+          activationGuard: createOnboardingTenantReader(handle.db),
+          outbox: {
+            publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m2" }),
+          },
+        });
       };
       const status = async (org: string) =>
         (await admin.query("SELECT status FROM organization WHERE id = $1", [org])).rows[0]
