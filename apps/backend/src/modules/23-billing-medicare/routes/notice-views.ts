@@ -3,9 +3,30 @@
 // optional `corrections` are the rows filed against this notice (`corrects_notice_id`), for the "corrected by" link.
 import type { repositories } from "@chartwarden/billing";
 import { noticeAckOutcomeView, noticeCorrectionLinkView } from "./notice-ack-view";
-import type { NoeView, NotrView } from "./read-service";
+import type { NoeView, NoticeExternalFilingView, NotrView } from "./read-service";
 
 const isoReq = (d: Date): string => d.toISOString();
+
+interface ExternalFilingColumns {
+  readonly externalFilingStatus: "pending" | "filed" | null;
+  readonly filedExternallyOn: string | null;
+  readonly filedExternallyRecordedAt: Date | null;
+}
+
+/** The "file with your biller" fact (owner decision D4); never who recorded it. */
+export function noticeExternalFilingView(
+  row: ExternalFilingColumns,
+): NoticeExternalFilingView | null {
+  if (row.externalFilingStatus === null) return null;
+  if (row.externalFilingStatus === "pending") {
+    return { status: "filed_externally_pending", filedOn: null, recordedAt: null };
+  }
+  return {
+    status: "filed_externally",
+    filedOn: row.filedExternallyOn,
+    recordedAt: row.filedExternallyRecordedAt?.toISOString() ?? null,
+  };
+}
 
 export function mapNoe(
   row: repositories.NoeRecord,
@@ -22,6 +43,7 @@ export function mapNoe(
     electionEffectiveDate: row.electionEffectiveDate,
     windowTargetAt: row.windowTargetAt,
     windowBreachedAt: row.windowBreachedAt ?? null,
+    externalFiling: noticeExternalFilingView(row),
     noeControlNumber: row.noeControlNumber,
     payerNoeControlNumber: row.payerNoeControlNumber ?? null,
     ...noticeAckOutcomeView(row),
@@ -52,6 +74,7 @@ export function mapNotr(
     effectiveEndDate: row.effectiveEndDate,
     windowTargetAt: row.windowTargetAt,
     windowBreachedAt: row.windowBreachedAt ?? null,
+    externalFiling: noticeExternalFilingView(row),
     state: row.state,
     notrControlNumber: row.notrControlNumber,
     payerNotrControlNumber: row.payerNotrControlNumber ?? null,

@@ -1,20 +1,16 @@
 // apps/backend/src/modules/35-subscription/seams/register.ts — M35's live seam registrations (ADR-0108).
 //
-// `ClaimsBillingEntitlementReader` and `PatientCounterProvider` replace their throwing deny-stubs with the Drizzle readers on a db boot. A slice boot
-// with no db keeps the stub, and the claims-billing gate then fails CLOSED (boot refuses a non-`off` enforcement mode
-// on an unbound seam).
+// `PatientCounterProvider` and `SubscriptionWorkBlockReader` replace their throwing deny-stubs with the Drizzle readers on a db boot. (`ClaimsBillingEntitlementReader`
+// moved to M23 with ADR-0053 amendment 2026-11-06: the claims-billing gate follows the tenant's clearinghouse choice, not an
+// add-on, and M23 registers it. A slice boot with no db keeps its stub and the gate fails CLOSED.)
 import type { DbClient } from "@chartwarden/db";
 import { registerSeam } from "../../../bootstrap/index";
-import { createDrizzleClaimsBillingEntitlementReader } from "../addon/entitlement";
+import { createDrizzleSubscriptionWorkBlockReader } from "../addon/entitlement";
 import { createDrizzlePatientCounterProvider } from "../billing-runtime/census";
 import { readBillingServiceMode } from "../pricing/contract-service";
 
 export function registerM35Seams(deps: { readonly db?: DbClient } = {}): void {
   if (deps.db) {
-    registerSeam(
-      "ClaimsBillingEntitlementReader",
-      createDrizzleClaimsBillingEntitlementReader(deps.db),
-    );
     // ADR-0108 D8 — the real pseudonymized active-patient counter over `patient_active_period`.
     registerSeam("PatientCounterProvider", createDrizzlePatientCounterProvider(deps.db));
     // Slice 2 — the subscription's billing service mode, for the module that must enforce a rule on it (slice 3: outside => none).
@@ -22,5 +18,8 @@ export function registerM35Seams(deps: { readonly db?: DbClient } = {}): void {
     registerSeam("BillingServiceModeReader", {
       billingServiceModeForOrg: (organizationId) => readBillingServiceMode(db, organizationId),
     });
+
+    // Owner decision D1: M23's claims-billing decision asks whether the subscription is suspended / paused / canceled.
+    registerSeam("SubscriptionWorkBlockReader", createDrizzleSubscriptionWorkBlockReader(deps.db));
   }
 }

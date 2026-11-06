@@ -16,6 +16,8 @@ import {
   type ClaimsBillingEntitlementReader,
   type SubscriptionAddonStatus,
   type SubscriptionStatus,
+  type SubscriptionWorkBlock,
+  type SubscriptionWorkBlockReader,
 } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 
@@ -44,6 +46,35 @@ export function addonIsLive(row: Omit<AddonFacts, "subscriptionStatus">, now: Da
 }
 
 /**
+ * Owner decision D1 (ADR-0108 repurposed): the rule that survives the add-on. A suspended, canceled or paused subscription blocks
+ * new claims work with its own reason; trialing, active, past_due and at_risk do not (dunning still lets work start). One
+ * rule for the add-on's D3 and for the gate's subscription check, so they cannot drift.
+ */
+export function decideSubscriptionWorkBlock(status: SubscriptionStatus): SubscriptionWorkBlock {
+  switch (status) {
+    case "suspended":
+      return { blocked: true, reason: "subscription_suspended" };
+    case "canceled":
+      return { blocked: true, reason: "subscription_canceled" };
+    case "paused":
+      return { blocked: true, reason: "subscription_paused" };
+    default:
+      return { blocked: false };
+  }
+}
+
+/**
+ * The status of the org's CURRENT subscription from its rows (newest first): the one live row (`subscription_org_active_uq`
+ * allows one that is not canceled or paused), else the newest canceled / paused one; null when it has none.
+ */
+export function currentSubscriptionStatus(
+  rows: readonly { readonly status: SubscriptionStatus }[],
+): SubscriptionStatus | null {
+  const live = rows.find((r) => r.status !== "canceled" && r.status !== "paused");
+  return (live ?? rows[0])?.status ?? null;
+}
+
+/**
  * The D3 rule. `latest` is the org's most recent add-on row (any status), or null when it never held one.
  */
 export function decideClaimsBillingEntitlement(
@@ -52,18 +83,11 @@ export function decideClaimsBillingEntitlement(
 ): ClaimsBillingEntitlement {
   if (!latest) return { entitled: false, reason: "never_purchased" };
   if (!addonIsLive(latest, now)) return { entitled: false, reason: "lapsed" };
-  switch (latest.subscriptionStatus) {
-    case "suspended":
-      return { entitled: false, reason: "subscription_suspended" };
-    case "canceled":
-      return { entitled: false, reason: "subscription_canceled" };
-    case "paused":
-      return { entitled: false, reason: "subscription_paused" };
-    default:
-      return ENTITLING_SUBSCRIPTION_STATUSES.has(latest.subscriptionStatus)
-        ? { entitled: true }
-        : { entitled: false, reason: "lapsed" };
-  }
+  const block = decideSubscriptionWorkBlock(latest.subscriptionStatus);
+  if (block.blocked) return { entitled: false, reason: block.reason };
+  return ENTITLING_SUBSCRIPTION_STATUSES.has(latest.subscriptionStatus)
+    ? { entitled: true }
+    : { entitled: false, reason: "lapsed" };
 }
 
 /** The org's most recent claims-billing add-on row joined to its subscription status (or null). */
@@ -102,6 +126,32 @@ export function createDrizzleClaimsBillingEntitlementReader(
         latestClaimsBillingAddon(tx as unknown as DbClient, organizationId),
       );
       return decideClaimsBillingEntitlement(latest, now());
+    },
+  };
+}
+
+/**
+ * The seam M23's claims-billing decision reads (owner decision D1): the org's subscription, on the TENANT pool under its own
+ * RLS scope (`subscription` is keyed on app.org_id). No cache; a read failure THROWS and the gate fails closed.
+ */
+export function createDrizzleSubscriptionWorkBlockReader(
+  db: DbClient,
+): SubscriptionWorkBlockReader {
+  const S = schema.subscriptionRow;
+  return {
+    async blockForOrg(organizationId) {
+      const rows = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
+        (tx as unknown as DbClient)
+          .select({ status: S.status })
+          .from(S)
+          .where(eq(S.organizationId, organizationId))
+          .orderBy(desc(S.startedAt), desc(S.createdAt))
+          .limit(8),
+      );
+      const status = currentSubscriptionStatus(
+        rows.map((r) => ({ status: r.status as SubscriptionStatus })),
+      );
+      return status === null ? { blocked: false } : decideSubscriptionWorkBlock(status);
     },
   };
 }

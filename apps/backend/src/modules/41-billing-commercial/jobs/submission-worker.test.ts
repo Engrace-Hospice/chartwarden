@@ -1,3 +1,4 @@
+import { ChartWardenError } from "@chartwarden/types";
 import { CH } from "@chartwarden/x12-837-client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,14 +7,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // m41-commercial-submission.live.test.ts.
 let waiting = 0;
 let transactions = 0;
+const orgsOpened: string[] = [];
 vi.mock("@chartwarden/tenancy", async () => {
   const actual = await vi.importActual<object>("@chartwarden/tenancy");
   return {
     ...actual,
-    withOrgContext: async (_db: unknown, _ctx: unknown, fn: (tx: unknown) => Promise<unknown>) => {
+    withOrgContext: async (
+      _db: unknown,
+      ctx: { organizationId: string },
+      fn: (tx: unknown) => Promise<unknown>,
+    ) => {
       transactions += 1;
-      const chain = { from: () => ({ where: () => Promise.resolve([{ n: waiting }]) }) };
-      return fn({ select: () => chain });
+      orgsOpened.push(ctx.organizationId);
+      // `where(...)` is awaited by the count and continues into `orderBy().limit()` for the due list (nothing is ever due here).
+      const where = () =>
+        Object.assign(Promise.resolve([{ n: waiting }]), {
+          orderBy: () => ({ limit: () => Promise.resolve([]) }),
+        });
+      return fn({ select: () => ({ from: () => ({ where }) }) });
     },
   };
 });
@@ -28,6 +39,7 @@ import {
   runSubmissionDrain,
   transportKeyFor,
 } from "./submission-worker";
+import { M41_UNBOUND_WITH_WORK_ALERT, __resetUnboundAlertMemoryForTest } from "./unbound-alert";
 
 describe("classifyTransportRefusal", () => {
   it("retries only an unavailable transport", () => {
@@ -140,9 +152,16 @@ describe("runSubmissionDrain with no clearinghouse bound", () => {
     renderCalls = 0;
   });
 
-  it("fails the tick with CH_NOT_WIRED when a submission is waiting, and renders and sends nothing", async () => {
+  it("reports (one alert, no failed tick) a submission waiting with no vendor bound, and renders and sends nothing", async () => {
     waiting = 2;
-    await expect(runSubmissionDrain(deps())).rejects.toThrow(/CH_NOT_WIRED \(2 submission/);
+    const alerts: unknown[] = [];
+    await expect(
+      runSubmissionDrain({
+        ...deps(),
+        alerts: { dispatch: async (a: unknown) => void alerts.push(a) },
+      }),
+    ).resolves.toEqual({ sent: 0, failures: [] });
+    expect(alerts).toHaveLength(1);
     expect(submitCalls).toBe(0);
     expect(renderCalls).toBe(0);
     expect(transactions).toBe(1); // only the count; nothing was leased
@@ -152,6 +171,186 @@ describe("runSubmissionDrain with no clearinghouse bound", () => {
     waiting = 0;
     await expect(runSubmissionDrain(deps())).resolves.toEqual({ sent: 0, failures: [] });
     expect(submitCalls).toBe(0);
+  });
+});
+
+describe("runSubmissionDrain with a clearinghouse per organization (ADR-0053 amendment 2026-11-06)", () => {
+  const submitted: string[] = [];
+  const transportOf = (vendor: string) => ({
+    submitClaim: async () => {
+      submitted.push(vendor);
+      throw new Error("no row is due, so nothing may be sent");
+    },
+  });
+  const perOrgDeps = (bound: Record<string, string>) => ({
+    db: {} as never,
+    // The platform pair is the unbound default; only forOrg says anything about an organization.
+    binding: {
+      vendor: null,
+      transport: transportOf("platform"),
+      forOrg: async (organizationId: string) => ({
+        vendor: bound[organizationId] ?? null,
+        transport: transportOf(bound[organizationId] ?? "unbound"),
+      }),
+    },
+    contexts: { contextFor: async () => null },
+    renderer: { render: async () => ({ ok: false as const, gaps: [] }) },
+    outbox: { publish: async () => undefined },
+    activeOrgs: {
+      listActiveOrgs: async () => [{ organizationId: "org-1" }, { organizationId: "org-2" }],
+    },
+  });
+
+  beforeEach(() => {
+    waiting = 0;
+    transactions = 0;
+    submitted.length = 0;
+    orgsOpened.length = 0;
+    __resetUnboundAlertMemoryForTest(); // the once-per-window alert memory is per process: each case starts with none
+  });
+
+  // The shared cron must not fail for every tenant because ONE tenant has not finished setup: it is reported per org (one
+  // alert) and the tick carries on. Which transport an org's drain uses is proven end to end in
+  // submission-worker.org-isolation.test.ts, with a row that really goes out.
+  it("drains the org that has a clearinghouse and REPORTS (alert, no failure) the one without, whichever comes first", async () => {
+    waiting = 2;
+    const alerts: { alertCode: string; organizationId: string; payload: unknown }[] = [];
+    const deps = {
+      ...perOrgDeps({ "org-1": "stedi" }),
+      alerts: { dispatch: async (a: never) => void alerts.push(a) },
+    };
+
+    await expect(runSubmissionDrain(deps)).resolves.toEqual({ sent: 0, failures: [] });
+    // org-1 got its due-list read (the drain ran for it); org-2 only the count (nothing leased).
+    expect(orgsOpened).toEqual(["org-1", "org-2"]);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({
+      alertCode: M41_UNBOUND_WITH_WORK_ALERT,
+      organizationId: "org-2",
+      payload: { waiting: 2 },
+    });
+  });
+
+  it("raises ONE alert per org per window however many ticks find the rows still waiting, and a dead alert router fails nothing", async () => {
+    waiting = 3;
+    const alerts: unknown[] = [];
+    const deps = {
+      ...perOrgDeps({}),
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: "org-quiet" }] },
+      alerts: { dispatch: async (a: unknown) => void alerts.push(a) },
+    };
+    await runSubmissionDrain(deps);
+    await runSubmissionDrain(deps);
+    await runSubmissionDrain(deps);
+    expect(alerts).toHaveLength(1);
+    const broken = {
+      ...perOrgDeps({}),
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: "org-broken" }] },
+      alerts: {
+        dispatch: async () => {
+          throw new Error("alert router down");
+        },
+      },
+    };
+    await expect(runSubmissionDrain(broken)).resolves.toEqual({ sent: 0, failures: [] });
+  });
+
+  it("drains both organizations when each has its own clearinghouse", async () => {
+    await expect(
+      runSubmissionDrain(perOrgDeps({ "org-1": "stedi", "org-2": "claimmd" })),
+    ).resolves.toEqual({ sent: 0, failures: [] });
+    expect(orgsOpened).toEqual(["org-1", "org-2"]);
+  });
+
+  it("is quiet for an organization with none while nothing is waiting for it", async () => {
+    waiting = 0;
+    await expect(runSubmissionDrain(perOrgDeps({}))).resolves.toEqual({ sent: 0, failures: [] });
+  });
+
+  // Re-review M4: a tenant whose credential cannot be opened, or whose config could not be read, is THAT tenant's problem. It is
+  // reported per org (the same alert as an unbound org, carrying the code) and the shared tick carries on; failing the tick would
+  // retry the whole job into the DLQ for every tenant, forever.
+  const brokenFor = (orgId: string, fail: () => Error) => {
+    const deps = perOrgDeps({ "org-2": "stedi" });
+    return {
+      ...deps,
+      binding: {
+        ...deps.binding,
+        forOrg: async (organizationId: string) => {
+          if (organizationId === orgId) throw fail();
+          return deps.binding.forOrg(organizationId);
+        },
+      },
+    };
+  };
+  const unreadable = () =>
+    new ChartWardenError(
+      "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+      "this organization's clearinghouse credential could not be opened; it must be entered again",
+      503,
+    );
+
+  it.each([
+    [
+      "a stored credential that cannot be opened",
+      unreadable,
+      "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+    ],
+    [
+      "a config read that failed (a database fault)",
+      () => new Error("connection reset while reading tenant_clearinghouse_config"),
+      "CLEARINGHOUSE_UNAVAILABLE",
+    ],
+  ])(
+    "REPORTS an org whose binding cannot be resolved (%s) and still drains the other: no failed tick",
+    async (_label, fail, code) => {
+      waiting = 2;
+      const alerts: { alertCode: string; organizationId: string; payload: unknown }[] = [];
+      const logs: unknown[] = [];
+      const deps = {
+        ...brokenFor("org-1", fail),
+        alerts: { dispatch: async (a: never) => void alerts.push(a) },
+        log: (e: unknown) => void logs.push(e),
+      };
+
+      await expect(runSubmissionDrain(deps)).resolves.toEqual({ sent: 0, failures: [] });
+
+      expect(orgsOpened).toEqual(["org-1", "org-2"]); // org-1 only counted; org-2 drained
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]).toMatchObject({
+        alertCode: M41_UNBOUND_WITH_WORK_ALERT,
+        organizationId: "org-1",
+        payload: { waiting: 2, code },
+      });
+      // nothing of the cause leaks into the log: a class and a code only
+      expect(JSON.stringify(logs)).not.toContain("tenant_clearinghouse_config");
+    },
+  );
+
+  it("logs the error CLASS (never the cause text) when the per-org resolver throws something untyped", async () => {
+    waiting = 1;
+    const logs: unknown[] = [];
+    const deps = {
+      ...brokenFor(
+        "org-1",
+        () => new TypeError("password authentication failed for chartwarden_app"),
+      ),
+      log: (e: unknown) => void logs.push(e),
+    };
+    await runSubmissionDrain(deps);
+    expect(logs).toContainEqual({ event: "clearinghouse.resolve_failed", errorClass: "TypeError" });
+    expect(JSON.stringify(logs)).not.toContain("password");
+  });
+
+  it("labels a failed org with its error CODE, so a tick failure says what failed", async () => {
+    const deps = brokenFor(
+      "org-1",
+      () => new ChartWardenError("CLEARINGHOUSE_SOMETHING_NEW", "another typed refusal", 503),
+    );
+    await expect(runSubmissionDrain(deps)).rejects.toThrow(
+      /^commercial submission drain failed: org org-1: CLEARINGHOUSE_SOMETHING_NEW$/,
+    );
+    expect(orgsOpened).toEqual(["org-2"]);
   });
 });
 

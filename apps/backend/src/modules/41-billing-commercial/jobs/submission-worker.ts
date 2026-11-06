@@ -27,10 +27,12 @@ import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { claimsBillingAllowsWork } from "../../../bootstrap/claims-billing-gate";
 import type { CommercialContextPort } from "../eligibility/service";
+import { failureLabel, isPerOrgResolveFailure, withOrgBinding } from "../services/org-binding";
 import type { Render837iArgs, Render837iResult } from "../services/render-837i";
 import { evaluateGateForClaim } from "../services/submission-service";
 import type { CommercialActor, CommercialOutboxPort, CommercialTx } from "../services/types";
 import { M41_CRON_QUEUES, M41_JOB_SCHEDULES } from "./queues";
+import { type UnboundAlertPort, reportUnboundWithWork } from "./unbound-alert";
 
 type SubmissionRow = typeof schema.commercialSubmissions.$inferSelect;
 
@@ -88,13 +90,17 @@ export const transportKeyFor = (claimId: string): string => `m41.claim.${claimId
 const SAFE_CODE = /^[A-Z0-9_]{1,64}$/;
 const safeCode = (code: string): string => (SAFE_CODE.test(code) ? code : FAILURE.TRANSPORT_FAULT);
 
+/** `vendor` null = unbound: the drain refuses to send anything for the organization. `forOrg` = per-organization (see org-binding.ts). */
+export interface SubmissionBinding {
+  readonly vendor: string | null;
+  readonly transport: Pick<ClearinghouseTransport, "submitClaim">;
+  readonly forOrg?: (organizationId: string) => Promise<SubmissionBinding>;
+}
+
 export interface SubmissionWorkerDeps {
   readonly db: DbClient;
-  /** The platform clearinghouse binding. `vendor` null = unbound: the drain refuses to send anything. */
-  readonly binding: {
-    readonly vendor: string | null;
-    readonly transport: Pick<ClearinghouseTransport, "submitClaim">;
-  };
+  /** The platform clearinghouse binding (per organization when it carries `forOrg`). */
+  readonly binding: SubmissionBinding;
   readonly contexts: CommercialContextPort;
   readonly renderer: {
     render(actor: CommercialActor, args: Render837iArgs): Promise<Render837iResult>;
@@ -104,6 +110,8 @@ export interface SubmissionWorkerDeps {
     listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
   };
   readonly now?: () => Date;
+  /** One alert per org per window when an org has rows waiting and no live clearinghouse (the tick still carries on). */
+  readonly alerts?: UnboundAlertPort;
   /** PHI-free log sink (ids and codes only). */
   readonly log?: (event: {
     readonly event: string;
@@ -514,7 +522,7 @@ export async function drainOrg(
       await sendOne(deps, leased.sub);
       sent += 1;
     } catch (err) {
-      failures.push(`submission ${id}: ${err instanceof Error ? err.name : "failed"}`);
+      failures.push(`submission ${id}: ${failureLabel(err)}`);
     }
   }
   return { sent, failures };
@@ -532,30 +540,50 @@ async function dueCount(deps: SubmissionWorkerDeps, organizationId: string): Pro
   });
 }
 
-/** The cron body. Throws after every org ran when anything failed, so BullMQ retries and the DLQ alert fires. */
+/** The cron body. Throws after every org ran when anything FAILED, so BullMQ retries and the DLQ alert fires; an org that is merely unbound is reported, not failed. */
 export async function runSubmissionDrain(deps: SubmissionWorkerDeps): Promise<DrainResult> {
   const failures: string[] = [];
   let sent = 0;
   for (const { organizationId } of await deps.activeOrgs.listActiveOrgs()) {
-    if (deps.binding.vendor === null) {
-      // Unbound: nothing may be sent and nothing is skipped silently. The route refuses to queue while unbound, so a waiting row
-      // means the vendor was removed after queueing: fail loudly.
+    try {
+      // Resolved once per org: the rest of this org's tick uses ITS clearinghouse; another org's tick is never affected by it.
+      let orgDeps: SubmissionWorkerDeps;
       try {
+        orgDeps = await withOrgBinding(deps, organizationId, deps.log);
+      } catch (err) {
+        if (!isPerOrgResolveFailure(err)) throw err;
+        // Its credential cannot be opened, or its config could not be read: that tenant's problem, reported like an unbound org
+        // (with the code) and the tick carries on. Failing the shared tick would retry it into the DLQ for every tenant.
         const waiting = await dueCount(deps, organizationId);
         if (waiting > 0) {
-          failures.push(`org ${organizationId}: CH_NOT_WIRED (${waiting} submission(s) waiting)`);
+          await reportUnboundWithWork(deps, {
+            organizationId,
+            queue: M41_CRON_QUEUES.submissionDrain,
+            waiting,
+            code: err.code,
+          });
         }
-      } catch (err) {
-        failures.push(`org ${organizationId}: ${err instanceof Error ? err.name : "failed"}`);
+        continue;
       }
-      continue;
-    }
-    try {
-      const res = await drainOrg(deps, organizationId);
+      if (orgDeps.binding.vendor === null) {
+        // Unbound: nothing may be sent, and nothing is skipped silently: an org with rows waiting is REPORTED (one alert per window,
+        // and a log line) and the tick carries on. It is that tenant's setup, not a fault of this shared job: failing the tick would
+        // retry it into the DLQ for every other tenant too. The rows stay queued until the tenant has a live clearinghouse.
+        const waiting = await dueCount(orgDeps, organizationId);
+        if (waiting > 0) {
+          await reportUnboundWithWork(deps, {
+            organizationId,
+            queue: M41_CRON_QUEUES.submissionDrain,
+            waiting,
+          });
+        }
+        continue;
+      }
+      const res = await drainOrg(orgDeps, organizationId);
       sent += res.sent;
       failures.push(...res.failures);
     } catch (err) {
-      failures.push(`org ${organizationId}: ${err instanceof Error ? err.name : "failed"}`);
+      failures.push(`org ${organizationId}: ${failureLabel(err)}`);
     }
   }
   if (failures.length > 0) {

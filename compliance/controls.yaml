@@ -165,22 +165,22 @@ controls:
       review_by: 2027-01-31
 
   - id: CW-AC-10
-    title: Paid-module entitlement is platform-controlled — only platform operators (platform credential, subscription.admin.write, fresh step-up, a human (non-AI) actor, Idempotency-Key) can grant or cancel the claims-billing add-on; a tenant can read but never write its own entitlement; when enforced, new claims and eligibility work without the add-on is refused (CMS-deadline NOE/NOTR, voids and in-flight work still run) and fails closed when the entitlement cannot be read; a new-work request with no organization context is refused
+    title: >-
+      New claims work follows the tenant's own clearinghouse: a tenant may START new claims and eligibility work only when its chosen Stedi or Claim.MD configuration is active and its ChartWarden subscription is not suspended, paused or canceled; otherwise the request is refused with 402 and the reason (clearinghouse_not_chosen, clearinghouse_outside, clearinghouse_not_active, subscription_suspended, subscription_paused, subscription_canceled) and a queued job is held, not failed. CMS-deadline NOE/NOTR and transfer notices, voids and in-flight work always run. When enforced, a failed read of either decision fails closed (503 BILLING_ENTITLEMENT_UNAVAILABLE) and a new-work request with no organization context is refused.
     hipaa: ["164.312(a)(1)", "164.312(b)", "164.308(a)(4)"]
     soc2: ["CC6.1", "CC6.3", "CC8.1"]
     status: partial
     evidence:
-      - script: test:m35:claims-billing-addon:live
+      - script: test:m23:tenant-clearinghouse:live
       - script: test:claims-billing:worker-hold:live
       - script: arch:tenancy
-      - script: arch:migration-compat
-      - ci: "M35 claims-billing add-on"
-      - file: packages/db/migrations/1321_m35_claims_billing_addon.sql
-      - file: apps/backend/src/modules/35-subscription/addon/addon-service.ts
+      - ci: "M23 tenant clearinghouse"
       - file: apps/backend/src/bootstrap/claims-billing-gate.ts
+      - file: apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/resolver.ts
       - file: apps/backend/__tests__/claims-billing-route-classes.test.ts
+      - file: docs/adr/ADR-0108-claims-billing-addon-entitlement.md
     gap:
-      reason: Enforcement ships in shadow mode (CLAIMS_BILLING_ENFORCEMENT defaults to shadow), so a missing add-on is logged, not refused, until an operator sets enforce. The grant audit row's actor is the system (the operator is recorded in granted_by_membership_id). Stripe charging is deferred (count now, charge later).
+      reason: Enforcement ships in shadow mode (CLAIMS_BILLING_ENFORCEMENT defaults to shadow; a production boot in any other mode than enforce logs a warning), so a refusal is logged, not applied, until an operator sets enforce. Organizations named in CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS with no configuration still use the platform's own vendor. The former add-on tables remain but no longer decide anything.
       owner: engineering
       review_by: 2027-01-31
 
@@ -199,12 +199,13 @@ controls:
 
   - id: CW-AC-12
     title: >-
-      Platform operators enter a tenant's onboarding data (provider entity and EIN, locations, MAC and state Medicaid credentials) only inside that tenant's own row-level-security scope (the NOBYPASSRLS app pool under the target organization's app.org_id, never a bypass write), behind a platform-ops role, the tenant_onboarding_data.write_platform key, a fresh step-up, a human (non-AI) actor, an Idempotency-Key and a recorded reason that is screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI); only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING once active; the status is checked under the shared onboarding advisory lock, so a go-live approval cannot overtake the check); every successful write, and every refusal because the tenant is no longer onboarding, leaves an audit row naming the operator, the target organization and the reason in the same transaction as the check or write, and the same transaction revokes a pending go-live attestation that the write makes stale; a failed write (404, 409, 422, 5xx) rolls back and is audited afterwards as a denied write_failed row in a separate best-effort transaction whose failure is logged; every read is audited in its own transaction after the data is read and is withheld (the request fails) if that audit row cannot be written; the EIN and credential secrets are sealed and never returned; after a write commits the onboarding advance runs best effort (a failure is warned with the error redacted)
+      Platform operators enter a tenant's onboarding data (provider entity and EIN, locations, MAC and state Medicaid credentials, and the tenant's clearinghouse choice (tenant_clearinghouse.write_platform)) only inside that tenant's own row-level-security scope (the NOBYPASSRLS app pool under the target organization's app.org_id, never a bypass write), behind a platform-ops role, the tenant_onboarding_data.write_platform key, a fresh step-up, a human (non-AI) actor, an Idempotency-Key and a recorded reason that is screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI); only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING once active; the status is checked under the shared onboarding advisory lock, so a go-live approval cannot overtake the check); every successful write, and every refusal because the tenant is no longer onboarding, leaves an audit row naming the operator, the target organization and the reason in the same transaction as the check or write, and the same transaction revokes a pending go-live attestation that the write makes stale; a failed write (404, 409, 422, 5xx) rolls back and is audited afterwards as a denied write_failed row in a separate best-effort transaction whose failure is logged; every read is audited in its own transaction after the data is read and is withheld (the request fails) if that audit row cannot be written; the EIN and credential secrets are sealed and never returned; after a write commits the onboarding advance runs best effort (a failure is warned with the error redacted)
     hipaa: ["164.312(a)(1)", "164.312(b)", "164.308(a)(4)"]
     soc2: ["CC6.1", "CC6.3", "CC7.2"]
     status: implemented
     evidence:
       - script: test:m34:onboarding-data:live
+      - script: test:m23:tenant-clearinghouse:live
       - ci: "M34 onboarding data"
       - file: packages/db/migrations/1330_m34_platform_onboarding_data_permissions.sql
       - file: apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-routes.ts
@@ -278,6 +279,22 @@ controls:
       - file: apps/backend/__tests__/onboarding-org-gate.test.ts
       - file: apps/backend/__tests__/onboarding-org-gate-routes.test.ts
 
+  - id: CW-AC-17
+    title: >-
+      A tenant's clearinghouse credential is sealed per tenant (AES-256-GCM under a per-organization key derived from the custodied KEK, the envelope bound to its organization, vendor and mode) and never returned. A tenant-held Stedi or Claim.MD configuration goes live only after, in order: the tenant records the vendor BAA (holder, date, document reference); a platform operator verifies it (tenant_clearinghouse.verify_baa_platform, a fresh step-up, a human (non-AI) actor, If-Match pinned to the BAA record the operator read, an audit row); a connection test passes; and the tenant billing admin activates it with a fresh step-up. A database CHECK ties a live configuration to a BAA recorded for its own vendor; a credential, vendor or mode change returns the configuration to draft until a fresh connection test re-verifies it; a rejected credential holds only that tenant's work.
+    hipaa: ["164.312(a)(2)(iv)", "164.312(d)", "164.308(b)(1)", "164.314(a)(1)"]
+    soc2: ["CC6.1", "CC6.7", "CC9.2"]
+    status: implemented
+    evidence:
+      - script: test:m23:tenant-clearinghouse:live
+      - script: test:m23:clearinghouse-submit:live
+      - ci: "M23 tenant clearinghouse"
+      - file: packages/db/migrations/1350_m23_tenant_clearinghouse_config.sql
+      - file: apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/secret-cipher.ts
+      - file: apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/baa.ts
+      - file: apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/service.ts
+      - file: apps/backend/src/modules/23-billing-medicare/jobs/clearinghouse-credential-guard.ts
+
   - id: CW-AC-18
     title: >-
       Tenant pricing is platform-controlled: plans, contracts, the billing mode and statement reviews are written only by platform operators (platform credential, the M35 pricing keys, a fresh step-up, a human (non-AI) actor, an Idempotency-Key). The platform carrier's grants are column-level: INSERT on contract, billing-mode history and statement review, and on `subscription` UPDATE of exactly status, paused_at, paused_until, canceled_at, cancel_at_period_end and updated_at (never organization, plan, period, trial, dunning or Stripe columns, never DELETE). Admin pause, resume and cancel read the subscription FOR UPDATE in the write transaction and refuse a transition its status does not allow (409 SUBSCRIPTION_NOT_PAUSED, SUBSCRIPTION_CANCELED, SUBSCRIPTION_ALREADY_PAUSED, nothing written, audited or announced), and refuse to run without the audit writer (503 AUDIT_UNBOUND). The operator is named only in the platform audit row, never in tenant-readable subscription history. Tenants read their contract by column (signer, signing reason and order form withheld); contract and billing-mode history cannot be deleted; a billing-mode change takes effect immediately only while the tenant is not live and has no statement, otherwise on the 1st of the next month.
@@ -307,6 +324,23 @@ controls:
       - file: packages/db/migrations/1365_m3_system_managed_role_key.sql
       - file: packages/db/migrations/1366_m35_user_active_period_non_staff_observed.sql
       - file: apps/backend/src/modules/03-authorization/routes/authz-routes.ts
+
+  - id: CW-AC-20
+    title: >-
+      For a tenant that bills outside ChartWarden, ChartWarden transmits no NOE or NOTR: queued notices are parked, the worker refuses to send a notice recorded as filed outside, and a transfer notice is refused at submit (409 CLAIMS_FILE_WITH_YOUR_BILLER). The tenant records the filed date; a record after the CMS deadline raises a critical alert to the tenant's billing and compliance roles and an ops notice. A tenant's record never clears a breach stamp the watchdog set, and a record that contradicts one raises the alert with both dates. Only a platform operator (tenant_notice_filing.withdraw_platform on the platform_ops role, a fresh step-up, a human (non-AI) actor, an Idempotency-Key, If-Match on the record, a required reason) can withdraw a mistaken record; the audit row names the operator, the tenant, the reason and the withdrawn date, a breach stamp the watchdog set is kept, and one written by the withdrawn late record itself is cleared.
+    hipaa: ["164.312(b)", "164.312(c)(1)", "164.308(a)(4)"]
+    soc2: ["CC6.1", "CC7.2", "PI1.3"]
+    status: implemented
+    evidence:
+      - script: test:m23:tenant-clearinghouse:live
+      - script: test:m23:noe-draft:live
+      - script: test:m23:notr-draft:live
+      - script: test:m23:transfer-notice:live
+      - ci: "M23 tenant clearinghouse"
+      - file: apps/backend/src/modules/23-billing-medicare/services/external-notice-filing.ts
+      - file: packages/billing/src/notice/external-filing.ts
+      - file: packages/db/migrations/1355_m34_tenant_notice_filing_permission.sql
+      - file: apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-routes.ts
 
   - id: CW-AU-01
     title: Audit controls — PHI reads and writes leave an integrity-checked trail
@@ -526,8 +560,9 @@ controls:
       - file: docs/architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md
       - file: docs/audits/clearinghouse-integration/CLAIMMD_TRANSPORT_CONTRACT_20261104.md
       - script: arch:ai-governance
+      - script: test:m23:tenant-clearinghouse:live
     gap:
-      reason: BAA status is prose in the integration and AI-governance docs (Anthropic BAA "in progress"; Claim.MD BAA received 2026-11-04 per its portal, recorded in the Claim.MD transport contract); there is no machine-checked vendor register with BAA date and scope per vendor (OVH, Hostinger, Postmark, DoseSpot, Stedi, Claim.MD, Anthropic, GitHub).
+      reason: BAA status is prose in the integration and AI-governance docs (Anthropic BAA "in progress"; Claim.MD BAA received 2026-11-04 per its portal, recorded in the Claim.MD transport contract); there is no machine-checked vendor register with BAA date and scope per vendor (OVH, Hostinger, Postmark, DoseSpot, Stedi, Claim.MD, Anthropic, GitHub). Tenant-held clearinghouse vendors (a tenant's own Stedi or Claim.MD account) are now recorded per tenant with holder, date and document and verified by a platform operator before the configuration can go live (CW-AC-17); the gap remains for ChartWarden's own vendor register.
       owner: privacy-officer
       review_by: 2027-01-31
 

@@ -366,9 +366,41 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // --- the tenant's clearinghouse choice (ADR-0053 amendment 2026-11-06): vendor, mode and sealed credential ---
+  // platform-ops only, step-up, reason-recorded, accepted only while the tenant is provisioning / onboarding.
+  "tenant_clearinghouse.read_platform": {
+    resource: "tenant_clearinghouse",
+    action: "read_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant_clearinghouse.write_platform": {
+    resource: "tenant_clearinghouse",
+    action: "write_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // Owner decision D2: verifying the vendor BAA a tenant recorded for its own account is a separable duty (and, unlike the
+  // writes above, not limited to a tenant that is still onboarding: a live tenant that changes vendor needs it too).
+  "tenant_clearinghouse.verify_baa_platform": {
+    resource: "tenant_clearinghouse",
+    action: "verify_baa_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // A platform operator withdraws a tenant's "filed outside ChartWarden" NOE / NOTR record (a mistaken or false one: the tenant
+  // itself cannot, and a cancel refuses). Its own key (a separable duty, like the BAA verification); the route also needs the
+  // platform_ops role, a fresh step-up, a recorded reason and the record's recordedAt as If-Match. Not limited to an onboarding
+  // tenant. This is a DECLARATION: no role holds the key until an operator grants it (`db:platform-role grant`).
+  "tenant_notice_filing.withdraw_platform": {
+    resource: "tenant_notice_filing",
+    action: "withdraw_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
-/** Union of the M34 contributed permission keys (forty-six). */
+/** Union of the M34 contributed permission keys (forty-seven). */
 export type M34ContributedPermissionKey = keyof typeof M34_CONTRIBUTED_PERMISSIONS;
 
 /**

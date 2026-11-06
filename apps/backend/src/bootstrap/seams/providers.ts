@@ -134,11 +134,13 @@ import type {
   SessionContextResolver,
   SignedEncountersReader,
   SubscriptionStateProvider,
+  SubscriptionWorkBlockReader,
   SupervisorReader,
   SupervisoryCadencePlanReader,
   SupervisoryCadenceReader,
   SupplyCostProvider,
   SupplyFulfillmentProvider,
+  TenantClearinghouseReader,
   TenantOrgCreationProvider,
   TriageCallMetricsProvider,
   TriageCallProvider,
@@ -1917,9 +1919,9 @@ export const patientCounterProviderDenyStub: PatientCounterProvider = {
   },
 };
 
-/** ADR-0108 — the claims-billing entitlement read. Throws until M35 registers the real reader: the route gate and
- *  the worker hold treat a throw as "unavailable" and fail CLOSED (503 / hold), and boot refuses a non-`off`
- *  CLAIMS_BILLING_ENFORCEMENT while this stub is still bound. */
+/** ADR-0108 (repurposed) — the claims-billing entitlement read, decided from the org's clearinghouse choice. Throws until
+ *  M23 registers the real reader: the route gate and the worker hold treat a throw as "unavailable" and fail CLOSED
+ *  (503 / hold), and boot refuses a non-`off` CLAIMS_BILLING_ENFORCEMENT while this stub is still bound. */
 export const claimsBillingEntitlementReaderDenyStub: ClaimsBillingEntitlementReader = {
   async entitlementForOrg() {
     throw new NotImplementedError("ClaimsBillingEntitlementReader");
@@ -1942,6 +1944,21 @@ export const netCollectionsReaderDenyStub: NetCollectionsReader = {
   },
   async netCollectionsByMonth() {
     throw new NotImplementedError("NetCollectionsReader");
+  },
+};
+
+/** Owner decision D1 — whether a suspended / paused / canceled subscription blocks new claims work. Throws until M35 registers
+ *  the real reader: the claims-billing decision then throws, and the gate fails CLOSED (503 / hold). */
+export const subscriptionWorkBlockReaderDenyStub: SubscriptionWorkBlockReader = {
+  async blockForOrg() {
+    throw new NotImplementedError("SubscriptionWorkBlockReader");
+  },
+};
+
+/** ADR-0053 amendment 2026-11-06 — the org's clearinghouse choice. Throws until M23 registers the real reader. */
+export const tenantClearinghouseReaderDenyStub: TenantClearinghouseReader = {
+  async choiceForOrg() {
+    throw new NotImplementedError("TenantClearinghouseReader");
   },
 };
 

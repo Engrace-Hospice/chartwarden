@@ -935,6 +935,8 @@ export const MODULES: ModuleDef[] = [
       "claimmd_webhook_event",
       // ADR-0053 amendment precondition 2 (migration 1326): platform-verified NPI ownership the Claim.MD sweep routes on.
       "provider_npi_verification",
+      // ADR-0053 amendment 2026-11-06 (migration 1350): the clearinghouse each tenant chose, with its sealed credential.
+      "tenant_clearinghouse_config",
       "claim",
       "claim_acknowledgment",
       "claim_line",

@@ -18447,6 +18447,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/noe-records/{id}/record-external-filing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the date an organization that bills outside ChartWarden filed the NOE itself (step-up; 200, idempotent for the same date, 409 for another). Nothing is transmitted; the notice leaves the deadline tracker */
+        post: operations["postApiV1NoerecordsByIdRecordexternalfiling"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/noe-records/{id}/submit": {
         parameters: {
             query?: never;
@@ -18596,6 +18613,23 @@ export interface paths {
         put?: never;
         /** File a corrected NOTR for a rejected one — a new DRAFT copying it, linked by correctsNoticeId (201; 200 replays the correction in progress) */
         post: operations["postApiV1NotrrecordsByIdCorrect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notr-records/{id}/record-external-filing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the date an organization that bills outside ChartWarden filed the NOTR itself (step-up; 200, idempotent for the same date, 409 for another). Nothing is transmitted; the notice leaves the deadline tracker */
+        post: operations["postApiV1NotrrecordsByIdRecordexternalfiling"];
         delete?: never;
         options?: never;
         head?: never;
@@ -21151,6 +21185,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's clearinghouse choice, masked (hasSecret; the credential is never returned) — platform ops; read is audited */
+        get: operations["getApiV1PlatformTenantsByOrgSlugClearinghouse"];
+        /** Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        put: operations["putApiV1PlatformTenantsByOrgSlugClearinghouse"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a tenant's verified clearinghouse config; settles wizard step 7 once every earlier step allows it. tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugClearinghouseActivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify the vendor BAA the tenant recorded for its own clearinghouse account (409 CLEARINGHOUSE_BAA_NOT_RECORDED if it has not; idempotent). Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; the audit row names the document reference and effective date verified. tenant_clearinghouse.verify_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. NOT limited to an onboarding tenant (a live tenant that changed vendor needs it too); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugClearinghouseBaaVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify a tenant's clearinghouse connection (a no-PHI connection test for Claim.MD, an attestation with evidence for Stedi). tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugClearinghouseVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/compliance-officer": {
         parameters: {
             query?: never;
@@ -21300,6 +21403,40 @@ export interface paths {
         get: operations["getApiV1PlatformTenantsByOrgSlugMembers"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/noe-records/{id}/withdraw-external-filing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw the "filed outside ChartWarden" record of a tenant's NOE (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match, 428 IF_MATCH_REQUIRED for none; the last two carry the record's current recordedAt in the error details as {field: "currentRecordedAt", message: <timestamp>}, the value to retry with). tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp the watchdog set is kept, the stamp a withdrawn LATE record wrote itself is cleared with it, and a NOTR's prior-election closure goes with the record */
+        post: operations["postApiV1PlatformTenantsByOrgSlugNoerecordsByIdWithdrawexternalfiling"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/notr-records/{id}/withdraw-external-filing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw the "filed outside ChartWarden" record of a tenant's NOTR, which reopens the prior election that record closed (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match, 428 IF_MATCH_REQUIRED for none; the last two carry the record's current recordedAt in the error details as {field: "currentRecordedAt", message: <timestamp>}, the value to retry with). tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp the watchdog set is kept, the stamp a withdrawn LATE record wrote itself is cleared with it, and a NOTR's prior-election closure goes with the record */
+        post: operations["postApiV1PlatformTenantsByOrgSlugNotrrecordsByIdWithdrawexternalfiling"];
         delete?: never;
         options?: never;
         head?: never;
@@ -27065,6 +27202,75 @@ export interface paths {
         put?: never;
         /** Compliance-officer attestation of a BAA record (step-up) */
         post: operations["postApiV1TenantBaaByIdAttest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/clearinghouse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's clearinghouse choice, masked (hasSecret; the credential is never returned; baa shows the tenant-held vendor BAA and whether an operator verified it) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.read (org-level) */
+        get: operations["getApiV1TenantClearinghouse"];
+        /** Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) once a production submission exists, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); test mode is refused on a production deployment (422) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        put: operations["putApiV1TenantClearinghouse"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/clearinghouse/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification, 409 CLEARINGHOUSE_BAA_NOT_VERIFIED until an operator verified the vendor BAA; idempotent once active). billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required */
+        post: operations["postApiV1TenantClearinghouseActivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/clearinghouse/baa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        post: operations["postApiV1TenantClearinghouseBaa"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/clearinghouse/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify the vendor connection: a no-PHI connection test where the vendor has a safe probe (Claim.MD), an attestation with an evidence note and the confirmation that it names no patient information where it has none (Stedi). The vendor probe runs with no transaction open (409 CLEARINGHOUSE_CHANGED_DURING_VERIFY if the config moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome and leaves the config at draft. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required */
+        post: operations["postApiV1TenantClearinghouseVerify"];
         delete?: never;
         options?: never;
         head?: never;
@@ -49895,7 +50101,7 @@ export interface operations {
                         claimsBilling?: {
                             entitled: boolean;
                             status: "none" | "trialing" | "active" | "canceled";
-                            reason: ("never_purchased" | "lapsed" | "subscription_suspended" | "subscription_canceled" | "subscription_paused") | null;
+                            reason: ("clearinghouse_not_chosen" | "clearinghouse_outside" | "clearinghouse_not_active" | "never_purchased" | "lapsed" | "subscription_suspended" | "subscription_canceled" | "subscription_paused") | null;
                             trialEndsAt: string | null;
                             activePatientCount: number | null;
                             enforced: boolean;
@@ -83943,6 +84149,11 @@ export interface operations {
                                 noticeId: string;
                                 state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
                             } | null;
+                            externalFiling: {
+                                status: "filed_externally_pending" | "filed_externally";
+                                filedOn: string | null;
+                                recordedAt: string | null;
+                            } | null;
                             noeId: string;
                             organizationId: string;
                             providerEntityId: string;
@@ -84000,6 +84211,11 @@ export interface operations {
                         correctedBy: {
                             noticeId: string;
                             state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        externalFiling: {
+                            status: "filed_externally_pending" | "filed_externally";
+                            filedOn: string | null;
+                            recordedAt: string | null;
                         } | null;
                         noeId: string;
                         organizationId: string;
@@ -84096,6 +84312,11 @@ export interface operations {
                                 noticeId: string;
                                 state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
                             } | null;
+                            externalFiling: {
+                                status: "filed_externally_pending" | "filed_externally";
+                                filedOn: string | null;
+                                recordedAt: string | null;
+                            } | null;
                             noeId: string;
                             organizationId: string;
                             providerEntityId: string;
@@ -84115,6 +84336,76 @@ export interface operations {
                             createdAt: string;
                             updatedAt: string;
                         };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NoerecordsByIdRecordexternalfiling: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    filedOn: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        acceptedAt: string | null;
+                        rejectedAt: string | null;
+                        rejectionStage: "999" | "277ca" | null;
+                        rejectionCodes: string[];
+                        payerStatusDate: string | null;
+                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | "dde_provider" | null;
+                        correctsNoticeId: string | null;
+                        correctionReason: string | null;
+                        correctedBy: {
+                            noticeId: string;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        externalFiling: {
+                            status: "filed_externally_pending" | "filed_externally";
+                            filedOn: string | null;
+                            recordedAt: string | null;
+                        } | null;
+                        noeId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        patientId: string;
+                        admissionId: string;
+                        electionPeriodId: string;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        electionEffectiveDate: string;
+                        windowTargetAt: string;
+                        windowBreachedAt: string | null;
+                        noeControlNumber: string;
+                        payerNoeControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestAcknowledgmentId: string | null;
+                        confirmationDocumentId: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
                     };
                 };
             };
@@ -84399,6 +84690,11 @@ export interface operations {
                                 noticeId: string;
                                 state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
                             } | null;
+                            externalFiling: {
+                                status: "filed_externally_pending" | "filed_externally";
+                                filedOn: string | null;
+                                recordedAt: string | null;
+                            } | null;
                             notrId: string;
                             organizationId: string;
                             providerEntityId: string;
@@ -84459,6 +84755,11 @@ export interface operations {
                         correctedBy: {
                             noticeId: string;
                             state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        externalFiling: {
+                            status: "filed_externally_pending" | "filed_externally";
+                            filedOn: string | null;
+                            recordedAt: string | null;
                         } | null;
                         notrId: string;
                         organizationId: string;
@@ -84558,6 +84859,11 @@ export interface operations {
                                 noticeId: string;
                                 state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
                             } | null;
+                            externalFiling: {
+                                status: "filed_externally_pending" | "filed_externally";
+                                filedOn: string | null;
+                                recordedAt: string | null;
+                            } | null;
                             notrId: string;
                             organizationId: string;
                             providerEntityId: string;
@@ -84580,6 +84886,79 @@ export interface operations {
                             createdAt: string;
                             updatedAt: string;
                         };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NotrrecordsByIdRecordexternalfiling: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    filedOn: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        acceptedAt: string | null;
+                        rejectedAt: string | null;
+                        rejectionStage: "999" | "277ca" | null;
+                        rejectionCodes: string[];
+                        payerStatusDate: string | null;
+                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | "dde_provider" | null;
+                        correctsNoticeId: string | null;
+                        correctionReason: string | null;
+                        correctedBy: {
+                            noticeId: string;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        } | null;
+                        externalFiling: {
+                            status: "filed_externally_pending" | "filed_externally";
+                            filedOn: string | null;
+                            recordedAt: string | null;
+                        } | null;
+                        notrId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        patientId: string;
+                        admissionId: string;
+                        triggerKind: "revocation" | "transfer_out" | "discharge";
+                        revocationEventId: string | null;
+                        transferEventId: string | null;
+                        dischargeEventId: string | null;
+                        effectiveEndDate: string;
+                        windowTargetAt: string;
+                        windowBreachedAt: string | null;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        notrControlNumber: string;
+                        payerNotrControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestAcknowledgmentId: string | null;
+                        confirmationDocumentId: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
                     };
                 };
             };
@@ -92585,6 +92964,368 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformTenantsByOrgSlugClearinghouse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        /** @description The credential itself is never projected. */
+                        hasSecret: boolean;
+                        verifiableBy: ("connection_test" | "attestation") | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1PlatformTenantsByOrgSlugClearinghouse: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The config's current integer version; required to change an existing config, absent on a first choice. */
+                "If-Match"?: string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    vendor: "stedi" | "claimmd" | "outside";
+                    mode?: "test" | "production";
+                    /** @description The vendor credential (the Stedi API key, or the Claim.MD account key). Write-only: sealed under the tenant's own key and never returned. Required with a first choice and whenever vendor or mode changes. */
+                    secret?: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        /** @description The credential itself is never projected. */
+                        hasSecret: boolean;
+                        verifiableBy: ("connection_test" | "attestation") | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugClearinghouseActivate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        /** @description The credential itself is never projected. */
+                        hasSecret: boolean;
+                        verifiableBy: ("connection_test" | "attestation") | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugClearinghouseBaaVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The `baa.recordedAt` (UTC ISO timestamp) of the BAA record the operator read from the clearinghouse view; a changed record is refused with 409 CLEARINGHOUSE_BAA_CHANGED. */
+                "If-Match": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        /** @description The credential itself is never projected. */
+                        hasSecret: boolean;
+                        verifiableBy: ("connection_test" | "attestation") | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugClearinghouseVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Required where the vendor has no safe connection test (Stedi): what was checked and by whom (8-500 characters; no patient information). */
+                    evidenceNote?: string;
+                    /** @description Required, and must be true, with an evidence note: the operator confirms the note names no patient information. */
+                    confirmNoPatientInformation?: boolean;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        config: {
+                            vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                            mode: ("test" | "production") | null;
+                            status: ("draft" | "verified" | "active") | null;
+                            source: "tenant" | "platform_env" | "none";
+                            /** @description The credential itself is never projected. */
+                            hasSecret: boolean;
+                            verifiableBy: ("connection_test" | "attestation") | null;
+                            verification: {
+                                kind: "connection_test" | "attested";
+                                evidence: string | null;
+                                /** Format: date-time */
+                                verifiedAt: string;
+                            } | null;
+                            lastTest: {
+                                outcome: "ok" | "credential_rejected" | "unreachable";
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active. */
+                            baaRequired: boolean;
+                            baa: {
+                                /** @constant */
+                                heldBy: "tenant";
+                                /** Format: date */
+                                effectiveDate: string;
+                                documentRef: string;
+                                /** Format: date-time */
+                                recordedAt: string;
+                                verified: {
+                                    /** Format: date-time */
+                                    at: string;
+                                } | null;
+                            } | null;
+                            activatedAt: string | null;
+                            version: number | null;
+                            updatedAt: string | null;
+                        };
+                        test: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     putApiV1PlatformTenantsByOrgSlugComplianceofficer: {
         parameters: {
             query?: never;
@@ -93173,6 +93914,102 @@ export interface operations {
                             /** @description Enabled, unexpired roles the member holds in the tenant (compliance_officer first in a picker). */
                             roleKeys: string[];
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugNoerecordsByIdWithdrawexternalfiling: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The `externalFiling.recordedAt` (UTC ISO timestamp) of the filing record the operator read from the notice; a record withdrawn and re-recorded since is refused with 409 NOTICE_FILING_RECORD_CHANGED, and a request without it with 428 IF_MATCH_REQUIRED; both put the record's current recordedAt in the error details (field currentRecordedAt), so the operator can retry. */
+                "If-Match": string;
+            };
+            path: {
+                orgSlug: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        noticeKind: "noe" | "notr";
+                        /** Format: uuid */
+                        noticeId: string;
+                        /** @description The notice's own state, unchanged by the withdrawal. */
+                        state: string;
+                        /** Format: date */
+                        windowTargetAt: string;
+                        windowBreachedAt: string | null;
+                        /** @description The record is gone: the notice is back to its pre-record state. */
+                        externalFiling: null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugNotrrecordsByIdWithdrawexternalfiling: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The `externalFiling.recordedAt` (UTC ISO timestamp) of the filing record the operator read from the notice; a record withdrawn and re-recorded since is refused with 409 NOTICE_FILING_RECORD_CHANGED, and a request without it with 428 IF_MATCH_REQUIRED; both put the record's current recordedAt in the error details (field currentRecordedAt), so the operator can retry. */
+                "If-Match": string;
+            };
+            path: {
+                orgSlug: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        noticeKind: "noe" | "notr";
+                        /** Format: uuid */
+                        noticeId: string;
+                        /** @description The notice's own state, unchanged by the withdrawal. */
+                        state: string;
+                        /** Format: date */
+                        windowTargetAt: string;
+                        windowBreachedAt: string | null;
+                        /** @description The record is gone: the notice is back to its pre-record state. */
+                        externalFiling: null;
                     };
                 };
             };
@@ -110167,6 +111004,350 @@ export interface operations {
                         attestedAt: string | null;
                         /** Format: date-time */
                         createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TenantClearinghouse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        hasSecret: boolean;
+                        verifiableBy: "connection_test" | "attestation" | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1TenantClearinghouse: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The config's current integer version; required to change an existing config, absent on a first choice. */
+                "If-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    vendor: "stedi" | "claimmd" | "outside";
+                    mode?: "test" | "production";
+                    /** @description The vendor credential (the Stedi API key, or the Claim.MD account key). Write-only: it is sealed under the tenant's own key and never returned. Required with a first choice and whenever vendor or mode changes; omit it to keep the stored one. */
+                    secret?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        hasSecret: boolean;
+                        verifiableBy: "connection_test" | "attestation" | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantClearinghouseActivate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        hasSecret: boolean;
+                        verifiableBy: "connection_test" | "attestation" | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantClearinghouseBaa: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description Who holds the vendor BAA: the tenant itself (the account is the tenant's own).
+                     * @constant
+                     */
+                    heldBy: "tenant";
+                    /**
+                     * Format: date
+                     * @description The BAA's effective date (YYYY-MM-DD), not in the future.
+                     */
+                    effectiveDate: string;
+                    /** @description Where the signed BAA is kept (3-200 characters after whitespace is collapsed): a title, contract folder or document id. Never patient information. */
+                    documentRef: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        hasSecret: boolean;
+                        verifiableBy: "connection_test" | "attestation" | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active. */
+                        baaRequired: boolean;
+                        baa: {
+                            /** @constant */
+                            heldBy: "tenant";
+                            /** Format: date */
+                            effectiveDate: string;
+                            documentRef: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            verified: {
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantClearinghouseVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Required where the vendor has no safe connection test (Stedi): what was checked and by whom (8-500 characters after whitespace is collapsed; no patient information). Ignored where a connection test runs (Claim.MD). */
+                    evidenceNote?: string;
+                    /** @description Required, and must be true, with an evidence note: the person confirms the note names no patient information. Ignored where a connection test runs (Claim.MD). */
+                    confirmNoPatientInformation?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        config: {
+                            vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                            mode: ("test" | "production") | null;
+                            status: ("draft" | "verified" | "active") | null;
+                            source: "tenant" | "platform_env" | "none";
+                            hasSecret: boolean;
+                            verifiableBy: "connection_test" | "attestation" | null;
+                            verification: {
+                                kind: "connection_test" | "attested";
+                                evidence: string | null;
+                                /** Format: date-time */
+                                verifiedAt: string;
+                            } | null;
+                            lastTest: {
+                                outcome: "ok" | "credential_rejected" | "unreachable";
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active. */
+                            baaRequired: boolean;
+                            baa: {
+                                /** @constant */
+                                heldBy: "tenant";
+                                /** Format: date */
+                                effectiveDate: string;
+                                documentRef: string;
+                                /** Format: date-time */
+                                recordedAt: string;
+                                verified: {
+                                    /** Format: date-time */
+                                    at: string;
+                                } | null;
+                            } | null;
+                            activatedAt: string | null;
+                            version: number | null;
+                            updatedAt: string | null;
+                        };
+                        test: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                        } | null;
                     };
                 };
             };

@@ -18,12 +18,15 @@ import type { OnboardingDataService, OnboardingOperator } from "./onboarding-dat
 import {
   ONBOARDING_REASON_MAX,
   ONBOARDING_REASON_MIN,
+  OnboardingClearinghousePutRequest,
+  OnboardingClearinghouseVerifyRequest,
   OnboardingLocationCreateRequest,
   OnboardingLocationPatchRequest,
   OnboardingMacCredentialUpsertRequest,
   OnboardingMedicaidCredentialUpsertRequest,
   OnboardingProviderEntityCreateRequest,
   OnboardingProviderEntityPatchRequest,
+  OnboardingReasonSchema,
   OnboardingResourceParamsSchema,
   normalizeReason,
 } from "./onboarding-data-typebox";
@@ -33,11 +36,20 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 
 export interface OnboardingDataRouteDeps {
   readonly service: OnboardingDataService;
+  /** Per-user cap on the clearinghouse `verify` (a vendor call per request); fail-open. Absent = unlimited. */
+  readonly clearinghouseVerifyRateLimit?: PreHandler;
 }
 
 const READ_KEY = "tenant_onboarding_data.read_platform";
 const WRITE_KEY = "tenant_onboarding_data.write_platform";
 const PLATFORM_OPS = "tenant_lifecycle_platform_ops";
+/** ADR-0053 amendment 2026-11-06: the tenant's clearinghouse choice has its own pair of keys (platform_ops only). */
+const CLEARINGHOUSE_READ_KEY = "tenant_clearinghouse.read_platform";
+const CLEARINGHOUSE_WRITE_KEY = "tenant_clearinghouse.write_platform";
+/** Owner decision D2: verifying the BAA a tenant recorded for its own vendor account is its own key (a separable duty). */
+const CLEARINGHOUSE_VERIFY_BAA_KEY = "tenant_clearinghouse.verify_baa_platform";
+/** An operator withdrawing a tenant's "filed outside ChartWarden" NOE / NOTR record is its own key (a separable duty). */
+const NOTICE_WITHDRAW_KEY = "tenant_notice_filing.withdraw_platform";
 const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -61,6 +73,34 @@ const WRITE: readonly PreHandler[] = [
   P(WRITE_KEY),
   OPS(WRITE_KEY),
   requireStepUp(WRITE_KEY) as PreHandler,
+  rejectAiActor(),
+  requireIdempotencyKey,
+];
+
+const CLEARINGHOUSE_READ: readonly PreHandler[] = [
+  P(CLEARINGHOUSE_READ_KEY),
+  OPS(CLEARINGHOUSE_READ_KEY),
+];
+const CLEARINGHOUSE_WRITE: readonly PreHandler[] = [
+  P(CLEARINGHOUSE_WRITE_KEY),
+  OPS(CLEARINGHOUSE_WRITE_KEY),
+  requireStepUp(CLEARINGHOUSE_WRITE_KEY) as PreHandler,
+  rejectAiActor(),
+  requireIdempotencyKey,
+];
+
+const CLEARINGHOUSE_VERIFY_BAA: readonly PreHandler[] = [
+  P(CLEARINGHOUSE_VERIFY_BAA_KEY),
+  OPS(CLEARINGHOUSE_VERIFY_BAA_KEY),
+  requireStepUp(CLEARINGHOUSE_VERIFY_BAA_KEY) as PreHandler,
+  rejectAiActor(),
+  requireIdempotencyKey,
+];
+
+const NOTICE_WITHDRAW: readonly PreHandler[] = [
+  P(NOTICE_WITHDRAW_KEY),
+  OPS(NOTICE_WITHDRAW_KEY),
+  requireStepUp(NOTICE_WITHDRAW_KEY) as PreHandler,
   rejectAiActor(),
   requireIdempotencyKey,
 ];
@@ -132,11 +172,72 @@ function optionalIfMatch(request: FastifyRequest): number | undefined {
   return parsed;
 }
 
+/**
+ * The tenant a platform route acts on, the scope its rate limiter counts under: every operator belongs to the one platform org, so
+ * counting under the caller's own org would pool every tenant's (and every operator's) budget into a single bucket (re-review L7).
+ */
+export const targetTenantScopeOf = (request: FastifyRequest): string | undefined => {
+  const slug = (request.params as { orgSlug?: unknown } | undefined)?.orgSlug;
+  return typeof slug === "string" && slug.length > 0 ? slug : undefined;
+};
+
+const RECORDED_AT_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+/**
+ * The `If-Match` of an action pinned to a record the operator read: that record's `recordedAt`, a UTC ISO timestamp (quoted,
+ * weak-prefixed or bare), or null when the request named none. The action applies to that record or to nothing, so a tenant that
+ * swaps its BAA (or re-records a filing) between the operator's read and click cannot get the new one acted on unseen (re-review
+ * M1). `subject` names the record in the refusal message. A malformed pin is a 422 here.
+ */
+function recordedAtPinOrNull(
+  request: FastifyRequest,
+  subject: string,
+): { readonly recordedAt: string | null } {
+  const raw = request.headers["if-match"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== "string" || value.length === 0) return { recordedAt: null };
+  const recordedAt = value
+    .trim()
+    .replace(/^W\//, "")
+    .replace(/^"(.*)"$/, "$1");
+  const real =
+    RECORDED_AT_ISO.test(recordedAt) && new Date(recordedAt).toISOString() === recordedAt;
+  if (!real) {
+    throw new ValidationError("request validation failed", [
+      {
+        field: "If-Match",
+        code: "INVALID",
+        message: `If-Match must be the ${subject}'s recordedAt, a UTC timestamp such as 2026-11-05T21:30:00.123Z`,
+      },
+    ]);
+  }
+  return { recordedAt };
+}
+
+/** {@link recordedAtPinOrNull} for a route with no record to read first: a missing pin is the 428 right here. */
+function requiredRecordedAtPin(
+  request: FastifyRequest,
+  subject: string,
+): { readonly recordedAt: string } {
+  const { recordedAt } = recordedAtPinOrNull(request, subject);
+  if (recordedAt === null) {
+    throw new ChartWardenError(
+      "IF_MATCH_REQUIRED",
+      `an If-Match header naming the ${subject}'s recordedAt is required on this route`,
+      428,
+    );
+  }
+  return { recordedAt };
+}
+
 export function registerOnboardingDataRoutes(
   app: FastifyInstance,
   deps: OnboardingDataRouteDeps,
 ): void {
   const { service } = deps;
+  const CLEARINGHOUSE_VERIFY: readonly PreHandler[] = deps.clearinghouseVerifyRateLimit
+    ? [...CLEARINGHOUSE_WRITE, deps.clearinghouseVerifyRateLimit]
+    : CLEARINGHOUSE_WRITE;
   const slugOf = (request: FastifyRequest): string =>
     parse(OrgSlugParamsSchema, request.params).orgSlug;
   const idParamsOf = (request: FastifyRequest) =>
@@ -257,6 +358,114 @@ export function registerOnboardingDataRoutes(
       return reply
         .code(201)
         .send(await service.upsertMedicaidCredential(op, slugOf(request), fields, reason));
+    },
+  );
+
+  // ── the tenant's clearinghouse choice (credential write-only, never returned) ──
+  app.get(
+    "/api/v1/platform/tenants/:orgSlug/clearinghouse",
+    { preHandler: [...CLEARINGHOUSE_READ] },
+    async (request) => service.getClearinghouse(operatorOf(request), slugOf(request)),
+  );
+
+  app.put(
+    "/api/v1/platform/tenants/:orgSlug/clearinghouse",
+    { preHandler: [...CLEARINGHOUSE_WRITE] },
+    async (request, reply) => {
+      const op = operatorOf(request);
+      const { reason, fields } = splitReason(
+        parse(OnboardingClearinghousePutRequest, request.body),
+      );
+      const { created, view } = await service.putClearinghouse(
+        op,
+        slugOf(request),
+        fields,
+        reason,
+        optionalIfMatch(request),
+      );
+      // A first choice answers 201, a version-checked change 200.
+      return reply.code(created ? 201 : 200).send(view);
+    },
+  );
+
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/clearinghouse/verify",
+    { preHandler: [...CLEARINGHOUSE_VERIFY] },
+    async (request) => {
+      const op = operatorOf(request);
+      const { reason, fields } = splitReason(
+        parse(OnboardingClearinghouseVerifyRequest, request.body),
+      );
+      return service.verifyClearinghouse(op, slugOf(request), fields, reason);
+    },
+  );
+
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/clearinghouse/activate",
+    { preHandler: [...CLEARINGHOUSE_WRITE] },
+    async (request) => {
+      const op = operatorOf(request);
+      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+      return service.activateClearinghouse(op, slugOf(request), reason);
+    },
+  );
+
+  // POST baa/verify — the operator verifies the vendor BAA the tenant recorded for its own account. Not gated on the tenant's
+  // onboarding status (a live tenant that changed vendor needs it too); the audit row names the operator, the org, the reason and the
+  // record verified. `If-Match` is the record's recordedAt (see requiredBaaPin): verifying a record the operator did not read is a 409.
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/clearinghouse/baa/verify",
+    { preHandler: [...CLEARINGHOUSE_VERIFY_BAA] },
+    async (request) => {
+      const op = operatorOf(request);
+      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+      return service.verifyClearinghouseBaa(
+        op,
+        slugOf(request),
+        reason,
+        requiredRecordedAtPin(request, "BAA record"),
+      );
+    },
+  );
+
+  // POST {noe,notr}-records/:id/withdraw-external-filing — the operator withdraws the tenant's "filed outside ChartWarden" record of
+  // one notice: it returns to its pre-record state and can be recorded or submitted again; a breach stamp the watchdog set stays and the
+  // one a withdrawn LATE record wrote itself goes with it (a NOTR reopens the prior election its record closed). Not gated on the tenant's onboarding status. Pinned: `If-Match` is the record's
+  // `externalFiling.recordedAt` (see recordedAtPinOrNull); a record that changed since is a 409, and none at all is a 428 that is
+  // raised by the service (only it can read the record), so both carry the current `recordedAt` in the error details. The audit row names the operator,
+  // the tenant, the reason and the filed date withdrawn.
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/noe-records/:id/withdraw-external-filing",
+    { preHandler: [...NOTICE_WITHDRAW] },
+    async (request) => {
+      const op = operatorOf(request);
+      const { orgSlug, id } = idParamsOf(request);
+      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+      return service.withdrawNoticeExternalFiling(
+        op,
+        orgSlug,
+        "noe",
+        id,
+        reason,
+        recordedAtPinOrNull(request, "filing record"),
+      );
+    },
+  );
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/notr-records/:id/withdraw-external-filing",
+    { preHandler: [...NOTICE_WITHDRAW] },
+    async (request) => {
+      const op = operatorOf(request);
+      const { orgSlug, id } = idParamsOf(request);
+      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+      return service.withdrawNoticeExternalFiling(
+        op,
+        orgSlug,
+        "notr",
+        id,
+        reason,
+        recordedAtPinOrNull(request, "filing record"),
+      );
     },
   );
 }
