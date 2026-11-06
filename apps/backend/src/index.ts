@@ -1006,7 +1006,9 @@ import {
   createDrizzleDocumentEraseStore,
   createDrizzleDocumentReaderStore,
   createDrizzleDocumentSeamStore,
+  createDrizzleOrgDocumentAccessPort,
   createDrizzlePortalAccessLog,
+  createDrizzleStaffMintAccessLog,
   createHttpDoclingClient,
   createIdentityTargetPorts,
   createRefusingObjectStore,
@@ -2499,6 +2501,9 @@ export function wireModuleSeams(
           portalConsent: createSudConsentEvaluatorPortalConsentPort(),
           // F-225 (#248) — the portal mint's §164.528 `document_access_log` append.
           portalAccessLog: createDrizzlePortalAccessLog(deps.db),
+          // ADR-0109 D10 — the org-level (patient-less) document mint M16's mailing batch download goes through.
+          orgDocuments: createDrizzleOrgDocumentAccessPort(deps.db),
+          orgDocumentAccessLog: createDrizzleStaffMintAccessLog(deps.db),
         }
       : {},
   );

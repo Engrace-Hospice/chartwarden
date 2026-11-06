@@ -224,6 +224,14 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     defaultTitle: "Bereavement Program Discharge Summary (Internal)",
     internalOnly: true,
   },
+  // ADR-0109 D10 — the mailing batch M16's generate worker renders directly (one letter per recipient; aggregate = the run). INTERNAL: it holds EVERY
+  // recipient's name and mailing address, so it is read by role only and never reaches the portal or a caseload read.
+  bereavement_mailing_batch: {
+    aggregateType: "bereavement_mailing_batch",
+    retentionClass: "bereavement",
+    defaultTitle: "Bereavement Mailing Batch (Internal)",
+    internalOnly: true,
+  },
   // M20 — `compliance`, not `operational`: an OSHA-recordable workplace-injury report is retained
   // evidence, and the patient-safety ones feed M30's QAPI review.
   safety_incident_report: {

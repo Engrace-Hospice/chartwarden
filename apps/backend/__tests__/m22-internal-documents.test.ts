@@ -164,7 +164,11 @@ describe("the internal-only document types", () => {
       .map((d) => d.aggregateType)
       .sort();
     expect(flagged).toEqual([...INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES].sort());
-    expect(flagged).toEqual(["bereavement_discharge_summary", "bereavement_physician_letter"]);
+    expect(flagged).toEqual([
+      "bereavement_discharge_summary",
+      "bereavement_mailing_batch",
+      "bereavement_physician_letter",
+    ]);
     expect(isInternalOnlyAggregateType("bereavement_letter")).toBe(false);
   });
 
@@ -191,7 +195,13 @@ describe("the internal-only document types", () => {
     ).toBe(false);
   });
 
-  it("file the two M16 templates under their own retention class", () => {
+  it("file the three M16 templates under their own retention class (the mailing batch holds every addressee)", () => {
+    expect(PLATFORM_TEMPLATE_TABLE.bereavement_mailing_batch).toMatchObject({
+      aggregateType: "bereavement_mailing_batch",
+      retentionClass: "bereavement",
+      internalOnly: true,
+    });
+    expect(isInternalOnlyAggregateType("bereavement_mailing_batch")).toBe(true);
     expect(PLATFORM_TEMPLATE_TABLE.bereavement_physician_condolence_letter).toMatchObject({
       aggregateType: "bereavement_physician_letter",
       retentionClass: "bereavement",

@@ -35,6 +35,7 @@ import type {
   DocumentStorageProvider,
   ExtractionProvenanceReader,
   IntakeMetricsProvider,
+  OrgDocumentAccessProvider,
   PortalDocumentReader,
   RenderedDocumentProvider,
 } from "./documents";
@@ -195,6 +196,7 @@ export type SeamName =
   | "PortalDocumentReader" // M22 — portal-safe document read seam (tags stripped, SUD filtered, mint download URL)
   | "IntakeMetricsProvider" // M22 — intake-throughput metrics read seam (bundles processed / time-to-review)
   | "ExtractionProvenanceReader" // M22 — per-chart-field extraction provenance read seam (data exists, DocLens OFF)
+  | "OrgDocumentAccessProvider" // M22 — org-level (patient-less) document download mint (M16's internal mailing batch; ADR-0109 D10)
   | "ConsentEvaluator" // M39 — disclosure/redaction gate
   | "SessionContextResolver" // M2 — authenticated, org-scoped request context (actor + step-up state)
   | "AuditorSessionMinter" // M2 — mint a time-boxed auditor magic-link session (M3 calls it)
@@ -1108,6 +1110,7 @@ export interface SeamContracts {
   PortalDocumentReader: PortalDocumentReader;
   IntakeMetricsProvider: IntakeMetricsProvider;
   ExtractionProvenanceReader: ExtractionProvenanceReader;
+  OrgDocumentAccessProvider: OrgDocumentAccessProvider;
   // M39's `ConsentEvaluator` is OPAQUE (`unknown`) here — the rich §4.3 interface lives in
   // @chartwarden/consent (rich-seam pattern, see the note above the interface block). Consumers that
   // list `39` in `dependsOn` import the real type from @chartwarden/consent and resolve via the
