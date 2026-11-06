@@ -41,7 +41,7 @@ const isGating = (s: WizardStep): boolean => s.isCanonical && !s.optional;
  * True for a skip the SYSTEM made because the tenant bills outside ChartWarden. The server says so (`systemSkipped`); the rationale text is
  * never read for this: a person can type the same words.
  */
-export const isSystemSkip = (step: WizardStep): boolean =>
+export const isSystemSkip = (step: Pick<WizardStep, "status" | "systemSkipped">): boolean =>
   step.status === "skipped" && step.systemSkipped;
 
 function titleOf(view: WizardView, key: string): string {

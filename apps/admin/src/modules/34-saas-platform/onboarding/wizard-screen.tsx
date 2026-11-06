@@ -82,7 +82,7 @@ export function TenantOnboardingWizard(): JSX.Element {
   const progress = gatingProgress(view);
   const name = tenant.data?.legalBusinessName ?? orgSlug;
   const step = view.steps.find((s) => s.key === stepKey);
-  const Panel = step ? panelFor(step.key).Panel : null;
+  const Panel = step ? panelFor(step).Panel : null;
 
   return (
     <StepTitlesContext.Provider value={titles}>

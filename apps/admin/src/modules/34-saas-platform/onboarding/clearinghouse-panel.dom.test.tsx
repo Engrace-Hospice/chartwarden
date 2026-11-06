@@ -1,0 +1,452 @@
+// @vitest-environment jsdom
+// Step 7, Billing: clearinghouse. Choose Stedi, Claim.MD or billing outside ChartWarden for the tenant, then walk a vendor to active. The
+// credential is write-only (never shown, never stashed). Verifying the vendor BAA is pinned to the record the operator read (If-Match =
+// its recordedAt): a BAA the tenant swapped meanwhile is shown anew and needs a second, deliberate confirm.
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { ClearinghouseView } from "./clearinghouse-model";
+import { ClearinghousePanel } from "./clearinghouse-panel";
+import {
+  ORG_SLUG,
+  ok,
+  panelCtx,
+  refused,
+  renderAt,
+  stubClient,
+  wizardStep,
+  wizardView,
+} from "./test-support";
+
+const CH = "/api/v1/platform/tenants/{orgSlug}/clearinghouse";
+const VERIFY = `${CH}/verify`;
+const ACTIVATE = `${CH}/activate`;
+const BAA_VERIFY = `${CH}/baa/verify`;
+const SUBSCRIPTION = "/api/v1/platform/tenants/{orgSlug}/subscription";
+const TYPED_VALUE = "vendor-credential-for-test-only";
+const RECORDED_AT = "2026-11-02T10:00:00.123Z";
+const RECORDED_AGAIN = "2026-11-04T08:30:00.456Z";
+
+const NOTHING: ClearinghouseView = {
+  vendor: null,
+  mode: null,
+  status: null,
+  source: "none",
+  hasSecret: false,
+  verifiableBy: null,
+  verification: null,
+  lastTest: null,
+  baaRequired: false,
+  baa: null,
+  activatedAt: null,
+  version: null,
+  updatedAt: null,
+};
+const CLAIMMD: ClearinghouseView = {
+  ...NOTHING,
+  vendor: "claimmd",
+  mode: "production",
+  status: "draft",
+  source: "tenant",
+  hasSecret: true,
+  verifiableBy: "connection_test",
+  baaRequired: true,
+  version: 3,
+};
+const BAA = {
+  heldBy: "tenant" as const,
+  effectiveDate: "2026-01-15",
+  documentRef: "Claim.MD BAA, contract folder 7",
+  recordedAt: RECORDED_AT,
+  verified: null,
+};
+const VERIFIED_BAA = { ...BAA, verified: { at: "2026-11-03T09:00:00.000Z" } };
+
+const step = (over = {}) =>
+  wizardStep("clearinghouse_selected", 1, {
+    title: "Billing: clearinghouse",
+    owner: "either",
+    completionMode: "either",
+    ...over,
+  });
+const view = (over = {}) => wizardView([step()], over);
+
+function mount(
+  config: ClearinghouseView,
+  extra: Parameters<typeof stubClient>[0] = {},
+  v = view(),
+  contractMode: string | null = null,
+) {
+  const client = stubClient({
+    GET: {
+      [CH]: () => ok(config),
+      [SUBSCRIPTION]: () =>
+        ok({
+          contract: contractMode
+            ? { billingServiceMode: contractMode, pendingBillingServiceMode: null }
+            : null,
+        }),
+    },
+    ...extra,
+  });
+  const ctx = panelCtx(v, "clearinghouse_selected");
+  renderAt("/x", [{ path: "/x", element: <ClearinghousePanel ctx={ctx} /> }], client);
+  return { client, ctx };
+}
+beforeEach(() => window.sessionStorage.clear());
+
+const confirm = (reason: string, button: string) => {
+  fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: reason } });
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: button }));
+};
+const secretBox = () => screen.getByLabelText(/^Vendor credential/);
+const lastCall = (calls: unknown[][]) =>
+  calls.at(-1) as [
+    string,
+    {
+      params: { path: unknown; header: Record<string, string> };
+      body: Record<string, unknown>;
+    },
+  ];
+
+describe("ClearinghousePanel: what is on file", () => {
+  it("says nothing is chosen, and offers the choice", async () => {
+    mount(NOTHING);
+    expect(await screen.findByRole("button", { name: "Choose clearinghouse" })).toBeTruthy();
+    expect(screen.getByText(/A clearinghouse is chosen/).closest("li")?.textContent).toMatch(
+      /Not yet/,
+    );
+  });
+
+  it("shows a vendor without its credential, and the BAA the tenant recorded", async () => {
+    mount({ ...CLAIMMD, baa: BAA });
+    expect(await screen.findByText(/Secret on file/)).toBeTruthy();
+    expect(screen.getAllByText(/Claim\.MD BAA, contract folder 7/).length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toContain(TYPED_VALUE);
+  });
+
+  it("shows a tenant billing outside ChartWarden as settled, with nothing to verify or activate", async () => {
+    mount({ ...NOTHING, vendor: "outside", status: "active", source: "tenant", version: 1 });
+    expect((await screen.findAllByText(/Billing outside ChartWarden/)).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /Activate|Verify|connection test/ })).toBeNull();
+  });
+
+  it("is read-only when the step cannot be acted on", async () => {
+    mount(CLAIMMD, {}, view({ tenantStatus: "active" }));
+    await screen.findByText(/Secret on file/);
+    expect(screen.queryByRole("button", { name: "Change" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Run the connection test" })).toBeNull();
+  });
+});
+
+describe("ClearinghousePanel: choosing", () => {
+  it("makes a first choice with no If-Match, the credential, a reason and an Idempotency-Key", async () => {
+    const { client, ctx } = mount(NOTHING, {
+      PUT: { [CH]: () => ok({ ...CLAIMMD, version: 1 }, 201) },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Choose clearinghouse" }));
+    fireEvent.change(secretBox(), { target: { value: TYPED_VALUE } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("Customer sent us their Claim.MD account key", "Save");
+
+    await waitFor(() => expect(client.PUT).toHaveBeenCalledTimes(1));
+    const [path, init] = lastCall(client.PUT.mock.calls);
+    expect(path).toBe(CH);
+    expect(init.params.path).toEqual({ orgSlug: ORG_SLUG });
+    expect(init.params.header["Idempotency-Key"]).toMatch(/\S/);
+    expect(init.params.header["If-Match"]).toBeUndefined();
+    expect(init.body).toEqual({
+      vendor: "claimmd",
+      mode: "production",
+      secret: TYPED_VALUE,
+      reason: "Customer sent us their Claim.MD account key",
+    });
+    await waitFor(() => expect(ctx.refresh).toHaveBeenCalled());
+    expect(document.body.textContent).not.toContain(TYPED_VALUE);
+  });
+
+  it("requires a credential for a first choice and does not ask for a reason until it has one", async () => {
+    mount(NOTHING);
+    fireEvent.click(await screen.findByRole("button", { name: "Choose clearinghouse" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText(/Enter the vendor credential/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.change(secretBox(), { target: { value: "short" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText(/at least 8 characters/)).toBeTruthy();
+  });
+
+  it("pins a change to the version that was read, and needs a credential only when the vendor or mode changes", async () => {
+    const { client } = mount(CLAIMMD, { PUT: { [CH]: () => ok(CLAIMMD) } });
+    fireEvent.click(await screen.findByRole("button", { name: "Change" }));
+    // the same vendor and mode: nothing new to seal, the credential on file stays
+    expect(screen.getByText(/Leave blank to keep the credential on file/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "test" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText(/Enter the vendor credential/)).toBeTruthy();
+    fireEvent.change(secretBox(), { target: { value: TYPED_VALUE } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText(/starts the new configuration at draft/)).toBeTruthy();
+    confirm("Customer moved to their sandbox account", "Save");
+    await waitFor(() => expect(client.PUT).toHaveBeenCalledTimes(1));
+    expect(lastCall(client.PUT.mock.calls)[1].params.header["If-Match"]).toBe("3");
+    expect(lastCall(client.PUT.mock.calls)[1].body).toMatchObject({
+      mode: "test",
+      secret: TYPED_VALUE,
+    });
+  });
+
+  it("chooses billing outside ChartWarden with no mode and no credential, and says what that does first", async () => {
+    const { client } = mount(NOTHING, {
+      PUT: { [CH]: () => ok({ ...NOTHING, vendor: "outside", status: "active" }, 201) },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Choose clearinghouse" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Clearinghouse" }), {
+      target: { value: "outside" },
+    });
+    expect(screen.queryByLabelText("Mode")).toBeNull();
+    expect(secretBoxOrNull()).toBeNull();
+    expect(screen.getByText(/ChartWarden will transmit nothing for this tenant/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("Customer files its own claims with its biller", "Save");
+    await waitFor(() => expect(client.PUT).toHaveBeenCalledTimes(1));
+    expect(lastCall(client.PUT.mock.calls)[1].body).toEqual({
+      vendor: "outside",
+      reason: "Customer files its own claims with its biller",
+    });
+  });
+
+  it("explains a version conflict: it is reloaded and the credential must be typed again", async () => {
+    const { client } = mount(CLAIMMD, {
+      PUT: { [CH]: () => refused(412, "VERSION_CONFLICT", "stale") },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Change" }));
+    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "test" } });
+    fireEvent.change(secretBox(), { target: { value: TYPED_VALUE } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("Customer moved to their sandbox account", "Save");
+    expect(await screen.findByText(/changed since you opened it/i)).toBeTruthy();
+    await waitFor(() =>
+      expect(client.GET.mock.calls.filter((c) => c[0] === CH).length).toBeGreaterThan(1),
+    );
+    expect((secretBox() as HTMLInputElement).value).toBe("");
+  });
+
+  it("never stashes the credential through a re-verify, and comes back to the form without the reason prompt", async () => {
+    mount(NOTHING, { PUT: { [CH]: () => refused(403, "STEP_UP_REQUIRED") } });
+    fireEvent.click(await screen.findByRole("button", { name: "Choose clearinghouse" }));
+    fireEvent.change(secretBox(), { target: { value: TYPED_VALUE } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("Customer sent us their Claim.MD account key", "Save");
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    const stashed =
+      window.sessionStorage.getItem(
+        "wx.admin.step-up-draft:wizard:cedar-ridge:clearinghouse_selected:choice",
+      ) ?? "";
+    expect(stashed).toContain("claimmd");
+    expect(stashed).not.toContain(TYPED_VALUE);
+    cleanup();
+
+    mount(NOTHING, { PUT: { [CH]: () => ok(CLAIMMD, 201) } });
+    expect(await screen.findByRole("heading", { name: "Choose the clearinghouse" })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect((secretBox() as HTMLInputElement).value).toBe("");
+  });
+});
+
+const secretBoxOrNull = () => screen.queryByLabelText(/^Vendor credential/);
+
+describe("ClearinghousePanel: verifying the vendor BAA (pinned to the record read)", () => {
+  const openBaa = async () =>
+    fireEvent.click(await screen.findByRole("button", { name: "Verify the vendor BAA" }));
+
+  it("shows the record being verified and pins the call to its recordedAt", async () => {
+    const { client } = mount(
+      { ...CLAIMMD, baa: BAA },
+      { POST: { [BAA_VERIFY]: () => ok(CLAIMMD) } },
+    );
+    await openBaa();
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.getByText("Claim.MD BAA, contract folder 7")).toBeTruthy();
+    expect(dialog.getByText("2026-01-15")).toBeTruthy();
+    confirm("Read the signed agreement, ticket CHG-8001", "Verify BAA");
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    const [path, init] = lastCall(client.POST.mock.calls);
+    expect(path).toBe(BAA_VERIFY);
+    expect(init.params.header["If-Match"]).toBe(RECORDED_AT);
+    expect(init.params.header["Idempotency-Key"]).toMatch(/\S/);
+    expect(init.body).toEqual({ reason: "Read the signed agreement, ticket CHG-8001" });
+  });
+
+  it("when the tenant re-recorded its BAA meanwhile: says so, shows the new record, and the second confirm pins the NEW one", async () => {
+    let reads = 0;
+    const { client } = mount(
+      { ...CLAIMMD, baa: BAA },
+      {
+        GET: {
+          [CH]: () => {
+            reads += 1;
+            return ok({
+              ...CLAIMMD,
+              baa:
+                reads === 1
+                  ? BAA
+                  : { ...BAA, documentRef: "Claim.MD BAA v2", recordedAt: RECORDED_AGAIN },
+            });
+          },
+          [SUBSCRIPTION]: () => ok({ contract: null }),
+        },
+        POST: {
+          [BAA_VERIFY]: (init) =>
+            (init as { params?: { header?: Record<string, string> } }).params?.header?.[
+              "If-Match"
+            ] === RECORDED_AT
+              ? refused(409, "CLEARINGHOUSE_BAA_CHANGED", "changed", [
+                  { field: "currentRecordedAt", code: "X", message: RECORDED_AGAIN },
+                ])
+              : ok(CLAIMMD),
+        },
+      },
+    );
+    await openBaa();
+    confirm("Read the signed agreement, ticket CHG-8001", "Verify BAA");
+
+    // the dialog stays open on the NEW record, with the stale notice and a re-worded confirm button
+    expect(await screen.findByText(/This record changed since you opened it/)).toBeTruthy();
+    const dialog = within(screen.getByRole("dialog"));
+    await waitFor(() => expect(dialog.getByText("Claim.MD BAA v2")).toBeTruthy());
+    expect(client.POST).toHaveBeenCalledTimes(1);
+    expect(dialog.getByRole("button", { name: /Confirm the updated record/ })).toBeTruthy();
+
+    fireEvent.click(dialog.getByRole("button", { name: /Confirm the updated record/ }));
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(2));
+    expect(lastCall(client.POST.mock.calls)[1].params.header["If-Match"]).toBe(RECORDED_AGAIN);
+  });
+
+  it("closes the prompt when the BAA was verified by someone else meanwhile, instead of leaving it to reappear", async () => {
+    let reads = 0;
+    mount(
+      { ...CLAIMMD, baa: BAA },
+      {
+        GET: {
+          [CH]: () => {
+            reads += 1;
+            return ok({ ...CLAIMMD, baa: reads === 1 ? BAA : VERIFIED_BAA });
+          },
+          [SUBSCRIPTION]: () => ok({ contract: null }),
+        },
+        POST: { [BAA_VERIFY]: () => refused(409, "CLEARINGHOUSE_BAA_CHANGED", "changed") },
+      },
+    );
+    await openBaa();
+    confirm("Read the signed agreement, ticket CHG-8001", "Verify BAA");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(
+      screen.getByText(/An operator verified the vendor BAA/).closest("li")?.textContent,
+    ).toMatch(/Met/);
+  });
+
+  it("offers nothing to verify while the tenant has not recorded a BAA, and says it is the tenant's to record", async () => {
+    mount(CLAIMMD);
+    await screen.findByText(/Secret on file/);
+    expect(screen.queryByRole("button", { name: "Verify the vendor BAA" })).toBeNull();
+    expect(screen.getByText(/The tenant records this itself/)).toBeTruthy();
+  });
+});
+
+describe("ClearinghousePanel: verifying the connection and activating", () => {
+  it("runs the Claim.MD connection test with a reason only, and says so when the vendor rejects the credential", async () => {
+    const { client } = mount(
+      { ...CLAIMMD, baa: VERIFIED_BAA },
+      {
+        POST: {
+          [VERIFY]: () => ok({ config: CLAIMMD, test: { outcome: "credential_rejected" } }),
+        },
+      },
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Run the connection test" }));
+    confirm("Checking the credential the tenant sent", "Run test");
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    expect(lastCall(client.POST.mock.calls)[1].body).toEqual({
+      reason: "Checking the credential the tenant sent",
+    });
+    expect(await screen.findByText(/The vendor rejected the credential/)).toBeTruthy();
+  });
+
+  it("attests a Stedi connection with the evidence note and the no-patient-information confirmation", async () => {
+    const stedi: ClearinghouseView = { ...CLAIMMD, vendor: "stedi", verifiableBy: "attestation" };
+    const { client } = mount(stedi, {
+      POST: { [VERIFY]: () => ok({ config: stedi, test: null }) },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Verify the connection" }));
+    // no note, no reason prompt
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText(/Say what was checked and by whom/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText(/^What was checked, and by whom/), {
+      target: {
+        value:
+          "Sent a 270 test transaction with the sandbox key; Dana in support confirmed 271 reply",
+      },
+    });
+    // the note alone is not enough: the operator must confirm it names no patient (nothing confirms it for them)
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText(/Confirm the note names no patient information/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByLabelText("This note names no patient information"));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("Tenant asked us to complete setup, ticket CHG-8002", "Attest");
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    expect(lastCall(client.POST.mock.calls)[1].body).toEqual({
+      evidenceNote:
+        "Sent a 270 test transaction with the sandbox key; Dana in support confirmed 271 reply",
+      confirmNoPatientInformation: true,
+      reason: "Tenant asked us to complete setup, ticket CHG-8002",
+    });
+  });
+
+  it("holds activation back until the BAA is verified, and says why", async () => {
+    mount({ ...CLAIMMD, status: "verified", baa: BAA });
+    await screen.findByText(/Secret on file/);
+    expect(screen.queryByRole("button", { name: "Activate" })).toBeNull();
+    expect(screen.getByText(/Verify the vendor BAA first/)).toBeTruthy();
+  });
+
+  it("activates a verified clearinghouse whose BAA is verified, and re-reads the wizard (the step settles)", async () => {
+    const { client, ctx } = mount(
+      { ...CLAIMMD, status: "verified", baa: VERIFIED_BAA },
+      { POST: { [ACTIVATE]: () => ok({ ...CLAIMMD, status: "active" }) } },
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Activate" }));
+    confirm("Everything verified, ticket CHG-8003", "Activate");
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    expect(lastCall(client.POST.mock.calls)[0]).toBe(ACTIVATE);
+    await waitFor(() => expect(ctx.refresh).toHaveBeenCalled());
+  });
+});
+
+describe("ClearinghousePanel: the billing mode banner", () => {
+  it("warns when a vendor is chosen but the contract's billing mode is still None, and links to the plan step", async () => {
+    mount(CLAIMMD, {}, view(), "none");
+    expect(await screen.findByText(/billing service mode is still None/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Plan and contract step/ }).getAttribute("href")).toBe(
+      `/tenants/${ORG_SLUG}/onboarding/plan_contract`,
+    );
+  });
+
+  it("is silent when the mode is something else, and for a tenant billing outside (no vendor)", async () => {
+    mount(CLAIMMD, {}, view(), "billing_software");
+    await screen.findByText(/Secret on file/);
+    await waitFor(() => expect(screen.queryByText(/still None/)).toBeNull());
+    cleanup();
+    const { client } = mount(
+      { ...NOTHING, vendor: "outside", status: "active", source: "tenant", version: 1 },
+      {},
+      view(),
+      "none",
+    );
+    await screen.findAllByText(/Billing outside ChartWarden/);
+    // the contract is not even read (an audited read) when there is no vendor to compare it to
+    expect(client.GET.mock.calls.some((c) => c[0] === SUBSCRIPTION)).toBe(false);
+  });
+});

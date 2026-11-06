@@ -1,0 +1,488 @@
+// apps/admin/src/modules/34-saas-platform/onboarding — step 7, Billing: clearinghouse. Choose Stedi, Claim.MD or billing outside
+// ChartWarden for the tenant, then walk a vendor to active: the tenant records its vendor BAA, an operator verifies it (its own key; the
+// write is PINNED to the record the operator read, so a BAA the tenant swapped meanwhile is never verified unseen), the connection is
+// verified (a no-PHI test for Claim.MD, an attestation with evidence for Stedi), and the config is activated. The vendor credential is
+// write-only: sealed under the tenant's key, never returned, never shown, never stashed through a re-verify.
+import {
+  Button,
+  type Fact,
+  FactList,
+  InlineAlert,
+  LoadingSpinner,
+  TextAreaField,
+  stashStepUpDraft,
+  useApiClient,
+  useStepUpDraft,
+} from "@chartwarden/ui";
+import { useEffect, useState } from "react";
+import type { JSX } from "react";
+import {
+  BLANK_CHOICE,
+  type ChoiceErrors,
+  type ChoiceForm,
+  ChoiceFormCard,
+  consequenceOf,
+  validateChoice,
+} from "./clearinghouse-choice-form";
+import {
+  type ClearinghouseView,
+  MODE_LABEL,
+  VENDOR_LABEL,
+  clearinghouseActions,
+  clearinghouseFacts,
+  isTransmitting,
+} from "./clearinghouse-model";
+import { ContractModeBanner } from "./contract-mode-banner";
+import { FailureNotice } from "./failure-notice";
+import type { PanelContext } from "./panel-types";
+import { PendingAttestationWarning } from "./pending-attestation-warning";
+import { RecordSaveDialog } from "./record-save-dialog";
+import { StaleNotice } from "./stale-notice";
+import { StepFrame } from "./step-frame";
+import { useLoad } from "./use-load";
+import { useOpsWrite } from "./use-ops-write";
+
+const PATH = "/api/v1/platform/tenants/{orgSlug}/clearinghouse";
+const EVIDENCE_NOTE_MIN = 8;
+const EVIDENCE_NOTE_MAX = 500;
+const draftKey = (orgSlug: string): string => `wizard:${orgSlug}:clearinghouse_selected:choice`;
+
+type Dialog = "choose" | "verify" | "activate" | "baa" | null;
+type TestOutcome = "ok" | "credential_rejected" | "unreachable";
+const TEST_PROBLEM: Record<Exclude<TestOutcome, "ok">, string> = {
+  credential_rejected:
+    "The vendor rejected the credential. Nothing was verified; choose the clearinghouse again with the right credential.",
+  unreachable: "The vendor could not be reached. Nothing was verified; try the test again shortly.",
+};
+
+function SummaryCard({ view }: { view: ClearinghouseView }): JSX.Element | null {
+  if (view.vendor === null || view.source !== "tenant") return null;
+  const baa = view.baa;
+  return (
+    <dl className="wx-kv">
+      <dt>Clearinghouse</dt>
+      <dd>{VENDOR_LABEL[view.vendor] ?? view.vendor}</dd>
+      {view.mode ? (
+        <>
+          <dt>Mode</dt>
+          <dd>{MODE_LABEL[view.mode]}</dd>
+        </>
+      ) : null}
+      {isTransmitting(view) ? (
+        <>
+          <dt>Credential</dt>
+          <dd>{view.hasSecret ? "Secret on file" : "None"}</dd>
+        </>
+      ) : null}
+      {view.verification?.evidence ? (
+        <>
+          <dt>Connection evidence</dt>
+          <dd>{view.verification.evidence}</dd>
+        </>
+      ) : null}
+      {baa ? (
+        <>
+          <dt>Vendor BAA</dt>
+          <dd>
+            {baa.documentRef}
+            <span className="wx-row-sub">
+              {" "}
+              effective {baa.effectiveDate}, recorded {new Date(baa.recordedAt).toLocaleString()}
+            </span>
+          </dd>
+        </>
+      ) : null}
+    </dl>
+  );
+}
+
+export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
+  const client = useApiClient();
+  const { orgSlug, view: wizard, actions } = ctx;
+  const canWrite = actions.readOnlyReason === null;
+  const load = useLoad<ClearinghouseView>(`clearinghouse:${orgSlug}`, () =>
+    client.GET(PATH, { params: { path: { orgSlug } } }),
+  );
+  const restored = useStepUpDraft<{ form: ChoiceForm }>(draftKey(orgSlug));
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [editing, setEditing] = useState(restored !== undefined);
+  const [form, setForm] = useState<ChoiceForm>(restored?.form ?? BLANK_CHOICE);
+  const [secret, setSecret] = useState("");
+  const [errors, setErrors] = useState<ChoiceErrors>({});
+  const [attesting, setAttesting] = useState(false);
+  const [note, setNote] = useState("");
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [notePhiFree, setNotePhiFree] = useState(false);
+  const [staleBaa, setStaleBaa] = useState(false);
+  const [testProblem, setTestProblem] = useState<string | null>(null);
+  const write = useOpsWrite();
+
+  const current = load.data;
+  const available = current ? clearinghouseActions(current) : null;
+  const baaToVerify = current?.baa && !current.baa.verified ? current.baa : null;
+
+  function closeDialog(): void {
+    write.clear();
+    setDialog(null);
+    setStaleBaa(false);
+  }
+
+  // The BAA being verified was verified (by someone else) or withdrawn while the prompt was open: the prompt closes rather than waiting
+  // to pop open again for whatever BAA is recorded next.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only the BAA record's presence is the trigger.
+  useEffect(() => {
+    if (dialog === "baa" && baaToVerify === null) closeDialog();
+  }, [dialog, baaToVerify === null]);
+
+  function openChoice(): void {
+    if (!current) return;
+    write.clear();
+    setErrors({});
+    setSecret("");
+    setForm(
+      current.vendor !== null && current.source === "tenant"
+        ? {
+            vendor:
+              current.vendor === "stedi" || current.vendor === "outside"
+                ? current.vendor
+                : "claimmd",
+            mode: current.mode ?? "production",
+          }
+        : BLANK_CHOICE,
+    );
+    setEditing(true);
+  }
+
+  function continueChoice(): void {
+    if (!current) return;
+    const found = validateChoice(current, form, secret);
+    setErrors(found);
+    if (Object.keys(found).length === 0) setDialog("choose");
+  }
+
+  /** A write that finished: reread this step's data and the wizard (the step settles after most of these). */
+  async function settled(): Promise<void> {
+    closeDialog();
+    await Promise.all([load.reload(true), ctx.refresh()]);
+  }
+
+  async function choose(reason: string): Promise<void> {
+    if (!current) return;
+    const pinned = current.source === "tenant" ? current.version : null;
+    const body =
+      form.vendor === "outside"
+        ? { vendor: "outside" as const, reason }
+        : {
+            vendor: form.vendor,
+            mode: form.mode,
+            ...(secret !== "" ? { secret } : {}),
+            reason,
+          };
+    const outcome = await write.run(`choose:${pinned ?? "new"}:${JSON.stringify(body)}`, (key) =>
+      client.PUT(PATH, {
+        params: {
+          path: { orgSlug },
+          header: {
+            "Idempotency-Key": key,
+            ...(pinned !== null ? { "If-Match": String(pinned) } : {}),
+          },
+        },
+        body,
+      }),
+    );
+    if (outcome.ok) {
+      setEditing(false);
+      setSecret("");
+      await settled();
+    } else if (outcome.failure.kind === "conflict") {
+      // Someone changed it since it was read: the dialog closes, the record is read again, and the operator enters the credential anew.
+      setDialog(null);
+      setSecret("");
+      await load.reload(true);
+    }
+  }
+
+  async function verifyConnection(reason: string): Promise<void> {
+    const evidence =
+      current?.verifiableBy === "attestation"
+        ? { evidenceNote: note.trim(), confirmNoPatientInformation: true as const }
+        : {};
+    const outcome = await write.run(`verify:${note.trim()}:${reason}`, (key) =>
+      client.POST("/api/v1/platform/tenants/{orgSlug}/clearinghouse/verify", {
+        params: { path: { orgSlug }, header: { "Idempotency-Key": key } },
+        body: { ...evidence, reason },
+      }),
+    );
+    if (!outcome.ok) return;
+    const test = outcome.data.test?.outcome as TestOutcome | undefined;
+    setTestProblem(test && test !== "ok" ? TEST_PROBLEM[test] : null);
+    setAttesting(false);
+    setNote("");
+    setNotePhiFree(false);
+    await settled();
+  }
+
+  async function activate(reason: string): Promise<void> {
+    const outcome = await write.run(`activate:${reason}`, (key) =>
+      client.POST("/api/v1/platform/tenants/{orgSlug}/clearinghouse/activate", {
+        params: { path: { orgSlug }, header: { "Idempotency-Key": key } },
+        body: { reason },
+      }),
+    );
+    if (outcome.ok) await settled();
+  }
+
+  /** Pinned to the BAA record as read NOW; a BAA the tenant changed since is a 409 that re-reads it and asks again. */
+  async function verifyBaa(reason: string): Promise<void> {
+    const baa = current?.baa;
+    if (!baa || baa.verified) return;
+    const pin = baa.recordedAt;
+    const outcome = await write.run(`baa:${pin}:${reason}`, (key) =>
+      client.POST("/api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/verify", {
+        params: { path: { orgSlug }, header: { "Idempotency-Key": key, "If-Match": pin } },
+        body: { reason },
+      }),
+    );
+    if (outcome.ok) {
+      await settled();
+    } else if (outcome.failure.kind === "conflict" || outcome.failure.kind === "precondition") {
+      setStaleBaa(true);
+      await load.reload(true);
+    }
+  }
+
+  function askToAttest(): void {
+    const trimmed = note.trim();
+    if (trimmed.length < EVIDENCE_NOTE_MIN || trimmed.length > EVIDENCE_NOTE_MAX) {
+      setNoteError(
+        `Say what was checked and by whom (${EVIDENCE_NOTE_MIN}-${EVIDENCE_NOTE_MAX} characters, no patient information).`,
+      );
+      return;
+    }
+    if (!notePhiFree) {
+      setNoteError("Confirm the note names no patient information.");
+      return;
+    }
+    setNoteError(null);
+    write.clear();
+    setDialog("verify");
+  }
+
+  const facts: Fact[] = current ? clearinghouseFacts(current) : [];
+  const vendorChosen = current !== null && isTransmitting(current) && current.source === "tenant";
+
+  return (
+    <StepFrame ctx={ctx}>
+      {vendorChosen ? <ContractModeBanner orgSlug={orgSlug} /> : null}
+      <section className="wx-drawer-card" aria-label="Clearinghouse">
+        <div className="wx-drawer-card-head">
+          <h3>Clearinghouse</h3>
+          {canWrite && current && !editing ? (
+            <Button size="sm" tone="secondary" onClick={openChoice}>
+              {current.vendor !== null && current.source === "tenant"
+                ? "Change"
+                : "Choose clearinghouse"}
+            </Button>
+          ) : null}
+        </div>
+        {load.loading && !current ? <LoadingSpinner label="Loading the clearinghouse…" /> : null}
+        {load.failure && !current ? (
+          <InlineAlert tone="error">Could not load the clearinghouse.</InlineAlert>
+        ) : null}
+        <StaleNotice stale={load.stale} onReload={() => void load.reload()} />
+        {current ? (
+          <>
+            <FactList facts={facts} ariaLabel="What settles this step" />
+            <SummaryCard view={current} />
+          </>
+        ) : null}
+        {testProblem ? <InlineAlert tone="warning">{testProblem}</InlineAlert> : null}
+        {canWrite && available && !editing ? (
+          <div className="wx-drawer-actions">
+            {available.canVerifyBaa ? (
+              <Button
+                tone="secondary"
+                onClick={() => {
+                  write.clear();
+                  setStaleBaa(false);
+                  setDialog("baa");
+                }}
+              >
+                Verify the vendor BAA
+              </Button>
+            ) : null}
+            {available.canVerifyConnection ? (
+              <Button
+                tone="secondary"
+                onClick={() => {
+                  setTestProblem(null);
+                  if (current?.verifiableBy === "attestation") setAttesting(true);
+                  else {
+                    write.clear();
+                    setDialog("verify");
+                  }
+                }}
+              >
+                {current?.verifiableBy === "attestation"
+                  ? "Verify the connection"
+                  : "Run the connection test"}
+              </Button>
+            ) : null}
+            {available.canActivate ? (
+              <Button
+                onClick={() => {
+                  write.clear();
+                  setDialog("activate");
+                }}
+              >
+                Activate
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+        {available?.activateBlockedReason ? (
+          <p className="wx-row-sub">{available.activateBlockedReason}</p>
+        ) : null}
+      </section>
+
+      {editing && canWrite && current ? (
+        <>
+          <PendingAttestationWarning view={wizard} />
+          <ChoiceFormCard
+            view={current}
+            form={form}
+            secret={secret}
+            errors={errors}
+            onChange={(next) => {
+              setForm(next);
+              setErrors({});
+            }}
+            onSecret={setSecret}
+            onCancel={() => {
+              setEditing(false);
+              setSecret("");
+              write.clear();
+            }}
+            onContinue={continueChoice}
+          />
+          {write.failure && dialog === null ? (
+            <FailureNotice failure={write.failure} orgSlug={orgSlug} />
+          ) : null}
+        </>
+      ) : null}
+
+      {attesting && canWrite ? (
+        <section className="wx-drawer-card" aria-label="Verify the connection">
+          <div className="wx-drawer-card-head">
+            <h3>Verify the connection</h3>
+          </div>
+          <p className="wx-row-sub">
+            Stedi has no safe connection test, so an operator attests what was checked. Name no
+            patient.
+          </p>
+          <TextAreaField
+            label="What was checked, and by whom"
+            rows={3}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            error={noteError ?? undefined}
+          />
+          <label className="inline-flex min-h-11 items-center gap-2">
+            <input
+              type="checkbox"
+              className="size-5"
+              checked={notePhiFree}
+              onChange={(e) => setNotePhiFree(e.target.checked)}
+            />
+            This note names no patient information
+          </label>
+          <div className="wx-drawer-actions">
+            <Button
+              tone="secondary"
+              onClick={() => {
+                setAttesting(false);
+                setNote("");
+                setNotePhiFree(false);
+                setNoteError(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={askToAttest}>Continue</Button>
+          </div>
+        </section>
+      ) : null}
+
+      <RecordSaveDialog
+        open={dialog === "choose" && current !== null}
+        title={
+          current?.vendor !== null && current?.source === "tenant"
+            ? "Change the clearinghouse"
+            : "Choose the clearinghouse"
+        }
+        description={current ? consequenceOf(current, form) : undefined}
+        confirmLabel="Save"
+        write={write}
+        orgSlug={orgSlug}
+        onReverify={() => stashStepUpDraft(draftKey(orgSlug), { form })}
+        onConfirm={(reason) => void choose(reason)}
+        onCancel={() => {
+          write.clear();
+          setDialog(null);
+        }}
+      />
+      <RecordSaveDialog
+        open={dialog === "verify"}
+        title={
+          current?.verifiableBy === "attestation"
+            ? "Attest the connection"
+            : "Run the connection test"
+        }
+        description={
+          current?.verifiableBy === "attestation"
+            ? "Records your note as the evidence that the connection works."
+            : "Sends a no-patient test request to the vendor with the tenant's credential."
+        }
+        confirmLabel={current?.verifiableBy === "attestation" ? "Attest" : "Run test"}
+        write={write}
+        orgSlug={orgSlug}
+        onConfirm={(reason) => void verifyConnection(reason)}
+        onCancel={closeDialog}
+      />
+      <RecordSaveDialog
+        open={dialog === "activate"}
+        title="Activate the clearinghouse"
+        description="Claims and eligibility work can go out through this clearinghouse once it is active."
+        confirmLabel="Activate"
+        write={write}
+        orgSlug={orgSlug}
+        onConfirm={(reason) => void activate(reason)}
+        onCancel={closeDialog}
+      />
+      <RecordSaveDialog
+        open={dialog === "baa" && baaToVerify !== null}
+        title="Verify the vendor BAA"
+        description="Confirm you have seen the signed agreement this record points to."
+        confirmLabel="Verify BAA"
+        stale={staleBaa}
+        record={
+          baaToVerify
+            ? [
+                { label: "Vendor", value: VENDOR_LABEL[current?.vendor ?? ""] ?? "The vendor" },
+                { label: "Document", value: baaToVerify.documentRef },
+                { label: "Effective", value: baaToVerify.effectiveDate },
+                {
+                  label: "Recorded by the tenant",
+                  value: new Date(baaToVerify.recordedAt).toLocaleString(),
+                },
+              ]
+            : undefined
+        }
+        write={write}
+        orgSlug={orgSlug}
+        onConfirm={(reason) => void verifyBaa(reason)}
+        onCancel={closeDialog}
+      />
+    </StepFrame>
+  );
+}
