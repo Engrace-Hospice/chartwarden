@@ -25,6 +25,7 @@ import type {
   BereavementRiskEvidence,
   BereavementRosterEvidence,
   DerivedRiskFactors,
+  ManualRiskFactors,
 } from "@chartwarden/bereavement";
 import { deriveRiskFactors } from "@chartwarden/bereavement";
 import type {
@@ -59,6 +60,8 @@ export interface RiskExtractionInput {
   readonly roster: BereavementRosterEvidence;
   /** §7.13 — false when M15's SQL filter already removed the SUD findings from this reader's view. */
   readonly sudDisclosureAllowed: boolean;
+  /** ADR-0109 D5 — the human-stated factors (sticky prior + carried draft + this request's), merged "true wins" by the derivation. */
+  readonly manualFactors?: ManualRiskFactors;
 }
 
 /** The evidence plus the per-source read outcome, so the caller can tell "no finding" from "no answer". */
@@ -88,6 +91,7 @@ export async function gatherRiskEvidence(input: RiskExtractionInput): Promise<Ri
       ppsPoints: pps,
       roster: input.roster,
       sudDisclosureAllowed: input.sudDisclosureAllowed,
+      ...(input.manualFactors === undefined ? {} : { manualFactors: input.manualFactors }),
     },
   };
 }

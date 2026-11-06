@@ -742,6 +742,7 @@ export const MODULES: ModuleDef[] = [
       "bereavement_plan_closure",
       "bereavement_risk_score",
       "bereavement_idg_risk_flag",
+      "bereavement_assessment_task",
       "tenant_bereavement_external_source_gate_override",
     ],
   },

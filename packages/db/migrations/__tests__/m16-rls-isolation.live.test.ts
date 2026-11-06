@@ -59,6 +59,7 @@ type SeedIds = {
   optOut: string;
   gateOverride: string;
   idgRiskFlag: string;
+  assessmentTask: string;
 };
 
 /** The 9 manifest-owned M16 tables, each with the seeded row the isolation case looks for. */
@@ -73,6 +74,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "bereavement_opt_out", key: "optOut" },
   { table: "tenant_bereavement_external_source_gate_override", key: "gateOverride" },
   { table: "bereavement_idg_risk_flag", key: "idgRiskFlag" },
+  { table: "bereavement_assessment_task", key: "assessmentTask" },
 ];
 
 describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -229,6 +231,15 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
         ],
       )
     ).rows[0].id as string;
+    const assessmentTask = (
+      await db.query(
+        `INSERT INTO bereavement_assessment_task (organization_id, provider_entity_id, location_id, plan_id,
+           bereaved_contact_id, task_kind, status, due_at, late_grace_until)
+         VALUES ($1,$2,$3,$4,$5,'initial_assessment','scheduled', now() + interval '2 days',
+           now() + interval '9 days') RETURNING id`,
+        [org, pe, location, plan, contact],
+      )
+    ).rows[0].id as string;
     return {
       pe,
       location,
@@ -242,6 +253,7 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       optOut,
       gateOverride,
       idgRiskFlag,
+      assessmentTask,
     };
   }
 
@@ -274,6 +286,7 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
     const rls = [
       "0102_bereavement_m16_rls_audit_triggers.sql",
       "0168_idg_downstream_consumer_projections.sql",
+      "1342_m16_assessment_task.sql",
     ]
       .map((file) => readFileSync(join(MIGRATIONS_DIR, file), "utf8"))
       .join("\n");
@@ -393,6 +406,37 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       a.risk,
     ]);
     expect(check.rows[0].rule_tier).toBe("moderate");
+  });
+
+  it("an assessment task is `completed` only with the human score and instant that completed it (CHECK)", async () => {
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query("UPDATE bereavement_assessment_task SET status = 'completed' WHERE id=$1", [
+          a.assessmentTask,
+        ]),
+      ),
+    ).rejects.toThrow(/berv_assessment_task_completion_chk/);
+    const done = await withOrg(ORG_A, () =>
+      db.query(
+        `UPDATE bereavement_assessment_task SET status = 'completed', completed_at = now(), risk_score_id = $2
+         WHERE id=$1`,
+        [a.assessmentTask, a.risk],
+      ),
+    );
+    expect(done.rowCount).toBe(1);
+  });
+
+  it("the assessment-task ledger holds one checkpoint of each kind per contact", async () => {
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO bereavement_assessment_task (organization_id, provider_entity_id, plan_id,
+             bereaved_contact_id, task_kind, due_at, late_grace_until)
+           VALUES ($1,$2,$3,$4,'initial_assessment', now(), now())`,
+          [ORG_A, a.pe, a.plan, a.contact],
+        ),
+      ),
+    ).rejects.toThrow(/berv_assessment_task_contact_kind_uniq/);
   });
 
   it("chartwarden_app holds no DELETE on the M16 tables — destruction runs through the eraser (§8.5)", async () => {

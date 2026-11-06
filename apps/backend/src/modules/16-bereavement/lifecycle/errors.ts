@@ -75,6 +75,10 @@ export const M16_ERROR_STATUS = {
   /** §4.6 — the Layer-2 write-back found no deterministic row to narrate. It refuses rather than appending an
    *  `llm_augmented` row whose `rule_tier` came from nowhere (M16-T05). */
   RISK_SCORE_NOT_FOUND: 404,
+  // ADR-0109 D3 — the assessment-task ledger (a human-appended score completes a checkpoint)
+  ASSESSMENT_TASK_NOT_FOUND: 404,
+  ASSESSMENT_TASK_NOT_OPEN: 409,
+  ASSESSMENT_TASK_CONTACT_MISMATCH: 422,
   // Optimistic concurrency (§2.5)
   STALE_VERSION: 412,
   // Structural — an event dispatched from a state that does not accept it (§2.2–§2.4 graphs).

@@ -43,6 +43,7 @@ import {
 } from "../src/modules/16-bereavement/index";
 import type {
   BereavedContactRowView,
+  BereavementAssessmentTaskView,
   BereavementClosureView,
   BereavementContactLogView,
   BereavementOutreachRowView,
@@ -54,6 +55,7 @@ import type {
   PlanActivationView,
   ScheduleRegenerationView,
 } from "../src/modules/16-bereavement/routes/index";
+import type { RecomputeRiskInput } from "../src/modules/16-bereavement/routes/write-service";
 
 // ── the M2 header-auth test shim (the M11/M40 `orders-routes.test.ts` / `mdm-routes.test.ts` precedent) ──
 // Extended with `x-test-membership` / `x-test-session-class` / `x-test-portal-account`, because M16's
@@ -172,6 +174,8 @@ function createFakeBackend() {
   const outreach = new Map<string, OutreachRecord>();
   const contactLogs: BereavementContactLogView[] = [];
   const riskScores: BereavementRiskScoreView[] = [];
+  const assessmentTasks: BereavementAssessmentTaskView[] = [];
+  const recomputeInputs: RecomputeRiskInput[] = [];
 
   function seedPlan(overrides: Partial<PlanRecord> = {}): PlanRecord {
     const planId = overrides.planId ?? fakeId();
@@ -392,6 +396,13 @@ function createFakeBackend() {
       if (!p) return null;
       const rows = riskScores.filter((r) => r.planId === planId);
       return { data: rows, next_cursor: null, has_more: false };
+    },
+    async listAssessmentTasks(_actor, planId) {
+      if (!plans.has(planId)) return null;
+      return {
+        items: assessmentTasks.filter((t) => t.planId === planId),
+        redactedCategories: [],
+      };
     },
     async counselorDashboard(actor, query) {
       const mine = [...plans.values()].filter(
@@ -704,6 +715,7 @@ function createFakeBackend() {
     async recomputeRisk(actor, planId, input) {
       const p = plans.get(planId);
       if (!p) throw new NotFoundError("bereavement plan not found");
+      recomputeInputs.push(input);
       const score: BereavementRiskScoreView = {
         scoreId: fakeId(),
         planId,
@@ -802,7 +814,16 @@ function createFakeBackend() {
     },
   };
 
-  return { readService, writeService, resolver, seedPlan, seedContact, seedOutreach };
+  return {
+    readService,
+    writeService,
+    resolver,
+    seedPlan,
+    seedContact,
+    seedOutreach,
+    assessmentTasks,
+    recomputeInputs,
+  };
 }
 
 type FakeBackend = ReturnType<typeof createFakeBackend>;
@@ -1324,6 +1345,170 @@ describe("M16 §4.1 routes 27–29 — schedule regeneration + risk", () => {
     expect(history.statusCode).toBe(200);
     expect(history.json().data.length).toBeGreaterThan(0);
 
+    await app.close();
+  });
+});
+
+// ── route 28 (the honored `factors`) + route 37 (assessment tasks) — ADR-0109 D3 / D5 ───────────────────
+
+const EIGHT_FACTORS = {
+  ambivalent_relationship: true,
+  sudden_unexpected_death: "unknown",
+  prior_unresolved_loss: false,
+  preexisting_mental_health: "unknown",
+  social_isolation: true,
+  financial_strain: "unknown",
+  primary_caregiver_role: false,
+  active_substance_use: "unknown",
+} as const;
+
+describe("M16 §4.1 route 28 — recompute-risk honors `factors` and names an assessment task", () => {
+  const url = (planId: string) => `/api/v1/bereavement/plans/${planId}/recompute-risk`;
+
+  it("maps the wire factors onto the service input and passes the task, screen totals and contact through", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const contact = backend.seedContact(plan.planId);
+    const taskId = "77777777-7777-4777-8777-777777777778";
+
+    const res = await app.inject({
+      method: "POST",
+      url: url(plan.planId),
+      headers: { ...COUNSELOR, "idempotency-key": "rr-factors" },
+      payload: {
+        bereavedContactId: contact.contactId,
+        assessmentTaskId: taskId,
+        factors: { ...EIGHT_FACTORS, pg13_score: 31, ipgr_score: 12, notes: "not stored" },
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(backend.recomputeInputs.at(-1)).toEqual({
+      bereavedContactId: contact.contactId,
+      assessmentTaskId: taskId,
+      manualFactors: {
+        ambivalentRelationship: true,
+        suddenUnexpectedDeath: "unknown",
+        priorUnresolvedLoss: false,
+        preExistingMentalHealth: "unknown",
+        socialIsolation: true,
+        financialStrain: "unknown",
+        primaryCaregiverRole: false,
+        activeSubstanceUse: "unknown",
+      },
+      pg13Score: 31,
+      ipgrScore: 12,
+    });
+    await app.close();
+  });
+
+  it("passes no manual factors when the body carries none", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const res = await app.inject({
+      method: "POST",
+      url: url(plan.planId),
+      headers: { ...COUNSELOR, "idempotency-key": "rr-none" },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(201);
+    expect(backend.recomputeInputs.at(-1)).toEqual({});
+    await app.close();
+  });
+
+  it.each([
+    ["a factor missing from the eight", { factors: { ambivalent_relationship: true } }],
+    [
+      "a factor that is not tri-state",
+      { factors: { ...EIGHT_FACTORS, financial_strain: "maybe" } },
+    ],
+    ["a screen total out of range", { factors: { ...EIGHT_FACTORS, pg13_score: 99 } }],
+    ["an assessment task id that is not a uuid", { assessmentTaskId: "task-1" }],
+  ])("rejects %s with a TypeBox 422", async (_name, payload) => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const res = await app.inject({
+      method: "POST",
+      url: url(plan.planId),
+      headers: { ...COUNSELOR, "idempotency-key": "rr-bad" },
+      payload,
+    });
+    expect(res.statusCode).toBe(422);
+    expect(backend.recomputeInputs).toHaveLength(0);
+    await app.close();
+  });
+
+  it("requires an Idempotency-Key (400)", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const res = await app.inject({
+      method: "POST",
+      url: url(plan.planId),
+      headers: COUNSELOR,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+});
+
+describe("M16 §4.1 route 37 — GET /plans/:planId/assessment-tasks", () => {
+  const url = (planId: string) => `/api/v1/bereavement/plans/${planId}/assessment-tasks`;
+  const task = (planId: string): BereavementAssessmentTaskView => ({
+    taskId: "88888888-8888-4888-8888-888888888881",
+    planId: planId as never,
+    contactId: "99999999-9999-4999-8999-999999999991" as never,
+    taskKind: "initial_assessment",
+    status: "scheduled",
+    dueAt: NOW as never,
+    lateGraceUntil: NOW as never,
+    completedAt: null,
+    completedByMembershipId: null,
+    riskScoreId: null,
+    assigneeUserId: null,
+    version: 0,
+  });
+
+  it("the plan's counselor reads the checkpoints", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    backend.assessmentTasks.push(task(plan.planId));
+    const res = await app.inject({ method: "GET", url: url(plan.planId), headers: COUNSELOR });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items).toHaveLength(1);
+    expect(res.json().items[0]).toMatchObject({
+      taskKind: "initial_assessment",
+      status: "scheduled",
+    });
+    await app.close();
+  });
+
+  it("oversight reads a plan it does not hold", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const res = await app.inject({ method: "GET", url: url(plan.planId), headers: SUPERVISOR });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("a counselor outside the plan window 404s, and an unknown plan 404s (nothing about who died leaks)", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: SUPERVISOR_ID });
+    const other = await app.inject({ method: "GET", url: url(plan.planId), headers: COUNSELOR });
+    expect(other.statusCode).toBe(404);
+    const unknown = await app.inject({
+      method: "GET",
+      url: url("00000000-0000-4000-8000-00000000dead"),
+      headers: SUPERVISOR,
+    });
+    expect(unknown.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("is refused without bereavement.risk.read (403)", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const res = await app.inject({ method: "GET", url: url(plan.planId), headers: NO_PERMS });
+    expect(res.statusCode).toBe(403);
     await app.close();
   });
 });

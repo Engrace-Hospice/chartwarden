@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import {
@@ -93,6 +93,28 @@ describe.skipIf(!DB_URL)("GAP-048 — M16 §4.9 cron workers, LIVE", () => {
          FROM bereavement_plan p WHERE p.id=$3
        RETURNING id`,
       [org, providerEntity[org], planId, contactId, dueDays],
+    );
+    return rows[0].id as string;
+  }
+
+  /** ADR-0109 D3 — an assessment checkpoint: `due = death + dueDays`, `grace = due + 7d`. */
+  async function seedTask(
+    org: string,
+    planId: string,
+    contactId: string,
+    dueDays: number,
+    taskKind = "initial_assessment",
+    status = "scheduled",
+  ): Promise<string> {
+    const { rows } = await admin.query(
+      `INSERT INTO bereavement_assessment_task
+         (organization_id, provider_entity_id, plan_id, bereaved_contact_id, task_kind, status, due_at, late_grace_until)
+       SELECT $1,$2,p.id,$4,$6,$7,
+              p.death_date::timestamptz + make_interval(days => $5),
+              p.death_date::timestamptz + make_interval(days => $5 + 7)
+         FROM bereavement_plan p WHERE p.id=$3
+       RETURNING id`,
+      [org, providerEntity[org], planId, contactId, dueDays, taskKind, status],
     );
     return rows[0].id as string;
   }
@@ -419,6 +441,75 @@ describe.skipIf(!DB_URL)("GAP-048 — M16 §4.9 cron workers, LIVE", () => {
       } finally {
         deps.now = () => new Date();
       }
+    });
+  });
+
+  describe("m16-miss-deadline — assessment checkpoints (ADR-0109 D3)", () => {
+    const taskStatus = async (id: string) =>
+      (
+        await one<{ status: string }>(
+          "SELECT status FROM bereavement_assessment_task WHERE id=$1",
+          [id],
+        )
+      ).status;
+    let emitted: { organizationId: string; kind: string; payload: Record<string, unknown> }[] = [];
+    let baseDeps: M16WorkerDeps;
+    beforeEach(() => {
+      emitted = [];
+      baseDeps = deps;
+      deps = { ...baseDeps, alerts: { emit: async (alert) => void emitted.push(alert as never) } };
+    });
+    afterEach(() => {
+      deps = baseDeps;
+    });
+
+    it("marks a checkpoint past its late grace missed and raises risk_assessment_overdue once", async () => {
+      const plan = await seedPlan(ORG, "CURRENT_DATE - interval '60 days'");
+      const contact = await seedContact(ORG, plan);
+      const overdue = await seedTask(ORG, plan, contact, 30); // grace ended 23 days ago
+      const inGrace = await seedTask(ORG, plan, contact, 55, "midpoint_reassessment"); // grace still open
+
+      const first = await runMissDeadlineCron(deps);
+      expect(first.assessmentsMissed).toBeGreaterThanOrEqual(1);
+      expect(await taskStatus(overdue)).toBe("missed");
+      expect(await taskStatus(inGrace)).toBe("scheduled");
+
+      const mine = emitted.filter((a) => a.payload.taskId === overdue);
+      expect(mine).toHaveLength(1);
+      expect(mine[0]).toMatchObject({
+        organizationId: ORG,
+        kind: "risk_assessment_overdue",
+        payload: { planId: plan, contactId: contact, taskKind: "initial_assessment" },
+      });
+
+      // Idempotent: the task is no longer `scheduled`, so a second tick raises nothing new.
+      await runMissDeadlineCron(deps);
+      expect(emitted.filter((a) => a.payload.taskId === overdue)).toHaveLength(1);
+    });
+
+    it("does not miss a checkpoint of a paused plan, of an opted-out contact, or one already completed", async () => {
+      const paused = await seedPlan(ORG, "CURRENT_DATE - interval '60 days'", { status: "paused" });
+      const pausedTask = await seedTask(ORG, paused, await seedContact(ORG, paused), 30);
+
+      const plan = await seedPlan(ORG, "CURRENT_DATE - interval '60 days'");
+      const gone = await seedContact(ORG, plan);
+      await admin.query("UPDATE bereaved_contact SET status='opted_out' WHERE id=$1", [gone]);
+      const goneTask = await seedTask(ORG, plan, gone, 30);
+
+      await runMissDeadlineCron(deps);
+      expect(await taskStatus(pausedTask)).toBe("scheduled");
+      expect(await taskStatus(goneTask)).toBe("scheduled");
+      expect(
+        emitted.filter((a) => [pausedTask, goneTask].includes(a.payload.taskId as string)),
+      ).toEqual([]);
+    });
+
+    it("tenant-scopes the pass: org B's overdue checkpoint is missed under org B", async () => {
+      const planB = await seedPlan(ORG_B, "CURRENT_DATE - interval '60 days'");
+      const taskB = await seedTask(ORG_B, planB, await seedContact(ORG_B, planB), 30);
+      await runMissDeadlineCron(deps);
+      expect(await taskStatus(taskB)).toBe("missed");
+      expect(emitted.find((a) => a.payload.taskId === taskB)?.organizationId).toBe(ORG_B);
     });
   });
 

@@ -155,6 +155,8 @@ const MODULES: ReadonlyArray<{
       "packages/db/migrations/0102_bereavement_m16_rls_audit_triggers.sql",
       "packages/db/migrations/0168_idg_downstream_consumer_projections.sql",
       "packages/db/migrations/0338_m16_early_close_pending_request.sql",
+      // ADR-0109 D3 — the assessment-task ledger (no free text, so an empty scrub list).
+      "packages/db/migrations/1342_m16_assessment_task.sql",
     ],
   },
   {

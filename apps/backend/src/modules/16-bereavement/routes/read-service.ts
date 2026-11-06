@@ -197,6 +197,29 @@ export interface BereavementRiskScoreView {
   readonly redactedCategories: readonly BereavementRedactedCategory[];
 }
 
+/** ADR-0109 D3 / route 37 — one assessment checkpoint (initial d28, midpoint d180) of one bereaved contact. */
+export interface BereavementAssessmentTaskView {
+  readonly taskId: string;
+  readonly planId: BereavementPlanId;
+  readonly contactId: BereavedContactId;
+  readonly taskKind: "initial_assessment" | "midpoint_reassessment";
+  readonly status: "scheduled" | "completed" | "missed" | "cancelled";
+  readonly dueAt: IsoInstant;
+  readonly lateGraceUntil: IsoInstant;
+  readonly completedAt: IsoInstant | null;
+  readonly completedByMembershipId: MembershipId | null;
+  /** The human-appended score that completed the task; null until completed. */
+  readonly riskScoreId: BereavementRiskScoreId | null;
+  readonly assigneeUserId: MembershipId | null;
+  readonly version: number;
+}
+
+/** Route 37 — the plan's assessment checkpoints. Empty (with the category named) when D10 withheld clinical content. */
+export interface BereavementAssessmentTaskList {
+  readonly items: readonly BereavementAssessmentTaskView[];
+  readonly redactedCategories: readonly BereavementRedactedCategory[];
+}
+
 /** Route 30 — the counselor's own caseload plus what is coming due. */
 export interface CounselorDashboardView {
   readonly counselorUserId: MembershipId;
@@ -246,6 +269,11 @@ export interface M16ReadService {
     planId: string,
     query: RiskScoreListQuery,
   ): Promise<CursorPage<BereavementRiskScoreView> | null>;
+  /** Route 37 — the plan's assessment checkpoints (ADR-0109 D3), due-date order. `null` = plan absent / out of reach. */
+  listAssessmentTasks(
+    actor: M16ReadActor,
+    planId: string,
+  ): Promise<BereavementAssessmentTaskList | null>;
   counselorDashboard(
     actor: M16ReadActor,
     query: CounselorDashboardQuery,

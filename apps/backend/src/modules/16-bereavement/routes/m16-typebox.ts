@@ -198,6 +198,22 @@ export const OptOutSourceKind = Type.Union([
 /** The tri-state a §4.2 `RiskFactorsInput` factor carries (D17 — `unknown` is a real answer). */
 const TriState = Type.Union([Type.Boolean(), Type.Literal("unknown")]);
 
+/**
+ * The eight D17 risk factors, tri-state, under the §4.2 wire keys. ONE schema for both request shapes that carry a
+ * human-stated factor vector — route 28's `factors` and the pre-death draft (ADR-0109 D5) — so they cannot drift. The
+ * keys are `RISK_FACTOR_WIRE_KEYS` in `@chartwarden/bereavement`; no free text lives here.
+ */
+export const RiskFactorsTriStateSchema = Type.Object({
+  ambivalent_relationship: TriState,
+  sudden_unexpected_death: TriState,
+  prior_unresolved_loss: TriState,
+  preexisting_mental_health: TriState,
+  social_isolation: TriState,
+  financial_strain: TriState,
+  primary_caregiver_role: TriState,
+  active_substance_use: TriState,
+});
+
 // ── path params ─────────────────────────────────────────────────────────────────────────────────────
 
 export const PlanParams = Type.Object({ planId: Uuid });
@@ -412,23 +428,21 @@ export const RegenerateScheduleBody = Type.Object({
   fromAt: Type.Optional(Instant),
 });
 
-/** Route 28 — §4.2 `RiskFactorsInput` verbatim, plus the D8 override fields §7.3 requires. */
+/** Route 28 — §4.2 `RiskFactorsInput` verbatim (the eight factors + the screen totals), plus the D8 override fields §7.3
+ *  requires and the ADR-0109 D3 assessment checkpoint this human-appended score completes. `factors` is honored: it merges
+ *  into the score with "true wins" (it never lowers a derived `true`). `notes` is accepted and not stored. */
 export const RecomputeRiskBody = Type.Object({
   bereavedContactId: Type.Optional(Uuid),
+  assessmentTaskId: Type.Optional(Uuid),
   factors: Type.Optional(
-    Type.Object({
-      ambivalent_relationship: TriState,
-      sudden_unexpected_death: TriState,
-      prior_unresolved_loss: TriState,
-      preexisting_mental_health: TriState,
-      social_isolation: TriState,
-      financial_strain: TriState,
-      primary_caregiver_role: TriState,
-      active_substance_use: TriState,
-      pg13_score: Type.Optional(Type.Number()),
-      ipgr_score: Type.Optional(Type.Number()),
-      notes: Type.Optional(Type.String({ maxLength: 8000 })),
-    }),
+    Type.Composite([
+      RiskFactorsTriStateSchema,
+      Type.Object({
+        pg13_score: Type.Optional(Type.Integer({ minimum: 0, maximum: 52 })),
+        ipgr_score: Type.Optional(Type.Integer({ minimum: 0, maximum: 200 })),
+        notes: Type.Optional(Type.String({ maxLength: 8000 })),
+      }),
+    ]),
   ),
   requestAugmentation: Type.Optional(Type.Boolean()),
   /** §7.3 — a counselor override needs BOTH the tier it lands on and a ≥40-char documented reason. */
@@ -688,6 +702,33 @@ export const BereavementRiskScoreViewResponseSchema = Type.Object({
   pg13Score: Nullable(Type.Number()),
   ipgrScore: Nullable(Type.Number()),
   evidenceDegraded: Bool,
+  redactedCategories: Type.Array(RedactedCategory),
+});
+
+/** Route 37 — one assessment checkpoint of one bereaved contact (ADR-0109 D3). */
+export const BereavementAssessmentTaskViewResponseSchema = Type.Object({
+  taskId: Str,
+  planId: Str,
+  contactId: Str,
+  taskKind: Type.Union([Type.Literal("initial_assessment"), Type.Literal("midpoint_reassessment")]),
+  status: Type.Union([
+    Type.Literal("scheduled"),
+    Type.Literal("completed"),
+    Type.Literal("missed"),
+    Type.Literal("cancelled"),
+  ]),
+  dueAt: Str,
+  lateGraceUntil: Str,
+  completedAt: Nullable(Str),
+  completedByMembershipId: Nullable(Str),
+  riskScoreId: Nullable(Str),
+  assigneeUserId: Nullable(Str),
+  version: Int,
+});
+
+/** Route 37 — the plan's checkpoints; empty (the category named) when D10 withheld clinical content. */
+export const BereavementAssessmentTaskListResponseSchema = Type.Object({
+  items: Type.Array(BereavementAssessmentTaskViewResponseSchema),
   redactedCategories: Type.Array(RedactedCategory),
 });
 
