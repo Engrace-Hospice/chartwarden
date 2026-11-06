@@ -33,7 +33,12 @@ describe("clearinghouseStateFor", () => {
   it("is bound for a legacy single-binding deployment and for an org with a live vendor", async () => {
     expect(await clearinghouseStateFor({}, ORG)).toEqual({ state: "bound" });
     const live: ClearinghouseBinding = { vendor: "stedi", transport: new InMemoryClearinghouse() };
-    expect(await clearinghouseStateFor(transportDeps(() => live), ORG)).toEqual({
+    expect(
+      await clearinghouseStateFor(
+        transportDeps(() => live),
+        ORG,
+      ),
+    ).toEqual({
       state: "bound",
     });
   });
