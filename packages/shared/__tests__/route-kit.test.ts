@@ -13,10 +13,12 @@ import {
   isKeysetCursor,
   isUniqueViolation,
   membershipActorOf,
+  membershipIdOf,
   pageQuery,
   rejectAiActor,
   requireIdempotencyKey,
   requireIfMatch,
+  targetStr,
   uniqueViolationConstraint,
   writeActorOf,
 } from "../src/route-kit";
@@ -146,5 +148,19 @@ describe("route-kit db helpers", () => {
   it("firstOrThrow is a 500 on an empty result unless told otherwise", () => {
     expect(firstOrThrow([1], "m")).toBe(1);
     expect(() => firstOrThrow([], "m")).toThrow(expect.objectContaining({ statusCode: 500 }));
+  });
+});
+
+describe("route-kit abac reads", () => {
+  it("targetStr returns the first non-empty string field, else null", () => {
+    expect(targetStr({ a: "", b: "x", c: "y" }, "a", "b", "c")).toBe("x");
+    expect(targetStr({ a: 3 }, "a")).toBeNull();
+    expect(targetStr({}, "a")).toBeNull();
+  });
+
+  it("membershipIdOf reads only a non-empty string attribute", () => {
+    expect(membershipIdOf({ attributes: { membershipId: "m-1" } })).toBe("m-1");
+    expect(membershipIdOf({ attributes: { membershipId: "" } })).toBeNull();
+    expect(membershipIdOf({})).toBeNull();
   });
 });
