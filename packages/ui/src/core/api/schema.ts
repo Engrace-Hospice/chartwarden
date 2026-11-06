@@ -92875,6 +92875,8 @@ export interface operations {
                     clinicKey?: string;
                     /** @description Write-only. Platform support may set the clinic's own Subscription-Key; a tenant administrator may only rotate one that was set. */
                     subscriptionKey?: string;
+                    /** @description Attests that this clinic has NO Subscription-Key of its own (the platform's is used), so a new clinic key can be sealed alone: the repair for a registration whose stored credential cannot be opened. Contradicts a subscriptionKey in the same call. */
+                    usePlatformSubscriptionKey?: boolean;
                     /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
                     reason: string;
                 };
@@ -110809,6 +110811,8 @@ export interface operations {
                     clinicKey?: string;
                     /** @description The DoseSpot Subscription-Key, when the clinic has its own. Write-only. Platform support may set it; a tenant administrator may only rotate one that platform support set. */
                     subscriptionKey?: string;
+                    /** @description Platform support only: attests that this clinic has NO Subscription-Key of its own (the platform's is used), so a new clinic key can be sealed alone, which is how a registration whose stored credential cannot be opened is repaired. Recorded on the audit row as a changed field; contradicts a subscriptionKey in the same call. */
+                    usePlatformSubscriptionKey?: boolean;
                 };
             };
         };

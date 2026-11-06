@@ -340,6 +340,87 @@ describe("an unopenable stored envelope refuses a PARTIAL rotation (it would sil
     }
   });
 
+  describe("platform repair of a clinic that has no Subscription-Key of its own", () => {
+    async function brokenWithoutOwnKey() {
+      const h = build({ env: withPlatformKey });
+      await putFull(h); // no per-clinic Subscription-Key: the platform's is used
+      await h.store.update(ORG, h.store.rows()[0]?.version ?? 1, {
+        secretCipher: "v1.AAAA.AAAA.AAAA",
+      });
+      return h;
+    }
+    const NEW_KEY = "a-new-clinic-key-eeee5555";
+
+    it("the platform lane re-seals the clinic key ALONE when it attests the clinic uses the platform's Subscription-Key", async () => {
+      const h = await brokenWithoutOwnKey();
+      const out = await h.service.put(
+        h.store,
+        OPS,
+        { ...BASE, clinicKey: NEW_KEY, usePlatformSubscriptionKey: true },
+        h.store.rows()[0]?.version,
+      );
+      expect(out.view.status).toBe("registered"); // what the old key earned is gone: it must be re-tested
+      expect(out.changedFields).toEqual(["clinicKey", "subscriptionKey"]); // names only: the attestation is on the audit row
+      const plan = await h.service.prepareVerify(h.store, OPS);
+      expect(plan.config).toMatchObject({
+        clinicKey: NEW_KEY,
+        subscriptionKey: "platform-sandbox-sub-key", // the platform's own, not an invented one
+      });
+    });
+
+    it("over a READABLE envelope the attestation drops the clinic's own Subscription-Key: the platform's is served from then on", async () => {
+      const h = build({ env: withPlatformKey });
+      await putFull(h, { subscriptionKey: SUB_KEY }, OPS); // the clinic had its own
+      await h.service.put(
+        h.store,
+        OPS,
+        { ...BASE, clinicKey: NEW_KEY, usePlatformSubscriptionKey: true },
+        h.store.rows()[0]?.version,
+      );
+      const plan = await h.service.prepareVerify(h.store, OPS);
+      expect(plan.config).toMatchObject({
+        clinicKey: NEW_KEY,
+        subscriptionKey: "platform-sandbox-sub-key",
+      });
+      expect(plan.config.subscriptionKey).not.toBe(SUB_KEY);
+    });
+
+    it("the tenant lane cannot make that attestation (422), and the row is untouched", async () => {
+      const h = await brokenWithoutOwnKey();
+      const before = h.store.rows()[0];
+      await expect(
+        h.service.put(
+          h.store,
+          TENANT,
+          { ...BASE, clinicKey: NEW_KEY, usePlatformSubscriptionKey: true },
+          before?.version,
+        ),
+      ).rejects.toMatchObject({ statusCode: 422 });
+      expect(h.store.rows()[0]).toEqual(before);
+    });
+
+    it("the attestation contradicts a Subscription-Key sent in the same call (422), and needs a clinic key to apply to (422)", async () => {
+      const h = await brokenWithoutOwnKey();
+      const version = h.store.rows()[0]?.version;
+      await expect(
+        h.service.put(
+          h.store,
+          OPS,
+          {
+            ...BASE,
+            clinicKey: NEW_KEY,
+            subscriptionKey: "a-new-sub-key-ffff6666",
+            usePlatformSubscriptionKey: true,
+          },
+          version,
+        ),
+      ).rejects.toMatchObject({ statusCode: 422 });
+      await expect(
+        h.service.put(h.store, OPS, { ...BASE, usePlatformSubscriptionKey: true }, version),
+      ).rejects.toMatchObject({ statusCode: 422 });
+    });
+  });
+
   it("platform support re-entering BOTH keys is a full replace and is accepted", async () => {
     const h = await withBrokenEnvelope();
     const out = await h.service.put(

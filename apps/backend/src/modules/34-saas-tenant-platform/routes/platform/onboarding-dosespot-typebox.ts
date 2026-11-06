@@ -33,6 +33,12 @@ export const OnboardingDoseSpotPutRequest = Type.Object(
           "Write-only. Platform support may set the clinic's own Subscription-Key; a tenant administrator may only rotate one that was set.",
       }),
     ),
+    usePlatformSubscriptionKey: Type.Optional(
+      Type.Boolean({
+        description:
+          "Attests that this clinic has NO Subscription-Key of its own (the platform's is used), so a new clinic key can be sealed alone: the repair for a registration whose stored credential cannot be opened. Contradicts a subscriptionKey in the same call.",
+      }),
+    ),
     reason,
   },
   { additionalProperties: false },

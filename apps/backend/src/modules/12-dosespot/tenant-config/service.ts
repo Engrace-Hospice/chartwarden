@@ -54,6 +54,12 @@ export interface PutClinicInput {
   readonly clinicKey?: string;
   /** Write-only. Ops may set it; the tenant lane may only rotate one that exists. */
   readonly subscriptionKey?: string;
+  /**
+   * Platform lane only: this clinic has NO Subscription-Key of its own (the platform's is used). It lets a new clinic key be sealed
+   * ALONE over an envelope that cannot be opened, where we cannot tell whether it held a Subscription-Key. A false attestation costs
+   * a failed connection test (the row lands on `registered` and must be re-tested), never a silent wrong send.
+   */
+  readonly usePlatformSubscriptionKey?: boolean;
 }
 
 export interface ClinicConfigView {
@@ -363,6 +369,28 @@ export function createDoseSpotClinicService(
     readonly changed: readonly string[];
     readonly keep: boolean;
   }> {
+    const attestsNoOwnKey = input.usePlatformSubscriptionKey === true;
+    if (attestsNoOwnKey && actor.lane !== "platform") {
+      throw invalid(
+        "usePlatformSubscriptionKey",
+        "DOSESPOT_SUBSCRIPTION_KEY_PLATFORM_ONLY",
+        "only platform support can attest that a clinic uses the platform's Subscription-Key",
+      );
+    }
+    if (attestsNoOwnKey && input.subscriptionKey !== undefined) {
+      throw invalid(
+        "usePlatformSubscriptionKey",
+        "DOSESPOT_SUBSCRIPTION_KEY_CONFLICT",
+        "a clinic cannot both have its own Subscription-Key and use the platform's: send one or the other",
+      );
+    }
+    if (attestsNoOwnKey && input.clinicKey === undefined) {
+      throw invalid(
+        "clinicKey",
+        "DOSESPOT_CLINIC_KEY_REQUIRED",
+        "the attestation applies to a new clinic key sent in the same call",
+      );
+    }
     const supplied = input.clinicKey !== undefined || input.subscriptionKey !== undefined;
     const changed: string[] = [];
     // A retarget drops the old key (it is bound to the old target); nothing supplied => nothing carried.
@@ -370,10 +398,13 @@ export function createDoseSpotClinicService(
     // The stored envelope exists but cannot be opened: a PARTIAL change would rebuild the bundle from the new half alone and silently drop
     // whatever the other half was (an ops-set Subscription-Key). Only a caller who supplies BOTH keys is replacing it whole.
     if (existing?.secretCipher && !retargeted && supplied && stored === null) {
-      if (input.clinicKey === undefined || input.subscriptionKey === undefined) {
+      // replacing the envelope WHOLE: both keys, or a new clinic key plus the platform lane's attestation that there was no other
+      const replacesWhole =
+        input.clinicKey !== undefined && (input.subscriptionKey !== undefined || attestsNoOwnKey);
+      if (!replacesWhole) {
         throw new ChartWardenError(
           "DOSESPOT_CREDENTIAL_UNREADABLE",
-          "the stored DoseSpot credential cannot be opened, so it cannot be partly changed. To recover, platform support re-enters it on the platform route (PUT /api/v1/platform/tenants/{slug}/dosespot) with the clinic key AND the Subscription-Key together (for a clinic on the platform's own Subscription-Key, that key's value); a tenant administrator cannot repair it",
+          "the stored DoseSpot credential cannot be opened, so it cannot be partly changed. To recover, platform support re-enters it on the platform route (PUT /api/v1/platform/tenants/{slug}/dosespot) with the clinic key AND the Subscription-Key together, or, for a clinic that has no Subscription-Key of its own, the clinic key alone with usePlatformSubscriptionKey: true; a tenant administrator cannot repair it",
           503,
         );
       }
@@ -413,9 +444,11 @@ export function createDoseSpotClinicService(
         "the clinic id is needed to seal the key against",
       );
     }
-    const subscriptionKey = input.subscriptionKey ?? stored?.subscriptionKey;
+    const subscriptionKey = attestsNoOwnKey
+      ? undefined
+      : (input.subscriptionKey ?? stored?.subscriptionKey);
     if (input.clinicKey !== undefined) changed.push("clinicKey");
-    if (input.subscriptionKey !== undefined) changed.push("subscriptionKey");
+    if (input.subscriptionKey !== undefined || attestsNoOwnKey) changed.push("subscriptionKey");
     return {
       bundle: { clinicKey, ...(subscriptionKey ? { subscriptionKey } : {}) },
       changed,

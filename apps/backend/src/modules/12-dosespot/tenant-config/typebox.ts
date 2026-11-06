@@ -55,6 +55,12 @@ export const PutClinicBodySchema = Type.Object(
           "The DoseSpot Subscription-Key, when the clinic has its own. Write-only. Platform support may set it; a tenant administrator may only rotate one that platform support set.",
       }),
     ),
+    usePlatformSubscriptionKey: Type.Optional(
+      Type.Boolean({
+        description:
+          "Platform support only: attests that this clinic has NO Subscription-Key of its own (the platform's is used), so a new clinic key can be sealed alone, which is how a registration whose stored credential cannot be opened is repaired. Recorded on the audit row as a changed field; contradicts a subscriptionKey in the same call.",
+      }),
+    ),
   },
   { additionalProperties: false },
 );

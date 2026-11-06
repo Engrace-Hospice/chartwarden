@@ -1723,6 +1723,72 @@ describe.skipIf(!DB_URL)(
         expect((await rowOf(ORG_A))?.version).toBe(aVersion);
       });
 
+      it("platform repair: a registration whose stored credential cannot be opened is re-sealed from the clinic key ALONE when the operator attests the clinic uses the platform's Subscription-Key; the tenant lane cannot, and a partial change is a 503", async () => {
+        const NEW_CLINIC_KEY = "clinic-key-plaintext-REPAIRED-6d2f90a1";
+        const sealed = async () => (await rowOf(ORG_B))?.secret_cipher as string;
+        // the clinic uses the platform's Subscription-Key (it never had its own): drop the own one set earlier, on the real key ring
+        await onboardingData.putDoseSpot(
+          operator(),
+          "ds-b",
+          { ...BASE, clinicKey: CLINIC_KEY, usePlatformSubscriptionKey: true },
+          REASON,
+          (await rowOf(ORG_B))?.version,
+        );
+        // the sealed envelope is damaged: nothing can open it, so nobody can tell what it held
+        await admin.query(
+          "UPDATE dosespot_clinic_registration SET secret_cipher='v1.AAAA.AAAA.AAAA' WHERE organization_id=$1",
+          [ORG_B],
+        );
+        const broken = (await rowOf(ORG_B)) as Record<string, any>;
+        // a partial change would silently drop whatever the other half was: refused, row untouched
+        expect(
+          await errorCode(
+            onboardingData.putDoseSpot(
+              operator(),
+              "ds-b",
+              { ...BASE, clinicKey: NEW_CLINIC_KEY },
+              REASON,
+              broken.version,
+            ),
+          ),
+        ).toBe("DOSESPOT_CREDENTIAL_UNREADABLE");
+        // the tenant's own administrator cannot attest it
+        const refused = await route
+          .put(
+            tenantActor(ORG_B),
+            { ...BASE, clinicKey: NEW_CLINIC_KEY, usePlatformSubscriptionKey: true },
+            broken.version,
+          )
+          .catch((e) => e);
+        expect(refused.details?.[0]?.code).toBe("DOSESPOT_SUBSCRIPTION_KEY_PLATFORM_ONLY");
+        expect(await sealed()).toBe("v1.AAAA.AAAA.AAAA");
+        expect((await rowOf(ORG_B))?.version).toBe(broken.version);
+        // the operator's attestation re-seals the clinic key alone: registered, re-testable, and served the PLATFORM's key
+        await onboardingData.putDoseSpot(
+          operator(),
+          "ds-b",
+          { ...BASE, clinicKey: NEW_CLINIC_KEY, usePlatformSubscriptionKey: true },
+          REASON,
+          broken.version,
+        );
+        expect(await rowOf(ORG_B)).toMatchObject({ status: "registered" });
+        expect(await sealed()).not.toBe("v1.AAAA.AAAA.AAAA");
+        probeStatus = 200;
+        const verified = await onboardingData.verifyDoseSpot(operator(), "ds-b", REASON);
+        expect(verified).toMatchObject({ test: { outcome: "ok" } });
+        const mint = fetchLog.filter((c) => c.url.endsWith("/connect/token")).at(-1);
+        expect(mint?.headers["Subscription-Key"]).toBe("platform-sandbox-sub-key");
+        expect(mint?.headers.Authorization).toBe(
+          `Basic ${Buffer.from(`${BASE.clinicId}:${NEW_CLINIC_KEY}`).toString("base64")}`,
+        );
+        // the audit row names what changed (field names only): the attestation is the `subscriptionKey` field, never a value
+        const audit = (await auditRows(ORG_B, "m34.tenant_onboarding.dosespot_set")).at(-1);
+        expect(audit?.context.changedFields).toEqual(["clinicKey", "subscriptionKey"]);
+        expect(JSON.stringify(audit)).not.toContain(NEW_CLINIC_KEY);
+        // leave ORG_B live and ready, as the cases after this one expect
+        await onboardingData.activateDoseSpot(operator(), "ds-b", REASON);
+      });
+
       describe("the port refuses a transaction that is not scoped to the scope's organization", () => {
         const scopeFor = (organizationId: string) => ({
           organizationId,
