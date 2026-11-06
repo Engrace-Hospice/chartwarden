@@ -778,6 +778,8 @@ export function buildDrizzleM16WriteService(
           assigneeUserId: plan.assignedCounselorUserId,
         })),
       )
+      // Migration 1349's (contact, cadence_mark) index: a concurrent fill that lost the race inserts nothing.
+      .onConflictDoNothing()
       .returning();
     for (const row of inserted) {
       await outbox.publish(tx, {
@@ -1231,7 +1233,7 @@ export function buildDrizzleM16WriteService(
       await tx
         .update(OUTREACH)
         .set({ kind, version: sql`${OUTREACH.version} + 1`, updatedAt: new Date(at) })
-        .where(inArray(OUTREACH.id, ids));
+        .where(and(inArray(OUTREACH.id, ids), eq(OUTREACH.status, "scheduled")));
     }
   }
 

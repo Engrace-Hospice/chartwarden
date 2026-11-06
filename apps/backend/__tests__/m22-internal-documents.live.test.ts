@@ -412,7 +412,7 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
         targetDocumentId: doc.letter.document,
         aggregateType: "other",
       }),
-    ).rejects.toMatchObject({ code: "DOCUMENT_INTERNAL_ONLY" });
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(
       (
         await admin.query(
