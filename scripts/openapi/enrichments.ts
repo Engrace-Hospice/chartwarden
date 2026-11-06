@@ -15484,6 +15484,7 @@ import {
   OnboardingNoticeWithdrawalViewSchema as M34OnboardingNoticeWithdrawalViewSchema,
   OnboardingReasonSchema as M34OnboardingReasonSchema,
 } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-typebox";
+import { EXTERNAL_NOTICE_FILING_LIST_CAP } from "../../packages/types/src/notice-filing-list";
 
 const CLEARINGHOUSE_IF_MATCH_HEADERS = {
   ...IDEMPOTENCY_KEY_HEADER,
@@ -15573,8 +15574,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34OnboardingClearinghouseViewSchema,
   },
   "GET /api/v1/platform/tenants/:orgSlug/notice-filings": {
-    summary:
-      "The NOEs and NOTRs a tenant recorded as filed outside ChartWarden, newest record first (capped at 200, `truncated` says so): notice kind and id, its state, deadline and breach dates, the date the tenant filed and the `recordedAt` a withdrawal must pin with If-Match; no patient, admission or control number. An audited read on the tenant's own RLS scope, not gated on its onboarding status. tenant_onboarding_data.read_platform + the platform_ops role",
+    summary: `The NOEs and NOTRs a tenant recorded as filed outside ChartWarden, newest record first (capped at ${EXTERNAL_NOTICE_FILING_LIST_CAP}, \`truncated\` says so): notice kind and id, its state, deadline and breach dates, the date the tenant filed and the \`recordedAt\` a withdrawal must pin with If-Match; no patient, admission or control number. An audited read on the tenant's own RLS scope, not gated on its onboarding status. tenant_onboarding_data.read_platform + the platform_ops role`,
     response: M34OnboardingNoticeFilingListSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/noe-records/:id/withdraw-external-filing": {

@@ -32,6 +32,7 @@ export * from "./safety";
 export * from "./ai-platform";
 export * from "./fhir";
 export * from "./external-interfaces";
+export * from "./notice-filing-list";
 export * from "./scheduling";
 export * from "./evv";
 export * from "./documents";

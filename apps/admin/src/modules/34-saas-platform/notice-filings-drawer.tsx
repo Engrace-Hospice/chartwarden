@@ -1,3 +1,4 @@
+import { EXTERNAL_NOTICE_FILING_LIST_CAP } from "@chartwarden/types";
 // apps/admin/src/modules/34-saas-platform — the notices a tenant recorded as "filed outside ChartWarden" (NOEs and NOTRs), and the
 // operator's way to take a mistaken or false record back. The tenant cannot undo such a record and a cancel refuses to hide a notice that
 // is on file with Medicare, so without this a wrong record would be permanent. The withdrawal is PINNED to the record the operator read
@@ -28,8 +29,6 @@ const NOE_WITHDRAW = "/api/v1/platform/tenants/{orgSlug}/noe-records/{id}/withdr
 const NOTR_WITHDRAW =
   "/api/v1/platform/tenants/{orgSlug}/notr-records/{id}/withdraw-external-filing";
 const KIND_LABEL = { noe: "NOE", notr: "NOTR" } as const;
-/** The list the server returns is cut at this many of the newest records. */
-const LIST_CAP = 200;
 
 const when = (iso: string | null): string => (iso ? new Date(iso).toLocaleString() : "unknown");
 const filedOn = (f: Filing): string => f.filedOn ?? "an unknown date";
@@ -157,7 +156,8 @@ export function NoticeFilingsDrawer({
         ) : null}
         {list.data?.truncated ? (
           <InlineAlert tone="info">
-            Showing the most recent {LIST_CAP} records. Older ones are not listed here.
+            Showing the most recent {EXTERNAL_NOTICE_FILING_LIST_CAP} records. Older ones are not
+            listed here.
           </InlineAlert>
         ) : null}
         {items.length > 0 ? (
@@ -194,7 +194,7 @@ export function NoticeFilingsDrawer({
                     <Button
                       size="sm"
                       tone="tertiary"
-                      aria-label={`Withdraw the ${KIND_LABEL[f.noticeKind]} record filed on ${filedOn(f)}`}
+                      aria-label={`Withdraw the ${KIND_LABEL[f.noticeKind]} record ${f.noticeId.slice(0, 8)}, filed on ${filedOn(f)}`}
                       onClick={() => {
                         write.clear();
                         setStale(false);

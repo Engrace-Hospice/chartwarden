@@ -4,6 +4,7 @@
 // `org-admin-typebox`, which M34 may import) plus the platform-only `reason`, so the two surfaces cannot drift;
 // the views are re-exported unchanged. Named `*-typebox` so the table-ownership heuristic never reads it as a
 // Drizzle import.
+import { EXTERNAL_NOTICE_FILING_LIST_CAP } from "@chartwarden/types";
 import { type TSchema, Type } from "@sinclair/typebox";
 import {
   LocationDetailSchema,
@@ -342,7 +343,6 @@ export const OnboardingNoticeFilingSchema = Type.Object({
 export const OnboardingNoticeFilingListSchema = Type.Object({
   items: Type.Array(OnboardingNoticeFilingSchema),
   truncated: Type.Boolean({
-    description:
-      "True when the tenant recorded more than the 200 newest shown; older records exist that this list does not return.",
+    description: `True when the tenant recorded more than the ${EXTERNAL_NOTICE_FILING_LIST_CAP} newest shown; older records exist that this list does not return.`,
   }),
 });

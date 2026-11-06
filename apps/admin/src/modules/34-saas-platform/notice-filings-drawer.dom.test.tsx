@@ -60,7 +60,9 @@ const confirm = (reason: string, name: RegExp | string) => {
 };
 const withdrawNoe = async () =>
   fireEvent.click(
-    await screen.findByRole("button", { name: "Withdraw the NOE record filed on 2026-11-04" }),
+    await screen.findByRole("button", {
+      name: "Withdraw the NOE record 11111111, filed on 2026-11-04",
+    }),
   );
 const lastCall = (calls: unknown[][]) =>
   calls.at(-1) as [
@@ -76,6 +78,22 @@ describe("NoticeFilingsDrawer: the list", () => {
     expect(screen.getAllByText("2026-11-04").length).toBeGreaterThan(0);
     // a late record that wrote its own breach stamp says what withdrawing it does to the stamp
     expect(screen.getByText(/written by this record/i)).toBeTruthy();
+  });
+
+  it("tells two records filed on the same day apart: the id prefix is in each Withdraw button's name", async () => {
+    mount(() =>
+      body([
+        noe(),
+        noe({ noticeId: "33333333-3333-4333-8333-333333333333", recordedAt: RECORDED_AGAIN }),
+      ]),
+    );
+    await screen.findAllByRole("button", { name: /^Withdraw the NOE record/ });
+    expect(
+      screen.getByRole("button", { name: "Withdraw the NOE record 11111111, filed on 2026-11-04" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Withdraw the NOE record 33333333, filed on 2026-11-04" }),
+    ).toBeTruthy();
   });
 
   it("says when the tenant recorded nothing", async () => {
@@ -138,7 +156,9 @@ describe("NoticeFilingsDrawer: withdrawing a record", () => {
       POST: { [NOTR_WITHDRAW]: () => ok({ noticeKind: "notr", noticeId: NOTR_ID }) },
     });
     fireEvent.click(
-      await screen.findByRole("button", { name: "Withdraw the NOTR record filed on 2026-11-08" }),
+      await screen.findByRole("button", {
+        name: "Withdraw the NOTR record 22222222, filed on 2026-11-08",
+      }),
     );
     expect(
       within(screen.getByRole("dialog")).getByText(/stamp this late record wrote is cleared/i),

@@ -23,7 +23,11 @@ import {
   repositories,
 } from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError, NotFoundError } from "@chartwarden/types";
+import {
+  ChartWardenError,
+  EXTERNAL_NOTICE_FILING_LIST_CAP,
+  NotFoundError,
+} from "@chartwarden/types";
 import {
   type BillingDb,
   type BillingWriteActor,
@@ -367,9 +371,6 @@ export interface ExternalFilingListItem {
   readonly breachStampFromRecord: boolean;
 }
 
-/** The most notices one platform list returns; a tenant filing for many patients is cut at this, newest record first. */
-export const EXTERNAL_FILING_LIST_CAP = 200;
-
 const toListItem = (
   kind: ExternalNoticeKind,
   row: repositories.NoeRecord | repositories.NotrRecord,
@@ -392,7 +393,7 @@ export async function listExternalNoticeFilings(
   tx: BillingDb,
   input: { readonly organizationId: string; readonly limit?: number },
 ): Promise<{ readonly items: readonly ExternalFilingListItem[]; readonly truncated: boolean }> {
-  const limit = input.limit ?? EXTERNAL_FILING_LIST_CAP;
+  const limit = input.limit ?? EXTERNAL_NOTICE_FILING_LIST_CAP;
   const [noes, notrs] = await Promise.all([
     NOE_OPS.listFiled(tx, input.organizationId, limit + 1),
     NOTR_OPS.listFiled(tx, input.organizationId, limit + 1),
