@@ -632,7 +632,7 @@ describe.skipIf(!DB_URL)("M2/M3 auditor magic-link redemption — LIVE Postgres"
   it("refuses to attach an auditor to a role under the auditor key that is NOT the system role (a legacy tenant-written look-alike), and a corrected role lets the SAME link through", async () => {
     const eng = await engagement(ORG_A);
     const { token } = await link(ORG_A, eng);
-    // Simulate a look-alike written before migration 1345 existed: the guard trigger is off for this one transaction.
+    // Simulate a look-alike written before migration 1365 existed: the guard trigger is off for this one transaction.
     const asLookAlike = async (systemDefault: boolean) => {
       await admin.query("BEGIN");
       await admin.query("SET LOCAL session_replication_role = replica");

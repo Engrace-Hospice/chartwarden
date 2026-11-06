@@ -174,7 +174,7 @@ export const PLATFORM_ONBOARDING_DATA_KEYS = [
 const PLATFORM_ONBOARDING_DATA_ROLES: readonly PlatformOpsRoleKey[] = ["platform_ops"];
 
 /**
- * Slice 2 (tenant pricing, migration 1343). `subscription.onboard_platform` (sign a tenant onto a plan at onboarding step 2, change its
+ * Slice 2 (tenant pricing, migration 1363). `subscription.onboard_platform` (sign a tenant onto a plan at onboarding step 2, change its
  * billing service mode) binds to `platform_ops` ALONE: its route gates on `tenant_lifecycle_platform_ops`, which admits that exact role,
  * so a grant to admin/owner would be a control that exists on paper only. `subscription.pricing_read_platform` (offered plans, the price
  * preview, a tenant's contract and statements) is read-only behind `platform_billing_scope`, so the operator who prices a tenant and the

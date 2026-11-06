@@ -254,7 +254,7 @@ const PLATFORM_PROVISION_UPDATE_TABLES = [
  * The `plan` columns the platform carrier may UPDATE (slice 2 plan editor + the legacy flat-tier editor). Deliberately NOT here: `id`,
  * `slug`, `tier`, `cadence`, `family_slug`, `version`, `supersedes_plan_id`, `created_at`. A published version's freeze keys on its
  * tier, so a carrier that could change `tier` could un-freeze a plan the database is meant to hold still; identity and lineage columns
- * are set at INSERT and never rewritten. The guard triggers (migration 1341) refuse the same changes even to a superuser.
+ * are set at INSERT and never rewritten. The guard triggers (migration 1361) refuse the same changes even to a superuser.
  */
 const PLAN_PLATFORM_UPDATE_COLUMNS = [
   "name",

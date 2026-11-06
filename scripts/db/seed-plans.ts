@@ -3,7 +3,7 @@
  *
  * `plan` / `plan_meter` are platform-owned (no organization_id) and no migration inserts rows, so a fresh
  * `db:reset` leaves `GET /api/v1/plans` empty and the billing plan screen shows "No plans are available".
- * The flat starter / professional / enterprise tiers are RETIRED (slice 2, migration 1341): they are still seeded, as archived rows with
+ * The flat starter / professional / enterprise tiers are RETIRED (slice 2, migration 1361): they are still seeded, as archived rows with
  * their usage meters, so a dev database shows what production holds (old rows stay readable) but no new tenant is offered one. What a
  * tenant signs now is a census-banded plan: one DEMO version is seeded below as a DRAFT, so it is NOT offered (a draft cannot be signed,
  * and nothing seeds it live): with the owner's five default bands (0-9, 10-16, 17-25, 26-29 and 30+ patients) and DEMO prices that are not
