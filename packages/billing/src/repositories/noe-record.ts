@@ -74,6 +74,7 @@ export type NoeTransitionPatch = Partial<
     | "filedExternallyOn"
     | "filedExternallyRecordedAt"
     | "filedExternallyByMembershipId"
+    | "externalFilingSetBreach"
   >
 >;
 

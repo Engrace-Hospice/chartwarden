@@ -13,6 +13,7 @@ import { sql } from "drizzle-orm";
 // cost-report precedent). No MBI is ever stored here (D13, §8.7).
 import {
   type AnyPgColumn,
+  boolean,
   date,
   index,
   integer,
@@ -77,6 +78,9 @@ export const notrRecord = pgTable(
     filedExternallyOn: date("filed_externally_on"),
     filedExternallyRecordedAt: timestamp("filed_externally_recorded_at", { withTimezone: true }),
     filedExternallyByMembershipId: uuid("filed_externally_by_membership_id"), // logical FK → M2
+    // Migration 1353 — true when the external-filing RECORD wrote the breach stamp itself (a late record stamps its filed date); false
+    // for a stamp the deadline watchdog wrote, even on the same date. A withdrawal clears the stamp only when this is true.
+    externalFilingSetBreach: boolean("external_filing_set_breach").notNull().default(false),
 
     latestSubmissionId: uuid("latest_submission_id"),
     latestAcknowledgmentId: uuid("latest_acknowledgment_id"),

@@ -71,6 +71,7 @@ const filed = (over: Row = {}): Row => ({
   filedExternallyOn: "2026-11-04",
   filedExternallyRecordedAt: RECORDED,
   filedExternallyByMembershipId: "00000000-0000-4000-8000-0000000000aa",
+  externalFilingSetBreach: false,
   version: 3,
   ...over,
 });
@@ -80,6 +81,7 @@ const CLEARED = {
   filedExternallyOn: null,
   filedExternallyRecordedAt: null,
   filedExternallyByMembershipId: null,
+  externalFilingSetBreach: false,
 };
 
 beforeEach(() => {
@@ -117,12 +119,29 @@ describe.each([
     expect(res.clearedBreachStamp).toBeNull();
   });
 
-  it("clears the breach stamp the withdrawn LATE record wrote itself (stamp = its filed date, after the due date): the notice was never filed late", async () => {
-    table.set("n-1", filed({ filedExternallyOn: "2026-11-08", windowBreachedAt: "2026-11-08" }));
+  it("clears the breach stamp the withdrawn LATE record wrote itself (the record's flag says so): the notice was never filed late", async () => {
+    table.set(
+      "n-1",
+      filed({
+        filedExternallyOn: "2026-11-08",
+        windowBreachedAt: "2026-11-08",
+        externalFilingSetBreach: true,
+      }),
+    );
     const res = await withdraw();
     expect(table.get("n-1")).toMatchObject({ ...CLEARED, windowBreachedAt: null });
     expect(res.clearedBreachStamp).toBe("2026-11-08");
     expect(res.notice.windowBreachedAt).toBeNull();
+  });
+
+  // The watchdog stamps `target + 1` on its first tick after the due day; a tenant filing exactly one day late records that very
+  // date. When the watchdog stamped first, the record never wrote the stamp (its flag is false) and withdrawing must leave it.
+  it("keeps the watchdog's stamp when a one-day-late record carries the same date (the watchdog stamped first)", async () => {
+    table.set("n-1", filed({ filedExternallyOn: "2026-11-07", windowBreachedAt: "2026-11-07" }));
+    const res = await withdraw();
+    expect(table.get("n-1")).toMatchObject({ ...CLEARED, windowBreachedAt: "2026-11-07" });
+    expect(res.clearedBreachStamp).toBeNull();
+    expect(res.notice.windowBreachedAt).toBe("2026-11-07");
   });
 
   it("an on-time record over no stamp leaves the stamp column alone (null stays null)", async () => {
@@ -192,25 +211,72 @@ describe.each([
     expect(table.get("n-1")?.externalFilingStatus).toBe("filed");
   });
 
+  const actor = {
+    organizationId: ORG,
+    userId: "u-1",
+    membershipId: "00000000-0000-4000-8000-0000000000aa",
+    actorKind: "user",
+    roles: [],
+    stepUpRecent: true,
+  } as never;
+  const record = (filedOn: string) => {
+    const service = buildExternalNoticeFilingService({} as never, {
+      billsOutside: async () => true,
+      outbox: { publish: async () => undefined } as never,
+      now: () => NOW,
+    });
+    return kind === "noe"
+      ? service.recordNoe(actor, "n-1", filedOn)
+      : service.recordNotr(actor, "n-1", filedOn);
+  };
+  const parked = (over: Row = {}): Row =>
+    filed({
+      externalFilingStatus: "pending",
+      filedExternallyOn: null,
+      filedExternallyRecordedAt: null,
+      filedExternallyByMembershipId: null,
+      version: 1,
+      ...over,
+    });
+
+  // The whole sequence through the real record and withdraw services (in-memory repositories). The target is 2026-11-06, so the
+  // watchdog's first tick after the due day stamps 2026-11-07, and a tenant filing exactly one day late records that same date:
+  // only who WROTE the stamp can tell a stamp to keep from one to take back.
+  it("record then withdraw: a one-day-late record over a stamp the watchdog wrote first (same date) leaves that stamp, and the flag stays false", async () => {
+    table.set("n-1", parked({ windowBreachedAt: "2026-11-07" }));
+
+    await record("2026-11-07");
+    expect(table.get("n-1")).toMatchObject({
+      externalFilingStatus: "filed",
+      windowBreachedAt: "2026-11-07",
+      externalFilingSetBreach: false,
+    });
+    const res = await withdraw({ expectedRecordedAt: NOW.toISOString() });
+
+    expect(res.clearedBreachStamp).toBeNull();
+    expect(table.get("n-1")).toMatchObject({ ...CLEARED, windowBreachedAt: "2026-11-07" });
+  });
+
+  it("record then withdraw: a late record that wrote the stamp itself (nothing stamped before) takes the stamp back, and resets the flag", async () => {
+    table.set("n-1", parked());
+
+    await record("2026-11-07");
+    expect(table.get("n-1")).toMatchObject({
+      externalFilingStatus: "filed",
+      windowBreachedAt: "2026-11-07",
+      externalFilingSetBreach: true,
+    });
+    const res = await withdraw({ expectedRecordedAt: NOW.toISOString() });
+
+    expect(res.clearedBreachStamp).toBe("2026-11-07");
+    expect(table.get("n-1")).toMatchObject({ ...CLEARED, windowBreachedAt: null });
+  });
+
   it("a withdrawn notice can be recorded as filed again (a new record, a new recordedAt), and the old pin no longer matches", async () => {
     table.set("n-1", filed());
     await withdraw();
 
-    const service = buildExternalNoticeFilingService({} as never, {
-      billsOutside: async () => true,
-      now: () => NOW,
-    });
-    const actor = {
-      organizationId: ORG,
-      userId: "u-1",
-      membershipId: "00000000-0000-4000-8000-0000000000aa",
-      actorKind: "user",
-      roles: [],
-      stepUpRecent: true,
-    } as never;
-    await (kind === "noe"
-      ? service.recordNoe(actor, "n-1", "2026-11-05")
-      : service.recordNotr(actor, "n-1", "2026-11-05"));
+    await record("2026-11-05");
     expect(table.get("n-1")).toMatchObject({
       externalFilingStatus: "filed",
       filedExternallyOn: "2026-11-05",

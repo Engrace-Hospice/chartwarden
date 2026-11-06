@@ -77,6 +77,7 @@ export type NotrTransitionPatch = Partial<
     | "filedExternallyOn"
     | "filedExternallyRecordedAt"
     | "filedExternallyByMembershipId"
+    | "externalFilingSetBreach"
   >
 >;
 

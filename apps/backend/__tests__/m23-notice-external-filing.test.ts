@@ -118,6 +118,7 @@ const noeRow = (over: Row = {}): Row => ({
   filedExternallyOn: null,
   filedExternallyRecordedAt: null,
   filedExternallyByMembershipId: null,
+  externalFilingSetBreach: false,
   version: 0,
   createdAt: NOW,
   updatedAt: NOW,
@@ -140,6 +141,7 @@ const notrRow = (over: Row = {}): Row => ({
   filedExternallyOn: null,
   filedExternallyRecordedAt: null,
   filedExternallyByMembershipId: null,
+  externalFilingSetBreach: false,
   version: 0,
   createdAt: NOW,
   updatedAt: NOW,
@@ -537,14 +539,37 @@ describe.each([
       table.set(id, make({ state: "ready", version: 1, externalFilingStatus: "pending" }));
       const { service } = harness(outside);
       await record(service, actor, "2026-11-08");
-      expect(table.get(id)).toMatchObject({ windowBreachedAt: "2026-11-08" });
+      // ...and says it wrote the stamp (`externalFilingSetBreach`), so a withdrawal knows the stamp is its own to take back.
+      expect(table.get(id)).toMatchObject({
+        windowBreachedAt: "2026-11-08",
+        externalFilingSetBreach: true,
+      });
     });
 
-    it("keeps a breach the watchdog already stamped", async () => {
+    it("does not claim a stamp it did not write: an on-time record leaves the flag false", async () => {
+      table.set(id, make({ state: "ready", version: 1, externalFilingStatus: "pending" }));
+      const { service } = harness(outside);
+      await record(service, actor, "2026-11-04");
+      expect(table.get(id)).toMatchObject({
+        windowBreachedAt: null,
+        externalFilingSetBreach: false,
+      });
+    });
+
+    it("keeps a breach the watchdog already stamped, and does not claim it (the flag stays false, even for the same date)", async () => {
       table.set(id, make({ state: "ready", version: 1, windowBreachedAt: "2026-11-07" }));
       const { service } = harness(outside);
       await record(service, actor, "2026-11-09");
-      expect(table.get(id)).toMatchObject({ windowBreachedAt: "2026-11-07" });
+      expect(table.get(id)).toMatchObject({
+        windowBreachedAt: "2026-11-07",
+        externalFilingSetBreach: false,
+      });
+      table.set(id, make({ state: "ready", version: 1, windowBreachedAt: "2026-11-07" }));
+      await record(service, actor, "2026-11-07");
+      expect(table.get(id)).toMatchObject({
+        windowBreachedAt: "2026-11-07",
+        externalFilingSetBreach: false,
+      });
     });
 
     it("keeps a breach stamp the watchdog set even when the filing is recorded ON TIME, and announces the contradiction with both dates", async () => {

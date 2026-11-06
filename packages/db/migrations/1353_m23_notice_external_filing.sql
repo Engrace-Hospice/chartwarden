@@ -13,9 +13,17 @@
 --   filed_externally_recorded_at    when the tenant recorded it in ChartWarden.
 --   filed_externally_by_membership_id  who recorded it (logical FK to M2, like every other membership column here).
 --
+--   external_filing_set_breach     true when the RECORD itself wrote the notice's breach stamp (`window_breached_at`): a late
+--                                  record (filed after the due day) stamps its own filed date when the watchdog had stamped
+--                                  nothing. false otherwise, always for a stamp the deadline watchdog wrote. The two writers can
+--                                  stamp the SAME date (a tenant filing exactly one day late records the day the watchdog's first
+--                                  tick stamps), so the dates cannot say whose stamp it is: a withdrawal of the record clears the
+--                                  stamp only when this is true, and resets it. A true value needs status 'filed' (a CHECK; IS NOT DISTINCT FROM, since a NULL
+--                                  status would otherwise satisfy it).
+--
 -- The three filed_* columns are set together with status 'filed' and are all NULL otherwise: the CHECK makes a half-recorded
 -- notice impossible. The CHECKs are declared inline with their (new) columns, so they constrain nothing the previous release
--- writes: old code never touches these columns and leaves them NULL, which satisfies both. Each table's block is guarded by
+-- writes: old code never touches these columns and leaves them NULL (the flag at its default, false), which satisfies all three. Each table's block is guarded by
 -- the existence of its status column, which keeps the file idempotent (a column CHECK is not `IF NOT EXISTS`-able).
 --
 -- Existing org RLS (ENABLE + FORCE), the table-level app-role UPDATE grant and the write-audit triggers
@@ -34,7 +42,9 @@ BEGIN
       ADD COLUMN "filed_externally_recorded_at" timestamp with time zone,
       ADD COLUMN "filed_externally_by_membership_id" uuid CONSTRAINT "noe_record_external_filing_filed_ck" CHECK (
         num_nonnulls("filed_externally_on", "filed_externally_recorded_at", "filed_externally_by_membership_id")
-          = CASE WHEN "external_filing_status" = 'filed' THEN 3 ELSE 0 END);
+          = CASE WHEN "external_filing_status" = 'filed' THEN 3 ELSE 0 END),
+      ADD COLUMN "external_filing_set_breach" boolean NOT NULL DEFAULT false CONSTRAINT "noe_record_external_filing_set_breach_ck" CHECK (
+        NOT "external_filing_set_breach" OR "external_filing_status" IS NOT DISTINCT FROM 'filed');
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
@@ -46,6 +56,8 @@ BEGIN
       ADD COLUMN "filed_externally_recorded_at" timestamp with time zone,
       ADD COLUMN "filed_externally_by_membership_id" uuid CONSTRAINT "notr_record_external_filing_filed_ck" CHECK (
         num_nonnulls("filed_externally_on", "filed_externally_recorded_at", "filed_externally_by_membership_id")
-          = CASE WHEN "external_filing_status" = 'filed' THEN 3 ELSE 0 END);
+          = CASE WHEN "external_filing_status" = 'filed' THEN 3 ELSE 0 END),
+      ADD COLUMN "external_filing_set_breach" boolean NOT NULL DEFAULT false CONSTRAINT "notr_record_external_filing_set_breach_ck" CHECK (
+        NOT "external_filing_set_breach" OR "external_filing_status" IS NOT DISTINCT FROM 'filed');
   END IF;
 END $$;

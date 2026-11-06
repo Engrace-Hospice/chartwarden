@@ -1160,6 +1160,8 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         /** The date the record says it filed (default: on time) and the breach stamp on the row (default: the watchdog's). */
         filedOn?: string;
         stamp?: string | null;
+        /** The stamp was written by the record itself (a LATE record does; the watchdog's stamp never is): `external_filing_set_breach`. */
+        setBreach?: boolean;
       } = {},
     ): Promise<string> {
       const marker = over.marker === undefined ? "filed" : over.marker;
@@ -1177,21 +1179,24 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         filed ? MEMBERSHIP : null,
         over.stamp === undefined ? STAMP : over.stamp,
         `WD-${randomUUID().slice(0, 12)}`,
+        filed && (over.setBreach ?? false),
       ];
       const [row] =
         kind === "noe"
           ? await q<{ id: string }>(
               `INSERT INTO noe_record (organization_id, provider_entity_id, patient_id, admission_id, election_period_id, state,
                       election_effective_date, window_target_at, external_filing_status, filed_externally_on,
-                      filed_externally_recorded_at, filed_externally_by_membership_id, window_breached_at, noe_control_number)
-               VALUES ($1,$2,$3,$4,$5,'READY','2026-11-01','2026-11-06',$6,$7,$8,$9,$10,$11) RETURNING id`,
+                      filed_externally_recorded_at, filed_externally_by_membership_id, window_breached_at, noe_control_number,
+                      external_filing_set_breach)
+               VALUES ($1,$2,$3,$4,$5,'READY','2026-11-01','2026-11-06',$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
               [...common, randomUUID(), ...tail],
             )
           : await q<{ id: string }>(
               `INSERT INTO notr_record (organization_id, provider_entity_id, patient_id, admission_id, trigger_kind, discharge_event_id,
                       effective_end_date, window_target_at, state, external_filing_status, filed_externally_on,
-                      filed_externally_recorded_at, filed_externally_by_membership_id, window_breached_at, notr_control_number)
-               VALUES ($1,$2,$3,$4,'discharge',$5,'2026-11-01','2026-11-06','READY',$6,$7,$8,$9,$10,$11) RETURNING id`,
+                      filed_externally_recorded_at, filed_externally_by_membership_id, window_breached_at, notr_control_number,
+                      external_filing_set_breach)
+               VALUES ($1,$2,$3,$4,'discharge',$5,'2026-11-01','2026-11-06','READY',$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
               [...common, randomUUID(), ...tail],
             );
       return (row as { id: string }).id;
@@ -1202,7 +1207,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         await q<Record<string, unknown>>(
           `SELECT state, version, external_filing_status, filed_externally_on::text AS filed_on,
                   filed_externally_recorded_at AS recorded_at, filed_externally_by_membership_id AS by,
-                  window_breached_at::text AS breached
+                  window_breached_at::text AS breached, external_filing_set_breach AS set_breach
              FROM ${table(kind)} WHERE id=$1`,
           [id],
         )
@@ -1282,7 +1287,11 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       "%s: withdrawing a LATE record clears the breach stamp that record wrote itself (and says so on the audit row); the stamp is gone from the row and the response",
       async (kind) => {
         const LATE_ON = "2026-11-08"; // the window closed on 2026-11-06
-        const id = await seedFiledNotice(kind, ORG_A, { filedOn: LATE_ON, stamp: LATE_ON });
+        const id = await seedFiledNotice(kind, ORG_A, {
+          filedOn: LATE_ON,
+          stamp: LATE_ON,
+          setBreach: true,
+        });
 
         const res = await withdraw(kind, id);
 
@@ -1292,6 +1301,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
           external_filing_status: null,
           filed_on: null,
           breached: null,
+          set_breach: false, // the flag goes with the record (the table's CHECK moves them together)
         });
         const audit = await withdrawAuditRows(id);
         expect(audit).toHaveLength(1);
@@ -1314,6 +1324,36 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
           before: { window_breached_at: LATE_ON },
           after: { window_breached_at: null },
         });
+      },
+    );
+
+    it.each(["noe", "notr"] as const)(
+      "%s: a one-day-late record whose date equals the watchdog's stamp (the watchdog stamped first) keeps that stamp on withdrawal, and the audit row says kept",
+      async (kind) => {
+        const SAME_DAY = "2026-11-07"; // the window closed on 2026-11-06: the watchdog's first tick stamps the 7th, the tenant filed the 7th
+        const id = await seedFiledNotice(kind, ORG_A, {
+          filedOn: SAME_DAY,
+          stamp: SAME_DAY,
+          setBreach: false,
+        });
+
+        const res = await withdraw(kind, id);
+
+        expect(res.statusCode, res.body).toBe(200);
+        expect(res.json()).toMatchObject({ windowBreachedAt: SAME_DAY, externalFiling: null });
+        expect(await rowOf(kind, id)).toMatchObject({
+          external_filing_status: null,
+          filed_on: null,
+          breached: SAME_DAY,
+          set_breach: false,
+        });
+        const audit = await withdrawAuditRows(id);
+        expect(audit).toHaveLength(1);
+        expect(audit[0]?.context).toMatchObject({
+          withdrawnFiledOn: SAME_DAY,
+          breachStamp: "kept",
+        });
+        expect(audit[0]?.context).not.toHaveProperty("clearedBreachStamp");
       },
     );
 
