@@ -60,8 +60,22 @@ export type BillingPseudonym = string;
 // ── §3.3 pgEnum value mirrors (kept in lock-step with `@chartwarden/subscription-billing`'s `enums.ts` and the
 // `packages/db/src/schema/subscription-billing/*` pgEnums the T02 migration lands) ─────────────────────
 
-/** §3.3 `plan_tier` — the plan grade (platform-shared catalog, D11). */
-export type PlanTier = "starter" | "professional" | "enterprise";
+/**
+ * §3.3 `plan_tier` — the plan grade (platform-shared catalog, D11). `starter` / `professional` / `enterprise` are the
+ * RETIRED flat tiers (rows stay readable, none is offered to a new tenant); `census_banded` is the contracted model
+ * (platform fee = greater of staff x per-user price and the census-band flat fee, plus a billing-service percentage).
+ */
+export type PlanTier = "starter" | "professional" | "enterprise" | "census_banded";
+
+/**
+ * How a subscription uses ChartWarden for billing. `none` = the tenant bills outside ChartWarden (no percentage),
+ * `billing_software` = the tenant bills in ChartWarden (the lower rate), `managed_billing` = ChartWarden bills for the
+ * tenant (the higher rate; priced here, the service itself is not built).
+ */
+export type BillingServiceMode = "none" | "billing_software" | "managed_billing";
+
+/** A statement is `draft` while its month is open (recomputed each sweep) and `final` once the month is closed. */
+export type SubscriptionStatementStatus = "draft" | "final";
 
 /** §3.3 `billing_cadence` — the base-price billing period. */
 export type BillingCadence = "monthly" | "annual";
