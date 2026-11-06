@@ -257744,7 +257744,8 @@
                           "status",
                           "planLabel",
                           "createdAt",
-                          "updatedAt"
+                          "updatedAt",
+                          "onboardingProgress"
                         ],
                         "properties": {
                           "id": {
@@ -257772,6 +257773,66 @@
                           "updatedAt": {
                             "format": "date-time",
                             "type": "string"
+                          },
+                          "onboardingProgress": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "doneCount",
+                                  "totalCount",
+                                  "currentStepKey",
+                                  "goLiveState"
+                                ],
+                                "properties": {
+                                  "doneCount": {
+                                    "description": "Gating steps that are done or skipped.",
+                                    "type": "integer"
+                                  },
+                                  "totalCount": {
+                                    "description": "Gating steps in the wizard: canonical, not optional, not retired (the go-live step included).",
+                                    "type": "integer"
+                                  },
+                                  "currentStepKey": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "goLiveState": {
+                                    "anyOf": [
+                                      {
+                                        "const": "not_ready",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "awaiting_attestation",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "awaiting_approval",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "live",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "closed",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -257940,6 +258001,7 @@
                     "planLabel",
                     "createdAt",
                     "updatedAt",
+                    "onboardingProgress",
                     "latestStatusEvent",
                     "keyRing",
                     "onboarding",
@@ -257973,6 +258035,66 @@
                     "updatedAt": {
                       "format": "date-time",
                       "type": "string"
+                    },
+                    "onboardingProgress": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "doneCount",
+                            "totalCount",
+                            "currentStepKey",
+                            "goLiveState"
+                          ],
+                          "properties": {
+                            "doneCount": {
+                              "description": "Gating steps that are done or skipped.",
+                              "type": "integer"
+                            },
+                            "totalCount": {
+                              "description": "Gating steps in the wizard: canonical, not optional, not retired (the go-live step included).",
+                              "type": "integer"
+                            },
+                            "currentStepKey": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "goLiveState": {
+                              "anyOf": [
+                                {
+                                  "const": "not_ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "awaiting_attestation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "awaiting_approval",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "live",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "closed",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "latestStatusEvent": {
                       "anyOf": [
@@ -260476,6 +260598,93 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/members": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantsByOrgSlugMembers",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "A tenant's ACTIVE staff, for assigning its compliance officer: membership id, display name, email and the role keys held (nothing else; read on the tenant's own RLS scope, audited; capped at 500). tenant_onboarding_data.read_platform + the platform_ops role",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "membershipId",
+                          "displayName",
+                          "email",
+                          "roleKeys"
+                        ],
+                        "properties": {
+                          "membershipId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "email": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "roleKeys": {
+                            "description": "Enabled, unexpired roles the member holds in the tenant (compliance_officer first in a picker).",
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

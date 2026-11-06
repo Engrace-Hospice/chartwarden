@@ -142,6 +142,11 @@ export function registerOnboardingDataRoutes(
   const idParamsOf = (request: FastifyRequest) =>
     parse(OnboardingResourceParamsSchema, request.params);
 
+  // ── the tenant's active staff (the compliance officer picker) ──
+  app.get("/api/v1/platform/tenants/:orgSlug/members", { preHandler: [...READ] }, async (request) =>
+    service.listMembers(operatorOf(request), slugOf(request)),
+  );
+
   // ── provider entities ──
   app.get(
     "/api/v1/platform/tenants/:orgSlug/provider-entities",

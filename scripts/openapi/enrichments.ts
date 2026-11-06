@@ -15355,6 +15355,7 @@ import {
   OnboardingMedicaidCredentialIdSchema as M34OnboardingMedicaidCredentialIdSchema,
   OnboardingMedicaidCredentialListSchema as M34OnboardingMedicaidCredentialListSchema,
   OnboardingMedicaidCredentialUpsertRequest as M34OnboardingMedicaidCredentialUpsertRequest,
+  OnboardingMemberListSchema as M34OnboardingMemberListSchema,
   OnboardingProviderEntityCreateRequest as M34OnboardingProviderEntityCreateRequest,
   ProviderEntityDetailSchema as M34OnboardingProviderEntityDetailSchema,
   OnboardingProviderEntityListSchema as M34OnboardingProviderEntityListSchema,
@@ -15364,6 +15365,11 @@ import {
 const M34_ONBOARDING_WRITE_NOTE =
   "tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused";
 Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/platform/tenants/:orgSlug/members": {
+    summary:
+      "A tenant's ACTIVE staff, for assigning its compliance officer: membership id, display name, email and the role keys held (nothing else; read on the tenant's own RLS scope, audited; capped at 500). tenant_onboarding_data.read_platform + the platform_ops role",
+    response: M34OnboardingMemberListSchema,
+  },
   "GET /api/v1/platform/tenants/:orgSlug/provider-entities": {
     summary:
       "A tenant's provider entities, on the tenant's own RLS scope (platform ops; read is audited; the tax id is never returned)",

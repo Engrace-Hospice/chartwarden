@@ -21289,6 +21289,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's ACTIVE staff, for assigning its compliance officer: membership id, display name, email and the role keys held (nothing else; read on the tenant's own RLS scope, audited; capped at 500). tenant_onboarding_data.read_platform + the platform_ops role */
+        get: operations["getApiV1PlatformTenantsByOrgSlugMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/offboard": {
         parameters: {
             query?: never;
@@ -92442,6 +92459,14 @@ export interface operations {
                             createdAt: string;
                             /** Format: date-time */
                             updatedAt: string;
+                            onboardingProgress: {
+                                /** @description Gating steps that are done or skipped. */
+                                doneCount: number;
+                                /** @description Gating steps in the wizard: canonical, not optional, not retired (the go-live step included). */
+                                totalCount: number;
+                                currentStepKey: string | null;
+                                goLiveState: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
+                            } | null;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;
@@ -92522,6 +92547,14 @@ export interface operations {
                         createdAt: string;
                         /** Format: date-time */
                         updatedAt: string;
+                        onboardingProgress: {
+                            /** @description Gating steps that are done or skipped. */
+                            doneCount: number;
+                            /** @description Gating steps in the wizard: canonical, not optional, not retired (the go-live step included). */
+                            totalCount: number;
+                            currentStepKey: string | null;
+                            goLiveState: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
+                        } | null;
                         latestStatusEvent: {
                             id: string;
                             toStatus: string;
@@ -93107,6 +93140,39 @@ export interface operations {
                         createdAt: string;
                         /** Format: date-time */
                         updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            membershipId: string;
+                            displayName: string | null;
+                            email: string | null;
+                            /** @description Enabled, unexpired roles the member holds in the tenant (compliance_officer first in a picker). */
+                            roleKeys: string[];
+                        }[];
                     };
                 };
             };

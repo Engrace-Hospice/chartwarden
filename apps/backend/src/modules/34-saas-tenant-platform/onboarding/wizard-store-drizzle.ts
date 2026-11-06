@@ -56,7 +56,7 @@ const K = schema.onboardingTask;
 const G = schema.tenantGoLiveAttestation;
 const A = schema.tenantAccount;
 
-const toTemplate = (row: schema.OnboardingTaskTemplate): StepTemplate => ({
+export const toTemplate = (row: schema.OnboardingTaskTemplate): StepTemplate => ({
   key: row.key,
   title: row.displayLabel,
   description: row.description,
@@ -67,7 +67,7 @@ const toTemplate = (row: schema.OnboardingTaskTemplate): StepTemplate => ({
   canonical: row.isCanonical,
 });
 
-const toTask = (row: schema.OnboardingTask): StepTask => ({
+export const toTask = (row: schema.OnboardingTask): StepTask => ({
   id: row.id,
   templateKey: row.templateKey,
   status: row.status as TaskStatus,
@@ -89,7 +89,7 @@ const toTask = (row: schema.OnboardingTask): StepTask => ({
       : null,
 });
 
-const toGoLive = (row: schema.TenantGoLiveAttestation): GoLiveAttestation => ({
+export const toGoLive = (row: schema.TenantGoLiveAttestation): GoLiveAttestation => ({
   id: row.id,
   tenantAccountId: row.tenantAccountId,
   status: row.status,

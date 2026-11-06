@@ -311,6 +311,23 @@ const CursorPageOf = <T extends TSchema>(item: T) =>
     hasMore: Type.Boolean(),
   });
 
+/** Where a provisioning or onboarding tenant is in the wizard (null for any other tenant). */
+export const OnboardingProgressViewSchema = Type.Object({
+  doneCount: Type.Integer({ description: "Gating steps that are done or skipped." }),
+  totalCount: Type.Integer({
+    description:
+      "Gating steps in the wizard: canonical, not optional, not retired (the go-live step included).",
+  }),
+  currentStepKey: Type.Union([Type.String(), Type.Null()]),
+  goLiveState: Type.Union([
+    Type.Literal("not_ready"),
+    Type.Literal("awaiting_attestation"),
+    Type.Literal("awaiting_approval"),
+    Type.Literal("live"),
+    Type.Literal("closed"),
+  ]),
+});
+
 export const TenantSummaryViewSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
@@ -320,6 +337,7 @@ export const TenantSummaryViewSchema = Type.Object({
   planLabel: Type.String(),
   createdAt: Type.String({ format: "date-time" }),
   updatedAt: Type.String({ format: "date-time" }),
+  onboardingProgress: Type.Union([OnboardingProgressViewSchema, Type.Null()]),
 });
 export const TenantListResponseSchema = CursorPageOf(TenantSummaryViewSchema);
 
@@ -443,6 +461,7 @@ export const TenantOverviewViewSchema = Type.Object({
   planLabel: Type.String(),
   createdAt: Type.String({ format: "date-time" }),
   updatedAt: Type.String({ format: "date-time" }),
+  onboardingProgress: Type.Union([OnboardingProgressViewSchema, Type.Null()]),
   latestStatusEvent: Type.Union([
     Type.Object({
       id: Type.String(),

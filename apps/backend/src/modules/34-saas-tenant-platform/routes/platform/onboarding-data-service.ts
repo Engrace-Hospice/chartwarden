@@ -49,6 +49,7 @@ import {
   type OnboardingOperator,
   recordOnboardingAudit,
 } from "./onboarding-data-audit";
+import { type TenantMemberView, listActiveMembers } from "./onboarding-members";
 import { ONBOARDING_WRITABLE_STATUSES, lockTenantOnboardingShared } from "./tenant-onboarding-lock";
 
 export type { OnboardingOperator } from "./onboarding-data-audit";
@@ -94,6 +95,8 @@ export interface OnboardingDataService {
     expectedVersion: number | undefined,
   ): Promise<unknown>;
   listMedicaidCredentials(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
+  /** The tenant's active staff, for assigning its compliance officer (minimum necessary; an audited read). */
+  listMembers(op: OnboardingOperator, orgSlug: string): Promise<{ items: TenantMemberView[] }>;
   upsertMedicaidCredential(
     op: OnboardingOperator,
     orgSlug: string,
@@ -374,6 +377,11 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     return value;
   }
 
+  const listMembers = (op: OnboardingOperator, orgSlug: string) =>
+    read(op, orgSlug, "membership", async (t) => ({
+      items: await listActiveMembers(db, t.organizationId, op.userId),
+    }));
+
   const sitesFor = (op: OnboardingOperator) => createDrizzleSiteAdminRepository(db, op.userId);
 
   /** The bound credential adapter for one billing lane, or a typed 503 naming the lane that is not bound. */
@@ -498,6 +506,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     upsertMacCredential: (op, orgSlug, fields, reason, expectedVersion) =>
       upsertCredential(op, orgSlug, MAC_LANE, fields, reason, expectedVersion),
     listMedicaidCredentials: (op, orgSlug) => listCredentials(op, orgSlug, MEDICAID_LANE),
+    listMembers,
     upsertMedicaidCredential: (op, orgSlug, fields, reason) =>
       upsertCredential(op, orgSlug, MEDICAID_LANE, fields, reason),
   };

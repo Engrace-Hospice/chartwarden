@@ -22,6 +22,7 @@ import {
   mountTenantPlatformRoutes,
 } from "../src/modules/34-saas-tenant-platform/index";
 import { ONBOARDING_DATA_AUDIT_EVENTS } from "../src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-audit";
+import { toMemberViews } from "../src/modules/34-saas-tenant-platform/routes/platform/onboarding-members";
 
 const PLATFORM_ORG = "11111111-1111-4111-8111-111111111111";
 const TARGET_ORG = "22222222-2222-4222-8222-222222222222";
@@ -76,6 +77,7 @@ function recordingService(calls: Call[]): OnboardingDataService {
     listProviderEntities: list("listProviderEntities"),
     listLocations: list("listLocations"),
     listMacCredentials: list("listMacCredentials"),
+    listMembers: list("listMembers"),
     listMedicaidCredentials: list("listMedicaidCredentials"),
     createProviderEntity: write("createProviderEntity", false),
     updateProviderEntity: write("updateProviderEntity", true),
@@ -389,6 +391,76 @@ describe("read guards", () => {
     expect(keyless.statusCode).toBe(403);
     expect(calls.map((c) => c.method)).toEqual(["listProviderEntities"]);
     await app.close();
+  });
+});
+
+// Slice 5 (G2): the compliance-officer picker reads who the tenant's active staff are. It is a read of onboarding data, so it is
+// behind the same key pair as the other reads, never a write guard.
+describe("members read (the compliance officer picker)", () => {
+  it("answers platform_ops with the read key; a tenant admin, a non-platform_ops role and a keyless user are refused", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const ok = await app.inject({ method: "GET", url: `${URL_BASE}/members`, headers: OPS });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toEqual({ items: [] });
+    const tenant = await app.inject({
+      method: "GET",
+      url: `${URL_BASE}/members`,
+      headers: {
+        "x-test-user": "tenant-admin",
+        "x-test-org": TARGET_ORG,
+        "x-test-roles": "org_admin",
+      },
+    });
+    expect(tenant.statusCode).toBe(403);
+    const support = await app.inject({
+      method: "GET",
+      url: `${URL_BASE}/members`,
+      headers: { ...OPS, "x-test-user": "support-user", "x-test-roles": "platform_support_t2" },
+    });
+    expect(support.statusCode).toBe(403);
+    const keyless = await app.inject({
+      method: "GET",
+      url: `${URL_BASE}/members`,
+      headers: { ...OPS, "x-test-user": "no-grants-user" },
+    });
+    expect(keyless.statusCode).toBe(403);
+    expect(calls.map((c) => c.method)).toEqual(["listMembers"]);
+    expect(calls[0]?.orgSlug).toBe("tenant-b");
+    await app.close();
+  });
+});
+
+describe("toMemberViews (the projection behind the picker)", () => {
+  it("keeps the minimum a picker needs, trims a blank name to null, sorts by name then email, and groups roles per member", () => {
+    const views = toMemberViews(
+      [
+        { membershipId: "m2", name: "  ", email: "zed@clinic.example" },
+        { membershipId: "m1", name: " Ada Admin ", email: "ada@clinic.example" },
+        { membershipId: "m3", name: "Bea Nurse", email: "bea@clinic.example" },
+      ],
+      [
+        { membershipId: "m1", key: "org_admin" },
+        { membershipId: "m1", key: "compliance_officer" },
+        { membershipId: "m3", key: "rn" },
+        { membershipId: "gone", key: "org_admin" },
+      ],
+    );
+    expect(views).toEqual([
+      {
+        membershipId: "m1",
+        displayName: "Ada Admin",
+        email: "ada@clinic.example",
+        roleKeys: ["compliance_officer", "org_admin"],
+      },
+      {
+        membershipId: "m3",
+        displayName: "Bea Nurse",
+        email: "bea@clinic.example",
+        roleKeys: ["rn"],
+      },
+      { membershipId: "m2", displayName: null, email: "zed@clinic.example", roleKeys: [] },
+    ]);
   });
 });
 

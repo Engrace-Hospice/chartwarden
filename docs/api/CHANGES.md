@@ -12,6 +12,13 @@ its full description there. Newest first.
 
 - `GET /api/v1/platform/tenant-invitations` accepts `?tenantAccountId=<uuid>` and returns only that tenant's invitations (a malformed id is a
   `422`). Without it the list is unchanged (every tenant, newest first).
+- New `GET /api/v1/platform/tenants/{orgSlug}/members` (platform ops; `tenant_onboarding_data.read_platform`): a tenant's **active** staff
+  (`membershipId`, `displayName`, `email`, `roleKeys`) so an operator can pick the compliance officer by name. Read on the tenant's own
+  scope and audited; capped at 500.
+- `GET /api/v1/platform/tenants` and `GET /api/v1/platform/tenants/{orgSlug}` carry `onboardingProgress`
+  (`doneCount`, `totalCount`, `currentStepKey`, `goLiveState`), judged over the gating wizard steps. On the overview the older
+  `onboarding.{totalTasks,doneTasks,currentStep}` now follow the same rule: they used to count every task row, retired history
+  included, and to name whichever pending row came back first.
 - `POST /api/v1/platform/tenants` no longer requires `planLabel`. The retired flat tier is replaced by the census-banded contract signed at
   onboarding step 2, so an omitted label is stored as `"unassigned"`. A label that is sent must still be `starter`, `standard` or `enterprise`.
 

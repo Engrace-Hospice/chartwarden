@@ -208,7 +208,11 @@ function buildTestAbacResolver(): TenantPlatformAbacResolver {
 }
 
 function makeServer(
-  options: { tenantBaseDomain?: string | null; slugAvailabilityRateLimit?: RouteRateLimit } = {},
+  options: {
+    tenantBaseDomain?: string | null;
+    slugAvailabilityRateLimit?: RouteRateLimit;
+    extraTenants?: TenantPlatformRouteSeed["tenants"];
+  } = {},
 ) {
   const platformSeed: TenantPlatformRouteSeed = {
     // GAP-098 — one HELD bundle and one already-released job, so the `?held=true` filter has something
@@ -225,6 +229,7 @@ function makeServer(
         legalBusinessName: "Destroying Corp",
         status: "destruction_pending",
       },
+      ...(options.extraTenants ?? []),
     ],
     consentGrants: [
       {
@@ -837,6 +842,59 @@ describe("M34-saas-tenant-platform-inject — platform → first-admin invitatio
       headers: PLATFORM_OPS,
     });
     expect(malformed.statusCode).toBe(422);
+    await app.close();
+  });
+});
+
+// Slice 5 (G1): the hub list shows where each onboarding tenant is, so the inventory carries it. The Drizzle read behind it is proved
+// live (m34-tenant-hub-reads.live.test.ts); this pins the route contract: the field is on every row and on the overview.
+describe("M34-saas-tenant-platform-inject — tenant inventory carries onboarding progress", () => {
+  const PROGRESS = {
+    doneCount: 7,
+    totalCount: 13,
+    currentStepKey: "locations_seeded",
+    goLiveState: "not_ready",
+  };
+  const seeded = () =>
+    makeServer({
+      extraTenants: [
+        {
+          id: "10000000-0000-4000-8000-000000000003",
+          orgSlug: "onboarding-corp",
+          legalBusinessName: "Onboarding Corp",
+          status: "onboarding",
+          onboardingProgress: PROGRESS as never,
+        },
+      ],
+    });
+
+  it("lists the progress of an onboarding tenant and null for the others", async () => {
+    const { app } = seeded();
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenants",
+      headers: PLATFORM_OPS,
+    });
+    expect(list.statusCode).toBe(200);
+    const bySlug = new Map(
+      list
+        .json()
+        .items.map((t: { orgSlug: string; onboardingProgress: unknown }) => [t.orgSlug, t]),
+    );
+    expect(bySlug.get("onboarding-corp")).toMatchObject({ onboardingProgress: PROGRESS });
+    expect(bySlug.get("acme")).toMatchObject({ onboardingProgress: null });
+    await app.close();
+  });
+
+  it("carries it on the overview too", async () => {
+    const { app } = seeded();
+    const overview = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenants/onboarding-corp",
+      headers: PLATFORM_OPS,
+    });
+    expect(overview.statusCode).toBe(200);
+    expect(overview.json().onboardingProgress).toEqual(PROGRESS);
     await app.close();
   });
 });

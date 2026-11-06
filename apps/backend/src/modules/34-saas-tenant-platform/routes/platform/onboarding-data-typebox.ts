@@ -115,6 +115,20 @@ export const OnboardingMacCredentialViewSchema = Type.Object({
   updatedAt: Iso,
 });
 
+/** One active member of the tenant, as the compliance officer picker needs it (no user id, no credential state). */
+export const OnboardingMemberViewSchema = Type.Object({
+  membershipId: Type.String({ format: "uuid" }),
+  displayName: Nullable(Type.String()),
+  email: Nullable(Type.String()),
+  roleKeys: Type.Array(Type.String(), {
+    description:
+      "Enabled, unexpired roles the member holds in the tenant (compliance_officer first in a picker).",
+  }),
+});
+export const OnboardingMemberListSchema = Type.Object({
+  items: Type.Array(OnboardingMemberViewSchema),
+});
+
 export const OnboardingProviderEntityListSchema = Type.Object({
   items: Type.Array(ProviderEntityDetailSchema),
 });

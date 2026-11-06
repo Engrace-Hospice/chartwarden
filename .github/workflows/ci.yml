@@ -1060,6 +1060,9 @@ jobs:
           # evidence + audit, auto/either steps from the real fact readers, the two-party go-live (attest -> approve, guards at
           # approval time, revoke, the sweep never activates), retired steps, and the tenant role boxed out of approval.
           - { name: "M34 onboarding wizard v2", scripts: "test:m34:onboarding-wizard:live" }
+          # Slice 5 (admin console): the tenant list's onboarding progress (gating steps only, one batch, on the platform
+          # credential) and the compliance-officer picker's members read (active staff, roles held now, the tenant's own RLS).
+          - { name: "M34 tenant hub reads", scripts: "test:m34:tenant-hub-reads:live" }
           # GAP-023/024/038: M22's §4.11 render handshake end-to-end — a real signed order/med order
           # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in
           # this chain was executed before: the consumer did not exist and neither emitter fired.

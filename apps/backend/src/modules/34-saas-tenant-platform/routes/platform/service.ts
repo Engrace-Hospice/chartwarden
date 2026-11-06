@@ -13,6 +13,7 @@
 //     the foot of this file). The command methods here record the lifecycle intent + emit the outbox
 //     descriptor; they do NOT directly mutate cross-tenant rows from the request thread.
 import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
+import type { OnboardingProgress } from "../../onboarding/progress";
 import { assertExecutedBaaHasDocument } from "./baa-guards";
 import { type CursorPage, paginate } from "./concurrency";
 
@@ -50,6 +51,11 @@ export interface TenantSummaryView {
   readonly planLabel: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /**
+   * Where the tenant is in the onboarding wizard ("7 of 13, current step, go-live state"); null unless it is provisioning or
+   * onboarding. Judged over the gating steps only, exactly as the wizard and the activation guard judge them.
+   */
+  readonly onboardingProgress: OnboardingProgress | null;
 }
 
 /** The §5.2 full overview the `GET /platform/tenants/:orgSlug` screen renders. */
@@ -431,6 +437,7 @@ interface TenantRecord {
   latestStatusEvent: { id: string; toStatus: string; occurredAt: string; reason: string } | null;
   keyRing: KeyRingMetadataView | null;
   onboarding: { totalTasks: number; doneTasks: number; currentStep: string | null };
+  onboardingProgress: OnboardingProgress | null;
   baa: { status: string; expiresOn: string | null } | null;
   activeGrants: number;
   activeSessions: number;
@@ -506,6 +513,7 @@ const toSummary = (r: TenantRecord): TenantSummaryView => ({
   planLabel: r.planLabel,
   createdAt: r.createdAt,
   updatedAt: r.updatedAt,
+  onboardingProgress: r.onboardingProgress,
 });
 
 /** Read-only inspection surface over the slice (the route tests assert against it). */
@@ -580,6 +588,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
         destructionCertificateId: null,
       },
       onboarding: { totalTasks: 0, doneTasks: 0, currentStep: null },
+      onboardingProgress: null,
       baa: { status: "executed", expiresOn: null },
       activeGrants: 0,
       activeSessions: 0,
@@ -751,6 +760,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
         },
         keyRing: null,
         onboarding: { totalTasks: 0, doneTasks: 0, currentStep: null },
+        onboardingProgress: null,
         baa: null,
         activeGrants: 0,
         activeSessions: 0,

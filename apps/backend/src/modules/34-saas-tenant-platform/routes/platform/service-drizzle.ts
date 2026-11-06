@@ -61,12 +61,14 @@ import {
 } from "../../invitation-token";
 import type { ProvisionJobPort } from "../../jobs/provision-job-port";
 import { voidPendingGoLiveForDataChange } from "../../onboarding/go-live-void";
+import type { OnboardingProgress } from "../../onboarding/progress";
 import type { WizardActivation } from "../../onboarding/wizard-store-drizzle";
 import { evaluateActivationGuards, pickGoverningBaa } from "./activation-guards";
 import { assertExecutedBaaHasDocument } from "./baa-guards";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
 import { partitionEffects } from "./effect-ledger";
 import { evaluateDestructionGuards, retentionEndsAtFrom } from "./offboarding-guards";
+import { readOnboardingProgress } from "./onboarding-progress-drizzle";
 import type {
   BaaRecordView,
   CloseSupportSessionArgs,
@@ -309,7 +311,11 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     }
   };
 
-  const toSummary = (a: schema.TenantAccount, orgSlug: string): TenantSummaryView => ({
+  const toSummary = (
+    a: schema.TenantAccount,
+    orgSlug: string,
+    onboardingProgress: OnboardingProgress | null,
+  ): TenantSummaryView => ({
     id: a.id,
     organizationId: a.organizationId,
     orgSlug,
@@ -318,6 +324,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     planLabel: a.planLabel,
     createdAt: isoReq(a.createdAt),
     updatedAt: isoReq(a.updatedAt),
+    onboardingProgress,
   });
 
   /** Resolve an account by org slug (the platform routes address tenants by slug). */
@@ -525,8 +532,13 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           .from(A)
           .innerJoin(ORG, eq(A.organizationId, ORG.id))
           .orderBy(desc(A.createdAt), desc(A.id));
+        // One batched read for the whole inventory (three queries, not three per tenant).
+        const progress = await readOnboardingProgress(
+          tx,
+          rows.map((r) => ({ id: r.account.id, status: r.account.status })),
+        );
         const views = rows
-          .map((r) => toSummary(r.account, r.slug))
+          .map((r) => toSummary(r.account, r.slug, progress.get(r.account.id) ?? null))
           .filter((v) => (filter.status ? v.status === filter.status : true))
           .filter((v) => (filter.planLabel ? v.planLabel === filter.planLabel : true))
           .filter((v) => (filter.createdAfter ? v.createdAt > filter.createdAfter : true))
@@ -560,7 +572,10 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
 
         const [event] = await accRepo.listStatusEvents(account.id, { limit: 1 });
         const keyRing = await krRepo.findByTenantAccountId(account.id);
-        const tasks = await tx.select().from(TASK).where(eq(TASK.tenantAccountId, account.id));
+        const progress =
+          (await readOnboardingProgress(tx, [{ id: account.id, status: account.status }])).get(
+            account.id,
+          ) ?? null;
         const baaRows = await new BaaRegisterRepository(tx).listByTenantAccountId(account.id);
         const latestBaa = baaRows[0] ?? null;
         const sessions = await tx
@@ -571,14 +586,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const activeSessions = sessions.filter((s) => s.support_session.closedAt === null).length;
         const grants = await new SupportRepository(tx).listActiveConsentGrants(account.id);
 
-        const doneTasks = tasks.filter((t) => t.status === "done" || t.status === "skipped").length;
-        const currentStep =
-          tasks.find((t) => t.status === "in_progress")?.templateKey ??
-          tasks.find((t) => t.status === "pending")?.templateKey ??
-          null;
-
         return {
-          ...toSummary(account, slug),
+          ...toSummary(account, slug, progress),
           latestStatusEvent: event
             ? {
                 id: event.id,
@@ -594,7 +603,13 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
                 destroyedAt: iso(keyRing.destroyedAt),
               }
             : null,
-          onboarding: { totalTasks: tasks.length, doneTasks, currentStep },
+          // Judged over the gating steps in the wizard's order, like the progress above: it used to count every task row
+          // (retired history included) and name whichever pending row the database returned first.
+          onboarding: {
+            totalTasks: progress?.totalCount ?? 0,
+            doneTasks: progress?.doneCount ?? 0,
+            currentStep: progress?.currentStepKey ?? null,
+          },
           baa: latestBaa
             ? { status: latestBaa.baaStatus, expiresOn: dateOnly(latestBaa.expiresOn) }
             : null,
