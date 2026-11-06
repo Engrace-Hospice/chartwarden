@@ -262,6 +262,13 @@ interface WriteSpec {
   readonly anyTenantStatus?: boolean;
 }
 
+const notOnboarding = (status: string): ChartWardenError =>
+  new ChartWardenError(
+    "TENANT_NOT_ONBOARDING",
+    `onboarding data can be entered only while the tenant is provisioning or onboarding (it is ${status})`,
+    409,
+  );
+
 const scopeOf = (op: OnboardingOperator, organizationId: string): OnboardingWriteScope => ({
   organizationId,
   operatorUserId: op.userId,
@@ -388,15 +395,42 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       await recordFailedWrite(op, target, spec, err);
       throw err;
     }
-    if ("refusedStatus" in outcome) {
-      throw new ChartWardenError(
-        "TENANT_NOT_ONBOARDING",
-        `onboarding data can be entered only while the tenant is provisioning or onboarding (it is ${outcome.refusedStatus})`,
-        409,
-      );
-    }
+    if ("refusedStatus" in outcome) throw notOnboarding(outcome.refusedStatus);
     await settleAfterWrite(target.organizationId, tenantAccountId);
     return outcome.value;
+  }
+
+  /**
+   * The onboarding-status gate on its own, for a write whose work must not start before it is allowed (a vendor call, a committed
+   * roster row). It takes the same shared lock and applies the same rule as `write`, and a refusal is audited the same way; `write`
+   * stays the authoritative re-check (the status can move between the two). Without it, a write that does real work in its
+   * `prepare` step would act on a LIVE tenant and only then be refused.
+   */
+  async function precheck(op: OnboardingOperator, orgSlug: string, spec: WriteSpec): Promise<void> {
+    const target = await targetOf(orgSlug);
+    const refusedStatus = await withOrgContext<DbClient, string | null>(
+      db,
+      { organizationId: target.organizationId, userId: op.userId },
+      async (tx) => {
+        await lockTenantOnboardingShared(tx, target.organizationId);
+        const [account] = await tx
+          .select({ status: ACCOUNT.status })
+          .from(ACCOUNT)
+          .where(eq(ACCOUNT.organizationId, target.organizationId))
+          .limit(1);
+        if (!account) throw new NotFoundError("tenant");
+        if (spec.anyTenantStatus || ONBOARDING_WRITABLE_STATUSES.has(account.status)) return null;
+        await recordOnboardingAudit(tx, op, target, {
+          eventType: EVENTS.writeRefused,
+          resourceKind: spec.resourceKind,
+          outcome: "denied",
+          reason: spec.reason,
+          detail: { attemptedEvent: spec.event, tenantStatus: account.status },
+        });
+        return account.status;
+      },
+    );
+    if (refusedStatus !== null) throw notOnboarding(refusedStatus);
   }
 
   /** Post-commit, best effort: let the advance sweep settle whatever step this write satisfied. */
@@ -735,6 +769,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       targetOf,
       scopeOf,
       write,
+      precheck,
       read,
       settle: settleStepAfter,
       ...(deps.logError ? { logError: deps.logError } : {}),

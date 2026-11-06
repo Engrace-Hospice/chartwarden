@@ -59,7 +59,16 @@ export function resolveDoseSpotEnvironment(
       : { ok: false, reason: "production_url_unset" };
   }
   const baseUrl = vendorUrlOrNull(override);
-  return baseUrl === null ? { ok: false, reason: "base_url_invalid" } : { ok: true, baseUrl };
+  if (baseUrl === null) return { ok: false, reason: "base_url_invalid" };
+  // The production flag guards production only, so the sandbox variable must never name the production host.
+  if (environment === "sandbox") {
+    const production = env[BASE_URL_ENV.production]?.trim();
+    const productionUrl = production ? vendorUrlOrNull(production) : null;
+    if (productionUrl !== null && new URL(productionUrl).host === new URL(baseUrl).host) {
+      return { ok: false, reason: "base_url_invalid" };
+    }
+  }
+  return { ok: true, baseUrl };
 }
 
 /** The platform's own Subscription-Key for `environment`, used when a tenant's row carries none; null when unset. */

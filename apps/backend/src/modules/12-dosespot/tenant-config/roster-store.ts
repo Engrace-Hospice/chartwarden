@@ -7,6 +7,7 @@ import type { RosterRow, RosterStore } from "./prescriber-enrollment";
 
 const R = schema.dosespotClinicRegistrations;
 const P = schema.dosespotPrescribers;
+const M = schema.memberships;
 
 const toRow = (r: typeof P.$inferSelect): RosterRow => ({
   id: r.id,
@@ -28,30 +29,57 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
       return row?.status ?? null;
     },
 
-    async ensureRequested(organizationId, membershipId, at) {
+    async membershipExists(organizationId, membershipId) {
       const [row] = await tx
-        .insert(P)
-        .values({
-          organizationId,
-          membershipId,
-          deaAuthorizedSchedules: [],
-          enrolledAt: at,
-          vendorEnrollmentRequestedAt: at,
-        })
-        .onConflictDoUpdate({
-          target: [P.organizationId, P.membershipId],
-          set: {
-            vendorEnrollmentRequestedAt: at,
-            // a prescriber re-enrolled with the vendor is back on the roster
+        .select({ id: M.id })
+        .from(M)
+        .where(and(eq(M.id, membershipId), eq(M.organizationId, organizationId)))
+        .limit(1);
+      return row !== undefined;
+    },
+
+    async ensureRequested(organizationId, membershipId, at, claimWindowMs) {
+      const [existing] = await tx
+        .select()
+        .from(P)
+        .where(and(eq(P.organizationId, organizationId), eq(P.membershipId, membershipId)))
+        .for("update");
+      if (!existing) {
+        const [created] = await tx
+          .insert(P)
+          .values({
+            organizationId,
+            membershipId,
+            deaAuthorizedSchedules: [],
             enrolledAt: at,
-            revokedAt: null,
-            revocationReason: null,
-            updatedAt: at,
-          },
-        })
+            vendorEnrollmentRequestedAt: at,
+          })
+          .returning();
+        if (!created) throw new Error("dosespot_prescriber insert returned no row");
+        return { row: toRow(created), inProgress: false };
+      }
+      // a revoked or already-linked prescriber is returned untouched: nothing is stamped and nothing is reinstated
+      if (existing.revokedAt !== null || existing.dosespotPrescriberId !== null) {
+        return { row: toRow(existing), inProgress: false };
+      }
+      const marker = existing.vendorEnrollmentRequestedAt;
+      if (marker !== null && at.getTime() - marker.getTime() < claimWindowMs) {
+        return { row: toRow(existing), inProgress: true };
+      }
+      const [stamped] = await tx
+        .update(P)
+        .set({ vendorEnrollmentRequestedAt: at, updatedAt: at })
+        .where(eq(P.id, existing.id))
         .returning();
-      if (!row) throw new Error("dosespot_prescriber upsert returned no row");
-      return toRow(row);
+      if (!stamped) throw new Error("dosespot_prescriber update returned no row");
+      return { row: toRow(stamped), inProgress: false };
+    },
+
+    async releaseRequest(organizationId, membershipId) {
+      await tx
+        .update(P)
+        .set({ vendorEnrollmentRequestedAt: null })
+        .where(and(eq(P.organizationId, organizationId), eq(P.membershipId, membershipId)));
     },
 
     async recordVendorId(organizationId, membershipId, input) {

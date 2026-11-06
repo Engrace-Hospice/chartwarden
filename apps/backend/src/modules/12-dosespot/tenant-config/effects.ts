@@ -49,13 +49,20 @@ export function changeOfTransition(
   return kind === "activated" ? { kind } : { kind, cause: "deactivated" };
 }
 
+/** The registration an effect names: its id, environment and the version the change produced (the per-change discriminator). */
+export interface RegistrationRef {
+  readonly id: string;
+  readonly environment: DoseSpotEnvironment;
+  readonly version: number;
+}
+
 export async function registrationOf(
   store: ConfigStore,
   organizationId: string,
-): Promise<{ readonly id: string; readonly environment: DoseSpotEnvironment }> {
+): Promise<RegistrationRef> {
   const row = await store.find(organizationId);
   if (!row) throw new Error("the DoseSpot registration vanished after its write");
-  return { id: row.id, environment: row.environment as DoseSpotEnvironment };
+  return { id: row.id, environment: row.environment as DoseSpotEnvironment, version: row.version };
 }
 
 /** In the change's transaction: the outbox event, then the go-live void. */
@@ -66,7 +73,7 @@ export async function applyInTransaction(
     readonly organizationId: string;
     readonly userId: string;
     readonly membershipId: string | null;
-    readonly registration: { readonly id: string; readonly environment: DoseSpotEnvironment };
+    readonly registration: RegistrationRef;
     readonly change: ClinicServiceChange | null;
   },
 ): Promise<void> {
@@ -95,7 +102,7 @@ export async function applyInTransaction(
 export async function alertAfterCommit(
   alerts: ClinicAlertPort | undefined,
   organizationId: string,
-  registration: { readonly id: string; readonly environment: DoseSpotEnvironment },
+  registration: RegistrationRef,
   change: ClinicServiceChange | null,
 ): Promise<void> {
   if (!alerts || change?.kind !== "deactivated") return;
@@ -103,8 +110,11 @@ export async function alertAfterCommit(
     alertCode: DEACTIVATED_ALERT,
     severity: "warn",
     organizationId,
+    // `changeId` ends in `Id`, so the M36 correlation id differs per change: AlertEmitter collapses a repeat of (org, correlationId), and
+    // without it a second deactivation or rotation of the same registration on the same UTC day would never alert.
     payload: {
       registrationId: registration.id,
+      changeId: `${registration.id}:${registration.version}`,
       environment: registration.environment,
       cause: change.cause,
     },

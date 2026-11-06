@@ -81,6 +81,17 @@ export interface DoseSpotLaneHelpers {
       readonly detail?: Readonly<Record<string, string | number | boolean>>;
     }>,
   ) => Promise<T>;
+  /** The onboarding-status gate alone: refuses (409 TENANT_NOT_ONBOARDING, audited) BEFORE any work that `write` would only refuse after. */
+  readonly precheck: (
+    op: OnboardingOperator,
+    orgSlug: string,
+    spec: {
+      readonly event: OnboardingAuditEvent;
+      readonly resourceKind: string;
+      readonly reason: string;
+      readonly anyTenantStatus?: boolean;
+    },
+  ) => Promise<void>;
   readonly read: <T extends { items: unknown[] }>(
     op: OnboardingOperator,
     orgSlug: string,
@@ -158,6 +169,8 @@ export function buildDoseSpotLane(h: DoseSpotLaneHelpers): DoseSpotLaneMethods {
       // The probe is a network call: it runs with NO transaction open (and no row lock held). Step 1 reads and unseals the
       // candidate credential on its own short read, step 2 is the token mint, step 3 is the audited write transaction, which
       // compare-and-sets on the version step 1 read (409 when the registration moved meanwhile).
+      // refuse a live tenant BEFORE the token mint (write re-checks below, authoritatively)
+      await h.precheck(op, orgSlug, { event: EVENTS.dosespotVerified, resourceKind: KIND, reason });
       const target = await h.targetOf(orgSlug);
       const scope = h.scopeOf(op, target.organizationId);
       const dosespot = port();
@@ -221,6 +234,12 @@ export function buildDoseSpotLane(h: DoseSpotLaneHelpers): DoseSpotLaneMethods {
     },
 
     async enrollDoseSpotPrescriber(op, orgSlug, membershipId, fields, reason) {
+      // refuse a live tenant BEFORE the roster claim and the vendor call (write re-checks below, authoritatively)
+      await h.precheck(op, orgSlug, {
+        event: EVENTS.dosespotPrescriberEnrolled,
+        resourceKind: PRESCRIBER_KIND,
+        reason,
+      });
       const target = await h.targetOf(orgSlug);
       const scope = h.scopeOf(op, target.organizationId);
       const dosespot = port();

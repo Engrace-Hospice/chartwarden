@@ -37,7 +37,13 @@ import type {
   DoseSpotRxBenefitResponse,
 } from "./contract";
 import { DOSESPOT_ENDPOINTS, type DoseSpotEndpoint, TOKEN_ENDPOINT, buildPath } from "./endpoints";
-import { DegradedError, type DoseSpotOperation, RetryableError, isRetryableError } from "./errors";
+import {
+  DegradedError,
+  type DoseSpotOperation,
+  NotEnabledError,
+  RetryableError,
+  isRetryableError,
+} from "./errors";
 import {
   asString,
   findPrescription,
@@ -66,6 +72,11 @@ export type DoseSpotFetch = (
     readonly headers: Readonly<Record<string, string>>;
     readonly body?: string;
     readonly signal?: AbortSignal;
+    /**
+     * Always `"error"`: a redirect is never followed. The token body holds the clinic key and the headers the Subscription-Key, and a
+     * 307/308 would re-send both to wherever it points (the standard strips only `Authorization` across origins).
+     */
+    readonly redirect?: "error";
   },
 ) => Promise<{
   readonly status: number;
@@ -135,9 +146,9 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
   ): Promise<DoseSpotTenantConfig> {
     const cfg = await deps.resolver.configFor(orgId, purpose);
     if (cfg === null) {
-      throw degraded(
+      throw new NotEnabledError(
+        "dosespot",
         op,
-        false,
         "E-prescribe is not enabled for this organization; DoseSpot credentials are not configured.",
         correlationId,
       );
@@ -161,6 +172,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         headers,
         ...(body !== undefined ? { body } : {}),
         signal: controller.signal,
+        redirect: "error",
       });
       return { status: res.status, text: await res.text() };
     } catch (err) {
@@ -362,9 +374,9 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
 
   const unsupported = async (op: DoseSpotOperation, orgId: string): Promise<never> => {
     throw (await deps.resolver.configFor(orgId)) === null
-      ? degraded(
+      ? new NotEnabledError(
+          "dosespot",
           op,
-          false,
           "E-prescribe is not enabled for this organization; DoseSpot credentials are not configured.",
           newCorrelationId(),
         )

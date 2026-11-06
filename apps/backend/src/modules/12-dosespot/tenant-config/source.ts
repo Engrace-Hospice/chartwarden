@@ -40,7 +40,15 @@ export interface DrizzleTenantConfigSourceDeps {
   readonly platformEnv: Readonly<Record<string, string | undefined>>;
   /** Test seam: replaces the RLS-scoped Drizzle read of the org's row. */
   readonly readRow?: (organizationId: string) => Promise<ConfigRow | null>;
+  /** Test seam: the clock (ms) the credential cache ages by. */
+  readonly now?: () => number;
 }
+
+/**
+ * How long the unsealed credential may stay in this process's memory. A shorter life than the process's: a tenant whose key ring was
+ * destroyed (the cryptographic shred) or whose row was deactivated stops being served when the entry is gone, not at the next restart.
+ */
+export const CREDENTIAL_CACHE_TTL_MS = 5 * 60_000;
 
 const usableFor = (status: string, purpose: DoseSpotConfigPurpose): boolean =>
   purpose === "operate" ? status === "active" : status === "active" || status === "verified";
@@ -48,9 +56,10 @@ const usableFor = (status: string, purpose: DoseSpotConfigPurpose): boolean =>
 export function createDrizzleTenantConfigSource(
   deps: DrizzleTenantConfigSourceDeps,
 ): DoseSpotTenantConfigSource {
+  const now = deps.now ?? Date.now;
   const built = new Map<
     string,
-    { readonly version: number; readonly config: DoseSpotTenantConfig }
+    { readonly version: number; readonly config: DoseSpotTenantConfig; readonly at: number }
   >();
 
   const readRow = (organizationId: string): Promise<ConfigRow | null> => {
@@ -69,7 +78,10 @@ export function createDrizzleTenantConfigSource(
 
   async function build(row: ConfigRow, baseUrl: string): Promise<DoseSpotTenantConfig> {
     const cached = built.get(row.organizationId);
-    if (cached?.version === row.version) return cached.config;
+    if (cached?.version === row.version && now() - cached.at < CREDENTIAL_CACHE_TTL_MS) {
+      return cached.config;
+    }
+    built.delete(row.organizationId);
     if (
       !deps.cipher ||
       !row.secretCipher ||
@@ -104,21 +116,27 @@ export function createDrizzleTenantConfigSource(
       epcsCertified: false, // EPCS stays under the D18 certification gate: no registration can switch it on
       version: row.version,
     };
-    built.set(row.organizationId, { version: row.version, config });
+    built.set(row.organizationId, { version: row.version, config, at: now() });
     return config;
   }
 
   return {
     async lookup(organizationId, purpose) {
       const row = await readRow(organizationId);
-      if (!row) return { kind: "absent" };
+      if (!row) {
+        built.delete(organizationId);
+        return { kind: "absent" };
+      }
       const resolved = resolveDoseSpotEnvironment(
         row.environment as DoseSpotEnvironment,
         deps.platformEnv,
       );
+      const usable = usableFor(row.status, purpose) && resolved.ok;
+      // a row that is not usable keeps no unsealed credential in memory (a deactivation, a rotation in progress, a closed environment)
+      if (!usable) built.delete(organizationId);
       return {
         kind: "present",
-        usable: usableFor(row.status, purpose) && resolved.ok,
+        usable,
         load: () =>
           resolved.ok
             ? build(row, resolved.baseUrl)

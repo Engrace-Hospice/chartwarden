@@ -21,9 +21,12 @@ const ACTOR = {
 const NPI = "1234567893"; // passes the NPI check digit
 const BODY = { npi: NPI, firstName: "Ada", lastName: "Lovelace" };
 
+const clock = { at: new Date("2026-11-06T12:00:00.000Z") };
+
 function build(
   opts: {
     status?: string | null;
+    membershipInOrg?: boolean;
     row?: Partial<RosterRow> | null;
     vendor?: (
       n: number,
@@ -47,17 +50,29 @@ function build(
         };
   const store: RosterStore = {
     configStatus: async () => (opts.status === undefined ? "verified" : opts.status),
-    async ensureRequested(_org, membershipId, at) {
+    membershipExists: async () => opts.membershipInOrg !== false,
+    async ensureRequested(_org, membershipId, at, claimWindowMs) {
       log.push("ensureRequested");
+      if (roster && (roster.revokedAt !== null || roster.dosespotPrescriberId !== null)) {
+        return { row: roster, inProgress: false }; // revoked or already linked: nothing is stamped
+      }
+      const marker = roster?.vendorEnrollmentRequestedAt ?? null;
+      if (marker !== null && at.getTime() - marker.getTime() < claimWindowMs) {
+        return { row: roster as RosterRow, inProgress: true };
+      }
       roster = {
         id: roster?.id ?? "roster-new",
         membershipId,
-        dosespotPrescriberId: roster?.dosespotPrescriberId ?? null,
+        dosespotPrescriberId: null,
         revokedAt: null,
         vendorEnrollmentRequestedAt: at,
         npi: roster?.npi ?? null,
       };
-      return roster;
+      return { row: roster, inProgress: false };
+    },
+    async releaseRequest() {
+      log.push("releaseRequest");
+      if (roster) roster = { ...roster, vendorEnrollmentRequestedAt: null };
     },
     async recordVendorId(_org, membershipId, input) {
       log.push("recordVendorId");
@@ -111,7 +126,7 @@ function build(
     afterWrite: async (_tx, scope) => {
       voids.push(scope.organizationId);
     },
-    now: () => new Date("2026-11-06T12:00:00.000Z"),
+    now: () => clock.at,
   });
   return {
     service,
@@ -140,6 +155,7 @@ describe("prescriber vendor enrolment", () => {
     const out = await h.service.enroll(ACTOR, MEMBER, BODY);
     expect(out).toEqual({ membershipId: MEMBER, enrolledWithDoseSpot: true });
     expect(h.log).toEqual(["ensureRequested", `vendor:${NPI}:false`, "recordVendorId"]);
+    expect(h.log).not.toContain("releaseRequest");
     expect(h.insideTx()).toBe(false);
     expect(h.roster()).toMatchObject({ dosespotPrescriberId: "700", npi: NPI });
   });
@@ -199,7 +215,7 @@ describe("prescriber vendor enrolment", () => {
     expect(h.roster()).toMatchObject({ id: "roster-new", dosespotPrescriberId: "700" });
   });
 
-  it("a vendor refusal leaves the committed request marker and no vendor id, as a typed error", async () => {
+  it("a vendor refusal releases the request claim (a fixed retry may go straight away) and records no vendor id", async () => {
     const h = build({
       vendor: async () => {
         throw new DegradedError(
@@ -215,8 +231,11 @@ describe("prescriber vendor enrolment", () => {
       statusCode: 422,
       code: "DOSESPOT_ENROLLMENT_REJECTED",
     });
-    expect(h.roster()).toMatchObject({ dosespotPrescriberId: null });
-    expect(h.roster()?.vendorEnrollmentRequestedAt).not.toBeNull();
+    expect(h.log).toEqual(["ensureRequested", `vendor:${NPI}:false`, "releaseRequest"]);
+    expect(h.roster()).toMatchObject({
+      dosespotPrescriberId: null,
+      vendorEnrollmentRequestedAt: null,
+    });
     expect(h.published).toEqual([]);
     expect(h.voids).toEqual([]);
   });
@@ -242,6 +261,43 @@ describe("prescriber vendor enrolment", () => {
     });
     expect((await h.service.enroll(ACTOR, MEMBER, BODY)).enrolledWithDoseSpot).toBe(true);
     expect(h.roster()?.dosespotPrescriberId).toBe("701");
+  });
+
+  it("a second enrolment while one is in flight is a 409 and makes no second vendor call (the claim)", async () => {
+    // the first attempt crashed between the vendor create and the record: its marker is committed with no vendor id
+    const h = build({ row: { vendorEnrollmentRequestedAt: new Date("2026-11-06T11:59:30.000Z") } });
+    await expect(h.service.enroll(ACTOR, MEMBER, BODY)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "DOSESPOT_ENROLLMENT_IN_PROGRESS",
+    });
+    expect(h.calls()).toBe(0);
+    // once the claim window has passed the retry goes through
+    clock.at = new Date("2026-11-06T12:05:00.000Z");
+    expect((await h.service.enroll(ACTOR, MEMBER, BODY)).enrolledWithDoseSpot).toBe(true);
+    expect(h.calls()).toBe(1);
+    clock.at = new Date("2026-11-06T12:00:00.000Z");
+  });
+
+  it("never reinstates a revoked prescriber: 409, no vendor call, and the row is left revoked", async () => {
+    for (const row of [
+      { revokedAt: new Date("2026-11-01T00:00:00.000Z") },
+      { revokedAt: new Date("2026-11-01T00:00:00.000Z"), dosespotPrescriberId: "700" },
+    ]) {
+      const h = build({ row });
+      await expect(h.service.enroll(ACTOR, MEMBER, BODY)).rejects.toMatchObject({
+        statusCode: 409,
+        code: "DOSESPOT_PRESCRIBER_REVOKED",
+      });
+      expect(h.calls()).toBe(0);
+      expect(h.roster()?.revokedAt).not.toBeNull();
+    }
+  });
+
+  it("refuses a membership that is not in this organization (404) before any roster write or vendor call", async () => {
+    const h = build({ membershipInOrg: false });
+    await expect(h.service.enroll(ACTOR, MEMBER, BODY)).rejects.toMatchObject({ statusCode: 404 });
+    expect(h.log).toEqual([]);
+    expect(h.calls()).toBe(0);
   });
 
   it("refuses a bad NPI or an empty name before any store call (422)", async () => {

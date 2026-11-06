@@ -7,7 +7,7 @@
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m12:crons-transmit:live
  */
-import { DegradedError } from "@chartwarden/dosespot";
+import { DegradedError, NotEnabledError } from "@chartwarden/dosespot";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { enqueueTransmissionIfBound } from "../src/modules/12-dosespot/index";
 import { inOrg } from "../src/modules/12-dosespot/jobs/cron-common";
@@ -245,6 +245,29 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
     const r = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
     expect(r.failed).toBe(1);
     expect(await orderRow(orderId)).toMatchObject({ status: "transmission_failed", s: "failed" });
+  });
+
+  it("a registration that stops being live mid-batch defers WITHOUT burning the retry budget (queued orders wait, ADR-0110 D6)", async () => {
+    const { orderId, transmissionId } = await queued();
+    const vendor = new FakeDoseSpotVendor({
+      transmit: async () => {
+        throw new NotEnabledError(
+          "dosespot",
+          "transmitNewRx",
+          "E-prescribe is not enabled for this organization; DoseSpot credentials are not configured.",
+          "c4",
+        );
+      },
+    });
+    const r = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+    expect(r).toMatchObject({ claimed: 1, deferredByOutage: 1, failed: 0, requeued: 0 });
+    expect(await orderRow(orderId)).toMatchObject({
+      status: "queued_for_transmission",
+      s: "queued",
+    });
+    const t = await txRow(transmissionId as string);
+    expect(t.retry_count).toBe(0);
+    expect(t.transmission_failed_at).toBeNull();
   });
 
   it("an open circuit defers WITHOUT burning the retry budget (the outage must not exhaust orders)", async () => {

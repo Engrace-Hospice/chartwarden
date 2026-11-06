@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { ConfigRow } from "./config-store";
 import { buildClinicSecretCipher } from "./secret-cipher";
-import { createDrizzleTenantConfigSource } from "./source";
+import { CREDENTIAL_CACHE_TTL_MS, createDrizzleTenantConfigSource } from "./source";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const KEY = randomBytes(32);
@@ -142,6 +142,41 @@ describe("DoseSpot tenant config source", () => {
     row = await rowWith({ version: 4 });
     await load();
     expect(opens).toBe(2);
+  });
+
+  it("forgets the unsealed credential after a few minutes, and the moment the row is not usable (a shredded or deactivated tenant)", async () => {
+    let opens = 0;
+    const counting = {
+      ...cipher,
+      decrypt: async (...args: Parameters<typeof cipher.decrypt>) => {
+        opens += 1;
+        return cipher.decrypt(...args);
+      },
+    };
+    let clock = 1_000_000;
+    let row = await rowWith();
+    const source = createDrizzleTenantConfigSource({
+      readRow: async () => row,
+      cipher: counting,
+      platformEnv: PLATFORM_KEY,
+      now: () => clock,
+    });
+    const load = async () => {
+      const f = await source.lookup(ORG, "operate");
+      if (f.kind !== "present" || !f.usable) throw new Error("not usable");
+      return f.load();
+    };
+    await load();
+    await load();
+    expect(opens).toBe(1);
+    clock += CREDENTIAL_CACHE_TTL_MS + 1; // the same row version, but the cached plaintext has expired
+    await load();
+    expect(opens).toBe(2);
+    row = await rowWith({ status: "verified", version: 3 });
+    expect(await source.lookup(ORG, "operate")).toMatchObject({ usable: false }); // evicts
+    row = await rowWith(); // version 3 again, active: it must be opened afresh, not served from the evicted cache
+    await load();
+    expect(opens).toBe(3);
   });
 
   it("an unopenable credential is a typed 503 with no secret in it, never 'not configured'", async () => {

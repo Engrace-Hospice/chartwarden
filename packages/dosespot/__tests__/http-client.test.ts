@@ -9,9 +9,11 @@ import {
   type DoseSpotFetch,
   type DoseSpotTenantConfig,
   type DoseSpotTenantConfigResolver,
+  NotEnabledError,
   createEnvTenantConfigResolver,
   createHttpDoseSpotClient,
   createUnboundTenantConfigResolver,
+  isNotEnabledError,
   parseTenantConfig,
   phaseOfStatus,
   unverifiedEndpoints,
@@ -141,6 +143,8 @@ describe("tenant configuration is fail-closed", () => {
     const { c, calls } = client({});
     const err = await c.transmitNewRx(OTHER_ORG, NEWRX, "k").catch((e) => e);
     expect(err).toBeInstanceOf(DegradedError);
+    expect(err).toBeInstanceOf(NotEnabledError); // a worker holding queued work treats this as a pause, not a rejection
+    expect(isNotEnabledError(err)).toBe(true);
     expect(err.retryable).toBe(false);
     await expect(c.upsertPatient(OTHER_ORG, {} as never, "k")).rejects.toBeInstanceOf(
       DegradedError,
@@ -172,6 +176,28 @@ describe("token handling", () => {
     const api = calls.filter((x) => x.url.includes("/api/"));
     expect(api[0]?.headers.Authorization).toBe("Bearer tok-1");
     expect(api[0]?.headers["Subscription-Key"]).toBe("sub-key");
+  });
+
+  it("never follows a redirect on any request (the token body holds the clinic key, the headers the Subscription-Key)", async () => {
+    const seen: (string | undefined)[] = [];
+    const fetchImpl: DoseSpotFetch = async (url, init) => {
+      seen.push(init.redirect);
+      return url.endsWith("/connect/token")
+        ? { status: 200, text: async () => JSON.stringify({ access_token: "t", expires_in: 3600 }) }
+        : {
+            status: 200,
+            text: async () =>
+              JSON.stringify({ Items: [{ PrescriptionId: 77, Status: "eRxSent" }] }),
+          };
+    };
+    const c = createHttpDoseSpotClient({
+      resolver: resolver(),
+      fetch: fetchImpl,
+      sleep: async () => undefined,
+    });
+    await c.getPrescriptionStatus(ORG, "501", "77");
+    expect(seen).toHaveLength(2);
+    expect(seen.every((r) => r === "error")).toBe(true);
   });
 
   it("re-mints once on a 401 and then succeeds", async () => {

@@ -15,6 +15,7 @@ import {
   type ClinicAlertPort,
   type ClinicEffectDeps,
   type ClinicServiceChange,
+  type RegistrationRef,
   alertAfterCommit,
   applyInTransaction,
   changeOfPut,
@@ -66,7 +67,7 @@ export function buildDrizzleDoseSpotClinicRouteService(
     changedFields: readonly string[],
     change: ClinicServiceChange | null,
     detail?: Readonly<Record<string, string | number | boolean>>,
-  ): Promise<{ readonly id: string; readonly environment: "sandbox" | "production" }> {
+  ): Promise<RegistrationRef> {
     const registration = await registrationOf(createDrizzleConfigStore(tx), actor.organizationId);
     await audit.record(tx, {
       organizationId: actor.organizationId,
@@ -92,7 +93,7 @@ export function buildDrizzleDoseSpotClinicRouteService(
   /** After the commit: the lost-service alert and the onboarding settle. Never fails the change. */
   async function afterCommit(
     organizationId: string,
-    registration: { readonly id: string; readonly environment: "sandbox" | "production" },
+    registration: RegistrationRef,
     change: ClinicServiceChange | null,
   ): Promise<void> {
     try {

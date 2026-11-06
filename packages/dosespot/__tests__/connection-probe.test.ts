@@ -17,14 +17,20 @@ const CONFIG: DoseSpotTenantConfig = {
 };
 
 function probeWith(reply: (n: number) => { status: number; body?: unknown } | "network" | "abort") {
-  const calls: { url: string; method: string; headers: Record<string, string>; body?: string }[] =
-    [];
+  const calls: {
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+    body?: string;
+    redirect?: string;
+  }[] = [];
   const fetchImpl: DoseSpotFetch = async (url, init) => {
     calls.push({
       url,
       method: init.method,
       headers: { ...init.headers },
       ...(init.body !== undefined ? { body: init.body } : {}),
+      ...(init.redirect !== undefined ? { redirect: init.redirect } : {}),
     });
     const out = reply(calls.length);
     if (out === "network") throw new Error("ECONNRESET");
@@ -52,6 +58,12 @@ describe("DoseSpot connection probe", () => {
       `Basic ${Buffer.from("clinic-1:clinic-key-secret").toString("base64")}`,
     );
     expect(calls[0]?.body).toContain("Username=900");
+  });
+
+  it("never follows a redirect: the body carries the clinic key and the headers the Subscription-Key", async () => {
+    const { probe, calls } = probeWith(() => ({ status: 200, body: { access_token: "t" } }));
+    await probe.probe(CONFIG);
+    expect(calls[0]?.redirect).toBe("error");
   });
 
   it("makes exactly one call and touches no patient or prescription path", async () => {

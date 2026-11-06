@@ -13,7 +13,7 @@
 // vendor duplicate (DoseSpot's dedupe by NPI is unverified: it needs a sandbox run). Enrolment never starts EPCS or IAL2.
 import type { DbClient } from "@chartwarden/db";
 import { type DoseSpotClient, isDegradedError } from "@chartwarden/dosespot";
-import { ChartWardenError, ValidationError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError, ValidationError } from "@chartwarden/types";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 import { CLINIC_AUDIT_EVENTS, type ClinicAuditPort } from "./audit-port";
 
@@ -30,8 +30,21 @@ export interface RosterRow {
 export interface RosterStore {
   /** The registration's status, or null when the org has none. */
   configStatus(organizationId: string): Promise<string | null>;
-  /** Ensure the roster row (a missing one is created on the roster with no DEA schedules) and stamp the request marker. */
-  ensureRequested(organizationId: string, membershipId: string, at: Date): Promise<RosterRow>;
+  /** Is this membership a member of THIS organization (read under the org's own RLS scope)? */
+  membershipExists(organizationId: string, membershipId: string): Promise<boolean>;
+  /**
+   * The step-1 CLAIM on a roster prescriber, atomic on the row. A missing row is created on the roster (no DEA schedules); a row that
+   * is REVOKED or already LINKED is returned untouched (nothing is stamped, nothing is reinstated); a row whose request marker is
+   * younger than `claimWindowMs` with no vendor id is another attempt IN FLIGHT (`inProgress`); otherwise the marker is stamped.
+   */
+  ensureRequested(
+    organizationId: string,
+    membershipId: string,
+    at: Date,
+    claimWindowMs: number,
+  ): Promise<{ readonly row: RosterRow; readonly inProgress: boolean }>;
+  /** Release the claim after a vendor failure, so a corrected retry need not wait out the window. */
+  releaseRequest(organizationId: string, membershipId: string): Promise<void>;
   /** Record the vendor link and the NPI the enrolment was made under. */
   recordVendorId(
     organizationId: string,
@@ -58,9 +71,13 @@ export interface EnrollInput {
   readonly lastName: string;
 }
 
+/** How long a committed request marker with no vendor id means "another enrolment is in flight" (or crashed): then a retry may go. */
+export const ENROLL_CLAIM_WINDOW_MS = 120_000;
+
 /** What step 1 read and validated: everything the vendor call and the record need, so no store call is open while DoseSpot is called. */
 export interface EnrollPlan {
   readonly organizationId: string;
+  readonly userId: string;
   readonly membershipId: string;
   readonly input: EnrollInput;
   /** The prescriber is already linked to DoseSpot: there is nothing to call or record. */
@@ -171,10 +188,33 @@ export function createPrescriberEnrollmentService(
           409,
         );
       }
-      const row = await store.ensureRequested(organizationId, membershipId, now());
-      return row.dosespotPrescriberId !== null && row.revokedAt === null;
+      // the roster key must not reach a membership of another organization (the FK alone is not tenant-scoped)
+      if (!(await store.membershipExists(organizationId, membershipId))) {
+        throw new NotFoundError("prescriber membership");
+      }
+      const { row, inProgress } = await store.ensureRequested(
+        organizationId,
+        membershipId,
+        now(),
+        ENROLL_CLAIM_WINDOW_MS,
+      );
+      if (row.revokedAt !== null) {
+        throw new ChartWardenError(
+          "DOSESPOT_PRESCRIBER_REVOKED",
+          "this prescriber was revoked from the roster; re-enroll them on the roster first",
+          409,
+        );
+      }
+      if (inProgress) {
+        throw new ChartWardenError(
+          "DOSESPOT_ENROLLMENT_IN_PROGRESS",
+          "an enrollment for this prescriber is already in flight; try again in a couple of minutes",
+          409,
+        );
+      }
+      return row.dosespotPrescriberId !== null;
     });
-    return { organizationId, membershipId, input, alreadyLinked };
+    return { organizationId, userId: actor.userId, membershipId, input, alreadyLinked };
   }
 
   async function callVendor(plan: EnrollPlan): Promise<string | null> {
@@ -189,6 +229,12 @@ export function createPrescriberEnrollmentService(
       });
       return out.dosespotPrescriberId;
     } catch (err) {
+      // release the claim so a corrected retry need not wait out the window (best effort: the window expires on its own)
+      await deps
+        .inTx(plan.organizationId, plan.userId, (store) =>
+          store.releaseRequest(plan.organizationId, plan.membershipId),
+        )
+        .catch(() => undefined);
       return vendorError(err);
     }
   }

@@ -62,6 +62,29 @@ describe("DoseSpot environment resolution", () => {
     }
   });
 
+  it("a sandbox override can never name the production host (the flag guards production only)", () => {
+    const host = "https://my.dosespot.com/webapi/v2";
+    expect(
+      resolveDoseSpotEnvironment("sandbox", {
+        DOSESPOT_BASE_URL_SANDBOX: host,
+        DOSESPOT_BASE_URL_PRODUCTION: host,
+      }),
+    ).toEqual({ ok: false, reason: "base_url_invalid" });
+    expect(
+      resolveDoseSpotEnvironment("sandbox", {
+        DOSESPOT_BASE_URL_SANDBOX: "https://my.dosespot.com/webapi/v2/",
+        DOSESPOT_BASE_URL_PRODUCTION: "https://MY.dosespot.com/webapi/v2",
+      }),
+    ).toEqual({ ok: false, reason: "base_url_invalid" });
+    // a different, genuine sandbox host is fine
+    expect(
+      resolveDoseSpotEnvironment("sandbox", {
+        DOSESPOT_BASE_URL_SANDBOX: "https://sandbox2.dosespot.com/webapi/v2",
+        DOSESPOT_BASE_URL_PRODUCTION: host,
+      }),
+    ).toEqual({ ok: true, baseUrl: "https://sandbox2.dosespot.com/webapi/v2" });
+  });
+
   it("reads the platform subscription-key fallback per environment, empty when unset", () => {
     expect(subscriptionKeyFallback("sandbox", { DOSESPOT_SUBSCRIPTION_KEY_SANDBOX: "k-s" })).toBe(
       "k-s",

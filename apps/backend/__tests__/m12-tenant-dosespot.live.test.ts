@@ -860,7 +860,10 @@ describe.skipIf(!DB_URL)(
           "DOSESPOT_NOT_READY",
         );
         expect(
-          await q("SELECT 1 FROM dosespot_prescriber WHERE organization_id=$1", [ORG_C]),
+          await q(
+            "SELECT 1 FROM dosespot_prescriber WHERE organization_id=$1 AND revoked_at IS NULL",
+            [ORG_C],
+          ),
         ).toHaveLength(0);
       });
 
@@ -884,6 +887,46 @@ describe.skipIf(!DB_URL)(
         expect(JSON.stringify(audit)).not.toContain(NPI);
       });
 
+      it("never reinstates a revoked prescriber, and refuses a membership that is not in this organization", async () => {
+        const MR = "99000000-0000-4000-8000-0000000000a3";
+        await admin.query(
+          `INSERT INTO "user" (id,email) VALUES ('99000000-0000-4000-8000-0000000000ab','rx2c@ds.test')`,
+        );
+        await admin.query(
+          "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,'99000000-0000-4000-8000-0000000000ab',$2,'active')",
+          [MR, ORG_A],
+        );
+        await admin.query(
+          "INSERT INTO dosespot_prescriber (organization_id, membership_id, dosespot_prescriber_id, enrolled_at, revoked_at) VALUES ($1,$2,'778',now(),now())",
+          [ORG_A, MR],
+        );
+        const calls = fetchLog.length;
+        expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), MR, body))).toBe(
+          "DOSESPOT_PRESCRIBER_REVOKED",
+        );
+        expect(
+          (await q("SELECT revoked_at FROM dosespot_prescriber WHERE membership_id=$1", [MR]))[0]
+            ?.revoked_at,
+        ).not.toBeNull();
+        // a membership of ANOTHER organization is not found under this org's scope (the FK alone is not tenant-scoped)
+        const FOREIGN = "99000000-0000-4000-8000-0000000000f1";
+        await admin.query(
+          `INSERT INTO "user" (id,email) VALUES ('99000000-0000-4000-8000-0000000000ac','rx2d@ds.test')`,
+        );
+        await admin.query(
+          "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,'99000000-0000-4000-8000-0000000000ac',$2,'active')",
+          [FOREIGN, ORG_B],
+        );
+        const before = (await q("SELECT count(*)::int AS n FROM dosespot_prescriber"))[0]?.n;
+        expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), FOREIGN, body))).toBe(
+          "NOT_FOUND",
+        );
+        expect((await q("SELECT count(*)::int AS n FROM dosespot_prescriber"))[0]?.n).toBe(before);
+        expect(fetchLog.slice(calls).filter((c) => c.url.endsWith("/api/clinicians"))).toHaveLength(
+          0,
+        );
+      });
+
       it("is idempotent: a linked prescriber is not enrolled twice", async () => {
         const calls = fetchLog.length;
         await enrollment.enroll(tenantActor(ORG_A), M1, body);
@@ -892,7 +935,7 @@ describe.skipIf(!DB_URL)(
         );
       });
 
-      it("a vendor refusal leaves the committed request marker and no vendor id", async () => {
+      it("a vendor refusal releases the request claim and records no vendor id", async () => {
         const M2 = "99000000-0000-4000-8000-0000000000a2";
         // one active membership per user per org: this prescriber is a different person
         await admin.query(
@@ -903,12 +946,13 @@ describe.skipIf(!DB_URL)(
           [M2, ORG_A],
         );
         enrollBehaviour = "rejected";
-        expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), M2, body))).toBe(
-          "DOSESPOT_ENROLLMENT_REJECTED",
-        );
+        const refused = await errorCode(enrollment.enroll(tenantActor(ORG_A), M2, body));
+        enrollBehaviour = "ok"; // reset before asserting, so a failure here cannot cascade into later cases
+        expect(refused).toBe("DOSESPOT_ENROLLMENT_REJECTED");
         const row = (await q("SELECT * FROM dosespot_prescriber WHERE membership_id=$1", [M2]))[0];
         expect(row?.dosespot_prescriber_id).toBeNull();
-        expect(row?.vendor_enrollment_requested_at).not.toBeNull();
+        // the claim is released on a vendor failure: a corrected retry need not wait out the window
+        expect(row?.vendor_enrollment_requested_at).toBeNull();
         enrollBehaviour = "ok";
       });
     });
@@ -1044,6 +1088,48 @@ describe.skipIf(!DB_URL)(
         expect(
           (await auditRows(ORG_C, "m34.tenant_onboarding.write_refused")).length,
         ).toBeGreaterThanOrEqual(2);
+        // enrol and verify refuse BEFORE any work: no roster write, no vendor call, no token mint, and the refusal is audited
+        const REVOKED = "99000000-0000-4000-8000-0000000000c1";
+        await admin.query(
+          `INSERT INTO "user" (id,email) VALUES ('99000000-0000-4000-8000-0000000000c9','rx4@ds.test') ON CONFLICT DO NOTHING`,
+        );
+        await admin.query(
+          "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,'99000000-0000-4000-8000-0000000000c9',$2,'active')",
+          [REVOKED, ORG_C],
+        );
+        await admin.query(
+          "INSERT INTO dosespot_prescriber (organization_id, membership_id, dosespot_prescriber_id, enrolled_at, revoked_at) VALUES ($1,$2,'777',now(),now())",
+          [ORG_C, REVOKED],
+        );
+        const refusedBefore = (await auditRows(ORG_C, "m34.tenant_onboarding.write_refused"))
+          .length;
+        fetchLog.length = 0;
+        expect(
+          await errorCode(
+            onboardingData.enrollDoseSpotPrescriber(
+              operator(),
+              "ds-c",
+              REVOKED,
+              { npi: NPI, firstName: "Ada", lastName: "Lovelace" },
+              REASON,
+            ),
+          ),
+        ).toBe("TENANT_NOT_ONBOARDING");
+        expect(await errorCode(onboardingData.verifyDoseSpot(operator(), "ds-c", REASON))).toBe(
+          "TENANT_NOT_ONBOARDING",
+        );
+        expect(fetchLog).toHaveLength(0);
+        const stillRevoked = (
+          await q(
+            "SELECT revoked_at, vendor_enrollment_requested_at FROM dosespot_prescriber WHERE membership_id=$1",
+            [REVOKED],
+          )
+        )[0];
+        expect(stillRevoked?.revoked_at).not.toBeNull();
+        expect(stillRevoked?.vendor_enrollment_requested_at).toBeNull();
+        expect((await auditRows(ORG_C, "m34.tenant_onboarding.write_refused")).length).toBe(
+          refusedBefore + 2,
+        );
         // the safety down-shift is not status-gated
         alerts.length = 0;
         const out = await onboardingData.deactivateDoseSpot(operator(), "ds-c", REASON);
@@ -1155,7 +1241,10 @@ describe.skipIf(!DB_URL)(
 
       it("the prescriber count does not gate: the fact is true with no prescriber enrolled", async () => {
         expect(
-          await q("SELECT 1 FROM dosespot_prescriber WHERE organization_id=$1", [ORG_C]),
+          await q(
+            "SELECT 1 FROM dosespot_prescriber WHERE organization_id=$1 AND revoked_at IS NULL",
+            [ORG_C],
+          ),
         ).toHaveLength(0);
         probeStatus = 200;
         await route.verify(tenantActor(ORG_C));

@@ -98,6 +98,23 @@ describe("clinic secret cipher", () => {
     }
   });
 
+  it("refuses an envelope whose GCM tag is not the full 16 bytes (a truncated tag is a forgery surface)", async () => {
+    const cipher = buildClinicSecretCipher(ring().provider);
+    const sealed = await cipher.encrypt(ORG, BUNDLE, CTX);
+    const [v, nonce, tag, ct] = sealed.cipher.split(".");
+    const truncated = [
+      v,
+      nonce,
+      Buffer.from(tag as string, "base64url")
+        .subarray(0, 4)
+        .toString("base64url"),
+      ct,
+    ].join(".");
+    await expect(cipher.decrypt(ORG, CTX, truncated, sealed.dekRef)).rejects.toThrow(
+      "clinic secret cipher: ciphertext did not open",
+    );
+  });
+
   it("an unknown DEK version is the same generic refusal, not a leak of the key ring's error", async () => {
     const cipher = buildClinicSecretCipher(ring().provider);
     const sealed = await cipher.encrypt(ORG, BUNDLE, CTX);

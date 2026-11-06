@@ -1215,7 +1215,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Register a roster prescriber with DoseSpot and record the vendor's id (the link transmission sends under). Needs a verified or active registration (409 DOSESPOT_NOT_READY); the NPI is checked by its check digit; idempotent for a prescriber already linked; the vendor call runs with no transaction open. Never starts EPCS or IAL2. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        /** Register a roster prescriber with DoseSpot and record the vendor's id (the link transmission sends under). Needs a verified or active registration (409 DOSESPOT_NOT_READY) and a membership of this organization (404); the NPI is checked by its check digit; idempotent for a prescriber already linked; never reinstates a revoked prescriber (409 DOSESPOT_PRESCRIBER_REVOKED); a second enrolment in flight is 409 DOSESPOT_ENROLLMENT_IN_PROGRESS; the vendor call runs with no transaction open. Never starts EPCS or IAL2. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused */
         post: operations["postApiV1AdminDosespotprescribersByMembershipIdDosespotenrollment"];
         delete?: never;
         options?: never;

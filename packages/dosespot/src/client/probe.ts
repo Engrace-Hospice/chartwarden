@@ -43,6 +43,7 @@ export function createHttpDoseSpotConnectionProbe(
           headers: request.headers,
           body: request.body,
           signal: controller.signal,
+          redirect: "error", // never re-send the clinic key and Subscription-Key to wherever a 307/308 points
         });
         if (classifyRetryableStatus(res.status)) return "unreachable";
         if (res.status < 200 || res.status >= 300) return "credential_rejected";

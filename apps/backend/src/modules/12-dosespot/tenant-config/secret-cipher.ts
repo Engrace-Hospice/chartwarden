@@ -16,6 +16,7 @@ import type { DoseSpotWebhookKeyProvider } from "../webhooks/body-crypto";
 
 const VERSION = "v1";
 const NONCE_LEN = 12;
+const TAG_LEN = 16;
 const KEY_LEN = 32;
 const UNREADABLE = "clinic secret cipher: ciphertext did not open";
 
@@ -96,9 +97,15 @@ export function buildClinicSecretCipher(keys: DoseSpotWebhookKeyProvider): Clini
         const { key } = keys.dekForOrgVersion
           ? await keys.dekForOrgVersion(organizationId, dekRef)
           : await keys.dekForOrg(organizationId);
-        const d = createDecipheriv("aes-256-gcm", key, Buffer.from(nonce, "base64url"));
+        // `authTagLength` AND an explicit length check: Node accepts a truncated GCM tag unless told otherwise, which would leave a
+        // 32-bit forgery surface to anyone who can write the row
+        const tagBytes = Buffer.from(tag, "base64url");
+        if (tagBytes.byteLength !== TAG_LEN) throw new Error("tag");
+        const d = createDecipheriv("aes-256-gcm", key, Buffer.from(nonce, "base64url"), {
+          authTagLength: TAG_LEN,
+        });
         d.setAAD(aadFor(organizationId, context));
-        d.setAuthTag(Buffer.from(tag, "base64url"));
+        d.setAuthTag(tagBytes);
         return bundleOf(
           Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]).toString("utf8"),
         );

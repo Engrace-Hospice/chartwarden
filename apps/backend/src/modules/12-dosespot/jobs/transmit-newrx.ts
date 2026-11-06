@@ -21,6 +21,7 @@ import {
   type DoseSpotNewRxPayload,
   RX_TRANSMISSION_MAX_RETRIES,
   isDegradedError,
+  isNotEnabledError,
   planTransmissionFailure,
   planTransmissionSuccess,
   transitionMedicationOrder,
@@ -214,7 +215,8 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
       transmittedAt: new Date(res.transmittedAt),
     };
   } catch (error) {
-    if (isCircuitOpenError(error)) return { kind: "outage" };
+    // an open circuit, or a registration that stopped being live since this batch was claimed: the order WAITS (no retry spent)
+    if (isCircuitOpenError(error) || isNotEnabledError(error)) return { kind: "outage" };
     return {
       kind: "failure",
       errorClass: errorClassOf(error),

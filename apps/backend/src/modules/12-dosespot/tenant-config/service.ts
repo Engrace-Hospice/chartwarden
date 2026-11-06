@@ -479,7 +479,8 @@ export function createDoseSpotClinicService(
           created: true,
           view: await viewOf(store, row, organizationId),
           changedFields,
-          leftActive: false,
+          // an org the env fallback was serving stops being served the moment it has a row of its own (a row is authoritative)
+          leftActive: deps.envFallbackFor?.(organizationId) === true,
         };
       } catch (err) {
         if (!isUniqueViolation(err)) throw err;
@@ -579,7 +580,8 @@ export function createDoseSpotClinicService(
     const row = await lockedRow(store, organizationId);
     if (row.status === "active")
       return { view: await viewOf(store, row, organizationId), changed: false };
-    if (row.status !== "verified") {
+    // `verified` AND the latest test passed: a failed re-test leaves the row `verified` (it never demotes a live one) but it must pass again
+    if (row.status !== "verified" || row.lastTestOutcome !== "ok") {
       throw conflict("DOSESPOT_NOT_VERIFIED", "test the DoseSpot connection before activating it");
     }
     baseUrlFor(row.environment as DoseSpotEnvironment); // production re-checks the platform flag at the moment of activation

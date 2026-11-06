@@ -5,8 +5,10 @@
 // deny-stub keeps the draft/queue path (D11) functional. Re-exports the whole client surface.
 export {
   DegradedError,
+  NotEnabledError,
   RetryableError,
   isDegradedError,
+  isNotEnabledError,
   isRetryableError,
   type DoseSpotOperation,
 } from "./errors";

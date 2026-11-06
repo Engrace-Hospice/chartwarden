@@ -88,6 +88,13 @@ describe("view", () => {
 });
 
 describe("put: the first save", () => {
+  it("the first save for an org the env fallback was serving takes it out of service (a row is authoritative): leftActive", async () => {
+    const h = build({ envFallbackOrgs: [ORG] });
+    expect((await putFull(h)).leftActive).toBe(true);
+    const g = build();
+    expect((await putFull(g)).leftActive).toBe(false); // an org that was never live
+  });
+
   it("a complete first save is `registered` and returns no secret", async () => {
     const h = build();
     const out = await putFull(h);
@@ -466,6 +473,21 @@ describe("activate and deactivate", () => {
     expect(h.store.rows()[0]).toMatchObject({ activatedByMembershipId: MEMBER });
     const again = await h.service.activate(h.store, TENANT);
     expect(again.changed).toBe(false);
+  });
+
+  it("a verified registration whose LATEST test failed cannot be activated until a test passes again", async () => {
+    const h = build({ env: withPlatformKey });
+    await putFull(h);
+    await verifyFully(h);
+    const plan = await h.service.prepareVerify(h.store, TENANT);
+    await h.service.completeVerify(h.store, TENANT, plan, "credential_rejected"); // a re-test fails: status stays verified
+    expect((await h.service.view(h.store, ORG)).status).toBe("verified");
+    await expect(h.service.activate(h.store, TENANT)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "DOSESPOT_NOT_VERIFIED",
+    });
+    await verifyFully(h);
+    expect((await h.service.activate(h.store, TENANT)).view.status).toBe("active");
   });
 
   it("production activation is refused unless DOSESPOT_PRODUCTION_ENABLED is exactly 'true'", async () => {
