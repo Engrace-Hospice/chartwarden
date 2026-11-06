@@ -1,18 +1,3 @@
-// apps/backend/src/modules/35-subscription/routes/service-drizzle.ts — the Drizzle-backed M35RouteService
-// (§4.1 tenant + §4.2 admin + §4.3 webhook-adjacent reads). Implements {@link M35RouteService}.
-//
-// TENANT methods run inside ONE `withOrgContext(db, {organizationId, userId}, …)` transaction on the
-// PRIMARY so Postgres RLS scopes each statement to `app.org_id` (the M27 write-service-drizzle precedent);
-// writes bind `userId = membershipId` so the M4 write-audit trigger stamps the acting principal. The
-// §4.11 `m35.*` events are emitted through the injected {@link WriteOutboxPort} in the SAME unit of work as
-// the mutation (transactional outbox). The outbound Stripe calls follow the §4.13 outbox-only path — a
-// mutating route persists its local state row and emits an `m35.*` event; the (deferred) stripe-dispatcher
-// worker drains the outbox and calls Stripe. M35 carries NO PHI (§8.5); money is INTEGER CENTS.
-//
-// PLATFORM-OPS methods (`admin*` / refunds / promos / revenue / webhooks) read/write ACROSS tenants under a
-// platform credential — they run through the injected {@link PlatformRunner}. The composition root binds it
-// to M1's gated `withPlatformContext` (the M34 platform-runner precedent); until a platform pool is bound
-// it fails closed (PLATFORM_CONTEXT_UNAVAILABLE), never silently reading nothing under tenant RLS.
 import { type DbClient, schema } from "@chartwarden/db";
 import {
   PaymentMethodRejectedError,
@@ -30,6 +15,22 @@ import {
   type OrganizationReader,
 } from "@chartwarden/types";
 import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+// apps/backend/src/modules/35-subscription/routes/service-drizzle.ts — the Drizzle-backed M35RouteService
+// (§4.1 tenant + §4.2 admin + §4.3 webhook-adjacent reads). Implements {@link M35RouteService}.
+//
+// TENANT methods run inside ONE `withOrgContext(db, {organizationId, userId}, …)` transaction on the
+// PRIMARY so Postgres RLS scopes each statement to `app.org_id` (the M27 write-service-drizzle precedent);
+// writes bind `userId = membershipId` so the M4 write-audit trigger stamps the acting principal. The
+// §4.11 `m35.*` events are emitted through the injected {@link WriteOutboxPort} in the SAME unit of work as
+// the mutation (transactional outbox). The outbound Stripe calls follow the §4.13 outbox-only path — a
+// mutating route persists its local state row and emits an `m35.*` event; the (deferred) stripe-dispatcher
+// worker drains the outbox and calls Stripe. M35 carries NO PHI (§8.5); money is INTEGER CENTS.
+//
+// PLATFORM-OPS methods (`admin*` / refunds / promos / revenue / webhooks) read/write ACROSS tenants under a
+// platform credential — they run through the injected {@link PlatformRunner}. The composition root binds it
+// to M1's gated `withPlatformContext` (the M34 platform-runner precedent); until a platform pool is bound
+// it fails closed (PLATFORM_CONTEXT_UNAVAILABLE), never silently reading nothing under tenant RLS.
+import type { PlatformAuditPort } from "../pricing/ports";
 import type { M35ReadActor, M35WriteActor } from "./actor";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf } from "./concurrency";
 import { redeemPromoInTx } from "./promo-redemption";
@@ -121,6 +122,12 @@ export interface M35RouteServiceDeps {
    * org's customer). Unset => attaching a payment method fails closed (503): nothing is trusted from the body.
    */
   readonly paymentMethodVerifier?: PaymentMethodVerifier;
+  /**
+   * The PLATFORM-scoped audit writer. A platform operator's pause / resume / cancel of a tenant's subscription writes a structured row
+   * naming the operator and the tenant here; the tenant-readable `subscription_state_history` row (and its `audit_event` copy) carries NO
+   * operator. Optional: unbound, the action still runs (the legacy admin surface) and only the platform bypass row records it.
+   */
+  readonly audit?: PlatformAuditPort;
   readonly now?: () => Date;
 }
 
@@ -417,6 +424,28 @@ export function buildDrizzleM35RouteService(
 ): M35RouteService {
   const now = deps.now ?? (() => new Date());
   const platform = deps.platformRunner ?? failClosedPlatformRunner;
+
+  /**
+   * A platform operator's action on a tenant's subscription: the operator is named in the PLATFORM-scoped audit row (when the audit
+   * writer is bound). The tenant-readable `subscription_state_history` row and its `audit_event` copy carry NO operator membership.
+   */
+  async function auditOperatorAction(
+    tx: WriteTx,
+    actor: { readonly userId: string; readonly membershipId: string },
+    sub: { readonly id: string; readonly organizationId: string; readonly status: string },
+    eventType: string,
+    reasonCode: string,
+  ): Promise<void> {
+    await deps.audit?.record(tx, {
+      eventType,
+      resourceKind: "subscription",
+      resourceId: sub.id,
+      organizationId: sub.organizationId,
+      operator: { userId: actor.userId, membershipId: actor.membershipId },
+      reason: reasonCode,
+      detail: { fromStatus: sub.status },
+    });
+  }
   const S = schema.subscriptionRow;
   const PL = schema.plan;
   const PM = schema.paymentMethod;
@@ -730,6 +759,27 @@ export function buildDrizzleM35RouteService(
           )
           .limit(1);
         if (existing) throw new ConflictError("an active subscription already exists for this org");
+        // A contracted subscription that is paused (an org suspension) is not "active" above but still belongs to operations: the tenant
+        // cannot start a different one beside it.
+        const [contracted] = await tx
+          .select({ id: S.id })
+          .from(S)
+          .innerJoin(PL, eq(PL.id, S.planId))
+          .where(
+            and(
+              eq(S.organizationId, actor.organizationId),
+              eq(PL.tier, "census_banded"),
+              ne(S.status, "canceled"),
+            ),
+          )
+          .limit(1);
+        if (contracted) {
+          throw new ChartWardenError(
+            "PLAN_ASSIGNED_BY_OPERATIONS",
+            "a tenant cannot start a subscription while it holds a contracted one: it is managed by ChartWarden operations",
+            403,
+          );
+        }
         const [plan] = await tx
           .select()
           .from(PL)
@@ -910,6 +960,12 @@ export function buildDrizzleM35RouteService(
           .orderBy(desc(S.startedAt))
           .limit(1);
         if (!sub) throw new NotFoundError("no subscription for org");
+        // A contracted subscription is paused by ChartWarden operations (an org suspension) and resumed by them: a tenant that could resume
+        // it would close the pause without a history row, and the pause (days not billed) would never end.
+        refuseContractedPlan(
+          await loadPlan(tx, sub.planId),
+          "a tenant cannot resume a contracted subscription",
+        );
         const at = now();
         const toStatus = sub.status === "paused" ? "active" : sub.status;
         await tx
@@ -1274,6 +1330,8 @@ export function buildDrizzleM35RouteService(
         if (!plan) throw new NotFoundError("plan not found");
         // A contracted plan carries no usage meters: its price is the plan editor's, frozen per version.
         refuseContractedPlan(plan, "use the pricing plan editor");
+        // A retired plan keeps the meters it had (existing subscriptions are aggregated by them) and gains none.
+        if (plan.deprecatedAt) throw new ConflictError("a retired plan's meters cannot change");
         const [meter] = await tx
           .insert(PMTR)
           .values({
@@ -1297,6 +1355,9 @@ export function buildDrizzleM35RouteService(
           .where(and(eq(PMTR.planId, planId), eq(PMTR.id, meterId)))
           .limit(1);
         if (!meter) throw new NotFoundError("meter not found");
+        const owner = await loadPlan(tx, planId);
+        refuseContractedPlan(owner, "use the pricing plan editor");
+        if (owner?.deprecatedAt) throw new ConflictError("a retired plan's meters cannot change");
         const [updated] = await tx
           .update(PMTR)
           .set({
@@ -1374,9 +1435,17 @@ export function buildDrizzleM35RouteService(
           fromStatus: sub.status,
           toStatus: "paused",
           transitionedAt: at,
-          actorMembershipId: actor.membershipId,
+          // NULL: this row is tenant-readable (and audit-copied into the tenant's trail). The operator is in the platform audit row below.
+          actorMembershipId: null,
           reasonCode: "platform_ops_pause",
         });
+        await auditOperatorAction(
+          tx,
+          actor,
+          sub,
+          "m35.subscription.platform_paused",
+          "platform_ops_pause",
+        );
         await emit(
           tx,
           "m35.subscription.paused",
@@ -1417,9 +1486,17 @@ export function buildDrizzleM35RouteService(
           fromStatus: sub.status,
           toStatus: "active",
           transitionedAt: at,
-          actorMembershipId: actor.membershipId,
+          // NULL: this row is tenant-readable (and audit-copied into the tenant's trail). The operator is in the platform audit row below.
+          actorMembershipId: null,
           reasonCode: "platform_ops_resume",
         });
+        await auditOperatorAction(
+          tx,
+          actor,
+          sub,
+          "m35.subscription.platform_resumed",
+          "platform_ops_resume",
+        );
         await emit(
           tx,
           "m35.subscription.resumed",
@@ -1455,9 +1532,17 @@ export function buildDrizzleM35RouteService(
           fromStatus: sub.status,
           toStatus: "canceled",
           transitionedAt: at,
-          actorMembershipId: actor.membershipId,
+          // NULL: this row is tenant-readable (and audit-copied into the tenant's trail). The operator is in the platform audit row below.
+          actorMembershipId: null,
           reasonCode: "platform_ops_cancel_immediate",
         });
+        await auditOperatorAction(
+          tx,
+          actor,
+          sub,
+          "m35.subscription.platform_canceled",
+          "platform_ops_cancel_immediate",
+        );
         await emit(
           tx,
           "m35.subscription.canceled",

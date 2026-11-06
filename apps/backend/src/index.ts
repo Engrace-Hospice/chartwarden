@@ -6283,6 +6283,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // audited `withPlatformContext`. When no platform credential is configured the runner is undefined
           // and the admin surface fails closed (503) — never reading under tenant RLS. The §4.3 webhook stays
           // fail-closed (503) until the live Stripe secret + DEK transport binds.
+          // The ONE platform audit mapping (M35 `buildPlatformAuditPort`, fed M4's real writer); the live suite injects the same function.
+          const m35PlatformAudit = buildPlatformAuditPort((tx, row) =>
+            auditPlatformEvent(tx as Parameters<typeof auditPlatformEvent>[0], row),
+          );
           mountM35Routes(app, {
             // GAP-058 — the inbound Stripe webhook binds when the signing secret, the payload key AND the
             // platform credential are all configured; otherwise it stays 503 (never half-bound).
@@ -6298,6 +6302,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 : {},
             service: buildDrizzleM35RouteService(dbHandle.db, {
               outbox: m35OutboxPublisher,
+              // A platform operator's pause / resume / cancel names the operator in the PLATFORM-scoped audit row, never in the
+              // tenant-readable state history.
+              audit: m35PlatformAudit,
               // GAP-060 — a client-supplied payment-method id is verified against Stripe (attached to THIS
               // org's customer) before it is stored; unset => attach refuses 503.
               ...(m35Stripe.client
@@ -6324,10 +6331,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // M34 wizard, bound here as a port because M35 has no edge to M34) and the tenant's own pricing read. Writes run on the
             // platform runner only; each is audited with the operator's reason (the platform audit writer, M4).
             pricing: (() => {
-              // The ONE audit mapping (M35 `buildPlatformAuditPort`); the live suite injects the same `auditPlatformEvent`.
-              const m35PricingAudit = buildPlatformAuditPort((tx, row) =>
-                auditPlatformEvent(tx as Parameters<typeof auditPlatformEvent>[0], row),
-              );
+              const m35PricingAudit = m35PlatformAudit;
               return {
                 plans: buildPricingPlanService({
                   ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
