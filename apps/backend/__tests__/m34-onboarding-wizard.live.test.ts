@@ -44,7 +44,12 @@ import {
   buildMacFeedConfiguredReader,
 } from "../src/modules/23-billing-medicare/jobs/mac-jurisdictions";
 import { M34_OUTBOX_EVENTS } from "../src/modules/34-saas-tenant-platform/events-by-m34";
-import { createOnboardingAdvancer } from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
+import {
+  createOnboardingAdvancer,
+  listPendingOrganizationActivations,
+  recordOrganizationActivationReconciled,
+  runOrganizationActivationReconcile,
+} from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
 import type {
   PlatformActor,
   TenantActor,
@@ -2005,6 +2010,141 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     });
   });
 
+  describe("review fix M3: a go-live whose organization activation failed is recoverable", () => {
+    const ORG_R = "ffffffff-ffff-4fff-8fff-ffffffffff01";
+    const T_R = "ffffffff-ffff-4fff-8fff-ffffffffff02";
+    const ORG_Q = "ffffffff-ffff-4fff-8fff-ffffffffff03";
+    const T_Q = "ffffffff-ffff-4fff-8fff-ffffffffff04";
+    let officerR: TenantActor;
+    const orgStatus = async (org: string) =>
+      (await admin.query("SELECT status FROM organization WHERE id=$1", [org])).rows[0]
+        .status as string;
+    const sweepDeps = () => ({ platformDb: platform.db, auditBypass: m34PlatformBypassAuditor });
+    const activator = () =>
+      createOrganizationActivator(app.db, createOnboardingTenantReader(app.db));
+
+    beforeAll(async () => {
+      registerPlatformJob("m34.platform_ops");
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'m3-recover','m3-recover','m3-recover'), ($2,'m1-baa-pick','m1-baa-pick','m1-baa-pick')",
+        [ORG_R, ORG_Q],
+      );
+      for (const [org, tenant, slug] of [
+        [ORG_R, T_R, "m3-recover"],
+        [ORG_Q, T_Q, "m1-baa-pick"],
+      ] as const) {
+        await admin.query(
+          "INSERT INTO tenant_account (id, organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,'onboarding',$3,'b@x.test','p@x.test')",
+          [tenant, org, slug],
+        );
+        await admin.query(
+          `INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key, status)
+           SELECT $1, $2, key, CASE WHEN key = 'go_live_checklist_complete' THEN 'pending' ELSE 'done' END::onboarding_task_status
+             FROM onboarding_task_template WHERE retired_at IS NULL`,
+          [org, tenant],
+        );
+        await admin.query(
+          `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
+           VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
+          [org, tenant],
+        );
+      }
+      officerR = await person(ORG_R, "officer-r", ["compliance_officer"]);
+      await admin.query(
+        "UPDATE tenant_account SET compliance_officer_membership_id=$2 WHERE id=$1",
+        [T_R, officerR.membershipId],
+      );
+    }, 60_000);
+
+    it("a first approval whose organization activation fails leaves the tenant live and the organization `created`; repeating the approval opens it", async () => {
+      await wizard(false).attestGoLive(officerR, ORG_R, "ready");
+      const failing = wizard(false, {
+        activateOrganization: async () => {
+          throw new Error("organization update unavailable");
+        },
+      });
+      const err = await refusal(
+        failing.approveGoLive("m3-recover", OPS, "reviewed the evidence and the BAA"),
+      );
+      expect(err.code).toBe("ORGANIZATION_ACTIVATION_FAILED");
+      expect(err.statusCode).toBe(503);
+      expect(await tenantStatus(T_R)).toBe("active");
+      expect(await orgStatus(ORG_R)).toBe("created");
+
+      const repeat = wizard(false, {
+        activateOrganization: async ({ organizationId, operator, reason }) => {
+          await activator()(organizationId, {
+            reason: `go-live approved: ${reason}`,
+            actorUserId: operator.userId,
+            actorMembershipId: operator.membershipId,
+          });
+        },
+      });
+      const view = await repeat.approveGoLive(
+        "m3-recover",
+        OPS,
+        "completing the organization activation",
+      );
+      expect(view.goLive.state).toBe("live");
+      expect(await orgStatus(ORG_R)).toBe("active");
+      // the tenant was activated once and the attestation was approved once
+      const approved = await admin.query(
+        "SELECT count(*)::int AS n FROM tenant_go_live_attestation WHERE tenant_account_id=$1 AND status='approved'",
+        [T_R],
+      );
+      expect(approved.rows[0].n).toBe(1);
+    });
+
+    it("the daily reconcile opens an organization still `created` whose tenant is active with an approved go-live, audited, and leaves live ones alone", async () => {
+      await admin.query("UPDATE organization SET status='created' WHERE id=$1", [ORG_R]);
+      const listed = await listPendingOrganizationActivations(sweepDeps());
+      // Earlier suites in this file approved go-lives without opening their organizations: those are pending too.
+      expect(listed.map((p) => p.organizationId)).toContain(ORG_R);
+      expect(listed.find((p) => p.organizationId === ORG_R)).toMatchObject({
+        tenantAccountId: T_R,
+        approvedByUserId: OPS_USER,
+      });
+
+      const result = await runOrganizationActivationReconcile({
+        listPending: () => listPendingOrganizationActivations(sweepDeps()),
+        activate: async (input) => {
+          await activator()(input.organizationId, {
+            reason: input.reason,
+            actorUserId: input.operatorUserId,
+            actorMembershipId: input.operatorMembershipId,
+          });
+        },
+        recordReconciled: (entry) => recordOrganizationActivationReconciled(sweepDeps(), entry),
+      });
+      expect(result).toEqual({ pending: listed.length, activated: listed.length, failed: 0 });
+      expect(await orgStatus(ORG_R)).toBe("active");
+      const audit = await admin.query(
+        "SELECT context FROM audit_event WHERE event_type='m34.onboarding.organization_activation_reconciled' AND resource_id=$1",
+        [T_R],
+      );
+      expect(audit.rows).toHaveLength(1);
+      expect(audit.rows[0].context).toMatchObject({ organizationId: ORG_R, actor: "system" });
+      // nothing left to do on the next tick
+      expect(await listPendingOrganizationActivations(sweepDeps())).toEqual([]);
+    });
+
+    it("review fix M1: an undated pending renewal does not hide the executed BAA from the advance sweep", async () => {
+      // `ORDER BY executed_on DESC` puts the undated pending row FIRST in Postgres; the sweep used rows[0] and read it as
+      // "not executed", so the BAA step stuck. The governing BAA is the newest DATED one.
+      await admin.query(
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status)
+         VALUES ($1,$2,'v2','pending')`,
+        [ORG_Q, T_Q],
+      );
+      await admin.query(
+        "UPDATE onboarding_task SET status='pending' WHERE tenant_account_id=$1 AND template_key IN ('baa_executed','provisioning_complete')",
+        [T_Q],
+      );
+      await advancer()({ tenantAccountId: T_Q, orgId: ORG_Q });
+      expect(await statusOf(T_Q, "baa_executed")).toBe("done");
+    });
+  });
+
   describe("smoke-test gaps: a new tenant's first admin during onboarding (organization still `created`)", () => {
     const ORG_G = "dddddddd-dddd-4ddd-8ddd-dddddddddd01";
     const T_G = "dddddddd-dddd-4ddd-8ddd-dddddddddd02";
@@ -2149,8 +2289,11 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       expect(attested.goLive.state).toBe("awaiting_approval");
       expect(await orgStatus(ORG_G)).toBe("created"); // an attestation opens nothing
 
-      const activateOrg = createOrganizationActivator(app.db, undefined, (org) =>
-        stage.invalidate(org),
+      const activateOrg = createOrganizationActivator(
+        app.db,
+        createOnboardingTenantReader(app.db),
+        undefined,
+        (org) => stage.invalidate(org),
       );
       const live = await wizard(false, {
         activateOrganization: async ({ organizationId, operator, reason }) => {

@@ -79,6 +79,15 @@ export interface OrganizationLifecycleOutboxPort {
   ): Promise<void>;
 }
 
+/**
+ * "Is this organization's tenant still provisioning or onboarding?" - the one M34 fact an activation needs. Injected by the
+ * composition root (M2 does not import M34). While it holds, `activate` is refused: the organization opens only through the
+ * two-party go-live approval (M34), never through this writer on one operator's say-so.
+ */
+export interface OrganizationActivationGuard {
+  isOnboarding(organizationId: string): Promise<boolean>;
+}
+
 export interface OrganizationTransitionResult {
   readonly status: OrganizationLifecycleStatus;
   readonly sessionsRevoked: number;
@@ -105,9 +114,19 @@ export function createDrizzleOrganizationLifecycleWriter(
   /** Called AFTER the transition commits (ADR-0049 D6: evicts the tenant-host cache so a suspended or closed
    *  tenant's host stops resolving at once, not after the cache TTL). */
   onTransitioned?: (organizationId: string) => void,
+  /** Refuses `activate` while the tenant is onboarding (H1). Production factories require it; a unit test may omit it. */
+  activationGuard?: OrganizationActivationGuard,
 ): OrganizationLifecycleWriter {
   return {
     async transition(organizationId, event, ctx) {
+      // Before the transaction: a refused activation takes no connection and writes nothing (no status, audit or outbox row).
+      if (event === "activate" && (await activationGuard?.isOnboarding(organizationId))) {
+        throw new ChartWardenError(
+          "GO_LIVE_TWO_PARTY_REQUIRED",
+          "this organization's tenant is still provisioning or onboarding: it opens only when the compliance officer attests and a different platform operator approves go-live",
+          409,
+        );
+      }
       const result = await withOrgContext(
         db,
         { organizationId, userId: ctx.actorUserId },

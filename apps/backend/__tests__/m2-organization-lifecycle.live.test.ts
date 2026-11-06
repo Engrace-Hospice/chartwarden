@@ -48,10 +48,12 @@ import {
 import { M2_OUTBOX_EVENTS } from "../src/modules/02-identity/index";
 import {
   type OrganizationLifecycleOutboxPort,
+  activateCreatedOrganization,
   createDrizzleOrganizationLifecycleWriter,
 } from "../src/modules/02-identity/organization-lifecycle";
 import { registerPlatformUserRoutes } from "../src/modules/02-identity/routes/platform-user-routes";
 import { createDbSessionWriter } from "../src/modules/02-identity/session-writer-db";
+import { createOnboardingTenantReader } from "../src/modules/34-saas-tenant-platform/onboarding/onboarding-tenant-reader";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -226,6 +228,100 @@ describe.skipIf(!DB_URL)(
       expect(await reader.getStatus(ORG_A)).toBe("closed");
       expect(await reader.getStatus(ORG_B)).toBe("active");
       expect(await reader.getStatus("00000000-0000-4000-8000-000000000000")).toBeNull();
+    });
+
+    // Review fix H1: one operator's POST /platform/organizations/:id/status {activate} must not open PHI access for a tenant
+    // that has not been through the two-party go-live. The guard is M34's own fact (injected), read on the real tenant role.
+    describe("activation is refused while the organization's tenant is provisioning or onboarding (go-live is the only way in)", () => {
+      const ORG_GO = "99999999-9999-4999-8999-9999f2050201";
+      const ORG_NONE = "99999999-9999-4999-8999-9999f2050202";
+      const ORG_LIVE = "99999999-9999-4999-8999-9999f2050203";
+      const ORG_PROV = "99999999-9999-4999-8999-9999f2050204";
+      const CTX = {
+        reason: "opening the organization",
+        actorUserId: USER,
+        actorMembershipId: ACTOR_MEMBERSHIP,
+      };
+      const guarded = () => {
+        const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M2_OUTBOX_EVENTS]));
+        return createDrizzleOrganizationLifecycleWriter(
+          handle.db,
+          { publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m2" }) },
+          undefined,
+          createOnboardingTenantReader(handle.db),
+        );
+      };
+      const status = async (org: string) =>
+        (await admin.query("SELECT status FROM organization WHERE id = $1", [org])).rows[0]
+          .status as string;
+      const rowsFor = async (org: string) =>
+        (
+          await admin.query(
+            "SELECT (SELECT count(*)::int FROM outbox_event WHERE aggregate_id = $1 AND event_type = 'm2.organization.activated') AS outbox, (SELECT count(*)::int FROM audit_event WHERE resource_id = $1 AND event_type = 'm2.organization.activated') AS audit",
+            [org],
+          )
+        ).rows[0] as { outbox: number; audit: number };
+
+      beforeAll(async () => {
+        for (const [org, slug, tenantStatus] of [
+          [ORG_GO, "f11h1-onboarding", "onboarding"],
+          [ORG_PROV, "f11h1-provisioning", "provisioning"],
+          [ORG_LIVE, "f11h1-live", "active"],
+          [ORG_NONE, "f11h1-no-tenant", null],
+        ] as const) {
+          await admin.query(
+            "INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,$2,$2,$2,'created')",
+            [org, slug],
+          );
+          if (tenantStatus) {
+            await admin.query(
+              "INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,$3,'b@x.test','p@x.test')",
+              [org, tenantStatus, slug],
+            );
+          }
+        }
+      });
+
+      it.each([
+        ["onboarding", ORG_GO],
+        ["provisioning", ORG_PROV],
+      ])(
+        "refuses a manual activation of a `created` organization whose tenant is %s (409 GO_LIVE_TWO_PARTY_REQUIRED), writing nothing",
+        async (_status, org) => {
+          await expect(guarded().transition(org, "activate", CTX)).rejects.toMatchObject({
+            code: "GO_LIVE_TWO_PARTY_REQUIRED",
+            statusCode: 409,
+          });
+          expect(await status(org)).toBe("created");
+          expect(await rowsFor(org)).toEqual({ outbox: 0, audit: 0 });
+        },
+      );
+
+      it("without the guard the same call opens the organization (what H1 closes)", async () => {
+        const unguarded = writer();
+        await unguarded.transition(ORG_GO, "activate", CTX);
+        expect(await status(ORG_GO)).toBe("active");
+        // restore for the cases below
+        await admin.query("UPDATE organization SET status='created' WHERE id=$1", [ORG_GO]);
+      });
+
+      it("admits the activation once the tenant is live: the wizard's activator and a manual retry both work", async () => {
+        const result = await activateCreatedOrganization(guarded(), ORG_LIVE, CTX);
+        expect(result).toBe("activated");
+        expect(await status(ORG_LIVE)).toBe("active");
+        expect((await rowsFor(ORG_LIVE)).audit).toBe(1);
+        // a manual retry through the route's writer after approval passes the guard too (here: `created` again)
+        await admin.query("UPDATE organization SET status='created' WHERE id=$1", [ORG_LIVE]);
+        await expect(guarded().transition(ORG_LIVE, "activate", CTX)).resolves.toMatchObject({
+          status: "active",
+        });
+      });
+
+      it("an organization with no tenant account (not a tenant) is activatable as before", async () => {
+        await expect(guarded().transition(ORG_NONE, "activate", CTX)).resolves.toMatchObject({
+          status: "active",
+        });
+      });
     });
 
     // §4.7 `user.deactivate` "platform_ops (any)" — POST /api/v1/platform/users/:id/deactivate, driven

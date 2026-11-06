@@ -92,7 +92,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     } catch (error) {
       deps.warn?.("m34.onboarding wizard: advance after change failed", {
         tenantAccountId: tenant.tenantAccountId,
-        error: error instanceof Error ? error.message : String(error),
+        err: error,
       });
     }
   }

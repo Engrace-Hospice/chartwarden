@@ -262,5 +262,10 @@ export function assertCanRevoke(input: {
   return pending;
 }
 
+/** The newest approved attestation, if any (the evidence that a go-live was approved, whatever happened afterwards). */
+export const latestApproved = (
+  attestations: readonly GoLiveAttestation[],
+): GoLiveAttestation | undefined => latestOf(attestations.filter((a) => a.status === "approved"));
+
 /** The most recent attestation of any status (for the read model). */
 export const latestAttestation = latestOf;

@@ -4,6 +4,7 @@ import {
   describeM34SweepSchedules,
   runBaaExpiryCron,
   runOnboardingFanOut,
+  runOrganizationActivationReconcile,
   runSupportSessionCloseCron,
 } from "../jobs/platform-sweeps-worker";
 
@@ -95,6 +96,66 @@ describe("runOnboardingFanOut", () => {
     });
     expect(result).toEqual({ tenants: 2, failed: 1 });
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("runOrganizationActivationReconcile", () => {
+  const pendingA = {
+    organizationId: "o1",
+    tenantAccountId: "t1",
+    approvedByUserId: "ops-u",
+    approvedByMembershipId: "ops-m",
+  };
+  const pendingB = { ...pendingA, organizationId: "o2", tenantAccountId: "t2" };
+
+  it("opens every organization whose tenant went live but whose organization is still `created`, attributed to the approving operator, and records an audit entry", async () => {
+    const activate = vi.fn(async () => undefined);
+    const recordReconciled = vi.fn(async () => undefined);
+
+    const result = await runOrganizationActivationReconcile({
+      listPending: async () => [pendingA, pendingB],
+      activate,
+      recordReconciled,
+    });
+
+    expect(result).toEqual({ pending: 2, activated: 2, failed: 0 });
+    expect(activate).toHaveBeenCalledWith({
+      organizationId: "o1",
+      operatorUserId: "ops-u",
+      operatorMembershipId: "ops-m",
+      reason: expect.stringContaining("reconcile"),
+    });
+    expect(recordReconciled).toHaveBeenCalledTimes(2);
+    expect(recordReconciled).toHaveBeenCalledWith(pendingA);
+  });
+
+  it("a failing organization is counted and logged, never stops the rest, and is not audited as reconciled", async () => {
+    const warn = vi.fn();
+    const recordReconciled = vi.fn(async () => undefined);
+    const result = await runOrganizationActivationReconcile({
+      listPending: async () => [pendingA, pendingB],
+      activate: async (input) => {
+        if (input.organizationId === "o1") throw new Error("organization update unavailable");
+      },
+      recordReconciled,
+      warn,
+    });
+    expect(result).toEqual({ pending: 2, activated: 1, failed: 1 });
+    expect(recordReconciled).toHaveBeenCalledTimes(1);
+    expect(recordReconciled).toHaveBeenCalledWith(pendingB);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing when there is nothing to reconcile", async () => {
+    const activate = vi.fn();
+    expect(
+      await runOrganizationActivationReconcile({
+        listPending: async () => [],
+        activate,
+        recordReconciled: vi.fn(),
+      }),
+    ).toEqual({ pending: 0, activated: 0, failed: 0 });
+    expect(activate).not.toHaveBeenCalled();
   });
 });
 

@@ -41,7 +41,8 @@ export interface OnboardingWizardDeps {
   }) => Promise<void>;
   /** Runs the advance sweep for one tenant after a change (best effort; a failure never fails the change). */
   readonly advance?: (tenant: { tenantAccountId: string; organizationId: string }) => Promise<void>;
-  readonly warn?: (message: string, context: Record<string, string>) => void;
+  /** `err` carries a raw error: the composition root logs it through the redacting serializer (a database error holds bound values). */
+  readonly warn?: (message: string, context: Record<string, unknown>) => void;
   readonly now?: () => Date;
 }
 

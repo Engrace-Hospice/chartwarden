@@ -173,7 +173,7 @@ export interface DrizzleTenantPlatformDeps {
     tenantAccountId: string;
     organizationId: string;
   }) => Promise<void>;
-  readonly warn?: (message: string, context: Record<string, string>) => void;
+  readonly warn?: (message: string, context: Record<string, unknown>) => void;
 }
 
 const A = schema.tenantAccount;
@@ -298,7 +298,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     } catch (error) {
       deps.warn?.("m34.platform BAA register: onboarding advance after write failed", {
         tenantAccountId: tenant.tenantAccountId,
-        error: error instanceof Error ? error.message : String(error),
+        err: error,
       });
     }
   };
