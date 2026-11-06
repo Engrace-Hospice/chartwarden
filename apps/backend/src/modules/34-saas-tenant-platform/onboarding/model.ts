@@ -100,8 +100,19 @@ export interface GoLiveAttestation {
   readonly approvedAt: Date | null;
   readonly approvalReason: string | null;
   readonly revokedByMembershipId: string | null;
+  /** Always present on a revoked attestation; the membership is only recorded where the revoker had one. */
+  readonly revokedByUserId: string | null;
   readonly revokedAt: Date | null;
   readonly revokeReason: string | null;
+}
+
+/** The tenant's governing BAA as go-live judges it: its state, its executed document, and who wrote it (NULL = before the columns). */
+export interface GoverningBaa {
+  readonly baaStatus: string;
+  readonly expiresOn: string | null;
+  readonly documentId: string | null;
+  readonly recordedByUserId: string | null;
+  readonly updatedByUserId: string | null;
 }
 
 /** A membership of the tenant's organisation as the wizard judges it: who it is, whether it is live, what it may do. */
@@ -112,6 +123,9 @@ export interface WizardMember {
   /** Keys of the enabled, unexpired roles the membership holds in the organisation. */
   readonly roleKeys: readonly string[];
 }
+
+/** The revoke reason an automatic void records when onboarding data changed after the attestation (8 to 1000 characters, by the table's CHECK). */
+export const GO_LIVE_DATA_CHANGED_REVOKE_REASON = "onboarding data changed after attestation";
 
 /** The role that attests go-live readiness, and the only role an assigned compliance officer may be missing none of. */
 export const COMPLIANCE_OFFICER_ROLE = "compliance_officer";

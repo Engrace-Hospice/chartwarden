@@ -383,6 +383,7 @@ import { registerCredentialRoutes as _registerCredentialRoutes } from "./routes/
 import { registerDeviceAttestationRoutes as _registerDeviceAttestationRoutes } from "./routes/device-attestation";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
 import {
+  type SiteWriteScope,
   type TaxIdCipherPort,
   registerOrgAdminRoutes as _registerOrgAdminRoutes,
 } from "./routes/org-admin-routes";
@@ -592,7 +593,12 @@ export function mountIdentityRoutes(
 export function mountOrgAdminRoutes(
   app: FastifyInstance,
   db: DbClient,
-  opts: { outbox?: M2RawOutboxPublisher; taxIdCipher?: TaxIdCipherPort } = {},
+  opts: {
+    outbox?: M2RawOutboxPublisher;
+    taxIdCipher?: TaxIdCipherPort;
+    /** The unit of work for a provider-entity / location write (the composition root adds to its transaction). */
+    siteWriteScope?: SiteWriteScope;
+  } = {},
 ): void {
   _registerM2AbacPredicates(); // `organization_lifecycle_platform_ops` gates POST /orgs
   const audit = _orgScopedAuditExecutor(db);
@@ -602,6 +608,7 @@ export function mountOrgAdminRoutes(
     audit,
     store: _drizzleOrgAdminStore(db),
     ...(opts.taxIdCipher ? { taxIdCipher: opts.taxIdCipher } : {}),
+    ...(opts.siteWriteScope ? { siteWriteScope: opts.siteWriteScope } : {}),
   });
   _registerStepUpOverrideRoutes(app, {
     actors: _ctxActor(),
@@ -681,7 +688,7 @@ export {
 export { createPortalInviteeUserPort } from "./portal-invitee-user";
 
 // GAP-115 — the org-admin surface's published types (the cipher port the composition root binds).
-export type { TaxIdCipherPort } from "./routes/org-admin-routes";
+export type { SiteWriteScope, TaxIdCipherPort } from "./routes/org-admin-routes";
 export { createTaxIdCipher } from "./tax-id-cipher";
 export type { TaxIdCipher, TaxIdKeyProvider } from "./tax-id-cipher";
 export { validateOverrideInput } from "./step-up-override-admin";

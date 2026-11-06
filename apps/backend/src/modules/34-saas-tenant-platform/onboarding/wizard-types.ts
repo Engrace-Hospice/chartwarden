@@ -30,6 +30,12 @@ export interface OnboardingWizardDeps {
    */
   readonly bindComplianceOfficerRole?: ComplianceOfficerRoleBinder;
   /**
+   * Undoes a bind this assignment just made when a LATER step of the same assignment fails, so a failed assignment does not
+   * leave the operator-chosen member holding the role. Best effort (logged, audited by the binder); the bind commits on its own
+   * transaction first, so this is the compensation, not a rollback.
+   */
+  readonly unbindComplianceOfficerRole?: ComplianceOfficerRoleBinder;
+  /**
    * Go-live approval activates the tenant's M2 organization, which stays `created` through onboarding (its first admin signs
    * in under the onboarding allowlist, bootstrap/onboarding-org-gate.ts). Runs AFTER the approval commits; the production
    * binding activates a `created` organization and leaves any other status alone. Unbound: the organization is not touched.

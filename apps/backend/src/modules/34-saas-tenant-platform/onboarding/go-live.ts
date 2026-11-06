@@ -12,6 +12,7 @@ import {
   COMPLIANCE_OFFICER_ROLE,
   GO_LIVE_TEMPLATE_KEY,
   type GoLiveAttestation,
+  type GoverningBaa,
   ONBOARDING_STATUS,
   type StepTask,
   type StepTemplate,
@@ -246,6 +247,24 @@ export function assertAttesterStillValid(input: {
     throw stale(
       "attester_not_assigned_officer",
       "the attester is no longer the assigned compliance officer",
+    );
+  }
+}
+
+/**
+ * The BAA guard must not rest on one operator who both recorded the agreement and approved the go-live that depends on it:
+ * refuses (409) an approver who filed or last changed the governing BAA row. A row written before the writer columns existed
+ * carries no writer and cannot be judged.
+ */
+export function assertApproverDidNotWriteBaa(
+  baa: Pick<GoverningBaa, "recordedByUserId" | "updatedByUserId"> | undefined,
+  approverUserId: string,
+): void {
+  if (baa && (baa.recordedByUserId === approverUserId || baa.updatedByUserId === approverUserId)) {
+    throw refuse(
+      "GO_LIVE_APPROVER_WROTE_BAA",
+      "the operator who recorded or last changed the governing BAA cannot also approve the go-live; another platform operator must approve",
+      409,
     );
   }
 }

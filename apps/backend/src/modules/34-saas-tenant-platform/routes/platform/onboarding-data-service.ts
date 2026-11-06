@@ -41,6 +41,7 @@ import {
   updateLocationForOrg,
   updateProviderEntityForOrg,
 } from "../../../02-identity/org-admin-site-service";
+import { voidPendingGoLiveForDataChange } from "../../onboarding/go-live-void";
 import {
   ONBOARDING_DATA_AUDIT_EVENTS as EVENTS,
   type OnboardingAuditEvent,
@@ -117,6 +118,13 @@ export interface OnboardingDataDeps {
   readonly macCredentials?: OnboardingCredentialPort;
   /** M24's state Medicaid trading-partner credential adapter; unbound -> those routes answer 503. */
   readonly medicaidCredentials?: OnboardingCredentialPort;
+  /**
+   * Runs the advance sweep for the tenant after a write COMMITS (best effort: a failure is warned and never fails the write), so
+   * the step the data satisfies settles at once (the MAC credential, a location) instead of waiting for the daily pass.
+   */
+  readonly advance?: (tenant: { tenantAccountId: string; organizationId: string }) => Promise<void>;
+  /** `err` carries the raw error for the redacting logger (a database error holds bound values). */
+  readonly warn?: (message: string, context: Record<string, unknown>) => void;
   readonly logError?: (cause: unknown, context: { organizationId: string }) => void;
   /** Cause logging for a failed-attempt audit row that could not be written (the original error still reaches the caller). */
   readonly logAuditError?: (cause: unknown, context: { organizationId: string }) => void;
@@ -267,6 +275,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
   ): Promise<T> {
     const target = await targetOf(orgSlug);
     let outcome: WriteOutcome<T>;
+    let tenantAccountId: string | undefined;
     try {
       outcome = await withOrgContext<DbClient, WriteOutcome<T>>(
         db,
@@ -274,11 +283,12 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
         async (tx) => {
           await lockTenantOnboardingShared(tx, target.organizationId);
           const [account] = await tx
-            .select({ status: ACCOUNT.status })
+            .select({ id: ACCOUNT.id, status: ACCOUNT.status })
             .from(ACCOUNT)
             .where(eq(ACCOUNT.organizationId, target.organizationId))
             .limit(1);
           if (!account) throw new NotFoundError("tenant");
+          tenantAccountId = account.id;
           if (!ONBOARDING_WRITABLE_STATUSES.has(account.status)) {
             await recordOnboardingAudit(tx, op, target, {
               eventType: EVENTS.writeRefused,
@@ -290,6 +300,13 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             return { refusedStatus: account.status };
           }
           const done = await run(tx, target);
+          // A pending go-live attestation said this data was ready: the write makes that stale, so it is voided in the same
+          // transaction (the attestation and the write commit or roll back together).
+          await voidPendingGoLiveForDataChange(tx, {
+            organizationId: target.organizationId,
+            revokedByUserId: op.userId,
+            revokedByMembershipId: op.membershipId,
+          });
           await recordOnboardingAudit(tx, op, target, {
             eventType: spec.event,
             resourceKind: spec.resourceKind,
@@ -312,7 +329,25 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
         409,
       );
     }
+    await settleAfterWrite(target.organizationId, tenantAccountId);
     return outcome.value;
+  }
+
+  /** Post-commit, best effort: let the advance sweep settle whatever step this write satisfied. */
+  async function settleAfterWrite(
+    organizationId: string,
+    tenantAccountId: string | undefined,
+  ): Promise<void> {
+    if (!deps.advance || !tenantAccountId) return;
+    try {
+      await deps.advance({ tenantAccountId, organizationId });
+    } catch (error) {
+      deps.warn?.("m34.onboarding data: advance after a write failed", {
+        tenantAccountId,
+        organizationId,
+        err: error,
+      });
+    }
   }
 
   /** One audited read: the data first (the tenant's own scoped read), then the row — nothing is returned un-audited. */

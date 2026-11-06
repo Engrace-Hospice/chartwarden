@@ -31,6 +31,17 @@ const refuse = (code: string, field: string, message: string): ChartWardenError 
 /** Every control character (\p{Cc}) except tab and newline. */
 const STRIPPED_CONTROL = /[^\P{Cc}\t\n]/gu;
 
+/** Refuses (422, never echoing the value) text that holds a patient identifier. The one screen every wizard free text shares. */
+export function assertNoPatientIdentifier(field: string, text: string): void {
+  if (looksLikePatientIdentifier(text)) {
+    throw refuse(
+      "EVIDENCE_LOOKS_LIKE_PHI",
+      field,
+      `${field} looks like it contains a patient identifier (a Social Security or Medicare number). Describe what was checked without naming a patient, and cite documents by their title.`,
+    );
+  }
+}
+
 /**
  * The shared text hygiene: refuse NUL, strip the other control characters, trim, and refuse a patient identifier.
  * Length rules stay with each caller (they differ per field) and are judged on the cleaned text.
@@ -40,13 +51,7 @@ function cleanText(field: string, raw: string): string {
     throw refuse("ONBOARDING_TEXT_INVALID", field, `${field} must not contain NUL characters`);
   }
   const text = raw.replace(STRIPPED_CONTROL, "").trim();
-  if (looksLikePatientIdentifier(text)) {
-    throw refuse(
-      "EVIDENCE_LOOKS_LIKE_PHI",
-      field,
-      `${field} looks like it contains a patient identifier (a Social Security or Medicare number). Describe what was checked without naming a patient, and cite documents by their title.`,
-    );
-  }
+  assertNoPatientIdentifier(field, text);
   return text;
 }
 

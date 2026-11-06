@@ -322,17 +322,21 @@ async function main(): Promise<void> {
       // Migration 1328: the platform operator approves or revokes a go-live attestation the tenant's compliance officer
       // filed. No INSERT (the tenant files it) and no DELETE (it is history); UPDATE is COLUMN-level, approve / revoke only,
       // so the attester, the time and the note can never be rewritten. REVOKE first so a re-provision takes back a table grant.
-      // Migration 1332: the platform BAA register. INSERT files a record; UPDATE is COLUMN-level (status, dates, breach
-      // contacts, document link), so a record's tenant / organisation / addendum version and the tenant compliance
-      // officer's attestation can never be rewritten from the platform side. SELECT and DELETE come from the lists above.
-      await run('GRANT INSERT ON "platform_tenant_baa_record" TO chartwarden_platform;');
-      await run('REVOKE UPDATE ON "platform_tenant_baa_record" FROM chartwarden_platform;');
+      // Migration 1332: the platform BAA register. INSERT and UPDATE are COLUMN-level: INSERT names what the create route
+      // writes (not the subcontractor set or the tenant officer's attestation), UPDATE (status, dates, breach contacts,
+      // document link, last writer), so a record's tenant / organisation / addendum version, who filed it and the tenant
+      // compliance officer's attestation can never be rewritten from the platform side. SELECT and DELETE come from the
+      // lists above.
+      await run('REVOKE INSERT, UPDATE ON "platform_tenant_baa_record" FROM chartwarden_platform;');
       await run(
-        'GRANT UPDATE ("baa_status", "executed_on", "effective_on", "expires_on", "breach_notification_contact_email", "breach_notification_contact_phone", "document_id") ON "platform_tenant_baa_record" TO chartwarden_platform;',
+        'GRANT INSERT ("organization_id", "tenant_account_id", "addendum_version", "baa_status", "executed_on", "effective_on", "expires_on", "breach_notification_contact_email", "breach_notification_contact_phone", "document_id", "recorded_by_user_id") ON "platform_tenant_baa_record" TO chartwarden_platform;',
+      );
+      await run(
+        'GRANT UPDATE ("baa_status", "executed_on", "effective_on", "expires_on", "breach_notification_contact_email", "breach_notification_contact_phone", "document_id", "updated_by_user_id") ON "platform_tenant_baa_record" TO chartwarden_platform;',
       );
       await run('REVOKE UPDATE ON "tenant_go_live_attestation" FROM chartwarden_platform;');
       await run(
-        'GRANT UPDATE ("status", "approved_by_membership_id", "approved_by_user_id", "approved_at", "approval_reason", "revoked_by_membership_id", "revoked_at", "revoke_reason", "updated_at") ON "tenant_go_live_attestation" TO chartwarden_platform;',
+        'GRANT UPDATE ("status", "approved_by_membership_id", "approved_by_user_id", "approved_at", "approval_reason", "revoked_by_membership_id", "revoked_by_user_id", "revoked_at", "revoke_reason", "updated_at") ON "tenant_go_live_attestation" TO chartwarden_platform;',
       );
       // Approval re-checks the attester against the membership as it is NOW (still active, still holds compliance_officer).
       // Role grants are not a platform-wide read: COLUMN grants on exactly the columns that question needs (membership

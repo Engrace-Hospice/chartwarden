@@ -13,6 +13,7 @@
 //     the foot of this file). The command methods here record the lifecycle intent + emit the outbox
 //     descriptor; they do NOT directly mutate cross-tenant rows from the request thread.
 import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
+import { assertExecutedBaaHasDocument } from "./baa-guards";
 import { type CursorPage, paginate } from "./concurrency";
 
 // ── enqueue port (the thin worker-trigger seam the command routes inject) ─────────────────────────────
@@ -214,6 +215,8 @@ export interface CreateBaaRecordArgs {
   readonly expiresOn: string | null;
   readonly breachNotificationContactEmail: string | null;
   readonly breachNotificationContactPhone: string | null;
+  /** Required when `baaStatus` is `executed` (422 BAA_DOCUMENT_REQUIRED). */
+  readonly documentId: string | null;
 }
 export interface UpdateBaaRecordArgs {
   readonly baaStatus?: string;
@@ -1072,6 +1075,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       return { ...page, items: page.items.map(({ createdAt: _c, ...b }) => b) };
     },
     async createBaaRecord(_actorUserId, args) {
+      assertExecutedBaaHasDocument(args);
       // UNIQUE (tenant_account, addendum_version) — a duplicate is a 409 (the DB index enforces it in prod).
       for (const b of baaRecords.values()) {
         if (
@@ -1095,7 +1099,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
         executedOn: args.executedOn,
         effectiveOn: args.effectiveOn,
         expiresOn: args.expiresOn,
-        documentId: null,
+        documentId: args.documentId,
         attestedAt: null,
       };
       baaRecords.set(id, view);
@@ -1112,6 +1116,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
         expiresOn: args.expiresOn ?? b.expiresOn,
         documentId: args.documentId ?? b.documentId,
       };
+      assertExecutedBaaHasDocument(view);
       baaRecords.set(baaId, view);
       return view;
     },

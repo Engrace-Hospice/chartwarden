@@ -13,6 +13,7 @@ import {
   ProviderEntityCreateRequestSchema as TenantProviderEntityCreateRequest,
   ProviderEntityPatchRequestSchema as TenantProviderEntityPatchRequest,
 } from "../../../02-identity/routes/org-admin-typebox";
+import { assertNoPatientIdentifier } from "../../onboarding/evidence";
 
 export { LocationDetailSchema, ProviderEntityDetailSchema };
 
@@ -29,11 +30,15 @@ export const ONBOARDING_REASON_MAX = 500;
  * trimmed. Whitespace is folded BEFORE the strip so "line one\nline two" never fuses into one word.
  */
 export function normalizeReason(raw: string): string {
-  return raw
+  const reason = raw
     .replace(/\s+/gu, " ")
     .replace(/\p{C}+/gu, "")
     .replace(/ {2,}/gu, " ")
     .trim();
+  // The reason is copied into the tenant-visible audit trail: it is no place for a patient, so it goes through the same
+  // identifier screen as every other wizard free text (judged AFTER the strip, so zero-width padding cannot split a value).
+  assertNoPatientIdentifier("reason", reason);
+  return reason;
 }
 
 export const OnboardingReasonSchema = Type.Object({

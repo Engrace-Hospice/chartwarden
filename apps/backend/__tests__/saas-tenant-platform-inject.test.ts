@@ -929,14 +929,31 @@ describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§
         })
       ).statusCode,
     ).toBe(403);
-    const update = await app.inject({
+    // An executed BAA must point at its executed document (422 BAA_DOCUMENT_REQUIRED), on create and on update.
+    const noDocument = await app.inject({
       method: "PATCH",
       url: `/api/v1/platform/baa-register/${baaId}`,
       headers: PLATFORM_OPS_STEPUP,
       payload: { baaStatus: "executed" },
     });
+    expect(noDocument.statusCode).toBe(422);
+    expect(noDocument.json().error.code).toBe("BAA_DOCUMENT_REQUIRED");
+    const createExecutedNoDocument = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/baa-register",
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { ...payload, addendumVersion: "v-doc-less", baaStatus: "executed" },
+    });
+    expect(createExecutedNoDocument.statusCode).toBe(422);
+    const update = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/platform/baa-register/${baaId}`,
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { baaStatus: "executed", documentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0004" },
+    });
     expect(update.statusCode).toBe(200);
     expect(update.json().baaStatus).toBe("executed");
+    expect(update.json().documentId).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0004");
 
     await app.close();
   });

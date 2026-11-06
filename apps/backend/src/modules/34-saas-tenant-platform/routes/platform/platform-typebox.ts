@@ -202,6 +202,8 @@ export const CreateBaaRequest = Type.Object({
   expiresOn: Type.Optional(ISO_DATE),
   breachNotificationContactEmail: Type.Optional(Type.String({ format: "email" })),
   breachNotificationContactPhone: Type.Optional(Type.String({ maxLength: 64 })),
+  // Required when baaStatus is `executed` (the service answers 422 BAA_DOCUMENT_REQUIRED): the M22 document id of the signed PDF.
+  documentId: Type.Optional(Type.String({ format: "uuid" })),
 });
 export const UpdateBaaRequest = Type.Object({
   baaStatus: Type.Optional(lit(BAA_STATUS)),

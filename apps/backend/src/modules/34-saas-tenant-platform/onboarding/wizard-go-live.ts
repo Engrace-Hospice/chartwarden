@@ -4,6 +4,7 @@
 import { ChartWardenError } from "@chartwarden/types";
 import { normalizeOptionalNote, normalizeReason } from "./evidence";
 import {
+  assertApproverDidNotWriteBaa,
   assertAttesterStillValid,
   assertCanApprove,
   assertCanAttest,
@@ -104,6 +105,31 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
       reason,
     });
     return true;
+  }
+
+  /** Compensates a bind this assignment made when a later step of it failed (best effort: logged, never replaces the error). */
+  async function undoOfficerRoleBind(
+    ctx: Loaded,
+    actor: PlatformActor,
+    membershipId: string,
+    reason: string,
+  ): Promise<void> {
+    if (!deps.unbindComplianceOfficerRole) return;
+    try {
+      await deps.unbindComplianceOfficerRole({
+        organizationId: ctx.tenant.organizationId,
+        tenantAccountId: ctx.tenant.tenantAccountId,
+        membershipId,
+        operator: actor,
+        reason,
+      });
+    } catch (error) {
+      deps.warn?.("m34.onboarding wizard: undoing the compliance officer role bind failed", {
+        tenantAccountId: ctx.tenant.tenantAccountId,
+        membershipId,
+        err: error,
+      });
+    }
   }
 
   /**
@@ -243,6 +269,7 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
       attesterIsPlatformStaff: attester ? await isPlatformStaffMember(ctx.store, attester) : false,
     });
     const latestBaa = await ctx.store.latestBaa(ctx.tenant.tenantAccountId);
+    assertApproverDidNotWriteBaa(latestBaa, actor.userId);
     const guards = evaluateGoLiveGuards({
       templates: ctx.templates,
       tasks: ctx.tasks,
@@ -300,12 +327,13 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
   async function revokePending(
     ctx: Loaded,
     pending: GoLiveAttestation,
-    revokedByMembershipId: string,
+    revoker: { readonly userId: string; readonly membershipId: string },
     revokeReason: string,
   ): Promise<boolean> {
     const settled = await ctx.store.settleGoLive(ctx.tenant.organizationId, pending.id, {
       status: "revoked",
-      revokedByMembershipId,
+      revokedByUserId: revoker.userId,
+      revokedByMembershipId: revoker.membershipId,
       revokeReason,
     });
     if (!settled) return false;
@@ -329,7 +357,7 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
       tenantStatus: ctx.tenant.status,
       attestations: await ctx.store.listGoLive(ctx.tenant),
     });
-    if (!(await revokePending(ctx, pending, actor.membershipId, reason))) {
+    if (!(await revokePending(ctx, pending, actor, reason))) {
       throw refuse("GO_LIVE_NOT_ATTESTED", "the go-live attestation is no longer pending", 409);
     }
     return viewOf(await load(ctx.store, { organizationId: ctx.tenant.organizationId }));
@@ -352,7 +380,7 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
           revokePending(
             await load(store, { organizationId: tenant.organizationId }),
             superseded,
-            actor.membershipId,
+            actor,
             OFFICER_CHANGED_REVOKE_REASON,
           ),
         actor.userId,
@@ -400,6 +428,7 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
 
   return {
     ensureOfficerRole,
+    undoOfficerRoleBind,
     assignOfficer,
     goLiveAttest,
     goLiveApprove,

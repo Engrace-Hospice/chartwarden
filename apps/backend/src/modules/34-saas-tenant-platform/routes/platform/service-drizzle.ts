@@ -60,8 +60,10 @@ import {
   mintInvitationToken,
 } from "../../invitation-token";
 import type { ProvisionJobPort } from "../../jobs/provision-job-port";
+import { voidPendingGoLiveForDataChange } from "../../onboarding/go-live-void";
 import type { WizardActivation } from "../../onboarding/wizard-store-drizzle";
 import { evaluateActivationGuards, pickGoverningBaa } from "./activation-guards";
+import { assertExecutedBaaHasDocument } from "./baa-guards";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
 import { partitionEffects } from "./effect-ledger";
 import { evaluateDestructionGuards, retentionEndsAtFrom } from "./offboarding-guards";
@@ -1211,6 +1213,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     },
 
     async createBaaRecord(actorUserId, args: CreateBaaRecordArgs): Promise<BaaRecordView> {
+      assertExecutedBaaHasDocument(args);
       const view = await inPlatformCtx("platform-ops create BAA record", async (tx) => {
         await actingAs(tx, actorUserId);
         const repo = new BaaRegisterRepository(tx);
@@ -1235,6 +1238,14 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           expiresOn: args.expiresOn,
           breachNotificationContactEmail: args.breachNotificationContactEmail,
           breachNotificationContactPhone: args.breachNotificationContactPhone,
+          documentId: args.documentId,
+          recordedByUserId: actorUserId,
+        });
+        // The BAA is part of what the compliance officer attested: a pending attestation is voided in this same transaction.
+        await voidPendingGoLiveForDataChange(tx, {
+          organizationId: account.organizationId,
+          revokedByUserId: actorUserId,
+          revokedByMembershipId: null,
         });
         return baaView(row);
       });
@@ -1248,6 +1259,11 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const repo = new BaaRegisterRepository(tx);
         const existing = await repo.findById(baaId);
         if (!existing) throw new NotFoundError("platform-tenant BAA record");
+        // The row as it will be after this write must still satisfy `executed => document`.
+        assertExecutedBaaHasDocument({
+          baaStatus: args.baaStatus ?? existing.baaStatus,
+          documentId: args.documentId ?? existing.documentId,
+        });
         const row = await repo.update(baaId, {
           baaStatus: args.baaStatus as schema.PlatformTenantBaaRecord["baaStatus"] | undefined,
           executedOn: args.executedOn,
@@ -1256,6 +1272,12 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           breachNotificationContactEmail: args.breachNotificationContactEmail,
           breachNotificationContactPhone: args.breachNotificationContactPhone,
           documentId: args.documentId,
+          updatedByUserId: actorUserId,
+        });
+        await voidPendingGoLiveForDataChange(tx, {
+          organizationId: existing.organizationId,
+          revokedByUserId: actorUserId,
+          revokedByMembershipId: null,
         });
         return baaView(row);
       });

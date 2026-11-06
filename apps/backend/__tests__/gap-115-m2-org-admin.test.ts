@@ -64,7 +64,14 @@ const pe = (over: Partial<ProviderEntityDetail> & { id: string }): ProviderEntit
   ...over,
 });
 
-function makeServer(opts: { cipher?: boolean | "throws" } = {}) {
+type SiteScopeCall = {
+  organizationId: string;
+  userId: string;
+  membershipId: string | null;
+  usedScopedStore: boolean;
+};
+
+function makeServer(opts: { cipher?: boolean | "throws"; siteScope?: SiteScopeCall[] } = {}) {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore(
       ["admin_a", "ops_1"].map((userId) => ({
@@ -96,6 +103,17 @@ function makeServer(opts: { cipher?: boolean | "throws" } = {}) {
     actors: createContextActorResolver(),
     audit: auditSink.executor,
     store,
+    // The composition root's unit of work for a site write: hands the routes a store bound to its transaction.
+    ...(opts.siteScope
+      ? {
+          siteWriteScope: async (scope, run) => {
+            const scoped = { ...store };
+            const out = await run(scoped);
+            opts.siteScope?.push({ ...scope, usedScopedStore: scoped !== store });
+            return out;
+          },
+        }
+      : {}),
     ...(opts.cipher === false
       ? {}
       : {
@@ -511,6 +529,103 @@ describe("locations", () => {
       payload: { phone: "775-555-0100" },
     });
     expect(ok.statusCode).toBe(200);
+    await app.close();
+  });
+});
+
+// Review fix (security M3): a provider-entity or location write runs inside the composition root's unit of work, so M34 can
+// void a pending go-live attestation in the SAME transaction. M2 only promises the write goes through the scope it is given.
+describe("site writes run inside the composition root's unit of work", () => {
+  const NEW_PE_BODY = {
+    ccn: "555555",
+    npi: "1679576722",
+    legalName: "Mesa Hospice",
+    taxId: "12-3456789",
+    fiscalYearEnd: "0630",
+  };
+
+  it("provider-entity create and patch and location create and patch each use the scope once, naming org, user and membership", async () => {
+    const scopeCalls: SiteScopeCall[] = [];
+    const { app } = makeServer({ siteScope: scopeCalls });
+    const pe = await app.inject({
+      method: "POST",
+      url: "/api/v1/provider-entities",
+      headers: TENANT,
+      payload: NEW_PE_BODY,
+    });
+    expect(pe.statusCode).toBe(201);
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/provider-entities/${pe.json().id}`,
+      headers: TENANT,
+      payload: { legalName: "Mesa Hospice East" },
+    });
+    expect(patched.statusCode).toBe(200);
+    const loc = await app.inject({
+      method: "POST",
+      url: "/api/v1/locations",
+      headers: TENANT,
+      payload: {
+        providerEntityId: "pe_a",
+        name: "Mesa Main",
+        addressLine1: "1 Mesa Way",
+        city: "Reno",
+        state: "NV",
+        postalCode: "89501",
+        timezone: "America/Los_Angeles",
+      },
+    });
+    expect(loc.statusCode).toBe(201);
+    const locPatched = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/locations/${loc.json().id}`,
+      headers: TENANT,
+      payload: { phone: "775-555-0101" },
+    });
+    expect(locPatched.statusCode).toBe(200);
+
+    expect(scopeCalls).toHaveLength(4);
+    for (const call of scopeCalls) {
+      expect(call).toEqual({
+        organizationId: "org_a",
+        userId: "admin_a",
+        membershipId: "m_admin_a",
+        usedScopedStore: true,
+      });
+    }
+    await app.close();
+  });
+
+  it("reads and refused writes: reads never use the scope; a refused write still goes through it and the refusal surfaces", async () => {
+    const scopeCalls: SiteScopeCall[] = [];
+    const { app } = makeServer({ siteScope: scopeCalls });
+    const read = await app.inject({
+      method: "GET",
+      url: "/api/v1/provider-entities/pe_a",
+      headers: TENANT,
+    });
+    expect(read.statusCode).toBe(200);
+    expect(scopeCalls).toHaveLength(0);
+    const bad = await app.inject({
+      method: "POST",
+      url: "/api/v1/provider-entities",
+      headers: TENANT,
+      payload: { ...NEW_PE_BODY, npi: "1234567890" }, // mistyped NPI
+    });
+    expect(bad.statusCode).toBe(422);
+    expect(scopeCalls).toHaveLength(0); // the scope's run threw before it recorded a completed write
+    await app.close();
+  });
+
+  it("with no scope bound the routes write exactly as before", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/provider-entities",
+      headers: TENANT,
+      payload: NEW_PE_BODY,
+    });
+    expect(res.statusCode).toBe(201);
     await app.close();
   });
 });

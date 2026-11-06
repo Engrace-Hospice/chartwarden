@@ -10,10 +10,17 @@
 --
 -- tenant_go_live_attestation: one row per attempt, never deleted (a revoked attestation stays as history, and an
 -- approved one is the evidence of who authorised the go-live; like tenant_account_status_event it survives offboarding).
--- Tenant-scoped on organization_id (no PHI). RLS ENABLE + FORCE. The tenant role may only READ its own rows and INSERT a
--- PENDING one; approve and revoke are written on the BYPASSRLS platform login (scripts/db/provision-runtime-roles.ts
--- grants it SELECT and a COLUMN-level UPDATE). Write audit: the M1 baseline trigger, whose after-image carries both
--- actors' membership AND user ids.
+-- Tenant-scoped on organization_id (no PHI). RLS ENABLE + FORCE. The tenant role may READ its own rows, INSERT a PENDING
+-- one and VOID a pending one (pending -> revoked, nothing else: it can never approve, and it cannot touch the attester,
+-- the time or the note); approve and revoke are also written on the BYPASSRLS platform login (scripts/db/
+-- provision-runtime-roles.ts grants it SELECT and a COLUMN-level UPDATE). Write audit: the M1 baseline trigger, whose
+-- after-image carries both actors' membership AND user ids.
+--
+-- WHY THE TENANT ROLE MAY VOID. An attestation states "the onboarding data was ready" at one moment. Any later write to that
+-- data (a provider entity, a location, a MAC credential, the org profile; by the tenant's own admin or by an operator
+-- entering it for them) voids a pending attestation IN THE SAME TRANSACTION as the write, so approval can only ever rest
+-- on data nobody has touched since the officer looked. Those writes run on the tenant pool, so the tenant role needs this
+-- one narrow UPDATE. The policy pins the revoker to the session's own user (app.user_id).
 --
 -- TWO PEOPLE, NOT TWO MEMBERSHIPS. A user has a different membership in every organisation they belong to, so a platform
 -- operator invited into the tenant as its compliance officer holds two memberships and is one person. Each party is
@@ -27,7 +34,8 @@
 --     session user (app.user_id), and the attester's membership to an ACTIVE membership of THIS organisation held by that
 --     very user, so a tenant session cannot file an attestation in anyone else's name or from another organisation;
 --   * the state CHECK makes the machine a database fact: pending has no approval or revocation, approved has a reason and
---     a different approver (user AND membership) than the attester, revoked has a reason.
+--     a different approver (user AND membership) than the attester, revoked has a reason and the USER who revoked it (the
+--     membership is recorded where the caller has one; an automatic void on a data change knows only the session's user).
 --
 -- tenant_account.compliance_officer_membership_id: the tenant's org_admin assigns the compliance officer, so
 -- chartwarden_app gets a COLUMN-level UPDATE on that one column (and updated_at) with an own-org UPDATE policy. It still
@@ -51,6 +59,7 @@ CREATE TABLE IF NOT EXISTS "tenant_go_live_attestation" (
 	"approved_at" timestamp with time zone,
 	"approval_reason" text,
 	"revoked_by_membership_id" uuid,
+	"revoked_by_user_id" uuid,
 	"revoked_at" timestamp with time zone,
 	"revoke_reason" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -65,15 +74,15 @@ CREATE TABLE IF NOT EXISTS "tenant_go_live_attestation" (
 	CONSTRAINT "tenant_go_live_attestation_state_ck" CHECK (
 	  ("status" = 'pending'
 	     AND "approved_by_membership_id" IS NULL AND "approved_by_user_id" IS NULL AND "approved_at" IS NULL AND "approval_reason" IS NULL
-	     AND "revoked_by_membership_id" IS NULL AND "revoked_at" IS NULL AND "revoke_reason" IS NULL)
+	     AND "revoked_by_membership_id" IS NULL AND "revoked_by_user_id" IS NULL AND "revoked_at" IS NULL AND "revoke_reason" IS NULL)
 	  OR ("status" = 'approved'
 	     AND "approved_by_membership_id" IS NOT NULL AND "approved_by_user_id" IS NOT NULL
 	     AND "approved_at" IS NOT NULL AND "approval_reason" IS NOT NULL
 	     AND "approved_by_membership_id" <> "attested_by_membership_id"
 	     AND "approved_by_user_id" <> "attested_by_user_id"
-	     AND "revoked_by_membership_id" IS NULL AND "revoked_at" IS NULL AND "revoke_reason" IS NULL)
+	     AND "revoked_by_membership_id" IS NULL AND "revoked_by_user_id" IS NULL AND "revoked_at" IS NULL AND "revoke_reason" IS NULL)
 	  OR ("status" = 'revoked'
-	     AND "revoked_by_membership_id" IS NOT NULL AND "revoked_at" IS NOT NULL AND "revoke_reason" IS NOT NULL
+	     AND "revoked_by_user_id" IS NOT NULL AND "revoked_at" IS NOT NULL AND "revoke_reason" IS NOT NULL
 	     AND "approved_by_membership_id" IS NULL AND "approved_by_user_id" IS NULL AND "approved_at" IS NULL AND "approval_reason" IS NULL)
 	)
 );--> statement-breakpoint
@@ -96,7 +105,7 @@ CREATE POLICY "tenant_go_live_attestation_org_attest" ON "tenant_go_live_attesta
     organization_id = nullif(current_setting('app.org_id', true), '')::uuid
     AND status = 'pending'
     AND approved_by_membership_id IS NULL AND approved_by_user_id IS NULL AND approved_at IS NULL AND approval_reason IS NULL
-    AND revoked_by_membership_id IS NULL AND revoked_at IS NULL AND revoke_reason IS NULL
+    AND revoked_by_membership_id IS NULL AND revoked_by_user_id IS NULL AND revoked_at IS NULL AND revoke_reason IS NULL
     -- the attester is the session's own user, acting through an active membership of THIS organisation that user holds
     AND attested_by_user_id = nullif(current_setting('app.user_id', true), '')::uuid
     AND EXISTS (
@@ -107,14 +116,31 @@ CREATE POLICY "tenant_go_live_attestation_org_attest" ON "tenant_go_live_attesta
          AND m.status = 'active'
     )
   );--> statement-breakpoint
+-- The tenant role may void its own pending attestation, and only that: pending -> revoked, by the session's own user, with a
+-- reason. The column list leaves out every approve column and the attester's.
+DROP POLICY IF EXISTS "tenant_go_live_attestation_org_void" ON "tenant_go_live_attestation";--> statement-breakpoint
+CREATE POLICY "tenant_go_live_attestation_org_void" ON "tenant_go_live_attestation"
+  FOR UPDATE TO chartwarden_app
+  USING (
+    organization_id = nullif(current_setting('app.org_id', true), '')::uuid
+    AND status = 'pending'
+  )
+  WITH CHECK (
+    organization_id = nullif(current_setting('app.org_id', true), '')::uuid
+    AND status = 'revoked'
+    AND revoked_by_user_id = nullif(current_setting('app.user_id', true), '')::uuid
+    AND revoked_at IS NOT NULL AND revoke_reason IS NOT NULL
+    AND approved_by_membership_id IS NULL AND approved_by_user_id IS NULL AND approved_at IS NULL AND approval_reason IS NULL
+  );--> statement-breakpoint
 GRANT SELECT, INSERT ON "tenant_go_live_attestation" TO chartwarden_app;--> statement-breakpoint
+GRANT UPDATE ("status", "revoked_by_membership_id", "revoked_by_user_id", "revoked_at", "revoke_reason", "updated_at") ON "tenant_go_live_attestation" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "tenant_go_live_attestation" TO chartwarden_admin;--> statement-breakpoint
 -- The platform carrier exists only where provision-runtime-roles.ts has run; that script re-grants on every run.
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_platform') THEN
     GRANT SELECT ON "tenant_go_live_attestation" TO chartwarden_platform;
     -- UPDATE is column-level (approve / revoke only): an attestation's attester, time and note can never be rewritten.
-    GRANT UPDATE ("status", "approved_by_membership_id", "approved_by_user_id", "approved_at", "approval_reason", "revoked_by_membership_id", "revoked_at", "revoke_reason", "updated_at") ON "tenant_go_live_attestation" TO chartwarden_platform;
+    GRANT UPDATE ("status", "approved_by_membership_id", "approved_by_user_id", "approved_at", "approval_reason", "revoked_by_membership_id", "revoked_by_user_id", "revoked_at", "revoke_reason", "updated_at") ON "tenant_go_live_attestation" TO chartwarden_platform;
   END IF;
 END $$;
 --> statement-breakpoint
