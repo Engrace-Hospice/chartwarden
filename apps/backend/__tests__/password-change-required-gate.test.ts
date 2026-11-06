@@ -1,3 +1,4 @@
+import { liveOrganizationStage } from "./_live-organization-stage";
 import {
   type ResolvedActor,
   STEP_UP_POLICY,
@@ -48,6 +49,7 @@ function request(method: string, url: string): FastifyRequest {
 
 function hook(passwordChangeRequired: boolean, activeOrganizationId: string | null) {
   return createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
     getSnapshot: async () => ({
       sessionId: "session-1",
       userId: actor.userId,

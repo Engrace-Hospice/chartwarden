@@ -12,10 +12,15 @@ export const onboardingTaskTemplate = pgTable("onboarding_task_template", {
   displayLabel: text("display_label").notNull(),
   description: text("description").notNull(),
   canonicalOrder: integer("canonical_order").notNull(), // 1..11 canonical; 100+ tenant-additions
-  requiredRole: text("required_role").notNull(), // org_admin|compliance_officer|platform_ops
+  requiredRole: text("required_role").notNull(), // the step OWNER: platform_ops|org_admin|compliance_officer|either
   preconditionDsl: text("precondition_dsl"),
   defaultDueDaysAfterProvisioning: integer("default_due_days_after_provisioning").notNull(),
   isCanonical: boolean("is_canonical").notNull(),
+  // Migration 1327: how the step settles ('auto' sweep | 'attestation' human | 'either'), whether it gates the
+  // wizard (an optional step never does), and the retirement stamp (history stays; guards and lists skip it).
+  completionMode: text("completion_mode").notNull().default("auto"),
+  isOptional: boolean("is_optional").notNull().default(false),
+  retiredAt: timestamp("retired_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

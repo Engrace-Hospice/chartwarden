@@ -1,6 +1,6 @@
 // GAP-164 - the six M34 routes added after the first build, driven through the REAL guards (RBAC, the
 // `tenant_lifecycle_platform_ops` / `feature_flag_write_authority` predicates, step-up) over the in-memory services:
-//   GET /platform/dsar-export-jobs, GET + POST(skip) /platform/tenants/:orgSlug/onboarding,
+//   GET /platform/dsar-export-jobs (the onboarding routes moved to m34-onboarding-wizard-routes.test.ts),
 //   GET /tenant/account, GET /tenant/feature-flags, POST /tenant/feature-flags/:flagKey.
 import {
   createInMemoryEffectivePermissionStore,
@@ -25,8 +25,6 @@ import {
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const OTHER_ORG = "22222222-2222-4222-8222-222222222222";
-const TASK_PENDING = "70000000-0000-4000-8000-000000000001";
-const TASK_DONE = "70000000-0000-4000-8000-000000000002";
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -90,40 +88,6 @@ function makeServer() {
         slaBreached: false,
       },
     ],
-    onboarding: [
-      {
-        tenantAccountId: "t1",
-        orgSlug: "acme",
-        tenantStatus: "onboarding",
-        currentStep: null,
-        tasks: [
-          {
-            id: TASK_PENDING,
-            templateKey: "org_seeded",
-            status: "pending",
-            isCanonical: true,
-            canonicalOrder: 1,
-            dueAt: null,
-            startedAt: null,
-            completedAt: null,
-            blockerReason: null,
-            skipRationale: null,
-          },
-          {
-            id: TASK_DONE,
-            templateKey: "ccn_registered",
-            status: "done",
-            isCanonical: true,
-            canonicalOrder: 2,
-            dueAt: null,
-            startedAt: null,
-            completedAt: null,
-            blockerReason: null,
-            skipRationale: null,
-          },
-        ],
-      },
-    ],
   });
   const tenantFlags = createInMemoryTenantAccountFlagsService({
     accounts: [
@@ -154,11 +118,7 @@ function makeServer() {
             roleKey: "seed",
             enabled: true,
             expiresAt: null,
-            permissionKeys: [
-              "dsar_export.list_platform",
-              "onboarding.read_platform",
-              "onboarding.skip",
-            ],
+            permissionKeys: ["dsar_export.list_platform"],
           },
         ],
       },
@@ -263,65 +223,6 @@ describe("GET /platform/dsar-export-jobs", () => {
     expect(
       (await app.inject({ method: "GET", url: "/api/v1/platform/dsar-export-jobs" })).statusCode,
     ).toBe(401);
-    await app.close();
-  });
-});
-
-describe("platform onboarding read + skip", () => {
-  it("reads the task list with the current step", async () => {
-    const { app } = makeServer();
-    const res = await app.inject({
-      method: "GET",
-      url: "/api/v1/platform/tenants/acme/onboarding",
-      headers: OPS,
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().currentStep).toBe("org_seeded");
-    expect(res.json().tasks).toHaveLength(2);
-    expect(
-      (
-        await app.inject({
-          method: "GET",
-          url: "/api/v1/platform/tenants/nope/onboarding",
-          headers: OPS,
-        })
-      ).statusCode,
-    ).toBe(404);
-    await app.close();
-  });
-
-  it("skip needs step-up and a rationale, records the actor, and refuses a settled task", async () => {
-    const { app, ops } = makeServer();
-    const url = `/api/v1/platform/tenants/acme/onboarding/${TASK_PENDING}/skip`;
-    const payload = { skipRationale: "tenant migrating from another system" };
-    expect((await app.inject({ method: "POST", url, headers: OPS, payload })).statusCode).toBe(403);
-    const stepped = { ...OPS, "x-step-up": "fresh" };
-    expect(
-      (await app.inject({ method: "POST", url, headers: stepped, payload: { skipRationale: "x" } }))
-        .statusCode,
-    ).toBe(422);
-    const ok = await app.inject({ method: "POST", url, headers: stepped, payload });
-    expect(ok.statusCode).toBe(200);
-    expect(ok.json().status).toBe("skipped");
-    expect(ops.skips).toHaveLength(1);
-    const again = await app.inject({ method: "POST", url, headers: stepped, payload });
-    expect(again.statusCode).toBe(409);
-    const doneUrl = `/api/v1/platform/tenants/acme/onboarding/${TASK_DONE}/skip`;
-    expect(
-      (await app.inject({ method: "POST", url: doneUrl, headers: stepped, payload })).statusCode,
-    ).toBe(409);
-    await app.close();
-  });
-
-  it("denies a tenant org_admin the skip", async () => {
-    const { app } = makeServer();
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/v1/platform/tenants/acme/onboarding/${TASK_PENDING}/skip`,
-      headers: { ...ADMIN, "x-step-up": "fresh" },
-      payload: { skipRationale: "tenant migrating from another system" },
-    });
-    expect(res.statusCode).toBe(403);
     await app.close();
   });
 });

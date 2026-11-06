@@ -1216,6 +1216,7 @@ exports.MODULES = [
       "tenant_invitation",
       "tenant_export_job",
       "tenant_export_job_event",
+      "tenant_go_live_attestation",
       "tenant_key_destruction_log",
       "tenant_key_ring",
       "tenant_signup_intent",

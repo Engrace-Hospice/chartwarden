@@ -33,6 +33,7 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:s11:adversarial-stages:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
+import { liveOrganizationStage } from "./_live-organization-stage";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -570,6 +571,7 @@ describe.skipIf(!DB_URL)("S11 adversarial cases across clinical stages — LIVE 
       createDbActorEnrichmentReader(handle.db),
     );
     const authenticate = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
       getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
       getResolver: () => getSeam("SessionContextResolver"),
       sessionTimeout: createDbSessionTimeoutEnforcer(handle.db),

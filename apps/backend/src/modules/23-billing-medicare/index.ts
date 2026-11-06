@@ -70,6 +70,7 @@ export {
   buildDrizzleWageIndexService,
   buildDrizzlePlatformAdminService,
   buildDrizzleNpiVerificationService,
+  buildMacOnboardingCredentialPort,
   buildDrizzleSequestrationPolicyService,
   buildDrizzleEdiProfileService,
 } from "./routes/index";
@@ -151,6 +152,7 @@ export {
   buildM23WorkQueueEnqueuePort,
   buildNoticeWindowPort,
   buildDrizzleOrgMacJurisdictionReader,
+  buildMacFeedConfiguredReader,
   buildClearinghouseContextPort,
   buildDirectMacGateway,
   buildSubmissionControlNumberReader,

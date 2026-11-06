@@ -2,9 +2,9 @@
 // + an in-memory slice (§4.1 "Tenant-scoped routes").
 //
 // The TENANT-scoped route handlers (support-consent-grants / dsar-export-jobs / tenant-export-jobs /
-// onboarding / baa) compose over this interface; production injects a Drizzle-backed service whose READ
+// baa) compose over this interface; production injects a Drizzle-backed service whose READ
 // methods run under `withOrgContext` (so RLS scopes by `app.org_id`) over the §3 repositories
-// (`SupportRepository` / `DsarExportRepository` / `TenantExportRepository` / `OnboardingRepository` /
+// (`SupportRepository` / `DsarExportRepository` / `TenantExportRepository` /
 // `BaaRegisterRepository`). COMMAND methods that trigger a worker enqueue to a named BullMQ queue via the
 // injected {@link EnqueuePort} (the live worker construction is Phase 2D — see the typed TODO below) and
 // emit their m34.* outbox in the same tx. Mirrors the M22 routes/service.ts precedent: pure-ish (only an
@@ -97,18 +97,6 @@ export interface TenantExportJobView {
   readonly createdAt: string;
 }
 
-export interface OnboardingTaskView {
-  readonly id: string;
-  readonly templateKey: string;
-  readonly status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
-  readonly assignedToMembershipId: string | null;
-  readonly dueAt: string | null;
-  readonly startedAt: string | null;
-  readonly completedAt: string | null;
-  readonly blockerReason: string | null;
-  readonly createdAt: string;
-}
-
 export interface BaaRecordView {
   readonly id: string;
   readonly tenantAccountId: string;
@@ -188,23 +176,6 @@ export interface TenantRouteService {
     jobId: string,
     actorMembershipId: string,
   ): Promise<DownloadUrlView>;
-  // --- onboarding ---
-  listOnboarding(
-    organizationId: OrgId,
-    cursor: string | undefined,
-    limit: number | undefined,
-  ): Promise<CursorPage<OnboardingTaskView>>;
-  startOnboardingTask(organizationId: OrgId, taskId: string): Promise<OnboardingTaskView>;
-  completeOnboardingTask(
-    organizationId: OrgId,
-    taskId: string,
-    completionEvidence: Record<string, unknown> | null,
-  ): Promise<OnboardingTaskView>;
-  blockOnboardingTask(
-    organizationId: OrgId,
-    taskId: string,
-    blockerReason: string,
-  ): Promise<OnboardingTaskView>;
   // --- BAA ---
   listBaa(
     organizationId: OrgId,
@@ -232,9 +203,6 @@ interface DsarRecord extends Mutable<DsarExportJobView> {
 interface TenantExportRecord extends Mutable<TenantExportJobView> {
   organizationId: string;
 }
-interface OnboardingRecord extends Mutable<OnboardingTaskView> {
-  organizationId: string;
-}
 interface BaaRecord extends Mutable<BaaRecordView> {
   organizationId: string;
 }
@@ -245,9 +213,6 @@ export interface TenantRouteSeed {
   readonly dsarJobs?: ReadonlyArray<Partial<DsarRecord> & { id: string; organizationId: string }>;
   readonly tenantExportJobs?: ReadonlyArray<
     Partial<TenantExportRecord> & { id: string; organizationId: string }
-  >;
-  readonly onboardingTasks?: ReadonlyArray<
-    Partial<OnboardingRecord> & { id: string; organizationId: string }
   >;
   readonly baaRecords?: ReadonlyArray<Partial<BaaRecord> & { id: string; organizationId: string }>;
 }
@@ -274,7 +239,6 @@ export function createInMemoryTenantBackend(
   const grants = new Map<string, GrantRecord>();
   const dsar = new Map<string, DsarRecord>();
   const tenantExports = new Map<string, TenantExportRecord>();
-  const onboarding = new Map<string, OnboardingRecord>();
   const baa = new Map<string, BaaRecord>();
   const enqueueLog: { queue: M34TenantQueueName; jobId: string }[] = [];
   let created = 0;
@@ -329,19 +293,6 @@ export function createInMemoryTenantBackend(
       ...t,
     } as TenantExportRecord);
   }
-  for (const o of seed.onboardingTasks ?? []) {
-    onboarding.set(o.id, {
-      templateKey: "account_created",
-      status: "pending",
-      assignedToMembershipId: null,
-      dueAt: null,
-      startedAt: null,
-      completedAt: null,
-      blockerReason: null,
-      createdAt: now(),
-      ...o,
-    } as OnboardingRecord);
-  }
   for (const b of seed.baaRecords ?? []) {
     baa.set(b.id, {
       tenantAccountId: uuidFromCounter("t", 1),
@@ -369,11 +320,6 @@ export function createInMemoryTenantBackend(
   const loadTenantExport = (organizationId: OrgId, id: string): TenantExportRecord => {
     const r = tenantExports.get(id);
     if (!r || r.organizationId !== organizationId) throw new NotFoundError("tenant export job");
-    return r;
-  };
-  const loadOnboarding = (organizationId: OrgId, id: string): OnboardingRecord => {
-    const r = onboarding.get(id);
-    if (!r || r.organizationId !== organizationId) throw new NotFoundError("onboarding task");
     return r;
   };
   const loadBaa = (organizationId: OrgId, id: string): BaaRecord => {
@@ -530,31 +476,6 @@ export function createInMemoryTenantBackend(
         );
       }
       return { url: `https://minio.local/export/${r.id}`, expiresAt: plusDays(now(), 1) };
-    },
-    // --- onboarding ---
-    async listOnboarding(organizationId, cursor, limit) {
-      const rows = desc(
-        [...onboarding.values()].filter((r) => r.organizationId === organizationId).map(strip),
-      );
-      return paginate(rows, cursor, limit);
-    },
-    async startOnboardingTask(organizationId, taskId) {
-      const r = loadOnboarding(organizationId, taskId);
-      r.status = "in_progress";
-      r.startedAt = now();
-      return strip(r);
-    },
-    async completeOnboardingTask(organizationId, taskId, _completionEvidence) {
-      const r = loadOnboarding(organizationId, taskId);
-      r.status = "done";
-      r.completedAt = now();
-      return strip(r);
-    },
-    async blockOnboardingTask(organizationId, taskId, blockerReason) {
-      const r = loadOnboarding(organizationId, taskId);
-      r.status = "blocked";
-      r.blockerReason = blockerReason;
-      return strip(r);
     },
     // --- BAA ---
     async listBaa(organizationId, cursor, limit) {

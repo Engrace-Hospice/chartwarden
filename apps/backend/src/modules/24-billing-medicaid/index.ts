@@ -50,6 +50,7 @@ export {
   buildDrizzleM24ReadService,
   buildDrizzleM24WriteService,
   buildM24MedicaidCoverageResolver,
+  buildMedicaidOnboardingCredentialPort,
 } from "./routes/index";
 export { mountM24Routes } from "./routes/mount";
 

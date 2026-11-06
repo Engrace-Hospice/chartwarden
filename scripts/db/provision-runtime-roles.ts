@@ -78,6 +78,8 @@ for (const [name, pw] of [
 const PLATFORM_READ_TABLES = [
   // M1/M2 spine — the enumerators (active orgs; the M36 D9 sole-tenant membership read).
   "organization",
+  // ADR-0049 D3: retired slugs are never reused, so the New tenant form's availability check reads them (names only, no PHI).
+  "organization_slug_alias",
   "membership",
   "patient",
   // M1 feature flags - the M34 platform + tenant flag admin reads every tenant's flag rows (GAP-164).
@@ -93,6 +95,7 @@ const PLATFORM_READ_TABLES = [
   "tenant_invitation",
   "onboarding_task",
   "onboarding_task_template",
+  "tenant_go_live_attestation",
   "support_consent_grant",
   "support_session",
   "support_session_event",
@@ -175,6 +178,10 @@ const PLATFORM_WRITER_FUNCTIONS = [
   "audit_archive_candidates(int)",
   "audit_archive_read_batch(text, uuid, int)",
   "audit_archive_detach(text, bigint, boolean)",
+  // M34 onboarding wizard: is this user ChartWarden platform staff? The compliance officer and the go-live attester must not
+  // be (migration 1097's SECURITY DEFINER holder reader; user ids only, platform-owned roles only). The platform pool reads it
+  // when approval re-checks the attester, the tenant pool already holds EXECUTE from the migration.
+  "m34_platform_role_holders(text[])",
 ] as const;
 
 /** The M35 platform-only tables (migration 0143 — RLS with no chartwarden_app grant): full write. */
@@ -311,6 +318,34 @@ async function main(): Promise<void> {
       await run('REVOKE UPDATE ON "provider_npi_verification" FROM chartwarden_platform;');
       await run(
         'GRANT UPDATE ("revoked_at", "revoked_by_membership_id", "updated_at") ON "provider_npi_verification" TO chartwarden_platform;',
+      );
+      // Migration 1328: the platform operator approves or revokes a go-live attestation the tenant's compliance officer
+      // filed. No INSERT (the tenant files it) and no DELETE (it is history); UPDATE is COLUMN-level, approve / revoke only,
+      // so the attester, the time and the note can never be rewritten. REVOKE first so a re-provision takes back a table grant.
+      // Migration 1332: the platform BAA register. INSERT and UPDATE are COLUMN-level: INSERT names what the create route
+      // writes (not the subcontractor set or the tenant officer's attestation), UPDATE (status, dates, breach contacts,
+      // document link, last writer), so a record's tenant / organisation / addendum version, who filed it and the tenant
+      // compliance officer's attestation can never be rewritten from the platform side. SELECT and DELETE come from the
+      // lists above.
+      await run('REVOKE INSERT, UPDATE ON "platform_tenant_baa_record" FROM chartwarden_platform;');
+      await run(
+        'GRANT INSERT ("organization_id", "tenant_account_id", "addendum_version", "baa_status", "executed_on", "effective_on", "expires_on", "breach_notification_contact_email", "breach_notification_contact_phone", "document_id", "recorded_by_user_id") ON "platform_tenant_baa_record" TO chartwarden_platform;',
+      );
+      await run(
+        'GRANT UPDATE ("baa_status", "executed_on", "effective_on", "expires_on", "breach_notification_contact_email", "breach_notification_contact_phone", "document_id", "updated_by_user_id") ON "platform_tenant_baa_record" TO chartwarden_platform;',
+      );
+      await run('REVOKE UPDATE ON "tenant_go_live_attestation" FROM chartwarden_platform;');
+      await run(
+        'GRANT UPDATE ("status", "approved_by_membership_id", "approved_by_user_id", "approved_at", "approval_reason", "revoked_by_membership_id", "revoked_by_user_id", "revoked_at", "revoke_reason", "updated_at") ON "tenant_go_live_attestation" TO chartwarden_platform;',
+      );
+      // Approval re-checks the attester against the membership as it is NOW (still active, still holds compliance_officer).
+      // Role grants are not a platform-wide read: COLUMN grants on exactly the columns that question needs (membership
+      // itself is already in PLATFORM_READ_TABLES), never the role scope, grantor or permission rows.
+      await run(
+        'GRANT SELECT ("membership_id", "role_id", "organization_id", "expires_at") ON "membership_role" TO chartwarden_platform;',
+      );
+      await run(
+        'GRANT SELECT ("id", "key", "enabled", "organization_id") ON "role" TO chartwarden_platform;',
       );
       await run(
         'GRANT SELECT ("organization_id", "provider_entity_id", "usage", "control_number", "status") ON "clearinghouse_submission_attempt" TO chartwarden_platform;',

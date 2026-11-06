@@ -6,13 +6,16 @@
 // references only), so reads do not `auditRead`; the M4 write-audit trigger backstops the mutations.
 //
 // All three routes are platform-ops (the register spans tenants → `withPlatformContext` cross-tenant in
-// prod); the §4.1 platform-ops surface authorizes the whole register CRUD off `tenant_lifecycle_platform_ops`
-// + the `platform_tenant_baa.read_platform` key. The compliance-officer ATTESTATION route lives on the
+// prod); the §4.1 platform-ops surface authorizes the register off `tenant_lifecycle_platform_ops`. The list is
+// gated by the `platform_tenant_baa.read_platform` key; create and update by the WRITE key
+// `platform_tenant_baa.write_platform` PLUS a fresh step-up and the human-actor (no AI) block: a BAA's executed state and
+// expiry feed the go-live guards, so writing one is a decision, not a read. The compliance-officer ATTESTATION route lives on the
 // tenant surface (`POST /api/v1/tenant/baa/:id/attest`, a separate group) — this group is the platform-ops
 // register CRUD only. Org/actor binding is server-side. Mirrors the sibling tenants.ts plugin shape.
-import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { rejectAiActor } from "../../../../bootstrap/reject-ai-actor";
 import {
   BaaParamsSchema,
   BaaRegisterListQuerySchema,
@@ -43,6 +46,15 @@ const ABAC_PLATFORM_OPS = requireAbac(
   "tenant_lifecycle_platform_ops",
 ) as PreHandler;
 
+// create / update: the write key, the same platform_ops predicate, a fresh step-up, and no AI principal.
+const WRITE_KEY = "platform_tenant_baa.write_platform";
+const WRITE_GUARDS: PreHandler[] = [
+  requirePermission(WRITE_KEY) as PreHandler,
+  requireAbac(WRITE_KEY, "tenant_lifecycle_platform_ops") as PreHandler,
+  requireStepUp(WRITE_KEY) as PreHandler,
+  rejectAiActor("AI principals cannot change the platform BAA register") as PreHandler,
+];
+
 export function registerBaaRegisterRoutes(app: FastifyInstance, deps: BaaRegisterRouteDeps): void {
   const { service } = deps;
 
@@ -64,7 +76,7 @@ export function registerBaaRegisterRoutes(app: FastifyInstance, deps: BaaRegiste
   // 2 — file a new BAA record for a (tenant_account, addendum_version) (UNIQUE; §3.8). §4.1.
   app.post(
     "/api/v1/platform/baa-register",
-    { preHandler: [READ, ABAC_PLATFORM_OPS] },
+    { preHandler: WRITE_GUARDS },
     async (request, reply) => {
       const { userId } = actorOf(request);
       const body = parse(CreateBaaRequest, request.body);
@@ -77,27 +89,24 @@ export function registerBaaRegisterRoutes(app: FastifyInstance, deps: BaaRegiste
         expiresOn: body.expiresOn ?? null,
         breachNotificationContactEmail: body.breachNotificationContactEmail ?? null,
         breachNotificationContactPhone: body.breachNotificationContactPhone ?? null,
+        documentId: body.documentId ?? null,
       });
       return reply.code(201).send(res);
     },
   );
 
   // 3 — update a BAA record (execution / termination / dates / contacts / document linkage). §4.1.
-  app.patch(
-    "/api/v1/platform/baa-register/:id",
-    { preHandler: [READ, ABAC_PLATFORM_OPS] },
-    async (request) => {
-      const { userId } = actorOf(request);
-      const body = parse(UpdateBaaRequest, request.body);
-      return service.updateBaaRecord(baaIdOf(request), userId, {
-        baaStatus: body.baaStatus,
-        executedOn: body.executedOn,
-        effectiveOn: body.effectiveOn,
-        expiresOn: body.expiresOn,
-        breachNotificationContactEmail: body.breachNotificationContactEmail,
-        breachNotificationContactPhone: body.breachNotificationContactPhone,
-        documentId: body.documentId,
-      });
-    },
-  );
+  app.patch("/api/v1/platform/baa-register/:id", { preHandler: WRITE_GUARDS }, async (request) => {
+    const { userId } = actorOf(request);
+    const body = parse(UpdateBaaRequest, request.body);
+    return service.updateBaaRecord(baaIdOf(request), userId, {
+      baaStatus: body.baaStatus,
+      executedOn: body.executedOn,
+      effectiveOn: body.effectiveOn,
+      expiresOn: body.expiresOn,
+      breachNotificationContactEmail: body.breachNotificationContactEmail,
+      breachNotificationContactPhone: body.breachNotificationContactPhone,
+      documentId: body.documentId,
+    });
+  });
 }

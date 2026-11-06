@@ -35,6 +35,7 @@ import {
   type PatientCoverageReader,
 } from "@chartwarden/types";
 import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
 import type { CredentialCipherPort } from "../credential-crypto";
 import type { M24WriteActor } from "./actor";
 import type { ClaimView, RbArrangementView } from "./read-service";
@@ -398,6 +399,99 @@ export function buildDrizzleM24WriteService(
       version: r.version,
       createdAt: iso(r.createdAt),
     };
+  }
+
+  /** Insert or version-bump one provider entity's state trading-partner credential, on `tx` (RLS already scoped). */
+  async function upsertCredentialRow(
+    tx: Tx,
+    actor: M24WriteActor,
+    input: UpsertCredentialInput,
+  ): Promise<{ id: string }> {
+    const existing = await tx
+      .select()
+      .from(TP)
+      .where(
+        and(
+          eq(TP.organizationId, actor.organizationId),
+          eq(TP.providerEntityId, input.providerEntityId),
+          eq(TP.serviceState, input.serviceState),
+          eq(TP.channel, input.channel),
+        ),
+      )
+      .limit(1);
+    // §8.7 envelope encryption under the per-tenant HKDF DEK. A submitted secret is SEALED (never
+    // stored plaintext, never returned by any read); an omitted secret leaves the existing cipher
+    // untouched, so a PATCH-shaped upsert cannot silently blank a credential. With no KEK bound the
+    // seal THROWS — storing a sentinel and reporting success is what the placeholder did wrong.
+    const clientSecretCipher =
+      input.clientSecret != null
+        ? cipher.seal(actor.organizationId, input.clientSecret)
+        : (existing[0]?.clientSecretCipher ?? null);
+    const sftpKeyCipher =
+      input.sftpKey != null
+        ? cipher.seal(actor.organizationId, input.sftpKey)
+        : (existing[0]?.sftpKeyCipher ?? null);
+    let id: string;
+    let version: number;
+    if (existing[0]) {
+      id = existing[0].id;
+      version = existing[0].version + 1;
+      await tx
+        .update(TP)
+        .set({
+          mcoId: input.mcoId ?? null,
+          tradingPartnerId: input.tradingPartnerId,
+          clientId: input.clientId ?? null,
+          clientSecretCipher,
+          sftpHost: input.sftpHost ?? null,
+          sftpUser: input.sftpUser ?? null,
+          sftpKeyCipher,
+          portalUrl: input.portalUrl ?? null,
+          activeFrom: new Date(input.activeFrom),
+          activeTo: input.activeTo ? new Date(input.activeTo) : null,
+          version,
+          updatedAt: new Date(),
+          updatedByMembershipId: actor.userId,
+        })
+        .where(eq(TP.id, id));
+    } else {
+      id = randomUUID();
+      version = 1;
+      await tx.insert(TP).values({
+        id,
+        organizationId: actor.organizationId,
+        providerEntityId: input.providerEntityId,
+        serviceState: input.serviceState,
+        channel: input.channel,
+        mcoId: input.mcoId ?? null,
+        tradingPartnerId: input.tradingPartnerId,
+        clientId: input.clientId ?? null,
+        clientSecretCipher,
+        sftpHost: input.sftpHost ?? null,
+        sftpUser: input.sftpUser ?? null,
+        sftpKeyCipher,
+        portalUrl: input.portalUrl ?? null,
+        activeFrom: new Date(input.activeFrom),
+        activeTo: input.activeTo ? new Date(input.activeTo) : null,
+        createdByMembershipId: actor.userId,
+        updatedByMembershipId: actor.userId,
+      });
+    }
+    await outbox.publish(tx, {
+      eventName: "m24.medicaid_trading_partner.updated",
+      organizationId: actor.organizationId,
+      aggregateKind: "state_medicaid_trading_partner_credential",
+      aggregateId: id,
+      payload: {
+        organizationId: actor.organizationId,
+        providerEntityId: input.providerEntityId,
+        state: input.serviceState,
+        channel: input.channel,
+        mcoId: input.mcoId ?? null,
+        version,
+      },
+    });
+    return { id };
   }
 
   return {
@@ -1502,93 +1596,14 @@ export function buildDrizzleM24WriteService(
     },
 
     async upsertCredential(actor, input: UpsertCredentialInput) {
-      return withOrgContext(db, actor, async (tx) => {
-        const existing = await tx
-          .select()
-          .from(TP)
-          .where(
-            and(
-              eq(TP.organizationId, actor.organizationId),
-              eq(TP.providerEntityId, input.providerEntityId),
-              eq(TP.serviceState, input.serviceState),
-              eq(TP.channel, input.channel),
-            ),
-          )
-          .limit(1);
-        // §8.7 envelope encryption under the per-tenant HKDF DEK. A submitted secret is SEALED (never
-        // stored plaintext, never returned by any read); an omitted secret leaves the existing cipher
-        // untouched, so a PATCH-shaped upsert cannot silently blank a credential. With no KEK bound the
-        // seal THROWS — storing a sentinel and reporting success is what the placeholder did wrong.
-        const clientSecretCipher =
-          input.clientSecret != null
-            ? cipher.seal(actor.organizationId, input.clientSecret)
-            : (existing[0]?.clientSecretCipher ?? null);
-        const sftpKeyCipher =
-          input.sftpKey != null
-            ? cipher.seal(actor.organizationId, input.sftpKey)
-            : (existing[0]?.sftpKeyCipher ?? null);
-        let id: string;
-        let version: number;
-        if (existing[0]) {
-          id = existing[0].id;
-          version = existing[0].version + 1;
-          await tx
-            .update(TP)
-            .set({
-              mcoId: input.mcoId ?? null,
-              tradingPartnerId: input.tradingPartnerId,
-              clientId: input.clientId ?? null,
-              clientSecretCipher,
-              sftpHost: input.sftpHost ?? null,
-              sftpUser: input.sftpUser ?? null,
-              sftpKeyCipher,
-              portalUrl: input.portalUrl ?? null,
-              activeFrom: new Date(input.activeFrom),
-              activeTo: input.activeTo ? new Date(input.activeTo) : null,
-              version,
-              updatedAt: new Date(),
-              updatedByMembershipId: actor.userId,
-            })
-            .where(eq(TP.id, id));
-        } else {
-          id = randomUUID();
-          version = 1;
-          await tx.insert(TP).values({
-            id,
-            organizationId: actor.organizationId,
-            providerEntityId: input.providerEntityId,
-            serviceState: input.serviceState,
-            channel: input.channel,
-            mcoId: input.mcoId ?? null,
-            tradingPartnerId: input.tradingPartnerId,
-            clientId: input.clientId ?? null,
-            clientSecretCipher,
-            sftpHost: input.sftpHost ?? null,
-            sftpUser: input.sftpUser ?? null,
-            sftpKeyCipher,
-            portalUrl: input.portalUrl ?? null,
-            activeFrom: new Date(input.activeFrom),
-            activeTo: input.activeTo ? new Date(input.activeTo) : null,
-            createdByMembershipId: actor.userId,
-            updatedByMembershipId: actor.userId,
-          });
-        }
-        await outbox.publish(tx, {
-          eventName: "m24.medicaid_trading_partner.updated",
-          organizationId: actor.organizationId,
-          aggregateKind: "state_medicaid_trading_partner_credential",
-          aggregateId: id,
-          payload: {
-            organizationId: actor.organizationId,
-            providerEntityId: input.providerEntityId,
-            state: input.serviceState,
-            channel: input.channel,
-            mcoId: input.mcoId ?? null,
-            version,
-          },
-        });
-        return { id };
-      });
+      return withOrgContext(db, actor, (tx) => upsertCredentialRow(tx, actor, input));
+    },
+
+    // The SAME upsert on the CALLER'S transaction (`tx` already scoped to `actor.organizationId`): the platform
+    // onboarding route keeps the write, its tenant-status check and its audit row in one unit of work.
+    async upsertCredentialOnTx(tx, actor, input: UpsertCredentialInput) {
+      await assertTxScopedToOrg(tx, actor.organizationId);
+      return upsertCredentialRow(tx as Tx, actor, input);
     },
 
     // ── route 34 — test credential (DEFERRED: the per-state sandbox adapter is unbound; records the attempt

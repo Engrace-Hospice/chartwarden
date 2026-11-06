@@ -79,6 +79,15 @@ export interface OrganizationLifecycleOutboxPort {
   ): Promise<void>;
 }
 
+/**
+ * "Is this organization's tenant still provisioning or onboarding?" - the one M34 fact an activation needs. Injected by the
+ * composition root (M2 does not import M34). While it holds, `activate` is refused: the organization opens only through the
+ * two-party go-live approval (M34), never through this writer on one operator's say-so.
+ */
+export interface OrganizationActivationGuard {
+  isOnboarding(organizationId: string): Promise<boolean>;
+}
+
 export interface OrganizationTransitionResult {
   readonly status: OrganizationLifecycleStatus;
   readonly sessionsRevoked: number;
@@ -97,17 +106,55 @@ export interface OrganizationLifecycleWriter {
   getStatus(organizationId: string): Promise<OrganizationLifecycleStatus | null>;
 }
 
-/** Build the production Drizzle writer. `outbox` omitted → transition still lands, event is dropped
- *  (the M28 `NOOP_FHIR_OUTBOX` precedent), matching every other optional M2 outbox port. */
-export function createDrizzleOrganizationLifecycleWriter(
+/**
+ * The `organization.status` reader (the authenticate gate and `select-organization` use it; it never writes). Its own factory, so a
+ * caller that only reads is not handed a writer and does not have to name an activation guard it has no use for.
+ */
+export function createDrizzleOrganizationStatusReader(
   db: DbClient,
-  outbox?: OrganizationLifecycleOutboxPort,
+): (organizationId: string) => Promise<OrganizationLifecycleStatus | null> {
+  return async (organizationId) => {
+    const [row] = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
+      tx
+        .select({ status: schema.organizations.status })
+        .from(schema.organizations)
+        .where(eq(schema.organizations.id, organizationId))
+        .limit(1),
+    );
+    return row ? (row.status as OrganizationLifecycleStatus) : null;
+  };
+}
+
+export interface OrganizationLifecycleDeps {
+  /**
+   * Refuses `activate` while the tenant is onboarding (go-live is the only way in). REQUIRED: a writer built without it would
+   * let one operator open an onboarding organization, so every caller names it (a test that does not exercise it passes an
+   * explicit `{ isOnboarding: async () => false }`).
+   */
+  readonly activationGuard: OrganizationActivationGuard;
+  /** `outbox` omitted → the transition still lands and the event is dropped (the M28 `NOOP_FHIR_OUTBOX` precedent). */
+  readonly outbox?: OrganizationLifecycleOutboxPort;
   /** Called AFTER the transition commits (ADR-0049 D6: evicts the tenant-host cache so a suspended or closed
    *  tenant's host stops resolving at once, not after the cache TTL). */
-  onTransitioned?: (organizationId: string) => void,
+  readonly onTransitioned?: (organizationId: string) => void;
+}
+
+/** Build the production Drizzle writer. */
+export function createDrizzleOrganizationLifecycleWriter(
+  db: DbClient,
+  deps: OrganizationLifecycleDeps,
 ): OrganizationLifecycleWriter {
+  const { activationGuard, outbox, onTransitioned } = deps;
   return {
     async transition(organizationId, event, ctx) {
+      // Before the transaction: a refused activation takes no connection and writes nothing (no status, audit or outbox row).
+      if (event === "activate" && (await activationGuard.isOnboarding(organizationId))) {
+        throw new ChartWardenError(
+          "GO_LIVE_TWO_PARTY_REQUIRED",
+          "this organization's tenant is still provisioning or onboarding: it opens only when the compliance officer attests and a different platform operator approves go-live",
+          409,
+        );
+      }
       const result = await withOrgContext(
         db,
         { organizationId, userId: ctx.actorUserId },
@@ -173,15 +220,33 @@ export function createDrizzleOrganizationLifecycleWriter(
       return result;
     },
 
-    async getStatus(organizationId) {
-      const [row] = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
-        tx
-          .select({ status: schema.organizations.status })
-          .from(schema.organizations)
-          .where(eq(schema.organizations.id, organizationId))
-          .limit(1),
-      );
-      return row ? (row.status as OrganizationLifecycleStatus) : null;
-    },
+    getStatus: createDrizzleOrganizationStatusReader(db),
   };
+}
+
+/**
+ * The go-live approval's half (M34): activate an organization that is still `created`. Any other status is left alone, on
+ * purpose: an organization an operator already activated by hand is live (nothing to do), and a suspended or closed one is not
+ * this caller's to reopen. A concurrent activation that lands first (ILLEGAL_ORGANIZATION_TRANSITION from `active`) is the same
+ * outcome, not a failure. Returns what it did so the caller can log it.
+ */
+export async function activateCreatedOrganization(
+  writer: Pick<OrganizationLifecycleWriter, "getStatus" | "transition">,
+  organizationId: string,
+  ctx: {
+    readonly reason: string;
+    readonly actorUserId: string;
+    readonly actorMembershipId: string;
+  },
+): Promise<"activated" | "unchanged"> {
+  if ((await writer.getStatus(organizationId)) !== "created") return "unchanged";
+  try {
+    await writer.transition(organizationId, "activate", ctx);
+    return "activated";
+  } catch (error) {
+    if (error instanceof ChartWardenError && error.code === "ILLEGAL_ORGANIZATION_TRANSITION") {
+      return "unchanged";
+    }
+    throw error;
+  }
 }

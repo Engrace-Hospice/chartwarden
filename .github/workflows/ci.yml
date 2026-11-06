@@ -1056,6 +1056,10 @@ jobs:
           - { name: "M30 CAP overdue scan", scripts: "test:gap-155:live" }
           - { name: "GAP-161 M32 events", scripts: "test:gap-161:live" }
           - { name: "GAP-164 M34 ops routes", scripts: "test:gap-164:live" }
+          # M34 onboarding wizard v2 (slice 1a): migration 1327 order + backfill, the strict sequence on both roles, attestation
+          # evidence + audit, auto/either steps from the real fact readers, the two-party go-live (attest -> approve, guards at
+          # approval time, revoke, the sweep never activates), retired steps, and the tenant role boxed out of approval.
+          - { name: "M34 onboarding wizard v2", scripts: "test:m34:onboarding-wizard:live" }
           # GAP-023/024/038: M22's §4.11 render handshake end-to-end — a real signed order/med order
           # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in
           # this chain was executed before: the consumer did not exist and neither emitter fired.
@@ -1389,6 +1393,8 @@ jobs:
           - { name: "M35 billing runtime", scripts: "test:m35:billing-runtime:live" }
           # ADR-0108 - claims-billing add-on: no tenant self-grant as chartwarden_app, RLS isolation, one live row, audit + real-publisher events.
           - { name: "M35 claims-billing add-on", scripts: "test:m35:claims-billing-addon:live" }
+          # M34 - a platform operator enters a tenant's provider entity / location / MAC credential on its behalf: rows land in the target org under its RLS (real chartwarden_app), operator-attributed + audited with a reason, refused unless the tenant is provisioning/onboarding, no step-up / AI actor / missing reason refused, EIN + MAC secret never returned.
+          - { name: "M34 onboarding data", scripts: "test:m34:onboarding-data:live" }
           # ADR-0108 D8 - census pull: active-only, add-on orgs only, idempotent rerun, pseudonyms only, two-org RLS, reconcile drift.
           - { name: "M35 claims-billing census", scripts: "test:m35:claims-billing-census:live" }
           # GAP-057 - M34's two recipient resolvers registered on the real emitter; platform-owner reader.

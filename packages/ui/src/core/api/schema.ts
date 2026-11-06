@@ -20625,7 +20625,7 @@ export interface paths {
         /** Platform→tenant BAA register across tenants (cursor-paginated) */
         get: operations["getApiV1PlatformBaaregister"];
         put?: never;
-        /** File a BAA record for a (tenant_account, addendum_version) — UNIQUE */
+        /** File a BAA record for a (tenant_account, addendum_version) — UNIQUE (platform_tenant_baa.write_platform; step-up; no AI actor) */
         post: operations["postApiV1PlatformBaaregister"];
         delete?: never;
         options?: never;
@@ -20646,7 +20646,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update a BAA record (execution/termination/dates/contacts/document linkage) */
+        /** Update a BAA record (execution/termination/dates/contacts/document linkage) (platform_tenant_baa.write_platform; step-up; no AI actor) */
         patch: operations["patchApiV1PlatformBaaregisterById"];
         trace?: never;
     };
@@ -20961,6 +20961,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenant-slugs/{slug}/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Is a tenant subdomain usable? Label rules, reserved names, live and retired slugs (read; no step-up; 429 past 30 probes a minute per user; each probe is one audited platform read) */
+        get: operations["getApiV1PlatformTenantslugsBySlugAvailability"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants": {
         parameters: {
             query?: never;
@@ -20996,6 +21013,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/compliance-officer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Assign the tenant's compliance officer, an active member of that organization holding the compliance_officer role, with a required reason of 8 to 500 characters (platform ops; step-up). The operator and the reason are recorded in the audit trail; a pending go-live attestation by another officer is voided. 422 COMPLIANCE_OFFICER_NOT_A_MEMBER, 422 COMPLIANCE_OFFICER_LACKS_ROLE, 409 COMPLIANCE_OFFICER_LOCKED */
+        put: operations["putApiV1PlatformTenantsByOrgSlugComplianceofficer"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/dek-rotate": {
         parameters: {
             query?: never;
@@ -21013,6 +21047,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/go-live/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). The approver must be a different PERSON than the attester (409 GO_LIVE_SAME_PERSON), the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED */
+        post: operations["postApiV1PlatformTenantsByOrgSlugGoliveApprove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/go-live/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke a pending go-live attestation with a reason (platform ops; step-up) */
+        post: operations["postApiV1PlatformTenantsByOrgSlugGoliveRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/key-ring": {
         parameters: {
             query?: never;
@@ -21024,6 +21092,59 @@ export interface paths {
         get: operations["getApiV1PlatformTenantsByOrgSlugKeyring"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's service locations, on the tenant's own RLS scope (platform ops; read is audited) */
+        get: operations["getApiV1PlatformTenantsByOrgSlugLocations"];
+        put?: never;
+        /** Create a service location under one of the tenant's provider entities — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugLocations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/locations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a tenant service location's address / contact / timezone / lifecycle status — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        patch: operations["patchApiV1PlatformTenantsByOrgSlugLocationsById"];
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/mac-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's MAC submitter credentials, masked (a hasSecret flag and the safe identifiers; the secret is never projected) — platform ops; read is audited */
+        get: operations["getApiV1PlatformTenantsByOrgSlugMaccredentials"];
+        put?: never;
+        /** Create (201) or version-checked update (200, If-Match) of a tenant's MAC credential; clientSecret is write-only and sealed under the tenant's key — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugMaccredentials"];
         delete?: never;
         options?: never;
         head?: never;
@@ -21054,10 +21175,44 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** A tenant's full onboarding task list and the machine's current step (platform ops) */
+        /** A tenant's ordered onboarding wizard (platform ops): steps with lock state, owner, completion mode, evidence and who/when, the current step, the go-live state and the org profile (tasks and currentStep are the older names) */
         get: operations["getApiV1PlatformTenantsByOrgSlugOnboarding"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/attest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Settle a step on the tenant's behalf with required evidence and a reason (platform ops; step-up; no AI actor; strict sequence) */
+        post: operations["postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdAttest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-open a done or skipped step with a reason (platform ops; step-up; later steps keep their state) */
+        post: operations["postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdReopen"];
         delete?: never;
         options?: never;
         head?: never;
@@ -21073,12 +21228,64 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Skip an onboarding task with a recorded rationale (platform ops; step-up) */
+        /** Skip an onboarding step with a recorded rationale (platform ops; step-up; strict sequence; go-live is not skippable) */
         post: operations["postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdSkip"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/org-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set the tenant organization's display name and IANA time zone during onboarding (platform ops; step-up) */
+        patch: operations["patchApiV1PlatformTenantsByOrgSlugOrgprofile"];
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/provider-entities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's provider entities, on the tenant's own RLS scope (platform ops; read is audited; the tax id is never returned) */
+        get: operations["getApiV1PlatformTenantsByOrgSlugProviderentities"];
+        put?: never;
+        /** Create a provider entity for a tenant (CCN, NPI check digit, EIN sealed under the tenant's key and never returned; 503 TAX_ID_CIPHER_UNBOUND / TAX_ID_KEY_UNAVAILABLE until the key ring is bound) — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugProviderentities"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/provider-entities/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a tenant provider entity's names / iQIES id / billing address / lifecycle status; the CMS identity (CCN, NPI, tax id, fiscal year end) is immutable here — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        patch: operations["patchApiV1PlatformTenantsByOrgSlugProviderentitiesById"];
         trace?: never;
     };
     "/api/v1/platform/tenants/{orgSlug}/provision-status": {
@@ -21132,6 +21339,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/state-medicaid-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's state Medicaid trading-partner credentials, masked (presence flags only; no secret or key is ever projected) — platform ops; read is audited */
+        get: operations["getApiV1PlatformTenantsByOrgSlugStatemedicaidcredentials"];
+        put?: never;
+        /** Create or version-bump a tenant's state Medicaid trading-partner credential; clientSecret / sftpKey are write-only and sealed under the tenant's key (503 CREDENTIAL_CRYPTO_UNBOUND until the credential key is bound) — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugStatemedicaidcredentials"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/status": {
         parameters: {
             query?: never;
@@ -21141,7 +21366,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Apply a lifecycle status transition (eleven-state machine; step-up) */
+        /** Apply a lifecycle status transition (eleven-state machine; step-up). onboarding → active is refused 409 GO_LIVE_TWO_PARTY_REQUIRED: go live through the compliance officer's attestation and POST /go-live/approve */
         post: operations["postApiV1PlatformTenantsByOrgSlugStatus"];
         delete?: never;
         options?: never;
@@ -26639,6 +26864,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenant/compliance-officer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Assign the compliance officer (an active member of this organization holding the compliance_officer role) who attests go-live readiness (org_admin; step-up). Allowed while the tenant is onboarding or active; a pending go-live attestation by another officer is voided. 422 COMPLIANCE_OFFICER_NOT_A_MEMBER, 422 COMPLIANCE_OFFICER_LACKS_ROLE, 409 COMPLIANCE_OFFICER_LOCKED */
+        put: operations["putApiV1TenantComplianceofficer"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenant/dsar-export-jobs": {
         parameters: {
             query?: never;
@@ -26759,6 +27001,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenant/go-live/attest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The compliance officer attests go-live readiness (step-up); a platform operator then approves. 409 ACTIVATION_GUARDS_FAILED lists the guards that fail */
+        post: operations["postApiV1TenantGoliveAttest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenant/onboarding": {
         parameters: {
             query?: never;
@@ -26766,10 +27025,27 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Tenant's onboarding state (D3; cursor-paginated) */
+        /** The tenant's ordered onboarding wizard: steps with lock state, owner, completion mode, evidence and who/when, the current step, the go-live state and the org profile (items is the older name of steps) */
         get: operations["getApiV1TenantOnboarding"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/onboarding/{taskId}/attest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a step done with required evidence (human actor; the step's owner role; strict sequence). 409 ONBOARDING_STEP_OUT_OF_ORDER, 403 ONBOARDING_STEP_OWNER_MISMATCH */
+        post: operations["postApiV1TenantOnboardingByTaskIdAttest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -26785,7 +27061,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Block a task with a reason (emits M36 alert) */
+        /** Block a step with a reason (emits M36 alert) */
         post: operations["postApiV1TenantOnboardingByTaskIdBlock"];
         delete?: never;
         options?: never;
@@ -26802,8 +27078,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Complete a task with evidence (precondition DSL → 422 if false) */
+        /** Deprecated alias of /attest: evidenceNote is required at runtime (422 ONBOARDING_EVIDENCE_REQUIRED); completionEvidence is ignored */
         post: operations["postApiV1TenantOnboardingByTaskIdComplete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/onboarding/{taskId}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-open a done or skipped step to edit it, with a required written reason (later steps keep their state; refused while a go-live attestation is pending) */
+        post: operations["postApiV1TenantOnboardingByTaskIdReopen"];
         delete?: never;
         options?: never;
         head?: never;
@@ -26819,12 +27112,29 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Advance an onboarding task pending → in_progress */
+        /** Advance an onboarding step pending → in_progress (strict sequence; the step's owner role) */
         post: operations["postApiV1TenantOnboardingByTaskIdStart"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/org-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set the organization's display name and IANA time zone during onboarding (org_admin) */
+        patch: operations["patchApiV1TenantOrgprofile"];
         trace?: never;
     };
     "/api/v1/tenant/support-consent-grants": {
@@ -90358,6 +90668,8 @@ export interface operations {
                     /** Format: email */
                     breachNotificationContactEmail?: string;
                     breachNotificationContactPhone?: string;
+                    /** Format: uuid */
+                    documentId?: string;
                 };
             };
         };
@@ -91287,6 +91599,36 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformTenantslugsBySlugAvailability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        slug: string;
+                        valid: boolean;
+                        available: boolean;
+                        reason?: "format" | "punycode" | "reserved" | "taken";
+                        url?: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PlatformTenants: {
         parameters: {
             query?: {
@@ -91431,6 +91773,40 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    putApiV1PlatformTenantsByOrgSlugComplianceofficer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    membershipId: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        complianceOfficerMembershipId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PlatformTenantsByOrgSlugDekrotate: {
         parameters: {
             query?: never;
@@ -91457,6 +91833,188 @@ export interface operations {
                     "application/json": {
                         tenantAccountId: string;
                         jobId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugGoliveApprove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        orgSlug: string;
+                        tenantStatus: string;
+                        currentStepKey: string | null;
+                        steps: {
+                            id: string | null;
+                            key: string;
+                            title: string;
+                            description: string;
+                            owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                            sequence: number;
+                            optional: boolean;
+                            status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                            locked: boolean;
+                            lockedBy: string | null;
+                            completionMode: "auto" | "attestation" | "either";
+                            evidence: {
+                                note: string;
+                                ref: string | null;
+                            } | null;
+                            attestedBy: {
+                                membershipId: string | null;
+                                actorKind: "platform_ops" | "tenant";
+                                label: string | null;
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            assignedToMembershipId: string | null;
+                            dueAt: string | null;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            blockerReason: string | null;
+                            skipRationale: string | null;
+                            createdAt: string | null;
+                            templateKey: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number;
+                        }[];
+                        goLive: {
+                            state: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
+                            attestation: {
+                                id: string;
+                                status: "pending" | "approved" | "revoked";
+                                attestedByMembershipId: string;
+                                /** Format: date-time */
+                                attestedAt: string;
+                                expiresAt: string | null;
+                                attestationNote: string | null;
+                                approvedByMembershipId: string | null;
+                                approvedByLabel: string | null;
+                                approvedAt: string | null;
+                                approvalReason: string | null;
+                                revokedByMembershipId: string | null;
+                                revokedByLabel: string | null;
+                                revokedAt: string | null;
+                                revokeReason: string | null;
+                            } | null;
+                            failedGuards: string[];
+                            complianceOfficerMembershipId: string | null;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugGoliveRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        orgSlug: string;
+                        tenantStatus: string;
+                        currentStepKey: string | null;
+                        steps: {
+                            id: string | null;
+                            key: string;
+                            title: string;
+                            description: string;
+                            owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                            sequence: number;
+                            optional: boolean;
+                            status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                            locked: boolean;
+                            lockedBy: string | null;
+                            completionMode: "auto" | "attestation" | "either";
+                            evidence: {
+                                note: string;
+                                ref: string | null;
+                            } | null;
+                            attestedBy: {
+                                membershipId: string | null;
+                                actorKind: "platform_ops" | "tenant";
+                                label: string | null;
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            assignedToMembershipId: string | null;
+                            dueAt: string | null;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            blockerReason: string | null;
+                            skipRationale: string | null;
+                            createdAt: string | null;
+                            templateKey: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number;
+                        }[];
+                        goLive: {
+                            state: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
+                            attestation: {
+                                id: string;
+                                status: "pending" | "approved" | "revoked";
+                                attestedByMembershipId: string;
+                                /** Format: date-time */
+                                attestedAt: string;
+                                expiresAt: string | null;
+                                attestationNote: string | null;
+                                approvedByMembershipId: string | null;
+                                approvedByLabel: string | null;
+                                approvedAt: string | null;
+                                approvalReason: string | null;
+                                revokedByMembershipId: string | null;
+                                revokedByLabel: string | null;
+                                revokedAt: string | null;
+                                revokeReason: string | null;
+                            } | null;
+                            failedGuards: string[];
+                            complianceOfficerMembershipId: string | null;
+                        };
                     };
                 };
             };
@@ -91492,6 +92050,284 @@ export interface operations {
                         dekLastRotatedAt: string | null;
                         destroyedAt: string | null;
                         destructionCertificateId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugLocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            name: string;
+                            addressLine1: string;
+                            addressLine2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                            phone: string | null;
+                            fax: string | null;
+                            timezone: string;
+                            status: "created" | "active" | "suspended" | "closed";
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugLocations: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    providerEntityId: string;
+                    name: string;
+                    addressLine1: string;
+                    addressLine2?: string;
+                    city: string;
+                    state: string;
+                    postalCode: string;
+                    phone?: string;
+                    fax?: string;
+                    /** @description IANA zone, e.g. America/Los_Angeles. */
+                    timezone: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        name: string;
+                        addressLine1: string;
+                        addressLine2: string | null;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                        phone: string | null;
+                        fax: string | null;
+                        timezone: string;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1PlatformTenantsByOrgSlugLocationsById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    addressLine1?: string;
+                    addressLine2?: string;
+                    city?: string;
+                    state?: string;
+                    postalCode?: string;
+                    phone?: string;
+                    fax?: string;
+                    /** @description IANA zone, e.g. America/Los_Angeles. */
+                    timezone?: string;
+                    status?: "created" | "active" | "suspended" | "closed";
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        name: string;
+                        addressLine1: string;
+                        addressLine2: string | null;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                        phone: string | null;
+                        fax: string | null;
+                        timezone: string;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugMaccredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            credentialId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            macJurisdiction: string;
+                            submitterId: string;
+                            tradingPartnerId: string;
+                            clientId: string;
+                            /** @description The secret itself is never projected. */
+                            hasSecret: boolean;
+                            baaRecordRef: string | null;
+                            credentialExpiresAt: string | null;
+                            lastSandboxTestAt: string | null;
+                            version: number;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugMaccredentials: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The credential's current integer version; required to update an existing credential, absent on a first create. */
+                "If-Match"?: string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** @description The MAC jurisdiction key the tenant's billing screen offers (e.g. noridian_jf, ngs_j6, cgs_j15); M23 refuses any other with a 422. */
+                    macJurisdiction: string;
+                    submitterId: string;
+                    tradingPartnerId: string;
+                    clientId: string;
+                    /** @description Write-only: sealed under the tenant's own key and never returned. */
+                    clientSecret: string;
+                    baaRecordRef?: string;
+                    /** Format: date-time */
+                    credentialExpiresAt?: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        credentialId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        macJurisdiction: string;
+                        submitterId: string;
+                        tradingPartnerId: string;
+                        clientId: string;
+                        /** @description The secret itself is never projected. */
+                        hasSecret: boolean;
+                        baaRecordRef: string | null;
+                        credentialExpiresAt: string | null;
+                        lastSandboxTestAt: string | null;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
                     };
                 };
             };
@@ -91554,19 +92390,232 @@ export interface operations {
                         tenantAccountId: string;
                         orgSlug: string;
                         tenantStatus: string;
-                        currentStep: string | null;
-                        tasks: {
-                            id: string;
-                            templateKey: string;
-                            status: string;
-                            isCanonical: boolean;
-                            canonicalOrder: number | null;
+                        currentStepKey: string | null;
+                        steps: {
+                            id: string | null;
+                            key: string;
+                            title: string;
+                            description: string;
+                            owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                            sequence: number;
+                            optional: boolean;
+                            status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                            locked: boolean;
+                            lockedBy: string | null;
+                            completionMode: "auto" | "attestation" | "either";
+                            evidence: {
+                                note: string;
+                                ref: string | null;
+                            } | null;
+                            attestedBy: {
+                                membershipId: string | null;
+                                actorKind: "platform_ops" | "tenant";
+                                label: string | null;
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            assignedToMembershipId: string | null;
                             dueAt: string | null;
                             startedAt: string | null;
                             completedAt: string | null;
                             blockerReason: string | null;
                             skipRationale: string | null;
+                            createdAt: string | null;
+                            templateKey: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number;
                         }[];
+                        goLive: {
+                            state: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
+                            attestation: {
+                                id: string;
+                                status: "pending" | "approved" | "revoked";
+                                attestedByMembershipId: string;
+                                /** Format: date-time */
+                                attestedAt: string;
+                                expiresAt: string | null;
+                                attestationNote: string | null;
+                                approvedByMembershipId: string | null;
+                                approvedByLabel: string | null;
+                                approvedAt: string | null;
+                                approvalReason: string | null;
+                                revokedByMembershipId: string | null;
+                                revokedByLabel: string | null;
+                                revokedAt: string | null;
+                                revokeReason: string | null;
+                            } | null;
+                            failedGuards: string[];
+                            complianceOfficerMembershipId: string | null;
+                        };
+                        orgProfile: {
+                            displayName: string;
+                            orgTimezone: string;
+                        } | null;
+                        currentStep: string | null;
+                        tasks: {
+                            id: string | null;
+                            key: string;
+                            title: string;
+                            description: string;
+                            owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                            sequence: number;
+                            optional: boolean;
+                            status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                            locked: boolean;
+                            lockedBy: string | null;
+                            completionMode: "auto" | "attestation" | "either";
+                            evidence: {
+                                note: string;
+                                ref: string | null;
+                            } | null;
+                            attestedBy: {
+                                membershipId: string | null;
+                                actorKind: "platform_ops" | "tenant";
+                                label: string | null;
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            assignedToMembershipId: string | null;
+                            dueAt: string | null;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            blockerReason: string | null;
+                            skipRationale: string | null;
+                            createdAt: string | null;
+                            templateKey: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdAttest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    evidenceNote: string;
+                    evidenceRef?: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
+                        status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        assignedToMembershipId: string | null;
+                        dueAt: string | null;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        blockerReason: string | null;
+                        skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdReopen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
+                        status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        assignedToMembershipId: string | null;
+                        dueAt: string | null;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        blockerReason: string | null;
+                        skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
                     };
                 };
             };
@@ -91599,16 +92648,261 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        id: string;
-                        templateKey: string;
-                        status: string;
-                        isCanonical: boolean;
-                        canonicalOrder: number | null;
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
+                        status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        assignedToMembershipId: string | null;
                         dueAt: string | null;
                         startedAt: string | null;
                         completedAt: string | null;
                         blockerReason: string | null;
                         skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1PlatformTenantsByOrgSlugOrgprofile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    displayName?: string;
+                    orgTimezone?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        displayName: string;
+                        orgTimezone: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugProviderentities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            organizationId: string;
+                            ccn: string;
+                            legalName: string;
+                            doingBusinessAs: string | null;
+                            fiscalIntermediary: string | null;
+                            npi: string;
+                            /** @description MMDD */
+                            fiscalYearEnd: string;
+                            iqiesFacilityId: string | null;
+                            billingAddress: {
+                                line1: string;
+                                line2: string | null;
+                                city: string;
+                                state: string;
+                                postalCode: string;
+                            } | null;
+                            status: "created" | "active" | "suspended" | "closed";
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugProviderentities: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description CMS Certification Number. */
+                    ccn: string;
+                    /** @description 10 digits with a correct NPI check digit. */
+                    npi: string;
+                    legalName: string;
+                    doingBusinessAs?: string;
+                    fiscalIntermediary?: string;
+                    /** @description 9-digit EIN (12-3456789). Write-once: enveloped by the KMS cipher, never returned. 503 TAX_ID_CIPHER_UNBOUND until that cipher is bound. */
+                    taxId: string;
+                    /** @description MMDD */
+                    fiscalYearEnd: string;
+                    iqiesFacilityId?: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        ccn: string;
+                        legalName: string;
+                        doingBusinessAs: string | null;
+                        fiscalIntermediary: string | null;
+                        npi: string;
+                        /** @description MMDD */
+                        fiscalYearEnd: string;
+                        iqiesFacilityId: string | null;
+                        billingAddress: {
+                            line1: string;
+                            line2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                        } | null;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1PlatformTenantsByOrgSlugProviderentitiesById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    legalName?: string;
+                    doingBusinessAs?: string;
+                    fiscalIntermediary?: string;
+                    iqiesFacilityId?: string;
+                    /** @description The billing address printed on the 837I billing-provider loop (2010AA). Replaces the first stored address. */
+                    billingAddress?: {
+                        line1: string;
+                        line2?: string;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                    };
+                    status?: "created" | "active" | "suspended" | "closed";
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        ccn: string;
+                        legalName: string;
+                        doingBusinessAs: string | null;
+                        fiscalIntermediary: string | null;
+                        npi: string;
+                        /** @description MMDD */
+                        fiscalYearEnd: string;
+                        iqiesFacilityId: string | null;
+                        billingAddress: {
+                            line1: string;
+                            line2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                        } | null;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
                     };
                 };
             };
@@ -91704,6 +92998,105 @@ export interface operations {
                     "application/json": {
                         tenantAccountId: string;
                         jobId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugStatemedicaidcredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            serviceState: string;
+                            channel: string;
+                            mcoId: string | null;
+                            tradingPartnerId: string;
+                            clientId: string | null;
+                            sftpHost: string | null;
+                            portalUrl: string | null;
+                            activeFrom: string;
+                            activeTo: string | null;
+                            lastSandboxTestAt: string | null;
+                            lastSandboxTestResult: string | null;
+                            version: number;
+                            /** @description The secret itself is never projected. */
+                            hasClientSecret: boolean;
+                            /** @description The key itself is never projected. */
+                            hasSftpKey: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugStatemedicaidcredentials: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** @description Two-letter state code. */
+                    serviceState: string;
+                    channel: "direct_mmis" | "cco_clearinghouse" | "sftp" | "portal" | "state_proprietary";
+                    /** Format: uuid */
+                    mcoId?: string;
+                    tradingPartnerId: string;
+                    clientId?: string;
+                    clientSecret?: string;
+                    sftpHost?: string;
+                    sftpUser?: string;
+                    sftpKey?: string;
+                    portalUrl?: string;
+                    /** Format: date */
+                    activeFrom: string;
+                    /** Format: date */
+                    activeTo?: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
                     };
                 };
             };
@@ -107559,6 +108952,37 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    putApiV1TenantComplianceofficer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    membershipId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        complianceOfficerMembershipId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1TenantDsarexportjobs: {
         parameters: {
             query?: {
@@ -107883,6 +109307,97 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1TenantGoliveAttest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    attestationConfirmed: true;
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        orgSlug: string;
+                        tenantStatus: string;
+                        currentStepKey: string | null;
+                        steps: {
+                            id: string | null;
+                            key: string;
+                            title: string;
+                            description: string;
+                            owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                            sequence: number;
+                            optional: boolean;
+                            status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                            locked: boolean;
+                            lockedBy: string | null;
+                            completionMode: "auto" | "attestation" | "either";
+                            evidence: {
+                                note: string;
+                                ref: string | null;
+                            } | null;
+                            attestedBy: {
+                                membershipId: string | null;
+                                actorKind: "platform_ops" | "tenant";
+                                label: string | null;
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            assignedToMembershipId: string | null;
+                            dueAt: string | null;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            blockerReason: string | null;
+                            skipRationale: string | null;
+                            createdAt: string | null;
+                            templateKey: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number;
+                        }[];
+                        goLive: {
+                            state: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
+                            attestation: {
+                                id: string;
+                                status: "pending" | "approved" | "revoked";
+                                attestedByMembershipId: string;
+                                /** Format: date-time */
+                                attestedAt: string;
+                                expiresAt: string | null;
+                                attestationNote: string | null;
+                                approvedByMembershipId: string | null;
+                                approvedByLabel: string | null;
+                                approvedAt: string | null;
+                                approvalReason: string | null;
+                                revokedByMembershipId: string | null;
+                                revokedByLabel: string | null;
+                                revokedAt: string | null;
+                                revokeReason: string | null;
+                            } | null;
+                            failedGuards: string[];
+                            complianceOfficerMembershipId: string | null;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1TenantOnboarding: {
         parameters: {
             query?: {
@@ -107902,20 +109417,170 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        items: {
-                            id: string;
-                            templateKey: string;
+                        tenantAccountId: string;
+                        orgSlug: string;
+                        tenantStatus: string;
+                        currentStepKey: string | null;
+                        steps: {
+                            id: string | null;
+                            key: string;
+                            title: string;
+                            description: string;
+                            owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                            sequence: number;
+                            optional: boolean;
                             status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                            locked: boolean;
+                            lockedBy: string | null;
+                            completionMode: "auto" | "attestation" | "either";
+                            evidence: {
+                                note: string;
+                                ref: string | null;
+                            } | null;
+                            attestedBy: {
+                                membershipId: string | null;
+                                actorKind: "platform_ops" | "tenant";
+                                label: string | null;
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
                             assignedToMembershipId: string | null;
                             dueAt: string | null;
                             startedAt: string | null;
                             completedAt: string | null;
                             blockerReason: string | null;
-                            /** Format: date-time */
-                            createdAt: string;
+                            skipRationale: string | null;
+                            createdAt: string | null;
+                            templateKey: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number;
+                        }[];
+                        goLive: {
+                            state: "not_ready" | "awaiting_attestation" | "awaiting_approval" | "live" | "closed";
+                            attestation: {
+                                id: string;
+                                status: "pending" | "approved" | "revoked";
+                                attestedByMembershipId: string;
+                                /** Format: date-time */
+                                attestedAt: string;
+                                expiresAt: string | null;
+                                attestationNote: string | null;
+                                approvedByMembershipId: string | null;
+                                approvedByLabel: string | null;
+                                approvedAt: string | null;
+                                approvalReason: string | null;
+                                revokedByMembershipId: string | null;
+                                revokedByLabel: string | null;
+                                revokedAt: string | null;
+                                revokeReason: string | null;
+                            } | null;
+                            failedGuards: string[];
+                            complianceOfficerMembershipId: string | null;
+                        };
+                        orgProfile: {
+                            displayName: string;
+                            orgTimezone: string;
+                        } | null;
+                        items: {
+                            id: string | null;
+                            key: string;
+                            title: string;
+                            description: string;
+                            owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                            sequence: number;
+                            optional: boolean;
+                            status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                            locked: boolean;
+                            lockedBy: string | null;
+                            completionMode: "auto" | "attestation" | "either";
+                            evidence: {
+                                note: string;
+                                ref: string | null;
+                            } | null;
+                            attestedBy: {
+                                membershipId: string | null;
+                                actorKind: "platform_ops" | "tenant";
+                                label: string | null;
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            assignedToMembershipId: string | null;
+                            dueAt: string | null;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            blockerReason: string | null;
+                            skipRationale: string | null;
+                            createdAt: string | null;
+                            templateKey: string;
+                            isCanonical: boolean;
+                            canonicalOrder: number;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantOnboardingByTaskIdAttest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    evidenceNote: string;
+                    evidenceRef?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
+                        status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        assignedToMembershipId: string | null;
+                        dueAt: string | null;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        blockerReason: string | null;
+                        skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
                     };
                 };
             };
@@ -107947,16 +109612,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        id: string;
-                        templateKey: string;
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
                         status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
                         assignedToMembershipId: string | null;
                         dueAt: string | null;
                         startedAt: string | null;
                         completedAt: string | null;
                         blockerReason: string | null;
-                        /** Format: date-time */
-                        createdAt: string;
+                        skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
                     };
                 };
             };
@@ -107979,6 +109666,8 @@ export interface operations {
                     completionEvidence?: {
                         [key: string]: unknown;
                     };
+                    evidenceNote?: string;
+                    evidenceRef?: string;
                 };
             };
         };
@@ -107990,16 +109679,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        id: string;
-                        templateKey: string;
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
                         status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
                         assignedToMembershipId: string | null;
                         dueAt: string | null;
                         startedAt: string | null;
                         completedAt: string | null;
                         blockerReason: string | null;
-                        /** Format: date-time */
-                        createdAt: string;
+                        skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantOnboardingByTaskIdReopen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
+                        status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        assignedToMembershipId: string | null;
+                        dueAt: string | null;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        blockerReason: string | null;
+                        skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
                     };
                 };
             };
@@ -108029,16 +109803,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        id: string;
-                        templateKey: string;
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
                         status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
                         assignedToMembershipId: string | null;
                         dueAt: string | null;
                         startedAt: string | null;
                         completedAt: string | null;
                         blockerReason: string | null;
-                        /** Format: date-time */
-                        createdAt: string;
+                        skipRationale: string | null;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1TenantOrgprofile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    displayName?: string;
+                    orgTimezone?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        displayName: string;
+                        orgTimezone: string;
                     };
                 };
             };

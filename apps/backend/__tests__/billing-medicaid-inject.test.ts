@@ -633,6 +633,10 @@ function createM24Backend(): {
       });
       return { id };
     },
+    // The platform onboarding route's in-transaction variant; its own suites (m34-onboarding-data.*) exercise it.
+    async upsertCredentialOnTx() {
+      throw new Error("upsertCredentialOnTx is not exercised by the inject suite");
+    },
     async testCredential(_actor, credentialId) {
       const row = credentials.get(credentialId);
       if (!row) throw new NotFoundError("credential not found");

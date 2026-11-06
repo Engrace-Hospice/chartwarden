@@ -19,6 +19,7 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... CHARTWARDEN_TEST_REDIS_URL=redis://... bun run test:m36:workforce-offboarding:live
  * Use a PRIVATE pgvector/pgvector:pg18 container and a PRIVATE valkey/valkey:8: the suite resets the public schema and the chartwarden_* roles.
  */
+import { liveOrganizationStage } from "./_live-organization-stage";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import type { AddressInfo } from "node:net";
@@ -335,6 +336,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         db: handle.db as never,
         security: { rateLimitEnabled: false },
         authenticate: createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
           getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
           getResolver: () => resolver,
         }),

@@ -1438,6 +1438,7 @@ import {
   TenantListQuerySchema as M34TenantListQuerySchema,
   TenantListResponseSchema as M34TenantListResponseSchema,
   TenantOverviewViewSchema as M34TenantOverviewViewSchema,
+  TenantSlugAvailabilitySchema as M34TenantSlugAvailabilitySchema,
   TenantStatusAckSchema as M34TenantStatusAckSchema,
   UpdateBaaRequest as M34UpdateBaaRequest,
   UpsertFeatureFlagRequest as M34UpsertFeatureFlagRequest,
@@ -1461,10 +1462,7 @@ import {
   DsarListQuerySchema as M34DsarListQuerySchema,
   GrantListQuerySchema as M34GrantListQuerySchema,
   OnboardingBlockRequest as M34OnboardingBlockRequest,
-  OnboardingCompleteRequest as M34OnboardingCompleteRequest,
   OnboardingListQuerySchema as M34OnboardingListQuerySchema,
-  OnboardingTaskListResponseSchema as M34OnboardingTaskListResponseSchema,
-  OnboardingTaskViewSchema as M34OnboardingTaskViewSchema,
   RevokeConsentGrantRequest as M34RevokeConsentGrantRequest,
   TenantExportJobListResponseSchema as M34ScopedTenantExportJobListResponseSchema,
   SupportConsentGrantListResponseSchema as M34SupportConsentGrantListResponseSchema,
@@ -1475,6 +1473,24 @@ import {
   TenantExportRequest as M34TenantExportRequest,
   SupportConsentGrantRequest as M34TenantSupportConsentGrantRequest,
 } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/tenant-typebox";
+
+import {
+  ComplianceOfficerResponseSchema as M34ComplianceOfficerResponseSchema,
+  GoLiveAttestRequest as M34GoLiveAttestRequest,
+  GoLiveResponseSchema as M34GoLiveResponseSchema,
+  OrgProfileRequest as M34OrgProfileRequest,
+  OrgProfileViewSchema as M34OrgProfileViewSchema,
+  PlatformAttestStepRequest as M34PlatformAttestStepRequest,
+  PlatformReasonRequest as M34PlatformReasonRequest,
+  PlatformWizardResponseSchema as M34PlatformWizardResponseSchema,
+  SetComplianceOfficerPlatformRequest as M34SetComplianceOfficerPlatformRequest,
+  SetComplianceOfficerRequest as M34SetComplianceOfficerRequest,
+  TenantAttestStepRequest as M34TenantAttestStepRequest,
+  TenantCompleteStepRequest as M34TenantCompleteStepRequest,
+  TenantReopenStepRequest as M34TenantReopenStepRequest,
+  TenantWizardResponseSchema as M34TenantWizardResponseSchema,
+  WizardStepViewSchema as M34WizardStepViewSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/onboarding-wizard-typebox";
 
 // ── public self-serve surface (routes/typebox.ts) ───────────────────────────────────────────────────
 import {
@@ -10205,21 +10221,52 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34DownloadUrlViewSchema,
   },
 
-  // ── tenant-scoped onboarding ──
+  // ── tenant-scoped onboarding (wizard v2: ordered steps, strict sequence, owner role, attestation, two-party go-live) ──
   "GET /api/v1/tenant/onboarding": {
-    summary: "Tenant's onboarding state (D3; cursor-paginated)",
+    summary:
+      "The tenant's ordered onboarding wizard: steps with lock state, owner, completion mode, evidence and who/when, the current step, the go-live state and the org profile (items is the older name of steps)",
     query: M34OnboardingListQuerySchema,
-    response: M34OnboardingTaskListResponseSchema,
+    response: M34TenantWizardResponseSchema,
+  },
+  "POST /api/v1/tenant/onboarding/:taskId/attest": {
+    summary:
+      "Mark a step done with required evidence (human actor; the step's owner role; strict sequence). 409 ONBOARDING_STEP_OUT_OF_ORDER, 403 ONBOARDING_STEP_OWNER_MISMATCH",
+    body: M34TenantAttestStepRequest,
+    response: M34WizardStepViewSchema,
   },
   "POST /api/v1/tenant/onboarding/:taskId/complete": {
-    summary: "Complete a task with evidence (precondition DSL → 422 if false)",
-    body: M34OnboardingCompleteRequest,
-    response: M34OnboardingTaskViewSchema,
+    summary:
+      "Deprecated alias of /attest: evidenceNote is required at runtime (422 ONBOARDING_EVIDENCE_REQUIRED); completionEvidence is ignored",
+    body: M34TenantCompleteStepRequest,
+    response: M34WizardStepViewSchema,
+  },
+  "POST /api/v1/tenant/onboarding/:taskId/reopen": {
+    summary:
+      "Re-open a done or skipped step to edit it, with a required written reason (later steps keep their state; refused while a go-live attestation is pending)",
+    body: M34TenantReopenStepRequest,
+    response: M34WizardStepViewSchema,
   },
   "POST /api/v1/tenant/onboarding/:taskId/block": {
-    summary: "Block a task with a reason (emits M36 alert)",
+    summary: "Block a step with a reason (emits M36 alert)",
     body: M34OnboardingBlockRequest,
-    response: M34OnboardingTaskViewSchema,
+    response: M34WizardStepViewSchema,
+  },
+  "PATCH /api/v1/tenant/org-profile": {
+    summary: "Set the organization's display name and IANA time zone during onboarding (org_admin)",
+    body: M34OrgProfileRequest,
+    response: M34OrgProfileViewSchema,
+  },
+  "PUT /api/v1/tenant/compliance-officer": {
+    summary:
+      "Assign the compliance officer (an active member of this organization holding the compliance_officer role) who attests go-live readiness (org_admin; step-up). Allowed while the tenant is onboarding or active; a pending go-live attestation by another officer is voided. 422 COMPLIANCE_OFFICER_NOT_A_MEMBER, 422 COMPLIANCE_OFFICER_LACKS_ROLE, 409 COMPLIANCE_OFFICER_LOCKED",
+    body: M34SetComplianceOfficerRequest,
+    response: M34ComplianceOfficerResponseSchema,
+  },
+  "POST /api/v1/tenant/go-live/attest": {
+    summary:
+      "The compliance officer attests go-live readiness (step-up); a platform operator then approves. 409 ACTIVATION_GUARDS_FAILED lists the guards that fail",
+    body: M34GoLiveAttestRequest,
+    response: M34GoLiveResponseSchema,
   },
 
   // ── tenant-scoped support-consent grants ──
@@ -10245,6 +10292,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     query: M34TenantListQuerySchema,
     response: M34TenantListResponseSchema,
   },
+  "GET /api/v1/platform/tenant-slugs/:slug/availability": {
+    summary:
+      "Is a tenant subdomain usable? Label rules, reserved names, live and retired slugs (read; no step-up; 429 past 30 probes a minute per user; each probe is one audited platform read)",
+    response: M34TenantSlugAvailabilitySchema,
+  },
   "POST /api/v1/platform/tenants": {
     summary:
       "Provision a tenant from a signup_intent or raw input (enqueues tenant.provision; step-up)",
@@ -10256,7 +10308,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34TenantOverviewViewSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/status": {
-    summary: "Apply a lifecycle status transition (eleven-state machine; step-up)",
+    summary:
+      "Apply a lifecycle status transition (eleven-state machine; step-up). onboarding → active is refused 409 GO_LIVE_TWO_PARTY_REQUIRED: go live through the compliance officer's attestation and POST /go-live/approve",
     body: M34StatusTransitionRequest,
     response: M34TenantStatusAckSchema,
   },
@@ -10363,12 +10416,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34BaaRegisterListResponseSchema,
   },
   "POST /api/v1/platform/baa-register": {
-    summary: "File a BAA record for a (tenant_account, addendum_version) — UNIQUE",
+    summary:
+      "File a BAA record for a (tenant_account, addendum_version) — UNIQUE (platform_tenant_baa.write_platform; step-up; no AI actor)",
     body: M34CreateBaaRequest,
     response: M34PlatformBaaRecordViewSchema,
   },
   "PATCH /api/v1/platform/baa-register/:id": {
-    summary: "Update a BAA record (execution/termination/dates/contacts/document linkage)",
+    summary:
+      "Update a BAA record (execution/termination/dates/contacts/document linkage) (platform_tenant_baa.write_platform; step-up; no AI actor)",
     body: M34UpdateBaaRequest,
     response: M34PlatformBaaRecordViewSchema,
   },
@@ -12592,9 +12647,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34DsarExportJobViewSchema,
   },
   "POST /api/v1/tenant/onboarding/:taskId/start": {
-    summary: "Advance an onboarding task pending → in_progress",
+    summary:
+      "Advance an onboarding step pending → in_progress (strict sequence; the step's owner role)",
     body: M34OnboardingStartRequest,
-    response: M34OnboardingTaskViewSchema,
+    response: M34WizardStepViewSchema,
   },
 });
 
@@ -14759,18 +14815,6 @@ const _M34PlatformDsarJobView = Type.Object({
   fulfilledAt: _M34Nullable(_M34Str),
   slaBreached: Type.Boolean(),
 });
-const _M34PlatformOnboardingTaskView = Type.Object({
-  id: _M34Str,
-  templateKey: _M34Str,
-  status: _M34Str,
-  isCanonical: Type.Boolean(),
-  canonicalOrder: _M34Nullable(Type.Integer()),
-  dueAt: _M34Nullable(_M34Str),
-  startedAt: _M34Nullable(_M34Str),
-  completedAt: _M34Nullable(_M34Str),
-  blockerReason: _M34Nullable(_M34Str),
-  skipRationale: _M34Nullable(_M34Str),
-});
 const _M34TenantFlagView = Type.Object({
   flagKey: _M34Str,
   flagKind: _M34Str,
@@ -14794,19 +14838,50 @@ Object.assign(ROUTE_ENRICHMENTS, {
     }),
   },
   "GET /api/v1/platform/tenants/:orgSlug/onboarding": {
-    summary: "A tenant's full onboarding task list and the machine's current step (platform ops)",
-    response: Type.Object({
-      tenantAccountId: _M34Str,
-      orgSlug: _M34Str,
-      tenantStatus: _M34Str,
-      currentStep: _M34Nullable(_M34Str),
-      tasks: Type.Array(_M34PlatformOnboardingTaskView),
-    }),
+    summary:
+      "A tenant's ordered onboarding wizard (platform ops): steps with lock state, owner, completion mode, evidence and who/when, the current step, the go-live state and the org profile (tasks and currentStep are the older names)",
+    response: M34PlatformWizardResponseSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/onboarding/:taskId/skip": {
-    summary: "Skip an onboarding task with a recorded rationale (platform ops; step-up)",
+    summary:
+      "Skip an onboarding step with a recorded rationale (platform ops; step-up; strict sequence; go-live is not skippable)",
     body: M34SkipOnboardingTaskRequest,
-    response: _M34PlatformOnboardingTaskView,
+    response: M34WizardStepViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/onboarding/:taskId/attest": {
+    summary:
+      "Settle a step on the tenant's behalf with required evidence and a reason (platform ops; step-up; no AI actor; strict sequence)",
+    body: M34PlatformAttestStepRequest,
+    response: M34WizardStepViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/onboarding/:taskId/reopen": {
+    summary:
+      "Re-open a done or skipped step with a reason (platform ops; step-up; later steps keep their state)",
+    body: M34PlatformReasonRequest,
+    response: M34WizardStepViewSchema,
+  },
+  "PATCH /api/v1/platform/tenants/:orgSlug/org-profile": {
+    summary:
+      "Set the tenant organization's display name and IANA time zone during onboarding (platform ops; step-up)",
+    body: M34OrgProfileRequest,
+    response: M34OrgProfileViewSchema,
+  },
+  "PUT /api/v1/platform/tenants/:orgSlug/compliance-officer": {
+    summary:
+      "Assign the tenant's compliance officer, an active member of that organization holding the compliance_officer role, with a required reason of 8 to 500 characters (platform ops; step-up). The operator and the reason are recorded in the audit trail; a pending go-live attestation by another officer is voided. 422 COMPLIANCE_OFFICER_NOT_A_MEMBER, 422 COMPLIANCE_OFFICER_LACKS_ROLE, 409 COMPLIANCE_OFFICER_LOCKED",
+    body: M34SetComplianceOfficerPlatformRequest,
+    response: M34ComplianceOfficerResponseSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/go-live/approve": {
+    summary:
+      "Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). The approver must be a different PERSON than the attester (409 GO_LIVE_SAME_PERSON), the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED",
+    body: M34PlatformReasonRequest,
+    response: M34GoLiveResponseSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/go-live/revoke": {
+    summary: "Revoke a pending go-live attestation with a reason (platform ops; step-up)",
+    body: M34PlatformReasonRequest,
+    response: M34GoLiveResponseSchema,
   },
   "GET /api/v1/tenant/account": {
     summary: "The tenant's own account record",
@@ -15166,5 +15241,95 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M41PatchEnrollmentBodySchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     response: M41EnrollmentResponseSchema,
+  },
+});
+
+// ── M34: a platform operator enters a tenant's onboarding data on its behalf (routes/platform/onboarding-data-routes.ts) ──
+import {
+  OnboardingLocationCreateRequest as M34OnboardingLocationCreateRequest,
+  LocationDetailSchema as M34OnboardingLocationDetailSchema,
+  OnboardingLocationListSchema as M34OnboardingLocationListSchema,
+  OnboardingLocationPatchRequest as M34OnboardingLocationPatchRequest,
+  OnboardingMacCredentialListSchema as M34OnboardingMacCredentialListSchema,
+  OnboardingMacCredentialUpsertRequest as M34OnboardingMacCredentialUpsertRequest,
+  OnboardingMacCredentialViewSchema as M34OnboardingMacCredentialViewSchema,
+  OnboardingMedicaidCredentialIdSchema as M34OnboardingMedicaidCredentialIdSchema,
+  OnboardingMedicaidCredentialListSchema as M34OnboardingMedicaidCredentialListSchema,
+  OnboardingMedicaidCredentialUpsertRequest as M34OnboardingMedicaidCredentialUpsertRequest,
+  OnboardingProviderEntityCreateRequest as M34OnboardingProviderEntityCreateRequest,
+  ProviderEntityDetailSchema as M34OnboardingProviderEntityDetailSchema,
+  OnboardingProviderEntityListSchema as M34OnboardingProviderEntityListSchema,
+  OnboardingProviderEntityPatchRequest as M34OnboardingProviderEntityPatchRequest,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-typebox";
+
+const M34_ONBOARDING_WRITE_NOTE =
+  "tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused";
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/platform/tenants/:orgSlug/provider-entities": {
+    summary:
+      "A tenant's provider entities, on the tenant's own RLS scope (platform ops; read is audited; the tax id is never returned)",
+    response: M34OnboardingProviderEntityListSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/provider-entities": {
+    summary: `Create a provider entity for a tenant (CCN, NPI check digit, EIN sealed under the tenant's key and never returned; 503 TAX_ID_CIPHER_UNBOUND / TAX_ID_KEY_UNAVAILABLE until the key ring is bound) — ${M34_ONBOARDING_WRITE_NOTE}`,
+    body: M34OnboardingProviderEntityCreateRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    response: M34OnboardingProviderEntityDetailSchema,
+  },
+  "PATCH /api/v1/platform/tenants/:orgSlug/provider-entities/:id": {
+    summary: `Edit a tenant provider entity's names / iQIES id / billing address / lifecycle status; the CMS identity (CCN, NPI, tax id, fiscal year end) is immutable here — ${M34_ONBOARDING_WRITE_NOTE}`,
+    body: M34OnboardingProviderEntityPatchRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingProviderEntityDetailSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/locations": {
+    summary:
+      "A tenant's service locations, on the tenant's own RLS scope (platform ops; read is audited)",
+    response: M34OnboardingLocationListSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/locations": {
+    summary: `Create a service location under one of the tenant's provider entities — ${M34_ONBOARDING_WRITE_NOTE}`,
+    body: M34OnboardingLocationCreateRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    response: M34OnboardingLocationDetailSchema,
+  },
+  "PATCH /api/v1/platform/tenants/:orgSlug/locations/:id": {
+    summary: `Edit a tenant service location's address / contact / timezone / lifecycle status — ${M34_ONBOARDING_WRITE_NOTE}`,
+    body: M34OnboardingLocationPatchRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingLocationDetailSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/mac-credentials": {
+    summary:
+      "A tenant's MAC submitter credentials, masked (a hasSecret flag and the safe identifiers; the secret is never projected) — platform ops; read is audited",
+    response: M34OnboardingMacCredentialListSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/mac-credentials": {
+    summary: `Create (201) or version-checked update (200, If-Match) of a tenant's MAC credential; clientSecret is write-only and sealed under the tenant's key — ${M34_ONBOARDING_WRITE_NOTE}`,
+    body: M34OnboardingMacCredentialUpsertRequest,
+    headers: {
+      ...IDEMPOTENCY_KEY_HEADER,
+      "If-Match": {
+        required: false,
+        description:
+          "The credential's current integer version; required to update an existing credential, absent on a first create.",
+      },
+    },
+    status: 201,
+    response: M34OnboardingMacCredentialViewSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/state-medicaid-credentials": {
+    summary:
+      "A tenant's state Medicaid trading-partner credentials, masked (presence flags only; no secret or key is ever projected) — platform ops; read is audited",
+    response: M34OnboardingMedicaidCredentialListSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/state-medicaid-credentials": {
+    summary: `Create or version-bump a tenant's state Medicaid trading-partner credential; clientSecret / sftpKey are write-only and sealed under the tenant's key (503 CREDENTIAL_CRYPTO_UNBOUND until the credential key is bound) — ${M34_ONBOARDING_WRITE_NOTE}`,
+    body: M34OnboardingMedicaidCredentialUpsertRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    response: M34OnboardingMedicaidCredentialIdSchema,
   },
 });

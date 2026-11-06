@@ -5,8 +5,8 @@
  * The platform service runs on the BYPASSRLS `chartwarden_platform_login` built by `scripts/db/provision-runtime-roles.ts`
  * itself (executed here), so a missing production grant - the `onboarding_task` UPDATE this work added - fails in this
  * suite, not in prod. It pins what a unit test cannot: the cross-tenant DSAR keyset cursor pages microsecond-distinct
- * rows without skipping or duplicating any (the JS-Date-vs-timestamptz trap), the skip UPDATE asserts its row count and
- * is tenant-scoped, and the tenant account read is RLS-bound to the caller's own org.
+ * rows without skipping or duplicating any (the JS-Date-vs-timestamptz trap), and the tenant account read is RLS-bound to
+ * the caller's own org. (The onboarding read/skip moved to the wizard; m34-onboarding-wizard.live.test.ts runs it.)
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:gap-164:live   (SUPERUSER url, THROWAWAY database)
  */
 import { spawnSync } from "node:child_process";
@@ -39,8 +39,6 @@ describe.skipIf(!DB_URL)("GAP-164 M34 ops service, LIVE Postgres on the real rol
   let admin: Client;
   let platform: ReturnType<typeof createDbClient>;
   let app: ReturnType<typeof createDbClient>;
-  let firstKey = "";
-  let secondKey = "";
   const urlAs = (role: string, password: string): string => {
     const u = new URL(DB_URL as string);
     u.username = role;
@@ -95,24 +93,6 @@ describe.skipIf(!DB_URL)("GAP-164 M34 ops service, LIVE Postgres on the real rol
         "INSERT INTO tenant_account (id, organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,'onboarding',$3,'b@x.test','p@x.test')",
         [id, org, name],
       );
-    }
-    // The 11 canonical templates are seeded by migration; take the first two by order for this suite.
-    const tpl = await admin.query(
-      "SELECT key FROM onboarding_task_template WHERE is_canonical ORDER BY canonical_order LIMIT 2",
-    );
-    const keys: string[] = tpl.rows.map((r) => r.key);
-    expect(keys).toHaveLength(2);
-    [firstKey, secondKey] = keys as [string, string];
-    for (const [tenant, org] of [
-      [T_A, ORG_A],
-      [T_B, ORG_B],
-    ] as const) {
-      for (const key of [firstKey, secondKey]) {
-        await admin.query(
-          "INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key, status) VALUES ($1,$2,$3,'pending')",
-          [org, tenant, key],
-        );
-      }
     }
     // Three DSAR jobs whose requested_at differ only in MICROSECONDS (same millisecond), plus one in org B.
     const dsar = (org: string, ts: string, status: string) =>
@@ -178,63 +158,6 @@ describe.skipIf(!DB_URL)("GAP-164 M34 ops service, LIVE Postgres on the real rol
       [ORG_A],
     );
     expect(seen).toEqual(rows.map((r) => r.id));
-  });
-
-  it("reads a tenant's onboarding with the current step, and 404s an unknown slug", async () => {
-    const view = await ops().getOnboarding("ops64a");
-    expect(view.tenantStatus).toBe("onboarding");
-    expect(view.tasks).toHaveLength(2);
-    expect(view.currentStep).toBe(firstKey);
-    await expect(ops().getOnboarding("no-such-tenant")).rejects.toThrow(/not found/i);
-  });
-
-  it("skips a task with a recorded rationale on the platform credential, then refuses a settled or foreign task", async () => {
-    const view = await ops().getOnboarding("ops64a");
-    const task = view.tasks.find((t) => t.templateKey === firstKey);
-    const skipped = await ops().skipOnboardingTask(
-      "ops64a",
-      task?.id as string,
-      { userId: USER, membershipId: MEMBERSHIP },
-      "tenant migrating from another system",
-    );
-    expect(skipped).toMatchObject({
-      status: "skipped",
-      skipRationale: "tenant migrating from another system",
-    });
-    const { rows } = await admin.query(
-      "SELECT status, completion_evidence FROM onboarding_task WHERE id = $1",
-      [task?.id],
-    );
-    expect(rows[0].status).toBe("skipped");
-    expect(rows[0].completion_evidence.skip.skippedByMembershipId).toBe(MEMBERSHIP);
-    expect((await ops().getOnboarding("ops64a")).currentStep).toBe(secondKey);
-
-    // Settled: refused (409), never rewritten.
-    await expect(
-      ops().skipOnboardingTask(
-        "ops64a",
-        task?.id as string,
-        { userId: USER, membershipId: MEMBERSHIP },
-        "second skip attempt",
-      ),
-    ).rejects.toThrow(/cannot be skipped/);
-    // Another tenant's task id addressed through THIS tenant's slug: 404, and the foreign row is untouched.
-    const foreign = await admin.query(
-      "SELECT id FROM onboarding_task WHERE tenant_account_id = $1 LIMIT 1",
-      [T_B],
-    );
-    await expect(
-      ops().skipOnboardingTask(
-        "ops64a",
-        foreign.rows[0].id,
-        { userId: USER, membershipId: MEMBERSHIP },
-        "cross tenant attempt",
-      ),
-    ).rejects.toThrow(/not found/i);
-    const untouched = await admin.query("SELECT status FROM onboarding_task WHERE id = $1", [
-      foreign.rows[0].id,
-    ]);
-    expect(untouched.rows[0].status).toBe("pending");
   });
 
   it("the platform credential's bypass audit row is written for each entry", async () => {

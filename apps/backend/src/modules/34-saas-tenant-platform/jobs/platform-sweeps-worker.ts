@@ -9,10 +9,10 @@
 // this file binds their ports. Platform sweeps run inside ONE audited `withPlatformContext` transaction and publish
 // their outbox events in that same transaction (the event commits atomically with the write). The pure `run*`
 // functions take plain dependency bags so they are unit-testable without a database.
+import { randomUUID } from "node:crypto";
 import { auditPlatformEvent } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import {
-  type ActivationOutcome,
   type BaaExpirySweepResult,
   BaaRegisterRepository,
   type ExpiredSessionCandidate,
@@ -24,7 +24,6 @@ import {
   closeExpiredSupportSessions,
   runBaaExpirySweep,
   runOnboardingAdvance,
-  shouldAlertActivationRefusal,
 } from "@chartwarden/saas-tenant-platform";
 import {
   type PlatformBypassAuditor,
@@ -32,10 +31,15 @@ import {
   withPlatformContext,
 } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { and, eq, inArray, isNull, lte } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte } from "drizzle-orm";
+import { pickGoverningBaa } from "../routes/platform/activation-guards";
 import { M34_JOB_SCHEDULES, M34_QUEUES } from "./index";
 
-/** The M36 alert event for a tenant whose automatic activation keeps being refused (rule: alert-rules.ts). */
+/**
+ * The M36 alert event the stuck-activation rule is keyed on (alert-rules.ts). Retained as the seeded rule's name only:
+ * nothing raises it since go-live became a two-party approval (the sweep no longer attempts to activate anything).
+ * Follow-up: retire the rule and the refusal-streak helpers together.
+ */
 export const M34_ACTIVATION_STUCK_EVENT = "m34.tenant.onboarding_activation_stuck";
 
 const PLATFORM_JOB_ID = "m34.platform_ops";
@@ -170,10 +174,18 @@ export async function gatherOnboardingContext(
     ? await readers.orgSeed(orgId)
     : { providerEntities: [], locationCount: 0 };
   const adminCount = readers.orgAdminCount ? await readers.orgAdminCount(orgId) : 0;
-  const [latestBaa] = await new BaaRegisterRepository(tx).listByTenantAccountId(tenantAccountId);
+  // The governing BAA (not rows[0]: the register lists `executed_on DESC`, which puts an undated pending renewal first).
+  const latestBaa = pickGoverningBaa(
+    await new BaaRegisterRepository(tx).listByTenantAccountId(tenantAccountId),
+  );
+  const [account] = await tx
+    .select({ officer: schema.tenantAccount.complianceOfficerMembershipId })
+    .from(schema.tenantAccount)
+    .where(eq(schema.tenantAccount.id, tenantAccountId))
+    .limit(1);
   const templates = await repo.listTemplates();
   const tasks = await repo.listTasksByTenant(tenantAccountId);
-  const canonical = templates.filter((t) => t.isCanonical);
+  const canonical = templates.filter((t) => t.isCanonical && !t.isOptional);
   const settled = new Set(
     tasks.filter((t) => t.status === "done" || t.status === "skipped").map((t) => t.templateKey),
   );
@@ -189,6 +201,7 @@ export async function gatherOnboardingContext(
     dosespotKickoffRecorded: await read(readers.dosespotKickoffRecorded),
     xeroConnected: await read(readers.xeroConnected),
     gustoConnected: await read(readers.gustoConnected),
+    complianceOfficerAssigned: Boolean(account?.officer),
     baaExecuted: latestBaa?.baaStatus === "executed",
     allCanonicalTasksDoneOrSkipped: canonical.every((t) => settled.has(t.key)),
   };
@@ -202,7 +215,7 @@ export interface OnboardingFanOutDeps {
     tenantAccountId: string;
     orgId: string;
   }) => Promise<OnboardingAdvanceReport>;
-  readonly warn?: (message: string, context: Record<string, string>) => void;
+  readonly warn?: (message: string, context: Record<string, unknown>) => void;
 }
 
 /** The daily sweep: one advance pass per `onboarding` tenant; a failing tenant never stops the rest. */
@@ -218,103 +231,75 @@ export async function runOnboardingFanOut(
       failed += 1;
       deps.warn?.("m34.onboarding_advance: tenant pass failed", {
         tenantAccountId: t.tenantAccountId,
-        error: error instanceof Error ? error.message : String(error),
+        err: error,
       });
     }
   }
   return { tenants: tenants.length, failed };
 }
 
-// ── live construction ────────────────────────────────────────────────────────────────────────────────
+// ── organization activation reconcile ────────────────────────────────────────────────────────────────
 
-/** Outcome of an automatic `onboarding → active` attempt; `reason` is the unmet lifecycle guard's code. */
-export type AutoActivationResult =
-  | { readonly activated: true }
-  | {
-      readonly activated: false;
-      readonly reason: string;
-      /** Consecutive-daily refusal streak, counted server-side in the same transaction as the guard. */
-      readonly refusalStreak?: { readonly days: number; readonly advanced: boolean };
-    };
-
-/** Operator-visible hooks of the activation port (both optional; a missing sink is simply silent). */
-export interface ActivationPortHooks {
-  readonly info?: (message: string, context: Record<string, string>) => void;
-  /** Raised on every newly counted day at or past the threshold (see `shouldAlertActivationRefusal`). */
-  readonly alertStuck?: (input: {
-    tenantAccountId: string;
-    orgId: string;
-    reason: string;
-    consecutiveDays: number;
-  }) => Promise<unknown>;
+/** A tenant that went live (an approved go-live attestation) whose M2 organization is still `created`. */
+export interface PendingOrganizationActivation {
+  readonly organizationId: string;
+  readonly tenantAccountId: string;
+  /** The operator who approved the go-live: the reconcile completes THEIR approval, so it is attributed to them. */
+  readonly approvedByUserId: string;
+  readonly approvedByMembershipId: string;
 }
+
+export interface OrganizationActivationReconcileDeps {
+  readonly listPending: () => Promise<readonly PendingOrganizationActivation[]>;
+  /** M2's lifecycle activation through a port (M34 does not import M2); a no-op on an organization that is already open. */
+  readonly activate: (input: {
+    organizationId: string;
+    operatorUserId: string;
+    operatorMembershipId: string;
+    reason: string;
+  }) => Promise<void>;
+  /** The system-job audit entry for one organization this pass opened. */
+  readonly recordReconciled: (entry: PendingOrganizationActivation) => Promise<void>;
+  readonly warn?: (message: string, context: Record<string, unknown>) => void;
+}
+
+const RECONCILE_REASON =
+  "go-live approved earlier; completing the organization activation (daily onboarding reconcile)";
 
 /**
- * The onboarding worker's `activateTenant` port: hand the tenant to the lifecycle service. An unmet guard (BAA not
- * executed yet, BAA expiring within 90 days) is a normal "not yet" that tomorrow's sweep retries, and a failure must
- * never throw into the org transaction that just wrote the completion event and alert, so both become warnings.
+ * Approval flips the tenant to `active` and then, in a separate M2 transaction, opens the organization. If that second step
+ * fails the tenant is live but its organization stays on the onboarding allowlist; repeating the approval fixes it by hand,
+ * and this pass fixes it without anyone noticing. One failing organization never stops the rest.
  */
-export function buildActivateTenantPort(
-  activate:
-    | ((input: { tenantAccountId: string; orgId: string }) => Promise<AutoActivationResult>)
-    | undefined,
-  warn: ((message: string, context: Record<string, string>) => void) | undefined,
-  hooks: ActivationPortHooks = {},
-): (input: { tenantAccountId: string; orgId: string }) => Promise<ActivationOutcome> {
-  return async ({ tenantAccountId, orgId }) => {
-    const context = { tenantAccountId, orgId };
-    if (!activate) {
-      warn?.(
-        "m34.onboarding_advance: all canonical steps settled but no activation is bound; activation left to platform ops",
-        context,
-      );
-      return "unbound";
-    }
+export async function runOrganizationActivationReconcile(
+  deps: OrganizationActivationReconcileDeps,
+): Promise<{ pending: number; activated: number; failed: number }> {
+  const pending = await deps.listPending();
+  let activated = 0;
+  let failed = 0;
+  for (const entry of pending) {
     try {
-      const result = await activate({ tenantAccountId, orgId });
-      if (result.activated) {
-        hooks.info?.("m34.onboarding_advance: tenant auto-activated", context);
-        return "activated";
-      }
-      warn?.(
-        `m34.onboarding_advance: tenant not activated yet (${result.reason}); the next sweep retries`,
-        context,
-      );
-      const streak = result.refusalStreak;
-      if (streak && shouldAlertActivationRefusal(streak)) {
-        await raiseStuckAlert(hooks, warn, {
-          ...context,
-          reason: result.reason,
-          days: streak.days,
-        });
-      }
-    } catch (err) {
-      warn?.(
-        `m34.onboarding_advance: automatic activation failed (${err instanceof Error ? err.message : String(err)}); the next sweep retries`,
-        context,
-      );
+      await deps.activate({
+        organizationId: entry.organizationId,
+        operatorUserId: entry.approvedByUserId,
+        operatorMembershipId: entry.approvedByMembershipId,
+        reason: RECONCILE_REASON,
+      });
+      await deps.recordReconciled(entry);
+      activated += 1;
+    } catch (error) {
+      failed += 1;
+      deps.warn?.("m34.onboarding_advance: organization activation reconcile failed", {
+        tenantAccountId: entry.tenantAccountId,
+        organizationId: entry.organizationId,
+        err: error,
+      });
     }
-    return "pending";
-  };
+  }
+  return { pending: pending.length, activated, failed };
 }
 
-// Trade-off: the streak is persisted (advanced=true) before this emit, so a failed emit loses that day's alert;
-// the next day's refusal advances the streak again and alerts again.
-async function raiseStuckAlert(
-  hooks: ActivationPortHooks,
-  warn: ((message: string, context: Record<string, string>) => void) | undefined,
-  a: { tenantAccountId: string; orgId: string; reason: string; days: number },
-): Promise<void> {
-  const context = { tenantAccountId: a.tenantAccountId, orgId: a.orgId };
-  try {
-    await hooks.alertStuck?.({ ...context, reason: a.reason, consecutiveDays: a.days });
-  } catch (err) {
-    warn?.(
-      `m34.onboarding_advance: stuck-activation alert failed (${err instanceof Error ? err.message : String(err)})`,
-      context,
-    );
-  }
-}
+// ── live construction ────────────────────────────────────────────────────────────────────────────────
 
 export interface PlatformSweepWorkerDeps {
   readonly connection: ConnectionOptions;
@@ -326,18 +311,18 @@ export interface PlatformSweepWorkerDeps {
   readonly outbox: M34SweepOutbox;
   readonly alerts: M34SweepAlerts;
   readonly facts?: OnboardingFactReaders;
+  /**
+   * M2's activation of a `created` organization (the M2 lifecycle writer behind a port; M34 does not import M2). Bound, the
+   * daily onboarding sweep also opens any organization whose tenant went live but whose organization was never activated.
+   */
+  readonly activateOrganization?: OrganizationActivationReconcileDeps["activate"];
   readonly now?: () => Date;
-  readonly warn?: (message: string, context: Record<string, string>) => void;
+  readonly warn?: (message: string, context: Record<string, unknown>) => void;
   readonly info?: (message: string, context: Record<string, string>) => void;
-  /** Runs `onboarding → active` through the lifecycle service once every canonical step settles (system actor). */
-  readonly activate?: (input: {
-    tenantAccountId: string;
-    orgId: string;
-  }) => Promise<AutoActivationResult>;
 }
 
 function platformTx<T>(
-  deps: PlatformSweepWorkerDeps,
+  deps: Pick<PlatformSweepWorkerDeps, "platformDb" | "auditBypass">,
   reason: string,
   fn: (tx: DbClient) => Promise<T>,
 ): Promise<T> {
@@ -430,7 +415,7 @@ export function registerM34SupportSessionCloseWorker(deps: PlatformSweepWorkerDe
                 } catch (error) {
                   deps.warn?.("m34.support_session_close: grantor alert failed", {
                     organizationId: alert.organizationId,
-                    error: error instanceof Error ? error.message : String(error),
+                    err: error,
                   });
                 }
               },
@@ -442,10 +427,25 @@ export function registerM34SupportSessionCloseWorker(deps: PlatformSweepWorkerDe
   );
 }
 
-/** Construct the `tenant.onboarding_advance` Worker: a job with a tenant advances it; an empty tick fans out. */
-export function registerM34OnboardingAdvanceWorker(deps: PlatformSweepWorkerDeps): Worker {
+/** What the advance pass needs (the sweep worker and the wizard's post-change settle share it). */
+export interface OnboardingAdvanceDeps {
+  /** Tenant-pool client (org-scoped onboarding work). */
+  readonly db: DbClient;
+  readonly outbox: M34SweepOutbox;
+  readonly alerts: M34SweepAlerts;
+  readonly facts?: OnboardingFactReaders;
+  readonly now?: () => Date;
+}
+
+/**
+ * One advance pass for a tenant, inside its own org transaction: settle `auto`/`either` steps whose fact now holds,
+ * block an unmet `auto` step, raise overdue alerts. It never activates a tenant.
+ */
+export function createOnboardingAdvancer(
+  deps: OnboardingAdvanceDeps,
+): (input: { tenantAccountId: string; orgId: string }) => Promise<OnboardingAdvanceReport> {
   const now = deps.now ?? (() => new Date());
-  const advance = (input: { tenantAccountId: string; orgId: string }) =>
+  return (input) =>
     withOrgContext(deps.db, { organizationId: input.orgId, userId: SYSTEM_USER_ID }, (rawTx) => {
       const tx = rawTx as unknown as DbClient;
       const repo = new OnboardingRepository(tx);
@@ -467,28 +467,84 @@ export function registerM34OnboardingAdvanceWorker(deps: PlatformSweepWorkerDeps
           await deps.alerts.emit(input.orgId, {
             eventType: alert.alertKey,
             payload: { tenantAccountId: alert.tenantAccountId, templateKey: alert.templateKey },
-            severity: alert.alertKey === "tenant.onboarding_completed" ? "info" : "warn",
-            correlationId: `m34-onboarding-${alert.alertKey}-${alert.tenantAccountId}-${alert.templateKey ?? "all"}-${now().toISOString().slice(0, 10)}`,
+            severity: "warn",
+            correlationId: `m34-onboarding-${alert.alertKey}-${alert.tenantAccountId}-${alert.templateKey ?? "all"}-${now()
+              .toISOString()
+              .slice(0, 10)}`,
           });
         },
-        activateTenant: buildActivateTenantPort(deps.activate, deps.warn, {
-          info: deps.info,
-          alertStuck: (a) =>
-            deps.alerts.emit(a.orgId, {
-              eventType: M34_ACTIVATION_STUCK_EVENT,
-              payload: {
-                tenantAccountId: a.tenantAccountId,
-                orgId: a.orgId,
-                reason: a.reason,
-                consecutiveDays: a.consecutiveDays,
-              },
-              severity: "warn",
-              // One alert per tenant per day: a retried sweep collapses onto the same row.
-              correlationId: `m34-onboarding-activation-stuck-${a.tenantAccountId}-${now().toISOString().slice(0, 10)}`,
-            }),
-        }),
       });
     });
+}
+
+/** Tenants that are `active` with an approved go-live whose organization is still `created` (platform credential, cross-tenant). */
+export function listPendingOrganizationActivations(
+  deps: Pick<PlatformSweepWorkerDeps, "platformDb" | "auditBypass">,
+): Promise<readonly PendingOrganizationActivation[]> {
+  return platformTx(deps, "m34 onboarding reconcile (organizations still created)", async (tx) => {
+    const rows = await tx
+      .selectDistinctOn([schema.tenantAccount.id], {
+        organizationId: schema.tenantAccount.organizationId,
+        tenantAccountId: schema.tenantAccount.id,
+        approvedByUserId: schema.tenantGoLiveAttestation.approvedByUserId,
+        approvedByMembershipId: schema.tenantGoLiveAttestation.approvedByMembershipId,
+      })
+      .from(schema.tenantAccount)
+      .innerJoin(
+        schema.tenantGoLiveAttestation,
+        and(
+          eq(schema.tenantGoLiveAttestation.tenantAccountId, schema.tenantAccount.id),
+          eq(schema.tenantGoLiveAttestation.status, "approved"),
+        ),
+      )
+      .innerJoin(
+        schema.organizations,
+        eq(schema.organizations.id, schema.tenantAccount.organizationId),
+      )
+      .where(
+        and(eq(schema.tenantAccount.status, "active"), eq(schema.organizations.status, "created")),
+      )
+      .orderBy(schema.tenantAccount.id, desc(schema.tenantGoLiveAttestation.approvedAt));
+    return rows.flatMap((r) =>
+      r.approvedByUserId && r.approvedByMembershipId
+        ? [
+            {
+              ...r,
+              approvedByUserId: r.approvedByUserId,
+              approvedByMembershipId: r.approvedByMembershipId,
+            },
+          ]
+        : [],
+    );
+  });
+}
+
+/** The system job's own audit entry for an organization it opened (the M2 transition audits itself, naming the approver). */
+export function recordOrganizationActivationReconciled(
+  deps: Pick<PlatformSweepWorkerDeps, "platformDb" | "auditBypass">,
+  entry: PendingOrganizationActivation,
+): Promise<void> {
+  return platformTx(deps, "m34 onboarding reconcile (audit)", (tx) =>
+    auditPlatformEvent(tx, {
+      eventType: "m34.onboarding.organization_activation_reconciled",
+      resourceKind: "tenant_account",
+      resourceId: entry.tenantAccountId,
+      outcome: "success",
+      severity: "warn",
+      correlationId: `m34-onboarding-reconcile:${entry.tenantAccountId}:${randomUUID()}`,
+      context: {
+        organizationId: entry.organizationId,
+        approvedByUserId: entry.approvedByUserId,
+        approvedByMembershipId: entry.approvedByMembershipId,
+        actor: "system",
+      },
+    }),
+  );
+}
+
+/** Construct the `tenant.onboarding_advance` Worker: a job with a tenant advances it; an empty tick fans out. */
+export function registerM34OnboardingAdvanceWorker(deps: PlatformSweepWorkerDeps): Worker {
+  const advance = createOnboardingAdvancer(deps);
   return new Worker(
     M34_QUEUES.onboardingAdvance,
     async (job) => {
@@ -496,7 +552,7 @@ export function registerM34OnboardingAdvanceWorker(deps: PlatformSweepWorkerDeps
       if (data.tenantAccountId && data.orgId) {
         return advance({ tenantAccountId: data.tenantAccountId, orgId: data.orgId });
       }
-      return runOnboardingFanOut({
+      const fanOut = await runOnboardingFanOut({
         listOnboardingTenants: () =>
           platformTx(deps, "m34 onboarding sweep (tenant enumeration)", async (tx) => {
             const rows = await tx
@@ -511,6 +567,15 @@ export function registerM34OnboardingAdvanceWorker(deps: PlatformSweepWorkerDeps
         advance,
         warn: deps.warn,
       });
+      const activateOrganization = deps.activateOrganization;
+      if (!activateOrganization) return fanOut;
+      const organizations = await runOrganizationActivationReconcile({
+        listPending: () => listPendingOrganizationActivations(deps),
+        activate: activateOrganization,
+        recordReconciled: (entry) => recordOrganizationActivationReconciled(deps, entry),
+        warn: deps.warn,
+      });
+      return { ...fanOut, organizations };
     },
     { connection: deps.connection, concurrency: 4 },
   );

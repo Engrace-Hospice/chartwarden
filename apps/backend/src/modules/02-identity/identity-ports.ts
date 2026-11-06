@@ -738,6 +738,15 @@ export interface IdentityRouteDeps {
    *  organization-lifecycle writer to read back). See {@link OrganizationStatusReader}. */
   organizations?: OrganizationStatusReader;
   /**
+   * M34 — "is this organization's tenant still provisioning or onboarding?" (M2 may not read M34's table, so the composition
+   * root injects the fact). A new tenant's first admin must sign in to finish onboarding while the organization is still
+   * `created`; with this bound, `select-organization` admits a `created` organization ONLY when the answer is true. The
+   * authenticate hook then keeps such a session to the onboarding allowlist (bootstrap/onboarding-org-gate.ts), so admitting
+   * the sign-in opens no clinical access. Omitted: a `created` organization stays refused. Never consulted for a suspended or
+   * closed organization.
+   */
+  onboardingTenants?: { isOnboarding(organizationId: string): Promise<boolean> | boolean };
+  /**
    * GAP-005 - the MFA matrix gate (M2 section 2.3). Present: `select-organization` refuses to bind an organization
    * whose roles require a second factor the user has not enrolled (403 MFA_ENROLMENT_REQUIRED). Omitted (slice
    * boots, unit tests) means no enforcement at bind time; the authenticate hook is the second, independent gate.

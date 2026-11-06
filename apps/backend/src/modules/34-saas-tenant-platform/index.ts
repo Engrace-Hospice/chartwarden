@@ -148,6 +148,7 @@ export {
 } from "./jobs/bundle-expiry-worker";
 // GAP-163 - the BAA radar, the support-session close sweep and the onboarding advance worker.
 export {
+  createOnboardingAdvancer,
   describeM34SweepSchedules,
   registerM34BaaExpiryWorker,
   registerM34OnboardingAdvanceWorker,
@@ -222,7 +223,7 @@ export {
 
 import type { DbClient } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   type TenantPlatformRouteService as _TenantPlatformRouteService,
   createInMemoryTenantPlatformBackend as _createInMemoryTenantPlatformBackend,
@@ -287,6 +288,15 @@ const SLICE_M34_SIGNUP_SERVICE: _SignupIntentRouteService = {
  * prod shape). The §4.6 ABAC predicates are registered separately at boot via
  * `registerTenantPlatformAbacPredicates`.
  */
+import { type OnboardingWizard, createOnboardingWizard } from "./onboarding/wizard-service";
+import {
+  createMemoryOrgProfile,
+  createMemoryWizardRunner,
+  createMemoryWizardState,
+} from "./onboarding/wizard-store-memory";
+import { registerOnboardingWizardRoutes } from "./routes/platform/onboarding-wizard-routes";
+import { registerOnboardingDataRoutes } from "./routes/platform/onboarding-data-routes";
+import type { OnboardingDataService } from "./routes/platform/onboarding-data-service";
 import { registerPlatformOpsRoutes } from "./routes/platform/ops-routes";
 import {
   type PlatformOpsService,
@@ -304,10 +314,18 @@ export function mountTenantPlatformRoutes(
   services?: {
     platform?: { service: _TenantPlatformRouteService };
     tenant?: { service: _TenantRouteService };
-    /** GAP-164 - cross-tenant DSAR list + onboarding read/skip (absent => in-memory slice). */
+    /** GAP-164 - the cross-tenant DSAR list (absent => in-memory slice). */
     platformOps?: { service: PlatformOpsService };
+    /** The onboarding wizard, both surfaces (absent => an empty in-memory slice). */
+    onboarding?: { wizard: OnboardingWizard };
+    /** `TENANT_BASE_DOMAIN` (null/absent = single-host): the slug availability route answers with the tenant's address. */
+    tenantBaseDomain?: string | null;
+    /** Per-route cap on the slug availability probe (absent = only the global limiter applies; tests, no-db boot). */
+    slugAvailabilityRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     /** GAP-164 - tenant account + feature-flag read/write (absent => in-memory slice). */
     tenantAccountFlags?: { service: TenantAccountFlagsService };
+    /** Operator-entered tenant onboarding data (provider entities, locations, MAC credential); absent => not mounted. */
+    onboardingData?: { service: OnboardingDataService };
     public?: {
       service?: _SignupIntentRouteService;
       /** AC-05 — §22.1's 5/IP/hour limiter. Absent ⇒ `createAllowAllRateLimiter()`, i.e. UNLIMITED,
@@ -321,7 +339,13 @@ export function mountTenantPlatformRoutes(
   // ── platform-ops surface (withPlatformContext; F03/F09 audited cross-tenant reads) ──
   // Drizzle-backed when the composition root injects it; the in-memory slice otherwise (tests / no-db).
   const { service: platformService } = services?.platform ?? _createInMemoryTenantPlatformBackend();
-  _registerTenantPlatformRoutes(app, { service: platformService });
+  _registerTenantPlatformRoutes(app, {
+    service: platformService,
+    tenantBaseDomain: services?.tenantBaseDomain ?? null,
+    ...(services?.slugAvailabilityRateLimit
+      ? { slugAvailabilityRateLimit: services.slugAvailabilityRateLimit }
+      : {}),
+  });
   _registerTenantInvitationRoutes(app, { service: platformService });
   _registerTenantKeyRingRoutes(app, { service: platformService });
   _registerOnboardingTemplateRoutes(app, { service: platformService });
@@ -331,15 +355,33 @@ export function mountTenantPlatformRoutes(
   _registerFeatureFlagAdminRoutes(app, { service: platformService });
   _registerTenantExportApprovalRoutes(app, { service: platformService });
 
-  // GAP-164 - the three platform-ops routes the first build deferred.
+  // GAP-164 - the cross-tenant DSAR list the first build deferred.
   registerPlatformOpsRoutes(app, {
     service: (services?.platformOps ?? { service: createInMemoryPlatformOpsService().service })
       .service,
   });
 
+  // The onboarding wizard (platform side: read, skip, attest, re-open, org profile, compliance officer, go-live decisions).
+  const sliceState = createMemoryWizardState();
+  const { wizard } = services?.onboarding ?? {
+    wizard: createOnboardingWizard({
+      // The in-memory slice has no M2 organization to open: an explicit no-op, never reached with a bound composition root.
+      activateOrganization: async () => undefined,
+      runner: createMemoryWizardRunner(sliceState),
+      orgProfile: createMemoryOrgProfile(sliceState),
+    }),
+  };
+  registerOnboardingWizardRoutes(app, { wizard });
+
+  // Operator-entered tenant onboarding data: it runs on the TENANT pool under the target org's RLS, so there is no
+  // in-memory slice to fall back to — the routes mount only when the composition root binds the service.
+  if (services?.onboardingData) {
+    registerOnboardingDataRoutes(app, { service: services.onboardingData.service });
+  }
+
   // ── tenant-scoped surface (withOrgContext; the tenant's own org) ──
   const { service: tenantService } = services?.tenant ?? _createInMemoryTenantBackend();
-  _registerTenantTenantRoutes(app, { service: tenantService });
+  _registerTenantTenantRoutes(app, { service: tenantService, wizard });
   // GAP-164 - tenant account + feature flags.
   registerTenantAccountFlagsRoutes(app, {
     service: (
@@ -375,6 +417,32 @@ export {
   createInMemoryPlatformOpsService,
 } from "./routes/platform/ops-service";
 export { registerPlatformOpsRoutes } from "./routes/platform/ops-routes";
+
+// Onboarding wizard v2 — the service both surfaces share, its Drizzle runner (tenant + platform transactions) and the
+// in-memory twin the inject tests run on.
+export {
+  type OnboardingWizard,
+  type OnboardingWizardDeps,
+  createOnboardingWizard,
+} from "./onboarding/wizard-service";
+export {
+  type WizardActivation,
+  createDrizzleWizardRunner,
+} from "./onboarding/wizard-store-drizzle";
+export {
+  type OnboardingTenantReader,
+  createOnboardingTenantReader,
+} from "./onboarding/onboarding-tenant-reader";
+export { voidPendingGoLiveForDataChange } from "./onboarding/go-live-void";
+export {
+  createMemoryOrgProfile,
+  createMemoryWizardRunner,
+  createMemoryWizardState,
+  memoryMember,
+  memoryTask,
+} from "./onboarding/wizard-store-memory";
+export type { OrgProfilePort } from "./onboarding/org-profile";
+export { registerOnboardingWizardRoutes } from "./routes/platform/onboarding-wizard-routes";
 export {
   type TenantAccountFlagsService,
   type TenantFlagAdminPort,
@@ -382,3 +450,17 @@ export {
   createInMemoryTenantAccountFlagsService,
 } from "./routes/tenant/account-flags-service";
 export { registerTenantAccountFlagsRoutes } from "./routes/tenant/account-flags-routes";
+
+// Operator-entered tenant onboarding data (provider entities, locations, MAC credential) on the tenant's behalf.
+export {
+  type OnboardingDataDeps,
+  type OnboardingDataService,
+  type OnboardingOperator,
+  type OnboardingTenantResolver,
+  buildDrizzleOnboardingDataService,
+  buildPlatformTenantResolver,
+} from "./routes/platform/onboarding-data-service";
+export {
+  type OnboardingDataRouteDeps,
+  registerOnboardingDataRoutes,
+} from "./routes/platform/onboarding-data-routes";

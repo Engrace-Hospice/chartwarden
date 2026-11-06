@@ -106,6 +106,10 @@ import {
 import { startAckQueueWatchdog } from "./bootstrap/ack-queue-watchdog";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import {
+  createComplianceOfficerRoleBinder,
+  createComplianceOfficerRoleUnbinder,
+} from "./bootstrap/bind-compliance-officer-role";
+import {
   bindPlatformStaffToOrg,
   reconcilePlatformStaff,
   setPlatformStaffFailureSink,
@@ -184,7 +188,9 @@ import {
   registerOutboxMetrics,
   registerPartitionMetrics,
 } from "./bootstrap/metrics";
+import { createOrganizationStageReader } from "./bootstrap/onboarding-org-gate";
 import { createOpsNoticeClaims } from "./bootstrap/ops-notice-claims";
+import { buildDrizzleOrgProfilePort } from "./bootstrap/org-profile";
 import {
   buildMembershipUserResolver,
   buildOrgAdminCountReader,
@@ -380,7 +386,10 @@ import {
   createDbPublicTenantLookups,
   createDrizzleIdentityEraserStore,
   createLinkDelivery,
+  createOrgDataWriteScope,
   createOrgScopedAuditExecutor,
+  createOrganizationActivator,
+  createOrganizationStatusReader,
   createPortalInviteeUserPort,
   createPortalSignInStore,
   createTaxIdCipher,
@@ -1113,7 +1122,9 @@ import {
   buildM23WorkQueueEnqueuePort,
   buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
+  buildMacFeedConfiguredReader,
   buildMacJurisdictionLister,
+  buildMacOnboardingCredentialPort,
   buildMacSecretCipherFromEnv,
   buildNoticeWindowPort,
   buildSubmissionControlNumberReader,
@@ -1180,6 +1191,7 @@ import {
   buildM24SubmissionQueuePort,
   buildM24SubmissionRequestConsumer,
   buildM24SubmissionWorkerDeps,
+  buildMedicaidOnboardingCredentialPort,
   buildStateChannelHealthProbe,
   createDrizzleMedicaidRedactStore,
   mountM24Routes,
@@ -1531,6 +1543,7 @@ import {
   type SignupIntentRouteService,
   type TenantPlatformAbacResolver,
   bootstrapModule34,
+  buildDrizzleOnboardingDataService,
   buildDrizzlePlatformService,
   buildDrizzleTenantPlatformAbacResolver,
   buildDrizzleTenantService,
@@ -1539,12 +1552,17 @@ import {
   buildM34ProvisionStartedConsumer,
   buildM34WorkerDeps,
   buildPlatformEnqueue,
+  buildPlatformTenantResolver,
   buildTenantEnqueue,
   createDrizzleM34AlertResolverPorts,
   createDrizzlePlatformOpsService,
   createDrizzleSaasTenantPlatformEraseStore,
   createDrizzleTenantAccountFlagsService,
+  createDrizzleWizardRunner,
   createM34ProvisionGateway,
+  createOnboardingAdvancer,
+  createOnboardingTenantReader,
+  createOnboardingWizard,
   describeM34SweepSchedules,
   enableM34JobCapability,
   getTenantKeyProvider,
@@ -1566,6 +1584,7 @@ import {
   scheduleM34BundleExpiryJob,
   scheduleM34PlatformSweepJobs,
   validateModule34Seams,
+  voidPendingGoLiveForDataChange,
   wireM34AlertRuleSeed,
   wireM34Tenancy,
 } from "./modules/34-saas-tenant-platform/index";
@@ -2909,6 +2928,34 @@ export function wireModuleSeams(
   // seam), so test re-boots that call wireModuleSeams() repeatedly stay safe.
   registerAbacRegistry();
   // Phase-1 producers append here as they land.
+}
+
+/**
+ * The onboarding facts M34 may not read from tables it does not own (arch:tables): M1/M2 spine facts and the M23 MAC
+ * credential, handed to M34's sweep and wizard as ports. Each reader opens the org's own `withOrgContext`.
+ */
+function buildM34OnboardingFacts(db: DbClient) {
+  return {
+    orgSeed: buildOrgSeedFactsReader(db),
+    orgAdminCount: buildOrgAdminCountReader(db),
+    macFeedConfigured: buildMacFeedConfiguredReader(buildDrizzleOrgMacJurisdictionReader(db)),
+  };
+}
+
+/** One onboarding advance pass for a tenant (the wizard calls it after a change; the daily sweep runs the same code). */
+function buildM34OnboardingAdvance(
+  db: DbClient,
+  outbox: Parameters<typeof createOnboardingAdvancer>[0]["outbox"],
+) {
+  return createOnboardingAdvancer({
+    db,
+    outbox,
+    facts: buildM34OnboardingFacts(db),
+    // Resolved lazily: the M36 emitter seam registers after this is built (the sweep's own alert path does the same).
+    alerts: {
+      emit: (orgId, input) => (getSeam("AlertEmitter") as AlertEmitter).emit(orgId, input),
+    },
+  });
 }
 
 /**
@@ -4627,6 +4674,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       ? createCachingTenantHostResolver(createDbTenantHostResolver(dbHandle.db))
       : undefined;
   // The same rule decides Better Auth's trusted origins, the passkey ceremony, step-up and the realtime handshake.
+  // A new tenant's first admin signs in while its organization is still `created` (go-live not yet approved): the authenticate
+  // hook confines such a session to the onboarding allowlist (bootstrap/onboarding-org-gate.ts), and go-live approval activates
+  // the organization. Cached briefly; evicted by every organization transition below.
+  const organizationStage = dbHandle
+    ? createOrganizationStageReader(createOrganizationStatusReader(dbHandle.db))
+    : undefined;
   const tenantOrigins = tenantHostResolver
     ? createTenantOriginMatcher({ baseDomain: tenantBaseDomain, resolver: tenantHostResolver })
     : undefined;
@@ -4665,6 +4718,17 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           : {}),
         // GAP-002 — SESSION_POLICY idle/absolute timeouts, enforced server-side on every request.
         ...(dbHandle ? { sessionTimeout: createDbSessionTimeoutEnforcer(dbHandle.db) } : {}),
+        // A session on a not-yet-live organization reaches only the onboarding routes (403 ORGANIZATION_ONBOARDING otherwise).
+        // Required: Better Auth exists only with a database, and the stage reader exists whenever there is one, so a missing reader
+        // is a boot error, never a hook that silently skips the gate.
+        organizationStage: (() => {
+          if (!organizationStage) {
+            throw new Error(
+              "the organization stage reader is unavailable: refusing to build the session authenticate hook without the not-yet-live organization gate",
+            );
+          }
+          return organizationStage;
+        })(),
         // TASK-013 — the M23 #39/#40 / M15 `/internal/...` system-principal routes' only path to
         // reachability. Unset (dev/no secret configured) → `systemCredential` is undefined and the
         // machine-credential branch never runs, exactly today's fail-closed posture.
@@ -5149,6 +5213,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 context: { userId: input.userId },
               }),
             ...(mfaGate ? { mfaGate } : {}),
+            // `select-organization` admits a `created` organization whose tenant is still onboarding (its first admin).
+            onboardingTenants: createOnboardingTenantReader(dbHandle.db),
             funeralCases: {
               read: (organizationId, patientId) =>
                 funeralCaseForOrg(dbHandle.db, organizationId, patientId),
@@ -5157,15 +5223,26 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // GAP-115 — the M2 org-admin surface (organizations, provider entities, locations, tenant step-up
           // overrides). `POST /provider-entities` seals the EIN with the tax-id cipher bound below; unbound it would
           // answer 503 TAX_ID_CIPHER_UNBOUND — an EIN is never stored in the clear.
+          // The EIN is sealed under the tenant's own DEK from M34's key ring (resolved per call, so this is safe to
+          // build before M34 registers; until a platform KEK is bound the provider refuses and the create fails
+          // closed with a 5xx rather than storing an EIN in the clear). One cipher serves the tenant's own admin
+          // routes and the platform operator's onboarding routes (M34), so both seal the EIN identically.
+          const taxIdCipher = createTaxIdCipher({
+            dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+            dekForOrgVersion: (orgId, version) =>
+              getTenantKeyProvider().dekForOrgVersion(orgId, version),
+          });
           mountOrgAdminRoutes(app, dbHandle.db, {
             outbox: m2OutboxPublisher,
-            // The EIN is sealed under the tenant's own DEK from M34's key ring (resolved per call, so this is safe to
-            // build before M34 registers; until a platform KEK is bound the provider refuses and the create fails
-            // closed with a 5xx rather than storing an EIN in the clear).
-            taxIdCipher: createTaxIdCipher({
-              dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
-              dekForOrgVersion: (orgId, version) =>
-                getTenantKeyProvider().dekForOrgVersion(orgId, version),
+            taxIdCipher,
+            // A provider-entity, location or organization-name write also voids a pending go-live attestation in the SAME
+            // transaction (the attestation said the data was ready; this write makes that stale). M34's helper, M2's routes.
+            orgWriteScope: createOrgDataWriteScope(dbHandle.db, async (tx, scope) => {
+              await voidPendingGoLiveForDataChange(tx, {
+                organizationId: scope.organizationId,
+                revokedByUserId: scope.userId,
+                revokedByMembershipId: scope.membershipId,
+              });
             }),
           });
           // M2 (ADR-0023 D2 / SecHardening §12.2/§12.4) — the device-attestation write path. This is what
@@ -5199,8 +5276,17 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // §11 D19 (#205 hard half) — the real org activate/suspend/close capability. This is what
           // makes M35's `m2.organization.*` subscriptions have a producer at all; `organization.status`
           // had no UPDATE anywhere in the codebase before this.
-          mountOrganizationLifecycleRoutes(app, dbHandle.db, m2OutboxPublisher, (organizationId) =>
-            tenantHostResolver?.invalidateOrganization(organizationId),
+          // Activation through this route is refused while the organization's tenant is provisioning/onboarding: the only
+          // way a new tenant's organization opens is the two-party go-live approval (M34), not one operator's POST.
+          mountOrganizationLifecycleRoutes(
+            app,
+            dbHandle.db,
+            createOnboardingTenantReader(dbHandle.db),
+            m2OutboxPublisher,
+            (organizationId) => {
+              tenantHostResolver?.invalidateOrganization(organizationId);
+              organizationStage?.invalidate(organizationId);
+            },
           );
           // M2 §2.2.4 / §7.7 — redeem an emailed auditor link into a scoped, read-only `auditor` session.
           // Public (the token is the credential); M3 grants the one least-privilege role inside the
@@ -5818,49 +5904,114 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // worker capability set is complete. Both fall back to the in-memory slice when no DB client is present (tests).
           const m34PlatformEnqueue = buildPlatformEnqueue(queueConnection);
           const m34TenantEnqueue = buildTenantEnqueue(queueConnection);
-          mountTenantPlatformRoutes(app, dbHandle.db, {
-            platform: buildDrizzlePlatformService({
-              platformDb: platformDbHandle?.db ?? dbHandle.db,
-              enqueue: m34PlatformEnqueue.enqueue,
-              provisionJobs: m34PlatformEnqueue.provisionJobs,
-              // Any active hold (org-wide, patient-scoped or messaging-only) blocks destroying the tenant's key.
-              legalHoldClear: async (organizationId) => {
-                const scope = await activeLegalHoldScopeForOrg(dbHandle.db, organizationId);
-                return !scope.orgWide && !scope.messagingHeld && scope.patientIds.size === 0;
-              },
-              ...(m34ProvisionGateway
-                ? { invitationDelivery: m34ProvisionGateway.invitation }
-                : {}),
-              auditBypass: m34PlatformBypassAuditor,
-              outbox: m34OutboxPublisher,
-              // F-091 — M1 owns the `feature_flag` schema, so the §4.7 admin seam is built here and
-              // injected rather than constructed inside M34 (which would create a schema import edge the
-              // route file's own header says must not exist). On the PLATFORM pool: migration 0001's write
-              // policies never admit a NULL org, so a platform-global flag is uncreatable from a tenant
-              // connection by design.
-              featureFlags: createDrizzleFeatureFlagAdmin(
-                platformDbHandle?.db ?? dbHandle.db,
-                // §4.7 kill switch — audited emergency control; only with a real platform credential
-                // (without one the seam refuses 501 rather than flip a flag unaudited).
-                platformDbHandle
-                  ? buildFeatureFlagKillSwitchPorts({
-                      platformDb: platformDbHandle.db,
-                      auditBypass: m34PlatformBypassAuditor,
-                      outbox: m34OutboxPublisher,
-                      auditCritical: (tx, event) =>
-                        auditPlatformEvent(tx, {
-                          eventType: event.eventType,
-                          resourceKind: "feature_flag",
-                          resourceId: event.resourceId,
-                          outcome: "success",
-                          severity: "critical",
-                          correlationId: event.correlationId,
-                          context: event.context,
-                        }),
-                    })
-                  : undefined,
+          // The onboarding advance pass is built first: the BAA register write (platform backend) and the wizard both run it
+          // after a change, so a blocked `baa_executed` step settles at once rather than at the next write or the 06:00 sweep.
+          const m34OnboardingAdvance = buildM34OnboardingAdvance(dbHandle.db, m34OutboxPublisher);
+          const m34PlatformBackend = buildDrizzlePlatformService({
+            advanceOnboarding: async ({ tenantAccountId, organizationId }) => {
+              await m34OnboardingAdvance({ tenantAccountId, orgId: organizationId });
+            },
+            warn: (message, context) => app.log.warn(context, message),
+            platformDb: platformDbHandle?.db ?? dbHandle.db,
+            enqueue: m34PlatformEnqueue.enqueue,
+            provisionJobs: m34PlatformEnqueue.provisionJobs,
+            // Any active hold (org-wide, patient-scoped or messaging-only) blocks destroying the tenant's key.
+            legalHoldClear: async (organizationId) => {
+              const scope = await activeLegalHoldScopeForOrg(dbHandle.db, organizationId);
+              return !scope.orgWide && !scope.messagingHeld && scope.patientIds.size === 0;
+            },
+            ...(m34ProvisionGateway ? { invitationDelivery: m34ProvisionGateway.invitation } : {}),
+            auditBypass: m34PlatformBypassAuditor,
+            outbox: m34OutboxPublisher,
+            // F-091 — M1 owns the `feature_flag` schema, so the §4.7 admin seam is built here and
+            // injected rather than constructed inside M34 (which would create a schema import edge the
+            // route file's own header says must not exist). On the PLATFORM pool: migration 0001's write
+            // policies never admit a NULL org, so a platform-global flag is uncreatable from a tenant
+            // connection by design.
+            featureFlags: createDrizzleFeatureFlagAdmin(
+              platformDbHandle?.db ?? dbHandle.db,
+              // §4.7 kill switch — audited emergency control; only with a real platform credential
+              // (without one the seam refuses 501 rather than flip a flag unaudited).
+              platformDbHandle
+                ? buildFeatureFlagKillSwitchPorts({
+                    platformDb: platformDbHandle.db,
+                    auditBypass: m34PlatformBypassAuditor,
+                    outbox: m34OutboxPublisher,
+                    auditCritical: (tx, event) =>
+                      auditPlatformEvent(tx, {
+                        eventType: event.eventType,
+                        resourceKind: "feature_flag",
+                        resourceId: event.resourceId,
+                        outcome: "success",
+                        severity: "critical",
+                        correlationId: event.correlationId,
+                        context: event.context,
+                      }),
+                  })
+                : undefined,
+            ),
+          });
+          // The onboarding wizard (both surfaces): the tenant steps run in the actor's own org transaction, the platform
+          // steps in an audited platform transaction, and go-live approval activates the tenant in that same transaction.
+          // After a change the wizard asks the advance sweep to run for that tenant so the next step unlocks at once.
+          const m2OrganizationActivator = createOrganizationActivator(
+            dbHandle.db,
+            createOnboardingTenantReader(dbHandle.db),
+            m2OutboxPublisher,
+            (organizationId) => {
+              tenantHostResolver?.invalidateOrganization(organizationId);
+              organizationStage?.invalidate(organizationId);
+            },
+          );
+          const m34Onboarding = {
+            wizard: createOnboardingWizard({
+              runner: createDrizzleWizardRunner({
+                db: dbHandle.db,
+                platformDb: platformDbHandle?.db ?? dbHandle.db,
+                auditBypass: m34PlatformBypassAuditor,
+                platformJobId: M34_PLATFORM_JOB_ID,
+                activation: m34PlatformBackend.activateApprovedTenant,
+                // The org-profile write runs inside the wizard's own tenant transaction (status check, write and attestation void).
+                orgProfileFor: (tx) => buildDrizzleOrgProfilePort(tx),
+              }),
+              orgProfile: buildDrizzleOrgProfilePort(dbHandle.db),
+              // The PLATFORM compliance-officer assignment binds the role to the chosen member (the tenant's org_admin cannot:
+              // anti-escalation). Tenant pool under the tenant's RLS, audited; the member's cached permissions are dropped.
+              bindComplianceOfficerRole: createComplianceOfficerRoleBinder(
+                dbHandle.db,
+                (organizationId, userId) => liveRbacHandle?.invalidateActor(organizationId, userId),
               ),
+              // If the assignment fails after the bind committed, the grant is expired again (best effort, audited).
+              unbindComplianceOfficerRole: createComplianceOfficerRoleUnbinder(
+                dbHandle.db,
+                (organizationId, userId) => liveRbacHandle?.invalidateActor(organizationId, userId),
+              ),
+              // Go-live approval opens the organization (it stays `created` through onboarding): the real M2 lifecycle
+              // writer, so the status flip, `m2.organization.activated` audit + outbox event and cache eviction match the
+              // manual platform route. Anything but `created` is left alone.
+              activateOrganization: async ({ organizationId, operator, reason }) => {
+                await m2OrganizationActivator(organizationId, {
+                  reason: `go-live approved: ${reason}`,
+                  actorUserId: operator.userId,
+                  actorMembershipId: operator.membershipId,
+                });
+              },
+              advance: async ({ tenantAccountId, organizationId }) => {
+                await m34OnboardingAdvance({ tenantAccountId, orgId: organizationId });
+              },
+              warn: (message, context) => app.log.warn(context, message),
             }),
+          };
+          mountTenantPlatformRoutes(app, dbHandle.db, {
+            tenantBaseDomain,
+            // Each slug probe is an audited platform read: 30/min/user, 300/min/org, fail-open (an availability control).
+            slugAvailabilityRateLimit: createRouteRateLimit({
+              store: rateLimitStore ?? createInMemoryRateLimitStore(),
+              limit: TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT,
+              keyPrefix: "m34-slug-availability",
+            }),
+            platform: m34PlatformBackend,
+            onboarding: m34Onboarding,
             tenant: buildDrizzleTenantService({
               db: dbHandle.db,
               enqueue: m34TenantEnqueue.enqueue,
@@ -5882,6 +6033,53 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               service: createDrizzleTenantAccountFlagsService({
                 db: dbHandle.db,
                 flags: createDrizzleFeatureFlagAdmin(platformDbHandle?.db ?? dbHandle.db),
+              }),
+            },
+            // A platform operator enters a tenant's provider entities, locations and MAC credential while it is
+            // onboarding. Writes run on the TENANT pool under the target org's RLS (never the platform bypass),
+            // through the same M2 / M23 logic the tenant's own admin screens call; the EIN and the MAC secret are
+            // sealed by the same ciphers and never returned.
+            onboardingData: {
+              service: buildDrizzleOnboardingDataService({
+                db: dbHandle.db,
+                // After a write commits the advance sweep settles the step the data satisfies (best effort).
+                advance: async ({ tenantAccountId, organizationId }) => {
+                  await m34OnboardingAdvance({ tenantAccountId, orgId: organizationId });
+                },
+                warn: (message, context) => app.log.warn(context, message),
+                // The slug lookup is the only cross-tenant step (an audited platform context); no platform pool => 503.
+                ...(platformDbHandle
+                  ? {
+                      resolveTenant: buildPlatformTenantResolver({
+                        platformDb: platformDbHandle.db,
+                        auditBypass: m34PlatformBypassAuditor,
+                        platformJobId: M34_PLATFORM_JOB_ID,
+                      }),
+                    }
+                  : {}),
+                taxIdCipher,
+                macCredentials: buildMacOnboardingCredentialPort({
+                  writeService: buildDrizzleM23WriteService(dbHandle.db, {
+                    outbox: m23OutboxPublisher,
+                    ...(m23MacSecretCipher ? { secretCipher: m23MacSecretCipher } : {}),
+                  }),
+                  readService: buildDrizzleM23ReadService(dbHandle.db),
+                }),
+                medicaidCredentials: buildMedicaidOnboardingCredentialPort({
+                  writeService: buildDrizzleM24WriteService(
+                    dbHandle.db,
+                    m24OutboxPublisher,
+                    m24CredentialCipher,
+                  ),
+                  readService: buildDrizzleM24ReadService(dbHandle.db),
+                }),
+                logError: (err, context) =>
+                  app.log.error({ err, ...context }, "tax-id encryption failed"),
+                logAuditError: (err, context) =>
+                  app.log.error(
+                    { err, ...context },
+                    "platform onboarding-data: the failed-attempt audit row could not be written",
+                  ),
               }),
             },
             // AC-05 — SECURITY_HARDENING §22.1's 5/IP/hour on the public signup surface. The route
@@ -6138,8 +6336,17 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 // ADR-0053 amendment precondition 2 — platform-verified NPI ownership. Cross-tenant list and platform-only
                 // writes, so one allowlisted, audited withPlatformContext per call; no platform pool => 503, never a
                 // tenant-pool read.
-                npiVerificationService: buildDrizzleNpiVerificationService(
-                  platformDbHandle
+                npiVerificationService: buildDrizzleNpiVerificationService({
+                  // A verify or revoke is the `ccn_registered` step's data: it also voids a pending go-live attestation, in the
+                  // SAME platform transaction (M34's helper; M23 does not import M34).
+                  onVerificationChanged: async (tx, change) => {
+                    await voidPendingGoLiveForDataChange(tx, {
+                      organizationId: change.organizationId,
+                      revokedByUserId: change.userId,
+                      revokedByMembershipId: change.membershipId,
+                    });
+                  },
+                  ...(platformDbHandle
                     ? {
                         runner: (fn) =>
                           withPlatformContext(
@@ -6153,8 +6360,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                             fn,
                           ),
                       }
-                    : {},
-                ),
+                    : {}),
+                }),
                 ddeProviderVendor: ddeBinding.vendor,
                 // F-212 — the tenant-entered sequestration policy (`/billing/sequestration-policies`); the SAME table the
                 // assembly service's `referenceData.activeSequestrationPolicy` reads (M23-owned, over `dbHandle.db`).
@@ -7802,38 +8009,45 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       // GAP-163 - the three remaining M34 consumers. Platform sweeps run on the audited platform credential
       // (required by this block); onboarding is org-scoped on the tenant pool.
       const getM34AlertEmitter = () => getSeam("AlertEmitter") as AlertEmitter;
-      // Automatic `onboarding → active`: the same lifecycle machine and guards as the platform route, driven by the
-      // sweep under a system actor. It never enqueues, so its enqueue port refuses; the lifecycle alert goes through
-      // the same lazily-resolved M36 emitter as the sweep's own alerts.
-      const m34Activation = buildDrizzlePlatformService({
-        platformDb: platformDbHandle.db,
-        enqueue: {
-          enqueue: async () => {
-            throw new Error("the onboarding sweep's activation never enqueues a job");
-          },
-        },
-        auditBypass: m34PlatformBypassAuditor,
-        outbox: m34OutboxPublisher,
-      });
       const m34SweepDeps = {
-        activate: ({ tenantAccountId }: { tenantAccountId: string }) =>
-          m34Activation.activateOnboardedTenant(tenantAccountId),
         connection: queueConnection,
         db: dbHandle.db,
         platformDb: platformDbHandle.db,
         auditBypass: m34PlatformBypassAuditor,
         outbox: m34OutboxPublisher,
-        facts: {
-          orgSeed: buildOrgSeedFactsReader(dbHandle.db),
-          orgAdminCount: buildOrgAdminCountReader(dbHandle.db),
-        },
+        facts: buildM34OnboardingFacts(dbHandle.db),
+        // The daily sweep also opens an organization whose tenant went live but whose activation never landed (the second,
+        // separate step of a go-live approval). The M2 writer refuses while the tenant is onboarding, which it is not here.
+        activateOrganization: (() => {
+          const activate = createOrganizationActivator(
+            dbHandle.db,
+            createOnboardingTenantReader(dbHandle.db),
+            m2OutboxPublisher,
+            (organizationId) => {
+              tenantHostResolver?.invalidateOrganization(organizationId);
+              organizationStage?.invalidate(organizationId);
+            },
+          );
+          return async (input: {
+            organizationId: string;
+            operatorUserId: string;
+            operatorMembershipId: string;
+            reason: string;
+          }) => {
+            await activate(input.organizationId, {
+              reason: input.reason,
+              actorUserId: input.operatorUserId,
+              actorMembershipId: input.operatorMembershipId,
+            });
+          };
+        })(),
         alerts: {
           emit: (
             orgId: string,
             input: Parameters<NonNullable<ReturnType<typeof getM34AlertEmitter>>["emit"]>[1],
           ) => getM34AlertEmitter().emit(orgId, input),
         },
-        warn: (message: string, context: Record<string, string>) => app.log.warn(context, message),
+        warn: (message: string, context: Record<string, unknown>) => app.log.warn(context, message),
         info: (message: string, context: Record<string, string>) => app.log.info(context, message),
       };
       const m34SweepWorkers = [
@@ -13724,6 +13938,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // A suspended/removed membership leaves the session valid but resolves with no membership: refuse it, or the
           // user reconnects straight after the suspend-time disconnect.
           if (!actor.membershipId) return null;
+          // A not-yet-live organization has no realtime channel: the socket is a second way in that the HTTP gate must not miss.
+          if (await organizationStage?.isConfined(actor.organizationId)) return null;
           if (mfaGate) {
             const verdict = await mfaGate.forRoles({
               userId: actor.userId,

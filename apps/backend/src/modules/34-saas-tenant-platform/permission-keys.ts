@@ -319,9 +319,56 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // --- onboarding wizard v2 (slice 1a): platform attest / re-open / org profile / compliance officer, the
+  //     two-party go-live (tenant attest, platform approve + revoke) and the BAA register's WRITE key ---
+  "onboarding.manage_platform": {
+    resource: "onboarding_task",
+    action: "manage_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "onboarding.manage_own": {
+    resource: "onboarding_task",
+    action: "manage_own",
+    category: "admin",
+    abac: "tenant_org_admin_role",
+  },
+  "go_live.attest": {
+    resource: "tenant_go_live_attestation",
+    action: "attest",
+    category: "compliance",
+    abac: "tenant_compliance_officer_role",
+  },
+  "go_live.approve_platform": {
+    resource: "tenant_go_live_attestation",
+    action: "approve_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "platform_tenant_baa.write_platform": {
+    resource: "platform_tenant_baa_record",
+    action: "write_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // --- tenant onboarding data entered on the tenant's behalf (provider entities, locations, MAC credentials) ---
+  // Writes are platform-ops only, step-up, reason-recorded and refused unless the tenant is still provisioning /
+  // onboarding (routes/platform/onboarding-data-routes.ts).
+  "tenant_onboarding_data.read_platform": {
+    resource: "tenant_onboarding_data",
+    action: "read_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant_onboarding_data.write_platform": {
+    resource: "tenant_onboarding_data",
+    action: "write_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
-/** Union of the M34 contributed permission keys (forty-one). */
+/** Union of the M34 contributed permission keys (forty-six). */
 export type M34ContributedPermissionKey = keyof typeof M34_CONTRIBUTED_PERMISSIONS;
 
 /**

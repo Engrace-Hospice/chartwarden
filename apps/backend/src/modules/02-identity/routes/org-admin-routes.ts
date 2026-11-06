@@ -27,7 +27,6 @@
 // TAX ID CIPHER. `provider_entity.tax_id_encrypted` is NOT NULL and an EIN must never be stored in the clear.
 // The envelope cipher is an injected port; until the KMS-backed key ring binds it, POST /provider-entities
 // refuses with 503 `TAX_ID_CIPHER_UNBOUND` (the M8/M20/M32 `*_CIPHER_UNBOUND` posture) — everything else works.
-import { randomUUID } from "node:crypto";
 import { PLATFORM_OPS_ROLE_KEYS, requireAbac, requirePermission } from "@chartwarden/auth";
 import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -39,19 +38,15 @@ import {
   auditProviderEntityCreated,
   auditProviderEntityUpdated,
 } from "../audit/org-admin-audit";
-import type { LocationPatch, OrgAdminStore, ProviderEntityPatch } from "../org-admin-store";
 import {
-  assertStatusTransition,
-  normalizeTaxId,
-  requireCcn,
-  requireFiscalYearEnd,
-  requireNpi,
-  requirePostalCode,
-  requireSlug,
-  requireState,
-  requireTimezone,
-  slugify,
-} from "../org-admin-validation";
+  type TaxIdCipherPort,
+  createLocationForOrg,
+  createProviderEntityForOrg,
+  updateLocationForOrg,
+  updateProviderEntityForOrg,
+} from "../org-admin-site-service";
+import type { OrgAdminStore } from "../org-admin-store";
+import { requireSlug, slugify } from "../org-admin-validation";
 import {
   type AdminRouteDeps,
   asBody,
@@ -64,52 +59,37 @@ import {
   resolveActor,
 } from "./admin-route-kit";
 
-/** The injected envelope cipher for `provider_entity.tax_id_encrypted` (KMS-backed in production). */
-export interface TaxIdCipherPort {
-  /** Sealed under the tenant's own DEK; the row id is bound into the AAD so the blob opens only for that row. */
-  encrypt(input: {
-    organizationId: string;
-    providerEntityId: string;
-    plaintext: string;
-  }): Promise<string>;
-}
+export type { TaxIdCipherPort } from "../org-admin-site-service";
+
+/**
+ * Runs one write to the organization's own data (a provider entity, a location, the organization's names) in a unit of work the
+ * composition root owns: `run` gets a store bound to the transaction, and the root adds to that same transaction (M34 revokes a
+ * pending go-live attestation the write makes stale) before it commits. M2 does not know what is added; it only promises the
+ * write and the addition commit or roll back together. REQUIRED: unbound, a write would leave a stale attestation approvable.
+ */
+export type OrgDataWriteScope = <T>(
+  scope: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly membershipId: string | null;
+  },
+  run: (store: OrgAdminStore) => Promise<T>,
+) => Promise<T>;
 
 export interface OrgAdminRouteDeps extends AdminRouteDeps {
   readonly store: OrgAdminStore;
   /** Unbound -> POST /provider-entities answers 503 TAX_ID_CIPHER_UNBOUND. */
   readonly taxIdCipher?: TaxIdCipherPort;
+  /** The unit of work for a write to the organization's data (see {@link OrgDataWriteScope}). Required. */
+  readonly orgWriteScope: OrgDataWriteScope;
 }
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
-/** Fields of a provider entity that identify it to CMS — never editable through PATCH. */
-/** The billing address in the limits the 837I writer enforces (N3 55, N4 city 30), so a bad one is refused here. */
-function parseBillingAddress(raw: unknown): NonNullable<ProviderEntityPatch["billingAddress"]> {
-  const body = asBody(raw);
-  return {
-    line1: requiredString(body, "line1", 55),
-    line2: optionalString(body, "line2", 55) || null,
-    city: requiredString(body, "city", 30),
-    state: requireState(requiredString(body, "state", 2)),
-    postalCode: requirePostalCode(requiredString(body, "postalCode", 10)),
-  };
-}
-
-const IMMUTABLE_PE_FIELDS = ["ccn", "npi", "taxId", "fiscalYearEnd", "organizationId"] as const;
-
 const isPlatformOperator = (request: FastifyRequest): boolean =>
   request.context.roles.some((r) => (PLATFORM_OPS_ROLE_KEYS as readonly string[]).includes(r));
 
 const conflict = (code: string, message: string) => new ChartWardenError(code, message, 409);
-
-function rejectImmutable(body: Record<string, unknown>, fields: readonly string[]): void {
-  const present = fields.filter((f) => body[f] !== undefined);
-  if (present.length > 0)
-    invalid(
-      present[0] as string,
-      `${present.join(", ")} cannot be changed here — it identifies the record to CMS; contact support for a re-enrolment.`,
-    );
-}
 
 function requireAnyChange(changed: readonly string[]): void {
   if (changed.length === 0) invalid("body", "Nothing to change: send at least one editable field.");
@@ -117,6 +97,23 @@ function requireAnyChange(changed: readonly string[]): void {
 
 export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRouteDeps): void {
   const { store } = deps;
+
+  /** A write to the organization's data inside the composition root's unit of work (see {@link OrgDataWriteScope}). */
+  const orgWrite = <T>(
+    request: FastifyRequest,
+    organizationId: string,
+    run: (stores: OrgAdminStore) => Promise<T>,
+  ): Promise<T> => {
+    const membershipId = request.context.attributes?.membershipId;
+    return deps.orgWriteScope(
+      {
+        organizationId,
+        userId: request.context.userId,
+        membershipId: typeof membershipId === "string" ? membershipId : null,
+      },
+      run,
+    );
+  };
 
   // ── organizations ─────────────────────────────────────────────────────────────────────────────
   app.get("/api/v1/orgs", async (request) => {
@@ -195,7 +192,7 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
       patch.legalName = legalName;
     }
     requireAnyChange(Object.keys(patch));
-    const updated = await store.updateOrganization(id, patch);
+    const updated = await orgWrite(request, id, (stores) => stores.updateOrganization(id, patch));
     if (!updated) throw notFound("organization");
     await auditOrganizationUpdated(
       deps.audit,
@@ -225,46 +222,18 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
     await requirePermission("org.manage")(request);
     const orgId = orgOf(request);
     const actor = await resolveActor(deps, request);
-    const body = asBody(request.body);
-    const ccn = requireCcn(requiredString(body, "ccn", 6));
-    const npi = requireNpi(requiredString(body, "npi", 10));
-    const taxId = normalizeTaxId(requiredString(body, "taxId", 20));
-    if (!taxId) invalid("taxId", "taxId must be a 9-digit EIN (12-3456789).");
-    const input = {
-      ccn,
-      npi,
-      legalName: requiredString(body, "legalName"),
-      doingBusinessAs: optionalString(body, "doingBusinessAs") || null,
-      fiscalIntermediary: optionalString(body, "fiscalIntermediary") || null,
-      fiscalYearEnd: requireFiscalYearEnd(requiredString(body, "fiscalYearEnd", 4)),
-      iqiesFacilityId: optionalString(body, "iqiesFacilityId", 50) || null,
-    };
-    if (!deps.taxIdCipher)
-      throw new ChartWardenError(
-        "TAX_ID_CIPHER_UNBOUND",
-        "the tax-id envelope cipher (KMS-backed key ring) is not bound; a provider entity cannot be created until it is",
-        503,
-      );
-    // A missing/destroyed tenant key ring or an unbound KEK is an operator problem, not a bug: say so (503) without
-    // echoing the provider's message, and log the cause.
-    // The id is minted here (not by the store) because it is part of the AAD and so must exist before the seal.
-    const id = randomUUID();
-    const taxIdEncrypted = await deps.taxIdCipher
-      .encrypt({ organizationId: orgId, providerEntityId: id, plaintext: taxId as string })
-      .catch((cause: unknown) => {
-        request.log.error({ err: cause, organizationId: orgId }, "tax-id encryption failed");
-        throw new ChartWardenError(
-          "TAX_ID_KEY_UNAVAILABLE",
-          "the tenant encryption key is unavailable; contact platform support",
-          503,
-        );
-      });
-    const created = await store.createProviderEntity(orgId, { ...input, id, taxIdEncrypted });
-    if ("conflict" in created)
-      throw conflict(
-        created.conflict === "ccn" ? "CCN_TAKEN" : "NPI_TAKEN",
-        `a provider entity with this ${created.conflict.toUpperCase()} already exists`,
-      );
+    const created = await orgWrite(request, orgId, (stores) =>
+      createProviderEntityForOrg(
+        {
+          store: stores,
+          ...(deps.taxIdCipher ? { taxIdCipher: deps.taxIdCipher } : {}),
+          logError: (err, context) =>
+            request.log.error({ err, ...context }, "tax-id encryption failed"),
+        },
+        orgId,
+        request.body,
+      ),
+    );
     await auditProviderEntityCreated(deps.audit, auditContextFor(request, actor), {
       organizationId: orgId,
       providerEntityId: created.id,
@@ -277,37 +246,13 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
     const orgId = orgOf(request);
     const { id } = request.params as { id: string };
     const actor = await resolveActor(deps, request);
-    const body = asBody(request.body);
-    rejectImmutable(body, IMMUTABLE_PE_FIELDS);
-    const current = await store.getProviderEntity(orgId, id);
-    if (!current) throw notFound("provider entity");
-
-    const patch: ProviderEntityPatch = {};
-    const legalName = optionalString(body, "legalName");
-    if (legalName !== undefined) {
-      if (legalName === "") invalid("legalName", "legalName cannot be empty");
-      patch.legalName = legalName;
-    }
-    for (const f of ["doingBusinessAs", "fiscalIntermediary", "iqiesFacilityId"] as const) {
-      const v = optionalString(body, f, f === "iqiesFacilityId" ? 50 : 200);
-      if (v !== undefined) patch[f] = v === "" ? null : v;
-    }
-    if (body.billingAddress !== undefined)
-      patch.billingAddress = parseBillingAddress(body.billingAddress);
-    const status = optionalString(body, "status");
-    if (status !== undefined) {
-      if (!["created", "active", "suspended", "closed"].includes(status))
-        invalid("status", "status must be created, active, suspended or closed");
-      assertStatusTransition(current.status, status);
-      patch.status = status as ProviderEntityPatch["status"];
-    }
-    requireAnyChange(Object.keys(patch));
-    const updated = await store.updateProviderEntity(orgId, id, patch);
-    if (!updated) throw notFound("provider entity");
+    const { updated, changedFields } = await orgWrite(request, orgId, (stores) =>
+      updateProviderEntityForOrg({ store: stores }, orgId, id, request.body),
+    );
     await auditProviderEntityUpdated(deps.audit, auditContextFor(request, actor), {
       organizationId: orgId,
       providerEntityId: id,
-      changedFields: Object.keys(patch),
+      changedFields,
     });
     return updated;
   });
@@ -325,27 +270,13 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
     await requirePermission("org.manage")(request);
     const orgId = orgOf(request);
     const actor = await resolveActor(deps, request);
-    const body = asBody(request.body);
-    const providerEntityId = requiredString(body, "providerEntityId", 64);
-    const input = {
-      providerEntityId,
-      name: requiredString(body, "name"),
-      addressLine1: requiredString(body, "addressLine1"),
-      addressLine2: optionalString(body, "addressLine2") || null,
-      city: requiredString(body, "city", 100),
-      state: requireState(requiredString(body, "state", 2)),
-      postalCode: requirePostalCode(requiredString(body, "postalCode", 10)),
-      phone: optionalString(body, "phone", 30) || null,
-      fax: optionalString(body, "fax", 30) || null,
-      timezone: requireTimezone(requiredString(body, "timezone", 64)),
-    };
-    const created = await store.createLocation(orgId, input);
-    // Not this org's provider entity — the same answer as an unknown one (no existence oracle).
-    if (!created) throw notFound("provider entity");
+    const created = await orgWrite(request, orgId, (stores) =>
+      createLocationForOrg({ store: stores }, orgId, request.body),
+    );
     await auditLocationCreated(deps.audit, auditContextFor(request, actor), {
       organizationId: orgId,
       locationId: created.id,
-      providerEntityId,
+      providerEntityId: created.providerEntityId,
     });
     return reply.code(201).send(created);
   });
@@ -355,53 +286,13 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
     const orgId = orgOf(request);
     const { id } = request.params as { id: string };
     const actor = await resolveActor(deps, request);
-    const body = asBody(request.body);
-    rejectImmutable(body, ["providerEntityId", "organizationId"]);
-    const current = await store.getLocation(orgId, id);
-    if (!current) throw notFound("location");
-
-    const patch: LocationPatch = {};
-    const text = (f: "name" | "addressLine1" | "city", max = 200): void => {
-      const v = optionalString(body, f, max);
-      if (v === undefined) return;
-      if (v === "") invalid(f, `${f} cannot be empty`);
-      patch[f] = v;
-    };
-    text("name");
-    text("addressLine1");
-    text("city", 100);
-    for (const f of ["addressLine2", "phone", "fax"] as const) {
-      const v = optionalString(body, f, f === "addressLine2" ? 200 : 30);
-      if (v !== undefined) patch[f] = v === "" ? null : v;
-    }
-    const state = optionalString(body, "state", 2);
-    if (state !== undefined) patch.state = requireState(state);
-    const postal = optionalString(body, "postalCode", 10);
-    if (postal !== undefined) patch.postalCode = requirePostalCode(postal);
-    const tz = optionalString(body, "timezone", 64);
-    if (tz !== undefined) patch.timezone = requireTimezone(tz);
-    const status = optionalString(body, "status");
-    if (status !== undefined) {
-      if (!["created", "active", "suspended", "closed"].includes(status))
-        invalid("status", "status must be created, active, suspended or closed");
-      assertStatusTransition(current.status, status);
-      if (status === "active") {
-        const owner = await store.getProviderEntity(orgId, current.providerEntityId);
-        if (owner?.status !== "active")
-          throw conflict(
-            "PROVIDER_ENTITY_NOT_ACTIVE",
-            "a location can only be activated under an active provider entity",
-          );
-      }
-      patch.status = status as LocationPatch["status"];
-    }
-    requireAnyChange(Object.keys(patch));
-    const updated = await store.updateLocation(orgId, id, patch);
-    if (!updated) throw notFound("location");
+    const { updated, changedFields } = await orgWrite(request, orgId, (stores) =>
+      updateLocationForOrg({ store: stores }, orgId, id, request.body),
+    );
     await auditLocationUpdated(deps.audit, auditContextFor(request, actor), {
       organizationId: orgId,
       locationId: id,
-      changedFields: Object.keys(patch),
+      changedFields,
     });
     return updated;
   });

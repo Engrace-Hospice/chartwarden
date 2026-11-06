@@ -80,6 +80,12 @@ export const tenantAccount = pgTable(
   },
   (t) => ({
     organizationUnique: uniqueIndex("tenant_account_org_unique").on(t.organizationId),
+    // 1328: the (id, organization_id) key child tables FK BOTH columns against, so a child row can never name a tenant of
+    // another organisation. `id` alone is already unique; this only makes the pair referenceable.
+    idOrganizationUnique: uniqueIndex("tenant_account_id_organization_id_uq").on(
+      t.id,
+      t.organizationId,
+    ),
     statusIdx: index("tenant_account_status_idx").on(t.status),
     retentionEndsIdx: index("tenant_account_retention_ends_idx")
       .on(t.retentionEndsAt)

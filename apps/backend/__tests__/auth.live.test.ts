@@ -1,3 +1,4 @@
+import { liveOrganizationStage } from "./_live-organization-stage";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { isSealed } from "@chartwarden/auth";
@@ -1349,6 +1350,7 @@ describe.skipIf(!DB_URL)(
         ),
       );
       const authenticate = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => resolver,
       });

@@ -15,7 +15,12 @@
 // §4.3 worker job through the service's injected enqueue port + emit the outbox descriptor; the live
 // BullMQ worker construction is Phase 2D (see service.ts TODO).
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import { ChartWardenError, UnauthorizedError, validateTenantSlug } from "@chartwarden/types";
+import {
+  ChartWardenError,
+  UnauthorizedError,
+  tenantOriginForSlug,
+  validateTenantSlug,
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   DekRotateRequest,
@@ -25,6 +30,7 @@ import {
   ShredTenantRequest,
   StatusTransitionRequest,
   TenantListQuerySchema,
+  TenantSlugParamsSchema,
   parse,
 } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
@@ -35,6 +41,13 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 export interface TenantPlatformRouteDeps {
   /** The §4.1 platform-ops route service (in-memory in the slice; Drizzle under `withPlatformContext` in prod). */
   service: TenantPlatformRouteService;
+  /** `TENANT_BASE_DOMAIN`; absent or null (single-host mode) leaves the availability answer without an address. */
+  tenantBaseDomain?: string | null;
+  /**
+   * Per-route cap on the availability probe (`createRouteRateLimit`, composed in `index.ts`). It runs AFTER the permission and
+   * ABAC gates, so a caller those refuse never spends it. Absent = only the global limiter applies (tests, no-db boot).
+   */
+  slugAvailabilityRateLimit?: PreHandler;
 }
 
 /** The org-scoped actor (org/actor binding is server-side: the context, never the body). */
@@ -94,7 +107,7 @@ export function registerTenantPlatformRoutes(
   app: FastifyInstance,
   deps: TenantPlatformRouteDeps,
 ): void {
-  const { service } = deps;
+  const { service, tenantBaseDomain, slugAvailabilityRateLimit } = deps;
 
   // 1 — list tenants (cross-tenant, cursor-paginated; filters status/plan/created_after/legal-name). §4.1.
   app.get("/api/v1/platform/tenants", { preHandler: [LIST, ABAC_LIST] }, async (request) => {
@@ -106,6 +119,35 @@ export function registerTenantPlatformRoutes(
       q.limit,
     );
   });
+
+  // 1a — is this subdomain usable? Format/reserved are decided here (no data read); taken covers a live slug AND a retired
+  // alias (a slug is never reused; ADR-0049 D3). Read-only and non-PHI, so no step-up; the platform read is audited (warn, not
+  // critical: see `isTenantSlugTaken` in service-drizzle.ts) and rate-limited per user, since each probe writes an audit row.
+  app.get(
+    "/api/v1/platform/tenant-slugs/:slug/availability",
+    {
+      preHandler: [
+        READ,
+        ABAC_READ,
+        ...(slugAvailabilityRateLimit ? [slugAvailabilityRateLimit] : []),
+      ],
+    },
+    async (request) => {
+      actorOf(request);
+      const { slug } = parse(TenantSlugParamsSchema, request.params);
+      const checked = validateTenantSlug(slug);
+      if (!checked.ok) return { slug, valid: false, available: false, reason: checked.reason };
+      const url = tenantBaseDomain ? tenantOriginForSlug(slug, tenantBaseDomain) : null;
+      const taken = await service.isTenantSlugTaken(slug);
+      return {
+        slug,
+        valid: true,
+        available: !taken,
+        ...(taken ? { reason: "taken" as const } : {}),
+        ...(url ? { url } : {}),
+      };
+    },
+  );
 
   // 3 — provision a tenant from a signup_intent OR raw input (step-up; enqueues `tenant.provision`). §4.1/§4.2.
   app.post(

@@ -19,7 +19,7 @@ import {
 } from "@chartwarden/auth";
 import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
   type Actor,
@@ -116,6 +116,9 @@ function makeServer(
     bindUserIdentity?: boolean;
     /** GAP-005 — the MFA matrix gate select-organization consults. */
     mfaGate?: IdentityRouteDeps["mfaGate"];
+    /** §11 D19 — the organization status reader and the onboarding-tenant fact select-organization consults. */
+    organizations?: IdentityRouteDeps["organizations"];
+    onboardingTenants?: IdentityRouteDeps["onboardingTenants"];
     /** Wave 5 — M1's site read; defaults to "every `loc_*` id belongs to the org". `null` binds none. */
     validateLocations?: IdentityRouteDeps["validateLocations"] | null;
   } = {},
@@ -186,6 +189,8 @@ function makeServer(
       : { proposedRoleGuard: opts.proposedRoleGuard ?? defaultGuard }),
     ...(opts.bindUserIdentity === false ? {} : { userIdentity: identity }),
     ...(opts.mfaGate ? { mfaGate: opts.mfaGate } : {}),
+    ...(opts.organizations ? { organizations: opts.organizations } : {}),
+    ...(opts.onboardingTenants ? { onboardingTenants: opts.onboardingTenants } : {}),
     ...(opts.validateLocations === null
       ? {}
       : {
@@ -403,6 +408,69 @@ describe("M2-T06 identity route inventory", () => {
       });
       expect(ok.statusCode).toBe(200);
       await met.app.close();
+    });
+
+    describe("§11 D19 organization status at sign-in, and a tenant's first admin while it is onboarding", () => {
+      const selectOrg = async (opts: Parameters<typeof makeServer>[0]) => {
+        const { app } = makeServer({ seed, ...opts });
+        const res = await app.inject({
+          method: "POST",
+          url: "/api/v1/auth/select-organization",
+          headers: { "x-test-user": "user_rn" },
+          payload: { organizationId: "org_a" },
+        });
+        await app.close();
+        return res;
+      };
+      const status = (value: "created" | "active" | "suspended" | "closed" | null) => ({
+        organizations: { getStatus: async () => value },
+      });
+
+      it("binds an active org and refuses a created, suspended or closed one by default", async () => {
+        expect((await selectOrg(status("active"))).statusCode).toBe(200);
+        for (const value of ["created", "suspended", "closed"] as const) {
+          const res = await selectOrg(status(value));
+          expect([res.statusCode, res.json().error.code], value).toEqual([
+            403,
+            "ORGANIZATION_NOT_ACTIVE",
+          ]);
+        }
+      });
+
+      it("admits a CREATED org whose tenant is provisioning or onboarding (its first admin must finish onboarding)", async () => {
+        const asked: string[] = [];
+        const res = await selectOrg({
+          ...status("created"),
+          onboardingTenants: {
+            isOnboarding: async (organizationId) => {
+              asked.push(organizationId);
+              return true;
+            },
+          },
+        });
+        expect(res.statusCode).toBe(200);
+        expect(asked).toEqual(["org_a"]);
+      });
+
+      it("still refuses a created org whose tenant is not onboarding (an org nobody provisioned)", async () => {
+        const res = await selectOrg({
+          ...status("created"),
+          onboardingTenants: { isOnboarding: async () => false },
+        });
+        expect([res.statusCode, res.json().error.code]).toEqual([403, "ORGANIZATION_NOT_ACTIVE"]);
+      });
+
+      it("never lets the onboarding fact reopen a suspended or closed org, and does not ask for them", async () => {
+        const isOnboarding = vi.fn(async () => true);
+        for (const value of ["suspended", "closed"] as const) {
+          const res = await selectOrg({ ...status(value), onboardingTenants: { isOnboarding } });
+          expect([res.statusCode, res.json().error.code], value).toEqual([
+            403,
+            "ORGANIZATION_NOT_ACTIVE",
+          ]);
+        }
+        expect(isOnboarding).not.toHaveBeenCalled();
+      });
     });
 
     it("selecting an org without an active membership → 403 NO_ACTIVE_MEMBERSHIP", async () => {

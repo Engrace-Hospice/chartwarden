@@ -222,7 +222,8 @@ variable. The old `wardenx-app` policy and account were never removed, so the re
 
 Canonical names proposed (change the three strings and the nginx files if the user prefers others): web
 `app.chartwarden.cloud`, api `api.chartwarden.cloud`, storage `storage.chartwarden.cloud`. These sit on the demo
-domain (ADR-0088: demo stays `chartwarden.cloud`, single-host, `TENANT_BASE_DOMAIN` unset). The `*.chartwarden.com`
+domain (ADR-0088: demo stays `chartwarden.cloud`, single-host, `TENANT_BASE_DOMAIN` unset, until the owner turns its tenant
+subdomains on: ADR-0088 Amendment 2026-11-05, `TENANT_EDGE.md`). The `*.chartwarden.com`
 wildcard and `admin.`/`app.` hosts of the real environment belong to that separate deployment and its own manifests;
 nothing on this host changes for them.
 

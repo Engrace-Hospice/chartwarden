@@ -3,6 +3,7 @@
 // Unit-level proof of the three enforcement points over stub ports (the live lane, m2-auth-hardening.live,
 // proves the same against real Better Auth + Postgres): the pure matrix, the gate, `select-organization`, the
 // authenticate-stage hold, and the `two-factor/disable` guard.
+import { liveOrganizationStage } from "./_live-organization-stage";
 import {
   evaluateMfa,
   mfaRequirementFor,
@@ -199,6 +200,7 @@ const requestAt = (url: string) =>
 describe("the authenticate-stage hold (GAP-003)", () => {
   const hookFor = (actor: ResolvedActor, satisfied: boolean) =>
     createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
       getResolver: () => resolver(actor),
       mfaEnrolment: { check: async () => ({ satisfied, requirement: "second_factor" }) },

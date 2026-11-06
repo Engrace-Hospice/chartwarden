@@ -157,6 +157,7 @@ const CONTEXT_SCALARS: ReadonlySet<string> = new Set([
   "gustoConnected",
   "primaryLocationExists",
   "orgAdminAcceptedMembershipCount",
+  "complianceOfficerAssigned",
   "allCanonicalTasksDoneOrSkipped",
   "baaExecuted",
 ]);
