@@ -75,6 +75,41 @@ editable; editing it while a go-live attestation is pending voids that attestati
 A step is **skipped** only where it does not apply: MAC, payer enrollment, DoseSpot and sample data. Every other
 step is settled by evidence or by its own facts.
 
+### Step 7: Billing: clearinghouse
+
+The operator chooses Stedi, Claim.MD or billing outside ChartWarden for the tenant (a change of vendor or mode starts the
+new configuration at draft and voids the vendor BAA when the vendor changes; the dialog says so before it is confirmed).
+The vendor credential is write-only: sealed under the tenant's key, never returned or shown, never carried through a
+Re-verify. Billing outside takes no mode and no credential, and its dialog says what it does: ChartWarden transmits
+nothing for the tenant, its billing service mode is set to none, and steps 8 and 9 are skipped for it.
+
+A vendor is then walked to active, each fact shown as met or not yet:
+
+1. the credential is on file;
+2. the tenant recorded its vendor BAA (in its own settings; the operator cannot);
+3. an operator verified the BAA (its own permission). The write is **pinned to the record the operator read**: the
+   prompt shows the document, the effective date and when the tenant recorded it, and `If-Match` is that record's
+   `recordedAt`. A BAA the tenant re-recorded meanwhile re-reads the record, shows the new one under a notice that it
+   changed, and needs a second, deliberate confirm (never an automatic retry). A BAA already verified by someone else
+   closes the prompt;
+4. the connection is verified: a no-patient connection test for Claim.MD (a rejected credential or an unreachable vendor is
+   said in words and nothing is marked verified), an attestation for Stedi (what was checked and by whom, and the
+   operator's own confirmation that the note names no patient);
+5. the clearinghouse is activated, offered only once the connection and the BAA are both verified (otherwise the panel says
+   which is missing).
+
+When a vendor is chosen but the contract's billing service mode is still **None** (outside billing sets it; a later vendor
+choice never moves it back, because the mode is a commercial term), a banner says so and links to the Plan and contract
+step. It reads the contract, an audited read, so it appears only where a vendor is chosen.
+
+### Steps 8 and 9 under "outside"
+
+When the SYSTEM skipped a step because the tenant bills outside ChartWarden, the rail says "Skipped automatically" and the
+step shows why it does not apply, with none of its own forms. The server's `systemSkipped` flag decides this, never the
+rationale text (a person can type the same words on a skip of their own, which keeps the step's own panel). If the tenant
+has since chosen a vendor the step applies again: the server re-opens it by itself, unless a go-live attestation is pending,
+so the panel says so and how to get it back (revoke the attestation, then re-open the step).
+
 ---
 
 ## Tenant Lifecycle
