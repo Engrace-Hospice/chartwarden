@@ -291,7 +291,8 @@ describe.skipIf(BUN === "")("deploy.sh rollback decision under injected failures
   });
 
   describe("one-time SeaweedFS cutover", () => {
-    const index = (o: Outcome, needle: string): number => o.calls.findIndex((c) => c.includes(needle));
+    const index = (o: Outcome, needle: string): number =>
+      o.calls.findIndex((c) => c.includes(needle));
 
     it("a failed mirror undoes the cutover (MinIO back on its port, the stopped api/worker started) before any migration", () => {
       const o = deploy({ legacyMinio: true, copyExit: 1 });
@@ -312,12 +313,20 @@ describe.skipIf(BUN === "")("deploy.sh rollback decision under injected failures
       const o = deploy({ legacyMinio: true, migrateExit: 1 });
       expect(o.code, o.out).toBe(1);
       expect(o.cutoverMarker).toBe(true);
-      expect(o.calls.some((c) => c.includes("--entrypoint touch object-store-provision /config/cutover-done"))).toBe(true);
+      expect(
+        o.calls.some((c) =>
+          c.includes("--entrypoint touch object-store-provision /config/cutover-done"),
+        ),
+      ).toBe(true);
       expect(oldRestarts(o), o.out).toBe(1);
     });
 
     it("an operator hold after the cutover says the api is STOPPED and how to bring it back", () => {
-      const o = deploy({ legacyMinio: true, applied: ["1291_m1_drop_legacy.sql"], provisionExit: 1 });
+      const o = deploy({
+        legacyMinio: true,
+        applied: ["1291_m1_drop_legacy.sql"],
+        provisionExit: 1,
+      });
       expectHeld(o);
       expect(o.out).toContain("THE APP IS DOWN");
     });
