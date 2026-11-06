@@ -299,7 +299,7 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
                   label="EIN"
                   hint="Write-once. Sealed under the tenant's key and never shown again."
                   type="password"
-                  autoComplete="off"
+                  autoComplete="new-password"
                   value={taxId}
                   onChange={(e) => setTaxId(e.target.value)}
                   error={fieldError("taxId")}

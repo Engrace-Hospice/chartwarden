@@ -143,6 +143,13 @@ describe("ProviderEntityPanel", () => {
     });
   });
 
+  it("asks the browser to offer no saved password for the write-once EIN", async () => {
+    mount([], { POST: { [LIST]: () => refused(403, "STEP_UP_REQUIRED") } });
+    await screen.findByText(/No provider entity yet/);
+    fireEvent.click(screen.getByRole("button", { name: "Add provider entity" }));
+    expect(screen.getByLabelText(/^EIN/).getAttribute("autocomplete")).toBe("new-password");
+  });
+
   it("never stashes the EIN through a re-verify, and keeps the rest", async () => {
     mount([], { POST: { [LIST]: () => refused(403, "STEP_UP_REQUIRED") } });
     await screen.findByText(/No provider entity yet/);
