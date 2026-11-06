@@ -14,19 +14,17 @@ import type {
   PostMortemEligibilityView,
   ReRenderReceiptView,
 } from "@chartwarden/consent";
+import { pageLimit, pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/39-consent/routes/consent-typebox.ts — M39-T07 TypeBox route schemas
 // (M39 spec §4.2). Named `consent-typebox` (not `*schema*`) so the table-ownership import heuristic
 // never mistakes a TypeBox-schema import for a Drizzle one. Validation runs through TypeBox `Value`
 // so a bad request fails with M1's VALIDATION_FAILED envelope and query scalars coerce first.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
+/** §4.12 cursor pagination — the kit's signed cursor plus M39's `pageSize` (default 50). */
+const consentPage = { cursor: pageQuery().cursor, pageSize: pageLimit({ defaultSize: 50 }) };
 
 const ConsentTypeKeySchema = Type.Union(CONSENT_TYPE_KEYS.map((k) => Type.Literal(k)));
 
@@ -107,8 +105,7 @@ export const RevokeBodySchema = Type.Object({
 // §4.12 cursor pagination — opaque cursor + bounded page size (never offset).
 export const EvalAuditQuerySchema = Type.Object({
   patientId: Type.Optional(Type.String({ minLength: 1 })),
-  cursor: Type.Optional(Type.String({ minLength: 1 })),
-  pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
+  ...consentPage,
 });
 
 // ── the §4.1 surface beyond the original slice ─────────────────────────────────────────────────
@@ -314,14 +311,12 @@ export const UpdateDpoaAgentBodySchema = Type.Object({
 /** Route 18 — GET /patients/:patientId/expiring-consents (cursor-paginated, §4.12). */
 export const ExpiringConsentsQuerySchema = Type.Object({
   windowDays: Type.Optional(Type.Integer({ minimum: 1, maximum: 365, default: 90 })),
-  cursor: Type.Optional(Type.String({ minLength: 1 })),
-  pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
+  ...consentPage,
 });
 
 /** Route 22 — GET /consents/:consentId/eval-audit (cursor-paginated, §4.12). */
 export const ConsentEvalAuditQuerySchema = Type.Object({
-  cursor: Type.Optional(Type.String({ minLength: 1 })),
-  pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
+  ...consentPage,
 });
 
 /** Route 29 — POST /consents/bereavement-outreach (post-mortem capture, D14). */

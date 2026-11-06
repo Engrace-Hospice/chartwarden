@@ -1,4 +1,5 @@
 import { TileReadQuery, TileReadResponse } from "@chartwarden/reporting";
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/33-reporting/routes/reporting-typebox.ts — M33 (§4.2).
 //
@@ -14,16 +15,7 @@ import { ValidationError } from "@chartwarden/types";
 // @chartwarden/reporting package (packages/reporting/src/schemas/tile-read.ts); we re-export them so the
 // route plugins + the OpenAPI enrichment table reference ONE symbol.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -57,8 +49,7 @@ export const MetricKeyParamsSchema = Type.Object({
 
 // ── queries (cursor / keyset pagination — §4.1) ───────────────────────────────────────────────────────
 const PageQuery = {
-  cursor: Type.Optional(Type.String({ maxLength: 256 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 };
 
 export const DashboardListQuerySchema = Type.Object(PageQuery);

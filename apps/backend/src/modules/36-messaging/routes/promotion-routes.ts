@@ -1,3 +1,8 @@
+import { requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
+import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { PromotionActorRef, PromotionService } from "../promotions/promotion-service";
 // apps/backend/src/modules/36-messaging/routes/promotion-routes.ts - WP 3.7 chart promotion (ADR-0063).
 //
 //   POST /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions   propose a message for the chart
@@ -14,10 +19,7 @@
 // non-reader are ONE 404. M36 never decides accepted/rejected: that arrives from the owning module as an outbox event.
 // No `Idempotency-Key`: idempotency is the partial unique index (one proposed request per message and target), so no
 // request header is read here.
-import { requirePermission } from "@chartwarden/auth";
-import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { PromotionActorRef, PromotionService } from "../promotions/promotion-service";
+import { actorRefOf } from "./actor";
 import { ThreadParamsSchema, parse } from "./messaging-typebox";
 import {
   ListPromotionsQuerySchema,
@@ -25,8 +27,6 @@ import {
   RequestPromotionBodySchema,
 } from "./promotion-typebox";
 import { requireUuidParams } from "./uuid-params";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const PROMOTION_LIST_DEFAULTS = { status: "active", limit: 50 } as const;
 
@@ -61,12 +61,6 @@ export const DISABLED_PROMOTIONS: PromotionRouteDeps = {
 };
 
 const notFound = (): NotFoundError => new NotFoundError("chart_promotion_request");
-
-function actorOf(request: FastifyRequest): PromotionActorRef {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { orgId: ctx.organizationId, userId: ctx.userId };
-}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -106,7 +100,7 @@ export function registerPromotionRoutes(
       config: postAudit,
     },
     async (request, reply) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const p = parse(ThreadParamsSchema, request.params);
       const body = parse(RequestPromotionBodySchema, request.body);
@@ -134,7 +128,7 @@ export function registerPromotionRoutes(
       },
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const p = parse(ThreadParamsSchema, request.params);
       return { promotions: await service.listForMessage(actor, p.id, p.messageId) };
@@ -149,7 +143,7 @@ export function registerPromotionRoutes(
       config: { auditRead: { resourceKind: "chart_promotion_request", list: true } },
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       if (!(await flagOn(actor.orgId))) return { enabled: false, promotions: [] };
       const q = parse(ListPromotionsQuerySchema, request.query);
       const promotions = await service.listMine(actor, {
@@ -173,7 +167,7 @@ export function registerPromotionRoutes(
       },
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const { promotionId } = parse(PromotionParamsSchema, request.params);
       return { promotion: await service.get(actor, promotionId) };
@@ -187,7 +181,7 @@ export function registerPromotionRoutes(
       config: postAudit,
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const { promotionId } = parse(PromotionParamsSchema, request.params);
       return { promotion: await service.withdraw(actor, promotionId) };

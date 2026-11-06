@@ -1,3 +1,4 @@
+import type { GuardHandler } from "@chartwarden/auth";
 // apps/backend/src/modules/36-messaging/routes/clinical-link-routes.ts - WP 3.2 clinical links.
 //
 //   GET /api/v1/messaging/clinical-links/:linkId/resolve
@@ -11,7 +12,7 @@
 //
 // The WRITE half is `validateRichBodyLinks`, used by the send and edit routes: every clinicalLink node is checked before
 // the message commits, with the same guards, and any failure is the same generic 422.
-import type { GuardHandler } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import {
   type ClinicalLinkKind,
   ForbiddenError,
@@ -38,8 +39,6 @@ import {
 } from "../clinical-link/link-sources";
 import { ClinicalLinkParamsSchema, parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface ClinicalLinkRouteDeps {
   /** The tenant flag `messaging.clinical_links`. A throw reads as off (fail closed). */

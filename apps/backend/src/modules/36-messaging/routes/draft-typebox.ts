@@ -1,13 +1,13 @@
+import { Uuid } from "@chartwarden/shared/route-kit";
 import { SBAR_MAX_SECTION_CHARS } from "@chartwarden/types";
 // apps/backend/src/modules/36-messaging/routes/draft-typebox.ts — WP 2.5 draft request/response schemas (kept apart
 // from draft-routes.ts so the OpenAPI emitter imports schemas only, not the auth stack).
 import { Type } from "@sinclair/typebox";
-import { MentionKindSchema, UUID_PATTERN } from "./messaging-typebox";
+import { MentionKindSchema } from "./messaging-typebox";
 
 const Id = Type.String({ minLength: 1, maxLength: 64 });
 
 /** A thread root is a message uuid: a malformed one is a 422 here, never a cast error in the service. */
-const RootId = Type.String({ pattern: UUID_PATTERN });
 
 /** An in-progress SBAR form: plain section text. The service re-checks bounds (422); the schema rejects extra keys. */
 const SbarSection = Type.String({ maxLength: SBAR_MAX_SECTION_CHARS });
@@ -31,10 +31,10 @@ const DraftSbarSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const DraftQuerySchema = Type.Object({ parentMessageId: Type.Optional(RootId) });
+export const DraftQuerySchema = Type.Object({ parentMessageId: Type.Optional(Uuid()) });
 
 export const SaveDraftBodySchema = Type.Object({
-  parentMessageId: Type.Optional(RootId),
+  parentMessageId: Type.Optional(Uuid()),
   // The service enforces the 8000-character ceiling (422) and treats a blank body as a discard.
   body: Type.String({ maxLength: 100_000 }),
   references: Type.Optional(

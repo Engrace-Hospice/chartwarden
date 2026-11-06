@@ -6,6 +6,7 @@ import type {
   MergeRequestRow as ServiceMergeRequestRow,
   NppesSyncRun as ServiceNppesSyncRun,
 } from "@chartwarden/mdm";
+import { pageLimit } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/40-mdm/routes/mdm-typebox.ts — M40-T07 TypeBox route schemas for the
 // MDM API surface (M40 spec §4.1–4.2). Named `mdm-typebox` (not `*schema*`) so the table-ownership
@@ -16,21 +17,7 @@ import { ValidationError } from "@chartwarden/types";
 // shape check. The `:kind` param is the closed `MDM_ENTITY_KINDS` union, so an unknown kind is a
 // malformed request, never routed.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-// --- format registration (TypeBox Value does not validate `format` until registered) ----------
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set(
-    "date",
-    (v) => typeof v === "string" && DATE_RE.test(v) && !Number.isNaN(Date.parse(v)),
-  );
-}
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
 
 /** The closed `:kind` enum — every MDM entity kind (§2.3). */
 export const KindSchema = Type.Union(MDM_ENTITY_KINDS.map((k) => Type.Literal(k)));
@@ -46,7 +33,7 @@ export const IdParamsSchema = Type.Object({ id: Type.String({ format: "uuid" }) 
 export const SearchQuerySchema = Type.Object({
   q: Type.Optional(Type.String({ maxLength: 120 })),
   identifier: Type.Optional(Type.String({ maxLength: 64 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 25 })),
+  limit: pageLimit({ max: 100, defaultSize: 25 }),
 });
 
 // --- POST /:kind/get-or-create (§4.2) — Phase-1 minimal identifying shape -----------------------

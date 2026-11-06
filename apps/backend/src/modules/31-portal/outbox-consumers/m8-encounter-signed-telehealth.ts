@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/31-portal/outbox-consumers/m8-encounter-signed-telehealth.ts — the §4.10
 // `m8.encounter.signed` (telehealth-attached) binding (F-139/#248's follow-up build).
 //
@@ -30,16 +31,13 @@
 // is a real, reportable gap this build does not force through: it is left exactly as-is (not reconciled),
 // which is honest (the room genuinely never formally ended) rather than a silently-wrong `reconciled` stamp
 // on a room nobody closed.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { TelehealthLifecycleState } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import { TELEHEALTH_ENDED_STATES, canTransitionTelehealth } from "../telehealth/visit-lifecycle";
 
 const TV = schema.telehealthVisits;
-
-/** Mirrors the sibling telehealth consumers' sentinel — no actor column this update needs to stamp. */
-const CONSUMER_USER_ID = "";
 
 const M31_ENCOUNTER_SIGNED_TELEHEALTH_CONSUMER = {
   eventName: "m8.encounter.signed",

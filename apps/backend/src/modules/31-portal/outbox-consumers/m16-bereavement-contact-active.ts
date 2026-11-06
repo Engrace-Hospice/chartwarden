@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/31-portal/outbox-consumers/m16-bereavement-contact-active.ts — the §4.10
 // `m16.bereavement.contact_active` binding (F-167, #248, continuation of F-160/F-164/F-165's M31 build).
 //
@@ -40,7 +41,7 @@
 // link, the live-grant pre-check excludes an account whose grant is already `bereaved_family` (flip already
 // ran), and revoke/insert execute inside one transaction — a redelivery after a successful flip finds no
 // non-bereaved live grant left to flip and no-ops, never a duplicate insert or a second revoke.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
@@ -55,7 +56,6 @@ const PAG = schema.portalAccessGrants;
 
 /** Not a real membership row — mirrors the sibling M16-consumer's system-actor sentinel;
  *  `granted_by_membership_id` is nullable as of mig 0257 for exactly this cascade. */
-const CONSUMER_USER_ID = "";
 
 /** §7.5/D6 — the platform's first (and, to date, only) floor-schema version — mirrors
  *  `m16-bereavement-plan-opened.ts`'s own constant exactly; both consumers must agree on it, since a

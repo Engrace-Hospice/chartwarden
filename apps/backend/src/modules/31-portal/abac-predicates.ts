@@ -1,3 +1,9 @@
+import {
+  PORTAL_SESSION_CLASSES as AUTH_PORTAL_SESSION_CLASSES,
+  type AbacContext,
+  type AbacTarget,
+  registerPredicateIdempotent,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/31-portal/abac-predicates.ts — M31-T07 (§4.7 / §8.2).
 //
 // The SIX named ABAC predicate resolvers M31 registers into M3's named-predicate registry. Each is a typed
@@ -38,12 +44,7 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards on
 // `abacRegistry.has`.
-import {
-  PORTAL_SESSION_CLASSES as AUTH_PORTAL_SESSION_CLASSES,
-  type AbacContext,
-  type AbacTarget,
-  registerPredicateIdempotent,
-} from "@chartwarden/auth";
+import { targetStr } from "@chartwarden/shared/route-kit";
 import type { PortalAccessGrantKind, PortalAccountStatus } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 import { consentTypeForGrantKind, portalSessionClass } from "./lifecycle/portal-access-gate";
@@ -224,14 +225,6 @@ export interface PortalAbacDeps {
   /** Injected clock (the `asOf` the bereavement-window path compares against). */
   readonly now?: () => Date;
 }
-
-const targetStr = (target: AbacTarget, ...fields: string[]): string | null => {
-  for (const field of fields) {
-    const value = target[field];
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  return null;
-};
 
 /** The SERVER-assembled session class (M2). Never a header, body or query field. */
 function portalSessionClassOf(context: AbacContext): string {

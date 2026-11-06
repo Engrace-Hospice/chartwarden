@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/36-messaging/ack-requests/unacknowledged-reader-db.ts - WP 4.9 (ADR-0076): the SQL half of the supervisor's
 // unacknowledged queue. Read-only, as the signed-in user inside their organisation (RLS on app.org_id; every statement also names the
 // organisation). It lists EVERY request that still waits for a human (`pending`, `escalated`, `failed_unreachable`) in deadline order,
@@ -6,14 +7,13 @@
 // Paging is keyset on (deadline_at, tie) where `tie` is the SHA-256 of the request id: unique in practice, stable, and the cursor never
 // carries a request id (a restricted row's id must not leave the server, not even inside an opaque cursor). The counts are computed
 // without the page limit and without the cursor, so the page can always be checked against them.
-import { type DbClient, schema } from "@chartwarden/db";
+import { decodeCursor, encodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ACK_QUEUE_STATUSES,
   type AckEscalationNote,
   type AckQueueCounts,
   type AckQueueStatus,
-  ChartWardenError,
 } from "@chartwarden/types";
 import { type SQL, and, asc, eq, gt, inArray, lte, or, sql } from "drizzle-orm";
 import type { AckRow } from "./ack-types";
@@ -55,51 +55,6 @@ export type UnacknowledgedReader = (
   userId: string,
   query: QueueQuery,
 ) => Promise<QueuePage>;
-
-const CURSOR_TIME = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}(:?\d{2})?$/;
-const CURSOR_TIE = /^[0-9a-f]{64}$/;
-const CURSOR_PARTS =
-  /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?([+-])(\d{2})(?::?(\d{2}))?$/;
-/** A well-shaped but impossible time (month 13, 99:99:99) would reach the timestamptz cast and be a 500; it is the caller's mistake. */
-function isRealTime(text: string): boolean {
-  const m = CURSOR_PARTS.exec(text);
-  if (!m) return false;
-  const [y, mo, d, h, mi, sec, , oh, om] = m.slice(1).map((v) => (v === undefined ? 0 : Number(v)));
-  const probe = new Date(Date.UTC(y as number, (mo as number) - 1, d as number));
-  return (
-    probe.getUTCFullYear() === y &&
-    probe.getUTCMonth() === (mo as number) - 1 &&
-    probe.getUTCDate() === d &&
-    (h as number) < 24 &&
-    (mi as number) < 60 &&
-    (sec as number) < 60 &&
-    (oh as number) <= 15 &&
-    (om as number) < 60
-  );
-}
-const invalidCursor = (): ChartWardenError =>
-  new ChartWardenError("INVALID_CURSOR", "the cursor is not valid", 400);
-
-export function encodeQueueCursor(deadlineAtText: string, tie: string): string {
-  return Buffer.from(`${deadlineAtText}|${tie}`, "utf8").toString("base64url");
-}
-
-/** Anything this service did not issue is the caller's mistake: a 400, never a cast error and never a silent first page. */
-export function decodeQueueCursor(cursor: string): { deadlineAt: string; tie: string } {
-  const parts = Buffer.from(cursor, "base64url").toString("utf8").split("|");
-  const [deadlineAt, tie] = parts;
-  if (
-    parts.length !== 2 ||
-    !deadlineAt ||
-    !tie ||
-    !CURSOR_TIME.test(deadlineAt) ||
-    !isRealTime(deadlineAt) ||
-    !CURSOR_TIE.test(tie)
-  ) {
-    throw invalidCursor();
-  }
-  return { deadlineAt, tie };
-}
 
 const toRow = (r: typeof R.$inferSelect): AckRow => ({
   id: r.id,
@@ -216,7 +171,8 @@ export function queueFilters(
 
 export function createDbUnacknowledgedReader(db: DbClient): UnacknowledgedReader {
   return async (orgId, userId, q) => {
-    const keyset = q.cursor ? decodeQueueCursor(q.cursor) : null;
+    const cursor = decodeCursor(orgId, q.cursor, isKeysetCursor);
+    const keyset = cursor && { deadlineAt: cursor.a, tie: cursor.id };
     const nowIso = q.now.toISOString();
     const filters = queueFilters(orgId, q);
     const page = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
@@ -239,7 +195,7 @@ export function createDbUnacknowledgedReader(db: DbClient): UnacknowledgedReader
     const notes = await notesFor(db, orgId, userId, rows, q.now);
     return {
       rows: rows.map((row) => ({ row, note: notes.get(row.id) ?? null })),
-      nextCursor: more && last ? encodeQueueCursor(last.deadlineText, last.tie) : null,
+      nextCursor: more && last ? encodeCursor(orgId, { a: last.deadlineText, id: last.tie }) : null,
       counts: {
         unfiltered: page.counts?.unfiltered ?? 0,
         matching: page.counts?.matching ?? 0,

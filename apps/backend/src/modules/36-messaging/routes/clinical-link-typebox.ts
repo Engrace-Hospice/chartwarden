@@ -1,3 +1,4 @@
+import { Uuid } from "@chartwarden/shared/route-kit";
 import { CLINICAL_LINK_KINDS } from "@chartwarden/types";
 // apps/backend/src/modules/36-messaging/routes/clinical-link-typebox.ts - WP 3.2 schemas (params + OpenAPI response).
 import { Type } from "@sinclair/typebox";
@@ -16,14 +17,14 @@ export const ClinicalLinkResolveResponseSchema = Type.Union([
     occurred_at: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
     as_of: Type.String({ format: "date-time" }),
     link: Type.String(),
-    patient_id: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+    patient_id: Type.Union([Uuid(), Type.Null()]),
   }),
   Type.Object({ state: Type.Literal("unavailable") }),
 ]);
 
 /** One link on a message read: ids and kind only (no status or label; the client calls resolve per chip). */
 export const ClinicalLinkViewSchema = Type.Object({
-  link_id: Type.String({ format: "uuid" }),
+  link_id: Uuid(),
   kind: KindSchema,
-  entity_id: Type.String({ format: "uuid" }),
+  entity_id: Uuid(),
 });

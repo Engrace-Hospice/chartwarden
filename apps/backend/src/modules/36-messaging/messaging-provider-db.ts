@@ -1,3 +1,11 @@
+import { type AuditExecutor, audit } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
+import type {
+  ChannelKind,
+  MessageBodyKind,
+  MessagingProvider,
+  ResolvedMessage,
+} from "@chartwarden/messaging";
 // apps/backend/src/modules/36-messaging — PRODUCTION `MessagingProvider` seam (§4.6) over Drizzle
 // (FB-T05). The cross-module channel/message surface other modules consume without a direct schema
 // edge: the implementation is injected into the M1 seam registry and validated by validateSeams(),
@@ -16,21 +24,13 @@
 // deferrals — driven by M16/M17/M19 outbox events not wired in Phase 1 — since they have no equivalent
 // read seam yet (a clear NOT_IMPLEMENTED throw beats reconciling against source data with no producer).
 // GAP-104 (2026-10-05): `archiveCareTeamChannel` is real (see `outbox-consumers/channel-membership-sync.ts`).
-import { type AuditExecutor, audit } from "@chartwarden/audit";
-import { type DbClient, schema } from "@chartwarden/db";
-import type {
-  ChannelKind,
-  MessageBodyKind,
-  MessagingProvider,
-  ResolvedMessage,
-} from "@chartwarden/messaging";
+import { decodeCursor, encodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { bindAttachmentsInTx } from "./attachments/attachment-service-db";
 import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-category-gate";
-import { decodeCursor, encodeCursor } from "./message-cursor";
 import { publishMessageHint } from "./message-hint-events";
 import { loadApprovedRedactions } from "./message-redaction-mask";
 import {
@@ -122,7 +122,8 @@ export function createDbMessagingProvider(
       }
       const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
       const backward = input.direction === "backward";
-      const cursor = input.cursor ? decodeCursor(input.cursor) : null;
+      const keyset = decodeCursor(orgId, input.cursor, isKeysetCursor);
+      const cursor = keyset && { createdAt: keyset.a, id: keyset.id };
       const where = [eq(MSG.organizationId, orgId), eq(MSG.channelId, input.channelId)];
       if (cursor) {
         where.push(
@@ -193,7 +194,7 @@ export function createDbMessagingProvider(
         messages,
         nextCursor:
           hasMore && cursorRow
-            ? encodeCursor(cursorRow.createdAt.toISOString(), cursorRow.id)
+            ? encodeCursor(orgId, { a: cursorRow.createdAt.toISOString(), id: cursorRow.id })
             : undefined,
       };
     });

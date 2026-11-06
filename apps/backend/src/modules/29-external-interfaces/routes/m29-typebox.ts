@@ -1,3 +1,20 @@
+// apps/backend/src/modules/29-external-interfaces/routes/m29-typebox.ts — M29-T08 (§4.1 / §4.2) request schemas.
+//
+// TypeBox request bodies, path params and list queries for the §4.1 operator + §4.2 clinician routes. Named
+// `m29-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import for
+// a Drizzle one (the M21-T01 gotcha).
+//
+// THE STRING-LITERAL UNIONS MIRROR the frozen `@chartwarden/types` unions (`packages/types/src/external-interfaces.ts`,
+// M29-T01), which mirror the `@chartwarden/db` pgEnums and the §3 CHECK vocabularies. The DB wins on conflict —
+// the §4.3 spec sketch used a different feed-type vocabulary (`hl7v2_inbound_adt` …); the enrichment publishes
+// what the validator enforces (the T02 schema's `adt_inbound` | `lab_inbound` | `orm_outbound`), not the prose.
+//
+// FOUR THINGS NOTHING HERE ACCEPTS: (1) no organization id and no acting membership — both are server-side
+// (@chartwarden/shared/route-kit); (2) no channel SECRET readable back — a rotated credential's plaintext is minted/accepted
+// once and never returned; (3) no `status` a caller may set directly — every status change walks the §2.2
+// FSM through a named transition route; (4) no decrypted HL7 payload on a list route — the plaintext is a
+// dedicated step-up decrypt route.
+import { pageQuery, Uuid as uuidSchema } from "@chartwarden/shared/route-kit";
 import {
   EXTERNAL_FEED_CREDENTIAL_KINDS,
   EXTERNAL_FEED_KINDS,
@@ -12,32 +29,8 @@ import {
   ValidationError,
   XI_PROPOSAL_REJECT_RATIONALE_MIN_CHARS,
 } from "@chartwarden/types";
-// apps/backend/src/modules/29-external-interfaces/routes/m29-typebox.ts — M29-T08 (§4.1 / §4.2) request schemas.
-//
-// TypeBox request bodies, path params and list queries for the §4.1 operator + §4.2 clinician routes. Named
-// `m29-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import for
-// a Drizzle one (the M21-T01 gotcha).
-//
-// THE STRING-LITERAL UNIONS MIRROR the frozen `@chartwarden/types` unions (`packages/types/src/external-interfaces.ts`,
-// M29-T01), which mirror the `@chartwarden/db` pgEnums and the §3 CHECK vocabularies. The DB wins on conflict —
-// the §4.3 spec sketch used a different feed-type vocabulary (`hl7v2_inbound_adt` …); the enrichment publishes
-// what the validator enforces (the T02 schema's `adt_inbound` | `lab_inbound` | `orm_outbound`), not the prose.
-//
-// FOUR THINGS NOTHING HERE ACCEPTS: (1) no organization id and no acting membership — both are server-side
-// (./actor.ts); (2) no channel SECRET readable back — a rotated credential's plaintext is minted/accepted
-// once and never returned; (3) no `status` a caller may set directly — every status change walks the §2.2
-// FSM through a named transition route; (4) no decrypted HL7 payload on a list route — the plaintext is a
-// dedicated step-up decrypt route.
-import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -60,7 +53,7 @@ export function parseQuery<T extends TSchema>(schema: T, raw: unknown): Static<T
   return check(schema, Value.Convert(schema, raw ?? {}));
 }
 
-const Uuid = Type.String({ format: "uuid" });
+const Uuid = uuidSchema();
 const Instant = Type.String({ format: "date-time" });
 const Lit = <T extends string>(members: readonly T[]) =>
   Type.Union(members.map((m) => Type.Literal(m)));
@@ -82,16 +75,12 @@ const NppesSyncKindSchema = Lit(NPPES_SYNC_KINDS);
 
 export const ProposalIdParams = Type.Object({ proposalId: Uuid });
 
-const Cursor = Type.Optional(Type.String({ maxLength: 200 }));
-const Limit = Type.Optional(Type.Integer({ minimum: 1, maximum: 200 }));
-
 // ── §4.1.1 feed management ────────────────────────────────────────────────────────────────────────────
 
 export const FeedListQuery = Type.Object({
   kind: Type.Optional(FeedKindSchema),
   status: Type.Optional(FeedStatusSchema),
-  limit: Limit,
-  cursor: Cursor,
+  ...pageQuery(),
 });
 export type FeedListQueryInput = Static<typeof FeedListQuery>;
 
@@ -202,8 +191,7 @@ export const ProposalListQuery = Type.Object({
   ownerModule: Type.Optional(ProposalOwnerModuleSchema),
   feedId: Type.Optional(Uuid),
   proposedForPatientId: Type.Optional(Uuid),
-  limit: Limit,
-  cursor: Cursor,
+  ...pageQuery(),
 });
 export type ProposalListQueryInput = Static<typeof ProposalListQuery>;
 
@@ -234,8 +222,7 @@ export const InboundMessageListQuery = Type.Object({
   messageType: Type.Optional(Type.String({ maxLength: 20 })),
   messageControlId: Type.Optional(Type.String({ maxLength: 200 })),
   parseStatus: Type.Optional(ParseStatusSchema),
-  limit: Limit,
-  cursor: Cursor,
+  ...pageQuery(),
 });
 export type InboundMessageListQueryInput = Static<typeof InboundMessageListQuery>;
 
@@ -243,8 +230,7 @@ export const OutboundMessageListQuery = Type.Object({
   feedId: Type.Optional(Uuid),
   placerOrderNumber: Type.Optional(Uuid),
   status: Type.Optional(OutboundStatusSchema),
-  limit: Limit,
-  cursor: Cursor,
+  ...pageQuery(),
 });
 export type OutboundMessageListQueryInput = Static<typeof OutboundMessageListQuery>;
 
@@ -256,8 +242,7 @@ export const NppesSyncTriggerBody = Type.Object({
 export type NppesSyncTriggerInput = Static<typeof NppesSyncTriggerBody>;
 
 export const NppesSyncRunListQuery = Type.Object({
-  limit: Limit,
-  cursor: Cursor,
+  ...pageQuery(),
 });
 export type NppesSyncRunListQueryInput = Static<typeof NppesSyncRunListQuery>;
 
@@ -267,8 +252,7 @@ export const ObservationListQuery = Type.Object({
   patientId: Type.Optional(Uuid),
   loincCode: Type.Optional(Type.String({ maxLength: 20 })),
   abnormalFlag: Type.Optional(AbnormalFlagSchema),
-  limit: Limit,
-  cursor: Cursor,
+  ...pageQuery(),
 });
 export type ObservationListQueryInput = Static<typeof ObservationListQuery>;
 

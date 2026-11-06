@@ -3,12 +3,12 @@
 // The org/actor binding for every M33 route is ALWAYS server-side (the M2-assembled `request.context`,
 // NEVER the body/query). This is the single home for that extraction (the M34 routes/tenant/actor.ts
 // precedent), so no handler reads an org id off the wire.
-import { UnauthorizedError } from "@chartwarden/types";
-import type { FastifyReply, FastifyRequest } from "fastify";
+import {
+  type ContextCarrier,
+  actorOf as routeActorOf,
+  writeActorOf as routeWriteActorOf,
+} from "@chartwarden/shared/route-kit";
 import type { M33ReadActor } from "./read-service";
-
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /**
  * Extract the org-scoped actor from `request.context` (server-assembled), or 401.
@@ -18,16 +18,9 @@ export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promi
  * and the tile denies — the same fail-closed answer `reportable_scope` itself gives an actor it cannot
  * scope-filter.
  */
-export function actorOf(request: FastifyRequest): M33ReadActor {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  const membershipId = ctx.attributes?.membershipId;
-  return {
-    organizationId: ctx.organizationId,
-    userId: ctx.userId,
-    roles: ctx.roles,
-    ...(typeof membershipId === "string" && membershipId.length > 0 ? { membershipId } : {}),
-  };
+export function actorOf(request: ContextCarrier): M33ReadActor {
+  const { organizationId, userId, roles, membershipId } = routeActorOf(request);
+  return { organizationId, userId, roles, ...(membershipId === null ? {} : { membershipId }) };
 }
 
 /**
@@ -41,18 +34,7 @@ export interface M33WriteActor extends M33ReadActor {
 }
 
 /** Extract the write actor (org + user + roles + active membership id) from `request.context`, or 401/403. */
-export function writeActorOf(request: FastifyRequest): M33WriteActor {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  const membershipId = ctx.attributes?.membershipId;
-  if (typeof membershipId !== "string" || membershipId.length === 0) {
-    // No active membership on the session → cannot own an authored row (fail-closed, never anonymous-author).
-    throw new UnauthorizedError("an active membership is required to author reporting content");
-  }
-  return {
-    organizationId: ctx.organizationId,
-    userId: ctx.userId,
-    roles: ctx.roles,
-    membershipId,
-  };
+export function writeActorOf(request: ContextCarrier): M33WriteActor {
+  const { organizationId, userId, roles, membershipId } = routeWriteActorOf(request);
+  return { organizationId, userId, roles, membershipId };
 }

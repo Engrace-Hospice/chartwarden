@@ -1,3 +1,8 @@
+import { requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
+import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { Actor, SnoozeReminderService } from "../snooze-reminders/snooze-reminder-service";
 // apps/backend/src/modules/36-messaging/routes/snooze-reminder-routes.ts - WP 4.10 (ADR-0077).
 //
 //   GET    /api/v1/messaging/channels/:id/snooze     the caller's snooze of a conversation + whether it can be snoozed now
@@ -13,10 +18,7 @@
 // All of it is the caller's OWN preference: messaging.read, and the conversation must be visible to the caller to create one (a
 // withdraw needs only the flag, so someone who lost access can still undo). Org and actor come from the request context. The tenant
 // flag `messaging.notification_policy` off is the uniform 404. Responses are never cached.
-import { requirePermission } from "@chartwarden/auth";
-import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { Actor, SnoozeReminderService } from "../snooze-reminders/snooze-reminder-service";
+import { actorRefOf } from "./actor";
 import { ChannelParamsSchema, parse } from "./messaging-typebox";
 import {
   MessageParamsSchema,
@@ -24,8 +26,6 @@ import {
   SnoozeBodySchema,
 } from "./snooze-reminder-typebox";
 import { requireUuidParams } from "./uuid-params";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface SnoozeReminderRouteDeps {
   readonly service: SnoozeReminderService;
@@ -52,12 +52,6 @@ export interface SnoozeReminderRouteGuards {
   readonly requireIdempotencyKey: PreHandler;
 }
 
-function actorOf(request: FastifyRequest): Actor {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { orgId: ctx.organizationId, userId: ctx.userId };
-}
-
 const NO_STORE = "no-store";
 
 export function registerSnoozeReminderRoutes(
@@ -79,7 +73,7 @@ export function registerSnoozeReminderRoutes(
       const { id } = parse(ChannelParamsSchema, request.params);
       return reply
         .header("Cache-Control", NO_STORE)
-        .send(await service.getSnooze(actorOf(request), id));
+        .send(await service.getSnooze(actorRefOf(request), id));
     },
   );
 
@@ -89,7 +83,7 @@ export function registerSnoozeReminderRoutes(
     async (request, reply) => {
       const { id } = parse(ChannelParamsSchema, request.params);
       const body = parse(SnoozeBodySchema, request.body);
-      const view = await service.snooze(actorOf(request), id, body.duration_minutes);
+      const view = await service.snooze(actorRefOf(request), id, body.duration_minutes);
       return reply.header("Cache-Control", NO_STORE).send(view);
     },
   );
@@ -101,7 +95,7 @@ export function registerSnoozeReminderRoutes(
       const { id } = parse(ChannelParamsSchema, request.params);
       return reply
         .header("Cache-Control", NO_STORE)
-        .send(await service.clearSnooze(actorOf(request), id));
+        .send(await service.clearSnooze(actorRefOf(request), id));
     },
   );
 
@@ -112,7 +106,9 @@ export function registerSnoozeReminderRoutes(
       config: { auditRead: { resourceKind: "message_reminder", list: true } },
     },
     async (request, reply) =>
-      reply.header("Cache-Control", NO_STORE).send(await service.listReminders(actorOf(request))),
+      reply
+        .header("Cache-Control", NO_STORE)
+        .send(await service.listReminders(actorRefOf(request))),
   );
 
   app.put(
@@ -121,7 +117,7 @@ export function registerSnoozeReminderRoutes(
     async (request, reply) => {
       const { id } = parse(MessageParamsSchema, request.params);
       const body = parse(ReminderBodySchema, request.body);
-      const view = await service.setReminder(actorOf(request), id, body.remind_at);
+      const view = await service.setReminder(actorRefOf(request), id, body.remind_at);
       return reply.header("Cache-Control", NO_STORE).send(view);
     },
   );
@@ -133,7 +129,7 @@ export function registerSnoozeReminderRoutes(
       const { id } = parse(MessageParamsSchema, request.params);
       return reply
         .header("Cache-Control", NO_STORE)
-        .send(await service.clearReminder(actorOf(request), id));
+        .send(await service.clearReminder(actorRefOf(request), id));
     },
   );
 }

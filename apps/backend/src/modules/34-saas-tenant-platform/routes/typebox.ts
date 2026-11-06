@@ -1,3 +1,4 @@
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/typebox.ts — M34 shared TypeBox route schemas
 // (§4.2). Named `typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox
@@ -8,19 +9,7 @@ import { ValidationError } from "@chartwarden/types";
 // spec spells out; representative where it abbreviates). Org binding is server-side (`request.context` /
 // `withOrgContext` / `withPlatformContext`), NEVER the body — no schema below carries an `organizationId`.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("email")) {
-  FormatRegistry.Set("email", (v) => typeof v === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v));
-}
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -214,8 +203,7 @@ export const TenantFlagWriteRequest = Type.Object({
 
 // ── Queries (cursor / keyset pagination — §4.1 SD-052) ─────────────────────────────────────────────────
 const PageQuery = {
-  cursor: Type.Optional(Type.String({ maxLength: 256 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 };
 
 export const TenantListQuerySchema = Type.Object({

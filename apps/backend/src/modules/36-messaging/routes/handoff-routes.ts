@@ -1,3 +1,8 @@
+import { requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
+import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { HandoffActorRef, HandoffService } from "../handoffs/handoff-service";
 // apps/backend/src/modules/36-messaging/routes/handoff-routes.ts - WP 3.5 clinical handoffs (ADR-0062).
 //
 //   GET    /api/v1/messaging/handoffs?scope&state&limit            my handoffs (incoming|outgoing)        (messaging.read)
@@ -14,10 +19,7 @@
 // actor are always the request context. Participant rules (sender or recipient only) live in the service: a missing handoff
 // and a non-participant are ONE 404. No `Idempotency-Key`: idempotency is the partial unique index (one open offer per
 // sender and receiver), so no request header is read here.
-import { requirePermission } from "@chartwarden/auth";
-import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { HandoffActorRef, HandoffService } from "../handoffs/handoff-service";
+import { actorRefOf } from "./actor";
 import {
   AcceptHandoffBodySchema,
   DeclineHandoffBodySchema,
@@ -28,8 +30,6 @@ import {
   PutHandoffPolicyBodySchema,
 } from "./handoff-typebox";
 import { parse } from "./messaging-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const HANDOFF_LIST_DEFAULTS = { scope: "incoming", state: "active", limit: 50 } as const;
 
@@ -68,12 +68,6 @@ export const DISABLED_HANDOFFS: HandoffRouteDeps = {
 };
 
 const notFound = (): NotFoundError => new NotFoundError("clinical_handoff");
-
-function actorOf(request: FastifyRequest): HandoffActorRef {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { orgId: ctx.organizationId, userId: ctx.userId };
-}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -115,7 +109,7 @@ export function registerHandoffRoutes(
       config: { auditRead: { resourceKind: "clinical_handoff", list: true } },
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       if (!(await flagOn(actor.orgId))) return { enabled: false, handoffs: [] };
       const q = parse(ListHandoffsQuerySchema, request.query);
       const handoffs = await service.list(actor, {
@@ -135,7 +129,7 @@ export function registerHandoffRoutes(
       config: { auditRead: { resourceKind: "clinical_handoff_caseload", list: true } },
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       return { patients: await service.caseload(actor) };
     },
@@ -154,7 +148,7 @@ export function registerHandoffRoutes(
       },
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const body = parse(PrefillBodySchema, request.body);
       return service.prefill(actor, body.patient_ids);
@@ -165,7 +159,7 @@ export function registerHandoffRoutes(
     "/api/v1/messaging/handoffs",
     { preHandler: [guards.send, PATIENT_READ], config: postAudit },
     async (request, reply) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const body = parse(OfferHandoffBodySchema, request.body);
       const result = await service.offer(actor, { toUserId: body.to_user_id, items: body.items });
@@ -182,7 +176,7 @@ export function registerHandoffRoutes(
       },
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       return service.policy(actor);
     },
@@ -202,7 +196,7 @@ export function registerHandoffRoutes(
       },
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const { handoffId } = parse(HandoffParamsSchema, request.params);
       return { handoff: await service.get(actor, handoffId) };
@@ -213,7 +207,7 @@ export function registerHandoffRoutes(
     "/api/v1/messaging/handoffs/:handoffId/accept",
     { preHandler: writeOne, config: postAudit },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const { handoffId } = parse(HandoffParamsSchema, request.params);
       const body = parse(AcceptHandoffBodySchema, request.body);
@@ -225,7 +219,7 @@ export function registerHandoffRoutes(
     "/api/v1/messaging/handoffs/:handoffId/decline",
     { preHandler: writeOne, config: postAudit },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const { handoffId } = parse(HandoffParamsSchema, request.params);
       const body = parse(DeclineHandoffBodySchema, request.body ?? {});
@@ -237,7 +231,7 @@ export function registerHandoffRoutes(
     "/api/v1/messaging/handoffs/:handoffId/cancel",
     { preHandler: writeOne, config: postAudit },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const { handoffId } = parse(HandoffParamsSchema, request.params);
       return { handoff: await service.cancel(actor, handoffId) };
@@ -249,13 +243,13 @@ export function registerHandoffRoutes(
     { preHandler: [MANAGE] },
     async (request) => {
       const body = parse(PutHandoffPolicyBodySchema, request.body);
-      return service.setPolicy(actorOf(request), body.expiry_minutes);
+      return service.setPolicy(actorRefOf(request), body.expiry_minutes);
     },
   );
 
   app.delete(
     "/api/v1/messaging/template-admin/handoff-policy",
     { preHandler: [MANAGE] },
-    async (request) => service.clearPolicy(actorOf(request)),
+    async (request) => service.clearPolicy(actorRefOf(request)),
   );
 }

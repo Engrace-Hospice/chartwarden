@@ -21,16 +21,6 @@ export function terminologyRefusalOf(err: unknown): TerminologyDbRefusal | null 
   return null;
 }
 
-/** A Postgres unique-violation anywhere in the chain (a duplicate code in a staged chunk). */
-export function isUniqueViolation(err: unknown): boolean {
-  let cur: unknown = err;
-  for (let depth = 0; depth < 6 && cur instanceof Error; depth++) {
-    if ((cur as { code?: unknown }).code === "23505") return true;
-    cur = (cur as { cause?: unknown }).cause;
-  }
-  return false;
-}
-
 /**
  * A terminology function's refusal as a clean error: `message` is `TERMINOLOGY_<REASON>: detail` (the driver's
  * "Failed query: …" wrapper is dropped), `code` the machine token.

@@ -8,8 +8,8 @@
 // (the task's assignee OR org_admin). No step-up on this surface (§6/D10). The read surface is
 // auditRead-declared in the Drizzle service. Mirrors registerDocumentRoutes EXACTLY.
 import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf } from "./actor";
 import type { TenantRouteService } from "./service";
 import {
   OnboardingBlockRequest,

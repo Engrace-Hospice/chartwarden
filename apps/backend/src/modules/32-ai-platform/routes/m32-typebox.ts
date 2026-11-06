@@ -1,3 +1,4 @@
+import { Uuid, pageLimit } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/32-ai-platform/routes/m32-typebox.ts — M32-T07 (§4.1) request schemas.
 //
@@ -26,16 +27,8 @@ import { ValidationError } from "@chartwarden/types";
 //   4. NO `resolvedContentHash` ON A PROMPT ACTIVATION. The service READS the artifact and computes it
 //      (prompts/service.ts). A caller supplying both a path and its digest is asserting they agree, and
 //      verifying that assertion against the bytes is the only thing that makes the pin mean anything.
-import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -59,8 +52,7 @@ export function parseQuery<T extends TSchema>(schema: T, raw: unknown): Static<T
   return check(schema, Value.Convert(schema, raw ?? {}));
 }
 
-const Uuid = Type.String({ format: "uuid" });
-const UuidOrNull = Type.Union([Type.String({ format: "uuid" }), Type.Null()]);
+const UuidOrNull = Type.Union([Uuid(), Type.Null()]);
 const Instant = Type.String({ format: "date-time" });
 const InstantOpt = Type.Optional(Type.String({ format: "date-time" }));
 /** Operator prose that lands in a governance ledger. Never PHI; the cap is the column's practical max. */
@@ -203,10 +195,10 @@ export const InvocationStatus = Lit(
 
 // ── path params ─────────────────────────────────────────────────────────────────────────────────────
 
-export const CapabilityIdParams = Type.Object({ capabilityId: Uuid });
-export const InvocationIdParams = Type.Object({ invocationId: Uuid });
-export const ReportIdParams = Type.Object({ reportId: Uuid });
-export const RunIdParams = Type.Object({ runId: Uuid });
+export const CapabilityIdParams = Type.Object({ capabilityId: Uuid() });
+export const InvocationIdParams = Type.Object({ invocationId: Uuid() });
+export const ReportIdParams = Type.Object({ reportId: Uuid() });
+export const RunIdParams = Type.Object({ runId: Uuid() });
 /** R29/R30 key a template by the CAPABILITY KEY, not by an id — §4.5's cache is keyed the same way. */
 export const CapabilityKeyParams = Type.Object({
   capabilityKey: Type.String({ minLength: 1, maxLength: 120 }),
@@ -301,7 +293,7 @@ const OptInAcknowledgmentsBody = Type.Object({
 });
 
 export const RecordTenantOptInBody = Type.Object({
-  capabilityId: Uuid,
+  capabilityId: Uuid(),
   routingMode: RoutingMode,
   pilotEnrollment: Type.Boolean(),
   acknowledgments: OptInAcknowledgmentsBody,
@@ -321,29 +313,29 @@ export const RevokeTenantOptInBody = Type.Object({
 // ── R13 — clinician opt-out (§5.4) ──────────────────────────────────────────────────────────────────
 
 export const RecordClinicianOptOutBody = Type.Object({
-  capabilityId: Uuid,
+  capabilityId: Uuid(),
   reason: Type.Optional(ProseOrNull(1000)),
 });
 
 // ── R16 — the disclosure-ledger search ──────────────────────────────────────────────────────────────
 
 export const InvocationSearchQuery = Type.Object({
-  capabilityId: Type.Optional(Uuid),
+  capabilityId: Type.Optional(Uuid()),
   capabilityKey: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
   backendKey: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
   status: Type.Optional(InvocationStatus),
-  patientId: Type.Optional(Uuid),
+  patientId: Type.Optional(Uuid()),
   from: InstantOpt,
   to: InstantOpt,
   /** Narrow to rows that reached a `kind='cloud'` backend — the §164.528 disclosure subset. */
   disclosuresOnly: Type.Optional(Type.Boolean()),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  limit: pageLimit(),
 });
 
 // ── R18 / R20 — hallucination report and triage (§3.2.10, D9) ───────────────────────────────────────
 
 export const FileHallucinationReportBody = Type.Object({
-  capabilityId: Uuid,
+  capabilityId: Uuid(),
   /** `null` when the clinician cannot name the call — §3.2.10: the reports that matter most are often
    *  the ones where provenance is already broken. */
   invocationId: UuidOrNull,
@@ -355,7 +347,7 @@ export const FileHallucinationReportBody = Type.Object({
    * carries the chart context, and a second copy in a report body is a second thing to erase.
    */
   reporterNarrative: Prose(1, 1000),
-  providerEntityId: Type.Optional(Uuid),
+  providerEntityId: Type.Optional(Uuid()),
 });
 
 export const TriageHallucinationReportBody = Type.Object({
@@ -370,27 +362,27 @@ export const TriageHallucinationReportBody = Type.Object({
 });
 
 export const HallucinationQueueQuery = Type.Object({
-  capabilityId: Type.Optional(Uuid),
+  capabilityId: Type.Optional(Uuid()),
   status: Type.Optional(HallucinationTriageStatus),
 });
 
 // ── R21 / R22 — token ledger + forecast ─────────────────────────────────────────────────────────────
 
 export const TokenLedgerQuery = Type.Object({
-  capabilityId: Type.Optional(Uuid),
+  capabilityId: Type.Optional(Uuid()),
   from: InstantOpt,
   to: InstantOpt,
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  limit: pageLimit(),
 });
 
 export const TokenForecastQuery = Type.Object({
-  capabilityId: Type.Optional(Uuid),
+  capabilityId: Type.Optional(Uuid()),
 });
 
 // ── R23 / R24 — routing overrides (§3.2.13, W8) ─────────────────────────────────────────────────────
 
 export const SetRoutingOverrideBody = Type.Object({
-  capabilityId: Uuid,
+  capabilityId: Uuid(),
   backendKeyPreference: Type.String({ minLength: 1, maxLength: 120 }),
   overrideReason: RoutingOverrideReason,
   effectiveAt: InstantOpt,
@@ -401,8 +393,8 @@ export const SetRoutingOverrideBody = Type.Object({
 // ── R26 / R27 — evaluation runs (§3.2.11, D10) ──────────────────────────────────────────────────────
 
 export const QueueEvaluationRunBody = Type.Object({
-  capabilityId: Uuid,
-  backendId: Uuid,
+  capabilityId: Uuid(),
+  backendId: Uuid(),
   datasetVersionRef: Type.String({ minLength: 1, maxLength: 200 }),
   mlflowRunId: Type.String({ minLength: 1, maxLength: 200 }),
   stage: EvaluationRunStage,
@@ -410,7 +402,7 @@ export const QueueEvaluationRunBody = Type.Object({
 });
 
 export const EvaluationRunQuery = Type.Object({
-  capabilityId: Type.Optional(Uuid),
+  capabilityId: Type.Optional(Uuid()),
   status: Type.Optional(EvaluationRunStatus),
 });
 
@@ -429,7 +421,7 @@ export const ActivatePromptTemplateBody = Type.Object({
   /** D18's two prefixes — what a consumer's boot validator matches its prohibited zone against. */
   outputEntityTargetPrefix: Type.String({ minLength: 1, maxLength: 120 }),
   outputTypePrefix: Type.String({ minLength: 1, maxLength: 120 }),
-  approvedByMembershipId: Uuid,
+  approvedByMembershipId: Uuid(),
   clinicalReviewerAttestation: Prose(1, 4000),
 });
 

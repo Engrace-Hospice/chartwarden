@@ -1,3 +1,9 @@
+import { requirePermission } from "@chartwarden/auth";
+import { REVIEW_LIST_DEFAULT } from "@chartwarden/messaging";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
+import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { ReviewActorRef, ReviewService } from "../review/review-service";
 // apps/backend/src/modules/36-messaging/routes/review-routes.ts - WP 3.8 lifecycle review queue (ADR-0065).
 //
 //   GET  /api/v1/messaging/review-items?state&limit                      the supervisor queue   (messaging.read + messaging.review + patient.read)
@@ -12,11 +18,7 @@
 // reads it), which would leave the patients this queue discloses out of the Section 164.528 accounting. So the list is
 // audited as a multi-patient single read: one `messaging_review_item.viewed` event per distinct patient disclosed, all
 // against the first item's id. A restricted row carries no patient id and is skipped by construction.
-import { requirePermission } from "@chartwarden/auth";
-import { REVIEW_LIST_DEFAULT } from "@chartwarden/messaging";
-import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { ReviewActorRef, ReviewService } from "../review/review-service";
+import { actorRefOf } from "./actor";
 import { parse } from "./messaging-typebox";
 import {
   CloseReviewBodySchema,
@@ -24,8 +26,6 @@ import {
   ReassignReviewBodySchema,
   ReviewParamsSchema,
 } from "./review-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface ReviewRouteDeps {
   /** The tenant flag `messaging.tasks`. A throw reads as off (fail closed). */
@@ -50,12 +50,6 @@ export const DISABLED_REVIEW: ReviewRouteDeps = {
 };
 
 const notFound = (): NotFoundError => new NotFoundError("messaging_review_item");
-
-function actorOf(request: FastifyRequest): ReviewActorRef {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { orgId: ctx.organizationId, userId: ctx.userId };
-}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -101,7 +95,7 @@ export function registerReviewRoutes(
       },
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       if (!(await flagOn(actor.orgId))) return { enabled: false, items: [] };
       const q = parse(ListReviewItemsQuerySchema, request.query);
       const items = await service.list(actor, {
@@ -116,7 +110,7 @@ export function registerReviewRoutes(
     "/api/v1/messaging/review-items/:reviewItemId/reassign",
     { preHandler: actionGuards, config: actionAudit },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const { reviewItemId } = parse(ReviewParamsSchema, request.params);
       const body = parse(ReassignReviewBodySchema, request.body);
@@ -128,7 +122,7 @@ export function registerReviewRoutes(
     "/api/v1/messaging/review-items/:reviewItemId/close",
     { preHandler: actionGuards, config: actionAudit },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const { reviewItemId } = parse(ReviewParamsSchema, request.params);
       const body = parse(CloseReviewBodySchema, request.body);

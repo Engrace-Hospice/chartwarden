@@ -1,4 +1,3 @@
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/30-quality/routes/quality-typebox.ts — M30 (§4.2) request schemas.
 //
 // TypeBox path-param / query / body schemas for the 47 §4.1 routes (quality measures, CAHPS, QAPI, SRA,
@@ -15,23 +14,14 @@ import { ValidationError } from "@chartwarden/types";
 // they differ — incident severity is `minor|moderate|severe|critical` (not the spec's
 // `mild|…|sentinel`) and the measure period kind is `rolling_12m_to_quarter|…|cap_year_overlay` (not the
 // spec's `rolling_12mo|…|cms_reference_period`). Architecture/schema wins on conflict.
+import { Uuid, pageQuery } from "@chartwarden/shared/route-kit";
+import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
-}
+import { MAX_PAGE_SIZE } from "./pagination";
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
-const uuid = () => Type.String({ format: "uuid" });
+const uuid = Uuid;
 const isoInstant = () => Type.String({ format: "date-time" });
 const isoDate = () => Type.String({ format: "date" });
 
@@ -115,10 +105,7 @@ const CloseCosignerSchema = Type.Object({ cosignerMembershipId: uuid() });
 const DimensionPayload = Type.Record(Type.String(), Type.Unknown());
 
 // ── cursor / keyset page query (§4.1.2 — opaque cursor + clamp-to-100 limit) ───────────────────────────
-const PageQuery = {
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
-};
+const PageQuery = pageQuery({ max: MAX_PAGE_SIZE });
 
 // ── path params ────────────────────────────────────────────────────────────────────────────────────────
 export const MeasureIdParamsSchema = Type.Object({
@@ -444,7 +431,7 @@ export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
 
 const m30Nullable = <T extends TSchema>(inner: T) => Type.Union([inner, Type.Null()]);
 
-/** `concurrency.ts` → `CursorPage<T>` (§4.12 — opaque cursor, never an offset). */
+/** `pagination.ts` → `CursorPage<T>` (§4.12 — opaque cursor, never an offset). */
 const m30PageOf = <T extends TSchema>(item: T) =>
   Type.Object({
     items: Type.Array(item),

@@ -66,8 +66,15 @@ import {
 } from "../../invitation-token";
 import type { AutoActivationResult } from "../../jobs/platform-sweeps-worker";
 import type { ProvisionJobPort } from "../../jobs/provision-job-port";
+import {
+  type CursorPage,
+  PLATFORM_CURSOR_SCOPE,
+  decodeKeyset,
+  encodeKeyset,
+  pageSizeOf,
+  paginate,
+} from "../keyset-page";
 import { evaluateActivationGuards, pickGoverningBaa } from "./activation-guards";
-import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
 import { partitionEffects } from "./effect-ledger";
 import { evaluateDestructionGuards, retentionEndsAtFrom } from "./offboarding-guards";
 import type {
@@ -477,7 +484,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
               ? v.legalBusinessName.toLowerCase().includes(filter.search.toLowerCase())
               : true,
           );
-        return paginate(views, cursor, limit);
+        return paginate(PLATFORM_CURSOR_SCOPE, views, cursor, limit);
       });
     },
 
@@ -771,7 +778,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             expiresAt: iso(i.expiresAt),
             createdAt: isoReq(i.issuedAt),
           }));
-        const p = paginate(views, cursor, limit);
+        const p = paginate(PLATFORM_CURSOR_SCOPE, views, cursor, limit);
         return { ...p, items: p.items.map(({ createdAt: _c, ...i }) => i) };
       });
     },
@@ -889,7 +896,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const sorted = [...views].sort((a, b) =>
           a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1,
         );
-        return paginate(sorted, cursor, limit);
+        return paginate(PLATFORM_CURSOR_SCOPE, sorted, cursor, limit);
       });
     },
 
@@ -948,7 +955,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           .map((r) => sessionView(r.s, r.grant, now))
           .filter((v) => (filter.status ? v.status === filter.status : true));
         const withCursor = views.map((v) => ({ ...v, createdAt: v.startedAt }));
-        const p = paginate(withCursor, cursor, limit);
+        const p = paginate(PLATFORM_CURSOR_SCOPE, withCursor, cursor, limit);
         return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
       });
     },
@@ -972,7 +979,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           actorIp: e.actorIp ?? null,
           createdAt: isoReq(e.occurredAt),
         }));
-        const p = paginate(views, cursor, limit);
+        const p = paginate(PLATFORM_CURSOR_SCOPE, views, cursor, limit);
         return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
       });
     },
@@ -1041,7 +1048,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             tenantAccountId: i.tenantAccountId ?? null,
             createdAt: isoReq(i.receivedAt),
           }));
-        const p = paginate(views, cursor, limit);
+        const p = paginate(PLATFORM_CURSOR_SCOPE, views, cursor, limit);
         return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
       });
     },
@@ -1148,7 +1155,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           ...v,
           createdAt: v.executedOn ?? v.effectiveOn ?? "0000-00-00",
         }));
-        const p = paginate(withCursor, cursor, limit);
+        const p = paginate(PLATFORM_CURSOR_SCOPE, withCursor, cursor, limit);
         return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
       });
     },
@@ -1215,7 +1222,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       return inPlatformCtx("platform-ops list tenant export jobs", async (tx) => {
         const repo = new TenantExportRepository(tx);
         const size = pageSizeOf(limit);
-        const keyset = cursor ? decodeCursor(cursor) : undefined;
+        const keyset = decodeKeyset(PLATFORM_CURSOR_SCOPE, cursor);
         // limit + 1 so `hasMore` is answered by the read itself, never by a second count query.
         const rows = await repo.listPlatformPage({
           organizationId: filter.organizationId,
@@ -1259,7 +1266,10 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           items,
           nextCursor:
             hasMore && last
-              ? encodeCursor({ createdAt: last.requestedAt.toISOString(), id: last.id })
+              ? encodeKeyset(PLATFORM_CURSOR_SCOPE, {
+                  createdAt: last.requestedAt.toISOString(),
+                  id: last.id,
+                })
               : null,
           hasMore,
         };
@@ -1341,7 +1351,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       const sorted = [...withCursor].sort((a, b) =>
         a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1,
       );
-      const p = paginate(sorted, cursor, limit);
+      const p = paginate(PLATFORM_CURSOR_SCOPE, sorted, cursor, limit);
       return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
     },
 

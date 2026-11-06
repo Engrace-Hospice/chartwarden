@@ -1,4 +1,5 @@
 import { FilterTypeBox, ReportDefinitionSpec, ScheduledReportCreate } from "@chartwarden/reporting";
+import { pageQuery } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/33-reporting/routes/write-typebox.ts — M33 (§4.2 MUTATING surface).
 //
 // TypeBox request / path / query schemas for the M33 MUTATING surface (routes #8–#31): report
@@ -15,17 +16,9 @@ import { FilterTypeBox, ReportDefinitionSpec, ScheduledReportCreate } from "@cha
 // VALIDATION_FAILED envelope). Org/actor/owner binding is ALWAYS server-side (request.context) — the
 // body never carries an organization_id or an owner membership id.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 
 // Defence-in-depth format registration (idempotent) — `./reporting-typebox` registers these on load
 // too, but a route file may import this module first.
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -38,10 +31,9 @@ const DEFINITION_AUTHORSHIP = ["system", "tenant"] as const;
 const SHARE_SCOPE = ["private", "role", "org"] as const;
 const SCHEDULE_STATUS = ["active", "paused", "cancelled"] as const;
 
-// ── pagination (the keyset/cursor envelope every M33 list route paginates on, ./concurrency) ──────────
+// ── pagination (the keyset/cursor envelope every M33 list route paginates on, ./pagination) ──────────
 const PageQuery = {
-  cursor: Type.Optional(Type.String({ maxLength: 256 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 };
 
 // ── report definitions (#8–#14) ───────────────────────────────────────────────────────────────────────
@@ -195,7 +187,7 @@ import type {
   ViewView as ServiceViewView,
 } from "./write-service";
 
-/** The keyset/cursor page envelope every M33 list route paginates on (`./concurrency` `CursorPage`). */
+/** The keyset/cursor page envelope every M33 list route paginates on (`./pagination` `CursorPage`). */
 const CursorPageOf = <T extends TSchema>(item: T) =>
   Type.Object({
     items: Type.Array(item),

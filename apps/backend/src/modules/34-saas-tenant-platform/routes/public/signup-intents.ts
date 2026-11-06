@@ -1,3 +1,4 @@
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, RateLimitedError } from "@chartwarden/types";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/public/signup-intents.ts — M34 the PUBLIC
 // self-serve signup surface (§4.1 "Public routes (no session)"; §7.1 Phase-3). Three pre-organization,
@@ -25,16 +26,13 @@ import { ChartWardenError, RateLimitedError } from "@chartwarden/types";
 // is returned to the prospect's email channel (M36), NEVER in the HTTP response, and only its SHA256 hash is
 // persisted (value-capture-denylisted in the audit projection, §3.10).
 import { type Static, Type } from "@sinclair/typebox";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   AcceptInvitationRequest,
   PublicSignupIntentRequest,
   TokenHashParamsSchema,
   parse,
 } from "../typebox";
-
-/** A preHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The error code the public routes return when the flag is OFF (the Phase-1 platform default). */
 const SIGNUP_DISABLED_CODE = "SIGNUP_DISABLED" as const;

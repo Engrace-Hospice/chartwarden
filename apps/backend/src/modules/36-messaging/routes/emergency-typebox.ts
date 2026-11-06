@@ -1,15 +1,13 @@
 // apps/backend/src/modules/36-messaging/routes/emergency-typebox.ts - M36 ADR-0106 route schemas. The request side is parsed by hand in the
 // handler (after the flag check), so a malformed request cannot tell a flag-off tenant from a flag-on one.
+import { Uuid } from "@chartwarden/shared/route-kit";
 import { Type } from "@sinclair/typebox";
 
-const UUID_PATTERN =
-  "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
-
 export const EmergencyMessageParamsSchema = Type.Object({
-  messageId: Type.String({ pattern: UUID_PATTERN }),
+  messageId: Uuid(),
 });
 export const EmergencyParamsSchema = Type.Object({
-  emergencyId: Type.String({ pattern: UUID_PATTERN }),
+  emergencyId: Uuid(),
 });
 
 const SummaryProps = {

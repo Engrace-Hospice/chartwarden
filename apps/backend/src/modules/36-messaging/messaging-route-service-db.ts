@@ -66,6 +66,7 @@ import {
   mayManageChannelMembersResolved,
   rollUpAlertOutcome,
 } from "@chartwarden/messaging";
+import { decodeCursor, encodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
@@ -106,7 +107,6 @@ import { type GroupTagPorts, groupTagCandidates, resolveGroupTags } from "./grou
 import { isMessageHeldNow } from "./jobs/retention-hold-sql";
 import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-category-gate";
 import { createDbMentionNonMemberSearch } from "./mention-non-member-service-db";
-import { decodeCursor, encodeCursor } from "./message-cursor";
 import { publishMessageHint } from "./message-hint-events";
 import { hasRedactionMark, loadApprovedRedactions } from "./message-redaction-mask";
 import { createDbMessageSearchService } from "./message-search-service-db";
@@ -1467,7 +1467,8 @@ export function createDbMessagingRouteService(
         if (!ch[0]) throw new NotFoundError("channel", input.channelId);
         const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
         const where: SQL[] = [eq(MSG.organizationId, orgId), eq(MSG.channelId, input.channelId)];
-        let cur = input.cursor ? decodeCursor(input.cursor) : null;
+        const keyset = decodeCursor(orgId, input.cursor, isKeysetCursor);
+        let cur = keyset && { createdAt: keyset.a, id: keyset.id };
         const backward = input.anchorMessageId ? true : input.direction === "backward";
         let includeCursor = false;
         if (input.anchorMessageId) {
@@ -1520,7 +1521,9 @@ export function createDbMessagingRouteService(
         );
         const cursorRow = backward ? chronologicalRows[0] : chronologicalRows.at(-1);
         const nextCursor =
-          hasMore && cursorRow ? encodeCursor(cursorRow.createdAtMicros, cursorRow.id) : undefined;
+          hasMore && cursorRow
+            ? encodeCursor(orgId, { a: cursorRow.createdAtMicros, id: cursorRow.id })
+            : undefined;
         await recordGrantReadInTx(
           tx,
           {
@@ -1569,7 +1572,8 @@ export function createDbMessagingRouteService(
           eq(MSG.channelId, input.channelId),
           eq(MSG.parentMessageId, input.messageId),
         ];
-        const cur = input.cursor ? decodeCursor(input.cursor) : null;
+        const keyset = decodeCursor(orgId, input.cursor, isKeysetCursor);
+        const cur = keyset && { createdAt: keyset.a, id: keyset.id };
         if (cur) where.push(sql`(${MSG.createdAt}, ${MSG.id}) > (${cur.createdAt}, ${cur.id})`);
         // Oldest first: a thread reads top to bottom. Same (created_at, id) keyset as the channel list, with the
         // cursor carrying the microsecond text of created_at so rows sharing a millisecond neither repeat nor vanish.
@@ -1602,7 +1606,10 @@ export function createDbMessagingRouteService(
         return {
           root: root!,
           replies,
-          nextCursor: hasMore && last ? encodeCursor(last.createdAtMicros, last.id) : undefined,
+          nextCursor:
+            hasMore && last
+              ? encodeCursor(orgId, { a: last.createdAtMicros, id: last.id })
+              : undefined,
           patientId: isPatientSubjectKind(ch[0].kind as ChannelKind) ? ch[0].subjectId : null,
         };
       });

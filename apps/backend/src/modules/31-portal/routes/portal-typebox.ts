@@ -1,3 +1,4 @@
+import { Uuid, pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/31-portal/routes/portal-typebox.ts — M31-T07 (§4.2) request/response contracts.
 //
@@ -7,23 +8,8 @@ import { ValidationError } from "@chartwarden/types";
 // import for an ownership claim (the M19/M20 routes/*-typebox precedent). Every schema is exported so the
 // OpenAPI enrichment registry (`scripts/openapi/enrichments.ts`) reuses the SAME shape the handler
 // validates against — the contract cannot drift from the validator.
-import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("email")) {
-  FormatRegistry.Set("email", (v) => typeof v === "string" && EMAIL_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("uri")) {
-  FormatRegistry.Set("uri", (v) => typeof v === "string" && v.length > 0);
-}
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -45,35 +31,34 @@ export function parseQuery<T extends TSchema>(schema: T, raw: unknown): Static<T
   return check(schema, Value.Convert(schema, raw ?? {}));
 }
 
-const Uuid = Type.String({ format: "uuid" });
 const Iso = Type.String({ format: "date-time" });
 const LayStr = Type.String();
 
-export const VisitIdParams = Type.Object({ visitId: Uuid });
-export const EngagementIdParams = Type.Object({ engagementId: Uuid });
+export const VisitIdParams = Type.Object({ visitId: Uuid() });
+export const EngagementIdParams = Type.Object({ engagementId: Uuid() });
 
 // ── §4.2 session ────────────────────────────────────────────────────────────────────────────────────────
-export const SelectPatientRequest = Type.Object({ patientId: Uuid });
+export const SelectPatientRequest = Type.Object({ patientId: Uuid() });
 export const SelectPatientResponse = Type.Object({
-  sessionId: Uuid,
-  activePatientId: Uuid,
-  activeGrantId: Uuid,
+  sessionId: Uuid(),
+  activePatientId: Uuid(),
+  activeGrantId: Uuid(),
   scopeSet: Type.Array(LayStr),
   layPatientLabel: LayStr,
 });
 export const PortalSessionCurrentResponse = Type.Object({
-  portalAccountId: Uuid,
-  activePatientId: Type.Union([Uuid, Type.Null()]),
-  activeGrantId: Type.Union([Uuid, Type.Null()]),
+  portalAccountId: Uuid(),
+  activePatientId: Type.Union([Uuid(), Type.Null()]),
+  activeGrantId: Type.Union([Uuid(), Type.Null()]),
   scopeSet: Type.Array(LayStr),
   relationship: LayStr,
   status: LayStr,
 });
 // ── invitee SIGN-IN (pre-org session -> portal session) ───────────────────────────────────────────────────
 /** Names the portal account to sign in to when the user holds several (omitted when exactly one is eligible). */
-export const PortalSignInEstablishRequest = Type.Object({ portalAccountId: Type.Optional(Uuid) });
+export const PortalSignInEstablishRequest = Type.Object({ portalAccountId: Type.Optional(Uuid()) });
 export const PortalSignInEstablishResponse = Type.Object({
-  portalAccountId: Uuid,
+  portalAccountId: Uuid(),
   organizationName: LayStr,
   sessionClass: LayStr,
   replayed: Type.Boolean(),
@@ -81,7 +66,7 @@ export const PortalSignInEstablishResponse = Type.Object({
 export const PortalSignInAccountsResponse = Type.Object({
   items: Type.Array(
     Type.Object({
-      portalAccountId: Uuid,
+      portalAccountId: Uuid(),
       organizationName: LayStr,
       relationship: LayStr,
       /** `null` when the account can sign in; otherwise the typed reason code. */
@@ -93,8 +78,8 @@ export const PortalSignInAccountsResponse = Type.Object({
 export const PortalSessionPatientsResponse = Type.Object({
   items: Type.Array(
     Type.Object({
-      patientId: Uuid,
-      grantId: Uuid,
+      patientId: Uuid(),
+      grantId: Uuid(),
       grantKind: LayStr,
       scopeSet: Type.Array(LayStr),
       layPatientLabel: LayStr,
@@ -142,7 +127,7 @@ export const WithinQuery = Type.Object({
 
 // ── §4.2 caregiver-attested administration (write into M13) ─────────────────────────────────────────────
 export const CaregiverAttestedAdministrationRequest = Type.Object({
-  medicationOrderId: Uuid,
+  medicationOrderId: Uuid(),
   administeredAt: Iso,
   administeredAmount: Type.Number({ minimum: 0 }),
   administeredUnit: LayStr,
@@ -151,7 +136,7 @@ export const CaregiverAttestedAdministrationRequest = Type.Object({
   caregiverAttestationText: Type.String({ minLength: 5, maxLength: 500 }),
 });
 export const CaregiverAttestedAdministrationResponse = Type.Object({
-  administrationId: Uuid,
+  administrationId: Uuid(),
   status: LayStr,
 });
 
@@ -177,12 +162,12 @@ export const PortalDocumentUploadInitRequest = Type.Object({
   expectedByteSize: Type.Integer({ minimum: 1, maximum: 52428800 }),
 });
 export const PortalDocumentUploadInitResponse = Type.Object({
-  uploadId: Uuid,
+  uploadId: Uuid(),
   /** GAP-092 — the M31 content route the bytes are PUT to (same origin as the API; session-authenticated). */
   signedUploadUrl: Type.String(),
   signedUploadUrlExpiresAt: Iso,
 });
-export const UploadCompleteResponse = Type.Object({ uploadId: Uuid, status: LayStr });
+export const UploadCompleteResponse = Type.Object({ uploadId: Uuid(), status: LayStr });
 /** GAP-092 — the content route's body IS the file: raw bytes (`application/pdf`, `image/*`), not JSON. */
 export const UploadContentBody = Type.String({
   format: "binary",
@@ -190,7 +175,7 @@ export const UploadContentBody = Type.String({
 });
 /** GAP-092 — the staged-bytes acknowledgement of the content route. */
 export const UploadStageResponse = Type.Object({
-  uploadId: Uuid,
+  uploadId: Uuid(),
   status: LayStr,
   byteSize: Type.Integer(),
 });
@@ -201,27 +186,26 @@ export const AmendmentSubmitRequest = Type.Object({
     Type.Literal("patient_demographic"),
     Type.Literal("encounter_narrative"),
   ]),
-  targetRef: Type.Optional(Uuid),
+  targetRef: Type.Optional(Uuid()),
   requestedChange: Type.String({ minLength: 5, maxLength: 4000 }),
 });
 export const AmendmentSubmitResponse = Type.Object({
-  amendmentRequestRefId: Uuid,
+  amendmentRequestRefId: Uuid(),
   status: LayStr,
 });
 
 // ── §4.2 messages ───────────────────────────────────────────────────────────────────────────────────────
 export const MessagesChannelResponse = Type.Object({
-  channelId: Uuid,
+  channelId: Uuid(),
   lastReadPointer: Type.Union([LayStr, Type.Null()]),
 });
 export const PortalMessageHistoryQuery = Type.Object({
-  cursor: Type.Optional(LayStr),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+  ...pageQuery({ max: 50 }),
 });
 export const PortalMessageHistoryResponse = Type.Object({
   messages: Type.Array(
     Type.Object({
-      messageId: Uuid,
+      messageId: Uuid(),
       body: LayStr,
       sentAt: Iso,
       direction: Type.Union([Type.Literal("outgoing"), Type.Literal("incoming")]),
@@ -233,12 +217,12 @@ export const PortalMessageHistoryResponse = Type.Object({
 export const MessageSendRequest = Type.Object({
   body: Type.String({ minLength: 1, maxLength: 8000 }),
 });
-export const MessageSendResponse = Type.Object({ messageId: Uuid });
+export const MessageSendResponse = Type.Object({ messageId: Uuid() });
 
 // ── §4.2 notification preferences ───────────────────────────────────────────────────────────────────────
 export const NotificationPreferencesResponse = Type.Object({
   channels: Type.Array(
-    Type.Object({ id: Type.Optional(Uuid), channel: LayStr, enabled: Type.Boolean() }),
+    Type.Object({ id: Type.Optional(Uuid()), channel: LayStr, enabled: Type.Boolean() }),
   ),
   quietHours: Type.Optional(Type.Object({ startHour: Type.Integer(), endHour: Type.Integer() })),
 });
@@ -266,9 +250,9 @@ export const StartRecordingRequest = Type.Object({
   acknowledgesPatientConsent: Type.Literal(true),
 });
 export const TelehealthVisitDetailResponse = Type.Object({
-  telehealthVisitId: Uuid,
-  m17VisitId: Uuid,
-  patientId: Uuid,
+  telehealthVisitId: Uuid(),
+  m17VisitId: Uuid(),
+  patientId: Uuid(),
   lifecycleState: LayStr,
   vendor: LayStr,
   audioOnlyFallbackActive: Type.Boolean(),
@@ -282,22 +266,22 @@ export const WebhookAckResponse = Type.Object({ received: Type.Boolean() });
 
 // ── §4.2 admin — invitations ────────────────────────────────────────────────────────────────────────────
 export const PortalInvitationIssueRequest = Type.Object({
-  patientId: Uuid,
+  patientId: Uuid(),
   relationship: Type.Union([
     Type.Literal("patient_self"),
     Type.Literal("family_caregiver"),
     Type.Literal("dpoa_healthcare_agent"),
     Type.Literal("personal_representative_post_death"),
   ]),
-  caregiverId: Type.Optional(Uuid),
+  caregiverId: Type.Optional(Uuid()),
   inviteeDisplayName: Type.String({ minLength: 1, maxLength: 200 }),
   inviteeEmail: Type.String({ format: "email" }),
   inviteePhone: Type.Optional(LayStr),
   proposedScopeSet: Type.Array(LayStr),
 });
 export const PortalInvitationIssueResponse = Type.Object({
-  invitationId: Uuid,
-  portalAccountId: Uuid,
+  invitationId: Uuid(),
+  portalAccountId: Uuid(),
   status: LayStr,
   expiresAt: Iso,
   /** The single-use link, present only when no delivery channel sent it (the admin hands it over). */
@@ -311,21 +295,21 @@ export const PortalInvitationAcceptRequest = Type.Object({
   token: Type.String({ minLength: 40, maxLength: 200 }),
 });
 export const PortalInvitationAcceptResponse = Type.Object({
-  portalAccountId: Uuid,
-  patientId: Uuid,
+  portalAccountId: Uuid(),
+  patientId: Uuid(),
   grantKind: LayStr,
   status: LayStr,
   replayed: Type.Boolean(),
 });
 export const InviteBereavedRequest = Type.Object({
-  bereavedContactId: Uuid,
+  bereavedContactId: Uuid(),
   inviteeDisplayName: Type.String({ minLength: 1, maxLength: 200 }),
   inviteeEmail: Type.String({ format: "email" }),
 });
 export const PortalInvitationListResponse = Type.Object({
   items: Type.Array(
     Type.Object({
-      invitationId: Uuid,
+      invitationId: Uuid(),
       relationship: LayStr,
       status: LayStr,
       issuedAt: Iso,
@@ -339,7 +323,7 @@ export const AccountSuspendRequest = Type.Object({
   reason: Type.String({ minLength: 3, maxLength: 500 }),
 });
 const PortalAccountSummary = Type.Object({
-  portalAccountId: Uuid,
+  portalAccountId: Uuid(),
   relationship: LayStr,
   status: LayStr,
   invitedAt: Iso,
@@ -350,8 +334,8 @@ export const PortalAccountListResponse = Type.Object({ items: Type.Array(PortalA
 export const PortalAccountGrantListResponse = Type.Object({
   items: Type.Array(
     Type.Object({
-      grantId: Uuid,
-      patientId: Uuid,
+      grantId: Uuid(),
+      patientId: Uuid(),
       grantKind: LayStr,
       grantedAt: Iso,
       revokedAt: Type.Union([Iso, Type.Null()]),
@@ -361,7 +345,7 @@ export const PortalAccountGrantListResponse = Type.Object({
 export const PortalAuditViewResponse = Type.Object({
   items: Type.Array(
     Type.Object({
-      patientId: Uuid,
+      patientId: Uuid(),
       routePath: LayStr,
       viewedAt: Iso,
     }),
@@ -391,7 +375,7 @@ const SignatureStatus = Type.Union([
 ]);
 /** What a portal user may see of a request: never the signer's typed name, relationship or reason. */
 const PortalSignatureRequestView = Type.Object({
-  id: Uuid,
+  id: Uuid(),
   docKind: SignatureDocKind,
   status: SignatureStatus,
   templateKey: LayStr,
@@ -430,7 +414,7 @@ export const PortalSignatureSignRequest = Type.Object(
 );
 /** Attach a completed `signed_admission_document` upload to an open request as its signed paper copy. */
 export const PortalSignatureAttachUpload = Type.Object(
-  { uploadId: Uuid },
+  { uploadId: Uuid() },
   { additionalProperties: false },
 );
 export const PortalSignatureAttachResponse = Type.Object({ request: PortalSignatureRequestView });
@@ -443,10 +427,10 @@ export const PortalSignatureSignResponse = Type.Object({
 /** Staff name the patient and the document kind; the template key and version are stamped by the server, never supplied. */
 export const StaffSignatureRequestCreate = Type.Object(
   {
-    patientId: Uuid,
+    patientId: Uuid(),
     docKind: SignatureDocKind,
     /** Required for the election statement (the drafted statement's id) and the notice of rights (the admission's id); refused for the others. */
-    targetRef: Type.Optional(Uuid),
+    targetRef: Type.Optional(Uuid()),
   },
   { additionalProperties: false },
 );
@@ -467,19 +451,19 @@ export const StaffSignatureRequestReview = Type.Object(
   {
     decision: Type.Union([Type.Literal("accepted"), Type.Literal("rejected")]),
     // The uploaded copy the reviewer was shown (the row's uploadedDocumentId): a decision never lands on a copy replaced since.
-    uploadedDocumentId: Uuid,
+    uploadedDocumentId: Uuid(),
   },
   { additionalProperties: false },
 );
 export const StaffSignatureRequestView = Type.Object({
-  id: Uuid,
-  patientId: Uuid,
+  id: Uuid(),
+  patientId: Uuid(),
   docKind: SignatureDocKind,
   status: Type.Union([SignatureStatus, Type.Literal("voided")]),
   templateKey: LayStr,
   templateVersion: LayStr,
-  targetRef: Type.Union([Uuid, Type.Null()]),
-  requestedBy: Uuid,
+  targetRef: Type.Union([Uuid(), Type.Null()]),
+  requestedBy: Uuid(),
   requestedAt: Iso,
   lastRemindedAt: Type.Union([Iso, Type.Null()]),
   reminderCount: Type.Integer({ minimum: 0 }),
@@ -492,13 +476,13 @@ export const StaffSignatureRequestView = Type.Object({
   ]),
   voidReason: Type.Union([LayStr, Type.Null()]),
   /** The M22 document of the uploaded signed copy awaiting review (open it in the document viewer), else null. */
-  uploadedDocumentId: Type.Union([Uuid, Type.Null()]),
+  uploadedDocumentId: Type.Union([Uuid(), Type.Null()]),
   reviewOutcome: Type.Union([Type.Literal("accepted"), Type.Literal("rejected"), Type.Null()]),
 });
 export const StaffSignatureRequestListResponse = Type.Object({
   items: Type.Array(StaffSignatureRequestView),
 });
 export const StaffSignatureRequestQuery = Type.Object(
-  { patientId: Uuid },
+  { patientId: Uuid() },
   { additionalProperties: false },
 );

@@ -6,7 +6,7 @@
 // key never leaves the server.
 import type { FastifyInstance } from "fastify";
 
-import { actorOf, writeActorOf } from "./actor";
+import { actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import { ABAC_IN_ORG, P, STEP_UP } from "./guards";
 import { PutConfigBody, parse } from "./m28-typebox";
 import type { FhirGatewayStore } from "./store";

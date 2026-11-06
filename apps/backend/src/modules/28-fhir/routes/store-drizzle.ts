@@ -22,6 +22,7 @@ import {
   fhirInboundSubjectPatientId,
   inboundPayloadSha256,
 } from "@chartwarden/fhir";
+import { Uuid } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   FHIR_INBOUND_REJECT_RATIONALE_MIN_CHARS,
@@ -32,6 +33,7 @@ import {
   type FhirInboundOwnerModule,
   type FhirInboundStatus,
 } from "@chartwarden/types";
+import { Value } from "@sinclair/typebox/value";
 import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 
 import { INBOUND_PAYLOAD_RETENTION_DAYS } from "../jobs/queues";
@@ -65,15 +67,13 @@ const iso = (d: Date | null): string | null => (d === null ? null : d.toISOStrin
 /** §2.2 — the rotation overlap in which a `retired` credential still authenticates (30 days). */
 const FHIR_CREDENTIAL_ROTATION_OVERLAP_MS = 30 * 24 * 60 * 60 * 1000;
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /**
  * Both tenant resolvers take a uuid, so a non-uuid is refused HERE rather than by Postgres. Not
  * cosmetic: `$1::uuid` on a garbage string raises `22P02`, which surfaces as a 500 on a route whose
  * honest answer is 401, and lets an unauthenticated caller distinguish "malformed" from "unknown" by
  * status code — a free oracle on a credential-shaped input.
  */
-const isUuid = (value: string): boolean => UUID_RE.test(value);
+const isUuid = (value: string): boolean => Value.Check(Uuid(), value);
 
 export interface FhirGatewayStoreDeps {
   readonly outbox?: FhirWriteOutboxPort;

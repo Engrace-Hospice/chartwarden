@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/31-portal/outbox-consumers/m16-bereavement-plan-closed.ts — the §4.10
 // `m16.bereavement.plan_closed_completed` binding (#248 continuation of F-160's M31 build).
 //
@@ -32,7 +33,7 @@
 //
 // IDEMPOTENT BY CONSTRUCTION: each UPDATE is guarded by `revoked_at IS NULL` in its own WHERE clause (the
 // telehealth consumers' precedent), so a redelivery after the first successful run matches zero rows.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
@@ -43,7 +44,6 @@ const PAG = schema.portalAccessGrants;
 
 /** Not a real membership row — mirrors the sibling telehealth consumers' system-actor sentinel; nothing
  *  this table writes on a revoke needs an acting membership (`revoked_by_membership_id` is nullable). */
-const CONSUMER_USER_ID = "";
 
 const M31_BEREAVEMENT_PLAN_CLOSED_CONSUMER = {
   eventName: "m16.bereavement.plan_closed_completed",

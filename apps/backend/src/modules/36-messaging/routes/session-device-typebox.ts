@@ -1,7 +1,7 @@
 // apps/backend/src/modules/36-messaging/routes/session-device-typebox.ts - WP 5.5 (ADR-0083, PROPOSED) schemas for the device and session manager.
 // The response carries only the coarse, safe fields (see packages/types messaging-devices.ts): no token, no IP address, no raw user agent.
+import { Uuid } from "@chartwarden/shared/route-kit";
 import { Type } from "@sinclair/typebox";
-import { UUID_PATTERN } from "./messaging-typebox";
 
 // A Better Auth session id: a short random alphanumeric string. A pattern keeps odd bytes out of the path before any query.
 const SESSION_ID_PATTERN = "^[A-Za-z0-9_-]{1,128}$";
@@ -29,6 +29,6 @@ export const DeviceRevokeResponseSchema = Type.Object({
 });
 
 export const SessionAdminListQuerySchema = Type.Object(
-  { user_id: Type.String({ pattern: UUID_PATTERN }) },
+  { user_id: Uuid() },
   { additionalProperties: false },
 );

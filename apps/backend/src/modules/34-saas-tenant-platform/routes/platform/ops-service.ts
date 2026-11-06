@@ -13,7 +13,13 @@ import { OnboardingRepository } from "@chartwarden/saas-tenant-platform";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import { ConflictError, NotFoundError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
-import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf } from "./concurrency";
+import {
+  type CursorPage,
+  PLATFORM_CURSOR_SCOPE,
+  decodeKeyset,
+  encodeKeyset,
+  pageSizeOf,
+} from "../keyset-page";
 
 const DSAR_OPEN_STATUSES = ["requested", "generating", "review_pending", "extended"] as const;
 
@@ -210,7 +216,7 @@ export function createDrizzlePlatformOpsService(deps: DrizzlePlatformOpsDeps): P
     async listDsarJobs(filter, cursor, limit) {
       return inPlatform("platform-ops cross-tenant DSAR list", async (tx) => {
         const size = pageSizeOf(limit);
-        const after = cursor ? decodeCursor(cursor) : null;
+        const after = decodeKeyset(PLATFORM_CURSOR_SCOPE, cursor);
         const open = sql.join(
           DSAR_OPEN_STATUSES.map((s) => sql`${s}`),
           sql`, `,
@@ -259,7 +265,9 @@ export function createDrizzlePlatformOpsService(deps: DrizzlePlatformOpsDeps): P
             }),
           ),
           nextCursor:
-            hasMore && last ? encodeCursor({ createdAt: last.cursorTs, id: last.id }) : null,
+            hasMore && last
+              ? encodeKeyset(PLATFORM_CURSOR_SCOPE, { createdAt: last.cursorTs, id: last.id })
+              : null,
           hasMore,
         };
       });

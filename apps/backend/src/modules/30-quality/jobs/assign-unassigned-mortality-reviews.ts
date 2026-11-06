@@ -1,3 +1,4 @@
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/30-quality/jobs/assign-unassigned-mortality-reviews.ts — M30 D9 backfill cron.
 //
 // Mortality reviews created before the Medical Director auto-assignment (or while no Medical Director was
@@ -12,7 +13,7 @@
 // the rest drain on later ticks); IDEMPOTENT + OPTIMISTIC (`UPDATE ... WHERE assigned_reviewer_membership_id IS
 // NULL`, so a human/consumer assignment racing the cron is never overwritten, and a re-run is a no-op); a
 // per-org failure is logged and does not stop the other orgs.
-import type { DbClient } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 
@@ -27,9 +28,6 @@ const MORTALITY_BACKFILL_BATCH_SIZE = 200;
 
 /** The open statuses a review can still be worked in (`completed` is terminal and never re-assigned). */
 const OPEN_STATUSES = ["pending", "in_progress", "overdue"] as const;
-
-/** `withOrgContext` carries no acting human for a cron (the M4 audit trigger maps "" to NULL). */
-const SYSTEM_USER_ID = "";
 
 export interface AssignUnassignedMortalityDeps {
   readonly db: DbClient;
@@ -64,7 +62,7 @@ async function listCandidates(
   organizationId: string,
   limit: number,
 ): Promise<readonly Candidate[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const res = await tx.execute(sql`
       SELECT id, death_at::text AS "deathAt", provider_entity_id AS "providerEntityId"
         FROM mortality_review
@@ -94,7 +92,7 @@ async function assignIfStillUnassigned(
   candidate: Candidate,
   reviewerMembershipId: string,
 ): Promise<boolean> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const res = await tx.execute(sql`
       UPDATE mortality_review
          SET assigned_reviewer_membership_id = ${reviewerMembershipId}::uuid,

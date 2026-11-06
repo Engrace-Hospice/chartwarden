@@ -1,3 +1,4 @@
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/30-quality/jobs/alert-repeat-sweeps.ts - GAP-049.
 //
 // The REPEAT half of four M30 §4.9 cadences. M36's `quality-alerts` consumer raises the first page when the M30 event
@@ -20,7 +21,7 @@
 // Reopened incidents: a `reopened` incident was already triaged once, so the sentinel cadence does NOT restart (only
 // `lifecycle = 'submitted' AND triaged_at IS NULL` is open). D4: no cap on the three safety pages; 90-day ceiling on the
 // 7-day threshold series.
-import type { DbClient } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type M30RepeatCadence,
@@ -36,7 +37,6 @@ import { sql } from "drizzle-orm";
 export const M30_ALERT_REPEAT_QUEUE = "m30.alert_repeat_sweep";
 /** Every 15 minutes: the finest cadence is 4h, so a repeat lands within 15 minutes of its due instant. */
 const M30_ALERT_REPEAT_SCHEDULE = "*/15 * * * *";
-const SYSTEM_USER_ID = "";
 
 /** One still-open item the owning module says is unresolved, with the data a repeat page needs. */
 export interface OpenAlertItem {
@@ -140,7 +140,7 @@ async function scanOpenIncidents(
   db: DbClient,
   organizationId: string,
 ): Promise<readonly OpenAlertItem[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const res = await tx.execute(sql`
       SELECT id AS "incidentId", kind::text AS kind, severity::text AS severity, reported_at AS "reportedAt"
         FROM incident_report
@@ -194,7 +194,7 @@ async function scanOpenOutbreaks(
   db: DbClient,
   organizationId: string,
 ): Promise<readonly OpenAlertItem[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const res = await tx.execute(sql`
       SELECT id AS "caseId", pathogen, body_site AS "bodySite", triggering_event_count AS "eventCount",
              window_start AS "windowStart", window_end AS "windowEnd", created_at AS "createdAt"
@@ -237,7 +237,7 @@ async function scanOpenBreaches(
   db: DbClient,
   organizationId: string,
 ): Promise<readonly OpenAlertItem[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const res = await tx.execute(sql`
       WITH latest AS (
         SELECT DISTINCT ON (v.measure_code, v.provider_entity_id)

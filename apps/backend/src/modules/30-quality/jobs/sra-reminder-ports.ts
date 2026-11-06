@@ -1,3 +1,10 @@
+import type { DbClient } from "@chartwarden/db";
+import type {
+  OpenSraCycle,
+  OpenSraCycleReadPort,
+  SraReminderAlertPort,
+} from "@chartwarden/quality";
+import { M30_ALERTS } from "@chartwarden/quality";
 // apps/backend/src/modules/30-quality/jobs/sra-reminder-ports.ts — GAP-155.
 //
 // The two ports of the `m30.sra_reminders` cron (§4.9 / W-M30-30), previously fail-closed `unboundWorkerPort`s
@@ -6,25 +13,16 @@
 //                 (a cron tick is not a request — org-explicit `withOrgContext`, never an ambient context);
 //   - `alerts`  — the §4.9 dispatch: emit through the M36 AlertEmitter (structural type — M30's manifest does
 //                 not depend on M36's internals), severity taken from the M30_ALERTS def for the payload type.
-import type { DbClient } from "@chartwarden/db";
-import type {
-  OpenSraCycle,
-  OpenSraCycleReadPort,
-  SraReminderAlertPort,
-} from "@chartwarden/quality";
-import { M30_ALERTS } from "@chartwarden/quality";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
-
-/** `withOrgContext` carries no acting human for a cron (the M4 audit trigger maps "" to NULL). */
-const SYSTEM_USER_ID = "";
 
 /** One org's open (un-closed) SRA cycles with their anniversary — RLS-scoped, org-explicit. */
 export async function listOpenSraCyclesForOrg(
   db: DbClient,
   organizationId: string,
 ): Promise<readonly OpenSraCycle[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const res = await tx.execute(sql`
       SELECT id, due_at AS "dueAt"
         FROM sra_cycle

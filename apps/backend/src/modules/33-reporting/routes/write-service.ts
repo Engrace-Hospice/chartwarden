@@ -19,7 +19,7 @@
 import type { DbClient } from "@chartwarden/db";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 import type { M33WriteActor } from "./actor";
-import { type CursorPage, paginate } from "./concurrency";
+import { type CursorPage, paginate } from "./pagination";
 import {
   canMutateSchedule,
   canReadSchedule,
@@ -530,7 +530,7 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
           .filter((d) => (filter.status ? d.status === filter.status : true))
           .filter((d) => (filter.authorship ? d.authorship === filter.authorship : true)),
       );
-      return paginate(rows, cursor, limit);
+      return paginate(actor.organizationId, rows, cursor, limit);
     },
     async getDefinition(actor, defId) {
       return ownDefinition(actor, defId);
@@ -538,7 +538,7 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
     async listVersions(actor, definitionId, cursor, limit) {
       ownDefinition(actor, definitionId);
       const rows = desc([...versions.values()].filter((v) => v.definitionId === definitionId));
-      return paginate(rows, cursor, limit);
+      return paginate(actor.organizationId, rows, cursor, limit);
     },
     async createVersion(actor, definitionId, args) {
       const def = ownDefinition(actor, definitionId);
@@ -621,7 +621,7 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
               : v.ownerMembershipId === actor.membershipId,
           ),
       );
-      return paginate(rows, cursor, limit);
+      return paginate(actor.organizationId, rows, cursor, limit);
     },
     async createView(actor, args) {
       const viewId = id("c");
@@ -716,7 +716,7 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
           .filter((s) => canReadSchedule(actor, s))
           .filter((s) => (filter.status ? s.status === filter.status : true)),
       );
-      return paginate(rows, cursor, limit);
+      return paginate(actor.organizationId, rows, cursor, limit);
     },
     async createSchedule(actor, args) {
       // GAP-097: the schedule targets a view in the actor's org that the actor may SEE (§4.7.2 ladder).
@@ -823,7 +823,7 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
           .filter((r) => r.scheduleId === scheduleId)
           .map((r) => ({ ...r, createdAt: r.scheduledFor })),
       );
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(actor.organizationId, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...r }) => r) };
     },
     async getScheduleRun(actor, runId) {

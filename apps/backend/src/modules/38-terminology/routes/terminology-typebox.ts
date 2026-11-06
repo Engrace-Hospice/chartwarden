@@ -1,3 +1,4 @@
+import { pageLimit, pageQuery } from "@chartwarden/shared/route-kit";
 import { CODE_SYSTEM_IDS } from "@chartwarden/terminology";
 import type {
   CodeSystemId,
@@ -20,7 +21,6 @@ import { ValidationError } from "@chartwarden/types";
 // value-level mirror of the §4.5 `CodeSystemId` union), so an unknown / not-yet-licensed system
 // (e.g. `cpt`, §7.8) is rejected as a malformed request, never routed.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   LicenseAttestationEntry as StoreAttestationEntry,
@@ -28,15 +28,6 @@ import type {
   TenantExtensionGovernanceRow as StoreTenantExtensionGovernanceRow,
   ValueSetCatalogEntry as StoreValueSetCatalogEntry,
 } from "../ops-store";
-
-// --- format registration (TypeBox Value does not validate `format` until registered) ----------
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set(
-    "date",
-    (v) => typeof v === "string" && DATE_RE.test(v) && !Number.isNaN(Date.parse(v)),
-  );
-}
 
 // --- shared shapes (§4.2) ---------------------------------------------------------------------
 
@@ -71,7 +62,7 @@ export const SearchQuerySchema = Type.Object({
     Type.Union([Type.Literal("exact"), Type.Literal("fuzzy"), Type.Literal("semantic")]),
   ),
   asOf: AsOfQuery,
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+  limit: pageLimit({ max: 50 }),
   billableOnly: Type.Optional(Type.Boolean()),
   inValueSet: Type.Optional(Type.String()),
 });
@@ -82,8 +73,7 @@ export const ExpandParamsSchema = Type.Object({ id: Type.String({ minLength: 1 }
 export const ExpandQuerySchema = Type.Object({
   asOf: AsOfQuery,
   system: Type.Optional(CodeSystemIdSchema),
-  cursor: Type.Optional(Type.String()),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
+  ...pageQuery({ max: 1000 }),
   includeTenantExtensions: Type.Optional(Type.Boolean()),
 });
 
@@ -233,7 +223,7 @@ export const ValueSetCatalogResponseSchema = Type.Object({
 export const RemediationQuerySchema = Type.Object({
   since: Type.Optional(Type.String({ format: "date" })),
   system: Type.Optional(CodeSystemIdSchema),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  limit: pageLimit(),
 });
 const RemediationLineSchema = Type.Object({
   systemId: CodeSystemIdSchema,
@@ -265,7 +255,7 @@ export const RemediationResponseSchema = Type.Object({
 /** GET /api/v1/admin/terminology/versions — platform load history. */
 export const AdminVersionsQuerySchema = Type.Object({
   system: Type.Optional(CodeSystemIdSchema),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  limit: pageLimit(),
 });
 const AdminVersionEntrySchema = Type.Object({
   logId: Type.String(),
@@ -389,8 +379,7 @@ export const AdminExtensionsQuerySchema = Type.Object({
   valueSetId: Type.Optional(Type.String({ minLength: 1 })),
   organizationId: Type.Optional(Type.String({ minLength: 1 })),
   includeRemoved: Type.Optional(Type.Boolean()),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
-  cursor: Type.Optional(Type.String()),
+  ...pageQuery({ max: 500 }),
 });
 const AdminExtensionEntrySchema = Type.Object({
   extensionId: Type.String(),

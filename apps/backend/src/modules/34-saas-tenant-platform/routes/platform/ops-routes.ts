@@ -1,18 +1,17 @@
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/ops-routes.ts - M34 GAP-164 (§4.1).
 //
 // Three platform-ops routes, all gated by the §4.5 permission key AND the `tenant_lifecycle_platform_ops`
 // ABAC predicate (the spec's route-table scope). The skip route additionally requires a fresh M2 step-up
 // (§6 / D10) and carries a recorded rationale; idempotency rides the M1 `Idempotency-Key` middleware.
 // Every read is `auditRead`-declared (the cross-tenant platform-bypass anchor, F09).
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type PreHandler, pageQuery, writeActorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { SkipOnboardingTaskRequest } from "../typebox";
 import type { PlatformOpsService } from "./ops-service";
 import { OrgSlugParamsSchema, parse } from "./platform-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface PlatformOpsRouteDeps {
   readonly service: PlatformOpsService;
@@ -31,23 +30,13 @@ export const PlatformDsarListQuerySchema = Type.Object({
   ),
   organizationId: Type.Optional(Type.String({ format: "uuid" })),
   slaBreached: Type.Optional(Type.Boolean()),
-  cursor: Type.Optional(Type.String({ maxLength: 256 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 const OnboardingTaskIdParamsSchema = Type.Object({
   orgSlug: Type.String({ minLength: 1, maxLength: 128 }),
   taskId: Type.String({ format: "uuid" }),
 });
-
-function actorOf(request: FastifyRequest): { userId: string; membershipId: string } {
-  const ctx = request.context;
-  const membershipId = ctx?.attributes?.membershipId;
-  if (!ctx?.organizationId || !ctx.userId || typeof membershipId !== "string") {
-    throw new UnauthorizedError();
-  }
-  return { userId: ctx.userId, membershipId };
-}
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 const OPS = (key: string): PreHandler =>
@@ -64,7 +53,7 @@ export function registerPlatformOpsRoutes(app: FastifyInstance, deps: PlatformOp
       config: { auditRead: { resourceKind: "dsar_export_job", list: true } },
     },
     async (request) => {
-      actorOf(request);
+      writeActorOf(request);
       const q = parse(PlatformDsarListQuerySchema, request.query);
       return service.listDsarJobs(
         { status: q.status, organizationId: q.organizationId, slaBreached: q.slaBreached },
@@ -82,7 +71,7 @@ export function registerPlatformOpsRoutes(app: FastifyInstance, deps: PlatformOp
       config: { auditRead: { resourceKind: "onboarding_task", list: true } },
     },
     async (request) => {
-      actorOf(request);
+      writeActorOf(request);
       return service.getOnboarding(parse(OrgSlugParamsSchema, request.params).orgSlug);
     },
   );
@@ -98,7 +87,7 @@ export function registerPlatformOpsRoutes(app: FastifyInstance, deps: PlatformOp
       ],
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = writeActorOf(request);
       const { orgSlug, taskId } = parse(OnboardingTaskIdParamsSchema, request.params);
       const body = parse(SkipOnboardingTaskRequest, request.body);
       return service.skipOnboardingTask(orgSlug, taskId, actor, body.skipRationale);

@@ -1,9 +1,3 @@
-// apps/backend/src/modules/36-messaging/drafts/draft-service-db.ts — WP 2.5 server-side drafts (Drizzle impl of
-// MessageDraftService). The body and its mention references are ONE JSON document sealed under the tenant DEK, the same
-// envelope as message.body_cipher; only revision/device/timestamps are plaintext. Every statement runs under
-// withOrgContext with the CALLER as the context user: RLS (migration 1085) pins rows to org AND owner, and the queries
-// below also name the owner, so a forgotten filter cannot surface a colleague's draft. Org and user come from the
-// server-side request context, never the body. The caller has already authorised the channel (channel_visibility).
 import { type DbClient, schema } from "@chartwarden/db";
 import {
   type DraftKey,
@@ -17,6 +11,13 @@ import {
   isEmptyDraft,
   sbarToStore,
 } from "@chartwarden/messaging";
+// apps/backend/src/modules/36-messaging/drafts/draft-service-db.ts — WP 2.5 server-side drafts (Drizzle impl of
+// MessageDraftService). The body and its mention references are ONE JSON document sealed under the tenant DEK, the same
+// envelope as message.body_cipher; only revision/device/timestamps are plaintext. Every statement runs under
+// withOrgContext with the CALLER as the context user: RLS (migration 1085) pins rows to org AND owner, and the queries
+// below also name the owner, so a forgotten filter cannot surface a colleague's draft. Org and user come from the
+// server-side request context, never the body. The caller has already authorised the channel (channel_visibility).
+import { isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError, type SbarSections } from "@chartwarden/types";
 import { type SQL, and, eq, isNull, sql } from "drizzle-orm";
@@ -24,7 +25,6 @@ import { type MessageBodyCipher, createMessageBodyCipher } from "../messaging-wr
 
 const DRAFT = schema.messageDrafts;
 const MSG = schema.messages;
-const UNIQUE_VIOLATION = "23505";
 
 interface SealedDraft {
   readonly body: string;
@@ -43,11 +43,6 @@ export interface DraftServiceDeps {
 
 /** A draft is scratch space, not storage: bound how many one user can accumulate. */
 const DEFAULT_MAX_DRAFTS_PER_USER = 200;
-
-function isUniqueViolation(error: unknown): boolean {
-  const code = (error as { code?: string; cause?: { code?: string } } | null) ?? null;
-  return code?.code === UNIQUE_VIOLATION || code?.cause?.code === UNIQUE_VIOLATION;
-}
 
 export function createDbDraftService(deps: DraftServiceDeps): MessageDraftService {
   const { db } = deps;

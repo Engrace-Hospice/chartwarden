@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/31-portal/outbox-consumers/m16-bereavement-plan-opened.ts — the §4.10
 // `m16.bereavement.plan_opened` binding (#248 continuation of F-160/F-164's M31 build).
 //
@@ -54,7 +55,7 @@
 // is ALREADY `bereaved_family` (the flip already ran), and the revoke/insert executes inside one
 // transaction per contact — a redelivery after a successful flip finds no non-bereaved live grant left to
 // flip and no-ops, never a duplicate insert or a second revoke.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
@@ -86,7 +87,6 @@ export type BereavedContactFlipCandidatesReader = (
 
 /** Not a real membership row — mirrors the sibling telehealth/plan-closed consumers' system-actor
  *  sentinel; `granted_by_membership_id` is nullable as of mig 0257 for exactly this cascade. */
-const CONSUMER_USER_ID = "";
 
 /** §7.5/D6 — the platform's first (and, to date, only) floor-schema version. No production route has
  *  ever created a `portal_access_grant` row (F-164), so no earlier version has ever been persisted to

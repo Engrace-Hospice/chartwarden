@@ -1,3 +1,4 @@
+import { writeActorOf } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/35-subscription/routes/admin.routes.ts — M35 (§4.2 platform-ops surface,
 // `/api/admin`). The platform-billing plan / subscription / dunning / refund / promo / revenue / usage /
 // stripe routes. Reads gate on the §4.7 `*.admin.read` / `*.read` keys + `platform_billing_scope` (§4.8);
@@ -7,7 +8,6 @@
 // server-side (`request.context`), NEVER read off the body; the cross-tenant reads/writes run under the
 // injected platform runner (M1 `withPlatformContext`), never a tenant RLS scope.
 import type { FastifyInstance } from "fastify";
-import { writeActorOf } from "./actor";
 import { IDEMPOTENT, P, PLATFORM_SCOPE, REFUND_APPROVAL, STEP_UP } from "./guards";
 import type { M35RouteService } from "./service";
 import {

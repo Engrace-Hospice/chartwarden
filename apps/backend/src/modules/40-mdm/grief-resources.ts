@@ -1,11 +1,11 @@
 import { requirePermission } from "@chartwarden/auth";
 import { type DbClient, schema } from "@chartwarden/db";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type ExternalGriefResource,
   type ExternalGriefResourceReader,
   NotFoundError,
-  UnauthorizedError,
   ValidationError,
 } from "@chartwarden/types";
 // apps/backend/src/modules/40-mdm/grief-resources.ts - M40 `external_grief_resource` catalog (GAP-158).
@@ -20,7 +20,7 @@ import {
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { and, asc, desc, eq } from "drizzle-orm";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 
 const G = schema.externalGriefResources;
 const EXTERNAL_GRIEF_RESOURCE_KINDS = schema.EXTERNAL_GRIEF_RESOURCE_KINDS;
@@ -194,21 +194,6 @@ export function parseOrThrow<T extends import("@sinclair/typebox").TSchema>(
     ]);
   }
   return converted as import("@sinclair/typebox").Static<T>;
-}
-
-export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
-export function actorOf(request: FastifyRequest): {
-  organizationId: string;
-  membershipId: string | null;
-} {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  const membershipId = ctx.attributes?.membershipId;
-  return {
-    organizationId: ctx.organizationId,
-    membershipId: typeof membershipId === "string" && membershipId.length > 0 ? membershipId : null,
-  };
 }
 
 export function registerGriefResourceRoutes(

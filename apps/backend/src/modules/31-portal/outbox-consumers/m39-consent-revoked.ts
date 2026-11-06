@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/31-portal/outbox-consumers/m39-consent-revoked.ts — the §4.10
 // `m39.consent.revoked` (BROAD, any-consent-type) binding (#248 continuation of F-160's M31 build).
 //
@@ -49,15 +50,12 @@
 // grants this ONE revoked consent record backs, not an account's full grant roster across every patient, so
 // deciding "does this account have any OTHER live grant left" from inside this handler would need a second,
 // broader read this file's narrow scope does not ask for. Left as a separate, undecided mechanism.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { type M31EventEmitter, emitGrantsRevoked } from "../events";
 
 const PAG = schema.portalAccessGrants;
-
-/** Mirrors the sibling consumers' system-actor sentinel — no actor column this update needs to stamp. */
-const CONSUMER_USER_ID = "";
 
 const M31_CONSENT_REVOKED_CONSUMER = {
   eventName: "m39.consent.revoked",

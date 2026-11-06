@@ -1,3 +1,4 @@
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
 // apps/backend/src/modules/32-ai-platform/abac-predicates.ts — M32-T07 (§4.7 / §8.1).
 //
 // The SIX named ABAC predicate resolvers M32 registers into M3's named-predicate registry. Each is a
@@ -61,7 +62,7 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards
 // on `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
+import { membershipIdOf, targetStr } from "@chartwarden/shared/route-kit";
 
 /** The §4.7 predicate names M32 OWNS (registered into M3). Single-owner across the platform registry. */
 export const M32_ABAC_PREDICATES = [
@@ -244,19 +245,6 @@ export interface AiPlatformAbacDeps {
 }
 
 // ── target/context extraction (server-side only) ─────────────────────────────────────────────────────
-
-function targetStr(target: AbacTarget, ...fields: readonly string[]): string | null {
-  for (const field of fields) {
-    const value = target[field];
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  return null;
-}
-
-function membershipIdOf(context: AbacContext): string | null {
-  const value = context.attributes?.membershipId;
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
 
 /**
  * Whether the SESSION holds an AI-safety-owner role.

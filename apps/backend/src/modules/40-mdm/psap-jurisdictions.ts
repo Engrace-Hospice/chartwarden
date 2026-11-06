@@ -1,6 +1,7 @@
 import { requirePermission } from "@chartwarden/auth";
 import { type DbClient, schema } from "@chartwarden/db";
 import { ringsAreValid } from "@chartwarden/shared/geo";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type EmergencyServiceJurisdictionReader,
@@ -24,7 +25,7 @@ import {
 import { Type } from "@sinclair/typebox";
 import { and, asc, desc, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf, parseOrThrow } from "./grief-resources";
+import { parseOrThrow } from "./grief-resources";
 import { type JurisdictionRowFacts, isStale, resolveJurisdiction, summarize } from "./psap-resolve";
 
 const J = schema.emergencyServiceJurisdictions;

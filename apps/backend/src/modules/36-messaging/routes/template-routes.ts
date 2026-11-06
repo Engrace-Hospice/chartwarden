@@ -1,3 +1,5 @@
+import { requirePermission } from "@chartwarden/auth";
+import type { TemplateService } from "@chartwarden/messaging";
 // apps/backend/src/modules/36-messaging/routes/template-routes.ts - M36 WP 2.8 message templates and saved replies.
 //
 //   GET    /api/v1/messaging/templates                       the caller's picker: platform (overlay applied) + the org's
@@ -17,8 +19,7 @@
 // is sent through the ordinary send route. Nothing server-side links a message to the template it came from.
 // Org and actor are always the server-side request context. A PHI-lint or platform-floor refusal is a 422 that names the
 // field and the reason code, never the text.
-import { requirePermission } from "@chartwarden/auth";
-import type { TemplateService } from "@chartwarden/messaging";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { REQUIRE_IDEMPOTENCY_KEY } from "./messaging-routes";
@@ -30,20 +31,12 @@ import {
   UpdateTemplateBodySchema,
 } from "./template-typebox";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 const TEMPLATE_MANAGE_KEY = "messaging.template.manage";
 const SEND = requirePermission("messaging.send") as PreHandler;
 const MANAGE = requirePermission(TEMPLATE_MANAGE_KEY) as PreHandler;
 
 export interface TemplateRouteDeps {
   readonly service: TemplateService;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 export function registerTemplateRoutes(app: FastifyInstance, deps: TemplateRouteDeps): void {

@@ -1,3 +1,4 @@
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/30-quality/jobs/cap-overdue-scan.ts — GAP-155.
 //
 // The producer of `m30.incident.cap_overdue` (§4.9 / events-by-m30.ts) and its daily cron
@@ -7,7 +8,7 @@
 // catalog-validating publisher and (b) raises the M36 `cap_overdue` alert directly (no M36 consumer binds the
 // event, so there is no double-fire). The alert cadence is "every 2d until completed": the correlation id
 // carries a 2-day bucket, so a re-run inside the bucket dedupes and a new bucket re-pages.
-import type { DbClient } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
@@ -17,7 +18,6 @@ export const M30_CAP_OVERDUE_QUEUE = "m30.cap_overdue_scan";
 const M30_CAP_OVERDUE_SCHEDULE = "0 8 * * *";
 const MS_PER_DAY = 86_400_000;
 const REPEAT_BUCKET_DAYS = 2;
-const SYSTEM_USER_ID = "";
 
 export interface CapAction {
   readonly action: string;
@@ -136,7 +136,7 @@ export async function scanOrgForOverdueCapActions(
   now: Date,
   resolveOwnerUserIds: OwnerUserResolver,
 ): Promise<readonly ResolvedOverdueCapAction[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const res = await tx.execute(sql`
       SELECT id AS "incidentId", kind_data->'_m30'->'capPlan' AS "capPlan"
         FROM incident_report
@@ -203,7 +203,7 @@ export function registerM30CapOverdueWorker(deps: CapOverdueWorkerDeps): Worker 
         scanOrg: (organizationId) =>
           scanOrgForOverdueCapActions(deps.db, organizationId, now(), deps.resolveOwnerUserIds),
         publish: (organizationId, payload) =>
-          withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, (tx) =>
+          withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, (tx) =>
             deps.outboxPublisher.publish(tx as unknown as DbClient, {
               eventName: "m30.incident.cap_overdue",
               payload,

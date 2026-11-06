@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionAdmission, transitionBedCleaning } from "@chartwarden/inpatient";
 // apps/backend/src/modules/37-ipu/consumers/m6-admission-discharged.ts — M37's §4.5 "If patient has open
 // `ipu_admission` → cascade-discharge" subscription, live for the first time (F-156-followup, #248).
 //
@@ -49,8 +51,7 @@
 // M37 already established for exactly this purpose in `routes/system-actor.ts`'s
 // `M37_SYSTEM_MEMBERSHIP_ID` (restated here rather than importing across an unrelated file) — a fixed, module-scoped sentinel rather than a fresh one, so every system-attributed
 // M37 write shares one identifiable non-human actor.
-import { type DbClient, schema } from "@chartwarden/db";
-import { transitionAdmission, transitionBedCleaning } from "@chartwarden/inpatient";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull } from "drizzle-orm";
 import type { WriteOutboxPort } from "../routes/service-drizzle";
@@ -64,9 +65,6 @@ const IE = schema.ircEpisode;
 
 /** Mirrors `M37_SYSTEM_MEMBERSHIP_ID` (`../routes/system-actor.ts`) — see file header. */
 const M37_SYSTEM_MEMBERSHIP_ID = "00000000-0000-0000-0000-000000000037";
-/** The `withOrgContext` session-GUC actor for a consumer-driven write (F-102's `CONSUMER_USER_ID`
- *  convention — a plain text session variable, distinct from the `uuid NOT NULL` column above). */
-const CONSUMER_USER_ID = "";
 
 /** The non-terminal `ipu_admission_state` values a cascade-discharge may still find (§2.2 `ADMISSION_GRAPH`
  *  keys minus `discharged`/`transferred`/`deceased`/`closed`, which are already exited/terminal). */

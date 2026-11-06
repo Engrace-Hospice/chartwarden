@@ -2,6 +2,7 @@
 // (the contract in packages/types/src/messaging-family.ts). The contact shapes carry NO patient, no channel id, no staff identity and no hash; Fastify strips
 // anything not listed. The contact REQUEST bodies are deliberately not schema-validated by Fastify (the service checks them after the bearer resolves, so an
 // unauthenticated caller never learns anything from a validation message).
+import { Uuid } from "@chartwarden/shared/route-kit";
 import {
   FAMILY_ELIGIBILITY_REASONS,
   FAMILY_INVITE_MAX_DAYS,
@@ -10,9 +11,7 @@ import {
   FAMILY_SETTING_TEXT_MAX,
 } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
-import { UUID_PATTERN } from "./messaging-typebox";
 
-const Uuid = Type.String({ pattern: UUID_PATTERN });
 const Instant = Type.String({ format: "date-time" });
 const NullableString = Type.Union([Type.String(), Type.Null()]);
 const NullableInstant = Type.Union([Instant, Type.Null()]);
@@ -26,11 +25,11 @@ const LinkState = Type.Union(
 );
 
 export const FamilyContactIdParamsSchema = Type.Object(
-  { contactId: Uuid },
+  { contactId: Uuid() },
   { additionalProperties: false },
 );
 export const FamilyPatientParamsSchema = Type.Object(
-  { patientId: Uuid },
+  { patientId: Uuid() },
   { additionalProperties: false },
 );
 
@@ -53,7 +52,7 @@ export const FamilySettingsResponseSchema = Type.Object({
 export const FamilyCaregiversResponseSchema = Type.Object({
   caregivers: Type.Array(
     Type.Object({
-      patientCaregiverId: Uuid,
+      patientCaregiverId: Uuid(),
       displayName: Type.String(),
       relationship: Type.String(),
       isLegalRepresentative: Type.Boolean(),
@@ -66,8 +65,8 @@ export const FamilyCaregiversResponseSchema = Type.Object({
 
 export const CreateFamilyInvitationBodySchema = Type.Object(
   {
-    patientId: Uuid,
-    patientCaregiverId: Uuid,
+    patientId: Uuid(),
+    patientCaregiverId: Uuid(),
     expiresInDays: Type.Optional(Type.Integer({ minimum: 1, maximum: FAMILY_INVITE_MAX_DAYS })),
     // D1: REQUIRED. The staff member confirms the code is given by voice, never in the same message as the link.
     codeByVoiceConfirmed: Type.Literal(true),
@@ -76,8 +75,8 @@ export const CreateFamilyInvitationBodySchema = Type.Object(
 );
 
 export const CreatedFamilyInvitationResponseSchema = Type.Object({
-  contactId: Uuid,
-  organizationId: Uuid,
+  contactId: Uuid(),
+  organizationId: Uuid(),
   inviteToken: Type.String(),
   verificationCode: Type.String(),
   expiresAt: Instant,
@@ -85,9 +84,9 @@ export const CreatedFamilyInvitationResponseSchema = Type.Object({
 });
 
 export const FamilyContactSummarySchema = Type.Object({
-  contactId: Uuid,
-  patientId: Uuid,
-  patientCaregiverId: Uuid,
+  contactId: Uuid(),
+  patientId: Uuid(),
+  patientCaregiverId: Uuid(),
   patientName: Type.String(),
   displayName: Type.String(),
   relationship: Type.String(),
@@ -97,7 +96,7 @@ export const FamilyContactSummarySchema = Type.Object({
   language: NullableString,
   closed: Type.Boolean(),
   blocked: Type.Boolean(),
-  channelId: Type.Union([Uuid, Type.Null()]),
+  channelId: Type.Union([Uuid(), Type.Null()]),
   lastContactActivityAt: NullableInstant,
   unansweredSince: NullableInstant,
   highVolume: Type.Boolean(),
@@ -110,7 +109,7 @@ export const FamilyThreadResponseSchema = Type.Object({
   contact: FamilyContactSummarySchema,
   messages: Type.Array(
     Type.Object({
-      messageId: Uuid,
+      messageId: Uuid(),
       from: Type.Union([Type.Literal("contact"), Type.Literal("staff")]),
       authorName: NullableString,
       body: Type.String(),
@@ -125,7 +124,7 @@ export const FamilyReplyBodySchema = Type.Object(
   { additionalProperties: false },
 );
 export const FamilyReplyResponseSchema = Type.Object({
-  messageId: Uuid,
+  messageId: Uuid(),
   from: Type.Literal("staff"),
   authorName: NullableString,
   body: Type.String(),
@@ -160,7 +159,7 @@ export const FamilyContactVerifiedResponseSchema = Type.Object({
 export const FamilyContactMessagesResponseSchema = Type.Object({
   messages: Type.Array(
     Type.Object({
-      messageId: Uuid,
+      messageId: Uuid(),
       from: Type.Union([Type.Literal("you"), Type.Literal("care_team")]),
       body: Type.String(),
       createdAt: Instant,
@@ -171,13 +170,13 @@ export const FamilyContactMessagesResponseSchema = Type.Object({
 });
 
 export const FamilySendResponseSchema = Type.Object({
-  messageId: Uuid,
+  messageId: Uuid(),
   createdAt: Instant,
 });
 
 // Documentation only (OpenAPI): the contact REQUEST bodies. Fastify does not validate them; the service does, after the bearer resolves.
 export const FamilyRedeemBodySchema = Type.Object(
-  { organizationId: Uuid, token: Type.String({ pattern: "^[A-Za-z0-9_-]{43}$" }) },
+  { organizationId: Uuid(), token: Type.String({ pattern: "^[A-Za-z0-9_-]{43}$" }) },
   { additionalProperties: false },
 );
 export const FamilyVerifyBodySchema = Type.Object(

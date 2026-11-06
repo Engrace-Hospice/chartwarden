@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/31-portal/outbox-consumers/m17-visit-rescheduled-telehealth.ts — the §4.10
 // `m17.visit.rescheduled` (telehealth-scoped) binding (F-139/#248's follow-up build).
 //
@@ -21,16 +22,13 @@
 //
 // A visit with no telehealth room (the common case — most reschedules are non-telehealth) is the ordinary
 // no-op: `telehealth_visit_m17_visit_unique` means nothing matches.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { TelehealthLifecycleState } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { canTransitionTelehealth } from "../telehealth/visit-lifecycle";
 
 const TV = schema.telehealthVisits;
-
-/** Mirrors the identical sentinel in the sibling `.cancelled` consumer — no actor column to stamp here. */
-const CONSUMER_USER_ID = "";
 
 const M31_VISIT_RESCHEDULED_TELEHEALTH_CONSUMER = {
   eventName: "m17.visit.rescheduled",

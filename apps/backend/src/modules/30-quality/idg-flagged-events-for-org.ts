@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/30-quality/idg-flagged-events-for-org.ts — the org-explicit, BATCHED "fall" and
 // "infection" read the M14 IDG packet's `sinceLastIdg.flaggedEvents` block needs (M14 spec §2.4 "flagged events
 // (hospitalizations, ER visits, missed doses, falls, infections)").
@@ -13,15 +14,12 @@
 // exposure events have a NULL patient and are never returned. Free text (`kind_data` narrative / witness names /
 // quotes; `exposure_source`; pathogen / body site) NEVER crosses: M14's digest is an id, an enum, an instant and
 // a severity. SEAM PULL at packet build; RLS scopes by `app.org_id` (both tables are org-scoped).
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gt, inArray } from "drizzle-orm";
 
 const INC = schema.incidentReport;
 const INF = schema.infectionSurveillanceEvent;
-
-/** A read with no acting human (the empty-GUC system convention). */
-const IDG_FLAGGED_SYSTEM_USER_ID = "";
 
 /** A patient id list this long is a caller bug (an IDG caseload is dozens). */
 export const IDG_QUALITY_EVENTS_MAX_PATIENTS = 500;
@@ -61,7 +59,7 @@ export async function idgQualityFlaggedEventsForOrg(
     );
   }
   const since = new Date(sinceIso);
-  return withOrgContext(db, { organizationId, userId: IDG_FLAGGED_SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const t = tx as unknown as DbClient;
     const push = (patientId: string | null, e: IdgQualityFlaggedEvent): void => {
       if (patientId === null) return;

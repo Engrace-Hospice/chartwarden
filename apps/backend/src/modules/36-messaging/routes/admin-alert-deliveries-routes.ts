@@ -1,3 +1,5 @@
+import { type AbacContext, registerPredicateIdempotent, requireAbac } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/36-messaging/routes/admin-alert-deliveries-routes.ts — M36 spec §4.1
 // `GET /api/v1/admin/messaging/alert-deliveries` (`messaging.admin.read`, platform-ops: "failures and audit drill"),
 // GAP-165.
@@ -12,15 +14,12 @@
 //   3. AUDITED: every call writes an org-less platform audit event (who, which filter, how many rows) BEFORE the
 //      response is released, and a failed audit write fails the request — an unaudited cross-tenant read must not
 //      succeed.
-import { type AbacContext, registerPredicateIdempotent, requireAbac } from "@chartwarden/auth";
-import type { DbClient } from "@chartwarden/db";
+import { type PreHandler, pageLimit } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError, ValidationError } from "@chartwarden/types";
 import { type Static, Type } from "@sinclair/typebox";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "./messaging-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export const ADMIN_READ_KEY = "messaging.admin.read";
 export const ADMIN_PLATFORM_PREDICATE = "messaging_admin_platform_ops";
@@ -47,7 +46,7 @@ export const AlertDeliveriesQuerySchema = Type.Object(
         Type.Literal("all"),
       ]),
     ),
-    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+    limit: pageLimit(),
     before: Type.Optional(
       Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}T[0-9:.]+(Z|[+-]\\d{2}:\\d{2})$" }),
     ),
