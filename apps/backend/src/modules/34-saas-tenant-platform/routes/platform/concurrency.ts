@@ -50,8 +50,25 @@ export interface CursorPage<T> {
 }
 
 /**
- * Keyset-paginate `rows` (already DESC-sorted by `(createdAt, id)`) into a {@link CursorPage}. Pure:
- * given the same rows + cursor + limit it returns the same page (RLS / platform-context scopes upstream).
+ * Where the page after `key` starts. The cursor names the LAST ROW THE CLIENT SAW, so the continuation is the row after it in the order
+ * the rows arrived in: not a re-comparison of timestamps. A row's `createdAt` here is a JS Date's ISO string (milliseconds) while the
+ * database ordered the rows at microseconds, so two rows of one millisecond can sit in an order the `(createdAt, id)` comparison
+ * disagrees with, and comparing them repeated or skipped a row at the page boundary. A row that is gone since (deleted, or its key
+ * changed) falls back to the keyset comparison, which is all every cursor issued before this ever did.
+ */
+function pageStartAfter<T extends CursorKeyset>(rows: readonly T[], key: CursorKeyset): number {
+  const seen = rows.findIndex((r) => r.id === key.id);
+  if (seen !== -1) return seen + 1;
+  const next = rows.findIndex(
+    (r) => r.createdAt < key.createdAt || (r.createdAt === key.createdAt && r.id < key.id),
+  );
+  return next === -1 ? rows.length : next;
+}
+
+/**
+ * Keyset-paginate `rows` (already in the order they are served, newest first by `(createdAt, id)`) into a
+ * {@link CursorPage}; the cursor continues AFTER the last row served (see {@link pageStartAfter}). Pure: given the same
+ * rows + cursor + limit it returns the same page (RLS / platform-context scopes upstream).
  */
 export function paginate<T extends CursorKeyset>(
   rows: readonly T[],
@@ -62,11 +79,7 @@ export function paginate<T extends CursorKeyset>(
   let start = 0;
   if (cursor) {
     const key = decodeCursor(cursor);
-    // strict keyset: skip everything at-or-after the cursor row in DESC `(createdAt, id)` order.
-    start = rows.findIndex(
-      (r) => r.createdAt < key.createdAt || (r.createdAt === key.createdAt && r.id < key.id),
-    );
-    if (start === -1) start = rows.length;
+    start = pageStartAfter(rows, key);
   }
   const slice = rows.slice(start, start + size);
   const hasMore = start + size < rows.length;

@@ -101,20 +101,16 @@ describe.skipIf(!DB_URL)("M34 tenant hub reads, LIVE Postgres on the real roles"
         [id, slug],
       );
     }
-    // Distinct creation times, a minute apart: the inventory pages by (createdAt, id), and accounts inserted within the same millisecond
-    // would make the page boundary depend on how the clock fell (the cursor carries milliseconds; the database orders microseconds).
-    for (const [index, [org, status]] of (
-      [
-        [ORG_PROVISIONING, "provisioning"],
-        [ORG_ONBOARDING, "onboarding"],
-        [ORG_AWAITING, "onboarding"],
-        [ORG_ACTIVE, "active"],
-      ] as const
-    ).entries()) {
+    for (const [org, status] of [
+      [ORG_PROVISIONING, "provisioning"],
+      [ORG_ONBOARDING, "onboarding"],
+      [ORG_AWAITING, "onboarding"],
+      [ORG_ACTIVE, "active"],
+    ] as const) {
       const [row] = await q<{ id: string }>(
-        `INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email, created_at)
-         VALUES ($1,$2,$3,'b@x.test','p@x.test', now() - make_interval(mins => $4::int)) RETURNING id`,
-        [org, status, `Tenant ${status}`, index],
+        `INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email)
+         VALUES ($1,$2,$3,'b@x.test','p@x.test') RETURNING id`,
+        [org, status, `Tenant ${status}`],
       );
       accountIds.set(org, (row as { id: string }).id);
     }
@@ -400,5 +396,41 @@ describe.skipIf(!DB_URL)("M34 tenant hub reads, LIVE Postgres on the real roles"
       currentStep: "baa_executed",
     });
     expect(overview.onboardingProgress).toMatchObject({ doneCount: 2, totalCount: n });
+  });
+
+  // The inventory is paged in memory over rows the database sorted at MICROSECONDS, while each row's createdAt is a JS Date's ISO string
+  // (milliseconds). Tenants created within one millisecond used to repeat or skip a row at the page boundary (or serve the same page
+  // forever). This is the last test of the file: it adds tenants, and the story above counts exactly four.
+  it("pages tenants created within ONE millisecond across a page boundary without repeating or skipping any", async () => {
+    const SAME_MS = "2026-03-01T00:00:00.123";
+    // Served order is created_at DESC: .123500 first. The ids ASCEND along it, the opposite of the (createdAt, id DESC) comparison.
+    const probes = [500, 400, 300, 200, 100].map((micro, index) => ({
+      slug: `paging-probe-${index + 1}`,
+      orgId: `a0000000-0000-4000-8000-00000000000${index + 1}`,
+      accountId: `b0000000-0000-4000-8000-00000000000${index + 1}`,
+      createdAt: `${SAME_MS}${micro}+00`,
+    }));
+    for (const p of probes) {
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
+        [p.orgId, p.slug],
+      );
+      await admin.query(
+        `INSERT INTO tenant_account (id, organization_id, status, legal_business_name, billing_contact_email, breach_notification_email, created_at)
+         VALUES ($1,$2,'onboarding','Paging probe',  'b@x.test','p@x.test',$3::timestamptz)`,
+        [p.accountId, p.orgId, p.createdAt],
+      );
+    }
+
+    const service = platformService();
+    const served: string[] = [];
+    let cursor: string | undefined;
+    for (let guard = 0; guard < 10; guard += 1) {
+      const page = await service.listTenants({ search: "Paging probe" }, cursor, 2);
+      served.push(...page.items.map((t) => t.orgSlug));
+      if (!page.hasMore || !page.nextCursor) break;
+      cursor = page.nextCursor;
+    }
+    expect(served).toEqual(probes.map((p) => p.slug));
   });
 });

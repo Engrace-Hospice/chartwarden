@@ -189,6 +189,8 @@ const ORG = schema.organizations;
 const BAA = schema.platformTenantBaaRecord;
 const SS = schema.supportSession;
 const SCG = schema.supportConsentGrant;
+/** A cursor id that is bound into SQL as a uuid (the export job list). */
+const UUID_CURSOR_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 const isoReq = (d: Date): string => d.toISOString();
@@ -1345,12 +1347,20 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const repo = new TenantExportRepository(tx);
         const size = pageSizeOf(limit);
         const keyset = cursor ? decodeCursor(cursor) : undefined;
+        // The cursor goes into SQL as a timestamp and a uuid: a value that is neither is a clean 400, never a database error.
+        if (
+          keyset &&
+          (Number.isNaN(Date.parse(keyset.createdAt)) || !UUID_CURSOR_ID.test(keyset.id))
+        ) {
+          throw new ChartWardenError("VALIDATION_FAILED", "the cursor is malformed", 400);
+        }
         // limit + 1 so `hasMore` is answered by the read itself, never by a second count query.
         const rows = await repo.listPlatformPage({
           organizationId: filter.organizationId,
           status: filter.status as schema.TenantExportJob["status"] | undefined,
           heldOnly: filter.held === true,
-          cursor: keyset ? { requestedAt: new Date(keyset.createdAt), id: keyset.id } : undefined,
+          // Microseconds on both sides of the comparison: the ORDER BY is (requested_at, id) and so is the cursor.
+          cursor: keyset ? { requestedAt: keyset.createdAt, id: keyset.id } : undefined,
           limit: size + 1,
         });
         const hasMore = rows.length > size;
@@ -1387,9 +1397,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         return {
           items,
           nextCursor:
-            hasMore && last
-              ? encodeCursor({ createdAt: last.requestedAt.toISOString(), id: last.id })
-              : null,
+            hasMore && last ? encodeCursor({ createdAt: last.cursorTs, id: last.id }) : null,
           hasMore,
         };
       });
