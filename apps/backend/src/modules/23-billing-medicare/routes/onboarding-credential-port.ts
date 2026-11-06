@@ -39,11 +39,10 @@ export function buildMacOnboardingCredentialPort(deps: {
   return {
     async upsert(tx, scope, body, expectedVersion) {
       const args = parse(UpsertMacCredentialBodySchema, body);
-      const view = await deps.writeService.upsertMacCredentialOnTx(
-        tx,
-        writeActorFor(scope),
-        { ...args, expectedVersion },
-      );
+      const view = await deps.writeService.upsertMacCredentialOnTx(tx, writeActorFor(scope), {
+        ...args,
+        expectedVersion,
+      });
       return { resourceId: view.credentialId, view };
     },
     async list(scope) {

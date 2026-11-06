@@ -327,7 +327,9 @@ describe("reason normalisation", () => {
     const calls: Call[] = [];
     const app = makeServer(calls);
     // 12 raw characters, 4 after the invisible ones are gone; and "abc  def" collapses to 7.
-    expect((await post(app, "ab\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200bcd")).statusCode).toBe(422);
+    expect(
+      (await post(app, "ab\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200bcd")).statusCode,
+    ).toBe(422);
     expect((await post(app, "abc  def")).statusCode).toBe(422);
     expect((await post(app, "abc  defg")).statusCode).toBe(201);
     expect(calls.map((c) => c.reason)).toEqual(["abc defg"]);
@@ -472,9 +474,10 @@ describe("service: the status lock and the audit row", () => {
         // reaches the provider-entity ownership check (the stub has none): a 404, never the status refusal. The failed
         // attempt is audited as `write_failed`, never as the status refusal.
         await expect(attempt, status).rejects.toMatchObject({ statusCode: 404 });
-        expect(inserts.map((i) => i.values.eventType), status).toEqual([
-          ONBOARDING_DATA_AUDIT_EVENTS.writeFailed,
-        ]);
+        expect(
+          inserts.map((i) => i.values.eventType),
+          status,
+        ).toEqual([ONBOARDING_DATA_AUDIT_EVENTS.writeFailed]);
       } else {
         await expect(attempt, status).rejects.toMatchObject({
           statusCode: 409,

@@ -658,9 +658,9 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
     expect(dupOther.statusCode, dupOther.body).toBe(409);
     expect(errorCode(dupOther)).toBe("CCN_TAKEN");
 
-    expect(
-      await q("SELECT 1 FROM provider_entity WHERE organization_id=$1", [ORG_B]),
-    ).toHaveLength(1);
+    expect(await q("SELECT 1 FROM provider_entity WHERE organization_id=$1", [ORG_B])).toHaveLength(
+      1,
+    );
     expect(await auditRows(ORG_B, "m34.tenant_onboarding.provider_entity_created")).toHaveLength(1);
 
     // Each rolled-back attempt left a `denied` write_failed row in a follow-up transaction: who, which tenant, why,
@@ -822,8 +822,7 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
       timezone: "America/Los_Angeles",
       reason: REASON,
     });
-    const locationsOfE = () =>
-      q("SELECT 1 FROM location WHERE provider_entity_id=$1", [ePe]);
+    const locationsOfE = () => q("SELECT 1 FROM location WHERE provider_entity_id=$1", [ePe]);
 
     it("replays the first response: ONE location row, ONE audit row, the same body", async () => {
       const pe = await call("POST", "onb-e", "provider-entities", {
@@ -856,7 +855,7 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
   });
 
   it("an activation in flight holds a write back (advisory lock): it waits, then sees `active` and answers 409", async () => {
-    // Stand in for the activation sweep: take the EXCLUSIVE onboarding lock and flip the status, uncommitted.
+    // Stand in for the go-live approval: take the EXCLUSIVE onboarding lock and flip the status, uncommitted.
     const activator = new Client({ connectionString: DB_URL });
     await activator.connect();
     try {

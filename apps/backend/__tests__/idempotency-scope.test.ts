@@ -37,10 +37,16 @@ describe("applyIdempotency fingerprint scope", () => {
     applyErrorHandler(app);
     applyIdempotency(app, createInMemoryIdempotencyStore());
     app.post("/tenants/:slug/items", async (request, reply) =>
-      reply.code(201).send({ via: "post", slug: (request.params as { slug: string }).slug, run: count("post") }),
+      reply
+        .code(201)
+        .send({ via: "post", slug: (request.params as { slug: string }).slug, run: count("post") }),
     );
     app.patch("/tenants/:slug/items", async (request, reply) =>
-      reply.code(200).send({ via: "patch", slug: (request.params as { slug: string }).slug, run: count("patch") }),
+      reply.code(200).send({
+        via: "patch",
+        slug: (request.params as { slug: string }).slug,
+        run: count("patch"),
+      }),
     );
     app.post("/tenants/:slug/other", async (_request, reply) =>
       reply.code(201).send({ via: "other", run: count("other") }),
@@ -120,7 +126,10 @@ describe("applyIdempotency fingerprint scope", () => {
     const same = await send("POST", "/versioned", { "idempotency-key": "k-2", "if-match": '"3"' });
     expect(same.statusCode).toBe(first.statusCode);
     expect(runs.versioned).toBe(2);
-    const changed = await send("POST", "/versioned", { "idempotency-key": "k-2", "if-match": '"4"' });
+    const changed = await send("POST", "/versioned", {
+      "idempotency-key": "k-2",
+      "if-match": '"4"',
+    });
     expect(changed.statusCode).toBe(409);
   });
 });
