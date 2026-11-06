@@ -35,8 +35,11 @@ export interface ProviderBillingFacts {
 export type PartiesTx = DbClient;
 
 export interface Claim837iPartiesDeps {
-  /** The bound `CLEARINGHOUSE_VENDOR`, or null when unbound (then submitter and receiver are gaps). */
-  readonly routeKey: string | null;
+  /**
+   * The EDI-profile route: the bound `CLEARINGHOUSE_VENDOR`, or null when unbound (then submitter and receiver are gaps).
+   * With tenant clearinghouses it is a function: the org's own live vendor, read on the worker's transaction.
+   */
+  readonly routeKey: string | null | ((tx: PartiesTx, organizationId: string) => Promise<string | null>);
   readonly profile: (
     tx: PartiesTx,
     organizationId: string,
@@ -133,8 +136,10 @@ export function buildClaim837iPartiesPortFactory(
 ): (tx: PartiesTx) => Claim837iPartiesPort {
   return (tx) => ({
     async partiesFor({ organizationId, providerEntityId, payerId }) {
-      const profile = deps.routeKey
-        ? await deps.profile(tx, organizationId, providerEntityId, deps.routeKey)
+      const routeKey =
+        typeof deps.routeKey === "function" ? await deps.routeKey(tx, organizationId) : deps.routeKey;
+      const profile = routeKey
+        ? await deps.profile(tx, organizationId, providerEntityId, routeKey)
         : null;
       const provider = await deps.provider(tx, organizationId, providerEntityId);
       const payerName = await deps.payerName(tx, payerId);

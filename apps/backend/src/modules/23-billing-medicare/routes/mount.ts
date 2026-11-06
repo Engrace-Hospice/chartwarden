@@ -18,6 +18,7 @@ import type { FastifyInstance } from "fastify";
 import { registerClaimsRoutes } from "./claims.routes";
 import { registerClearinghouseAttemptRoutes } from "./clearinghouse-attempt.routes";
 import { registerDdeProviderStatusRoutes } from "./dde-provider-status.routes";
+import { registerTenantClearinghouseRoutes } from "../tenant-clearinghouse/routes";
 import { registerDdeQueueRoutes } from "./dde-queue.routes";
 import { registerEdiProfileRoutes } from "./edi-profile.routes";
 import { registerEligibilityRoutes } from "./eligibility.routes";
@@ -120,6 +121,12 @@ export function mountM23Routes(
   // Migration 1269 — the tenant-entered EDI profile (submitter + receiver parties of the 837I interchange).
   if (services.ediProfileService) {
     registerEdiProfileRoutes(app, { ediProfileService: services.ediProfileService });
+  }
+  // ADR-0053 amendment 2026-11-06 — the tenant's own clearinghouse choice (absent service => not mounted).
+  if (services.tenantClearinghouseService) {
+    registerTenantClearinghouseRoutes(app, {
+      tenantClearinghouseService: services.tenantClearinghouseService,
+    });
   }
   // F-210 — the tenant-entered hospice rate table (the per-diem input claim assembly prices from).
   if (services.rateTableService) {
