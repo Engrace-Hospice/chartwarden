@@ -48,6 +48,11 @@ it belongs with the UI slice) with the reason as the detail code. An organizatio
 that has no row is entitled (the platform vendor serves it). `GET /api/v1/billing/status` `claimsBilling.entitled` / `reason`
 come from the same decision, so the notice says what the gate does.
 
+**The subscription still blocks (owner decision D1, 2026-11-06).** A suspended, paused or canceled ChartWarden subscription still refuses NEW claims and
+eligibility work, whatever the clearinghouse says: the refused request is the same 402 with the detail code `subscription_suspended`, `subscription_paused` or
+`subscription_canceled`. M23's entitlement decision reads it through the `SubscriptionWorkBlockReader` seam (owner M35, which reuses the D3 status rule; an org with no subscription row is not
+blocked) and asks it first, then the clearinghouse. NOE / NOTR, voids and in-flight work keep running, as before. A failed read of either fails the gate closed.
+
 **Kept, expand-only.** The `addon` and `subscription_addon` tables, their grant / cancel routes, the `m35.claims_billing_addon.*`
 events and D8's census pull (`patient_active_period`, `billing_addon_patient`, the sweep) are untouched: the census stays
 because pricing reuses it as a meter. Granting the add-on now changes nothing the gate sees; the census sweep still selects

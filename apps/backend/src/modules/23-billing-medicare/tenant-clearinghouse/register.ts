@@ -5,7 +5,7 @@
 // throwing deny-stubs with the Drizzle readers on a db boot. A slice boot with no db keeps the stubs, and the claims-billing
 // gate then fails CLOSED (boot refuses a non-`off` enforcement mode on an unbound seam).
 import type { DbClient } from "@chartwarden/db";
-import { registerSeam } from "../../../bootstrap/index";
+import { getSeam, registerSeam } from "../../../bootstrap/index";
 import {
   createClaimsBillingEntitlementReader,
   createTenantClearinghouseReader,
@@ -22,5 +22,13 @@ export function registerM23TenantClearinghouseSeams(deps: {
     platformFallback: platformFallbackFromEnv(deps.env).lookup,
   });
   registerSeam("TenantClearinghouseReader", reader);
-  registerSeam("ClaimsBillingEntitlementReader", createClaimsBillingEntitlementReader(reader));
+  // The subscription seam (M35) resolves lazily, so registration order never matters; a stub that still throws makes the
+  // entitlement read throw, and the gate fails closed.
+  registerSeam(
+    "ClaimsBillingEntitlementReader",
+    createClaimsBillingEntitlementReader(reader, {
+      blockForOrg: (organizationId) =>
+        getSeam("SubscriptionWorkBlockReader").blockForOrg(organizationId),
+    }),
+  );
 }

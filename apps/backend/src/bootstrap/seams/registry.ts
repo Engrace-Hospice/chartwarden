@@ -175,6 +175,7 @@ import {
   sessionContextResolverDenyStub,
   signedEncountersReaderDenyStub,
   subscriptionStateProviderDenyStub,
+  subscriptionWorkBlockReaderDenyStub,
   supervisorReaderDenyStub,
   supervisoryCadencePlanReaderDenyStub,
   supervisoryCadenceReaderDenyStub,
@@ -763,6 +764,14 @@ export const REQUIRED_SEAMS = [
     ownerModule: 25,
     phi: false,
     denyStub: netCollectionsReaderDenyStub,
+  },
+  // Owner decision D1 (2026-11-06): a suspended / paused / canceled subscription still blocks NEW claims work; M23's
+  // claims-billing decision reads it. Aggregate subscription status → phi:false.
+  {
+    key: "SubscriptionWorkBlockReader",
+    ownerModule: 35,
+    phi: false,
+    denyStub: subscriptionWorkBlockReaderDenyStub,
   },
   // ADR-0053 amendment 2026-11-06 — the clearinghouse the org chose (stedi | claimmd | outside); M35 pricing reads it.
   {

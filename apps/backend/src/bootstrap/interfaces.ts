@@ -16,6 +16,7 @@ export type {
   BillingServiceModeReader,
   BillingStatusProvider,
   ClaimsBillingEntitlementReader,
+  SubscriptionWorkBlockReader,
   TenantClearinghouseReader,
   ExternalInterfaceMetricsProvider,
   IpuAdmissionReader,

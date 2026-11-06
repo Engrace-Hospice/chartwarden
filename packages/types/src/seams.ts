@@ -145,6 +145,7 @@ import type {
   PlanCatalogReader,
   RevenueMetricsProvider,
   SubscriptionStateProvider,
+  SubscriptionWorkBlockReader,
   UsageMeteringIngest,
 } from "./subscription-billing";
 import type {
@@ -493,6 +494,7 @@ export type SeamName =
   | "ClaimsBillingEntitlementReader" // M35 — ADR-0108: may this org start NEW claims-billing work (add-on held)
   | "BillingServiceModeReader" // M35 — slice 2: the subscription's billing service mode (slice 3 enforces outside => none)
   | "NetCollectionsReader" // M25 — slice 2: an org's net collections for a period (the M35 billing-service meter)
+  | "SubscriptionWorkBlockReader" // M35 — owner decision D1: a suspended / paused / canceled subscription still blocks new claims work (read by M23's claims-billing decision)
   | "TenantClearinghouseReader" // M23 — ADR-0053 amendment 2026-11-06: the clearinghouse the org chose (stedi | claimmd | outside)
   | "RevenueMetricsProvider" // M35 — platform-shared MRR/ARR snapshots + status counts (M33 revenue dashboard)
   | "PlanCatalogReader" // M35 — public (unauthenticated) plan catalog read (marketing pages + onboarding)
@@ -1449,6 +1451,8 @@ export interface SeamContracts {
   NetCollectionsReader: NetCollectionsReader;
   // M23 — the tenant's clearinghouse choice (leaf-typed in ./tenant-clearinghouse); aggregate org config, no PHI.
   TenantClearinghouseReader: TenantClearinghouseReader;
+  // M35 — leaf-typed in ./subscription-billing; aggregate subscription status, no PHI.
+  SubscriptionWorkBlockReader: SubscriptionWorkBlockReader;
   RevenueMetricsProvider: RevenueMetricsProvider;
   PlanCatalogReader: PlanCatalogReader;
   // M35's three §4.6 forward-seam consumer views are LEAF-TYPED too (M35's minimal view in

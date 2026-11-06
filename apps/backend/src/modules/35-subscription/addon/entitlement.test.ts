@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type AddonFacts, decideClaimsBillingEntitlement } from "./entitlement";
+import {
+  type AddonFacts,
+  currentSubscriptionStatus,
+  decideClaimsBillingEntitlement,
+  decideSubscriptionWorkBlock,
+} from "./entitlement";
 
 const NOW = new Date("2026-11-05T12:00:00Z");
 const LATER = new Date("2026-12-01T00:00:00Z");
@@ -58,5 +63,48 @@ describe("decideClaimsBillingEntitlement (ADR-0108 D3)", () => {
       entitled: false,
       reason: "lapsed",
     });
+  });
+});
+
+// Owner decision D1 (2026-11-06): the subscription rule outlives the add-on.
+describe("decideSubscriptionWorkBlock", () => {
+  it("blocks a suspended, canceled or paused subscription with its own reason, and no other status", () => {
+    expect(decideSubscriptionWorkBlock("suspended")).toEqual({
+      blocked: true,
+      reason: "subscription_suspended",
+    });
+    expect(decideSubscriptionWorkBlock("canceled")).toEqual({
+      blocked: true,
+      reason: "subscription_canceled",
+    });
+    expect(decideSubscriptionWorkBlock("paused")).toEqual({
+      blocked: true,
+      reason: "subscription_paused",
+    });
+    for (const status of ["trialing", "active", "past_due", "at_risk"] as const) {
+      expect(decideSubscriptionWorkBlock(status)).toEqual({ blocked: false });
+    }
+  });
+});
+
+describe("currentSubscriptionStatus", () => {
+  it("prefers the one live row over older canceled / paused ones, and is null with no rows", () => {
+    expect(currentSubscriptionStatus([])).toBeNull();
+    expect(
+      currentSubscriptionStatus([
+        { status: "canceled" },
+        { status: "active" },
+        { status: "paused" },
+      ]),
+    ).toBe("active");
+    expect(currentSubscriptionStatus([{ status: "suspended" }, { status: "canceled" }])).toBe(
+      "suspended",
+    );
+  });
+
+  it("falls back to the NEWEST canceled / paused row when none is live", () => {
+    expect(currentSubscriptionStatus([{ status: "paused" }, { status: "canceled" }])).toBe(
+      "paused",
+    );
   });
 });

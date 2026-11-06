@@ -1,7 +1,7 @@
 // ADR-0108 repurposed (ADR-0053 amendment 2026-11-06) — the claims-billing gate decides from the tenant's clearinghouse
 // choice: the REAL entitlement reader over a stub choice reader, through every gate entry point (route preHandler,
 // isClaimsBillingEntitled, worker hold), in each enforcement mode, with the carve-outs that must stay open.
-import type { TenantClearinghouseChoice } from "@chartwarden/types";
+import type { SubscriptionWorkBlockReader, TenantClearinghouseChoice } from "@chartwarden/types";
 import { DelayedError } from "bullmq";
 import Fastify from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
@@ -64,15 +64,25 @@ const ALLOWED: readonly [string, TenantClearinghouseChoice][] = [
   ],
 ];
 
-function bindChoice(answer: TenantClearinghouseChoice | Error): void {
+const NOT_BLOCKED: SubscriptionWorkBlockReader = {
+  blockForOrg: async () => ({ blocked: false }),
+};
+
+function bindChoice(
+  answer: TenantClearinghouseChoice | Error,
+  subscription: SubscriptionWorkBlockReader = NOT_BLOCKED,
+): void {
   registerSeam(
     "ClaimsBillingEntitlementReader",
-    createClaimsBillingEntitlementReader({
-      async choiceForOrg() {
-        if (answer instanceof Error) throw answer;
-        return answer;
+    createClaimsBillingEntitlementReader(
+      {
+        async choiceForOrg() {
+          if (answer instanceof Error) throw answer;
+          return answer;
+        },
       },
-    }),
+      subscription,
+    ),
   );
 }
 
@@ -221,5 +231,52 @@ describe("the claims-billing gate follows the clearinghouse choice", () => {
       200,
     );
     await server.close();
+  });
+});
+
+// Owner decision D1: the subscription still blocks new claims and eligibility work, regardless of the clearinghouse.
+describe("a suspended, paused or canceled subscription blocks new claims work even with an active clearinghouse", () => {
+  for (const reason of [
+    "subscription_suspended",
+    "subscription_paused",
+    "subscription_canceled",
+  ] as const) {
+    it(`enforce: 402 with ${reason}, in every gate entry point; NOE/NOTR stay open`, async () => {
+      configureClaimsBillingGate({ mode: "enforce", log: () => {} });
+      bindChoice(ACTIVE_STEDI, { blockForOrg: async () => ({ blocked: true, reason }) });
+      const server = await app();
+      const res = await server.inject({ method: "POST", url: "/claims/c1/submit" });
+      expect(res.statusCode).toBe(402);
+      const refusal = await claimsBillingPreHandler({
+        context: { organizationId: ORG },
+        method: "POST",
+        url: "/claims/c1/submit",
+        routeOptions: { url: "/claims/:id/submit" },
+      } as never).catch((e: unknown) => e as { details?: { code: string }[] });
+      expect(refusal).toMatchObject({ details: [expect.objectContaining({ code: reason })] });
+      expect(await isClaimsBillingEntitled(ORG)).toBe(false);
+      // the notices and in-flight work keep running: an open route is not gated
+      expect((await server.inject({ method: "POST", url: "/notices/noe" })).statusCode).toBe(200);
+      await server.close();
+    });
+  }
+
+  it("a worker for new claims work is HELD while the subscription is blocked, and runs when it is restored", async () => {
+    configureClaimsBillingGate({ mode: "enforce", log: () => {} });
+    let blocked = true;
+    bindChoice(ACTIVE_STEDI, {
+      blockForOrg: async () =>
+        blocked ? { blocked: true, reason: "subscription_suspended" } : { blocked: false },
+    });
+    const moved: number[] = [];
+    const job = { moveToDelayed: async (at: number) => void moved.push(at) };
+    await expect(
+      holdUnlessClaimsBillingEntitled(job, "t", ORG, "claim.submit"),
+    ).rejects.toBeInstanceOf(DelayedError);
+    expect(moved).toHaveLength(1);
+    blocked = false;
+    await expect(
+      holdUnlessClaimsBillingEntitled(job, "t", ORG, "claim.submit"),
+    ).resolves.toBeUndefined();
   });
 });

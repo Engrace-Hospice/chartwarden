@@ -585,6 +585,16 @@ describe("CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS (ADR-0053 amendment 2026-11-06)", (
       "CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: names organizations but CLEARINGHOUSE_VENDOR is not set",
     ]);
   });
+  it("refuses a list with a blank entry (a stray comma is a typo, not an org)", () => {
+    for (const raw of [",,", `${ORG},,${OTHER}`, `${ORG},`, `,${ORG}`]) {
+      expect(
+        problemsFor({ CLEARINGHOUSE_VENDOR: "stedi", CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: raw }),
+        raw,
+      ).toEqual([
+        "CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: must be a comma-separated list of organization uuids",
+      ]);
+    }
+  });
   it("is not validated outside production", () => {
     expect(
       collectEnvProblems({ NODE_ENV: "development", CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: "demo" }),
