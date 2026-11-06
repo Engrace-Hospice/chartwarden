@@ -938,6 +938,45 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       ).toContain("OF-2026-0042");
     });
 
+    it("the contract's row audit never copies who signed, why, or the order form into the tenant-readable audit trail", async () => {
+      const secrets = [
+        OPERATOR_MEMBERSHIP,
+        "order form signed by the customer's administrator",
+        "OF-2026-0042",
+      ];
+      const tenantClient = new Client({
+        connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      });
+      await tenantClient.connect();
+      try {
+        await tenant(tenantClient, ORG_A, async () => {
+          // what GET /api/v1/audit/events serves: audit_event under the tenant's own RLS
+          const rows = (
+            await tenantClient.query(
+              "SELECT event_type, before, after, context FROM audit_event WHERE resource_kind='subscription_contract'",
+            )
+          ).rows;
+          expect(rows.map((r) => r.event_type)).toContain("subscription_contract.insert");
+          const everything = JSON.stringify(rows);
+          for (const secret of secrets) expect(everything).not.toContain(secret);
+          const insert = rows.find((r) => r.event_type === "subscription_contract.insert");
+          expect(insert?.after).toMatchObject({
+            signed_by_membership_id: "<changed>",
+            signed_reason: "<changed>",
+            order_form_ref: "<changed>",
+          });
+        });
+        // and no audit row of the org at all (any resource) carries them
+        const all = await q(
+          "SELECT before, after, context FROM audit_event WHERE organization_id=$1",
+          [ORG_A],
+        );
+        for (const secret of secrets) expect(JSON.stringify(all)).not.toContain(secret);
+      } finally {
+        await tenantClient.end();
+      }
+    });
+
     it("a second sign of the same tenant, plan and mode RESUMES (no duplicate); a different plan or mode is refused", async () => {
       const again = await contracts.createForTenant(operator, "pricing-a", body(planV2Slug));
       expect(again.resumed).toBe(true);

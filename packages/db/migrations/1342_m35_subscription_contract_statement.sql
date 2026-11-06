@@ -172,8 +172,39 @@ END $$;--> statement-breakpoint
 CREATE TRIGGER "subscription_statement_guard" BEFORE UPDATE ON "subscription_statement"
   FOR EACH ROW EXECUTE FUNCTION subscription_statement_guard();--> statement-breakpoint
 
+-- The contract's row audit is a SCRUBBING variant (the audit_phi_write_<table> shape, 1250): audit_event is tenant-readable
+-- (GET /api/v1/audit/events), and the generic trigger would copy the operator's membership id, the free-text signing reason and
+-- the order-form reference into the tenant's own audit trail, which is exactly what the tenant surface of the contract hides. The
+-- columns are recorded as CHANGED, never copied. (Dropping the row trigger instead would lose the database-level trail of an
+-- insert / update / delete of a contract; the operator, tenant and reason stay in the PLATFORM-scoped structured audit row the
+-- signing writes in the same transaction, which a tenant cannot read.)
+CREATE OR REPLACE FUNCTION audit_phi_write_subscription_contract() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY['signed_by_membership_id', 'signed_reason', 'order_form_ref'];
+BEGIN
+  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN public.audit_scrub(to_jsonb(OLD), v_cols) ELSE NULL END;
+  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN public.audit_scrub(to_jsonb(NEW), v_cols) ELSE NULL END;
+  INSERT INTO public.audit_event (
+    organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id,
+    correlation_id, outcome, severity, before, after, context, retention_class
+  ) VALUES (
+    COALESCE(NEW.organization_id, OLD.organization_id),
+    NULLIF(current_setting('app.user_id', true), '')::uuid,
+    CASE WHEN COALESCE(current_setting('app.user_id', true), '') = '' THEN 'system' ELSE 'user' END::audit_actor_kind,
+    TG_TABLE_NAME || '.' || lower(TG_OP), TG_TABLE_NAME,
+    COALESCE(NEW.id, OLD.id),
+    COALESCE(NULLIF(current_setting('app.correlation_id', true), ''), 'system'),
+    'success', 'info', v_before, v_after,
+    jsonb_build_object(
+      'provider_entity_id', NULLIF(current_setting('app.provider_entity_id', true), ''),
+      'location_id', NULLIF(current_setting('app.location_id', true), '')),
+    'compliance'
+  );
+  RETURN COALESCE(NEW, OLD);
+END $$;--> statement-breakpoint
+ALTER FUNCTION audit_phi_write_subscription_contract() OWNER TO chartwarden_audit_writer;--> statement-breakpoint
 CREATE TRIGGER "subscription_contract_audit" AFTER INSERT OR UPDATE OR DELETE ON subscription_contract
-  FOR EACH ROW EXECUTE FUNCTION chartwarden_audit_trigger();--> statement-breakpoint
+  FOR EACH ROW EXECUTE FUNCTION audit_phi_write_subscription_contract();--> statement-breakpoint
 CREATE TRIGGER "patient_census_daily_audit" AFTER INSERT OR UPDATE OR DELETE ON patient_census_daily
   FOR EACH ROW EXECUTE FUNCTION chartwarden_audit_trigger();--> statement-breakpoint
 CREATE TRIGGER "subscription_statement_audit" AFTER INSERT OR UPDATE OR DELETE ON subscription_statement
