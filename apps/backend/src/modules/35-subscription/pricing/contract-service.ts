@@ -343,7 +343,9 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
           fromStatus: null,
           toStatus: "active",
           transitionedAt: at,
-          actorMembershipId: actor.membershipId,
+          // NULL, as for every system transition: this row (and its audit copy) is tenant-readable, and the operator behind the
+          // contract is named only in the platform-scoped structured audit row written in the same transaction.
+          actorMembershipId: null,
           reasonCode: "platform_onboarding_contract",
         });
         const [contract] = await tx
