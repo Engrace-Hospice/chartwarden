@@ -8,7 +8,7 @@ import axe from "axe-core";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
-import { MailingSettings } from "./mailing-settings";
+import { MailingSettings, isShellExit } from "./mailing-settings";
 
 /** jest-dom's `toBeDisabled`: the control itself, or a descendant of a disabled fieldset (how these screens make a whole form inert). */
 const inert = (el: HTMLElement): boolean =>
@@ -586,5 +586,19 @@ describe("mailing settings — accessibility", () => {
     expect(
       results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(" ")}`),
     ).toEqual([]);
+  });
+});
+
+describe("mailing settings — shell exits", () => {
+  it.each([
+    ["/expired", true],
+    ["/maintenance", true],
+    ["/tenant-unavailable", true],
+    ["/login", true],
+    ["/login/organization", true],
+    ["/loginx", false],
+    ["/bereavement/mailings", false],
+  ])("isShellExit(%s) is %s", (pathname, expected) => {
+    expect(isShellExit(pathname)).toBe(expected);
   });
 });

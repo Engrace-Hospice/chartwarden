@@ -8,7 +8,7 @@
 // Unsaved wording is protected three ways: the scrim cannot dismiss the dialog, Cancel and Escape ask before discarding, and while the
 // write is in flight every control is inert and the dialog cannot close.
 import { useApiClient } from "@chartwarden/ui";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import {
   type MailingRun,
@@ -55,9 +55,17 @@ export function EditWordingModal({
   const [conflictAt, setConflictAt] = useState<number | null>(null);
   /** The page is re-reading the run after a 412. */
   const [reloading, setReloading] = useState(false);
+  /** A reload after the 412 answered without their wording: "Try again" is offered (and stays mounted while it retries). */
+  const [reloadFailed, setReloadFailed] = useState(false);
   const idempotency = useIdempotencyKey();
   // The newer wording, once the page has re-read the run past the refused version.
   const theirs = conflictAt !== null && run.version !== conflictAt ? baseline : null;
+  const theirsRef = useRef<HTMLElement>(null);
+  const showingTheirs = theirs !== null;
+  // Their wording arrived: move focus there, so it is announced and the reader is not left on a disabled Save or a vanished button.
+  useEffect(() => {
+    if (showingTheirs) theirsRef.current?.focus();
+  }, [showingTheirs]);
 
   const dirty = !sameWording(draft, baseline);
   const blocked = wordingProblems(draft).length > 0;
@@ -69,9 +77,11 @@ export function EditWordingModal({
   };
 
   const reloadTheirs = async (): Promise<void> => {
+    if (reloading) return;
     setReloading(true);
     await onStale();
     setReloading(false); // whether it failed or answered the same version, `theirs` stays null and the dialog offers "Try again"
+    setReloadFailed(true); // shown only while `theirs` is null, so harmless after a success
   };
 
   const save = async (): Promise<void> => {
@@ -130,20 +140,31 @@ export function EditWordingModal({
       {busy ? <Notice tone="info">Saving the wording…</Notice> : null}
       {conflictAt !== null ? (
         theirs === null ? (
-          reloading ? (
-            <Notice tone="info">Loading the newer wording…</Notice>
-          ) : (
-            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+            {reloading ? (
+              <Notice tone="info" live>
+                Loading the newer wording…
+              </Notice>
+            ) : (
               <ErrorText>
                 The newer wording could not be loaded. Your wording is still here.
               </ErrorText>
-              <button type="button" style={ghostButtonStyle} onClick={() => void reloadTheirs()}>
+            )}
+            {reloadFailed ? (
+              // stays mounted while it retries (aria-disabled, not removed), so focus is not dropped to the page body
+              <button
+                type="button"
+                style={ghostButtonStyle}
+                aria-disabled={reloading}
+                aria-busy={reloading}
+                onClick={() => void reloadTheirs()}
+              >
                 Try again
               </button>
-            </div>
-          )
+            ) : null}
+          </div>
         ) : (
-          <section aria-label="Their saved wording">
+          <section ref={theirsRef} tabIndex={-1} aria-label="Their saved wording">
             <Notice tone="warning">
               Their saved wording: <strong>{theirs.title || "(no title)"}</strong>
               {theirs.greeting ? ` ${theirs.greeting}` : ""}

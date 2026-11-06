@@ -110,6 +110,8 @@ export function MailingSettings(): JSX.Element | null {
       {region}
       {blocker.state === "blocked" ? (
         <Modal
+          // remounted when the save state flips, so the dialog is announced again with its new title and text
+          key={saving ? "saving" : "unsaved"}
           title={saving ? "A save is still in progress" : "Leave without saving?"}
           role="alertdialog"
           describedBy={leaveDescId}

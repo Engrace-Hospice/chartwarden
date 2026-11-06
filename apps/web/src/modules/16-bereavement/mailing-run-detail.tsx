@@ -98,10 +98,16 @@ const NOT_FOUND = 404;
 /** The longest delay `setTimeout` honours (a larger one fires at once). */
 const MAX_TIMEOUT_MS = 2 ** 31 - 1;
 
-/** How long until a batch link expires, clamped to what a timer can wait (an unparseable expiry is already expired). */
+/** The shortest time a freshly minted link stays on the page: the client clock may be skewed, and the server enforces the real expiry. */
+export const LINK_FLOOR_MS = 60_000;
+
+/** How long to keep a just-minted batch link, clamped to what a timer can wait. A link the client clock already calls expired (or an
+ * unparseable expiry) still gets LINK_FLOOR_MS: the server just minted it, so a skewed clock must not drop it before it can be clicked. */
 export function linkLifetimeMs(expiresAt: string, now: number): number {
   const left = Date.parse(expiresAt) - now;
-  return Number.isFinite(left) ? Math.min(Math.max(0, left), MAX_TIMEOUT_MS) : 0;
+  return Number.isFinite(left)
+    ? Math.min(Math.max(LINK_FLOOR_MS, left), MAX_TIMEOUT_MS)
+    : LINK_FLOOR_MS;
 }
 
 /** A batch link is only ever https (loopback http is the local dev object store). */
@@ -392,6 +398,14 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
   const counts = run.itemCounts;
   const failure = state.notice;
   const noActions = !mayDispatch && !mayManage;
+  const offers = {
+    edit: mayManage && canEditWording(run.status),
+    generate: mayDispatch && canGenerate(run.status),
+    regenerate: mayDispatch && canRegenerate(run.status) && !staleBatch,
+    download: mayDispatch && canDownload(run.status),
+    confirm: mayDispatch && canConfirmMailed(run.status),
+    cancel: mayManage && canCancel(run.status),
+  };
   return (
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
@@ -511,9 +525,11 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
       <Card title="Actions">
         {noActions ? (
           <span style={mutedStyle}>Your role can view this run but not change or send it.</span>
+        ) : !Object.values(offers).some(Boolean) ? (
+          <span style={mutedStyle}>No actions are available for this run.</span>
         ) : (
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap", alignItems: "center" }}>
-            {mayManage && canEditWording(run.status) ? (
+            {offers.edit ? (
               <Button
                 tone="secondary"
                 disabled={busy !== null}
@@ -522,7 +538,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
                 Edit wording
               </Button>
             ) : null}
-            {mayDispatch && canGenerate(run.status) ? (
+            {offers.generate ? (
               <Button
                 loading={busy === "generate"}
                 disabled={busy !== null || !wordingComplete}
@@ -532,7 +548,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
                 {run.status === "failed" ? "Retry generation" : "Generate"}
               </Button>
             ) : null}
-            {mayDispatch && canRegenerate(run.status) && !staleBatch ? (
+            {offers.regenerate ? (
               <Button
                 tone="secondary"
                 loading={busy === "generate"}
@@ -542,7 +558,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
                 Regenerate batch
               </Button>
             ) : null}
-            {mayDispatch && canDownload(run.status) ? (
+            {offers.download ? (
               <Button
                 tone="secondary"
                 loading={busy === "download"}
@@ -552,12 +568,12 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
                 Download
               </Button>
             ) : null}
-            {mayDispatch && canConfirmMailed(run.status) ? (
+            {offers.confirm ? (
               <Button disabled={busy !== null} onClick={() => openCeremony("confirm")}>
                 Confirm mailed
               </Button>
             ) : null}
-            {mayManage && canCancel(run.status) ? (
+            {offers.cancel ? (
               <Button
                 tone="secondary"
                 disabled={busy !== null}
@@ -568,7 +584,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
             ) : null}
           </div>
         )}
-        {mayDispatch && canGenerate(run.status) && !wordingComplete ? (
+        {offers.generate && !wordingComplete ? (
           <span id={reasonId} style={mutedStyle}>
             Generate is unavailable until the wording has a title and at least one paragraph.
           </span>
@@ -580,7 +596,11 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
               href={batchLink.url}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={() => setBatchLink(null)}
+              onClick={() => {
+                setBatchLink(null);
+                // the link unmounts: move focus to the status line rather than losing it to the page body
+                announce("The batch link was used and removed from this page.");
+              }}
             >
               Open batch
             </a>{" "}

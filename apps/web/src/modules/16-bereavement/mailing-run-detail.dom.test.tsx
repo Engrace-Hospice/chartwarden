@@ -9,7 +9,7 @@ import type { JSX } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
-import { MailingRunDetail, linkLifetimeMs } from "./mailing-run-detail";
+import { LINK_FLOOR_MS, MailingRunDetail, linkLifetimeMs } from "./mailing-run-detail";
 
 /** jest-dom's `toBeDisabled`: the control itself, or a descendant of a disabled fieldset (how these screens make a whole form inert). */
 const inert = (el: HTMLElement): boolean =>
@@ -492,7 +492,7 @@ describe("mailing run — download, confirm and cancel", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Download" }));
     const link = (await screen.findByRole("link", { name: "Open batch" })) as HTMLAnchorElement;
     await waitFor(() => expect(document.activeElement).toBe(link));
-    // well before the five-minute expiry the link is still offered (a far expiry no longer fires the timer at once)
+    // a minute in, well before the five-minute expiry, the link is still offered: the timer waits for the link's own expiry
     vi.advanceTimersByTime(60_000);
     expect(screen.getByRole("link", { name: "Open batch" })).toBe(link);
     expect(link.href).toBe("https://files.example.test/batch.pdf?sig=abc");
@@ -504,6 +504,8 @@ describe("mailing run — download, confirm and cancel", () => {
     fireEvent.click(link);
     await waitFor(() => expect(screen.queryByRole("link", { name: "Open batch" })).toBeNull());
     expect(document.body.innerHTML).not.toContain("sig=abc");
+    // the link unmounted: focus lands on the status line, not the page body
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("status")));
   });
 
   it("an unclicked link is dropped when it expires", async () => {
@@ -516,12 +518,88 @@ describe("mailing run — download, confirm and cancel", () => {
     expect(document.body.innerHTML).not.toContain("sig=abc");
   });
 
-  it("a link lifetime is clamped to what a timer can wait, and an unreadable expiry is already expired", () => {
+  it("a link lifetime is clamped to what a timer can wait, and a link the client clock calls expired still gets the floor", () => {
     const now = Date.parse("2026-11-06T00:00:00.000Z");
     expect(linkLifetimeMs("2026-11-06T00:05:00.000Z", now)).toBe(LINK_TTL_MS);
     expect(linkLifetimeMs("2099-01-01T00:00:00.000Z", now)).toBe(2 ** 31 - 1);
-    expect(linkLifetimeMs("2026-11-05T00:00:00.000Z", now)).toBe(0);
-    expect(linkLifetimeMs("not a date", now)).toBe(0);
+    expect(LINK_FLOOR_MS).toBe(60_000);
+    expect(linkLifetimeMs("2026-11-05T00:00:00.000Z", now)).toBe(LINK_FLOOR_MS);
+    expect(linkLifetimeMs("2026-11-06T00:00:10.000Z", now)).toBe(LINK_FLOOR_MS);
+    expect(linkLifetimeMs("not a date", now)).toBe(LINK_FLOOR_MS);
+  });
+
+  it("a link whose expiry the (skewed) client clock already passed stays clickable for the floor, then goes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const base = server({ run: () => ok(run({ status: "ready" })) });
+    mount((req) =>
+      req.path.endsWith("/download")
+        ? ok({
+            runId: RUN_ID,
+            url: "https://files.example.test/batch.pdf?sig=abc",
+            expiresAt: new Date(Date.now() - 60 * 60_000).toISOString(),
+          })
+        : base(req),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    await screen.findByRole("link", { name: "Open batch" });
+    vi.advanceTimersByTime(LINK_FLOOR_MS / 2);
+    expect(screen.getByRole("link", { name: "Open batch" })).toBeTruthy();
+    vi.advanceTimersByTime(LINK_FLOOR_MS);
+    await waitFor(() => expect(screen.queryByRole("link", { name: "Open batch" })).toBeNull());
+  });
+
+  it("a download answered after the reader left never navigates them (no /step-up from a page they are not on)", async () => {
+    let answer: (reply: Reply) => void = () => undefined;
+    const base = server({ run: () => ok(run({ status: "ready" })) });
+    mount((req) =>
+      req.path.endsWith("/download")
+        ? new Promise<Reply>((resolve) => {
+            answer = resolve;
+          })
+        : base(req),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    // the reader leaves while the link is minted: the run page unmounts, the router stays
+    fireEvent.click(screen.getByRole("link", { name: "All runs" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Download" })).toBeNull());
+    answer(refused(403, "STEP_UP_REQUIRED", "step up"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByTestId("step-up")).toBeNull();
+  });
+
+  it("the run moving (status / version) drops a minted batch link", async () => {
+    let moved = false;
+    const base = server({
+      run: () => ok(run({ status: "ready", version: moved ? 5 : 4 })),
+      write: () => refused(412, "STALE_VERSION"),
+    });
+    mount(base);
+    fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    await screen.findByRole("link", { name: "Open batch" });
+    moved = true;
+    fireEvent.click(screen.getByRole("button", { name: "Confirm mailed" }));
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm mailed" }));
+    // the 412 reloads the run at version 5: the link minted for version 4 goes
+    await waitFor(() => expect(screen.queryByRole("link", { name: "Open batch" })).toBeNull());
+  });
+
+  it("the run moving (status / version) drops a stale-batch refusal", async () => {
+    let moved = false;
+    const base = server({
+      run: () => ok(run({ status: "ready", version: moved ? 5 : 4 })),
+      write: () => refused(412, "STALE_VERSION"),
+    });
+    mount((req) =>
+      req.path.endsWith("/download") ? refused(409, "MAILING_RUN_STALE", "stale") : base(req),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    expect(await screen.findByText(/was not downloaded/)).toBeTruthy();
+    moved = true;
+    fireEvent.click(screen.getByRole("button", { name: "Confirm mailed" }));
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm mailed" }));
+    await waitFor(() => expect(screen.queryByText(/was not downloaded/)).toBeNull());
   });
 
   it("a mailed run offers no Download: the batch went out and is never handed out again", async () => {
@@ -529,6 +607,14 @@ describe("mailing run — download, confirm and cancel", () => {
     await screen.findByRole("heading", { name: /December holiday card/ });
     expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
   });
+
+  it.each(["mailed", "cancelled"])(
+    "a %s run says no actions are available instead of an empty card",
+    async (status) => {
+      mount(server({ run: () => ok(run({ status })) }));
+      expect(await screen.findByText("No actions are available for this run.")).toBeTruthy();
+    },
+  );
 
   it("refuses a batch link that is not https", async () => {
     const base = server({ run: () => ok(run({ status: "ready" })) });
@@ -840,9 +926,17 @@ describe("mailing run — editing the wording and the items list", () => {
     expect(await within(dialog).findByText(/newer wording could not be loaded/)).toBeTruthy();
     expect((within(dialog).getByLabelText("Title") as HTMLInputElement).value).toBe("Mine");
     failReads = false;
-    fireEvent.click(within(dialog).getByRole("button", { name: "Try again" }));
+    const tryAgain = within(dialog).getByRole("button", { name: "Try again" });
+    tryAgain.focus();
+    fireEvent.click(tryAgain);
+    // still mounted while it retries (focus is not dropped), marked busy
+    expect(within(dialog).getByRole("button", { name: "Try again" })).toBe(tryAgain);
+    expect(tryAgain.getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(tryAgain);
     const theirsRegion = await within(dialog).findByRole("region", { name: "Their saved wording" });
     expect(theirsRegion.textContent).toContain("Their title");
+    // success is not silent: focus moves to their wording
+    await waitFor(() => expect(document.activeElement).toBe(theirsRegion));
     expect((within(dialog).getByLabelText("Title") as HTMLInputElement).value).toBe("Mine");
   });
 
