@@ -28,7 +28,7 @@ export interface ReasonDialogProps {
   readonly confirmLabel: string;
   readonly tone?: "primary" | "danger";
   readonly busy?: boolean;
-  /** The server's refusal, shown above the actions. */
+  /** The server's refusal, shown above the actions. A string is announced as an alert; a node is placed as is (it carries its own alert). */
   readonly error?: ReactNode;
   /** The server's field error for the reason itself (a patient-identifier refusal). */
   readonly fieldError?: string;
@@ -111,7 +111,14 @@ export function ReasonDialog({
           onChange={(e) => setReason(e.target.value)}
           error={problem ?? fieldError}
         />
-        {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
+        {/* A text error is an alert line; anything richer (a notice with its own alert, a list, a link) brings its own semantics. */}
+        {error ? (
+          typeof error === "string" ? (
+            <InlineAlert tone="error">{error}</InlineAlert>
+          ) : (
+            <div>{error}</div>
+          )
+        ) : null}
         <div className="wx-modal-actions">
           <Button tone="secondary" onClick={onCancel} disabled={busy}>
             Cancel

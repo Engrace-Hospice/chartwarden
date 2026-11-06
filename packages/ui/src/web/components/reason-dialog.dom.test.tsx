@@ -2,7 +2,7 @@
 // ReasonDialog: the one prompt every platform write goes through: say why, then confirm. It judges the reason the way the server
 // does, hands back the NORMALISED text, shows what the server said when it refused, and (for a pinned action) shows the record the
 // operator is acting on and says so when that record changed since they read it.
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { REASON_RULES } from "../../core/ops-write/reason";
 import { ReasonDialog, type ReasonDialogProps } from "./reason-dialog";
@@ -57,6 +57,24 @@ describe("ReasonDialog", () => {
   it("shows the server's refusal and keeps the reason the operator typed", () => {
     renderDialog({ error: "A different operator must approve." });
     expect(screen.getByRole("alert").textContent).toContain("A different operator must approve.");
+  });
+
+  it("a rich error (a notice with its own alert, a list, a link) is neither wrapped in a paragraph nor announced twice", () => {
+    renderDialog({
+      error: (
+        <div role="alert">
+          <p>Approval was refused.</p>
+          <ul>
+            <li>The latest BAA must be executed</li>
+          </ul>
+          <a href="#baa">Go to the BAA</a>
+        </div>
+      ),
+    });
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getAllByRole("alert")).toHaveLength(1);
+    expect(dialog.querySelectorAll("p div, p ul, p a")).toHaveLength(0);
+    expect(within(dialog).getByText("The latest BAA must be executed")).toBeTruthy();
   });
 
   it("shows a server field error on the reason box", () => {

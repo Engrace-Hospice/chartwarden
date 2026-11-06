@@ -24,7 +24,7 @@ export function FailureNotice({
     (failure.kind === "unavailable" || failure.kind === "unknown") &&
     failure.correlationId !== null;
   return (
-    <div className="wx-form-stack" role="alert">
+    <div className="wx-form-stack">
       <InlineAlert tone="error">
         {fieldsShown ? "Some details need attention." : failure.message}
         {quoteReference ? ` Reference: ${failure.correlationId}.` : ""}
