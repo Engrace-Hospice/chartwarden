@@ -7,9 +7,10 @@
 // at approval. The attending is resolved BEFORE the transaction (a seam call inside our own transaction self-deadlocks the pool,
 // M21-T05); a resolver that is unbound or throws leaves the recipient open, never blocks the plan.
 //
-// The `physician_letter_pending_review` alert runs AFTER the commit, like `death_intake`: M36's `(org, correlationId)` dedupe
-// (`m16:physician_letter_pending_review:<planId>`) makes a retry harmless, and the review queue is the backstop.
+// The `physician_letter_pending_review` alert runs AFTER the commit, like `death_intake`, best-effort and logged: a retry of the delivery
+// finds the plan already opened and does not re-alert, so the review queue (the letter is `pending_review` either way) is the backstop.
 import { type DbClient, schema } from "@chartwarden/db";
+import { emitAlertBestEffort } from "../alert-port";
 import { physicianLetterDueAt } from "../lifecycle/physician-letter";
 import type { AlertPort } from "../routes/write-service";
 
@@ -28,7 +29,17 @@ export async function resolveAttendingOrNull(
   if (resolver === undefined) return null;
   try {
     return (await resolver(organizationId, patientId)) ?? null;
-  } catch {
+  } catch (err) {
+    // The recipient stays open for the reviewer to name; the failure is logged (ids only) so an unbound or broken seam is visible.
+    // eslint-disable-next-line no-console -- consumers log via console (M9/M20 precedent).
+    console.warn(
+      "m16.physician_letter: attending lookup failed; the reviewer will name the recipient",
+      {
+        organizationId,
+        patientId,
+        error: err instanceof Error ? err.name : "unknown",
+      },
+    );
     return null;
   }
 }
@@ -64,13 +75,12 @@ export async function insertPendingPhysicianLetter(
     .onConflictDoNothing();
 }
 
-/** Tell the oversight roles a letter awaits review. Unbound alerts => skipped. Not swallowed: a failure fails the delivery attempt. */
+/** Tell the oversight roles a letter awaits review. Unbound alerts => skipped. Best-effort and logged: see `emitAlertBestEffort`. */
 export async function emitPhysicianLetterPendingAlert(
   alerts: AlertPort | undefined,
   facts: { readonly organizationId: string; readonly planId: string },
 ): Promise<void> {
-  if (alerts === undefined) return;
-  await alerts.emit({
+  await emitAlertBestEffort(alerts, {
     organizationId: facts.organizationId,
     kind: "physician_letter_pending_review",
     payload: { planId: facts.planId },

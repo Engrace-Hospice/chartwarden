@@ -95,6 +95,9 @@ export const M16_ERROR_STATUS = {
   PHYSICIAN_LETTER_DECLINE_REASON_TOO_SHORT: 422,
   /** Approval is refused with no cipher bound: a note sealed nowhere would be plaintext in a ciphertext column. */
   PHYSICIAN_LETTER_NOTE_STORAGE_UNAVAILABLE: 503,
+  /** Review follow-up — a schedule is materialized only for a contact still in the program (proposed / active); an opted-out, deceased,
+   *  unreachable or ineligible contact is refused rather than silently handed a fresh schedule. */
+  CONTACT_NOT_ENGAGEABLE: 409,
   // Optimistic concurrency (§2.5)
   STALE_VERSION: 412,
   // Structural — an event dispatched from a state that does not accept it (§2.2–§2.4 graphs).

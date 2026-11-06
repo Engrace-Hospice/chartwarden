@@ -85,6 +85,7 @@ import {
   effectiveAllowedKinds,
   generateOutreachSchedule,
   planScheduleTopUp,
+  resolveOutreachKind,
   stickyManualFactorsOf,
   transitionBereavedContact,
   transitionBereavementOutreach,
@@ -96,6 +97,7 @@ import { scoreBereavementRisk } from "../risk/index";
 import { planCaregiverSeeds } from "../roster-seed";
 import { getBereavementEncounterReader, getVolunteerComplianceProvider } from "../seams/index";
 import type { M16MutatingActor, M16WriteActor } from "./actor";
+import { settleOutstandingForClosure } from "./closure-settlement";
 import { isBereavementVolunteer } from "./disclosure";
 import { type EffectPatch, runEffects } from "./effects-runner";
 import { heldCadenceMarks } from "./held-cadence-marks";
@@ -1194,21 +1196,43 @@ export function buildDrizzleM16WriteService(
 
   /**
    * ADR-0109 D10 — the contact asked to stop MAILINGS: every `scheduled` (never started) outreach row that was to be a
-   * mailed piece becomes a phone call. A call outranks a letter on the modality ladder, so this is the same upward
-   * substitution the schedule generator makes, applied to the rows that already exist; nothing is cancelled and no due date
-   * moves. A row already in progress or done is history and is left alone.
+   * mailed piece is re-modalized by the SAME rule the schedule generator applies (`resolveOutreachKind` over the contact's
+   * effective allowed kinds), so a contact whose stated preferences exclude the phone is not given a call they declined
+   * (they get the closest kind they allow, a call only when nothing else is left). Nothing is cancelled and no due date
+   * moves. A row already in progress or done is history and is left alone. Runs AFTER the opt-out row exists, so the open
+   * opt-outs it reads include the one just recorded.
    */
-  async function remodalizeScheduledMailings(tx: Tx, contactId: string, at: string): Promise<void> {
-    await tx
-      .update(OUTREACH)
-      .set({ kind: "phone_call", version: sql`${OUTREACH.version} + 1`, updatedAt: new Date(at) })
+  async function remodalizeScheduledMailings(
+    tx: Tx,
+    contact: ContactRow,
+    at: string,
+  ): Promise<void> {
+    const allowed = effectiveAllowedKinds(
+      allowedKindsOf(contact.outreachPreferencesJsonb),
+      await openOptOutKinds(tx, contact.id),
+    );
+    const rows = await tx
+      .select({ id: OUTREACH.id, kind: OUTREACH.kind })
+      .from(OUTREACH)
       .where(
         and(
-          eq(OUTREACH.bereavedContactId, contactId),
+          eq(OUTREACH.bereavedContactId, contact.id),
           eq(OUTREACH.status, "scheduled"),
           inArray(OUTREACH.kind, [...MAILING_OUTREACH_KINDS]),
         ),
       );
+    const idsByKind = new Map<BereavementOutreachKind, string[]>();
+    for (const row of rows) {
+      const { kind } = resolveOutreachKind(row.kind, allowed);
+      if (kind === row.kind) continue;
+      idsByKind.set(kind, [...(idsByKind.get(kind) ?? []), row.id]);
+    }
+    for (const [kind, ids] of idsByKind) {
+      await tx
+        .update(OUTREACH)
+        .set({ kind, version: sql`${OUTREACH.version} + 1`, updatedAt: new Date(at) })
+        .where(inArray(OUTREACH.id, ids));
+    }
   }
 
   /**
@@ -1250,7 +1274,7 @@ export function buildDrizzleM16WriteService(
       recordedByUserId: actor.membershipId,
       sourceKind: input.sourceKind,
     });
-    await remodalizeScheduledMailings(tx, contact.id, at);
+    await remodalizeScheduledMailings(tx, contact, at);
     // The version moves so a concurrent write to this contact is detected, but the contact's status, `opted_out_at` and
     // schedule are exactly as they were.
     const [row] = await tx
@@ -1588,10 +1612,19 @@ export function buildDrizzleM16WriteService(
             },
           }),
         );
-        await cancelFutureOutreach(tx, { planId: plan.id }, at, "plan paused", {
-          includePastDue: true,
-        });
-        await cancelScheduledTasks(tx, { planId: plan.id }, at);
+        // Only a FAMILY-requested pause removes the obligation (they asked for quiet): its never-attempted rows are cancelled even when
+        // past due, and its checkpoints with them. An agency-side pause (operational, counselor unavailable) does not: the program still
+        // owes what was already due, so those rows (and every checkpoint) are kept, future outreach is cancelled as before (resume
+        // regenerates it forward), and the miss cron marks the past-due ones `missed` once the plan is active again.
+        const familyRequested = input.pauseKind === "family_request";
+        await cancelFutureOutreach(
+          tx,
+          { planId: plan.id },
+          at,
+          "plan paused",
+          familyRequested ? { includePastDue: true } : {},
+        );
+        if (familyRequested) await cancelScheduledTasks(tx, { planId: plan.id }, at);
         await tx
           .update(PLAN)
           .set({
@@ -1710,7 +1743,13 @@ export function buildDrizzleM16WriteService(
             },
           }),
         );
-        await cancelFutureOutreach(tx, { planId: plan.id }, at, "plan closed early");
+        // Everything the plan still holds `scheduled` is settled BEFORE the counts freeze and the summary is built: due -> missed,
+        // future -> cancelled (the miss crons skip a closed plan, so a row left `scheduled` would be stranded and counted forever).
+        await settleOutstandingForClosure(tx, {
+          planId: plan.id,
+          at: new Date(at),
+          cancelReason: "plan closed early",
+        });
         const stats = await closeoutStats(tx, plan.id);
         const [closure] = await tx
           .insert(CLOSURE)
@@ -2615,6 +2654,16 @@ export function buildDrizzleM16WriteService(
               ? and(eq(CONTACT.planId, planId), eq(CONTACT.id, input.contactId))
               : and(eq(CONTACT.planId, planId), eq(CONTACT.status, "active")),
           );
+        // A named contact must still be in the program (the unnamed path already reads only `active` ones): regenerating for an
+        // opted-out, deceased, unreachable or ineligible contact would hand them a schedule the program must not run.
+        for (const contact of contacts) {
+          if (!isEngageableContactStatus(contact.status)) {
+            throw new BereavementStateError(
+              "CONTACT_NOT_ENGAGEABLE",
+              `the contact is ${contact.status}; its schedule is not regenerated`,
+            );
+          }
+        }
         let cancelledCount = 0;
         const generated: BereavementOutreachRowView[] = [];
         for (const contact of contacts) {

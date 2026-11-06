@@ -52,12 +52,13 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { BereavementPlanClosureReason, IsoInstant, MembershipId } from "@chartwarden/types";
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { decidePatientOptOutFlip } from "../lifecycle/cascades";
 import type { BereavementSideEffect } from "../lifecycle/effects";
 import { transitionBereavementPlan } from "../lifecycle/index";
 import { requestDischargeSummary } from "../render-payloads/index";
+import { settleOutstandingForClosure } from "../routes/closure-settlement";
 import { type EffectContext, runEffects } from "../routes/effects-runner";
 import type { WriteOutboxPort } from "../routes/write-service";
 
@@ -243,7 +244,14 @@ async function closePlan(
   const patch = await runEffects(tx, effects, effectCtx);
 
   if (opts.cancelOutreach) {
-    await cancelFutureOutreach(tx, plan.id, at, "patient opt-out (D9)");
+    // The patient's own opt-out removes the obligation: even an already-due, never-attempted row is `cancelled` (M30's denominator
+    // excludes it), not `missed` — and nothing is left `scheduled` on the closed plan for the miss crons to skip.
+    await settleOutstandingForClosure(tx, {
+      planId: plan.id,
+      at: new Date(at),
+      cancelReason: "patient opt-out (D9)",
+      pastDue: "cancelled",
+    });
   }
 
   const stats = await closeoutStats(tx, plan.id);
@@ -293,42 +301,6 @@ async function closePlan(
       updatedAt: new Date(at),
     })
     .where(eq(PLAN.id, plan.id));
-}
-
-/** Local reimplementation of `write-service-drizzle.ts`'s private `cancelFutureOutreach` (plan scope only —
- *  this handler never needs the per-contact overload). */
-async function cancelFutureOutreach(
-  tx: DbClient,
-  planId: string,
-  at: string,
-  reason: string,
-): Promise<void> {
-  const rows = await tx
-    .select({ id: OUTREACH.id })
-    .from(OUTREACH)
-    .where(
-      and(
-        eq(OUTREACH.planId, planId),
-        eq(OUTREACH.status, "scheduled"),
-        gte(OUTREACH.dueAt, new Date(at)),
-      ),
-    );
-  if (rows.length === 0) return;
-  await tx
-    .update(OUTREACH)
-    .set({
-      status: "cancelled",
-      cancelledAt: new Date(at),
-      cancellationReasonRedacted: reason,
-      version: sql`${OUTREACH.version} + 1`, // §2.5 (GAP-194)
-      updatedAt: new Date(at),
-    })
-    .where(
-      inArray(
-        OUTREACH.id,
-        rows.map((r) => r.id),
-      ),
-    );
 }
 
 /** Local reimplementation of `write-service-drizzle.ts`'s private `closeoutStats` — the §7.11 closeout

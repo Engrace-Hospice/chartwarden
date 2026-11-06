@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import { assertBereavementDischargeSummaryRenderPayload } from "@chartwarden/types";
 import { Client } from "pg";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import {
@@ -325,6 +325,67 @@ describe.skipIf(!DB_URL)("GAP-048 — M16 §4.9 cron workers, LIVE", () => {
   });
 
   // ADR-0109 D9 — every closure writer requests the internal discharge summary on the closure's own transaction.
+  describe("m16-close-13mo — nothing is left scheduled on a closed plan", () => {
+    it("settles every still-scheduled row before the counts freeze: due -> missed, future -> cancelled, tasks likewise", async () => {
+      // death 397 days ago: the d390 closeout letter is 7 days past due (grace ends about now) and the plan's window has elapsed.
+      const plan = await seedPlan(ORG, "CURRENT_DATE - 397");
+      const contact = await seedContact(ORG, plan);
+      const closeout = await seedOutreach(ORG, plan, contact, 390);
+      await admin.query(
+        "UPDATE bereavement_outreach SET cadence_mark='closeout_letter' WHERE id=$1",
+        [closeout],
+      );
+      const futureCall = await seedOutreach(ORG, plan, contact, 400);
+      await admin.query(
+        "UPDATE bereavement_outreach SET cadence_mark='anniversary_call' WHERE id=$1",
+        [futureCall],
+      );
+      const dueTask = await seedTask(ORG, plan, contact, 28, "initial_assessment");
+      const futureTask = await seedTask(ORG, plan, contact, 400, "midpoint_reassessment");
+      const status = async (table: string, id: string) =>
+        (await one<{ status: string }>(`SELECT status FROM ${table} WHERE id=$1`, [id])).status;
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+      await runClose13MonthsCron(deps);
+      logSpy.mockRestore();
+
+      expect(await status("bereavement_outreach", closeout)).toBe("missed");
+      expect(await status("bereavement_outreach", futureCall)).toBe("cancelled");
+      expect(await status("bereavement_assessment_task", dueTask)).toBe("missed");
+      expect(await status("bereavement_assessment_task", futureTask)).toBe("cancelled");
+      // nothing stays `scheduled` for M30 to count for ever, and the closure froze the counts AFTER the settlement
+      expect(
+        (
+          await one<{ n: number }>(
+            `SELECT ((SELECT count(*) FROM bereavement_outreach WHERE plan_id=$1 AND status='scheduled')
+                  + (SELECT count(*) FROM bereavement_assessment_task WHERE plan_id=$1 AND status='scheduled'))::int AS n`,
+            [plan],
+          )
+        ).n,
+      ).toEqual(0);
+      expect(
+        await one<{ outreach_missed_count: number }>(
+          "SELECT outreach_missed_count FROM bereavement_plan_closure WHERE plan_id=$1",
+          [plan],
+        ),
+      ).toEqual({ outreach_missed_count: 1 });
+      // the settlement is the closure's own: the discharge summary reports the settled statuses
+      const event = await one<{ payload: { payloadJsonb: unknown } }>(
+        "SELECT payload FROM outbox_event WHERE event_type='m16.bereavement.document_requested' AND payload->>'planId'=$1",
+        [plan],
+      );
+      const summary = assertBereavementDischargeSummaryRenderPayload(event.payload.payloadJsonb);
+      expect(summary.contacts[0]?.touchpoints.map((t) => [t.cadenceMark, t.status])).toEqual([
+        ["closeout_letter", "missed"],
+        ["anniversary_call", "cancelled"],
+      ]);
+      expect(summary.contacts[0]?.assessmentTasks.map((t) => [t.taskKind, t.status])).toEqual([
+        ["initial_assessment", "missed"],
+        ["midpoint_reassessment", "cancelled"],
+      ]);
+    });
+  });
+
   describe("m16-close-13mo — the internal discharge summary request", () => {
     it("emits one document_requested naming the CLOSURE, with the typed offered-versus-delivered payload and nothing sealed", async () => {
       // death 397 days ago: the window (396 days) has elapsed while a closeout letter due at +400d is still ahead of now.
@@ -601,11 +662,19 @@ describe.skipIf(!DB_URL)("GAP-048 — M16 §4.9 cron workers, LIVE", () => {
       await admin.query("UPDATE bereaved_contact SET status='opted_out' WHERE id=$1", [gone]);
       const goneTask = await seedTask(ORG, plan, gone, 30);
 
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
       await runMissDeadlineCron(deps);
+      const skipped = logSpy.mock.calls.map((call) => JSON.stringify(call));
+      logSpy.mockRestore();
       expect(await taskStatus(pausedTask)).toBe("scheduled");
       expect(await taskStatus(goneTask)).toBe("scheduled");
       expect(
         emitted.filter((a) => [pausedTask, goneTask].includes(a.payload.taskId as string)),
+      ).toEqual([]);
+      // The list query itself leaves out a contact who is no longer in the program (and a paused plan), so those rows never
+      // enter the oldest-first batch of 500 to be skipped one by one: no "already handled" skip is logged for them.
+      expect(
+        skipped.filter((line) => line.includes(goneTask) || line.includes(pausedTask)),
       ).toEqual([]);
     });
 

@@ -14,7 +14,8 @@
 // `m16-alert-port` test fails when one exists without the other.
 //
 // The adapter does NOT swallow an emitter failure: whether an alert failure may fail the caller is the
-// caller's policy (the effect runner and the workers treat it as best-effort and catch it).
+// caller's policy. A caller that raises an alert AFTER its change committed (the death-intake consumers, the
+// assessment-task miss pass) uses `emitAlertBestEffort` below: logged with ids only, never thrown.
 import type { AlertPort } from "./routes/write-service";
 
 type AlertSeverity = "info" | "warn" | "critical";
@@ -95,4 +96,33 @@ export function createM16AlertPort(getEmitter: () => M16AlertEmitterLike): Alert
       });
     },
   };
+}
+
+/**
+ * Raise an advisory alert AFTER the change it announces committed. A failure is logged (organization, kind and the payload's subject ids
+ * only, never PHI) and swallowed: the committed change stands, a consumer retry would find it already done and would NOT re-alert, so
+ * throwing here would only make the relay redeliver for nothing. The backstops are the review queue, the worklist and the 48h
+ * counselor-assignment alert. Unbound alerts => skipped.
+ */
+export async function emitAlertBestEffort(
+  alerts: AlertPort | undefined,
+  input: Parameters<AlertPort["emit"]>[0],
+): Promise<void> {
+  if (alerts === undefined) return;
+  try {
+    await alerts.emit(input);
+  } catch (err) {
+    const ids = Object.fromEntries(
+      Object.entries(input.payload).filter(
+        ([key, value]) => key.endsWith("Id") && typeof value === "string",
+      ),
+    );
+    // eslint-disable-next-line no-console -- consumers and standalone workers log via console (M9/M20 precedent).
+    console.warn("m16.alert: emit failed after commit (best-effort; the committed change stands)", {
+      organizationId: input.organizationId,
+      kind: input.kind,
+      ...ids,
+      error: err instanceof Error ? err.name : "unknown",
+    });
+  }
 }
