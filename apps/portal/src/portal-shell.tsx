@@ -127,9 +127,7 @@ function PortalSidebar({
           <Glyph name="phone" size={22} />
           <span>
             <strong>Hospice support</strong>
-            <small>
-              Call your care team using the number they gave you. In an emergency, call 911.
-            </small>
+            <small>Call your care team using the number they gave you.</small>
           </span>
         </div>
       ) : (

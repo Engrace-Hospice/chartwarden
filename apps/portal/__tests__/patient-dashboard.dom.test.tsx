@@ -193,7 +193,6 @@ describe("patient dashboard redesign", () => {
   it("offers urgent help without inventing a phone number", async () => {
     renderDashboard();
     const help = await screen.findByRole("region", { name: "Need help now?" });
-    expect(help.textContent).toContain("In an emergency, call 911.");
     expect(help.textContent).toContain(
       "Call your hospice care team using the number they gave you. Messages are not for emergencies.",
     );

@@ -326,10 +326,6 @@ export function NeedHelpCard({ messagesTo }: { messagesTo: string }): JSX.Elemen
         <Glyph name="mail" size={18} />
         Send a message
       </Link>
-      <p className="wx-family-help__emergency">
-        <Glyph name="alert-circle" size={18} />
-        In an emergency, call 911.
-      </p>
     </section>
   );
 }

@@ -568,19 +568,6 @@
 .wx-family-help__action:hover {
   background: #e4f2ea;
 }
-.wx-family-help .wx-family-help__emergency {
-  margin: 0;
-  padding-top: var(--space-3);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  border-top: 1px solid rgba(255, 255, 255, 0.22);
-  color: #ffffff;
-  font-weight: 600;
-}
-.wx-family-help__emergency svg {
-  color: #ffb4b4;
-}
 
 /* ── Tablet ───────────────────────────────────────────────────────────────────────────────────── */
 
