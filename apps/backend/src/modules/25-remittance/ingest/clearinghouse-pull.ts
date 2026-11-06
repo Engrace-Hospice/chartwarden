@@ -64,13 +64,43 @@ export interface RemittanceCursorStore {
   ): Promise<{ readonly count: number; readonly quarantined: boolean }>;
 }
 
-export interface RemittancePullDeps {
+/** One organization's clearinghouse as the pull needs it. `vendor` null = the organization has none: it is skipped (no call, no failure). */
+export interface RemittancePullBinding {
   readonly transport: ClearinghouseTransport;
-  readonly vendor: string;
+  readonly vendor: string | null;
+}
+
+/**
+ * The clearinghouse the pull reads from: ONE platform binding (`transport` + `vendor`), or a binding PER ORGANIZATION (`forOrg`, the
+ * tenant clearinghouse, ADR-0053 amendment 2026-11-06), resolved inside the per-org loop. With `forOrg` there is no platform pair.
+ */
+export type RemittancePullDeps = {
   readonly contexts: RemittancePullContexts;
   readonly payers: MedicarePayerPort;
   readonly cursors: RemittanceCursorStore;
   readonly ingest: Pick<M25IngestService, "receiveAdvice">;
+} & (
+  | {
+      readonly transport: ClearinghouseTransport;
+      readonly vendor: string;
+      readonly forOrg?: undefined;
+    }
+  | {
+      readonly forOrg: (organizationId: string) => Promise<RemittancePullBinding>;
+      readonly transport?: undefined;
+      readonly vendor?: undefined;
+    }
+);
+
+/** The binding to pull this organization's remittances through; null when it has no usable clearinghouse. */
+async function bindingOf(
+  deps: RemittancePullDeps,
+  organizationId: string,
+): Promise<{ readonly transport: ClearinghouseTransport; readonly vendor: string } | null> {
+  const bound: RemittancePullBinding = deps.forOrg
+    ? await deps.forOrg(organizationId)
+    : { transport: deps.transport, vendor: deps.vendor };
+  return bound.vendor === null ? null : { transport: bound.transport, vendor: bound.vendor };
 }
 
 export interface RemittancePullResult {
@@ -96,6 +126,20 @@ export async function pullRemittances(
   let unsupported = 0;
   const failures: string[] = [];
   const quarantined: string[] = [];
+  let binding: Awaited<ReturnType<typeof bindingOf>>;
+  try {
+    binding = await bindingOf(deps, organizationId);
+  } catch {
+    return {
+      queued,
+      duplicates,
+      unsupported,
+      quarantined,
+      failures: [`org ${organizationId}: clearinghouse binding could not be resolved`],
+    };
+  }
+  // No clearinghouse of its own (billing outside ChartWarden, or none chosen yet): nothing to pull, nothing failed.
+  if (binding === null) return { queued, duplicates, unsupported, quarantined, failures };
   let providerEntityIds: readonly string[];
   try {
     providerEntityIds = await deps.contexts.providerEntitiesFor(organizationId);
@@ -111,7 +155,14 @@ export async function pullRemittances(
   for (const providerEntityId of providerEntityIds) {
     const label = `org ${organizationId} provider ${providerEntityId}`;
     try {
-      const counts = await pullOne(deps, organizationId, providerEntityId, label, quarantined);
+      const counts = await pullOne(
+        deps,
+        binding,
+        organizationId,
+        providerEntityId,
+        label,
+        quarantined,
+      );
       if (counts === "unsupported") unsupported += 1;
       else {
         queued += counts.queued;
@@ -126,6 +177,7 @@ export async function pullRemittances(
 
 async function pullOne(
   deps: RemittancePullDeps,
+  binding: { readonly transport: ClearinghouseTransport; readonly vendor: string },
   organizationId: string,
   providerEntityId: string,
   label: string,
@@ -137,14 +189,14 @@ async function pullOne(
   const key: RemittanceCursorKey = {
     organizationId,
     providerEntityId,
-    vendor: deps.vendor,
+    vendor: binding.vendor,
     usage: ctx.usage,
   };
   let cursor = await deps.cursors.get(key);
   let queued = 0;
   let duplicates = 0;
   for (let page = 0; page < MAX_REMITTANCE_PAGES; page++) {
-    const result = await deps.transport.fetchRemittances(ctx, cursor);
+    const result = await binding.transport.fetchRemittances(ctx, cursor);
     if (!result.ok) {
       if (result.degraded.code === CH.NOT_WIRED) return "unsupported";
       // Code only: the vendor's reason text is not provably PHI-free and this string reaches job data and logs.
@@ -166,7 +218,7 @@ async function pullOne(
           providerEntityId,
           payerId,
           payerKind: "medicare",
-          minioObjectKey: `clearinghouse/${deps.vendor}/${file.remittanceId}`,
+          minioObjectKey: `clearinghouse/${binding.vendor}/${file.remittanceId}`,
           fileSha256,
           rawEdi: file.rawX12,
         },

@@ -383,3 +383,116 @@ describe("pullRemittances", () => {
     expect(cursors.current()).toBe("0");
   });
 });
+
+describe("pullRemittances with a clearinghouse per organization (ADR-0053 amendment 2026-11-06)", () => {
+  const ORG_B = "00000000-0000-4000-8000-0000000000b2";
+  const scopeB = { ...DEFAULT_SCOPE, organizationId: ORG_B };
+
+  function perOrg(
+    bindings: Record<string, { transport: InMemoryClearinghouse; vendor: string | null }>,
+  ) {
+    const cursors = cursorStore();
+    const ingest = ingestDouble();
+    const resolved: string[] = [];
+    const deps = {
+      forOrg: async (organizationId: string) => {
+        resolved.push(organizationId);
+        const binding = bindings[organizationId];
+        if (!binding) throw new Error("no such organization");
+        return binding;
+      },
+      contexts: {
+        providerEntitiesFor: async () => [PE],
+        contextFor: async (organizationId: string) => ({ ...ctx, organizationId }),
+      },
+      payers: { medicarePayerId: async () => PAYER },
+      cursors: cursors.store,
+      ingest: ingest.ingest,
+    };
+    return { deps, ingest, cursors, resolved };
+  }
+
+  it("reads each organization's remittances from its OWN clearinghouse, under its own vendor", async () => {
+    const farA = new InMemoryClearinghouse();
+    const farB = new InMemoryClearinghouse();
+    await farA.control.deliverRemittance("ERA-A", buildRawEdi("1", "0001"));
+    await farB.control.deliverRemittance("ERA-B", buildRawEdi("2", "0001"), scopeB);
+    const { deps, ingest } = perOrg({
+      [ORG]: { transport: farA, vendor: "stedi" },
+      [ORG_B]: { transport: farB, vendor: "claimmd" },
+    });
+
+    const a = await pullRemittances(deps, ORG);
+    const b = await pullRemittances(deps, ORG_B);
+
+    expect(a).toMatchObject({ queued: 1, failures: [] });
+    expect(b).toMatchObject({ queued: 1, failures: [] });
+    expect(ingest.received.map((r) => r.minioObjectKey)).toEqual([
+      "clearinghouse/stedi/ERA-A",
+      "clearinghouse/claimmd/ERA-B",
+    ]);
+  });
+
+  it("keeps each organization's cursor under its own vendor", async () => {
+    const farA = new InMemoryClearinghouse();
+    const farB = new InMemoryClearinghouse();
+    await farA.control.deliverRemittance("ERA-A", buildRawEdi("1", "0001"));
+    await farB.control.deliverRemittance("ERA-B", buildRawEdi("2", "0001"), scopeB);
+    const { deps, cursors } = perOrg({
+      [ORG]: { transport: farA, vendor: "stedi" },
+      [ORG_B]: { transport: farB, vendor: "claimmd" },
+    });
+
+    await pullRemittances(deps, ORG);
+    await pullRemittances(deps, ORG_B);
+
+    const key = (organizationId: string, vendor: string): RemittanceCursorKey => ({
+      organizationId,
+      providerEntityId: PE,
+      vendor,
+      usage: "test",
+    });
+    expect(await cursors.store.get(key(ORG, "stedi"))).toBe("1");
+    expect(await cursors.store.get(key(ORG_B, "claimmd"))).toBe("1");
+    expect(await cursors.store.get(key(ORG, "claimmd"))).toBeNull();
+  });
+
+  it("skips an organization with no clearinghouse (no call, no failure) while another still pulls", async () => {
+    const far = new InMemoryClearinghouse();
+    await far.control.deliverRemittance("ERA-A", buildRawEdi("1", "0001"));
+    let touched = 0;
+    const idle = new InMemoryClearinghouse();
+    const spy = new Proxy(idle, {
+      get: (target, prop, receiver) => {
+        touched += 1;
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const { deps, ingest } = perOrg({
+      [ORG]: { transport: far, vendor: "stedi" },
+      [ORG_B]: { transport: spy, vendor: null },
+    });
+
+    const none = await pullRemittances(deps, ORG_B);
+    const bound = await pullRemittances(deps, ORG);
+
+    expect(none).toEqual({
+      queued: 0,
+      duplicates: 0,
+      unsupported: 0,
+      quarantined: [],
+      failures: [],
+    });
+    expect(touched).toBe(0);
+    expect(bound).toMatchObject({ queued: 1, failures: [] });
+    expect(ingest.received).toHaveLength(1);
+  });
+
+  it("reports an organization whose binding cannot be resolved as a failure and does not throw", async () => {
+    const { deps } = perOrg({});
+
+    const result = await pullRemittances(deps, ORG);
+
+    expect(result.failures).toEqual([`org ${ORG}: clearinghouse binding could not be resolved`]);
+  });
+});
