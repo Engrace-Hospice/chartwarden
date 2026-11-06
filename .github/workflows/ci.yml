@@ -1666,6 +1666,39 @@ jobs:
       - name: Shared fixed-window counter across two clients (real Valkey)
         run: bun run test:rate-limit-store:live
 
+  # ADR-0050 D6 — "proof before cutover". Production object storage moves MinIO -> SeaweedFS; this runs the
+  # REAL M22 SigV4 adapter against SeaweedFS (+ Fluent Bit shipping its S3 audit log to the suite's sink) and
+  # asserts every store behaviour ChartWarden depends on: SHA-256 checksums stored AND verified, presigned
+  # PUT/GET, the D12 version-aware erase, the M25 prefix-expiry rule, the GAP-141 per-download audit record,
+  # and the GAP-139 key scope. `docker run`, not `services:`: the store needs its command and config mounts.
+  object-store-conformance-live:
+    name: Object-store conformance live (SeaweedFS) — ADR-0050 D6
+    runs-on: [self-hosted, Linux, X64, ci]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Start SeaweedFS + Fluent Bit
+        run: scripts/object-store-conformance/seaweedfs-up.sh
+      - name: Conformance suite (real adapter, real SeaweedFS)
+        run: |
+          eval "$(scripts/object-store-conformance/seaweedfs-up.sh --env)"
+          # an empty env would make the suite SKIP and the job go green: fail instead
+          test -n "${OBJECT_STORE_ENDPOINT:-}" || { echo "OBJECT_STORE_ENDPOINT unset" >&2; exit 1; }
+          bun run test:object-store:conformance:live
+      - name: Store logs on failure
+        if: failure()
+        run: |
+          docker logs cw-osc-seaweedfs 2>&1 | tail -100 || true
+          docker logs cw-osc-fluent-bit 2>&1 | tail -50 || true
+      - name: Cleanup SeaweedFS
+        if: always()
+        run: scripts/object-store-conformance/seaweedfs-up.sh --down
+
   e2e:
     # F-024 (#41, second half): the 18-test Playwright suite — and the SIX axe-core WCAG 2A/AA scans it
     # carries, the repo's ENTIRE automated accessibility coverage — ran in no CI job. `test:e2e` was
