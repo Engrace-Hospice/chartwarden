@@ -339,6 +339,10 @@ export function createBereavedPortalScopeProvider(
         };
       });
     },
+    async isWindowOpen({ portalAccountId, patientId, asOf }) {
+      const rows = await store.contactsForPortalAccount(portalAccountId);
+      return rows.some(({ plan }) => plan.patientId === patientId && isPlanInWindow(plan, asOf));
+    },
   };
 }
 

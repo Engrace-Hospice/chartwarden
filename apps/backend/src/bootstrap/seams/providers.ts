@@ -1476,6 +1476,9 @@ export const bereavedPortalScopeProviderDenyStub: BereavedPortalScopeProvider = 
   scopeForPortalAccount() {
     throw new NotImplementedError("BereavedPortalScopeProvider");
   },
+  isWindowOpen() {
+    throw new NotImplementedError("BereavedPortalScopeProvider");
+  },
 };
 
 /** M16 — the M30 HQRP measure inputs + M33 rollups, as COUNTS (never a pre-divided rate). */
