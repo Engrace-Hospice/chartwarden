@@ -21,10 +21,13 @@ import { createDbClient } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
 import { OnboardingRepository } from "@chartwarden/saas-tenant-platform";
 import { registerPlatformJob } from "@chartwarden/tenancy";
-import { ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, type ResolvedActor, STEP_UP_POLICY } from "@chartwarden/types";
+import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createComplianceOfficerRoleBinder } from "../src/bootstrap/bind-compliance-officer-role";
+import { createSessionAuthenticate } from "../src/bootstrap/index";
+import { createOrganizationStageReader } from "../src/bootstrap/onboarding-org-gate";
 import { buildDrizzleOrgProfilePort } from "../src/bootstrap/org-profile";
 import {
   buildOrgAdminCountReader,
@@ -32,6 +35,10 @@ import {
 } from "../src/bootstrap/org-spine-facts";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { m34PlatformBypassAuditor } from "../src/index";
+import {
+  createOrganizationActivator,
+  createOrganizationStatusReader,
+} from "../src/modules/02-identity";
 import {
   buildDrizzleOrgMacJurisdictionReader,
   buildMacFeedConfiguredReader,
@@ -42,6 +49,7 @@ import type {
   PlatformActor,
   TenantActor,
 } from "../src/modules/34-saas-tenant-platform/onboarding/model";
+import { createOnboardingTenantReader } from "../src/modules/34-saas-tenant-platform/onboarding/onboarding-tenant-reader";
 import {
   type OnboardingWizardDeps,
   createOnboardingWizard,
@@ -1825,6 +1833,194 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
           )
         ).rows[0].n,
       ).toBe(1); // admin-nr's own org_admin grant only
+    });
+  });
+
+  describe("smoke-test gaps: a new tenant's first admin during onboarding (organization still `created`)", () => {
+    const ORG_G = "dddddddd-dddd-4ddd-8ddd-dddddddddd01";
+    const T_G = "dddddddd-dddd-4ddd-8ddd-dddddddddd02";
+    const ORG_X = "dddddddd-dddd-4ddd-8ddd-dddddddddd03"; // a created organization nobody provisioned: no tenant account
+    const ORG_Y = "dddddddd-dddd-4ddd-8ddd-dddddddddd04"; // created, but its tenant is suspended
+    const T_Y = "dddddddd-dddd-4ddd-8ddd-dddddddddd05";
+    let adminG: TenantActor;
+    let officerG: TenantActor;
+    const orgStatus = async (org: string) =>
+      (await admin.query("SELECT status FROM organization WHERE id=$1", [org])).rows[0]
+        .status as string;
+
+    const stage = createOrganizationStageReader(() =>
+      createOrganizationStatusReader(app.db)(ORG_G),
+    );
+    const readerFor = (org: string) =>
+      createOrganizationStageReader(() => createOrganizationStatusReader(app.db)(org));
+
+    /** The real authenticate hook, a stub session, the REAL organization-status reader on the real tenant role. */
+    const hookFor = (org: string, reader: ReturnType<typeof readerFor>, user: TenantActor) => {
+      const actor: ResolvedActor = {
+        userId: user.userId,
+        membershipId: user.membershipId,
+        organizationId: org,
+        roles: [...user.roles],
+        providerEntityIds: [],
+        locationIds: [],
+        sessionClass: "staff",
+        portalAccountId: null,
+        sessionPatientId: null,
+        deviceAttestation: null,
+        externalActorId: null,
+      };
+      return createSessionAuthenticate({
+        getSnapshot: async () => ({
+          sessionId: "s-1",
+          userId: user.userId,
+          activeOrganizationId: org,
+        }),
+        getResolver: () => ({
+          resolveActor: async () => actor,
+          resolveStepUpState: async () => null,
+          resolveStepUpPolicy: async () => ({
+            qualifyingFactors: STEP_UP_POLICY.qualifyingFactors,
+            maxAgeSec: STEP_UP_POLICY.defaultMaxAgeSec,
+          }),
+        }),
+        organizationStage: reader,
+      });
+    };
+    const req = (method: string, url: string) =>
+      ({
+        method,
+        url,
+        headers: {},
+        context: {
+          userId: "",
+          organizationId: "",
+          roles: [],
+          providerEntityIds: [],
+          locationIds: [],
+          attributes: {},
+        },
+      }) as unknown as FastifyRequest;
+
+    beforeAll(async () => {
+      // G: a tenant ready to go live (every gating step done, a long BAA, an assigned officer) whose organization is `created`.
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'wiz-g','wiz-g','wiz-g')",
+        [ORG_G],
+      );
+      await admin.query(
+        "INSERT INTO tenant_account (id, organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,'onboarding','wiz-g','b@x.test','p@x.test')",
+        [T_G, ORG_G],
+      );
+      await admin.query(
+        `INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key, status)
+         SELECT $1, $2, key, CASE WHEN key = 'go_live_checklist_complete' THEN 'pending' ELSE 'done' END::onboarding_task_status
+           FROM onboarding_task_template WHERE retired_at IS NULL`,
+        [ORG_G, T_G],
+      );
+      await admin.query(
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
+         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
+        [ORG_G, T_G],
+      );
+      adminG = await person(ORG_G, "admin-g", ["org_admin"]);
+      officerG = await person(ORG_G, "officer-g", ["compliance_officer"]);
+      await admin.query(
+        "UPDATE tenant_account SET compliance_officer_membership_id=$2 WHERE id=$1",
+        [T_G, officerG.membershipId],
+      );
+      // X and Y: created organizations that must NOT be admitted.
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'wiz-x','wiz-x','wiz-x'), ($2,'wiz-y','wiz-y','wiz-y')",
+        [ORG_X, ORG_Y],
+      );
+      await admin.query(
+        "INSERT INTO tenant_account (id, organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,'suspended','wiz-y','b@x.test','p@x.test')",
+        [T_Y, ORG_Y],
+      );
+    }, 60_000);
+
+    it("the onboarding-tenant fact, read as the tenant role, is true only for a provisioning or onboarding tenant of that organization", async () => {
+      const reader = createOnboardingTenantReader(app.db);
+      expect(await reader.isOnboarding(ORG_G)).toBe(true);
+      expect(await reader.isOnboarding(ORG_X)).toBe(false); // no tenant account
+      expect(await reader.isOnboarding(ORG_Y)).toBe(false); // suspended tenant
+      expect(await reader.isOnboarding("00000000-0000-4000-8000-000000000000")).toBe(false);
+      await admin.query("UPDATE tenant_account SET status='provisioning' WHERE id=$1", [T_G]);
+      try {
+        expect(await reader.isOnboarding(ORG_G)).toBe(true);
+      } finally {
+        await admin.query("UPDATE tenant_account SET status='onboarding' WHERE id=$1", [T_G]);
+      }
+    });
+
+    it("while the organization is created, the admin's session reaches the onboarding routes and is refused every clinical route", async () => {
+      expect(await orgStatus(ORG_G)).toBe("created");
+      const hook = hookFor(ORG_G, stage, adminG);
+      for (const [method, url] of [
+        ["GET", "/api/v1/tenant/onboarding"],
+        ["POST", "/api/v1/tenant/go-live/attest"],
+        ["GET", "/api/v1/me/permissions"],
+      ] as const) {
+        await expect(hook(req(method, url)), `${method} ${url}`).resolves.toBeUndefined();
+      }
+      for (const [method, url] of [
+        ["GET", "/api/v1/patients"],
+        ["POST", "/api/v1/patients"],
+        ["GET", "/api/v1/admissions"],
+      ] as const) {
+        await expect(hook(req(method, url)), `${method} ${url}`).rejects.toMatchObject({
+          code: "ORGANIZATION_ONBOARDING",
+          statusCode: 403,
+        });
+      }
+    });
+
+    it("go-live approval activates the organization on the real roles: audited as the operator, the gate lifts at once", async () => {
+      const attested = await wizard(false).attestGoLive(officerG, ORG_G, "all checks reviewed");
+      expect(attested.goLive.state).toBe("awaiting_approval");
+      expect(await orgStatus(ORG_G)).toBe("created"); // an attestation opens nothing
+
+      const activateOrg = createOrganizationActivator(app.db, undefined, (org) =>
+        stage.invalidate(org),
+      );
+      const live = await wizard(false, {
+        activateOrganization: async ({ organizationId, operator, reason }) => {
+          await activateOrg(organizationId, {
+            reason: `go-live approved: ${reason}`,
+            actorUserId: operator.userId,
+            actorMembershipId: operator.membershipId,
+          });
+        },
+      }).approveGoLive("wiz-g", OPS, "reviewed the evidence and the BAA");
+
+      expect(live.goLive.state).toBe("live");
+      expect(await tenantStatus(T_G)).toBe("active");
+      expect(await orgStatus(ORG_G)).toBe("active");
+      const audit = await admin.query(
+        `SELECT actor_user_id, before, after, context FROM audit_event
+          WHERE event_type='m2.organization.activated' AND organization_id=$1`,
+        [ORG_G],
+      );
+      expect(audit.rows).toHaveLength(1);
+      expect(audit.rows[0].actor_user_id).toBe(OPS_USER);
+      expect(JSON.stringify(audit.rows[0])).toContain(
+        "go-live approved: reviewed the evidence and the BAA",
+      );
+
+      // The same session, no new sign-in: the clinical routes are open now.
+      expect(await stage.isPreActivation(ORG_G)).toBe(false);
+      await expect(
+        hookFor(ORG_G, stage, adminG)(req("GET", "/api/v1/patients")),
+      ).resolves.toBeUndefined();
+    });
+
+    it("an organization with no onboarding tenant is not admitted by the fact, and the gate reads its real status", async () => {
+      // Nothing about X or Y becomes pre-activation-allowed: the select-organization fact is false for both (above), so no
+      // session can be bound to them; the gate still treats a `created` organization as pre-activation if one ever were.
+      const hook = hookFor(ORG_X, readerFor(ORG_X), adminG);
+      await expect(hook(req("GET", "/api/v1/patients"))).rejects.toMatchObject({
+        code: "ORGANIZATION_ONBOARDING",
+      });
     });
   });
 });

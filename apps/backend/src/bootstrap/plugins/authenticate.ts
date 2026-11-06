@@ -13,6 +13,11 @@ import {
 } from "@chartwarden/auth";
 import { ChartWardenError, type OrgScope, type SessionContextResolver } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
+import {
+  type OrganizationStageReader,
+  organizationOnboardingRefusal,
+  preActivationMayCall,
+} from "../onboarding-org-gate";
 import { stepUpFreshFor } from "../step-up";
 
 /** Matches the bootstrap `AuthenticateHook` shape without importing it (avoids an index↔plugin cycle). */
@@ -129,6 +134,13 @@ export interface SessionAuthenticateDeps {
       roleKeys: readonly string[];
     }): Promise<{ satisfied: boolean; requirement: string; reason?: string }>;
   };
+  /**
+   * A new tenant's first admin signs in while the organization is still `created` (go-live not yet approved). For such an
+   * org-bound session ONLY the onboarding / go-live / account / identity routes may be called (onboarding-org-gate.ts); every
+   * clinical and PHI route answers 403 ORGANIZATION_ONBOARDING. A read that throws fails the request (closed). Absent in unit
+   * tests that do not exercise it: no gate.
+   */
+  organizationStage?: OrganizationStageReader;
 }
 
 /** Constant-time header/secret comparison (mirrors the M12/M19/M20/M13 witness-token precedent). */
@@ -268,6 +280,13 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
           );
         }
       }
+    }
+    if (
+      deps.organizationStage &&
+      (await deps.organizationStage.isPreActivation(actor.organizationId)) &&
+      !preActivationMayCall(request.url)
+    ) {
+      throw organizationOnboardingRefusal();
     }
     request.context.organizationId = actor.organizationId;
     request.context.roles = [...actor.roles];

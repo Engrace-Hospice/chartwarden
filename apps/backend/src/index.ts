@@ -185,6 +185,7 @@ import {
   registerOutboxMetrics,
   registerPartitionMetrics,
 } from "./bootstrap/metrics";
+import { createOrganizationStageReader } from "./bootstrap/onboarding-org-gate";
 import { createOpsNoticeClaims } from "./bootstrap/ops-notice-claims";
 import { buildDrizzleOrgProfilePort } from "./bootstrap/org-profile";
 import {
@@ -383,6 +384,8 @@ import {
   createDrizzleIdentityEraserStore,
   createLinkDelivery,
   createOrgScopedAuditExecutor,
+  createOrganizationActivator,
+  createOrganizationStatusReader,
   createPortalInviteeUserPort,
   createPortalSignInStore,
   createTaxIdCipher,
@@ -1554,6 +1557,7 @@ import {
   createDrizzleWizardRunner,
   createM34ProvisionGateway,
   createOnboardingAdvancer,
+  createOnboardingTenantReader,
   createOnboardingWizard,
   describeM34SweepSchedules,
   enableM34JobCapability,
@@ -4665,6 +4669,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       ? createCachingTenantHostResolver(createDbTenantHostResolver(dbHandle.db))
       : undefined;
   // The same rule decides Better Auth's trusted origins, the passkey ceremony, step-up and the realtime handshake.
+  // A new tenant's first admin signs in while its organization is still `created` (go-live not yet approved): the authenticate
+  // hook confines such a session to the onboarding allowlist (bootstrap/onboarding-org-gate.ts), and go-live approval activates
+  // the organization. Cached briefly; evicted by every organization transition below.
+  const organizationStage = dbHandle
+    ? createOrganizationStageReader(createOrganizationStatusReader(dbHandle.db))
+    : undefined;
   const tenantOrigins = tenantHostResolver
     ? createTenantOriginMatcher({ baseDomain: tenantBaseDomain, resolver: tenantHostResolver })
     : undefined;
@@ -4703,6 +4713,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           : {}),
         // GAP-002 — SESSION_POLICY idle/absolute timeouts, enforced server-side on every request.
         ...(dbHandle ? { sessionTimeout: createDbSessionTimeoutEnforcer(dbHandle.db) } : {}),
+        // A session on a not-yet-live organization reaches only the onboarding routes (403 ORGANIZATION_ONBOARDING otherwise).
+        ...(organizationStage ? { organizationStage } : {}),
         // TASK-013 — the M23 #39/#40 / M15 `/internal/...` system-principal routes' only path to
         // reachability. Unset (dev/no secret configured) → `systemCredential` is undefined and the
         // machine-credential branch never runs, exactly today's fail-closed posture.
@@ -5187,6 +5199,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 context: { userId: input.userId },
               }),
             ...(mfaGate ? { mfaGate } : {}),
+            // `select-organization` admits a `created` organization whose tenant is still onboarding (its first admin).
+            onboardingTenants: createOnboardingTenantReader(dbHandle.db),
             funeralCases: {
               read: (organizationId, patientId) =>
                 funeralCaseForOrg(dbHandle.db, organizationId, patientId),
@@ -5239,8 +5253,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // §11 D19 (#205 hard half) — the real org activate/suspend/close capability. This is what
           // makes M35's `m2.organization.*` subscriptions have a producer at all; `organization.status`
           // had no UPDATE anywhere in the codebase before this.
-          mountOrganizationLifecycleRoutes(app, dbHandle.db, m2OutboxPublisher, (organizationId) =>
-            tenantHostResolver?.invalidateOrganization(organizationId),
+          mountOrganizationLifecycleRoutes(
+            app,
+            dbHandle.db,
+            m2OutboxPublisher,
+            (organizationId) => {
+              tenantHostResolver?.invalidateOrganization(organizationId);
+              organizationStage?.invalidate(organizationId);
+            },
           );
           // M2 §2.2.4 / §7.7 — redeem an emailed auditor link into a scoped, read-only `auditor` session.
           // Public (the token is the credential); M3 grants the one least-privilege role inside the
@@ -5908,6 +5928,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // The onboarding wizard (both surfaces): the tenant steps run in the actor's own org transaction, the platform
           // steps in an audited platform transaction, and go-live approval activates the tenant in that same transaction.
           // After a change the wizard asks the advance sweep to run for that tenant so the next step unlocks at once.
+          const m2OrganizationActivator = createOrganizationActivator(
+            dbHandle.db,
+            m2OutboxPublisher,
+            (organizationId) => {
+              tenantHostResolver?.invalidateOrganization(organizationId);
+              organizationStage?.invalidate(organizationId);
+            },
+          );
           const m34Onboarding = {
             wizard: createOnboardingWizard({
               runner: createDrizzleWizardRunner({
@@ -5924,6 +5952,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 dbHandle.db,
                 (organizationId, userId) => liveRbacHandle?.invalidateActor(organizationId, userId),
               ),
+              // Go-live approval opens the organization (it stays `created` through onboarding): the real M2 lifecycle
+              // writer, so the status flip, `m2.organization.activated` audit + outbox event and cache eviction match the
+              // manual platform route. Anything but `created` is left alone.
+              activateOrganization: async ({ organizationId, operator, reason }) => {
+                await m2OrganizationActivator(organizationId, {
+                  reason: `go-live approved: ${reason}`,
+                  actorUserId: operator.userId,
+                  actorMembershipId: operator.membershipId,
+                });
+              },
               advance: async ({ tenantAccountId, organizationId }) => {
                 await m34OnboardingAdvance({ tenantAccountId, orgId: organizationId });
               },
@@ -13820,6 +13858,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // A suspended/removed membership leaves the session valid but resolves with no membership: refuse it, or the
           // user reconnects straight after the suspend-time disconnect.
           if (!actor.membershipId) return null;
+          // A not-yet-live organization has no realtime channel: the socket is a second way in that the HTTP gate must not miss.
+          if (await organizationStage?.isPreActivation(actor.organizationId)) return null;
           if (mfaGate) {
             const verdict = await mfaGate.forRoles({
               userId: actor.userId,

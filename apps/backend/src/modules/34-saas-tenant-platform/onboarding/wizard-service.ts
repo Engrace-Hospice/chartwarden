@@ -79,6 +79,16 @@ export interface OnboardingWizardDeps {
    * lacks, ADR-0055 D9). Unbound, the platform route still requires the member to hold the role already.
    */
   readonly bindComplianceOfficerRole?: ComplianceOfficerRoleBinder;
+  /**
+   * Go-live approval activates the tenant's M2 organization, which stays `created` through onboarding (its first admin signs
+   * in under the onboarding allowlist, bootstrap/onboarding-org-gate.ts). Runs AFTER the approval commits; the production
+   * binding activates a `created` organization and leaves any other status alone. Unbound: the organization is not touched.
+   */
+  readonly activateOrganization?: (input: {
+    readonly organizationId: string;
+    readonly operator: PlatformActor;
+    readonly reason: string;
+  }) => Promise<void>;
   /** Runs the advance sweep for one tenant after a change (best effort; a failure never fails the change). */
   readonly advance?: (tenant: { tenantAccountId: string; organizationId: string }) => Promise<void>;
   readonly warn?: (message: string, context: Record<string, string>) => void;
@@ -814,6 +824,37 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     }
   }
 
+  /**
+   * The approval has committed: the tenant is live. Now open its organization. A failure must not look like success (the
+   * organization would stay on the onboarding allowlist), so it is a typed error that names the recovery; the tenant stays live
+   * and the manual platform route (`POST /api/v1/platform/organizations/:id/status {event: activate}`) finishes the job.
+   */
+  async function activateOrganizationAfterApproval(
+    approved: { organizationId: string; tenantAccountId: string },
+    operator: PlatformActor,
+    reason: string,
+  ): Promise<void> {
+    if (!deps.activateOrganization) return;
+    try {
+      await deps.activateOrganization({
+        organizationId: approved.organizationId,
+        operator,
+        reason,
+      });
+    } catch (error) {
+      deps.warn?.("m34.onboarding wizard: organization activation after go-live approval failed", {
+        tenantAccountId: approved.tenantAccountId,
+        organizationId: approved.organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw refuse(
+        "ORGANIZATION_ACTIVATION_FAILED",
+        `the tenant is live but its organization could not be activated; retry POST /api/v1/platform/organizations/${approved.organizationId}/status with {"event":"activate"}`,
+        500,
+      );
+    }
+  }
+
   /** Run a step change, then let the sweep settle anything it unlocked. */
   async function changed<T extends { tenant: TenantRef }>(result: T): Promise<T> {
     // Only an onboarding tenant has anything for the sweep to settle (an active one's leftovers would just raise alerts).
@@ -924,13 +965,20 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
       );
       return (await changed(out)).out;
     },
-    approveGoLive: (orgSlug, actor, reason) =>
-      platform(
+    approveGoLive: async (orgSlug, actor, reason) => {
+      const approved = await platform(
         "platform-ops go-live approval",
         orgSlug,
-        (ctx) => goLiveApprove(ctx, actor, reason),
+        async (ctx) => ({
+          organizationId: ctx.tenant.organizationId,
+          tenantAccountId: ctx.tenant.tenantAccountId,
+          wizard: await goLiveApprove(ctx, actor, reason),
+        }),
         actor,
-      ),
+      );
+      await activateOrganizationAfterApproval(approved, actor, reason.trim());
+      return approved.wizard;
+    },
     revokeGoLive: async (orgSlug, actor, reason) =>
       platform(
         "platform-ops go-live revoke",
