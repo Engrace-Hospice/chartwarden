@@ -1116,6 +1116,7 @@ import {
   buildM23BootAssemblyService,
   buildM23LateCheckResolvedConsumer,
   buildM23NoeDraftConsumer,
+  buildM23NoticeFiledLateConsumer,
   buildM23NotrDraftConsumer,
   buildM23OutboxBackedSubmissionGate,
   buildM23RemittanceConsumer,
@@ -13981,6 +13982,36 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 });
               },
             },
+          }),
+          // Owner decision (round 2, Q4): a NOE / NOTR a tenant billing outside ChartWarden filed AFTER the due date and recorded
+          // afterwards. The M36 alert to the tenant (rule m23.{noe,notr}.filed_externally_late) plus an org-less platform-ops notice
+          // (the ops sink: a log line and the optional OPS_ALERT_WEBHOOK_URL). Ids and dates only.
+          buildM23NoticeFiledLateConsumer({
+            alerts: {
+              dispatch: async ({ alertCode, severity, organizationId, payload }) => {
+                const emitter = getSeam("AlertEmitter") as {
+                  emit(
+                    orgId: string,
+                    input: {
+                      eventType: string;
+                      payload: Record<string, unknown>;
+                      severity: string;
+                      correlationId: string;
+                    },
+                  ): Promise<unknown>;
+                };
+                await emitter.emit(organizationId, {
+                  eventType: alertCode,
+                  payload,
+                  severity,
+                  correlationId: cronAlertCorrelationId("m23-notice-late", alertCode, payload),
+                });
+              },
+            },
+            opsNotice: buildPlatformOpsNoticeSink({
+              webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
+              log: (m) => app.log.warn(m),
+            }),
           }),
           // F-162 (#248) — M35's first outbox consumer: the §4.12 org-lifecycle-handler over M2's
           // organization activate/suspend/close triggers (3 of D21's 8 exhaustive inbound subscriptions).

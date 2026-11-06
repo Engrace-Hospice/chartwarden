@@ -27,7 +27,12 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { claimLateNoeSpans, noeTimeliness5d, repositories } from "@chartwarden/billing";
+import {
+  claimLateNoeSpans,
+  medicareReceiptDay,
+  noeTimeliness5d,
+  repositories,
+} from "@chartwarden/billing";
 import { createDbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
@@ -53,6 +58,7 @@ import {
   M23_OUTBOX_EVENTS,
   buildDrizzleM23WriteService,
   buildM23NoeDraftConsumer,
+  buildM23NoticeFiledLateConsumer,
   noeWindowTargetAt,
 } from "../src/modules/23-billing-medicare/index";
 import {
@@ -107,6 +113,8 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
   let workerDeps: M23WorkerDeps;
   const alerts: { alertCode: string; organizationId: string; payload: Record<string, unknown> }[] =
     [];
+  const lateAlerts: Record<string, unknown>[] = [];
+  const lateOpsNotices: Record<string, unknown>[] = [];
   let parsed999: Parsed999[] = [];
   let parsed277: Parsed277ca[] = [];
   // The M23 write service the NOE routes call (correct / submit), as chartwarden_app with the real publisher.
@@ -295,6 +303,11 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
             return rows[0].ccn as string;
           },
           onSkipped: (info) => skips.push(info),
+        }),
+        // Round 2, Q4: a late externally recorded filing -> the M36 alert to the tenant and a platform-ops notice.
+        buildM23NoticeFiledLateConsumer({
+          alerts: { dispatch: async (a) => void lateAlerts.push(a) },
+          opsNotice: (n) => void lateOpsNotices.push(n),
         }),
       ],
       eventCatalog: catalog,
@@ -1052,7 +1065,8 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
   // tracker keeps counting until then. The pure rules are unit-tested (`m23-notice-external-filing.test.ts`); this proves the
   // SQL: the CHECKs, the same-state patch under RLS as `chartwarden_app`, the audit trigger, and the two tracker scans.
 
-  const todayIso = () => new Date().toISOString().slice(0, 10);
+  // The Eastern (CMS) calendar day, as the service judges "today" (UTC is a day ahead in the Eastern evening).
+  const todayIso = () => medicareReceiptDay(new Date());
 
   /** A bare NOE row. The ids that point at other modules are logical FKs, so none of them has to exist. */
   async function seedNoe(
@@ -1250,6 +1264,35 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
       breached: filedOn,
     });
 
+    // Round 2, Q4: the late filing is published (real catalog-validating publisher, same transaction) and reaches the alert + ops sink.
+    const windowTargetAt = addDays(effective, 5);
+    const lateEvents = await eventRows("m23.noe.filed_externally_late", "noeId", late);
+    expect(lateEvents).toHaveLength(1);
+    expect(lateEvents[0]?.organization_id).toBe(ORG_A);
+    expect(lateEvents[0]?.payload).toEqual({
+      noeId: late,
+      admissionId: expect.any(String),
+      filedOn,
+      windowTargetAt,
+    });
+    lateAlerts.length = 0;
+    lateOpsNotices.length = 0;
+    await dispatcher.tick();
+    expect(lateAlerts.filter((a) => (a.payload as { noeId?: string }).noeId === late)).toEqual([
+      expect.objectContaining({
+        alertCode: "m23.noe.filed_externally_late",
+        severity: "critical",
+        organizationId: ORG_A,
+        payload: { noeId: late, admissionId: expect.any(String), filedOn, windowTargetAt },
+      }),
+    ]);
+    expect(
+      lateOpsNotices.filter((n) => (n.details as { noticeId?: string }).noticeId === late),
+    ).toEqual([expect.objectContaining({ kind: "m23.notice_filed_late" })]);
+    // An idempotent replay of the same recording publishes nothing more.
+    await service.recordNoeExternalFiling(actorOf(ORG_A), late, { filedOn });
+    expect(await eventRows("m23.noe.filed_externally_late", "noeId", late)).toHaveLength(1);
+
     const untouched = await seedNoe(ORG_A, { effective });
     for (const [bad, code] of [
       [addDays(todayIso(), 1), "FILED_ON_IN_FUTURE"],
@@ -1263,6 +1306,28 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
       });
     }
     expect(await noeRow(untouched)).toMatchObject({ external_filing_status: null, version: 0 });
+  }, 60_000);
+
+  it("an on-time filing publishes nothing and clears a breach stamp the deadline watchdog set earlier; a late one keeps its stamp (round 2: L4, Q4)", async () => {
+    const { service } = externalFilingService(true);
+    const effective = addDays(todayIso(), -3); // due in +5: two days left
+    const onTime = await seedNoe(ORG_A, { effective, status: "pending" });
+    await admin.query("UPDATE noe_record SET window_breached_at=CURRENT_DATE WHERE id=$1", [
+      onTime,
+    ]);
+
+    await service.recordNoeExternalFiling(actorOf(ORG_A), onTime, { filedOn: todayIso() });
+
+    expect(await noeRow(onTime)).toMatchObject({ external_filing_status: "filed", breached: null });
+    expect(await eventRows("m23.noe.filed_externally_late", "noeId", onTime)).toHaveLength(0);
+
+    const lateEffective = addDays(todayIso(), -12); // due 7 days ago
+    const late = await seedNoe(ORG_A, { effective: lateEffective, status: "pending" });
+    const stamp = addDays(todayIso(), -6);
+    await admin.query("UPDATE noe_record SET window_breached_at=$2 WHERE id=$1", [late, stamp]);
+    await service.recordNoeExternalFiling(actorOf(ORG_A), late, { filedOn: todayIso() });
+    expect(await noeRow(late)).toMatchObject({ external_filing_status: "filed", breached: stamp });
+    expect(await eventRows("m23.noe.filed_externally_late", "noeId", late)).toHaveLength(1);
   }, 60_000);
 
   it("refuses an organization ChartWarden files for; a parked NOE goes the normal way once the org transmits again, and the marker clears", async () => {

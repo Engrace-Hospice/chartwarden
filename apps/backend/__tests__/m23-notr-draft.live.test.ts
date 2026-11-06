@@ -31,7 +31,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { repositories } from "@chartwarden/billing";
+import { medicareReceiptDay, repositories } from "@chartwarden/billing";
 import { createDbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
@@ -61,6 +61,7 @@ import { M22_OUTBOX_EVENTS } from "../src/modules/22-documents/index";
 import {
   M23_OUTBOX_EVENTS,
   buildDrizzleM23WriteService,
+  buildM23NoticeFiledLateConsumer,
   buildM23NotrDraftConsumer,
   notrWindowTargetAt,
 } from "../src/modules/23-billing-medicare/index";
@@ -104,6 +105,8 @@ describe.skipIf(!DB_URL)(
     const locationOf: Record<string, string> = {};
     const ccnOf: Record<string, string> = {};
     const skips: { reason: string; eventType: string; admissionId: string }[] = [];
+    const lateAlerts: Record<string, unknown>[] = [];
+    const lateOpsNotices: Record<string, unknown>[] = [];
 
     async function resetSchema() {
       await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -277,6 +280,11 @@ describe.skipIf(!DB_URL)(
             // select with no app.org_id — 22P02 on a pooled connection, which stranded transfer-outs.
             resolveCcn: buildRequiredProviderEntityCcnResolver(handle.db),
             onSkipped: (info) => skips.push(info),
+          }),
+          // Round 2, Q4: a late externally recorded filing -> the M36 alert to the tenant and a platform-ops notice.
+          buildM23NoticeFiledLateConsumer({
+            alerts: { dispatch: async (a) => void lateAlerts.push(a) },
+            opsNotice: (n) => void lateOpsNotices.push(n),
           }),
         ],
         eventCatalog: catalog,
@@ -527,7 +535,8 @@ describe.skipIf(!DB_URL)(
     // The NOTR twin of the NOE cases in `m23-noe-draft.live.test.ts`: the CHECKs, the same-state patch under RLS as
     // `chartwarden_app`, the audit trigger and the two deadline-tracker scans. The pure rules are unit-tested.
 
-    const todayIso = () => new Date().toISOString().slice(0, 10);
+    // The Eastern (CMS) calendar day, as the service judges "today" (UTC is a day ahead in the Eastern evening).
+    const todayIso = () => medicareReceiptDay(new Date());
     const addDays = (iso: string, n: number) =>
       new Date(Date.parse(`${iso}T00:00:00.000Z`) + n * 86_400_000).toISOString().slice(0, 10);
     const actorOf = (org: string) =>
@@ -690,8 +699,49 @@ describe.skipIf(!DB_URL)(
         by: USER,
         breached: filedOn,
       });
+      // Round 2, Q4: a LATE filing is published (real catalog-validating publisher, same transaction) and reaches the alert + ops sink.
+      const { rows: lateEvents } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE event_type='m23.notr.filed_externally_late' AND payload->>'notrId'=$1",
+        [id],
+      );
+      expect(lateEvents).toHaveLength(1);
+      expect(lateEvents[0].payload).toEqual({
+        notrId: id,
+        admissionId: expect.any(String),
+        filedOn,
+        windowTargetAt: addDays(ended, 5),
+      });
+      lateAlerts.length = 0;
+      lateOpsNotices.length = 0;
+      await dispatcher.tick();
+      const mineAlerts = lateAlerts.filter((a) => (a.payload as { notrId?: string }).notrId === id);
+      expect(mineAlerts).toEqual([
+        expect.objectContaining({
+          alertCode: "m23.notr.filed_externally_late",
+          severity: "critical",
+          organizationId: ORG_A,
+          payload: {
+            notrId: id,
+            admissionId: expect.any(String),
+            filedOn,
+            windowTargetAt: addDays(ended, 5),
+          },
+        }),
+      ]);
+      expect(
+        lateOpsNotices.filter((n) => (n.details as { noticeId?: string }).noticeId === id),
+      ).toEqual([expect.objectContaining({ kind: "m23.notice_filed_late" })]);
+      // An idempotent replay of the same recording publishes nothing more.
       await service.recordNotrExternalFiling(actorOf(ORG_A), id, { filedOn });
       expect((await notrRow(id)).version).toBe(row.version);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m23.notr.filed_externally_late' AND payload->>'notrId'=$1",
+            [id],
+          )
+        ).rows[0].n,
+      ).toBe(1);
       await expect(
         service.recordNotrExternalFiling(actorOf(ORG_A), id, { filedOn: addDays(filedOn, 1) }),
       ).rejects.toMatchObject({ code: "NOTICE_ALREADY_FILED_EXTERNALLY", statusCode: 409 });
@@ -708,6 +758,40 @@ describe.skipIf(!DB_URL)(
       expect(audit).toEqual([
         { actor_user_id: USER, before_status: "pending", after_status: "filed" },
       ]);
+    }, 60_000);
+
+    it("an on-time filing publishes nothing and clears a breach stamp the deadline watchdog set earlier; a late one keeps its stamp (round 2: L4, Q4)", async () => {
+      const { service } = externalFilingService(true);
+      const ended = addDays(todayIso(), -3); // due in +5: two days left
+      const onTime = await seedNotr(ORG_A, { ended, status: "pending" });
+      await admin.query("UPDATE notr_record SET window_breached_at=CURRENT_DATE WHERE id=$1", [
+        onTime,
+      ]);
+
+      await service.recordNotrExternalFiling(actorOf(ORG_A), onTime, { filedOn: todayIso() });
+
+      expect(await notrRow(onTime)).toMatchObject({
+        external_filing_status: "filed",
+        breached: null,
+      });
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m23.notr.filed_externally_late' AND payload->>'notrId'=$1",
+            [onTime],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+
+      const lateEnded = addDays(todayIso(), -12); // due 7 days ago
+      const late = await seedNotr(ORG_A, { ended: lateEnded, status: "pending" });
+      const stamp = addDays(todayIso(), -6);
+      await admin.query("UPDATE notr_record SET window_breached_at=$2 WHERE id=$1", [late, stamp]);
+      await service.recordNotrExternalFiling(actorOf(ORG_A), late, { filedOn: todayIso() });
+      expect(await notrRow(late)).toMatchObject({
+        external_filing_status: "filed",
+        breached: stamp,
+      });
     }, 60_000);
 
     it("cross-tenant: org B cannot record (or park) org A's NOTR; the worker's park is scoped to the job's own org; a parked NOTR goes the normal way once the org transmits again", async () => {

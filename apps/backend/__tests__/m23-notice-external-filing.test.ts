@@ -2,6 +2,7 @@
 // NOTHING for it: submit parks the notice (no claim_submission, no job, no `*.submit_requested` event) as pending, and the tenant
 // records the date it filed. No database: the notice repositories are in-memory fakes. The SQL, the CHECKs and the deadline-tracker
 // scans are proven live in `test:m23:noe-draft:live`, `test:m23:notr-draft:live` and `test:m23:dde-queue:live`.
+import { Value } from "@sinclair/typebox/value";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Row = Record<string, unknown>;
@@ -9,6 +10,8 @@ const fakes = vi.hoisted(() => ({
   noes: new Map<string, Record<string, unknown>>(),
   notrs: new Map<string, Record<string, unknown>>(),
   submissions: [] as Record<string, unknown>[],
+  /** Earlier transmission attempts by `${providerEntityId}:${controlNumber}` (what a vendor-era submit left behind). */
+  attempts: new Map<string, Record<string, unknown>>(),
 }));
 
 vi.mock("@chartwarden/billing", async (importOriginal) => {
@@ -44,6 +47,14 @@ vi.mock("@chartwarden/billing", async (importOriginal) => {
           fakes.submissions.push(row);
           return row;
         };
+        findLatestAttempt = async (providerEntityId: string, controlNumber: string) =>
+          fakes.attempts.get(`${providerEntityId}:${controlNumber}`) ?? null;
+        terminalize = async (id: string, patch: Row) => {
+          for (const [key, row] of fakes.attempts) {
+            if (row.id === id) fakes.attempts.set(key, { ...row, ...patch });
+          }
+          return { id, ...patch };
+        };
       },
     },
   };
@@ -54,6 +65,7 @@ vi.mock("@chartwarden/tenancy", () => ({
     fn({}),
 }));
 
+import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/events-by-m23";
 import { buildDrizzleM23WriteService } from "../src/modules/23-billing-medicare/routes/write-service-drizzle";
 
 const ORG = "00000000-0000-4000-8000-0000000000a1";
@@ -113,20 +125,27 @@ const notrRow = (over: Row = {}): Row => ({
   ...over,
 });
 
-function harness(billsOutside?: (organizationId: string) => Promise<boolean>) {
+function harness(billsOutside?: (organizationId: string) => Promise<boolean>, at: Date = NOW) {
   const enqueued: unknown[] = [];
-  const published: { eventName: string }[] = [];
+  const published: {
+    eventName: string;
+    payload: Row;
+    aggregateKind: string;
+    aggregateId: string;
+  }[] = [];
   const service = buildDrizzleM23WriteService(
     {} as never,
     {
-      now: () => NOW,
+      now: () => at,
       jobs: {
         enqueue: async (queue: string, key: string, payload: unknown) => {
           enqueued.push({ queue, key, payload });
           return { jobId: "job-1" };
         },
       },
-      outbox: { publish: async (_tx: unknown, e: { eventName: string }) => void published.push(e) },
+      outbox: {
+        publish: async (_tx: unknown, e: (typeof published)[number]) => void published.push(e),
+      },
       ...(billsOutside ? { billsOutside } : {}),
     } as never,
   );
@@ -139,6 +158,7 @@ beforeEach(() => {
   fakes.noes.clear();
   fakes.notrs.clear();
   fakes.submissions.length = 0;
+  fakes.attempts.clear();
 });
 
 describe.each([
@@ -166,6 +186,28 @@ describe.each([
       expect(enqueued).toEqual([]);
       expect(published.map((e) => e.eventName)).not.toContain(event);
       expect(published).toEqual([]);
+    });
+
+    it("closes the QUEUED attempt a vendor-era submit left behind (a stable failed_worker reason), and leaves a settled one alone", async () => {
+      const row = make();
+      table.set(id, row);
+      const key = `pe-1:${(row.noeControlNumber ?? row.notrControlNumber) as string}`;
+      fakes.attempts.set(key, { id: "att-1", outcome: "queued" });
+      const { service } = harness(outside);
+      await (service as unknown as Record<string, (a: never, i: string) => Promise<unknown>>)[
+        method
+      ](actor, id);
+      expect(fakes.attempts.get(key)).toMatchObject({
+        outcome: "failed_worker",
+        outcomeReason: "PARKED_FOR_EXTERNAL_FILING",
+      });
+
+      table.set(id, make());
+      fakes.attempts.set(key, { id: "att-2", outcome: "submitted" });
+      await (service as unknown as Record<string, (a: never, i: string) => Promise<unknown>>)[
+        method
+      ](actor, id);
+      expect(fakes.attempts.get(key)).toEqual({ id: "att-2", outcome: "submitted" });
     });
 
     it("parks a notice that is already ready, and a second submit changes nothing", async () => {
@@ -296,11 +338,47 @@ describe.each([
 );
 
 describe.each([
-  ["NOE", "noe-1", noeRow, fakes.noes, "recordNoeExternalFiling", "2026-11-01"],
-  ["NOTR", "notr-1", notrRow, fakes.notrs, "recordNotrExternalFiling", "2026-11-01"],
+  [
+    "NOE",
+    "noe-1",
+    noeRow,
+    fakes.noes,
+    "recordNoeExternalFiling",
+    "2026-11-01",
+    "m23.noe.filed_externally_late",
+    "noeId",
+    "noe_record",
+    "cancelNoe",
+    { electionReversed: true },
+  ],
+  [
+    "NOTR",
+    "notr-1",
+    notrRow,
+    fakes.notrs,
+    "recordNotrExternalFiling",
+    "2026-11-01",
+    "m23.notr.filed_externally_late",
+    "notrId",
+    "notr_record",
+    "cancelNotr",
+    { terminatingEventReversed: true },
+  ],
 ] as const)(
   "%s: record the date the tenant filed outside ChartWarden",
-  (_k, id, make, table, method, earliest) => {
+  (
+    _k,
+    id,
+    make,
+    table,
+    method,
+    earliest,
+    eventName,
+    idKey,
+    aggregateKind,
+    cancelMethod,
+    cancelArgs,
+  ) => {
     const record = (service: unknown, who: unknown, filedOn: string, noticeId: string = id) =>
       (service as Record<string, (a: never, i: string, b: { filedOn: string }) => Promise<Row>>)[
         method
@@ -370,6 +448,85 @@ describe.each([
       const { service } = harness(outside);
       await record(service, actor, "2026-11-09");
       expect(table.get(id)).toMatchObject({ windowBreachedAt: "2026-11-07" });
+    });
+
+    it("clears a breach stamp the watchdog set before an ON-TIME filing was recorded (the notice was filed in time)", async () => {
+      table.set(
+        id,
+        make({
+          state: "ready",
+          version: 1,
+          externalFilingStatus: "pending",
+          windowBreachedAt: "2026-11-07",
+        }),
+      );
+      const { service, published } = harness(outside);
+      await record(service, actor, "2026-11-05");
+      expect(table.get(id)).toMatchObject({
+        externalFilingStatus: "filed",
+        windowBreachedAt: null,
+      });
+      expect(published).toEqual([]); // on time: nothing to announce
+    });
+
+    it("announces a LATE filing with one catalogued event carrying ids and dates only, and a replay does not announce it again", async () => {
+      table.set(id, make({ state: "ready", version: 1, externalFilingStatus: "pending" }));
+      const { service, published } = harness(outside);
+      await record(service, actor, "2026-11-08");
+      expect(published).toHaveLength(1);
+      const [event] = published;
+      expect(event?.eventName).toBe(eventName);
+      expect(event?.payload).toEqual({
+        [idKey]: id,
+        admissionId: "adm-1",
+        filedOn: "2026-11-08",
+        windowTargetAt: "2026-11-06",
+      });
+      expect(event).toMatchObject({ aggregateKind, aggregateId: id });
+      // the REAL catalog schema accepts it (the same check the catalog-validating publisher runs)
+      const def = M23_OUTBOX_EVENTS.find((e) => e.eventName === eventName);
+      expect(def, `catalog entry ${eventName}`).toBeDefined();
+      expect(Value.Check(def?.payloadSchema as never, event?.payload)).toBe(true);
+      await record(service, actor, "2026-11-08");
+      expect(published).toHaveLength(1);
+    });
+
+    it("announces a late filing even when the watchdog had already stamped the breach", async () => {
+      table.set(id, make({ state: "ready", version: 1, windowBreachedAt: "2026-11-07" }));
+      const { service, published } = harness(outside);
+      await record(service, actor, "2026-11-09");
+      expect(published.map((e) => e.eventName)).toEqual([eventName]);
+    });
+
+    it("judges 'today' on the EASTERN (CMS) calendar day: late in the evening Eastern is still that day, not tomorrow (UTC)", async () => {
+      // 02:00 UTC on 11-11 is 21:00 Eastern on 11-10: a filing dated 11-11 is in the future, one dated 11-10 is today.
+      const lateEvening = new Date("2026-11-11T02:00:00.000Z");
+      table.set(id, make({ state: "ready", version: 1, externalFilingStatus: "pending" }));
+      const { service } = harness(outside, lateEvening);
+      await expect(record(service, actor, "2026-11-11")).rejects.toMatchObject({
+        code: "FILED_ON_IN_FUTURE",
+        statusCode: 422,
+      });
+      await record(service, actor, "2026-11-10");
+      expect(table.get(id)).toMatchObject({ externalFilingStatus: "filed" });
+    });
+
+    it("a notice recorded as filed outside ChartWarden cannot be cancelled (it is on file with Medicare); a parked one still can", async () => {
+      table.set(id, make({ state: "ready", version: 1, externalFilingStatus: "pending" }));
+      const { service } = harness(outside);
+      await record(service, actor, "2026-11-04");
+      await expect(
+        (
+          service as unknown as Record<string, (a: never, i: string, b: object) => Promise<unknown>>
+        )[cancelMethod](actor as never, id, cancelArgs),
+      ).rejects.toMatchObject({ code: "NOTICE_FILED_EXTERNALLY", statusCode: 409 });
+      expect(table.get(id)).toMatchObject({ state: "ready", externalFilingStatus: "filed" });
+
+      table.set(id, make({ state: "ready", version: 3, externalFilingStatus: "pending" }));
+      await (
+        service as unknown as Record<string, (a: never, i: string, b: object) => Promise<unknown>>
+      )[cancelMethod](actor as never, id, cancelArgs);
+      expect(table.get(id)).toMatchObject({ state: "cancelled" });
     });
 
     it("refuses an organization that does not bill outside (ChartWarden files for it), and one whose choice cannot be read", async () => {

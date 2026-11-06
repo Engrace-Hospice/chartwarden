@@ -9,7 +9,11 @@
 // A leaf of m23-jobs.ts (which imports it): ports are named structurally, so the no-circular fitness rule holds.
 import { EXTERNALLY_FILEABLE_STATES, repositories } from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { type ExternalNoticeKind, parkNotice } from "../services/external-notice-filing";
+import {
+  type ExternalNoticeKind,
+  closeQueuedAttempt,
+  parkNotice,
+} from "../services/external-notice-filing";
 import type { M23TransportDeps } from "./clearinghouse-submission";
 import { clearinghouseStateFor } from "./clearinghouse-unbound-hold";
 import { M23_QUEUES } from "./queues";
@@ -39,7 +43,7 @@ export function noticeIdOfJob(
 
 /**
  * Park the job's notice for the tenant to file, in its own org-scoped transaction. Only a notice still waiting to be filed
- * (draft / ready) and not yet marked is touched; one already pending or filed, already settled by ChartWarden or Medicare, another
+ * (draft / ready) and not yet marked is touched (and its leftover QUEUED attempt closed); one already pending or filed, already settled by ChartWarden or Medicare, another
  * org's, or gone is left alone (the job is simply done). Idempotent, so a redelivered job is harmless.
  */
 export async function parkNoticeForExternalFiling(
@@ -62,6 +66,12 @@ export async function parkNoticeForExternalFiling(
       if (notice.externalFilingStatus !== null) return;
       if (!EXTERNALLY_FILEABLE_STATES.includes(notice.state)) return;
       await parkNotice(repo, notice);
+      // The submit that enqueued this job appended a QUEUED attempt that will now never run: close it, or it reads as in flight forever.
+      await closeQueuedAttempt(
+        tx,
+        notice.providerEntityId,
+        "noeControlNumber" in notice ? notice.noeControlNumber : notice.notrControlNumber,
+      );
     },
   );
 }

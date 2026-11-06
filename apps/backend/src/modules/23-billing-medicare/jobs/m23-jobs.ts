@@ -2727,7 +2727,8 @@ export function registerM23DomainWorkers(deps: M23WorkerDeps): Worker[] {
       async (job, token) => {
         const data = job.data as D;
         if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
-        await holdBeforeRun(deps, job, token, queue, data);
+        // These three queues are never parked (only a NOE / NOTR queue is), but the verdict is honoured all the same.
+        if ((await holdBeforeRun(deps, job, token, queue, data)) === "parked") return;
         await withOrgContext(
           deps.db,
           { organizationId: data.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },

@@ -21,6 +21,7 @@ const fakes = vi.hoisted(() => ({
   noes: new Map<string, Record<string, unknown>>(),
   notrs: new Map<string, Record<string, unknown>>(),
   processors: new Map<string, (job: unknown, token?: string) => Promise<unknown>>(),
+  attempts: new Map<string, Record<string, unknown>>(),
 }));
 
 vi.mock("bullmq", async (importOriginal) => {
@@ -61,6 +62,16 @@ vi.mock("@chartwarden/billing", async (importOriginal) => {
       ...repos,
       NoeRepository: notice(fakes.noes),
       NotrRepository: notice(fakes.notrs),
+      ClaimSubmissionRepository: class {
+        findLatestAttempt = async (providerEntityId: string, controlNumber: string) =>
+          fakes.attempts.get(`${providerEntityId}:${controlNumber}`) ?? null;
+        terminalize = async (id: string, patch: Row) => {
+          for (const [key, row] of fakes.attempts) {
+            if (row.id === id) fakes.attempts.set(key, { ...row, ...patch });
+          }
+          return { id, ...patch };
+        };
+      },
     },
   };
 });
@@ -154,6 +165,7 @@ beforeEach(() => {
   fakes.noes.clear();
   fakes.notrs.clear();
   fakes.processors.clear();
+  fakes.attempts.clear();
 });
 
 describe.each([
@@ -196,6 +208,24 @@ describe.each([
     }
     table.clear();
     await expect(pre(deps, queue, data, jobOf().job)).resolves.toBe("parked");
+  });
+
+  it("closes the notice's QUEUED attempt when it parks (failed_worker, a stable reason), so nothing is left reading as in flight; a settled attempt is left alone", async () => {
+    const { deps } = depsFor(UNBOUND_OUTSIDE);
+    const row = make();
+    const key = `pe-1:${(row.noeControlNumber ?? row.notrControlNumber) as string}`;
+    table.set(id, row);
+    fakes.attempts.set(key, { id: "att-1", outcome: "queued" });
+    await expect(pre(deps, queue, data, jobOf().job)).resolves.toBe("parked");
+    expect(fakes.attempts.get(key)).toMatchObject({
+      outcome: "failed_worker",
+      outcomeReason: "PARKED_FOR_EXTERNAL_FILING",
+    });
+
+    table.set(id, make());
+    fakes.attempts.set(key, { id: "att-2", outcome: "submitted" });
+    await expect(pre(deps, queue, data, jobOf().job)).resolves.toBe("parked");
+    expect(fakes.attempts.get(key)).toEqual({ id: "att-2", outcome: "submitted" });
   });
 
   it("HOLDS the job (delayed, no attempt spent) with ONE alert per organization and reason, whatever the notice", async () => {

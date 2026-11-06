@@ -46,6 +46,7 @@ import { M23_QUEUES } from "../jobs/queues";
 import {
   UNPARK_PATCH,
   buildExternalNoticeFilingService,
+  closeQueuedAttempt,
   noticeFiledExternally,
   orgBillsOutside,
   parkNotice,
@@ -407,6 +408,7 @@ export function buildDrizzleM23WriteService(
   // The tenant that bills outside ChartWarden files its notices itself (owner decision D4): record the date it did.
   const externalFiling = buildExternalNoticeFilingService(db, {
     billsOutside: ports.billsOutside,
+    ...(ports.outbox ? { outbox: ports.outbox } : {}),
     now,
   });
 
@@ -1162,6 +1164,7 @@ export function buildDrizzleM23WriteService(
         }
         if (outside) {
           await parkNotice(repo, noe);
+          await closeQueuedAttempt(tx, noe.providerEntityId, noe.noeControlNumber);
           return { submissionId: null, jobId: null, kind: "noe", externalFiling: "pending" };
         }
         // ChartWarden transmits for this org (again): a notice parked earlier goes the normal way and its marker clears.
@@ -1202,6 +1205,8 @@ export function buildDrizzleM23WriteService(
         const repo = new repositories.NoeRepository(tx);
         const noe = await repo.findById(noeId);
         if (!noe || noe.organizationId !== actor.organizationId) throw new NotFoundError("noe");
+        // On file with Medicare (the tenant's own filing): not ours to hide. The correction is Medicare's, outside ChartWarden.
+        if (noe.externalFilingStatus === "filed") throw noticeFiledExternally("noe", "cancelled");
         const stepped = noeMachine.reduce(noe.state, "cancel", {
           electionReversed: args.electionReversed,
         });
@@ -1232,6 +1237,7 @@ export function buildDrizzleM23WriteService(
         }
         if (outside) {
           await parkNotice(repo, notr);
+          await closeQueuedAttempt(tx, notr.providerEntityId, notr.notrControlNumber);
           return { submissionId: null, jobId: null, kind: "notr", externalFiling: "pending" };
         }
         if (notr.externalFilingStatus === "pending") {
@@ -1271,6 +1277,7 @@ export function buildDrizzleM23WriteService(
         const repo = new repositories.NotrRepository(tx);
         const notr = await repo.findById(notrId);
         if (!notr || notr.organizationId !== actor.organizationId) throw new NotFoundError("notr");
+        if (notr.externalFilingStatus === "filed") throw noticeFiledExternally("notr", "cancelled");
         const stepped = notrMachine.reduce(notr.state, "cancel", {
           terminatingEventReversed: args.terminatingEventReversed,
         });
