@@ -3,10 +3,13 @@
  *
  * `plan` / `plan_meter` are platform-owned (no organization_id) and no migration inserts rows, so a fresh
  * `db:reset` leaves `GET /api/v1/plans` empty and the billing plan screen shows "No plans are available".
- * Three monthly plans (starter / professional / enterprise) with usage meters each; no Stripe ids.
+ * The flat starter / professional / enterprise tiers are RETIRED (slice 2, migration 1341): they are still seeded, as archived rows with
+ * their usage meters, so a dev database shows what production holds (old rows stay readable) but no new tenant is offered one. What a
+ * tenant signs now is a census-banded plan: one DEMO version is seeded and published below, with the owner's default bands
+ * (0-9, 10-16, 17-25, 26+ patients) and DEMO prices that are not the price list; real plans are made in the pricing plan editor.
  *
- * Idempotent: plans upsert on `slug`, meters on `(plan_id, event_type)`; re-running resets these rows to the
- * values below. Prereq: DB migrated. Run: bun run db:seed:plans
+ * Idempotent: flat plans upsert on `slug`, meters on `(plan_id, event_type)`; the published demo plan is frozen by the database, so a
+ * re-run leaves it exactly as it is. Prereq: DB migrated. Run: bun run db:seed:plans
  */
 import { Client } from "pg";
 
@@ -76,6 +79,44 @@ export const PLANS: readonly PlanSeed[] = [
   },
 ];
 
+/** The demo census-banded plan: DEMO prices, the owner's default band thresholds. Created as a draft, banded, then published. */
+const DEMO_FAMILY = "demo-census-banded";
+const DEMO_BANDS: readonly { readonly minAdc: number; readonly monthlyFeeCents: number }[] = [
+  { minAdc: 0, monthlyFeeCents: 150_000 },
+  { minAdc: 10, monthlyFeeCents: 275_000 },
+  { minAdc: 17, monthlyFeeCents: 400_000 },
+  { minAdc: 26, monthlyFeeCents: 550_000 },
+];
+
+async function seedDemoCensusBandedPlan(db: Client): Promise<string> {
+  const slug = `${DEMO_FAMILY}-v1`;
+  const existing = await db.query<{ published_at: Date | null }>(
+    "SELECT published_at FROM plan WHERE slug = $1",
+    [slug],
+  );
+  if (existing.rows[0])
+    return existing.rows[0].published_at ? "already published, left as is" : "left as a draft";
+  const { rows } = await db.query<{ id: string }>(
+    `INSERT INTO plan (slug, family_slug, version, name, description, tier, cadence, base_price_cents, is_active, trial_period_days,
+                       per_user_price_cents, billing_software_bps, managed_billing_bps, contract_term_months,
+                       implementation_fee_cents, minimum_monthly_cents)
+     VALUES ($1, $2, 1, 'Demo census-banded', 'DEMO prices for local development. Not the price list.', 'census_banded', 'monthly',
+             $3, false, 0, 9900, 100, 400, 12, 250000, NULL)
+     RETURNING id`,
+    [slug, DEMO_FAMILY, DEMO_BANDS[0]?.monthlyFeeCents],
+  );
+  const planId = rows[0]?.id;
+  if (!planId) throw new Error("demo plan insert returned no id");
+  for (const band of DEMO_BANDS) {
+    await db.query(
+      "INSERT INTO plan_census_band (plan_id, min_adc, monthly_fee_cents) VALUES ($1, $2, $3)",
+      [planId, band.minAdc, band.monthlyFeeCents],
+    );
+  }
+  await db.query("UPDATE plan SET published_at = now(), is_active = true WHERE id = $1", [planId]);
+  return "published";
+}
+
 async function main(): Promise<void> {
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is not set");
   const db = new Client({ connectionString: ADMIN_URL });
@@ -86,10 +127,10 @@ async function main(): Promise<void> {
     for (const p of PLANS) {
       const { rows } = await db.query<{ id: string }>(
         `INSERT INTO plan (slug, name, description, tier, cadence, base_price_cents, is_active)
-         VALUES ($1, $2, $3, $4, 'monthly', $5, true)
+         VALUES ($1, $2, $3, $4, 'monthly', $5, false)
          ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description,
-           tier = EXCLUDED.tier, base_price_cents = EXCLUDED.base_price_cents, is_active = true,
-           deprecated_at = NULL, updated_at = now()
+           tier = EXCLUDED.tier, base_price_cents = EXCLUDED.base_price_cents, is_active = false,
+           deprecated_at = COALESCE(plan.deprecated_at, now()), updated_at = now()
          RETURNING id`,
         [p.slug, p.name, p.description, p.tier, p.basePriceCents],
       );
@@ -107,8 +148,11 @@ async function main(): Promise<void> {
         meters++;
       }
     }
+    const demo = await seedDemoCensusBandedPlan(db);
     await db.query("COMMIT");
-    console.log(`✓ plan seed: ${PLANS.length} plans, ${meters} meters upserted.`);
+    console.log(
+      `✓ plan seed: ${PLANS.length} retired flat plans, ${meters} meters upserted; demo census-banded plan ${demo}.`,
+    );
   } catch (err) {
     await db.query("ROLLBACK");
     throw err;
