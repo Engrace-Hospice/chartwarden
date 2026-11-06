@@ -110,6 +110,16 @@ export class NoeRepository {
     return row ? toNoeRecord(row) : null;
   }
 
+  /**
+   * {@link findById} that takes the row's lock (`SELECT … FOR UPDATE`), held to the end of the caller's transaction. The submit
+   * worker reads the notice this way so a record / park of the same notice cannot commit between its check and its upload (and
+   * then be transmitted as well): the competing write waits for the worker's commit and loses its version check.
+   */
+  async findByIdForUpdate(id: string): Promise<NoeRecord | null> {
+    const [row] = await this.db.select().from(N).where(eq(N.id, id)).limit(1).for("update");
+    return row ? toNoeRecord(row) : null;
+  }
+
   /** The NOE for a deterministic `(provider_entity, noe_control_number)` (the D4 unique surface), or `null`. */
   async findByControlNumber(
     providerEntityId: string,

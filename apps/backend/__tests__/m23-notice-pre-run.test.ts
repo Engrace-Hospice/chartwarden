@@ -23,6 +23,8 @@ const fakes = vi.hoisted(() => ({
   processors: new Map<string, (job: unknown, token?: string) => Promise<unknown>>(),
   /** The `claim_submission` attempt log (append-only: a row only ever leaves `queued`). */
   attempts: [] as Record<string, unknown>[],
+  /** The ids a submit worker read WITH the row lock (`findByIdForUpdate`). */
+  lockedReads: [] as string[],
 }));
 
 vi.mock("bullmq", async (importOriginal) => {
@@ -42,6 +44,10 @@ vi.mock("@chartwarden/billing", async (importOriginal) => {
   const notice = (table: Map<string, Row>) =>
     class {
       findById = async (id: string) => table.get(id) ?? null;
+      findByIdForUpdate = async (id: string) => {
+        fakes.lockedReads.push(id);
+        return table.get(id) ?? null;
+      };
       transitionToState = async (
         id: string,
         expectedVersion: number,
@@ -207,6 +213,7 @@ beforeEach(() => {
   fakes.notrs.clear();
   fakes.processors.clear();
   fakes.attempts.length = 0;
+  fakes.lockedReads.length = 0;
 });
 
 describe.each([
@@ -447,6 +454,21 @@ describe("runNoeSubmit / runNotrSubmit: the defensive guard (the org may switch 
         ).rejects.toThrow(/clearinghouse is not live/);
         expect(generated).toEqual([]);
       }
+    },
+  );
+
+  // Round 3, L1a: a record / park of the same notice must not commit between the worker's check and its upload (the notice would be
+  // transmitted AND recorded as filed), so the worker reads the notice with the row lock, which it holds to its commit.
+  it.each(cases)(
+    "%s: reads the notice with its row lock, so a concurrent record or park waits for the upload",
+    async (_k, run, data, table, id, make) => {
+      table.set(id, make());
+      const { deps } = depsFor(LIVE);
+      // (the fake generator stops the job after the read: all this proves is HOW the notice was read)
+      await expect(
+        run({} as never, deps, { organizationId: ORG, ...data } as never),
+      ).rejects.toThrow("stop after generate");
+      expect(fakes.lockedReads).toEqual([id]);
     },
   );
 
