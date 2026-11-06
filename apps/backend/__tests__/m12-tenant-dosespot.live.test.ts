@@ -146,9 +146,9 @@ describe.skipIf(!DB_URL)(
       headers: Record<string, string>;
       body?: string;
     }[] = [];
-    let enrollBehaviour: "ok" | "rejected" = "ok";
+    let enrollBehaviour: "ok" | "rejected" | "no_id" = "ok";
     let enrollDelayMs = 0;
-    // EVERY vendor request (token mint, clinician add, status read) that is made while a transaction on the tenant pool is open is
+    // EVERY vendor request (token mint, clinician add) that is made while a transaction on the tenant pool is open is
     // counted here; the final case asserts it never happened. `tdb` is the tenant pool with its `transaction` counted.
     // The flag follows the async call chain (AsyncLocalStorage), so a vendor call made by one concurrent request is not blamed on a
     // transaction another request holds open.
@@ -204,6 +204,7 @@ describe.skipIf(!DB_URL)(
       }
       if (url.endsWith("/api/clinicians")) {
         if (enrollDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, enrollDelayMs));
+        if (enrollBehaviour === "no_id") return { status: 200, text: async () => "{}" };
         return enrollBehaviour === "ok"
           ? { status: 200, text: async () => JSON.stringify({ Id: ++vendorSeq }) }
           : { status: 422, text: async () => "" };
@@ -1349,6 +1350,59 @@ describe.skipIf(!DB_URL)(
         expect((await marker())?.getTime()).toBe(restamped.getTime());
       });
 
+      it("a prescriber re-linked to ANOTHER physician while the vendor call was in flight is never linked (409): the NPI sent was not theirs now", async () => {
+        const member = await newMember({ onRoster: true });
+        const published = (await eventsOf("m12.prescriber_enrolled", ORG_A)).length;
+        const plan = await enrollment.prepare(tenantActor(ORG_A), member);
+        const other = await seedPhysician();
+        await admin.query(
+          "UPDATE dosespot_prescriber SET external_physician_mdm_id=$2 WHERE membership_id=$1",
+          [member, other.id],
+        );
+        const vendorId = await enrollment.callVendor(plan);
+        expect(vendorId).toMatch(/^70\d$/); // the vendor created the clinician under the OLD physician's NPI...
+        const actor = tenantActor(ORG_A);
+        const code = await errorCode(
+          withOrgContext(tdb, { organizationId: ORG_A, userId: TENANT_ADMIN }, (tx) =>
+            enrollment.complete(
+              createDrizzleRosterStore(tx as unknown as DbClient),
+              tx as unknown as DbClient,
+              actor,
+              plan,
+              vendorId as string,
+            ),
+          ),
+        );
+        expect(code).toBe("DOSESPOT_ROSTER_CHANGED"); // ...so the row now linking someone else is not linked to it
+        const row = (
+          await q(
+            "SELECT dosespot_prescriber_id, npi FROM dosespot_prescriber WHERE membership_id=$1",
+            [member],
+          )
+        )[0];
+        expect(row?.dosespot_prescriber_id).toBeNull();
+        expect(row?.npi).toBeNull();
+        expect((await eventsOf("m12.prescriber_enrolled", ORG_A)).length).toBe(published);
+      });
+
+      it("a 2xx the vendor client cannot use (no clinician id) keeps the claim (502) instead of releasing it for a duplicate", async () => {
+        const member = await newMember({ onRoster: true });
+        enrollBehaviour = "no_id";
+        const refused = await errorCode(enrollment.enroll(tenantActor(ORG_A), member));
+        enrollBehaviour = "ok";
+        expect(refused).toBe("DOSESPOT_ENROLLMENT_UNCONFIRMED");
+        const row = (
+          await q("SELECT * FROM dosespot_prescriber WHERE membership_id=$1", [member])
+        )[0];
+        expect(row?.dosespot_prescriber_id).toBeNull();
+        expect(row?.vendor_enrollment_requested_at).not.toBeNull(); // the claim stands: the clinician may exist
+        const calls = clinicianCalls();
+        expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), member))).toBe(
+          "DOSESPOT_ENROLLMENT_IN_PROGRESS",
+        );
+        expect(clinicianCalls()).toBe(calls); // and a retry inside the window does not create a second one
+      });
+
       it("a prescriber revoked while the vendor call was in flight is never linked (409), and nothing is published", async () => {
         const member = await newMember({ onRoster: true });
         const published = (await eventsOf("m12.prescriber_enrolled", ORG_A)).length;
@@ -1617,7 +1671,7 @@ describe.skipIf(!DB_URL)(
         ).toBe("NOT_FOUND");
       });
 
-      it("an operator never reaches another tenant's registration or roster through a slug", async () => {
+      it("a slug names its own tenant only: another tenant's member is not found, and another tenant's version is a stale If-Match", async () => {
         const a = (await rowOf(ORG_A)) as Record<string, any>;
         const b = (await rowOf(ORG_B)) as Record<string, any>;
         expect(b.status).toBe("active"); // ORG_B can take an enrolment, so a refusal below is the TENANT check and not "not ready"
@@ -1918,7 +1972,7 @@ describe.skipIf(!DB_URL)(
 
     // ── the whole suite: no vendor request ever ran inside a transaction ──────────────────────────
     describe("the vendor boundary, over every case above", () => {
-      it("no vendor request (token mint, clinician add, status read) ran while a tenant-pool transaction was open", () => {
+      it("no token mint or clinician add ran while a tenant-pool transaction was open (the only vendor requests this suite makes)", () => {
         // the suite made real vendor traffic of every kind, on both lanes, so a zero below is a measurement and not an absence
         expect(vendorTraffic.tokenMints).toBeGreaterThan(5);
         expect(vendorTraffic.clinicianAdds).toBeGreaterThan(5);
