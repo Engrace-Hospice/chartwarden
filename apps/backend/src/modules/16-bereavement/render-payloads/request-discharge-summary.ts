@@ -55,7 +55,6 @@ export async function loadDischargeSummaryRows(
   const contacts = await tx
     .select({
       id: CONTACT.id,
-      displayName: CONTACT.displayName,
       relationship: CONTACT.relationshipCode,
       status: CONTACT.status,
       unreachableAt: CONTACT.unreachableAt,

@@ -23,7 +23,28 @@ const text = Type.String({ minLength: 1 });
 const nullableInstant = Type.Union([text, Type.Null()]);
 const count = Type.Integer({ minimum: 0 });
 
-/** The physician condolence letter: the death date and the reviewer's optional note. Names no one (the wording is compliance's). */
+/**
+ * What travels on `m16.bereavement.document_requested` for the physician condolence letter: the death date and NOTHING else. The reviewer's
+ * note is sealed in M16 (an outbox payload is a plaintext copy no eraser reaches); M22 pulls it at render time through a port the
+ * composition root binds and merges it into {@link BereavementPhysicianLetterRenderPayload}, the shape the template draws.
+ */
+export const BereavementPhysicianLetterRequestPayload = Type.Object(
+  { deathDate: text },
+  { additionalProperties: false },
+);
+export type BereavementPhysicianLetterRequestPayload = Static<
+  typeof BereavementPhysicianLetterRequestPayload
+>;
+export const assertBereavementPhysicianLetterRequestPayload = (
+  p: unknown,
+): BereavementPhysicianLetterRequestPayload =>
+  assertRenderPayload(
+    BEREAVEMENT_PHYSICIAN_CONDOLENCE_TEMPLATE_KEY,
+    BereavementPhysicianLetterRequestPayload,
+    p,
+  );
+
+/** The physician condolence letter AS RENDERED: the death date and the reviewer's optional note. Names no one (the wording is compliance's). */
 export const BereavementPhysicianLetterRenderPayload = Type.Object({
   deathDate: text,
   personalNote: Type.Union([Type.String({ minLength: 1, maxLength: 1000 }), Type.Null()]),
@@ -126,7 +147,8 @@ export const DischargeSummaryTierPoint = Type.Object({ at: text, tier: RiskTier 
 export type DischargeSummaryTierPoint = Static<typeof DischargeSummaryTierPoint>;
 
 export const DischargeSummaryContact = Type.Object({
-  displayName: text,
+  /** "Contact N": a stable ordinal (roster order by creation), never the contact's name — the payload crosses the outbox in plaintext. */
+  label: text,
   relationship: text,
   status: Type.Union([
     Type.Literal("proposed"),

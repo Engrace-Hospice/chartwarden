@@ -115,8 +115,8 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const { planId } = parse(PlanParams, request.params);
       const body = parse(AssignCounselorBody, request.body);
       return writeService.assignCounselor(writeActorOf(request), planId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
@@ -136,8 +136,8 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const { planId } = parse(PlanParams, request.params);
       const body = parse(AssignVolunteerBody, request.body);
       return writeService.assignVolunteer(writeActorOf(request), planId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
@@ -157,8 +157,8 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const { planId } = parse(PlanParams, request.params);
       const body = parse(SeedRosterAndScheduleBody, request.body);
       return writeService.seedRosterAndSchedule(writeActorOf(request), planId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
@@ -177,8 +177,8 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const { planId } = parse(PlanParams, request.params);
       const body = parse(PausePlanBody, request.body);
       return writeService.pausePlan(writeActorOf(request), planId, {
-        expectedVersion: ifMatchVersion(request, true),
         ...body,
+        expectedVersion: ifMatchVersion(request, true),
       });
     },
   );
@@ -219,8 +219,8 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const { planId } = parse(PlanParams, request.params);
       const body = parse(CloseEarlyBody, request.body);
       return writeService.closeEarly(writeActorOf(request), planId, {
-        expectedVersion: ifMatchVersion(request, true),
         ...body,
+        expectedVersion: ifMatchVersion(request, true),
       });
     },
   );
@@ -241,8 +241,8 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const { planId } = parse(PlanParams, request.params);
       const body = parse(CosignCloseBody, request.body);
       return writeService.cosignClose(writeActorOf(request), planId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );
@@ -299,8 +299,8 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const { planId } = parse(PlanParams, request.params);
       const body = parse(RegenerateScheduleBody, request.body);
       return writeService.regenerateSchedule(writeActorOf(request), planId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: ifMatchVersion(request),
       });
     },
   );

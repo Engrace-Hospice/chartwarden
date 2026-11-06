@@ -31,7 +31,6 @@ export interface DischargeSummaryRows {
   };
   readonly contacts: ReadonlyArray<{
     readonly id: string;
-    readonly displayName: string;
     readonly relationship: string;
     readonly status: ContactStatus;
     readonly unreachableAt: Date | null;
@@ -124,9 +123,10 @@ function totalsOf(touchpoints: readonly DischargeSummaryTouchpoint[]): Discharge
 export function buildDischargeSummaryPayload(
   rows: DischargeSummaryRows,
 ): BereavementDischargeSummaryRenderPayload {
+  const byCreated = byInstant((c: DischargeSummaryRows["contacts"][number]) => c.createdAt);
   const contacts: DischargeSummaryContact[] = [...rows.contacts]
-    .sort(byInstant((c) => c.createdAt))
-    .map((contact) => {
+    .sort((a, b) => byCreated(a, b) || a.id.localeCompare(b.id))
+    .map((contact, index) => {
       const touchpoints: DischargeSummaryTouchpoint[] = rows.outreach
         .filter((o) => o.contactId === contact.id)
         .sort(byInstant((o) => o.dueAt))
@@ -149,7 +149,7 @@ export function buildDischargeSummaryPayload(
         .filter((a) => a.contactId === contact.id)
         .sort(byInstant((a) => a.contactAt));
       return {
-        displayName: contact.displayName,
+        label: `Contact ${index + 1}`,
         relationship: contact.relationship,
         status: contact.status,
         mailingsAllowed: !optOuts.some((o) => o.optOutKind === "no_mailings"),
