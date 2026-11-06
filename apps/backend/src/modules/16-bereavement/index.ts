@@ -87,7 +87,7 @@ export {
   createM16AlertPort,
 } from "./alert-port";
 
-// §4.7 — the twenty-nine permission keys M16 contributes to M3's catalog.
+// §4.7 — the thirty-six permission keys M16 contributes to M3's catalog.
 export {
   type M16ContributedPermissionKey,
   type M16PermissionKey,

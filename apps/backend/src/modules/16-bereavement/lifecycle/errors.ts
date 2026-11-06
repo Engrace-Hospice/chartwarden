@@ -98,6 +98,21 @@ export const M16_ERROR_STATUS = {
   /** Review follow-up — a schedule is materialized only for a contact still in the program (proposed / active); an opted-out, deceased,
    *  unreachable or ineligible contact is refused rather than silently handed a fresh schedule. */
   CONTACT_NOT_ENGAGEABLE: 409,
+  // ADR-0109 D10 — the mailing program (a run is generated, downloaded and confirmed mailed by oversight)
+  MAILING_RUN_NOT_FOUND: 404,
+  /** Wording is edited only while the run is a draft: a generated batch was rendered from a snapshot. */
+  MAILING_RUN_NOT_EDITABLE: 409,
+  /** `generate` runs from a draft (or retries a failed run) only. */
+  MAILING_RUN_NOT_GENERATABLE: 409,
+  /** `download` needs a rendered batch (ready or mailed); `confirm-mailed` needs a ready one. */
+  MAILING_RUN_NOT_READY: 409,
+  MAILING_RUN_NOT_CANCELLABLE: 409,
+  /** Generation refuses a run whose wording is empty: no default wording ships. */
+  MAILING_CONTENT_EMPTY: 422,
+  /** The decedent-birthday mailing is deferred: M16 holds no date of birth. */
+  MAILING_KEY_NOT_AVAILABLE: 422,
+  /** No M22 org-document seam is bound, so a batch cannot be handed out. */
+  MAILING_DOWNLOAD_UNAVAILABLE: 503,
   // Optimistic concurrency (§2.5)
   STALE_VERSION: 412,
   // Structural — an event dispatched from a state that does not accept it (§2.2–§2.4 graphs).

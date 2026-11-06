@@ -113,6 +113,8 @@ export type DocumentAggregateType =
   // them and the portal allowlist never lists them.
   | "bereavement_physician_letter"
   | "bereavement_discharge_summary"
+  // ADR-0109 D10 (mig 1375) — the INTERNAL mailing batch PDF (every recipient's name and address), one per mailing run.
+  | "bereavement_mailing_batch"
   | "visit_confirmation"
   | "evv_verification"
   | "patient_amendment_statement_of_disagreement"
@@ -416,13 +418,17 @@ export interface DocumentDigest {
 }
 
 /**
- * ADR-0109 D6 / D9 — the aggregate types that are INTERNAL to the agency (M16's physician condolence letter and discharge summary):
+ * ADR-0109 D6 / D9 / D10 — the aggregate types that are INTERNAL to the agency (M16's physician condolence letter, discharge summary and mailing batch):
  * read by role only, render-only (no hand write), never portal-facing and never enclosed in a payer filing. ONE definition: M22's
  * internal-documents leaf re-exports it and M25's enclosure rule (`appealEnclosureRefusal`) reads it. A new internal template flags its
  * renderer descriptor AND is added here (a test fails if they disagree).
  */
 export const INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES: ReadonlySet<DocumentAggregateType> =
-  new Set<DocumentAggregateType>(["bereavement_physician_letter", "bereavement_discharge_summary"]);
+  new Set<DocumentAggregateType>([
+    "bereavement_physician_letter",
+    "bereavement_discharge_summary",
+    "bereavement_mailing_batch",
+  ]);
 
 /** §4.3 — the portal-safe digest (internal-only tags stripped; SUD content filtered per consent by the
  * reader). M31 only ever sees this projection, never {@link DocumentDigest}. */
@@ -586,6 +592,35 @@ export interface ExtractionProvenanceReader {
     readonly targetAggregateId: string;
     readonly organizationId: OrgId;
   }): Promise<ReadonlyArray<ProvenanceRecord>>;
+}
+
+/** ADR-0109 D10 — why {@link OrgDocumentAccessProvider} refused to hand out a document. One indistinguishable family: the caller learns no more than "no". */
+export type OrgDocumentDenialReason =
+  | "not_found"
+  | "wrong_type"
+  | "not_org_level"
+  | "not_active"
+  | "no_active_version";
+
+/**
+ * ADR-0109 D10 — the ORG-LEVEL document door: a module that owns a document with NO patient (M16's mailing batch PDF: every recipient's name and mailing
+ * address, filed under an internal-only aggregate type) mints its short-lived download URL through M22, instead of reaching into M22's tables or storing a
+ * bucket key of its own. It is NOT a general document door: the caller names the aggregate types it may hand out, and the seam refuses any document of
+ * another type, any document that belongs to a patient, and anything not `active`. A successful mint appends ONE `document_access_log` row (the
+ * §164.528 ledger) BEFORE the URL is returned; if the append fails the mint throws and no URL leaves. A `{ denied }` result logs nothing.
+ */
+export interface OrgDocumentAccessProvider {
+  mintOrgDownloadUrl(args: {
+    readonly organizationId: OrgId;
+    readonly documentId: DocumentId;
+    /** The aggregate types the CALLER's module may hand out (the seam refuses every other type). */
+    readonly allowedAggregateTypes: readonly DocumentAggregateType[];
+    /** The staff member the URL is minted for (their membership), recorded on the access ledger. */
+    readonly accessorMembershipId: string;
+  }): Promise<
+    | { readonly url: string; readonly expiresAt: IsoInstant; readonly documentVersionId: DocumentVersionId }
+    | { readonly denied: true; readonly reason: OrgDocumentDenialReason }
+  >;
 }
 
 // ── §2.2 / D1 per-tenant object storage PORT (interface only; the real MinIO client is injected at boot

@@ -614,7 +614,8 @@ async function latestOutcomes(
   return tx
     .select({ outcome: LOG.outcome, contactAt: LOG.contactAt })
     .from(LOG)
-    .where(eq(LOG.bereavedContactId, contactId))
+    // ADR-0109 D10 — a program-activity row (a mailing, a session) is not a touchpoint attempt: it neither extends nor breaks a streak.
+    .where(and(eq(LOG.bereavedContactId, contactId), isNull(LOG.activityKind)))
     .orderBy(desc(LOG.contactAt))
     .limit(limit);
 }
@@ -717,10 +718,11 @@ export async function runUnreachableDetectorCron(
               eq(PLAN.status, "active"),
               sql`(select count(*) filter (where t.outcome = 'no_response')
                      from (select l.outcome from ${LOG} l
-                            where l.bereaved_contact_id = ${CONTACT.id}
+                            where l.bereaved_contact_id = ${CONTACT.id} and l.activity_kind is null
                             order by l.contact_at desc limit ${threshold}) t) = ${threshold}`,
               sql`(${CONTACT.unreachableProposedThroughAt} is null or ${CONTACT.unreachableProposedThroughAt} <
-                     (select max(l.contact_at) from ${LOG} l where l.bereaved_contact_id = ${CONTACT.id}))`,
+                     (select max(l.contact_at) from ${LOG} l
+                       where l.bereaved_contact_id = ${CONTACT.id} and l.activity_kind is null))`,
             ),
           )
           .orderBy(asc(CONTACT.updatedAt))

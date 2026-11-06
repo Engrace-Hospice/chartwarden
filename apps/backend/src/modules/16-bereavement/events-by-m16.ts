@@ -374,6 +374,25 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m16.bereavement.mailing_run_mailed",
+    moduleOwner: "m16",
+    description:
+      "ADR-0109 D10 — staff confirmed a mailing run was mailed. Ids, enum tokens and counts only: no recipient, name or address (the batch PDF that holds them is an internal M22 document and never rides the outbox). M33 reports program volume over `report_mv.*`.",
+    payloadSchema: Type.Object({
+      runId: Id,
+      runKind: Str,
+      mailingKey: IdN,
+      occurrenceKey: Str,
+      scheduledFor: Str,
+      recipientCount: Count,
+      excludedCount: Count,
+      excludedAfterRenderCount: Count,
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m16.bereavement.risk_score_computed",
     moduleOwner: "m16",
     description:
