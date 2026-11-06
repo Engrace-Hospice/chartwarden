@@ -1,3 +1,4 @@
+import { ChartWardenError } from "@chartwarden/types";
 import { CH } from "@chartwarden/x12-837-client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -38,7 +39,7 @@ import {
   runSubmissionDrain,
   transportKeyFor,
 } from "./submission-worker";
-import { M41_UNBOUND_WITH_WORK_ALERT } from "./unbound-alert";
+import { M41_UNBOUND_WITH_WORK_ALERT, __resetUnboundAlertMemoryForTest } from "./unbound-alert";
 
 describe("classifyTransportRefusal", () => {
   it("retries only an unavailable transport", () => {
@@ -205,6 +206,7 @@ describe("runSubmissionDrain with a clearinghouse per organization (ADR-0053 ame
     transactions = 0;
     submitted.length = 0;
     orgsOpened.length = 0;
+    __resetUnboundAlertMemoryForTest(); // the once-per-window alert memory is per process: each case starts with none
   });
 
   // The shared cron must not fail for every tenant because ONE tenant has not finished setup: it is reported per org (one
@@ -265,21 +267,88 @@ describe("runSubmissionDrain with a clearinghouse per organization (ADR-0053 ame
     await expect(runSubmissionDrain(perOrgDeps({}))).resolves.toEqual({ sent: 0, failures: [] });
   });
 
-  it("fails an org whose binding cannot be resolved and still drains the other", async () => {
+  // Re-review M4: a tenant whose credential cannot be opened, or whose config could not be read, is THAT tenant's problem. It is
+  // reported per org (the same alert as an unbound org, carrying the code) and the shared tick carries on; failing the tick would
+  // retry the whole job into the DLQ for every tenant, forever.
+  const brokenFor = (orgId: string, fail: () => Error) => {
     const deps = perOrgDeps({ "org-2": "stedi" });
-    const broken = {
+    return {
       ...deps,
       binding: {
         ...deps.binding,
         forOrg: async (organizationId: string) => {
-          if (organizationId === "org-1") throw new Error("config unreadable");
+          if (organizationId === orgId) throw fail();
           return deps.binding.forOrg(organizationId);
         },
       },
     };
+  };
+  const unreadable = () =>
+    new ChartWardenError(
+      "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+      "this organization's clearinghouse credential could not be opened; it must be entered again",
+      503,
+    );
 
-    await expect(runSubmissionDrain(broken)).rejects.toThrow(
-      /^commercial submission drain failed: org org-1: ChartWardenError$/,
+  it.each([
+    [
+      "a stored credential that cannot be opened",
+      unreadable,
+      "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+    ],
+    [
+      "a config read that failed (a database fault)",
+      () => new Error("connection reset while reading tenant_clearinghouse_config"),
+      "CLEARINGHOUSE_UNAVAILABLE",
+    ],
+  ])(
+    "REPORTS an org whose binding cannot be resolved (%s) and still drains the other: no failed tick",
+    async (_label, fail, code) => {
+      waiting = 2;
+      const alerts: { alertCode: string; organizationId: string; payload: unknown }[] = [];
+      const logs: unknown[] = [];
+      const deps = {
+        ...brokenFor("org-1", fail),
+        alerts: { dispatch: async (a: never) => void alerts.push(a) },
+        log: (e: unknown) => void logs.push(e),
+      };
+
+      await expect(runSubmissionDrain(deps)).resolves.toEqual({ sent: 0, failures: [] });
+
+      expect(orgsOpened).toEqual(["org-1", "org-2"]); // org-1 only counted; org-2 drained
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]).toMatchObject({
+        alertCode: M41_UNBOUND_WITH_WORK_ALERT,
+        organizationId: "org-1",
+        payload: { waiting: 2, code },
+      });
+      // nothing of the cause leaks into the log: a class and a code only
+      expect(JSON.stringify(logs)).not.toContain("tenant_clearinghouse_config");
+    },
+  );
+
+  it("logs the error CLASS (never the cause text) when the per-org resolver throws something untyped", async () => {
+    waiting = 1;
+    const logs: unknown[] = [];
+    const deps = {
+      ...brokenFor(
+        "org-1",
+        () => new TypeError("password authentication failed for chartwarden_app"),
+      ),
+      log: (e: unknown) => void logs.push(e),
+    };
+    await runSubmissionDrain(deps);
+    expect(logs).toContainEqual({ event: "clearinghouse.resolve_failed", errorClass: "TypeError" });
+    expect(JSON.stringify(logs)).not.toContain("password");
+  });
+
+  it("labels a failed org with its error CODE, so a tick failure says what failed", async () => {
+    const deps = brokenFor(
+      "org-1",
+      () => new ChartWardenError("CLEARINGHOUSE_SOMETHING_NEW", "another typed refusal", 503),
+    );
+    await expect(runSubmissionDrain(deps)).rejects.toThrow(
+      /^commercial submission drain failed: org org-1: CLEARINGHOUSE_SOMETHING_NEW$/,
     );
     expect(orgsOpened).toEqual(["org-2"]);
   });
