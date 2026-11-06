@@ -374,6 +374,7 @@ import { createDbMembershipRepository as _dbMemberships } from "./membership-rep
 import { createDrizzleOrgAdminStore as _drizzleOrgAdminStore } from "./org-admin-store";
 import {
   type OrganizationLifecycleOutboxPort,
+  activateCreatedOrganization as _activateCreatedOrganization,
   createDrizzleOrganizationLifecycleWriter as _organizationLifecycleWriter,
 } from "./organization-lifecycle";
 import { registerCredentialRoutes as _registerCredentialRoutes } from "./routes/credential-routes";
@@ -492,6 +493,8 @@ export function mountIdentityRoutes(
     funeralCases?: IdentityRouteDeps["funeralCases"];
     /** GAP-005 - the MFA matrix gate `select-organization` consults before binding an organization. */
     mfaGate?: IdentityRouteDeps["mfaGate"];
+    /** M34's "tenant still onboarding" fact: lets `select-organization` admit a `created` organization's first admin. */
+    onboardingTenants?: IdentityRouteDeps["onboardingTenants"];
     /** Better Auth credential lifecycle port (server-only extension). */
     credentialAdmin?: import("@chartwarden/auth").IdentityCredentialAdmin;
     /** M3 role-id resolver; M2 keeps the structural port to preserve module boundaries. */
@@ -537,6 +540,7 @@ export function mountIdentityRoutes(
     ...(invite?.platformUnlockAudit ? { platformUnlockAudit: invite.platformUnlockAudit } : {}),
     ...(invite?.funeralCases ? { funeralCases: invite.funeralCases } : {}),
     ...(invite?.mfaGate ? { mfaGate: invite.mfaGate } : {}),
+    ...(invite?.onboardingTenants ? { onboardingTenants: invite.onboardingTenants } : {}),
     ...(invite?.outbox ? { outbox: _orgScopedIdentityOutbox(db, invite.outbox) } : {}),
     // §11 D19 — real auth-time enforcement: `select-organization` refuses to bind a fresh session to a
     // non-active org. The reader needs no outbox (it never writes); see organization-lifecycle.ts.
@@ -603,6 +607,28 @@ export function mountOrgAdminRoutes(
     ...(outbox ? { outbox } : {}),
     overrides: _drizzleStepUpOverrideAdminStore(db),
   });
+}
+
+/** The `organization.status` reader (M2's own table) the composition root hands the authenticate hook's pre-activation gate. */
+export function createOrganizationStatusReader(db: DbClient) {
+  return _organizationLifecycleWriter(db).getStatus;
+}
+
+/**
+ * The go-live approval's organization activation (M34 calls it through a port): activates a `created` organization with the
+ * real lifecycle writer, so the status flip, the `m2.organization.activated` audit and outbox event and `onTransitioned` (the
+ * composition root evicts its caches there) happen exactly as for the manual platform route. Anything but `created` is a no-op.
+ */
+export function createOrganizationActivator(
+  db: DbClient,
+  outbox?: OrganizationLifecycleOutboxPort,
+  onTransitioned?: (organizationId: string) => void,
+) {
+  const writer = _organizationLifecycleWriter(db, outbox, onTransitioned);
+  return (
+    organizationId: string,
+    ctx: { reason: string; actorUserId: string; actorMembershipId: string },
+  ) => _activateCreatedOrganization(writer, organizationId, ctx);
 }
 
 /**

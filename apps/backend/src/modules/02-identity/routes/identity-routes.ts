@@ -311,7 +311,13 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
 
     if (deps.organizations) {
       const status = await deps.organizations.getStatus(organizationId);
-      if (status !== null && status !== "active") throw organizationNotActive();
+      if (status !== null && status !== "active") {
+        // A `created` organization whose tenant is still onboarding is admitted so its first admin can finish onboarding;
+        // the authenticate hook confines that session to the onboarding routes. Suspended and closed are never reopened.
+        const onboardingSignIn =
+          status === "created" && (await deps.onboardingTenants?.isOnboarding(organizationId));
+        if (!onboardingSignIn) throw organizationNotActive();
+      }
     }
 
     // GAP-005 - the MFA matrix is checked BEFORE the org is bound: a password alone binds nothing. The membership

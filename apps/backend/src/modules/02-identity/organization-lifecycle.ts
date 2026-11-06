@@ -185,3 +185,30 @@ export function createDrizzleOrganizationLifecycleWriter(
     },
   };
 }
+
+/**
+ * The go-live approval's half (M34): activate an organization that is still `created`. Any other status is left alone, on
+ * purpose: an organization an operator already activated by hand is live (nothing to do), and a suspended or closed one is not
+ * this caller's to reopen. A concurrent activation that lands first (ILLEGAL_ORGANIZATION_TRANSITION from `active`) is the same
+ * outcome, not a failure. Returns what it did so the caller can log it.
+ */
+export async function activateCreatedOrganization(
+  writer: Pick<OrganizationLifecycleWriter, "getStatus" | "transition">,
+  organizationId: string,
+  ctx: {
+    readonly reason: string;
+    readonly actorUserId: string;
+    readonly actorMembershipId: string;
+  },
+): Promise<"activated" | "unchanged"> {
+  if ((await writer.getStatus(organizationId)) !== "created") return "unchanged";
+  try {
+    await writer.transition(organizationId, "activate", ctx);
+    return "activated";
+  } catch (error) {
+    if (error instanceof ChartWardenError && error.code === "ILLEGAL_ORGANIZATION_TRANSITION") {
+      return "unchanged";
+    }
+    throw error;
+  }
+}

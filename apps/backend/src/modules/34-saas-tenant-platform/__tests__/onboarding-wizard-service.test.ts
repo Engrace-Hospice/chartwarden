@@ -55,6 +55,8 @@ const TEMPLATES: StepTemplate[] = [
 let state: MemoryWizardState;
 let advance: Mock<(tenant: { tenantAccountId: string; organizationId: string }) => Promise<void>>;
 let bindOfficerRole: Mock<NonNullable<OnboardingWizardDeps["bindComplianceOfficerRole"]>>;
+let activateOrganization: Mock<NonNullable<OnboardingWizardDeps["activateOrganization"]>>;
+let warnings: string[];
 const taskId = (key: string): string =>
   (state.tasks.find((t) => t.templateKey === key) as { id: string }).id;
 const statusOf = (key: string): string =>
@@ -67,6 +69,8 @@ function wizard(at: Date = NOW) {
     orgProfile: createMemoryOrgProfile(state),
     advance,
     bindComplianceOfficerRole: bindOfficerRole,
+    activateOrganization,
+    warn: (message) => warnings.push(message),
     now: () => at,
   });
 }
@@ -99,6 +103,8 @@ function settle(...keys: string[]): void {
 
 beforeEach(() => {
   advance = vi.fn(async () => undefined);
+  warnings = [];
+  activateOrganization = vi.fn(async () => undefined);
   // The real binder commits a `compliance_officer` grant on the tenant pool; this one gives the memory member the same role.
   bindOfficerRole = vi.fn(async ({ organizationId, membershipId }) => {
     const member = state.members.get(membershipId);
@@ -664,6 +670,57 @@ describe("two-party go-live", () => {
     expect(tenant().status).toBe("active");
     expect(statusOf("go_live_checklist_complete")).toBe("done");
     expect(state.activations).toHaveLength(1);
+  });
+
+  describe("approval activates the organization (the M2 org stays `created` until go-live)", () => {
+    const APPROVAL = "reviewed the evidence and the BAA";
+
+    it("activates the organization after the tenant is active, naming the operator and the reason", async () => {
+      await wizard().attestGoLive(OFFICER, ORG, undefined);
+      let tenantWasActive = false;
+      activateOrganization.mockImplementationOnce(async () => {
+        tenantWasActive = tenant().status === "active";
+      });
+
+      await wizard().approveGoLive("acme", OPS, `  ${APPROVAL}  `);
+
+      expect(activateOrganization).toHaveBeenCalledTimes(1);
+      expect(activateOrganization).toHaveBeenCalledWith({
+        organizationId: ORG,
+        operator: OPS,
+        reason: APPROVAL,
+      });
+      expect(tenantWasActive, "the organization is activated only once the tenant is live").toBe(
+        true,
+      );
+    });
+
+    it("activates nothing for a refused approval or a revoke", async () => {
+      expect(await code(wizard().approveGoLive("acme", OPS, APPROVAL))).toBe(
+        "GO_LIVE_NOT_ATTESTED",
+      );
+      await wizard().attestGoLive(OFFICER, ORG, undefined);
+      await wizard().revokeGoLive("acme", OPS, "BAA addendum is being renegotiated");
+      expect(activateOrganization).not.toHaveBeenCalled();
+      expect(tenant().status).toBe("onboarding");
+    });
+
+    it("a failed activation is a loud typed error naming the recovery; the tenant stays live and the failure is logged", async () => {
+      await wizard().attestGoLive(OFFICER, ORG, undefined);
+      activateOrganization.mockRejectedValueOnce(new Error("organization update unavailable"));
+
+      try {
+        await wizard().approveGoLive("acme", OPS, APPROVAL);
+        expect.unreachable("a failed organization activation must not look like success");
+      } catch (e) {
+        const err = e as ChartWardenError;
+        expect(err.code).toBe("ORGANIZATION_ACTIVATION_FAILED");
+        expect(err.statusCode).toBe(500);
+        expect(err.message).toMatch(/organizations\/.*\/status/);
+      }
+      expect(tenant().status).toBe("active");
+      expect(warnings).toHaveLength(1);
+    });
   });
 
   it("approve without an attestation is refused and the tenant stays in onboarding", async () => {

@@ -418,6 +418,10 @@ export {
   createDrizzleWizardRunner,
 } from "./onboarding/wizard-store-drizzle";
 export {
+  type OnboardingTenantReader,
+  createOnboardingTenantReader,
+} from "./onboarding/onboarding-tenant-reader";
+export {
   createMemoryOrgProfile,
   createMemoryWizardRunner,
   createMemoryWizardState,
