@@ -125,6 +125,11 @@ const PLATFORM_READ_TABLES = [
   // ADR-0108 — the claims-billing add-on catalog and the per-org add-on rows (admin console list + usage).
   "addon",
   "subscription_addon",
+  // Slice 2 (tenant pricing) — the census bands of a plan, the signed contract, the daily census and the monthly statement.
+  "plan_census_band",
+  "subscription_contract",
+  "patient_census_daily",
+  "subscription_statement",
   // WX-PR-025 — M33 §2.4 nightly MV refresh source tables (see MV_REFRESH_MATERIALIZED_VIEWS below):
   // the refresh's re-executed defining query needs a real SELECT grant on each MV's source table,
   // independent of (in addition to) the owner-role BYPASSRLS that lets it see every tenant's rows.
@@ -186,6 +191,8 @@ const PLATFORM_WRITER_FUNCTIONS = [
 
 /** The M35 platform-only tables (migration 0143 — RLS with no chartwarden_app grant): full write. */
 const PLATFORM_WRITE_TABLES = [
+  // Slice 2 — the bands of a DRAFT plan are replaced wholesale by the plan editor (the guard trigger freezes a published plan's).
+  "plan_census_band",
   "revenue_recognition_snapshot",
   "stripe_webhook_event",
   "patient_pseudonym_key",
@@ -196,6 +203,11 @@ const PLATFORM_WRITE_TABLES = [
 
 /** The §5.2 admin ACTIONS' mutation surface (refunds / dunning / promos) — INSERT+UPDATE only. */
 const PLATFORM_MUTATE_TABLES = [
+  // Slice 2 — the plan editor (draft edit / publish / archive; a published row is frozen by its trigger), the daily census snapshot
+  // and the monthly statement (a final row is frozen by its trigger). Tenants hold SELECT only on the last two.
+  "plan",
+  "patient_census_daily",
+  "subscription_statement",
   // ADR-0108 — platform-only grant/cancel of the claims-billing add-on (tenants hold SELECT only).
   "subscription_addon",
   "refund",
@@ -220,6 +232,10 @@ const PLATFORM_PROVISION_INSERT_TABLES = [
   // GAP-164: `FeatureFlagAdmin.upsert` runs on the platform pool (a NULL-org global flag is unwritable from a tenant
   // connection by design); without these two grants every platform / tenant flag write was a 42501.
   "feature_flag",
+  // Slice 2 — onboarding step 2 creates the tenant's subscription (INSERT only: nothing in slice 2 edits one) and its signed contract.
+  "subscription",
+  "subscription_state_history",
+  "subscription_contract",
 ] as const;
 
 const PLATFORM_PROVISION_UPDATE_TABLES = [
@@ -333,6 +349,12 @@ async function main(): Promise<void> {
       );
       await run(
         'GRANT UPDATE ("baa_status", "executed_on", "effective_on", "expires_on", "breach_notification_contact_email", "breach_notification_contact_phone", "document_id", "updated_by_user_id") ON "platform_tenant_baa_record" TO chartwarden_platform;',
+      );
+      // subscription_contract: INSERT above, UPDATE of the billing service mode alone (the guard trigger freezes the rest). REVOKE first
+      // so a re-provision takes back a table-wide grant.
+      await run('REVOKE UPDATE ON "subscription_contract" FROM chartwarden_platform;');
+      await run(
+        'GRANT UPDATE ("billing_service_mode", "updated_at") ON "subscription_contract" TO chartwarden_platform;',
       );
       await run('REVOKE UPDATE ON "tenant_go_live_attestation" FROM chartwarden_platform;');
       await run(

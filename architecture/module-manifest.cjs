@@ -1243,9 +1243,11 @@ exports.MODULES = [
         "invoice",
         "invoice_line",
         "patient_active_period",
+        "patient_census_daily", // slice 2 tenant pricing: the daily active-patient count behind the average daily census
         "patient_pseudonym_key",
         "payment_method",
         "plan",
+        "plan_census_band", // slice 2 tenant pricing: the census bands of a plan (platform-shared)
         "plan_meter",
         "platform_retained_invoice",
         "platform_retained_invoice_line",
@@ -1257,7 +1259,9 @@ exports.MODULES = [
         "stripe_webhook_event",
         "subscription",
         "subscription_addon", // ADR-0108 (tenant read-only; platform-runner writes)
+        "subscription_contract", // slice 2 tenant pricing: the signed terms (tenant read-only; platform-runner writes)
         "subscription_state_history",
+        "subscription_statement", // slice 2 tenant pricing: the monthly statement (tenant read-only; platform-runner writes)
         "usage_event",
         "usage_period_aggregate",
         "user_active_period",
