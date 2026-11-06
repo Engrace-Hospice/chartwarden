@@ -128,11 +128,11 @@ describe("Addendum panel (GAP-027)", () => {
     expect(await screen.findByText("Draft saved.")).toBeTruthy();
   });
 
-  it("shows a 412 on save verbatim", async () => {
+  it("shows a 409 STALE_VERSION on save verbatim", async () => {
     mount([draft], {
       PATCH: vi.fn(async () => ({
         error: { error: { code: "STALE_VERSION", message: "version 3 is stale" } },
-        response: { status: 412 },
+        response: { status: 409 },
       })),
     });
     fireEvent.click(screen.getByRole("button", { name: "Edit draft" }));

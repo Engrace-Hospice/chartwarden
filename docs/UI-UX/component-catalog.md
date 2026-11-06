@@ -42,7 +42,7 @@ desktop et mobile. Ne pas recréer une variante locale quand ce catalogue couvre
 | Besoin | Composant | Notes |
 | --- | --- | --- |
 | Surface | `Card` | Carte uniquement visuelle ; une carte actionnable est un bouton ou lien explicite. |
-| KPI/score | `MetricCard` ou `KpiCard` | `tone` est sémantique; `onSelect` seulement si la carte applique réellement une vue/filtre. |
+| KPI/score | `KpiCard` | `tone` est sémantique; `onSelect` seulement si la carte applique réellement une vue/filtre. |
 | Filtres | `FilterBar` | Utiliser `activeFilterCount` et `onClear`; ne pas masquer les filtres appliqués. |
 | Tableau | `DataTable<Row>` | Déclarer `DataTableColumn<Row>[]`, `getRowId`, priorités `primary`/`secondary`/`tertiary`. |
 | Pagination | `CursorPagination` | Affiche uniquement le nombre chargé et les directions réellement fournies par l’API. |

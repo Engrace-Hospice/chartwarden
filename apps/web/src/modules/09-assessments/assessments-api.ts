@@ -155,8 +155,8 @@ export async function correctAssessment(
   version: number,
   body: CorrectAssessmentBody,
 ): Promise<WriteResult<AssessmentView>> {
-  // §7.7 — `If-Match` is a TYPED header param on this operation, so omitting it does not compile. A 412
-  // means the capture was corrected by someone else first; correcting again would supersede their row.
+  // §7.7 — `If-Match` is a TYPED header param on this operation, so omitting it does not compile. A 409
+  // STALE_VERSION means the capture was corrected by someone else first; correcting again would supersede their row.
   const { data, error, response } = await client.POST(
     "/api/v1/patients/{patientId}/assessments/{id}/corrections",
     {
