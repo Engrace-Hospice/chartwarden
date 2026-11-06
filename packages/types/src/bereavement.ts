@@ -138,8 +138,13 @@ export type BereavementPlanClosureReason =
   | "family_legal_action"
   | "other_early";
 
-/** D9 per-contact opt-out granularity (mirrors `bereavement_opt_out_kind`). */
-export type BereavementOptOutKind = "full" | "channel_specific" | "pause_temporarily";
+/** D9 per-contact opt-out granularity (mirrors `bereavement_opt_out_kind`). `no_mailings` (ADR-0110)
+ *  stops mailings only: the contact stays active and calls continue. */
+export type BereavementOptOutKind =
+  | "full"
+  | "channel_specific"
+  | "pause_temporarily"
+  | "no_mailings";
 
 /** The §2.2 pause taxonomy (mirrors `bereavement_plan_pause_kind`). */
 export type BereavementPlanPauseKind =

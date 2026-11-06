@@ -427,6 +427,12 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect(String(spouse.phone_cipher)).not.toContain("5550111");
     expect(await events("m16.bereavement.plan_opened")).toBe(1);
     expect(await events("m16.bereavement.outreach_scheduled")).toBe(body.outreachScheduledCount);
+    // ADR-0110 D4 — every generated row persists the cadence-floor mark it was made for.
+    const unmarked = await admin.query(
+      "SELECT count(*)::int AS n FROM bereavement_outreach WHERE plan_id=$1 AND cadence_mark IS NULL",
+      [planId],
+    );
+    expect(unmarked.rows[0].n).toBe(0);
   });
 
   // ── reads ────────────────────────────────────────────────────────────────────────────────────────
