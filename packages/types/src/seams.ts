@@ -133,6 +133,7 @@ import type {
   VisitReader,
   VolunteerComplianceProvider,
 } from "./scheduling";
+import type { TenantClearinghouseReader } from "./tenant-clearinghouse";
 import type {
   AITokenMeterProvider,
   BillingStatusProvider,
@@ -487,7 +488,8 @@ export type SeamName =
   | "BillingStatusProvider" // M35 — the billing-block gate + Phase-1 open quota check (M28/M29/M32/M34)
   | "UsageMeteringIngest" // M35 — PHI-free usage-event ingest (M23/M24/M28/M29/M32; redactor-enforced)
   | "PatientCounterProvider" // M35 — pseudonymized active-patient count for a period (reconciles vs M5)
-  | "ClaimsBillingEntitlementReader" // M35 — ADR-0108: may this org start NEW claims-billing work (add-on held)
+  | "ClaimsBillingEntitlementReader" // M23 — ADR-0108 (repurposed): may this org start NEW claims-billing work (its clearinghouse choice)
+  | "TenantClearinghouseReader" // M23 — ADR-0053 amendment 2026-11-06: the clearinghouse the org chose (stedi | claimmd | outside)
   | "RevenueMetricsProvider" // M35 — platform-shared MRR/ARR snapshots + status counts (M33 revenue dashboard)
   | "PlanCatalogReader" // M35 — public (unauthenticated) plan catalog read (marketing pages + onboarding)
   // M35 §4.6 — the THREE forward-seam CONSUMER VIEWS M35 requires but whose owner modules do not publish them
@@ -1439,6 +1441,8 @@ export interface SeamContracts {
   PatientCounterProvider: PatientCounterProvider;
   // ADR-0108 — leaf-typed; the route gate + worker hold in apps/backend/src/bootstrap resolve it (fail closed).
   ClaimsBillingEntitlementReader: ClaimsBillingEntitlementReader;
+  // M23 — the tenant's clearinghouse choice (leaf-typed in ./tenant-clearinghouse); aggregate org config, no PHI.
+  TenantClearinghouseReader: TenantClearinghouseReader;
   RevenueMetricsProvider: RevenueMetricsProvider;
   PlanCatalogReader: PlanCatalogReader;
   // M35's three §4.6 forward-seam consumer views are LEAF-TYPED too (M35's minimal view in
