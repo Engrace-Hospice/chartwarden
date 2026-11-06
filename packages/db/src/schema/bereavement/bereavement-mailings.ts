@@ -110,7 +110,7 @@ export const bereavementMailingRun = pgTable(
       .references(() => organizations.id, { onDelete: "restrict" }),
     runKind: text("run_kind", { enum: BEREAVEMENT_MAILING_RUN_KINDS }).notNull(),
     mailingKey: text("mailing_key", { enum: BEREAVEMENT_MAILING_KEYS }),
-    occurrenceKey: text("occurrence_key").notNull(), // e.g. `newsletter_quarterly:2026-Q4`; UNIQUE per org
+    occurrenceKey: text("occurrence_key").notNull(), // `<mailing key>:<scheduled date>` for the newsletter (e.g. `newsletter_quarterly:2026-10-15`), `<mailing key>:<year>` for the annual ones (e.g. `holiday_december:2026`); UNIQUE per org
     sourceRefId: uuid("source_ref_id"), // a memorial service id (a later PR)
     scheduledFor: date("scheduled_for").notNull(),
     status: text("status", { enum: BEREAVEMENT_MAILING_RUN_STATUSES }).notNull().default("draft"),

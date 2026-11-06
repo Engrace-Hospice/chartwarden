@@ -1,17 +1,23 @@
 // apps/backend/src/modules/16-bereavement/mailings/facts-drizzle.ts — ADR-0109 D10: load the facts `decideMailingEligibility` decides over, SET-BASED.
 //
 // One query for the contacts (joined to their plan), one for their OPEN opt-out rows; no per-contact round trip and NO decryption: whether an address
-// is stored is `*_cipher IS NOT NULL`. Used twice, by the same pure rule: at `generate` (every contact of every ACTIVE plan: selects the batch) and at
-// `confirm-mailed` (just the contacts already rendered into the PDF, whatever their plan's status is NOW: an opt-out or a closure since the render must
-// stop the piece from being logged as mailed).
+// is stored is `*_cipher IS NOT NULL`. The same pure rule runs at `generate` (every contact of every ACTIVE plan: selects the batch) and, through
+// `ineligibleIncludedItems`, over the run's `included` items whatever their plan's status is NOW: in the render worker just before rendering, at
+// `download` (a stale batch is refused) and at `confirm-mailed` (bookkeeping: whoever dropped out is not logged as mailed).
 import { type DbClient, schema } from "@chartwarden/db";
 import type {
   BereavedContactRelationship,
+  BereavementMailingExclusionReason,
+  BereavementMailingKey,
   BereavementOptOutKind,
   BereavementOutreachKind,
 } from "@chartwarden/types";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
-import type { MailingEligibilityFacts, OpenOptOutFact } from "./eligibility";
+import {
+  type MailingEligibilityFacts,
+  type OpenOptOutFact,
+  decideMailingEligibility,
+} from "./eligibility";
 
 type Tx = DbClient;
 
@@ -131,4 +137,91 @@ export async function loadMailingCandidates(
     }
   }
   return out;
+}
+
+/** The run's audience filter: the CURRENT config's (a memorial run has no mailing key and so no audience). */
+export async function mailingFactsContextOf(
+  tx: Tx,
+  mailingKey: BereavementMailingKey | null,
+  emailChannelAvailable: boolean,
+): Promise<MailingFactsContext> {
+  if (mailingKey === null) return { audience: null, emailChannelAvailable };
+  const CONFIG = schema.bereavementMailingConfig;
+  const [cfg] = await tx
+    .select({ audience: CONFIG.audienceRelationships })
+    .from(CONFIG)
+    .where(eq(CONFIG.mailingKey, mailingKey))
+    .limit(1);
+  return {
+    audience: (cfg?.audience ?? null) as BereavedContactRelationship[] | null,
+    emailChannelAvailable,
+  };
+}
+
+/**
+ * Re-decide the run's `included` items against TODAY's facts with the rule that selected them. Returns the item ids that are no longer eligible, with
+ * the reason (a contact that no longer exists reads as `contact_not_engageable`). Empty map = the batch still stands.
+ */
+export async function ineligibleIncludedItems(
+  tx: Tx,
+  run: { readonly id: string; readonly mailingKey: BereavementMailingKey | null },
+  emailChannelAvailable: boolean,
+): Promise<Map<string, BereavementMailingExclusionReason>> {
+  const ITEM = schema.bereavementMailingItem;
+  const included = await tx
+    .select({ id: ITEM.id, contactId: ITEM.bereavedContactId })
+    .from(ITEM)
+    .where(and(eq(ITEM.runId, run.id), eq(ITEM.status, "included")));
+  const out = new Map<string, BereavementMailingExclusionReason>();
+  if (included.length === 0) return out;
+  const candidates = await loadMailingCandidates(
+    tx,
+    { kind: "contacts", contactIds: included.map((i) => i.contactId) },
+    await mailingFactsContextOf(tx, run.mailingKey, emailChannelAvailable),
+  );
+  const decided = new Map(
+    candidates.map((c) => [c.contactId, decideMailingEligibility(c.facts)] as const),
+  );
+  for (const item of included) {
+    const decision = decided.get(item.contactId);
+    if (decision === undefined) out.set(item.id, "contact_not_engageable");
+    else if (!decision.eligible) out.set(item.id, decision.reason);
+  }
+  return out;
+}
+
+/** Rows per `IN (...)` list when flagging items. */
+const ITEM_FLAG_CHUNK = 500;
+
+/**
+ * Move still-`included` items out of the batch with their reason, chunked per reason. `excluded` before a render (the worker), `excluded_after_render`
+ * once the batch left the system (confirm-mailed: the ordinal is KEPT, it is the "Ref N" printed on the letter staff pull). Returns how many rows moved.
+ */
+export async function flagItems(
+  tx: Tx,
+  reasons: ReadonlyMap<string, BereavementMailingExclusionReason>,
+  status: "excluded" | "excluded_after_render",
+): Promise<number> {
+  const ITEM = schema.bereavementMailingItem;
+  const byReason = new Map<BereavementMailingExclusionReason, string[]>();
+  for (const [id, reason] of reasons) byReason.set(reason, [...(byReason.get(reason) ?? []), id]);
+  let moved = 0;
+  for (const [reason, ids] of byReason) {
+    for (let i = 0; i < ids.length; i += ITEM_FLAG_CHUNK) {
+      const rows = await tx
+        .update(ITEM)
+        .set({
+          status,
+          exclusionReason: reason,
+          ...(status === "excluded" ? { ordinal: null } : {}),
+          updatedAt: sql`now()`,
+        })
+        .where(
+          and(inArray(ITEM.id, ids.slice(i, i + ITEM_FLAG_CHUNK)), eq(ITEM.status, "included")),
+        )
+        .returning({ id: ITEM.id });
+      moved += rows.length;
+    }
+  }
+  return moved;
 }

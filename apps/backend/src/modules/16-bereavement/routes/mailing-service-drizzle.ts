@@ -3,13 +3,16 @@
 // Every method runs inside one `withOrgContext` transaction (RLS on `app.org_id`). State changes are compare-and-set UPDATEs guarded by the row's
 // `version` AND status, so two staff members cannot both claim one run, and the `If-Match` header (never a body field) names the version the caller read.
 //
-//   generate        draft | failed -> generating in one CAS, then the batch is SELECTED SET-BASED in the same transaction: every contact of every active plan
-//                   goes through the pure `decideMailingEligibility` and is upserted as an item (included / excluded + reason) in chunks. Only after the commit is
-//                   the render handed to the `m16-mailing-generate` worker (a lost enqueue is re-sent by the sweep). Empty wording is refused: no default ships.
-//   confirm-mailed  re-checks the SAME rule over the contacts already rendered into the PDF; whoever is no longer eligible (an opt-out, a closure, a death since the
-//                   render) is flagged `excluded_after_render` and is never logged as mailed. The run then moves to `mailed` and `mailing_run_mailed` is published in
-//                   the same transaction. The sweep writes the contact-log activity rows afterwards.
-//   download        mints the batch's short-lived URL through the M22 `OrgDocumentAccessProvider` seam (which writes the access-ledger row first).
+//   generate        draft | failed | ready -> generating in one CAS, then the batch is SELECTED SET-BASED in the same transaction: every contact of every active
+//                   plan goes through the pure `decideMailingEligibility` and is upserted as an item (included / excluded + reason) in chunks. Only after the commit
+//                   is the render handed to the `m16-mailing-generate` worker (a lost enqueue is re-sent by the sweep). Empty wording is refused: no default ships.
+//                   From `ready` it is the REGENERATE path: a batch that went stale (below) is re-selected and re-rendered; the old PDF is detached from the run.
+//   download        on a `ready` run re-checks the SAME rule over the included items first: if anyone is no longer eligible (an opt-out, a closure, a death since
+//                   the render) the batch is STALE and is refused (409 `MAILING_RUN_STALE`, a count only) until it is regenerated, so a PDF naming an ineligible
+//                   recipient never leaves the system. Otherwise it mints the short-lived URL through the M22 `OrgDocumentAccessProvider` seam (access ledger first).
+//   confirm-mailed  BOOKKEEPING: re-checks the same rule once more; whoever dropped out since the download is flagged `excluded_after_render` and is never logged
+//                   as mailed (the printed letter carries a "Ref N" so staff can pull it; nothing here can recall a letter already posted). The run then moves to
+//                   `mailed` and `mailing_run_mailed` is published in the same transaction. The sweep writes the contact-log activity rows afterwards.
 //
 // NO NAME OR ADDRESS passes through this file: items hold ids, the PDF holds the people.
 import { type DbClient, schema } from "@chartwarden/db";
@@ -29,7 +32,12 @@ import { BereavementStateError, checkVersion } from "../lifecycle/index";
 import { assertMailingContentComplete, normalizeMailingContent } from "../mailings/content";
 import { decideMailingEligibility } from "../mailings/eligibility";
 import type { MailingGenerateEnqueuePort } from "../mailings/enqueue-port";
-import { type MailingFactsContext, loadMailingCandidates } from "../mailings/facts-drizzle";
+import {
+  flagItems,
+  ineligibleIncludedItems,
+  loadMailingCandidates,
+  mailingFactsContextOf,
+} from "../mailings/facts-drizzle";
 import type { M16ReadActor, M16WriteActor } from "./actor";
 import { type Cursor, clampLimit, decodeCheckedCursor, toCursorPage } from "./concurrency";
 import type {
@@ -51,6 +59,8 @@ const ITEM_UPSERT_CHUNK = 500;
 const RUN_PAGE = { defaultSize: 25, maxSize: 100 } as const;
 const ITEM_PAGE = { defaultSize: 100, maxSize: 500 } as const;
 const NO_RECIPIENTS = "NO_RECIPIENTS";
+/** `generate` claims a draft, retries a failed run, or REGENERATES a ready batch (after it went stale). */
+const GENERATABLE: RunRow["status"][] = ["draft", "failed", "ready"];
 
 export interface M16MailingDeps {
   /** The catalog-validating tx publisher (callerModule `m16`). */
@@ -192,19 +202,7 @@ export function buildDrizzleM16MailingService(
     return runView(row, (await countsFor(tx, [row.id])).get(row.id) ?? EMPTY_COUNTS);
   }
 
-  /** The run's audience filter: the CURRENT config's (a memorial run has no mailing key and so no audience). */
-  async function factsContext(tx: DbClient, run: RunRow): Promise<MailingFactsContext> {
-    let audience: BereavedContactRelationship[] | null = null;
-    if (run.mailingKey !== null) {
-      const [cfg] = await tx
-        .select({ audience: CONFIG.audienceRelationships })
-        .from(CONFIG)
-        .where(eq(CONFIG.mailingKey, run.mailingKey))
-        .limit(1);
-      audience = (cfg?.audience ?? null) as BereavedContactRelationship[] | null;
-    }
-    return { audience, emailChannelAvailable: deps.emailChannelAvailable ?? false };
-  }
+  const emailChannelAvailable = deps.emailChannelAvailable ?? false;
 
   /**
    * SET-BASED batch selection (inside the claiming transaction): decide every contact of every active plan with the pure rule and upsert the items in
@@ -215,7 +213,7 @@ export function buildDrizzleM16MailingService(
     const candidates = await loadMailingCandidates(
       tx,
       { kind: "active_plans" },
-      await factsContext(tx, run),
+      await mailingFactsContextOf(tx, run.mailingKey, emailChannelAvailable),
     );
     await tx
       .update(ITEM)
@@ -460,7 +458,7 @@ export function buildDrizzleM16MailingService(
         const tx = asTx(scoped);
         const run = await runOr404(tx, runId);
         checkVersion(input.expectedVersion, run.version);
-        if (run.status !== "draft" && run.status !== "failed") {
+        if (!GENERATABLE.includes(run.status)) {
           throw new BereavementStateError(
             "MAILING_RUN_NOT_GENERATABLE",
             `a ${run.status} run cannot be generated`,
@@ -476,15 +474,13 @@ export function buildDrizzleM16MailingService(
             failureCode: null,
             generatedByMembershipId: actor.membershipId,
             generatedAt: null,
+            // a regenerated batch replaces the old PDF: detach it so nothing can hand the stale one out
+            renderedDocumentId: null,
             version: run.version + 1,
             updatedAt: at,
           })
           .where(
-            and(
-              eq(RUN.id, run.id),
-              eq(RUN.version, run.version),
-              inArray(RUN.status, ["draft", "failed"]),
-            ),
+            and(eq(RUN.id, run.id), eq(RUN.version, run.version), inArray(RUN.status, GENERATABLE)),
           )
           .returning();
         if (!row) throw staleVersion();
@@ -503,34 +499,63 @@ export function buildDrizzleM16MailingService(
         if (!settled) throw staleVersion();
         return { row: settled, view: await viewOf(tx, settled), enqueue: !nobody };
       });
-      // After the commit (the worker must see the claim). A lost enqueue is re-sent by the sweep's stale-`generating` pass.
+      // After the commit (the worker must see the claim). A lost enqueue is re-sent by the sweep's stale-`generating` pass, so a failure here is
+      // logged (ids only) and the committed claim is returned: answering 500 would invite a retry that the CAS then refuses.
       if (claimed.enqueue) {
-        await deps.enqueue.enqueue({
-          organizationId: actor.organizationId,
-          runId: claimed.row.id,
-          version: claimed.row.version,
-        });
+        try {
+          await deps.enqueue.enqueue({
+            organizationId: actor.organizationId,
+            runId: claimed.row.id,
+            version: claimed.row.version,
+          });
+        } catch (error) {
+          // eslint-disable-next-line no-console -- ids only; the sweep owns recovery
+          console.warn(
+            "m16.mailing-generate: enqueue failed after the claim; the sweep re-sends it",
+            {
+              organizationId: actor.organizationId,
+              runId: claimed.row.id,
+              error: error instanceof Error ? error.name : "unknown",
+            },
+          );
+        }
       }
       return claimed.view;
     },
 
     async downloadRun(actor, runId) {
-      const run = await withOrgContext(db, scope(actor), async (scoped) =>
-        runOr404(asTx(scoped), runId),
-      );
-      if ((run.status !== "ready" && run.status !== "mailed") || run.renderedDocumentId === null) {
-        throw new BereavementStateError(
-          "MAILING_RUN_NOT_READY",
-          `a ${run.status} run has no batch to download`,
-        );
-      }
+      const run = await withOrgContext(db, scope(actor), async (scoped) => {
+        const tx = asTx(scoped);
+        const row = await runOr404(tx, runId);
+        if (
+          (row.status !== "ready" && row.status !== "mailed") ||
+          row.renderedDocumentId === null
+        ) {
+          throw new BereavementStateError(
+            "MAILING_RUN_NOT_READY",
+            `a ${row.status} run has no batch to download`,
+          );
+        }
+        // A ready batch that names anyone no longer eligible never leaves the system: regenerate it first. (A `mailed` run's items are already
+        // logged; its batch is the record of what was sent.)
+        if (row.status === "ready") {
+          const stale = (await ineligibleIncludedItems(tx, row, emailChannelAvailable)).size;
+          if (stale > 0) {
+            throw new BereavementStateError(
+              "MAILING_RUN_STALE",
+              `${stale} recipient(s) in this batch are no longer eligible; regenerate the batch before downloading it`,
+            );
+          }
+        }
+        return row;
+      });
+      if (run.renderedDocumentId === null) throw new Error("unreachable: checked above");
       let minted: Awaited<ReturnType<OrgDocumentAccessProvider["mintOrgDownloadUrl"]>>;
       try {
         minted = await orgDocuments().mintOrgDownloadUrl({
           organizationId: actor.organizationId as never,
           documentId: run.renderedDocumentId as never,
           allowedAggregateTypes: ["bereavement_mailing_batch"],
-          accessorMembershipId: actor.membershipId,
         });
       } catch (error) {
         if (error instanceof Error && error.name === "NotImplementedError") {
@@ -561,46 +586,17 @@ export function buildDrizzleM16MailingService(
             `only a ready run can be confirmed mailed (this one is ${run.status})`,
           );
         }
-        // Re-check the contacts already rendered into the PDF, with the rule that selected them, against TODAY's facts.
-        const included = await tx
-          .select({ id: ITEM.id, contactId: ITEM.bereavedContactId })
+        // BOOKKEEPING, not a recall: re-check the included items with the rule that selected them against TODAY's facts, so whoever dropped out
+        // since the download is never logged as mailed (staff pull that letter by its Ref when it has not gone out yet).
+        const [{ n: includedCount } = { n: 0 }] = await tx
+          .select({ n: sql<number>`count(*)::int` })
           .from(ITEM)
           .where(and(eq(ITEM.runId, run.id), eq(ITEM.status, "included")));
-        const candidates = await loadMailingCandidates(
+        const flaggedCount = await flagItems(
           tx,
-          { kind: "contacts", contactIds: included.map((i) => i.contactId) },
-          await factsContext(tx, run),
+          await ineligibleIncludedItems(tx, run, emailChannelAvailable),
+          "excluded_after_render",
         );
-        const reasonByContact = new Map<string, BereavementMailingExclusionReason>();
-        const seen = new Set<string>();
-        for (const c of candidates) {
-          seen.add(c.contactId);
-          const decision = decideMailingEligibility(c.facts);
-          if (!decision.eligible) reasonByContact.set(c.contactId, decision.reason);
-        }
-        const flagged = new Map<BereavementMailingExclusionReason, string[]>();
-        for (const item of included) {
-          const reason = seen.has(item.contactId)
-            ? reasonByContact.get(item.contactId)
-            : ("contact_not_engageable" as const);
-          if (reason === undefined) continue;
-          flagged.set(reason, [...(flagged.get(reason) ?? []), item.id]);
-        }
-        let flaggedCount = 0;
-        for (const [reason, ids] of flagged) {
-          for (let i = 0; i < ids.length; i += ITEM_UPSERT_CHUNK) {
-            const chunk = ids.slice(i, i + ITEM_UPSERT_CHUNK);
-            await tx
-              .update(ITEM)
-              .set({
-                status: "excluded_after_render",
-                exclusionReason: reason,
-                updatedAt: sql`now()`,
-              })
-              .where(and(inArray(ITEM.id, chunk), eq(ITEM.status, "included")));
-            flaggedCount += chunk.length;
-          }
-        }
 
         const at = now();
         const [row] = await tx
@@ -609,7 +605,7 @@ export function buildDrizzleM16MailingService(
             status: "mailed",
             mailedAt: at,
             mailedByMembershipId: actor.membershipId,
-            recipientCount: included.length - flaggedCount,
+            recipientCount: includedCount - flaggedCount,
             version: run.version + 1,
             updatedAt: at,
           })

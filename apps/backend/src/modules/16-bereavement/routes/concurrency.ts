@@ -119,10 +119,12 @@ export function decodeCursor(raw: string | undefined | null): Cursor | null {
 }
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PG_INT4_MAX = 2147483647;
 const ANCHOR_SHAPE: Record<"date" | "instant" | "integer", (a: string) => boolean> = {
   date: (a) => /^\d{4}-\d{2}-\d{2}$/.test(a) && !Number.isNaN(Date.parse(`${a}T00:00:00Z`)),
   instant: (a) => !Number.isNaN(Date.parse(a)),
-  integer: (a) => /^\d{1,10}$/.test(a),
+  // a Postgres int4 (the anchor is compared against an `integer` column): 10 digits can still overflow it
+  integer: (a) => /^\d{1,10}$/.test(a) && Number(a) <= PG_INT4_MAX,
 };
 
 /**

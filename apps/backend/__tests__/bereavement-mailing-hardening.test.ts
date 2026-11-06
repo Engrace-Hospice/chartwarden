@@ -12,6 +12,8 @@ import {
   decodeCheckedCursor,
   encodeCursor,
 } from "../src/modules/16-bereavement/routes/concurrency";
+import { parse } from "../src/modules/16-bereavement/routes/m16-typebox";
+import { PutMailingConfigBody } from "../src/modules/16-bereavement/routes/mailing-typebox";
 
 const ORG = "a1610000-0000-4000-8000-0000000000a1";
 const ID = "10000000-0000-4000-8000-0000000000f1";
@@ -27,6 +29,10 @@ describe("decodeCheckedCursor: a crafted cursor is a validation error, never a c
       decodeCheckedCursor(encodeCursor({ a: "2026-11-05T10:00:00.000Z", id: ID }), "instant")?.id,
     ).toBe(ID);
     expect(decodeCheckedCursor(encodeCursor({ a: "12", id: ID }), "integer")?.a).toBe("12");
+    // the items' NULL-ordinal sentinel is int4 max itself, and is a cursor this route issues
+    expect(decodeCheckedCursor(encodeCursor({ a: "2147483647", id: ID }), "integer")?.a).toBe(
+      "2147483647",
+    );
   });
 
   it("treats no cursor, and a cursor that is not base64 JSON, as the start of the list", () => {
@@ -41,6 +47,9 @@ describe("decodeCheckedCursor: a crafted cursor is a validation error, never a c
       ["date", { a: "2026-13-45", id: ID }],
       ["instant", { a: "not a time", id: ID }],
       ["integer", { a: "1; DROP TABLE x", id: ID }],
+      // ten digits, but past a Postgres int4: it would be an out-of-range cast, not a validation error
+      ["integer", { a: "2147483648", id: ID }],
+      ["integer", { a: "9999999999", id: ID }],
       ["date", { a: "2026-10-15", id: "not-a-uuid" }],
       ["date", { a: "2026-10-15", id: "' OR 1=1 --" }],
     ] as const) {
@@ -137,5 +146,20 @@ describe("addressLinesOf", () => {
     expect(
       addressLinesOf(Array.from({ length: 12 }, (_, i) => `line ${i + 1}`).join("\n")),
     ).toHaveLength(8);
+  });
+});
+
+describe("the mailing config body", () => {
+  it("refuses an empty audience list (it would mail nobody); null still means every relationship", () => {
+    const body = { enabled: true, leadDays: 10, content: {} };
+    expect(() => parse(PutMailingConfigBody, { ...body, audienceRelationships: [] })).toThrow(
+      ValidationError,
+    );
+    expect(parse(PutMailingConfigBody, { ...body, audienceRelationships: null })).toMatchObject({
+      audienceRelationships: null,
+    });
+    expect(
+      parse(PutMailingConfigBody, { ...body, audienceRelationships: ["spouse"] }),
+    ).toMatchObject({ audienceRelationships: ["spouse"] });
   });
 });

@@ -1,3 +1,4 @@
+import { runWithRequestContext } from "@chartwarden/tenancy";
 // apps/backend/__tests__/bereavement-mailing-batch.test.ts — ADR-0109 D10: the `bereavement_mailing_batch` M22 template (one letter per recipient, a page
 // break between them) and the org-level download seam (`OrgDocumentAccessProvider`) the batch is handed out through.
 import {
@@ -34,16 +35,19 @@ const PAYLOAD: BereavementMailingBatchRenderPayload = {
   signoff: "With care, the program team",
   letters: [
     {
+      ref: 1,
       recipientName: "Ada Example",
       addressLines: ["10 Sample Street", "Testville, ZZ 00000"],
       greeting: "Dear Ada Example,",
     },
     {
+      ref: 2,
       recipientName: "Ben Sample",
       addressLines: ["22 Fixture Road", "Mockton, ZZ 00001"],
       greeting: "Dear Ben Sample,",
     },
     {
+      ref: 3,
       recipientName: "Cy Placeholder",
       addressLines: ["3 Demo Lane", "Stubville, ZZ 00002"],
       greeting: "Dear Cy Placeholder,",
@@ -95,6 +99,7 @@ describe("bereavement_mailing_batch template", () => {
       expect(text).toContain(letter.recipientName);
       for (const line of letter.addressLines) expect(text).toContain(line);
       expect(text).toContain(letter.greeting);
+      expect(text).toContain(`Ref ${letter.ref}`);
     }
     for (const p of PAYLOAD.paragraphs) expect(text).toContain(p);
     expect(text).toContain(PAYLOAD.signoff);
@@ -112,6 +117,7 @@ describe("bereavement_mailing_batch template", () => {
       { ...PAYLOAD, letters: [] },
       { ...PAYLOAD, letters: [{ ...PAYLOAD.letters[0], addressLines: [] }] },
       { ...PAYLOAD, letters: [{ ...PAYLOAD.letters[0], recipientName: "" }] },
+      { ...PAYLOAD, letters: [{ ...PAYLOAD.letters[0], ref: 0 }] },
       { ...PAYLOAD, paragraphs: [] },
       { heading: "x" },
     ]) {
@@ -163,11 +169,18 @@ describe("OrgDocumentAccessProvider", () => {
     objectKey: "tenant/intake/run-1/batch.pdf",
   };
 
+  const USER = "00000000-0000-4000-8000-0000000000f1";
+  const MEMBERSHIPS: Record<string, string> = { [USER]: "membership-1" };
+
   function build(facts: OrgDocumentFacts | null, logFails = false) {
     const logged: unknown[] = [];
     const presigned: unknown[] = [];
     const provider = createOrgDocumentAccessProvider({
-      port: { loadDocument: async () => facts },
+      port: {
+        loadDocument: async () => facts,
+        activeMembershipId: async ({ organizationId, userId }) =>
+          organizationId === ORG ? (MEMBERSHIPS[userId] ?? null) : null,
+      },
       objects: {
         presign: async (args) => {
           presigned.push(args);
@@ -186,19 +199,23 @@ describe("OrgDocumentAccessProvider", () => {
     });
     return { provider, logged, presigned };
   }
+  type Ctx = { organizationId: string; userId: string; systemActor?: boolean } | null;
   const ask = (
     provider: ReturnType<typeof build>["provider"],
-    over: Partial<{ allowed: string[]; member: string }> = {},
-  ) =>
-    provider.mintOrgDownloadUrl({
-      organizationId: ORG as never,
-      documentId: DOC_ID as never,
-      allowedAggregateTypes: (over.allowed ?? ["bereavement_mailing_batch"]) as never,
-      accessorMembershipId: over.member ?? "membership-1",
-    });
+    over: Partial<{ allowed: string[]; ctx: Ctx }> = {},
+  ) => {
+    const mint = () =>
+      provider.mintOrgDownloadUrl({
+        organizationId: ORG as never,
+        documentId: DOC_ID as never,
+        allowedAggregateTypes: (over.allowed ?? ["bereavement_mailing_batch"]) as never,
+      });
+    const ctx = over.ctx === undefined ? { organizationId: ORG, userId: USER } : over.ctx;
+    return ctx === null ? mint() : runWithRequestContext(ctx, mint);
+  };
 
-  it("mints a URL for an active org-level document of an allowed type, and writes the access ledger row first", async () => {
-    const { provider, logged } = build(FACTS);
+  it("mints an attachment URL for an active org-level document of an allowed type, and writes the ledger row (accessor from the request context) first", async () => {
+    const { provider, logged, presigned } = build(FACTS);
     const out = await ask(provider);
     expect(out).toMatchObject({
       url: "https://objects.example.test/signed",
@@ -213,6 +230,11 @@ describe("OrgDocumentAccessProvider", () => {
         accessorMembershipId: "membership-1",
         accessKind: "signed_url_issued",
         purpose: "operations",
+      }),
+    ]);
+    expect(presigned).toEqual([
+      expect.objectContaining({
+        responseOverrides: { contentDisposition: "attachment", contentType: "application/pdf" },
       }),
     ]);
   });
@@ -241,8 +263,35 @@ describe("OrgDocumentAccessProvider", () => {
     });
   });
 
-  it("releases no URL when the access ledger cannot be written, and none for a member it cannot record", async () => {
+  it("intersects the caller's types with the seam-only set: a type M22's routes serve is never handed out, even when the caller names it", async () => {
+    for (const aggregateType of ["bereavement_physician_letter", "bereavement_letter", "patient"]) {
+      const { provider, logged, presigned } = build({ ...FACTS, aggregateType });
+      expect(
+        await ask(provider, { allowed: [aggregateType, "bereavement_mailing_batch"] }),
+      ).toEqual({
+        denied: true,
+        reason: "wrong_type",
+      });
+      expect(logged).toEqual([]);
+      expect(presigned).toEqual([]);
+    }
+  });
+
+  it("derives the accessor: no request context, a system actor, another org or a member without an active membership mints nothing", async () => {
+    for (const ctx of [
+      null,
+      { organizationId: ORG, userId: "", systemActor: true },
+      { organizationId: "00000000-0000-4000-8000-0000000000b2", userId: USER },
+      { organizationId: ORG, userId: "00000000-0000-4000-8000-0000000000f2" },
+    ] satisfies Ctx[]) {
+      const { provider, logged, presigned } = build(FACTS);
+      await expect(ask(provider, { ctx })).rejects.toThrow(/org-document mint refused/);
+      expect(logged).toEqual([]);
+      expect(presigned).toEqual([]);
+    }
+  });
+
+  it("releases no URL when the access ledger cannot be written", async () => {
     await expect(ask(build(FACTS, true).provider)).rejects.toThrow("ledger down");
-    await expect(ask(build(FACTS).provider, { member: "" })).rejects.toThrow(/cannot be recorded/);
   });
 });

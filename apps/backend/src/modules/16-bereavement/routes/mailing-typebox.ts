@@ -60,7 +60,8 @@ export const PutMailingConfigBody = Type.Object({
       monthDay: Type.Optional(MonthDay),
     }),
   ),
-  audienceRelationships: Nullable(Type.Array(RelationshipCode, { maxItems: 16 })),
+  // null = every relationship; an EMPTY list would silently mail nobody, so it is refused
+  audienceRelationships: Nullable(Type.Array(RelationshipCode, { minItems: 1, maxItems: 16 })),
   content: BereavementMailingContent,
 });
 

@@ -128,6 +128,10 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
   let renderBehavior: "ok" | "throw" = "ok";
   const orgDocCalls: Record<string, unknown>[] = [];
   let orgDocAnswer: "url" | "denied" = "url";
+  /** The `step_up_recent` stub's answer (route 49 needs a fresh step-up). */
+  let stepUpFresh = true;
+  /** The route service's enqueue port fails (Valkey down after the claim committed). */
+  let enqueueFails = false;
   let workerDeps: MailingWorkerDeps;
   let mailing: ReturnType<typeof buildDrizzleM16MailingService>;
   let reads: ReturnType<typeof buildDrizzleM16ReadService>;
@@ -399,6 +403,9 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
     await seedPerson("counselorB", ORG_B, "bereavement_counselor");
     await seedPerson("counselorB2", ORG_B, "bereavement_counselor");
     await seedPerson("volunteerB", ORG_B, "bereavement_volunteer");
+    // hold every M16 key (the store below grants them to everyone) but sit outside the oversight roles
+    await seedPerson("orgAdmin", ORG_A, "org_admin");
+    await seedPerson("administrator", ORG_A, "administrator");
 
     handle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
@@ -436,7 +443,7 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
         return { isActive: true, failingGates: [] };
       },
     } as never);
-    registerPredicateIdempotent("step_up_recent", async () => true);
+    registerPredicateIdempotent("step_up_recent", async () => stepUpFresh);
 
     const key = randomBytes(32);
     cipher = createBereavementCipher({
@@ -454,7 +461,12 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
     });
     mailing = buildDrizzleM16MailingService(handle.db, {
       outbox: outbox as never,
-      enqueue: { enqueue: async (job) => void enqueued.push(job) },
+      enqueue: {
+        enqueue: async (job) => {
+          if (enqueueFails) throw new Error("queue down");
+          enqueued.push(job);
+        },
+      },
       orgDocuments: () => ({
         async mintOrgDownloadUrl(args) {
           orgDocCalls.push({ ...args });
@@ -704,6 +716,19 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
       expect(second.json().data).toHaveLength(1);
       expect(second.json().has_more).toBe(false);
       expect((await call("GET", `${url()}?offset=1`, "donB")).statusCode).toBe(400);
+    });
+
+    it("the read lands its `bereaved_contact.viewed` audit event naming the contact", async () => {
+      const viewed = async (): Promise<number> =>
+        (
+          await one<{ n: number }>(
+            "SELECT count(*)::int n FROM audit_event WHERE organization_id=$1 AND event_type='bereaved_contact.viewed' AND resource_id=$2",
+            [ORG_B, contact],
+          )
+        ).n;
+      const before = await viewed();
+      expect((await call("GET", url(), "donB")).statusCode).toBe(200);
+      expect(await viewed()).toBe(before + 1);
     });
 
     it("reach is the plan's: the assigned counselor reads it, an unassigned counselor and another tenant get 404", async () => {
@@ -1072,7 +1097,9 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
         "Ben Sample",
         "Declined Calls",
       ]);
+      expect(payload.letters.map((l) => l.ref)).toEqual([1, 2, 3]);
       expect(payload.letters[0]).toEqual({
+        ref: 1,
         recipientName: "Ada Example",
         addressLines: ["10 Sample Street", "Testville, ZZ 00000"],
         greeting: "Dear Ada Example,",
@@ -1130,6 +1157,13 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
           )
         ).n;
       const readsBefore = await readEvents();
+      // a fresh step-up is required: a stale session is sent to re-authenticate, and nothing is minted
+      stepUpFresh = false;
+      const noStepUp = await call("GET", `${runs}/${run}/download`, "don");
+      stepUpFresh = true;
+      expect(noStepUp.statusCode).toBe(403);
+      expect(code(noStepUp)).toBe("STEP_UP_REQUIRED");
+      expect(orgDocCalls).toEqual([]);
       const res = await call("GET", `${runs}/${run}/download`, "don");
       expect(res.statusCode).toBe(200);
       expect(res.headers["cache-control"]).toBe("no-store");
@@ -1139,9 +1173,10 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
           organizationId: ORG_A,
           documentId: (await runRow(run)).rendered_document_id,
           allowedAggregateTypes: ["bereavement_mailing_batch"],
-          accessorMembershipId: people.don?.membership,
         }),
       ]);
+      // the route names no accessor: the seam derives it from the request context
+      expect(orgDocCalls[0]).not.toHaveProperty("accessorMembershipId");
       // the READ event (not the write-trigger rows 1374 already wrote for this run) names the run the batch was handed out for
       expect(await readEvents()).toBe(readsBefore + 1);
       // a counselor, and another tenant's oversight, are refused
@@ -1196,7 +1231,6 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
             organizationId: ORG_A as never,
             documentId: documentId as never,
             allowedAggregateTypes: ["bereavement_mailing_batch"],
-            accessorMembershipId: people.don?.membership as string,
           }),
         );
       expect(await ask(batch.doc)).toMatchObject({
@@ -1623,6 +1657,120 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
         recipientCount: 0,
       });
       expect(enqueued).toEqual([]);
+    });
+  });
+
+  // ══ a stale batch never leaves the system ═════════════════════════════════════════════════════════
+  describe("eligibility is re-checked before render and at download; a stale batch is regenerated", () => {
+    const runs = "/api/v1/bereavement/mailings/runs";
+
+    it("holding every mailing key is not enough: org_admin and administrator are outside oversight and get 403 on routes 42-51", async () => {
+      const id = randomUUID();
+      const routes: [method: "GET" | "POST" | "PATCH" | "PUT", url: string, body?: unknown][] = [
+        ["GET", "/api/v1/bereavement/mailings/config"],
+        [
+          "PUT",
+          "/api/v1/bereavement/mailings/config/newsletter_quarterly",
+          { enabled: false, leadDays: 10, audienceRelationships: null, content: {} },
+        ],
+        ["GET", runs],
+        ["GET", `${runs}/${id}`],
+        ["GET", `${runs}/${id}/items`],
+        ["PATCH", `${runs}/${id}/content`, { content: WORDING }],
+        ["POST", `${runs}/${id}/generate`],
+        ["GET", `${runs}/${id}/download`],
+        ["POST", `${runs}/${id}/confirm-mailed`],
+        ["POST", `${runs}/${id}/cancel`],
+      ];
+      for (const who of ["orgAdmin", "administrator"]) {
+        for (const [method, url, body] of routes) {
+          const res = await call(method, url, who, body, { "if-match": '"0"' });
+          expect(res.statusCode, `${who} ${method} ${url}`).toBe(403);
+        }
+      }
+    });
+
+    it("an opt-out after generate is dropped by the worker; one after render makes the download 409 MAILING_RUN_STALE until regenerated", async () => {
+      const plan = await seedPlan(ORG_B, { status: "active" });
+      const stays = await seedContact(ORG_B, plan, {
+        name: "Stays Eligible",
+        address: ADDRESS.ada,
+      });
+      const late = await seedContact(ORG_B, plan, { name: "Late Optout", address: ADDRESS.ben });
+      const early = await seedContact(ORG_B, plan, { name: "Early Optout", address: ADDRESS.ada });
+      const stale = await seedRun(ORG_B, { content: WORDING });
+
+      enqueued.length = 0;
+      const gen = await call("POST", `${runs}/${stale}/generate`, "donB", undefined, {
+        "if-match": '"0"',
+      });
+      expect(gen.statusCode).toBe(200);
+      expect((await itemsOf(stale))[early]?.status).toBe("included");
+
+      // between generate and render: the worker re-checks just before rendering and never prints this letter
+      await seedOptOut(ORG_B, plan, early, "full");
+      await runMailingGenerateJob(workerDeps, enqueued.at(-1) as MailingGenerateJob);
+      let items = await itemsOf(stale);
+      expect(items[early]).toMatchObject({
+        status: "excluded",
+        reason: "opted_out",
+        ordinal: null,
+      });
+      expect(items[stays]?.status).toBe("included");
+      const firstBatch = rendered.at(-1)?.payload as BereavementMailingBatchRenderPayload;
+      expect(firstBatch.letters.map((l) => l.recipientName)).not.toContain("Early Optout");
+      expect(firstBatch.letters.map((l) => l.ref)).toEqual(firstBatch.letters.map((_, i) => i + 1));
+      let state = await runRow(stale);
+      expect(state.status).toBe("ready");
+      const firstDocument = state.rendered_document_id;
+
+      // between render and download: the batch is stale and does not leave the system (a count only, never a name)
+      await seedOptOut(ORG_B, plan, late, "no_mailings");
+      orgDocCalls.length = 0;
+      const refused = await call("GET", `${runs}/${stale}/download`, "donB");
+      expect(refused.statusCode).toBe(409);
+      expect(code(refused)).toBe("MAILING_RUN_STALE");
+      expect(refused.body).toMatch(/1 recipient/);
+      expect(refused.body).not.toMatch(/Late|Optout|Sample|Fixture/);
+      expect(orgDocCalls).toEqual([]);
+
+      // regenerate: ready -> generating (CAS on the version), the old PDF is detached, the batch is re-selected
+      const regen = await call("POST", `${runs}/${stale}/generate`, "donB", undefined, {
+        "if-match": `"${state.version}"`,
+      });
+      expect(regen.statusCode).toBe(200);
+      expect(regen.json()).toMatchObject({ status: "generating", hasDocument: false });
+      expect((await itemsOf(stale))[late]).toMatchObject({
+        status: "excluded",
+        reason: "no_mailings",
+      });
+      await runMailingGenerateJob(workerDeps, enqueued.at(-1) as MailingGenerateJob);
+      state = await runRow(stale);
+      expect(state.status).toBe("ready");
+      expect(state.rendered_document_id).not.toBe(firstDocument);
+      const secondBatch = rendered.at(-1)?.payload as BereavementMailingBatchRenderPayload;
+      expect(secondBatch.letters.map((l) => l.recipientName)).toContain("Stays Eligible");
+      expect(secondBatch.letters.map((l) => l.recipientName)).not.toContain("Late Optout");
+      items = await itemsOf(stale);
+      expect(items[stays]?.ordinal).not.toBeNull();
+
+      const ok = await call("GET", `${runs}/${stale}/download`, "donB");
+      expect(ok.statusCode).toBe(200);
+      expect(orgDocCalls).toHaveLength(1);
+    });
+
+    it("an enqueue that fails after the claim committed answers the claimed run (not a 500); the sweep's stale pass owns recovery", async () => {
+      const lost = await seedRun(ORG_B, { content: WORDING });
+      enqueued.length = 0;
+      enqueueFails = true;
+      const res = await call("POST", `${runs}/${lost}/generate`, "donB", undefined, {
+        "if-match": '"0"',
+      });
+      enqueueFails = false;
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ status: "generating", version: 1 });
+      expect(enqueued).toEqual([]);
+      expect((await runRow(lost)).status).toBe("generating");
     });
   });
 

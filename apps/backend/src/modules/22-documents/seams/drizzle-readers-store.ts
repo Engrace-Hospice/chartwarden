@@ -436,6 +436,19 @@ export function createDrizzleOrgDocumentAccessPort(db: DbClient): OrgDocumentAcc
         return row ?? null;
       });
     },
+    async activeMembershipId({ organizationId, userId }) {
+      return withOrgContextFromRequest(db, async (tx: SeamTx) => {
+        const M = schema.memberships;
+        const [row] = await tx
+          .select({ id: M.id })
+          .from(M)
+          .where(
+            and(eq(M.organizationId, organizationId), eq(M.userId, userId), eq(M.status, "active")),
+          )
+          .limit(1);
+        return row?.id ?? null;
+      });
+    },
   };
 }
 

@@ -2,16 +2,20 @@
 // door. A module that owns a document with NO patient (M16's mailing batch PDF) mints its short-lived download URL through M22 here, rather than
 // reading M22's tables or keeping a bucket key of its own.
 //
-// NOT A GENERAL DOCUMENT DOOR. The caller names the aggregate types it may hand out; the seam refuses a document of any other type, a document that
-// belongs to a patient (those go through the caseload-scoped routes), and one that is not `active` (legal hold, destroyed tombstone, superseded). Every
-// refusal is the same `{ denied }` family: the caller learns no more than "no". A successful mint appends ONE `document_access_log` row BEFORE the
-// URL is returned (§164.528); a failed append throws and no URL leaves. The URL is never logged (§4.12).
+// NOT A GENERAL DOCUMENT DOOR. The caller names the aggregate types it may hand out, and the seam INTERSECTS that list with
+// `SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES` (a type M22's own routes serve is never handed out here, whatever the caller asks); it refuses a document of any
+// other type, a document that belongs to a patient (those go through the caseload-scoped routes), and one that is not `active` (legal hold, destroyed
+// tombstone, superseded). Every refusal is the same `{ denied }` family: the caller learns no more than "no". The ACCESSOR is not the caller's to name:
+// it is the active membership of the request context's (org, user), so the ledger row cannot be pinned on someone else; no request context, a system
+// actor, another org or no active membership throws (no URL). A successful mint appends ONE `document_access_log` row BEFORE the URL is returned
+// (§164.528); a failed append throws and no URL leaves. The URL is never logged (§4.12) and is signed to be served as an attachment.
 import { getRequestContext } from "@chartwarden/tenancy";
-import type {
-  DocumentId,
-  DocumentVersionId,
-  OrgDocumentAccessProvider,
-  OrgId,
+import {
+  type DocumentId,
+  type DocumentVersionId,
+  type OrgDocumentAccessProvider,
+  type OrgId,
+  SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES,
 } from "@chartwarden/types";
 import { planSignedUrl } from "../lifecycle/storage";
 import type { StaffMintAccessLogPort } from "../routes/signed-url-service";
@@ -35,6 +39,11 @@ export interface OrgDocumentAccessPort {
     readonly organizationId: OrgId;
     readonly documentId: string;
   }): Promise<OrgDocumentFacts | null>;
+  /** The ACTIVE membership of (organization, user), or null (pending, suspended, revoked, none). */
+  activeMembershipId(args: {
+    readonly organizationId: OrgId;
+    readonly userId: string;
+  }): Promise<string | null>;
 }
 
 export interface OrgDocumentAccessDeps {
@@ -48,7 +57,23 @@ export const REFUSING_ORG_DOCUMENT_ACCESS_PORT: OrgDocumentAccessPort = {
   async loadDocument() {
     return null;
   },
+  async activeMembershipId() {
+    return null;
+  },
 };
+
+/** The requesting member, from the ambient request context only. Throws (no URL) when it cannot be established. */
+async function accessorOf(port: OrgDocumentAccessPort, organizationId: OrgId): Promise<string> {
+  const ctx = getRequestContext();
+  if (!ctx || ctx.systemActor || ctx.userId.length === 0 || ctx.organizationId !== organizationId) {
+    throw new Error("org-document mint refused: no requesting member in this request context");
+  }
+  const membershipId = await port.activeMembershipId({ organizationId, userId: ctx.userId });
+  if (membershipId === null) {
+    throw new Error("org-document mint refused: the requesting member has no active membership");
+  }
+  return membershipId;
+}
 
 export function createOrgDocumentAccessProvider(
   deps: OrgDocumentAccessDeps,
@@ -60,7 +85,10 @@ export function createOrgDocumentAccessProvider(
         documentId: args.documentId,
       });
       if (facts === null) return { denied: true, reason: "not_found" };
-      if (!args.allowedAggregateTypes.some((type) => type === facts.aggregateType)) {
+      const allowed = args.allowedAggregateTypes.filter((type) =>
+        SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES.has(type),
+      );
+      if (!allowed.some((type) => type === facts.aggregateType)) {
         return { denied: true, reason: "wrong_type" };
       }
       if (facts.patientId !== null) return { denied: true, reason: "not_org_level" };
@@ -68,9 +96,7 @@ export function createOrgDocumentAccessProvider(
       if (facts.activeVersionId === null || facts.objectKey === null) {
         return { denied: true, reason: "no_active_version" };
       }
-      if (args.accessorMembershipId.length === 0) {
-        throw new Error("org-document mint refused: the requesting member cannot be recorded");
-      }
+      const accessorMembershipId = await accessorOf(deps.port, args.organizationId);
 
       const descriptor = planSignedUrl({
         organizationId: args.organizationId,
@@ -80,6 +106,8 @@ export function createOrgDocumentAccessProvider(
       const { url, expiresAt } = await deps.objects.presign({
         descriptor,
         organizationId: args.organizationId,
+        // a download, never rendered inline in the browser tab
+        responseOverrides: { contentDisposition: "attachment", contentType: "application/pdf" },
       });
       // The ledger row lands after every gate and the presign, before the URL leaves: no un-logged URL is released.
       await deps.accessLog.append({
@@ -87,7 +115,7 @@ export function createOrgDocumentAccessProvider(
         documentId: facts.documentId,
         documentVersionId: facts.activeVersionId,
         patientId: null,
-        accessorMembershipId: args.accessorMembershipId,
+        accessorMembershipId,
         accessKind: "signed_url_issued",
         purpose: "operations",
         recipientClass: null,

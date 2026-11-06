@@ -8,7 +8,9 @@ import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 //          version, so a duplicate send collapses.
 //       3. LOG     a `mailed` run's `included` items become contact-log ACTIVITY rows in chunks of 500, set-based (`INSERT ... SELECT ... SKIP LOCKED`),
 //          idempotent on the activity unique index. Activity rows satisfy no cadence item and never count in M30.
-//   · `m16-mailing-generate` — one job per claimed run. Decrypts every addressee's mailing address IN-PROCESS and hands name, address lines and greeting to
+//   · `m16-mailing-generate` — one job per claimed run. Decrypts every addressee's mailing address IN-PROCESS, then RE-CHECKS eligibility (an opt-out or a
+//     closure since `generate` drops that item as `excluded` with its reason; nobody left fails the run `NO_RECIPIENTS`) and touches the run's `updated_at` so
+//     the sweep's stale re-send does not fire on a slow decrypt, and hands name, address lines and greeting to
 //     `getSeam("DocumentRenderer").render(...)` in memory: the addresses are never on the outbox, in a queue payload, in a log line or in a run column. It numbers the
 //     letters (ordinal = the letter's position, 1-based; a long letter spans several pages), moves the run to `ready` in one compare-and-set, and on the FINAL failed attempt moves it to `failed` (the retry budget exhausted
 //     is the DLQ: `removeOnFail: false` keeps the failed set, and the platform's DLQ promotion alert watches it).
@@ -30,6 +32,7 @@ import {
   type MailingGenerateJob,
   mailingGenerateJobId,
 } from "../mailings/enqueue-port";
+import { flagItems, ineligibleIncludedItems } from "../mailings/facts-drizzle";
 import { activityKindOfRun, nextOccurrences, runKindOf } from "../mailings/occurrence";
 import {
   M16_MAILING_LOG_CHUNK,
@@ -57,6 +60,8 @@ export interface MailingWorkerDeps {
   /** Re-sends a stale `generating` run. Unbound => the sweep skips that pass (the next boot with a queue catches up). */
   readonly mailingEnqueue?: MailingGenerateEnqueuePort;
   readonly render?: MailingBatchRenderer;
+  /** Is an email channel bound for this tenant? Defaults to false (see mailings/eligibility.ts); must match the route service's value. */
+  readonly emailChannelAvailable?: boolean;
   now?: () => Date;
 }
 
@@ -364,7 +369,7 @@ export async function runMailingGenerateJob(
     );
 
     // Decrypt OUTSIDE any transaction (the key provider takes its own connection), in-process, and keep the plaintext in this frame only.
-    const letters: BereavementMailingBatchRenderPayload["letters"][number][] = [];
+    const letters: Omit<BereavementMailingBatchRenderPayload["letters"][number], "ref">[] = [];
     const letterItemIds: string[] = [];
     const dropped: string[] = [];
     for (const item of claim.items) {
@@ -381,7 +386,39 @@ export async function runMailingGenerateJob(
         greeting: personalizeGreeting(wording.greeting, item.displayName),
       });
     }
-    if (letters.length === 0) throw new TerminalMailingError("NO_RECIPIENTS");
+
+    // Immediately before rendering: re-decide every included item against TODAY's facts (an opt-out or a closure since `generate` must not be printed),
+    // and touch `updated_at` so a slow decrypt does not look like a lost job to the sweep's stale re-send.
+    const recheck = await inOrg(deps, organizationId, async (tx) => {
+      const [touched] = await tx
+        .update(RUN)
+        .set({ updatedAt: new Date() })
+        .where(and(eq(RUN.id, runId), eq(RUN.status, "generating"), eq(RUN.version, version)))
+        .returning({ id: RUN.id, mailingKey: RUN.mailingKey });
+      if (!touched) return null;
+      const ineligible = await ineligibleIncludedItems(
+        tx,
+        touched,
+        deps.emailChannelAvailable ?? false,
+      );
+      await flagItems(tx, ineligible, "excluded");
+      return ineligible;
+    });
+    if (recheck === null) {
+      log("m16.mailing-generate: run moved on before rendering — skipped", {
+        organizationId,
+        runId,
+        version,
+      });
+      return;
+    }
+    const kept = letterItemIds.flatMap((itemId, i) =>
+      recheck.has(itemId) ? [] : [{ itemId, letter: letters[i] as (typeof letters)[number] }],
+    );
+    // the printed "Ref N" is the ordinal written below (the letter's 1-based position in the batch)
+    const numbered = kept.map((k, i) => ({ ...k.letter, ref: i + 1 }));
+    const unaddressed = dropped.filter((itemId) => !recheck.has(itemId));
+    if (kept.length === 0) throw new TerminalMailingError("NO_RECIPIENTS");
 
     const { documentId } = await (deps.render ?? defaultRender)(organizationId, {
       aggregateId: runId,
@@ -389,7 +426,7 @@ export async function runMailingGenerateJob(
       paragraphs: wording.paragraphs,
       // no default wording ships: an empty sign-off is simply not printed
       ...(wording.signoff.length > 0 ? { signoff: wording.signoff } : {}),
-      letters,
+      letters: numbered,
     });
 
     const at = (deps.now ?? (() => new Date()))();
@@ -400,15 +437,15 @@ export async function runMailingGenerateJob(
           status: "ready",
           renderedDocumentId: documentId,
           generatedAt: at,
-          recipientCount: letters.length,
-          excludedCount: claim.run.excludedCount + dropped.length,
+          recipientCount: kept.length,
+          excludedCount: claim.run.excludedCount + unaddressed.length + recheck.size,
           version: version + 1,
           updatedAt: at,
         })
         .where(and(eq(RUN.id, runId), eq(RUN.status, "generating"), eq(RUN.version, version)))
         .returning({ id: RUN.id });
       if (!ready) return; // moved on while rendering: the document stays as an extra version, the run is not touched
-      if (dropped.length > 0) {
+      if (unaddressed.length > 0) {
         await tx
           .update(ITEM)
           .set({
@@ -417,11 +454,12 @@ export async function runMailingGenerateJob(
             ordinal: null,
             updatedAt: at,
           })
-          .where(inArray(ITEM.id, dropped));
+          .where(inArray(ITEM.id, unaddressed));
       }
       // ordinal = the letter's position in the batch (a letter longer than a page spans several pages)
-      for (let i = 0; i < letterItemIds.length; i += M16_MAILING_LOG_CHUNK) {
-        const slice = letterItemIds.slice(i, i + M16_MAILING_LOG_CHUNK);
+      const keptIds = kept.map((k) => k.itemId);
+      for (let i = 0; i < keptIds.length; i += M16_MAILING_LOG_CHUNK) {
+        const slice = keptIds.slice(i, i + M16_MAILING_LOG_CHUNK);
         const values = sql.join(
           slice.map((id, k) => sql`(${id}::uuid, ${i + k + 1}::int)`),
           sql`, `,
@@ -434,8 +472,9 @@ export async function runMailingGenerateJob(
     log("m16.mailing-generate: rendered", {
       organizationId,
       runId,
-      letters: letters.length,
-      dropped: dropped.length,
+      letters: kept.length,
+      dropped: unaddressed.length,
+      noLongerEligible: recheck.size,
     });
   } catch (error) {
     const terminal = error instanceof TerminalMailingError;

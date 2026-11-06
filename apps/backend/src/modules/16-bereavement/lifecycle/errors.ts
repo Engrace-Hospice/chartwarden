@@ -102,11 +102,13 @@ export const M16_ERROR_STATUS = {
   MAILING_RUN_NOT_FOUND: 404,
   /** Wording is edited only while the run is a draft: a generated batch was rendered from a snapshot. */
   MAILING_RUN_NOT_EDITABLE: 409,
-  /** `generate` runs from a draft (or retries a failed run) only. */
+  /** `generate` runs from a draft, retries a failed run, or regenerates a ready (stale) batch. */
   MAILING_RUN_NOT_GENERATABLE: 409,
   /** `download` needs a rendered batch (ready or mailed); `confirm-mailed` needs a ready one. */
   MAILING_RUN_NOT_READY: 409,
   MAILING_RUN_NOT_CANCELLABLE: 409,
+  /** `download` of a ready batch that names someone no longer eligible: regenerate it first (the message carries a count only). */
+  MAILING_RUN_STALE: 409,
   /** Generation refuses a run whose wording is empty: no default wording ships. */
   MAILING_CONTENT_EMPTY: 422,
   /** The decedent-birthday mailing is deferred: M16 holds no date of birth. */

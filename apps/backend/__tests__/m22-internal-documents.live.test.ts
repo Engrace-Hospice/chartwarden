@@ -69,7 +69,15 @@ const KEYS = [
   "documents.read_org_wide",
 ];
 // On the decedent's chart: both pass the §4.7 caseload rule. Oversight and compliance reach the internal documents by role only.
-const PEOPLE = ["rn_1", "volunteer_1", "supervisor_1", "compliance_1", "coordinator_1"];
+const PEOPLE = [
+  "rn_1",
+  "volunteer_1",
+  "supervisor_1",
+  "compliance_1",
+  "coordinator_1",
+  "orgadmin_1",
+  "administrator_1",
+];
 const CHART = ["rn_1", "volunteer_1"];
 
 const as = (user: string, roles: string) => ({
@@ -82,6 +90,9 @@ const VOLUNTEER = as("volunteer_1", "bereavement_volunteer");
 const SUPERVISOR = as("supervisor_1", "clinical_supervisor");
 const COMPLIANCE = as("compliance_1", "compliance_officer");
 const COORDINATOR = as("coordinator_1", "bereavement_coordinator");
+// `org_admin` is a §4.7 scope-bypass role (it reads the internal documents) and still never the seam-only mailing batch; `administrator` is not.
+const ORG_ADMIN = as("orgadmin_1", "org_admin");
+const ADMINISTRATOR = as("administrator_1", "administrator");
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -276,7 +287,7 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
   });
 
   it("oversight, compliance and the bereavement coordinator read an internal document by id without sitting on the chart, but NOT the seam-only mailing batch", async () => {
-    for (const who of [SUPERVISOR, COMPLIANCE, COORDINATOR]) {
+    for (const who of [SUPERVISOR, COMPLIANCE, COORDINATOR, ORG_ADMIN]) {
       for (const key of ["letter", "summary"] as const) {
         const res = await app.inject({
           method: "GET",
@@ -293,6 +304,13 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
       });
       expect(batch.statusCode).toBe(404);
     }
+    // `administrator` is no scope-bypass role in M22: the batch is a 404 for it too
+    const byAdministrator = await app.inject({
+      method: "GET",
+      url: `/api/v1/documents/${doc.batch.document}`,
+      headers: ADMINISTRATOR,
+    });
+    expect(byAdministrator.statusCode).toBe(404);
   });
 
   it("minting the content is refused to a caseload member (404) and allowed to oversight", async () => {
@@ -306,7 +324,7 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
         ).toBe(404);
       }
     }
-    for (const who of [SUPERVISOR, COMPLIANCE, COORDINATOR]) {
+    for (const who of [SUPERVISOR, COMPLIANCE, COORDINATOR, ORG_ADMIN]) {
       const res = await app.inject({ method: "GET", url: url("summary"), headers: who });
       expect(res.statusCode).toBeLessThan(300);
       // the generic mint of the seam-only mailing batch is a 404 for every role: the only door is the org-level seam

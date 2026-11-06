@@ -1,7 +1,9 @@
 // apps/backend/src/modules/16-bereavement/mailings/eligibility.ts — ADR-0109 D10: may this contact receive THIS mailing, and by which channel?
 //
-// PURE. It is run twice for every recipient: when the run is generated (it selects the batch) and again at `confirm-mailed` (it re-checks
-// the people already rendered into the PDF: an opt-out recorded between render and mailing must stop the piece from going out).
+// PURE. It runs at every step a batch moves: at `generate` (it selects the batch), in the render worker just before rendering (whoever dropped out
+// since `generate` is not printed), at `download` of a ready batch (a batch that names anyone no longer eligible is refused as stale and must be
+// regenerated, so that PDF never leaves the system), and at `confirm-mailed`. The last one is BOOKKEEPING only: it keeps a family who opted out after
+// the download from being logged as mailed, and flags their letter (by its printed "Ref N") for staff to pull; it cannot recall a letter already posted.
 //
 // It reads the contact's OPT-OUT ROWS, not the contact's status. The status enum has no partial value, so a `channel_specific` opt-out (calls only)
 // moves a contact to `opted_out`; reading the status would then drop a family from the newsletter for declining the phone. The rows say what was
@@ -53,7 +55,11 @@ export type MailingEligibilityDecision =
   | { readonly eligible: true; readonly channel: BereavementMailingChannel }
   | { readonly eligible: false; readonly reason: BereavementMailingExclusionReason };
 
-/** The contact statuses the program does not write to (everything else is decided by the opt-out rows). */
+/**
+ * The contact statuses the program does not write to (everything else is decided by the opt-out rows).
+ * `unreachable` is DELIBERATELY not here: it means calls went unanswered, not that the family declined anything, and a mailed piece is exactly how
+ * the program keeps reaching them. An address that bounces is a data fix on the contact, not a status.
+ */
 const NOT_ENGAGEABLE: ReadonlySet<BereavedContactStatus> = new Set([
   "proposed",
   "deceased",

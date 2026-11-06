@@ -244,8 +244,10 @@ export const BereavementMailingContent = Type.Object({
 });
 export type BereavementMailingContent = Static<typeof BereavementMailingContent>;
 
-/** One letter of the batch: the addressee, the address block (one string per line) and the already-personalized greeting. */
+/** One letter of the batch: its reference, the addressee, the address block (one string per line) and the already-personalized greeting. */
 export const BereavementMailingBatchLetter = Type.Object({
+  /** The item's ordinal (1-based position in the batch), printed as "Ref N" so a letter flagged after the download can be pulled. Not PHI. */
+  ref: Type.Integer({ minimum: 1 }),
   recipientName: text,
   addressLines: Type.Array(text, { minItems: 1, maxItems: 8 }),
   greeting: text,

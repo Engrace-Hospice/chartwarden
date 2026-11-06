@@ -2,14 +2,15 @@ import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/16-bereavement/routes/mailing.routes.ts — M16 (ADR-0109 D10) routes 42-51: the mailing program.
 //
 // EVERY route is bereavement oversight only: the batch PDF holds every recipient's name and address. `bereavement.mailing.read` reads configs, runs and items;
-// `manage` writes a config, a draft's wording and cancels a run; `dispatch` generates, downloads and confirms a run mailed. Each is paired with the
+// `manage` writes a config, a draft's wording and cancels a run; `dispatch` generates, downloads and confirms a run mailed. ONE batch spans the whole
+// tenant (every provider entity's recipients), which is why only oversight holds these keys. Each is paired with the
 // `org_scope_bereavement_oversight` predicate. Every write needs `Idempotency-Key` AND `If-Match` (the header decides the version; no body carries one) and the
 // state changes are compare-and-set in the service. Every PHI-adjacent read declares its M4 read audit; the download's carries `resourceIdParam`, so the read
 // event names WHICH run's batch was handed out (the M22 access ledger records the URL mint itself).
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
-import { ABAC_OVERSIGHT, P } from "./guards";
+import { ABAC_OVERSIGHT, P, STEP_UP } from "./guards";
 import { parse, parseQuery } from "./m16-typebox";
 import type { M16MailingService } from "./mailing-service";
 import {
@@ -124,7 +125,8 @@ export function registerBereavementMailingRoutes(
     },
   );
 
-  // 48 — generate: compare-and-set draft -> generating, select the batch set-based, hand the render to the worker. Empty wording is refused (422).
+  // 48 — generate: compare-and-set draft | failed | ready -> generating, select the batch set-based, hand the render to the worker. Empty wording is
+  // refused (422). From `ready` this REGENERATES a batch that went stale (route 49 answered `MAILING_RUN_STALE`).
   app.post(
     "/api/v1/bereavement/mailings/runs/:runId/generate",
     { preHandler: [...oversight("bereavement.mailing.dispatch"), IDEMPOTENT] },
@@ -136,10 +138,18 @@ export function registerBereavementMailingRoutes(
     },
   );
 
-  // 49 — a short-lived URL for the rendered batch PDF through the M22 org-level seam. The response is never cached.
+  // 49 — a short-lived attachment URL for the rendered batch PDF through the M22 org-level seam. The batch is every recipient's name and address across
+  // the tenant, so it needs a FRESH step-up (as M22's export-phi-bundle does). A ready batch naming anyone no longer eligible is refused (409
+  // `MAILING_RUN_STALE`) until regenerated. The response is never cached.
   app.get(
     "/api/v1/bereavement/mailings/runs/:runId/download",
-    { preHandler: [...oversight("bereavement.mailing.dispatch")], config: { auditRead: RUN_READ } },
+    {
+      preHandler: [
+        ...oversight("bereavement.mailing.dispatch"),
+        STEP_UP("bereavement.mailing.dispatch"),
+      ],
+      config: { auditRead: RUN_READ },
+    },
     async (request, reply) => {
       const { runId } = parse(MailingRunParams, request.params);
       const out = await mailingService.downloadRun(writeActorOf(request), runId);
@@ -148,7 +158,7 @@ export function registerBereavementMailingRoutes(
     },
   );
 
-  // 50 — confirm the batch was mailed: re-check eligibility (flags `excluded_after_render`), ready -> mailed, emit `mailing_run_mailed`.
+  // 50 — confirm the batch was mailed (bookkeeping): re-check eligibility (flags `excluded_after_render`, never logged), ready -> mailed, emit `mailing_run_mailed`.
   app.post(
     "/api/v1/bereavement/mailings/runs/:runId/confirm-mailed",
     { preHandler: [...oversight("bereavement.mailing.dispatch"), IDEMPOTENT] },

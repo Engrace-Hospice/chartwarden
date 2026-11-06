@@ -614,18 +614,20 @@ export type OrgDocumentDenialReason =
 /**
  * ADR-0109 D10 — the ORG-LEVEL document door: a module that owns a document with NO patient (M16's mailing batch PDF: every recipient's name and mailing
  * address, filed under an internal-only aggregate type) mints its short-lived download URL through M22, instead of reaching into M22's tables or storing a
- * bucket key of its own. It is NOT a general document door: the caller names the aggregate types it may hand out, and the seam refuses any document of
- * another type, any document that belongs to a patient, and anything not `active`. A successful mint appends ONE `document_access_log` row (the
+ * bucket key of its own. It is NOT a general document door: the caller names the aggregate types it may hand out (intersected with the seam-only
+ * types), and the seam refuses any document of another type, any document that belongs to a patient, and anything not `active`. The accessor recorded
+ * on the ledger is derived from the request context, never supplied by the caller. A successful mint appends ONE `document_access_log` row (the
  * §164.528 ledger) BEFORE the URL is returned; if the append fails the mint throws and no URL leaves. A `{ denied }` result logs nothing.
  */
 export interface OrgDocumentAccessProvider {
   mintOrgDownloadUrl(args: {
     readonly organizationId: OrgId;
     readonly documentId: DocumentId;
-    /** The aggregate types the CALLER's module may hand out (the seam refuses every other type). */
+    /** The aggregate types the CALLER's module may hand out. The seam INTERSECTS this with {@link SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES}: it never hands
+     *  out a type that M22's own routes serve, whatever the caller names. */
     readonly allowedAggregateTypes: readonly DocumentAggregateType[];
-    /** The staff member the URL is minted for (their membership), recorded on the access ledger. */
-    readonly accessorMembershipId: string;
+    // No accessor id: the seam derives the requesting member from the ambient request context (org + user -> their active membership), so a
+    // caller cannot record the mint against someone else.
   }): Promise<
     | {
         readonly url: string;
