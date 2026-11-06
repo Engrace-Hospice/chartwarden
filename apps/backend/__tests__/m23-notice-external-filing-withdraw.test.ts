@@ -16,6 +16,16 @@ vi.mock("@chartwarden/billing", async (importOriginal) => {
   const notice = (table: Map<string, Row>) =>
     class {
       findById = async (id: string) => table.get(id) ?? null;
+      listExternallyFiled = async (organizationId: string, limit: number) =>
+        [...table.values()]
+          .filter((r) => r.organizationId === organizationId && r.externalFilingStatus === "filed")
+          .sort(
+            (a, b) =>
+              (b.filedExternallyRecordedAt as Date).getTime() -
+                (a.filedExternallyRecordedAt as Date).getTime() ||
+              String(b.id).localeCompare(String(a.id)),
+          )
+          .slice(0, limit);
       transitionToState = async (
         id: string,
         expectedVersion: number,
@@ -48,6 +58,7 @@ vi.mock("@chartwarden/tenancy", () => ({
 
 import {
   buildExternalNoticeFilingService,
+  listExternalNoticeFilings,
   withdrawExternalNoticeFiling,
 } from "../src/modules/23-billing-medicare/services/external-notice-filing";
 
@@ -284,5 +295,121 @@ describe.each([
     });
     // the pin the operator held for the FIRST record is stale now
     await expect(withdraw()).rejects.toMatchObject({ code: "NOTICE_FILING_RECORD_CHANGED" });
+  });
+});
+
+// G4: the platform's list of what a tenant recorded as filed outside ChartWarden (what the withdraw drawer reads). One merged,
+// newest-record-first list of NOEs and NOTRs; ids, a state and dates only (no patient, no admission, no control number).
+describe("listing a tenant's externally filed notices", () => {
+  const at = (iso: string) => new Date(iso);
+
+  it("merges NOEs and NOTRs newest record first, and names what the operator needs to withdraw one (the pin, the date, the stamp)", async () => {
+    fakes.noes.set(
+      "noe-old",
+      filed({ id: "noe-old", filedExternallyRecordedAt: at("2026-11-02T09:00:00.000Z") }),
+    );
+    fakes.notrs.set(
+      "notr-new",
+      filed({
+        id: "notr-new",
+        filedExternallyRecordedAt: at("2026-11-05T09:00:00.000Z"),
+        filedExternallyOn: "2026-11-08",
+        windowBreachedAt: "2026-11-08",
+        externalFilingSetBreach: true,
+      }),
+    );
+    fakes.noes.set(
+      "noe-mid",
+      filed({ id: "noe-mid", filedExternallyRecordedAt: at("2026-11-03T09:00:00.000Z") }),
+    );
+
+    const res = await listExternalNoticeFilings({} as never, { organizationId: ORG, limit: 50 });
+
+    expect(res.truncated).toBe(false);
+    expect(res.items.map((i) => [i.kind, i.noticeId])).toEqual([
+      ["notr", "notr-new"],
+      ["noe", "noe-mid"],
+      ["noe", "noe-old"],
+    ]);
+    expect(res.items[0]).toEqual({
+      kind: "notr",
+      noticeId: "notr-new",
+      state: "ready",
+      windowTargetAt: "2026-11-06",
+      windowBreachedAt: "2026-11-08",
+      filedOn: "2026-11-08",
+      recordedAt: "2026-11-05T09:00:00.000Z",
+      breachStampFromRecord: true,
+    });
+    // the projection carries nothing of the notice that identifies a patient or an admission
+    expect(Object.keys(res.items[0] ?? {}).sort()).toEqual([
+      "breachStampFromRecord",
+      "filedOn",
+      "kind",
+      "noticeId",
+      "recordedAt",
+      "state",
+      "windowBreachedAt",
+      "windowTargetAt",
+    ]);
+  });
+
+  it("lists only the org's notices recorded as filed: not a parked one, not an unmarked one, not another organization's", async () => {
+    fakes.noes.set("filed", filed({ id: "filed" }));
+    fakes.noes.set(
+      "parked",
+      filed({
+        id: "parked",
+        externalFilingStatus: "pending",
+        filedExternallyOn: null,
+        filedExternallyRecordedAt: null,
+      }),
+    );
+    fakes.noes.set(
+      "plain",
+      filed({
+        id: "plain",
+        externalFilingStatus: null,
+        filedExternallyOn: null,
+        filedExternallyRecordedAt: null,
+      }),
+    );
+    fakes.notrs.set("theirs", filed({ id: "theirs", organizationId: OTHER_ORG }));
+
+    const res = await listExternalNoticeFilings({} as never, { organizationId: ORG, limit: 50 });
+
+    expect(res.items.map((i) => i.noticeId)).toEqual(["filed"]);
+  });
+
+  it("cuts at the limit across both kinds and says so (the newest records survive; nothing is silently dropped)", async () => {
+    fakes.noes.set(
+      "a",
+      filed({ id: "a", filedExternallyRecordedAt: at("2026-11-01T00:00:00.000Z") }),
+    );
+    fakes.noes.set(
+      "b",
+      filed({ id: "b", filedExternallyRecordedAt: at("2026-11-04T00:00:00.000Z") }),
+    );
+    fakes.notrs.set(
+      "c",
+      filed({ id: "c", filedExternallyRecordedAt: at("2026-11-03T00:00:00.000Z") }),
+    );
+    fakes.notrs.set(
+      "d",
+      filed({ id: "d", filedExternallyRecordedAt: at("2026-11-02T00:00:00.000Z") }),
+    );
+
+    const cut = await listExternalNoticeFilings({} as never, { organizationId: ORG, limit: 2 });
+    expect(cut.items.map((i) => i.noticeId)).toEqual(["b", "c"]);
+    expect(cut.truncated).toBe(true);
+
+    const exact = await listExternalNoticeFilings({} as never, { organizationId: ORG, limit: 4 });
+    expect(exact.items).toHaveLength(4);
+    expect(exact.truncated).toBe(false);
+  });
+
+  it("is an empty list, not an error, for an organization that recorded nothing", async () => {
+    const res = await listExternalNoticeFilings({} as never, { organizationId: ORG, limit: 50 });
+    expect(res).toEqual({ items: [], truncated: false });
   });
 });

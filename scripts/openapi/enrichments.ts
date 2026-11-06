@@ -15480,6 +15480,7 @@ import {
   OnboardingClearinghouseVerifyRequest as M34OnboardingClearinghouseVerifyRequest,
   OnboardingClearinghouseVerifyResponseSchema as M34OnboardingClearinghouseVerifyResponseSchema,
   OnboardingClearinghouseViewSchema as M34OnboardingClearinghouseViewSchema,
+  OnboardingNoticeFilingListSchema as M34OnboardingNoticeFilingListSchema,
   OnboardingNoticeWithdrawalViewSchema as M34OnboardingNoticeWithdrawalViewSchema,
   OnboardingReasonSchema as M34OnboardingReasonSchema,
 } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-typebox";
@@ -15570,6 +15571,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
       },
     },
     response: M34OnboardingClearinghouseViewSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/notice-filings": {
+    summary:
+      "The NOEs and NOTRs a tenant recorded as filed outside ChartWarden, newest record first (capped at 200, `truncated` says so): notice kind and id, its state, deadline and breach dates, the date the tenant filed and the `recordedAt` a withdrawal must pin with If-Match; no patient, admission or control number. An audited read on the tenant's own RLS scope, not gated on its onboarding status. tenant_onboarding_data.read_platform + the platform_ops role",
+    response: M34OnboardingNoticeFilingListSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/noe-records/:id/withdraw-external-filing": {
     summary: `Withdraw the "filed outside ChartWarden" record of a tenant's NOE (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match, 428 IF_MATCH_REQUIRED for none; the last two carry the record's current recordedAt in the error details as {field: "currentRecordedAt", message: <timestamp>}, the value to retry with). ${M34_NOTICE_WITHDRAW_NOTE}`,

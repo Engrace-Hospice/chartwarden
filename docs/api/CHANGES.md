@@ -23,6 +23,11 @@ its full description there. Newest first.
 - Every wizard step (`GET /api/v1/platform/tenants/{orgSlug}/onboarding`, `GET /api/v1/tenant/onboarding` and the step answers) carries
   `systemSkipped`: true only when the SYSTEM skipped the step because the tenant bills outside ChartWarden. Read it, never the
   `skipRationale` text: a person can type the same words.
+- New `GET /api/v1/platform/tenants/{orgSlug}/notice-filings` (platform ops; `tenant_onboarding_data.read_platform`): the NOEs and NOTRs the
+  tenant recorded as filed outside ChartWarden, newest record first (`noticeKind`, `noticeId`, `state`, `windowTargetAt`,
+  `windowBreachedAt`, `filedOn`, `recordedAt`, `breachStampFromRecord`; no patient, admission or control number). `recordedAt` is the
+  `If-Match` the withdraw routes pin; `breachStampFromRecord` says the withdrawal will clear the breach stamp. Not gated on the
+  tenant's onboarding status, audited, capped at 200 (`truncated` says when older records exist).
 - `POST /api/v1/platform/tenants` no longer requires `planLabel`. The retired flat tier is replaced by the census-banded contract signed at
   onboarding step 2, so an omitted label is stored as `"unassigned"`. A label that is sent must still be `starter`, `standard` or `enterprise`.
 

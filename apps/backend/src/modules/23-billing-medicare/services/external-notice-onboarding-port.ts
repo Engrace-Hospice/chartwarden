@@ -8,10 +8,20 @@ import type {
   OnboardingNoticePort,
   OnboardingNoticeView,
 } from "../../../bootstrap/onboarding-notice-port";
-import { withdrawExternalNoticeFiling } from "./external-notice-filing";
+import { listExternalNoticeFilings, withdrawExternalNoticeFiling } from "./external-notice-filing";
 
 export function buildExternalNoticeOnboardingPort(): OnboardingNoticePort {
   return {
+    async listExternalFilings(tx, scope) {
+      await assertTxScopedToOrg(tx as DbClient, scope.organizationId);
+      const { items, truncated } = await listExternalNoticeFilings(tx as unknown as BillingDb, {
+        organizationId: scope.organizationId,
+      });
+      return {
+        items: items.map(({ kind, ...rest }) => ({ noticeKind: kind, ...rest })),
+        truncated,
+      };
+    },
     async withdrawExternalFiling(tx, scope, input) {
       await assertTxScopedToOrg(tx as DbClient, scope.organizationId);
       const { notice, withdrawnFiledOn, withdrawnRecordedAt, clearedBreachStamp } =

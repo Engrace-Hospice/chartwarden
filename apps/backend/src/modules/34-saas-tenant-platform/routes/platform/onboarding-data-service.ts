@@ -34,6 +34,7 @@ import type {
   OnboardingWriteScope,
 } from "../../../../bootstrap/onboarding-credential-port";
 import type {
+  OnboardingNoticeFilingList,
   OnboardingNoticeKind,
   OnboardingNoticePort,
   OnboardingNoticeView,
@@ -127,6 +128,12 @@ export interface OnboardingDataService {
     reason: string,
     expected: { readonly recordedAt: string },
   ): Promise<unknown>;
+  /**
+   * The notices the tenant recorded as filed outside ChartWarden, NOEs and NOTRs, newest record first (what the withdraw drawer
+   * reads; each carries the `recordedAt` pin a withdrawal needs). Ids, a state and dates only; an audited read on the tenant's own
+   * RLS scope, NOT gated on the tenant's onboarding status.
+   */
+  listNoticeFilings(op: OnboardingOperator, orgSlug: string): Promise<OnboardingNoticeFilingList>;
   /**
    * The operator withdraws the tenant's "filed outside ChartWarden" record of one NOE / NOTR: the notice returns to its pre-record
    * state (a watchdog's breach stamp stays; the one a withdrawn LATE record wrote itself is cleared with it). NOT gated on the
@@ -418,7 +425,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
   }
 
   /** One audited read: the data first (the tenant's own scoped read), then the row — nothing is returned un-audited. */
-  async function read<T extends { items: unknown[] }>(
+  async function read<T extends { items: readonly unknown[] }>(
     op: OnboardingOperator,
     orgSlug: string,
     resourceKind: string,
@@ -731,6 +738,14 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
 
     listMedicaidCredentials: (op, orgSlug) => listCredentials(op, orgSlug, MEDICAID_LANE),
     listMembers,
+    listNoticeFilings: (op, orgSlug) =>
+      read(op, orgSlug, "notice_filing", (t) =>
+        withOrgContext<DbClient, OnboardingNoticeFilingList>(
+          db,
+          { organizationId: t.organizationId, userId: op.userId },
+          (tx) => noticePort().listExternalFilings(tx, scopeOf(op, t.organizationId)),
+        ),
+      ),
     upsertMedicaidCredential: (op, orgSlug, fields, reason) =>
       upsertCredential(op, orgSlug, MEDICAID_LANE, fields, reason),
   };

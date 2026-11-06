@@ -109,6 +109,7 @@ const ORG_D = "d4000000-0000-4000-8000-0000000000d4"; // chose nothing
 const ORG_E = "e5000000-0000-4000-8000-0000000000e5"; // named in the env fallback list, no row
 const ORG_F = "f6000000-0000-4000-8000-0000000000f6"; // onboarding: chooses outside through the platform route
 const ORG_G = "a7000000-0000-4000-8000-0000000000a7"; // stedi, active
+const ORG_H = "a8000000-0000-4000-8000-0000000000a8"; // only the operator's list of external filings reads it (nothing else seeds here)
 const OPERATOR = "c9000000-0000-4000-8000-0000000000c9";
 const MEMBERSHIP = "e9000000-0000-4000-8000-0000000000e9";
 const TENANT_ADMIN = "7a000000-0000-4000-8000-0000000000a7";
@@ -235,6 +236,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_E, "ch-e"],
       [ORG_F, "ch-f"],
       [ORG_G, "ch-g"],
+      [ORG_H, "ch-h"],
     ] as const) {
       await admin.query(
         "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -256,6 +258,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_A, "active"],
       [ORG_B, "onboarding"],
       [ORG_F, "onboarding"],
+      [ORG_H, "active"],
     ] as const) {
       await admin.query(
         "INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,$3,'b@x.test','p@x.test')",
@@ -393,6 +396,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
               enabled: true,
               expiresAt: null,
               permissionKeys: [
+                "tenant_onboarding_data.read_platform",
                 "tenant_clearinghouse.read_platform",
                 "tenant_clearinghouse.write_platform",
                 "tenant_clearinghouse.verify_baa_platform",
@@ -1356,6 +1360,98 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         expect(audit[0]?.context).not.toHaveProperty("clearedBreachStamp");
       },
     );
+
+    // ── G4: the operator's list of what a tenant recorded as filed outside ChartWarden (the withdraw drawer's rows) ──────────────
+    const listUrl = (slug: string) => `/api/v1/platform/tenants/${slug}/notice-filings`;
+    const setRecordedAt = (kind: "noe" | "notr", id: string, at: string) =>
+      q(`UPDATE ${table(kind)} SET filed_externally_recorded_at=$2 WHERE id=$1`, [id, at]);
+
+    it("lists the org's recorded filings, NOEs and NOTRs together, newest record first, with the pin, the filed date and the stamp owner; never a parked or unmarked notice, another tenant's, or a patient or admission id", async () => {
+      const patient = randomUUID();
+      // one live NOE per admission: each notice gets its own, and none may appear in the operator's list
+      const admissions: string[] = [];
+      const idsOf = () => {
+        const admissionId = randomUUID();
+        admissions.push(admissionId);
+        return { patientId: patient, admissionId };
+      };
+      const oldest = await seedFiledNotice("noe", ORG_H, idsOf());
+      await setRecordedAt("noe", oldest, "2026-11-02T09:00:00.000Z");
+      const middle = await seedFiledNotice("noe", ORG_H, idsOf());
+      await setRecordedAt("noe", middle, "2026-11-03T09:00:00.000Z");
+      const newest = await seedFiledNotice("notr", ORG_H, {
+        ...idsOf(),
+        filedOn: "2026-11-08",
+        stamp: "2026-11-08",
+        setBreach: true,
+      });
+      await setRecordedAt("notr", newest, "2026-11-05T09:00:00.123Z");
+      await seedFiledNotice("noe", ORG_H, { ...idsOf(), marker: "pending" });
+      await seedFiledNotice("notr", ORG_H, { ...idsOf(), marker: null });
+      const elsewhere = await seedFiledNotice("noe", ORG_A);
+
+      const res = await server.inject({ method: "GET", url: listUrl("ch-h"), headers: OPS });
+
+      expect(res.statusCode, res.body).toBe(200);
+      const body = res.json() as { items: Record<string, unknown>[]; truncated: boolean };
+      expect(body.truncated).toBe(false);
+      expect(body.items.map((i) => i.noticeId)).toEqual([newest, middle, oldest]);
+      expect(body.items[0]).toEqual({
+        noticeKind: "notr",
+        noticeId: newest,
+        state: "ready",
+        windowTargetAt: "2026-11-06",
+        windowBreachedAt: "2026-11-08",
+        filedOn: "2026-11-08",
+        recordedAt: "2026-11-05T09:00:00.123Z",
+        breachStampFromRecord: true,
+      });
+      expect(body.items[1]).toMatchObject({ noticeKind: "noe", breachStampFromRecord: false });
+      expect(res.body).not.toContain(patient);
+      for (const admission of admissions) expect(res.body).not.toContain(admission);
+      expect(res.body).not.toContain(elsewhere);
+
+      // the list's `recordedAt` is exactly the pin the withdrawal accepts: the drawer needs nothing else
+      const pin = body.items[0]?.recordedAt as string;
+      const done = await withdraw("notr", newest, { slug: "ch-h", pin });
+      expect(done.statusCode, done.body).toBe(200);
+      const after = await server.inject({ method: "GET", url: listUrl("ch-h"), headers: OPS });
+      expect(
+        (after.json() as { items: { noticeId: string }[] }).items.map((i) => i.noticeId),
+      ).toEqual([middle, oldest]);
+    });
+
+    it("answers an organization that recorded nothing with an empty list, audits the read (the operator, the tenant, a count; no notice id), and refuses a tenant credential; an unknown tenant is a 404", async () => {
+      const empty = await server.inject({ method: "GET", url: listUrl("ch-f"), headers: OPS });
+      expect(empty.statusCode, empty.body).toBe(200);
+      expect(empty.json()).toEqual({ items: [], truncated: false });
+
+      const reads = await q<{
+        actor_user_id: string;
+        outcome: string;
+        context: Record<string, unknown>;
+      }>(
+        `SELECT actor_user_id, outcome, context FROM audit_event
+          WHERE organization_id=$1 AND event_type='m34.tenant_onboarding.data_read' AND resource_kind='notice_filing'`,
+        [ORG_F],
+      );
+      expect(reads).toHaveLength(1);
+      expect(reads[0]).toMatchObject({ actor_user_id: OPERATOR, outcome: "success" });
+      expect(reads[0]?.context).toMatchObject({ count: 0, targetOrgSlug: "ch-f" });
+
+      const asTenantAdmin = await server.inject({
+        method: "GET",
+        url: listUrl("ch-a"),
+        headers: tenantRead(ORG_A),
+      });
+      expect(asTenantAdmin.statusCode).toBe(403);
+      const unknown = await server.inject({
+        method: "GET",
+        url: listUrl("no-such-tenant"),
+        headers: OPS,
+      });
+      expect(unknown.statusCode).toBe(404);
+    });
 
     it("a tenant credential is refused (a tenant cannot withdraw its own record), and so is a request without the platform key; nothing changes", async () => {
       const id = await seedFiledNotice("noe");

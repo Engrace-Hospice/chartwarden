@@ -311,3 +311,38 @@ export const OnboardingNoticeWithdrawalViewSchema = Type.Object({
     description: "The record is gone: the notice is back to its pre-record state.",
   }),
 });
+
+/** One notice the tenant recorded as filed outside ChartWarden: what an operator needs to find it and withdraw it (no patient, no admission, no control number). */
+export const OnboardingNoticeFilingSchema = Type.Object({
+  noticeKind: Type.Union([Type.Literal("noe"), Type.Literal("notr")]),
+  noticeId: Type.String({ format: "uuid" }),
+  state: Type.String({ description: "The notice's own state; a filing record never changes it." }),
+  windowTargetAt: Type.String({ format: "date" }),
+  windowBreachedAt: Nullable(
+    Type.String({
+      format: "date",
+      description: "The breach stamp on the notice, whoever wrote it.",
+    }),
+  ),
+  filedOn: Nullable(
+    Type.String({ format: "date", description: "The date the tenant says it filed." }),
+  ),
+  recordedAt: Nullable(
+    Type.String({
+      format: "date-time",
+      description:
+        "When the tenant recorded it: the If-Match a withdrawal must carry (a record changed since is refused).",
+    }),
+  ),
+  breachStampFromRecord: Type.Boolean({
+    description:
+      "True when this record wrote the breach stamp itself (a late filing): a withdrawal clears it. A stamp the deadline watchdog set stays either way.",
+  }),
+});
+export const OnboardingNoticeFilingListSchema = Type.Object({
+  items: Type.Array(OnboardingNoticeFilingSchema),
+  truncated: Type.Boolean({
+    description:
+      "True when the tenant recorded more than the 200 newest shown; older records exist that this list does not return.",
+  }),
+});

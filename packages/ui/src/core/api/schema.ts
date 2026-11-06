@@ -21426,6 +21426,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/notice-filings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The NOEs and NOTRs a tenant recorded as filed outside ChartWarden, newest record first (capped at 200, `truncated` says so): notice kind and id, its state, deadline and breach dates, the date the tenant filed and the `recordedAt` a withdrawal must pin with If-Match; no patient, admission or control number. An audited read on the tenant's own RLS scope, not gated on its onboarding status. tenant_onboarding_data.read_platform + the platform_ops role */
+        get: operations["getApiV1PlatformTenantsByOrgSlugNoticefilings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/notr-records/{id}/withdraw-external-filing": {
         parameters: {
             query?: never;
@@ -93968,6 +93985,47 @@ export interface operations {
                         windowBreachedAt: string | null;
                         /** @description The record is gone: the notice is back to its pre-record state. */
                         externalFiling: null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugNoticefilings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            noticeKind: "noe" | "notr";
+                            /** Format: uuid */
+                            noticeId: string;
+                            /** @description The notice's own state; a filing record never changes it. */
+                            state: string;
+                            /** Format: date */
+                            windowTargetAt: string;
+                            windowBreachedAt: string | null;
+                            filedOn: string | null;
+                            recordedAt: string | null;
+                            /** @description True when this record wrote the breach stamp itself (a late filing): a withdrawal clears it. A stamp the deadline watchdog set stays either way. */
+                            breachStampFromRecord: boolean;
+                        }[];
+                        /** @description True when the tenant recorded more than the 200 newest shown; older records exist that this list does not return. */
+                        truncated: boolean;
                     };
                 };
             };

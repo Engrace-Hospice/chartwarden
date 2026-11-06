@@ -252,6 +252,7 @@ interface RecordableRow extends ExternalFilingRow {
 
 interface KindOps<R extends RecordableRow> {
   find(tx: BillingDb, id: string): Promise<R | null>;
+  listFiled(tx: BillingDb, organizationId: string, limit: number): Promise<readonly R[]>;
   repo(tx: BillingDb): ExternalFilingRepo<R>;
   /** The earliest a filing can carry: the NOE election effective date / the NOTR effective end date (the DDE-acceptance rule). */
   earliestDate(row: R): string;
@@ -263,6 +264,8 @@ interface KindOps<R extends RecordableRow> {
 
 const NOE_OPS: KindOps<repositories.NoeRecord> = {
   find: (tx, id) => new repositories.NoeRepository(tx).findById(id),
+  listFiled: (tx, organizationId, limit) =>
+    new repositories.NoeRepository(tx).listExternallyFiled(organizationId, limit),
   repo: (tx) => new repositories.NoeRepository(tx),
   earliestDate: (row) => row.electionEffectiveDate,
   lateEvent: "m23.noe.filed_externally_late",
@@ -271,6 +274,8 @@ const NOE_OPS: KindOps<repositories.NoeRecord> = {
 };
 const NOTR_OPS: KindOps<repositories.NotrRecord> = {
   find: (tx, id) => new repositories.NotrRepository(tx).findById(id),
+  listFiled: (tx, organizationId, limit) =>
+    new repositories.NotrRepository(tx).listExternallyFiled(organizationId, limit),
   repo: (tx) => new repositories.NotrRepository(tx),
   earliestDate: (row) => row.effectiveEndDate,
   lateEvent: "m23.notr.filed_externally_late",
@@ -346,6 +351,61 @@ export async function withdrawExternalNoticeFiling(
     withdrawnRecordedAt: plan.withdrawnRecordedAt,
     clearedBreachStamp: plan.clearBreach ? notice.windowBreachedAt : null,
   };
+}
+
+/** One notice the tenant recorded as filed outside ChartWarden, as the platform's withdraw list shows it: ids, a state and dates. */
+export interface ExternalFilingListItem {
+  readonly kind: ExternalNoticeKind;
+  readonly noticeId: string;
+  readonly state: NoticeState;
+  readonly windowTargetAt: string;
+  readonly windowBreachedAt: string | null;
+  readonly filedOn: string | null;
+  /** The record's `recordedAt`: the `If-Match` a withdrawal must carry. */
+  readonly recordedAt: string | null;
+  /** True when the record wrote the breach stamp itself: a withdrawal clears it (a watchdog's stamp stays). */
+  readonly breachStampFromRecord: boolean;
+}
+
+/** The most notices one platform list returns; a tenant filing for many patients is cut at this, newest record first. */
+export const EXTERNAL_FILING_LIST_CAP = 200;
+
+const toListItem = (
+  kind: ExternalNoticeKind,
+  row: repositories.NoeRecord | repositories.NotrRecord,
+): ExternalFilingListItem => ({
+  kind,
+  noticeId: row.id,
+  state: row.state,
+  windowTargetAt: row.windowTargetAt,
+  windowBreachedAt: row.windowBreachedAt ?? null,
+  filedOn: row.filedExternallyOn ?? null,
+  recordedAt: row.filedExternallyRecordedAt?.toISOString() ?? null,
+  breachStampFromRecord: row.externalFilingSetBreach,
+});
+
+/**
+ * What the tenant recorded as filed outside ChartWarden, NOEs and NOTRs together, newest record first, on the caller's transaction
+ * (scoped to the tenant). Each repository over-fetches by one so a list cut at `limit` says so rather than looking complete.
+ */
+export async function listExternalNoticeFilings(
+  tx: BillingDb,
+  input: { readonly organizationId: string; readonly limit?: number },
+): Promise<{ readonly items: readonly ExternalFilingListItem[]; readonly truncated: boolean }> {
+  const limit = input.limit ?? EXTERNAL_FILING_LIST_CAP;
+  const [noes, notrs] = await Promise.all([
+    NOE_OPS.listFiled(tx, input.organizationId, limit + 1),
+    NOTR_OPS.listFiled(tx, input.organizationId, limit + 1),
+  ]);
+  const merged = [
+    ...noes.map((row) => toListItem("noe", row)),
+    ...notrs.map((row) => toListItem("notr", row)),
+  ].sort(
+    (a, b) =>
+      (b.recordedAt ?? "").localeCompare(a.recordedAt ?? "") ||
+      b.noticeId.localeCompare(a.noticeId),
+  );
+  return { items: merged.slice(0, limit), truncated: merged.length > limit };
 }
 
 export function buildExternalNoticeFilingService(

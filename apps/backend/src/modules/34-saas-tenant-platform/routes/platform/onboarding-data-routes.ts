@@ -428,6 +428,14 @@ export function registerOnboardingDataRoutes(
     },
   );
 
+  // GET notice-filings — what the tenant recorded as filed outside ChartWarden (the withdraw drawer's list; each row carries the
+  // `recordedAt` the withdrawal pins). A read of notice metadata behind the onboarding read key; the withdrawal keeps its own key.
+  app.get(
+    "/api/v1/platform/tenants/:orgSlug/notice-filings",
+    { preHandler: [...READ] },
+    async (request) => service.listNoticeFilings(operatorOf(request), slugOf(request)),
+  );
+
   // POST {noe,notr}-records/:id/withdraw-external-filing — the operator withdraws the tenant's "filed outside ChartWarden" record of
   // one notice: it returns to its pre-record state and can be recorded or submitted again; a breach stamp the watchdog set stays and the
   // one a withdrawn LATE record wrote itself goes with it (a NOTR reopens the prior election its record closed). Not gated on the tenant's onboarding status. Pinned: `If-Match` is the record's

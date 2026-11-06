@@ -272,6 +272,21 @@ export class NoeRepository {
   }
 
   /**
+   * The org's NOEs its tenant recorded as filed outside ChartWarden (`external_filing_status = 'filed'`), newest record first
+   * `(filed_externally_recorded_at DESC, id DESC)`. What the platform operator's withdraw list reads; a parked or unmarked notice
+   * is not on it. Capped at `limit` (1..500); the caller over-fetches by one to learn whether it was cut.
+   */
+  async listExternallyFiled(organizationId: string, limit = 200): Promise<readonly NoeRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(N)
+      .where(and(eq(N.organizationId, organizationId), eq(N.externalFilingStatus, "filed")))
+      .orderBy(desc(N.filedExternallyRecordedAt), desc(N.id))
+      .limit(Math.min(Math.max(limit, 1), 500));
+    return rows.map(toNoeRecord);
+  }
+
+  /**
    * The corrections filed against a rejected notice (`corrects_notice_id = id`, migration 0378), newest first —
    * the one-correction-at-a-time rule and the "corrected by" link read them.
    */

@@ -263922,6 +263922,135 @@
         }
       }
     },
+    "/api/v1/platform/tenants/{orgSlug}/notice-filings": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantsByOrgSlugNoticefilings",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "The NOEs and NOTRs a tenant recorded as filed outside ChartWarden, newest record first (capped at 200, `truncated` says so): notice kind and id, its state, deadline and breach dates, the date the tenant filed and the `recordedAt` a withdrawal must pin with If-Match; no patient, admission or control number. An audited read on the tenant's own RLS scope, not gated on its onboarding status. tenant_onboarding_data.read_platform + the platform_ops role",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "truncated"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "noticeKind",
+                          "noticeId",
+                          "state",
+                          "windowTargetAt",
+                          "windowBreachedAt",
+                          "filedOn",
+                          "recordedAt",
+                          "breachStampFromRecord"
+                        ],
+                        "properties": {
+                          "noticeKind": {
+                            "anyOf": [
+                              {
+                                "const": "noe",
+                                "type": "string"
+                              },
+                              {
+                                "const": "notr",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "noticeId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "state": {
+                            "description": "The notice's own state; a filing record never changes it.",
+                            "type": "string"
+                          },
+                          "windowTargetAt": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "windowBreachedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "description": "The breach stamp on the notice, whoever wrote it.",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "filedOn": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "description": "The date the tenant says it filed.",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "recordedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "description": "When the tenant recorded it: the If-Match a withdrawal must carry (a record changed since is refused).",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "breachStampFromRecord": {
+                            "description": "True when this record wrote the breach stamp itself (a late filing): a withdrawal clears it. A stamp the deadline watchdog set stays either way.",
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "truncated": {
+                      "description": "True when the tenant recorded more than the 200 newest shown; older records exist that this list does not return.",
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/platform/tenants/{orgSlug}/notr-records/{id}/withdraw-external-filing": {
       "post": {
         "operationId": "postApiV1PlatformTenantsByOrgSlugNotrrecordsByIdWithdrawexternalfiling",

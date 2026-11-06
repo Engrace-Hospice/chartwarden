@@ -91,6 +91,7 @@ function recordingService(calls: Call[]): OnboardingDataService {
     listLocations: list("listLocations"),
     listMacCredentials: list("listMacCredentials"),
     listMembers: list("listMembers"),
+    listNoticeFilings: list("listNoticeFilings"),
     listMedicaidCredentials: list("listMedicaidCredentials"),
     createProviderEntity: write("createProviderEntity", false),
     updateProviderEntity: write("updateProviderEntity", true),
@@ -841,6 +842,44 @@ describe("members read (the compliance officer picker)", () => {
     });
     expect(keyless.statusCode).toBe(403);
     expect(calls.map((c) => c.method)).toEqual(["listMembers"]);
+    expect(calls[0]?.orgSlug).toBe("tenant-b");
+    await app.close();
+  });
+});
+
+// Slice 5 (G4): the withdraw drawer lists what the tenant recorded as filed outside ChartWarden. A read of the tenant's notice
+// metadata, behind the same read key as the other onboarding reads; the withdrawal itself keeps its own key and step-up.
+describe("notice-filings read (the withdraw drawer's list)", () => {
+  it("answers platform_ops with the read key; a tenant admin, a non-platform_ops role and a keyless user are refused", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const url = `${URL_BASE}/notice-filings`;
+    const ok = await app.inject({ method: "GET", url, headers: OPS });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toEqual({ items: [] });
+    const tenant = await app.inject({
+      method: "GET",
+      url,
+      headers: {
+        "x-test-user": "tenant-admin",
+        "x-test-org": TARGET_ORG,
+        "x-test-roles": "org_admin",
+      },
+    });
+    expect(tenant.statusCode).toBe(403);
+    const support = await app.inject({
+      method: "GET",
+      url,
+      headers: { ...OPS, "x-test-user": "support-user", "x-test-roles": "platform_support_t2" },
+    });
+    expect(support.statusCode).toBe(403);
+    const keyless = await app.inject({
+      method: "GET",
+      url,
+      headers: { ...OPS, "x-test-user": "no-grants-user" },
+    });
+    expect(keyless.statusCode).toBe(403);
+    expect(calls.map((c) => c.method)).toEqual(["listNoticeFilings"]);
     expect(calls[0]?.orgSlug).toBe("tenant-b");
     await app.close();
   });
