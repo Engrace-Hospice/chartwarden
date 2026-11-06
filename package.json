@@ -14,8 +14,8 @@
   "scripts": {
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
     "setup:hooks": "git config core.hooksPath .githooks && echo 'core.hooksPath -> .githooks'",
-    "db:up": "docker compose up -d postgres redis minio",
-    "db:down": "docker compose stop postgres redis minio",
+    "db:up": "docker compose up -d postgres redis rustfs",
+    "db:down": "docker compose stop postgres redis rustfs",
     "db:migrate": "bun run scripts/db/migrate.ts",
     "db:migrate:baseline": "bun run scripts/db/migrate.ts --baseline",
     "db:migrate:deploy": "bun run scripts/db/migrate.ts --strict --schema-only",
@@ -85,6 +85,7 @@
     "test:audit:nested-redaction:live": "vitest run packages/db/migrations/__tests__/nested-audit-redaction.live.test.ts",
     "test:rate-limit-store:live": "vitest run apps/backend/src/bootstrap/plugins/__tests__/rate-limit-store.live.test.ts",
     "test:object-store:conformance:live": "vitest run apps/backend/__tests__/object-store-conformance.live.test.ts",
+    "test:object-store:resilience:live": "vitest run apps/backend/__tests__/object-store-resilience.live.test.ts",
     "test:partition-rotation:live": "vitest run apps/backend/src/bootstrap/jobs/__tests__/partition-rotation.live.test.ts",
     "test:rls:live": "vitest run packages/db/migrations/__tests__/rls-isolation.live.test.ts",
     "test:rls:live:m31": "vitest run packages/db/migrations/__tests__/m31-rls-isolation.live.test.ts",

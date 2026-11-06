@@ -51,7 +51,8 @@ const credentials = (prefix: "ADMIN" | "APP"): S3ObjectStoreConfig => ({
 const bytesOf = (text: string): Uint8Array => new TextEncoder().encode(text);
 const b64Sha256 = (bytes: Uint8Array): string =>
   Buffer.from(sigV4Sha256Hex(bytes), "hex").toString("base64");
-const CHECKSUM_REFUSALS = /BadDigest|XAmzContentSHA256Mismatch|XAmzContentChecksumMismatch|InvalidDigest|InvalidRequest/;
+const CHECKSUM_REFUSALS =
+  /BadDigest|XAmzContentSHA256Mismatch|XAmzContentChecksumMismatch|InvalidDigest|InvalidRequest/;
 
 /** A 4xx whose S3 error code matches `code` — a mis-signed request (SignatureDoesNotMatch) does not count. */
 async function expectRefused(res: Response, code: RegExp): Promise<void> {
@@ -132,6 +133,15 @@ interface AuditHit {
   readonly operation: string;
 }
 
+/** A POST body's records: a bare record (MinIO), an array (Fluent Bit) or a `{ Records: [...] }` envelope (RustFS). */
+function auditRecordsOf(body: unknown): readonly unknown[] {
+  const list = Array.isArray(body) ? body : [body];
+  return list.flatMap((item) => {
+    const records = (item as { Records?: unknown } | null)?.Records;
+    return Array.isArray(records) ? records : [item];
+  });
+}
+
 function normaliseAudit(record: unknown): AuditHit | null {
   if (typeof record !== "object" || record === null) return null;
   const r = record as Record<string, unknown>;
@@ -176,7 +186,7 @@ describe.skipIf(!ENDPOINT)("object-store conformance — LIVE (ADR-0050 D6)", ()
       req.on("end", () => {
         try {
           const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-          for (const record of Array.isArray(parsed) ? parsed : [parsed]) {
+          for (const record of auditRecordsOf(parsed)) {
             const hit = normaliseAudit(record);
             if (hit) audit.push(hit);
           }

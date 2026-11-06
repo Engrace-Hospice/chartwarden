@@ -59,7 +59,7 @@ async function main(): Promise<void> {
 
   if (!client) {
     console.error(
-      `✗ db:wait: ${safeUrl(URL)} did not accept a connection within ${TIMEOUT_MS / 1000}s.\n  Is the stack up? \`bun run db:up\` (docker compose up -d postgres redis minio).`,
+      `✗ db:wait: ${safeUrl(URL)} did not accept a connection within ${TIMEOUT_MS / 1000}s.\n  Is the stack up? \`bun run db:up\` (docker compose up -d postgres redis rustfs).`,
     );
     process.exit(1);
   }
