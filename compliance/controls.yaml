@@ -331,7 +331,7 @@ controls:
       - file: apps/backend/src/modules/12-dosespot/transmission-gate.ts
       - file: docs/adr/ADR-0110-tenant-dosespot-clinic-registration.md
     gap:
-      reason: Vendor facts are unverified until a DoseSpot sandbox run (the token endpoint, the clinician-add field names, whether the Subscription-Key is per clinic, DoseSpot's dedupe of a clinician by NPI, the production host), so the connection test proves the credential was accepted and nothing about the payload shapes. A vendor rejection of a rotated key at runtime still fails the order permanently (no hold-and-alert guard like the clearinghouse's). EPCS stays deferred (ADR-0019), so controlled-substance e-prescribing is not live. A crash between the vendor clinician create and its record can leave an orphan clinician at DoseSpot.
+      reason: Vendor facts are unverified until a DoseSpot sandbox run (the token endpoint, the clinician-add field names, whether the Subscription-Key is per clinic, DoseSpot's dedupe of a clinician by NPI, the production host), so the connection test proves the credential was accepted and nothing about the payload shapes. A vendor rejection of a rotated key at runtime still fails the order permanently (no hold-and-alert guard like the clearinghouse's). EPCS stays deferred (ADR-0019), so controlled-substance e-prescribing is not live. A crash between the vendor clinician create and its record can leave an orphan clinician at DoseSpot. The NPI and name of a prescriber enrolled with DoseSpot are typed by the roster administrator or the operator (the membership must be this organization's, but they are not read from a verified practitioner profile).
       owner: engineering
       review_by: 2027-01-31
 
