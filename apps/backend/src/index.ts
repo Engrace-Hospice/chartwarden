@@ -6460,19 +6460,22 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // platform runner only; each is audited with the operator's reason (the platform audit writer, M4).
             pricing: (() => {
               const m35PricingAudit = m35PlatformAudit;
+              const contracts = buildContractService({
+                db: dbHandle.db,
+                ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
+                outbox: m35OutboxPublisher,
+                audit: m35PricingAudit,
+                onboarding: buildPricingOnboardingPort({ wizard: m34Onboarding.wizard }),
+                log: (message, detail) => app.log.warn(detail, message),
+              });
+              // The M34 wizard's post-commit clearinghouse sync reaches the contract service through this holder (M34 has no edge to M35).
+              pricingContractsHolder.current = contracts;
               return {
                 plans: buildPricingPlanService({
                   ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
                   audit: m35PricingAudit,
                 }),
-                contracts: (pricingContractsHolder.current = buildContractService({
-                  db: dbHandle.db,
-                  ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
-                  outbox: m35OutboxPublisher,
-                  audit: m35PricingAudit,
-                  onboarding: buildPricingOnboardingPort({ wizard: m34Onboarding.wizard }),
-                  log: (message, detail) => app.log.warn(detail, message),
-                })),
+                contracts,
               };
             })(),
           });
