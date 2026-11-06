@@ -5,9 +5,11 @@
 // and a deactivation on the very next lookup. Relay ticks and workers are not requests: this never reads a request context.
 //
 // FAIL CLOSED. Only an `active` row operates (a `verified` one may also do setup: a prescriber's vendor enrolment). A row whose
-// environment the platform cannot serve (production with the flag off, or no host) is not usable. A credential that cannot be
-// opened, or with no Subscription-Key anywhere, THROWS a typed 503 (the job fails and retries, loudly) rather than going
-// unbound silently or sending a request without one.
+// environment the platform cannot serve (production with the flag off, or no host, or a sandbox row without the platform's sandbox
+// flag) is not usable. A credential that cannot be opened, or with no Subscription-Key anywhere, THROWS a typed 503 rather than going
+// unbound silently or sending a request without one. The transmit pass resolves the config ONCE before it claims anything, so that throw
+// skips the org's pass (nothing claimed, nothing written, the org id and error class logged, one alert per episode, the age alert behind
+// it): it is neither retried order by order nor deferred order by order (jobs/transmit-newrx.ts, jobs/degradation-alerts.ts).
 import { type DbClient, schema } from "@chartwarden/db";
 import {
   type DoseSpotConfigPurpose,

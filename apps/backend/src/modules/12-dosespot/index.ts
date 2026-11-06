@@ -204,6 +204,7 @@ export {
   M12_PLATFORM_JOB_ID,
   M12_QUEUE_CATALOG,
   createBreakerEdgeRecorder,
+  createEpisodeTracker,
   createDrizzlePatientSyncSnapshotResolver,
   createUnboundDosespotPatientIdResolver,
   describeM12AdapterPosture,

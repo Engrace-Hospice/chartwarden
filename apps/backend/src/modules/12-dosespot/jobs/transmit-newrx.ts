@@ -2,6 +2,8 @@
 // (GAP-037) and the `dosespot.transmit_queued_on_recovery` stale-claim reclaim.
 //
 // THE FLOW (spec §2.2 / §4.10 / §5.1 W-MR-01), one order at a time, the vendor call OUTSIDE any transaction:
+//   0. PREFLIGHT: the org's DoseSpot config is resolved once. A credential / resolver fault skips the pass whole (nothing claimed,
+//      nothing written, one alert per episode): see `runTransmitNewRxForOrg`.
 //   1. CLAIM (tx): `queued_for_transmission` + `dosespot_send_state='queued'` orders, `FOR UPDATE SKIP LOCKED`, those
 //      whose retry backoff (1,2,4,8 min by retry count) has elapsed are moved to `in_flight` and their transmission
 //      row stamped `transmission_started_at`. A concurrent tick cannot re-claim them.
@@ -29,6 +31,7 @@ import {
 } from "@chartwarden/dosespot";
 import { and, asc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { type M12CronDeps, errorClassOf, inOrg, isCircuitOpenError, nowOf } from "./cron-common";
+import { reportDegradation, reportRecovery } from "./degradation-alerts";
 import { DosespotSyncQueueRepository } from "./repository";
 
 const MO = schema.medicationOrders;
@@ -51,6 +54,8 @@ export interface TransmitPassResult {
   readonly requeued: number;
   readonly failed: number;
   readonly deferredByOutage: number;
+  /** 1 when the org's config could not be read or opened, so the pass was skipped whole (no claim, no write); 0 otherwise. */
+  readonly skippedConfigFault: number;
 }
 
 /** Minutes to wait after the Nth failed attempt: 1, 2, 4, 8, ... capped. */
@@ -364,12 +369,52 @@ async function settle(
   });
 }
 
-/** One org's transmit pass. */
+/** The fault from resolving the org's config, or null when it resolves (or is not live: that is not a fault, the pass handles it). */
+async function configFaultOf(deps: M12CronDeps, organizationId: string): Promise<unknown> {
+  if (!deps.config) return null;
+  try {
+    await deps.config.configFor(organizationId, "operate");
+    return null;
+  } catch (fault) {
+    return fault ?? new Error("unknown");
+  }
+}
+
+/**
+ * One org's transmit pass.
+ *
+ * The org's config is resolved ONCE, before anything is claimed. A credential or resolver fault (a corrupt sealed key, an unavailable key
+ * ring or KEK, a database error) then skips the whole pass: no order is claimed, no row is updated, so no audit row is written, instead of
+ * every queued order being claimed and put back on every tick. The fault is logged (org id and error class, never a message that could
+ * carry a value), counted in the result, and alerted once per episode; the orders stay `queued` and the age alert covers how long.
+ */
 export async function runTransmitNewRxForOrg(
   deps: M12CronDeps,
   organizationId: string,
   batchSize = TRANSMIT_BATCH_SIZE,
 ): Promise<TransmitPassResult> {
+  const fault = await configFaultOf(deps, organizationId);
+  if (fault !== null) {
+    const code = (fault as { code?: unknown }).code;
+    deps.warn?.(
+      {
+        organizationId,
+        cause: fault instanceof Error ? fault.name : "unknown",
+        ...(typeof code === "string" ? { code } : {}),
+      },
+      "DoseSpot config could not be resolved; the transmit pass was skipped and the orders stay queued",
+    );
+    await reportDegradation(deps, organizationId, "config_unavailable");
+    return {
+      claimed: 0,
+      transmitted: 0,
+      requeued: 0,
+      failed: 0,
+      deferredByOutage: 0,
+      skippedConfigFault: 1,
+    };
+  }
+  await reportRecovery(deps, organizationId, "config_unavailable");
   const claimed = await claim(deps, organizationId, batchSize);
   let transmitted = 0;
   let requeued = 0;
@@ -383,7 +428,14 @@ export async function runTransmitNewRxForOrg(
     else if (result === "failed") failed += 1;
     else deferredByOutage += 1;
   }
-  return { claimed: claimed.length, transmitted, requeued, failed, deferredByOutage };
+  return {
+    claimed: claimed.length,
+    transmitted,
+    requeued,
+    failed,
+    deferredByOutage,
+    skippedConfigFault: 0,
+  };
 }
 
 /**

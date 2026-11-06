@@ -14,6 +14,7 @@ import {
   type M12CronDeps,
   runForEachActiveOrg,
 } from "./cron-common";
+import { runQueuedAgeAlertForOrg } from "./degradation-alerts";
 import { runEpcsAttemptExpirySweepForOrg, runIal2ExpiryWarnForOrg } from "./ial2-and-epcs-sweeps";
 import {
   type M12CronKey,
@@ -24,7 +25,11 @@ import {
 import { runRefillSlaForOrg } from "./refill-sla";
 import { runRxBenefitPrewarmForOrg } from "./rx-benefit-prewarm";
 import { runTransmissionSweepForOrg } from "./transmission-sweep";
-import { runRecoveryDrainForOrg, runTransmitNewRxForOrg } from "./transmit-newrx";
+import {
+  type TransmitPassResult,
+  runRecoveryDrainForOrg,
+  runTransmitNewRxForOrg,
+} from "./transmit-newrx";
 
 export interface BreakerEdge {
   readonly organizationId: string;
@@ -82,19 +87,56 @@ export interface M12CronWorkerDeps extends M12CronDeps {
 export function buildM12CronRunners(
   deps: M12CronWorkerDeps,
 ): Record<M12CronKey, () => Promise<void>> {
+  /** The transmit pass inside a per-org result (the recovery drain nests it under `pass`). */
+  const passOf = (result: unknown): Partial<TransmitPassResult> | undefined => {
+    if (typeof result !== "object" || result === null) return undefined;
+    const nested = (result as { pass?: unknown }).pass;
+    return (
+      typeof nested === "object" && nested !== null ? nested : result
+    ) as Partial<TransmitPassResult>;
+  };
   const fanOut =
-    (label: string, perOrg: (org: string) => Promise<unknown>, vendorBound: boolean) =>
+    (
+      label: string,
+      perOrg: (org: string) => Promise<unknown>,
+      vendorBound: boolean,
+      /** Runs for EVERY active org, including one a vendor-bound cron skips as not configured. */
+      forEveryOrg?: (org: string) => Promise<unknown>,
+    ) =>
     async () => {
-      await runForEachActiveOrg(label, deps.activeOrgs, async (org) => {
-        if (vendorBound && !(await deps.config.isConfiguredFor(org))) return;
-        await perOrg(org);
-      });
+      let deferredByOutage = 0;
+      let orgsSkippedByConfigFault = 0;
+      try {
+        await runForEachActiveOrg(label, deps.activeOrgs, async (org) => {
+          if (!vendorBound || (await deps.config.isConfiguredFor(org))) {
+            const pass = passOf(await perOrg(org));
+            deferredByOutage += pass?.deferredByOutage ?? 0;
+            orgsSkippedByConfigFault += pass?.skippedConfigFault ?? 0;
+          }
+          await forEveryOrg?.(org);
+        });
+      } finally {
+        // orders sent back to `queued` (a registration that stopped being live mid-batch, an open circuit) and orgs skipped whole were
+        // never visible to the tick's caller: say so, once per tick
+        if (deferredByOutage > 0 || orgsSkippedByConfigFault > 0) {
+          deps.warn?.(
+            { cron: label, deferredByOutage, orgsSkippedByConfigFault },
+            "M12 cron tick held orders back instead of transmitting them",
+          );
+        }
+      }
       if (deps.breakerEdges) {
         await deps.breakerEdges.flush(deps.db, deps.outbox, deps.now ?? (() => new Date()));
       }
     };
   return {
-    transmitNewRx: fanOut("M12_TRANSMIT_NEWRX", (o) => runTransmitNewRxForOrg(deps, o), true),
+    // the age alert covers every org, configured or not: an order that waits for an hour is the tenant's problem either way
+    transmitNewRx: fanOut(
+      "M12_TRANSMIT_NEWRX",
+      (o) => runTransmitNewRxForOrg(deps, o),
+      true,
+      (o) => runQueuedAgeAlertForOrg(deps, o),
+    ),
     transmitQueuedOnRecovery: fanOut(
       "M12_TRANSMIT_QUEUED_ON_RECOVERY",
       (o) => runRecoveryDrainForOrg(deps, o),

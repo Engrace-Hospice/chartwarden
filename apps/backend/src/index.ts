@@ -742,6 +742,7 @@ import {
   createDrizzleRosterStore,
   createDrizzleTenantConfigSource,
   createEnvWebhookSecretResolver,
+  createEpisodeTracker,
   createPractitionerProfileSource,
   createPrescriberEnrollmentService,
   createTransmissionGate,
@@ -11963,6 +11964,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       activeOrgs: m12SyncActiveOrgs,
       config: m12TenantConfig,
       breakerEdges: m12BreakerEdges,
+      // one alert per fault episode, and a log line (org ids and error classes only) for what a tick held back
+      episodes: createEpisodeTracker(),
+      warn: (fields, message) => app.log.warn(fields, message),
     });
     attachDlqAlertsToAll(m12CronWorkers, "m12");
     app.addHook("onClose", async () => {

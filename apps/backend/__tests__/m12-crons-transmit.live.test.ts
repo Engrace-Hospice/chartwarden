@@ -24,7 +24,9 @@ import {
 import { inOrg } from "../src/modules/12-dosespot/jobs/cron-common";
 import {
   type M12CronDeps,
+  buildM12CronRunners,
   createBreakerEdgeRecorder,
+  createEpisodeTracker,
   runRecoveryDrainForOrg,
   runTransmissionSweepForOrg,
   runTransmitNewRxForOrg,
@@ -311,19 +313,18 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         return { status: 200, text: async () => JSON.stringify({ Items: [{ Id: 9001 }] }) };
       return { status: 200, text: async () => JSON.stringify({ Id: 9001 }) };
     };
-    const realClient = () =>
-      createHttpDoseSpotClient({
-        resolver: createLayeredTenantConfigResolver({
-          source: createDrizzleTenantConfigSource({
-            db: h.handle.db,
-            cipher: stubCipher,
-            platformEnv,
-          }),
-          fallback: createEnvTenantConfigResolver({}),
+    /** A fresh resolver: the source caches an unsealed credential per row version, which would hide a later corrupt envelope. */
+    const realResolver = () =>
+      createLayeredTenantConfigResolver({
+        source: createDrizzleTenantConfigSource({
+          db: h.handle.db,
+          cipher: stubCipher,
+          platformEnv,
         }),
-        fetch: fakeFetch,
-        sleep: async () => undefined,
+        fallback: createEnvTenantConfigResolver({}),
       });
+    const realClient = (resolver = realResolver()) =>
+      createHttpDoseSpotClient({ resolver, fetch: fakeFetch, sleep: async () => undefined });
     const realDeps = (): M12CronDeps => ({
       db: h.handle.db,
       outbox: h.outbox,
@@ -373,7 +374,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         },
       ],
       [
-        "an `active` row whose sealed key cannot be opened (a corrupt envelope: the typed 503)",
+        "an `active` row whose sealed key cannot be opened, met MID-BATCH with no preflight (the typed 503)",
         async () => {
           await registration("active");
           cipherOpens = "corrupt";
@@ -397,6 +398,180 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         expect(vendorRequests).toEqual([]);
       },
     );
+
+    // ── a credential / resolver fault skips the pass: no claim, no UPDATE, no audit row, one alert per episode ───────────────────
+    describe("a credential or resolver fault skips the org's pass instead of churning its orders", () => {
+      let warnings: { fields: Record<string, string | number>; message: string }[] = [];
+      /** The cron's deps WITH the preflight: the resolver the client reads, an episode tracker and a captured log. */
+      const preflightDeps = () => {
+        const resolver = realResolver();
+        warnings = [];
+        return {
+          db: h.handle.db,
+          outbox: h.outbox,
+          client: realClient(resolver),
+          config: resolver,
+          episodes: createEpisodeTracker(),
+          warn: (fields: Record<string, string | number>, message: string) =>
+            warnings.push({ fields, message }),
+          now: () => T0,
+        } satisfies M12CronDeps;
+      };
+      const eventsNamed = async (type: string, breakerName: string) =>
+        (await h.eventsOf(type, ORG_A)).filter((e) => e.payload.breakerName === breakerName);
+      const auditCount = async () =>
+        (
+          await h.q("SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1", [ORG_A])
+        )[0]?.n as number;
+      const rowFacts = async (orderId: string) =>
+        (
+          await h.q(
+            "SELECT version, dosespot_send_state, updated_at FROM medication_order WHERE id=$1",
+            [orderId],
+          )
+        )[0];
+
+      it("a corrupt sealed key: nothing is claimed, updated or audited; ONE alert across two ticks; the order stays queued; it clears once the key opens", async () => {
+        const { orderId, transmissionId } = await queued();
+        await registration("active");
+        cipherOpens = "corrupt";
+        const world = preflightDeps();
+        const before = await rowFacts(orderId);
+        const auditBefore = await auditCount();
+
+        const first = await runTransmitNewRxForOrg(world, ORG_A);
+        const second = await runTransmitNewRxForOrg(world, ORG_A);
+
+        for (const pass of [first, second]) {
+          expect(pass).toEqual({
+            claimed: 0,
+            transmitted: 0,
+            requeued: 0,
+            failed: 0,
+            deferredByOutage: 0,
+            skippedConfigFault: 1,
+          });
+        }
+        // nothing was written for the order: same row, same version, same timestamp, no new audit row, transmission untouched
+        expect(await rowFacts(orderId)).toEqual(before);
+        expect(await auditCount()).toBe(auditBefore);
+        expect(await orderRow(orderId)).toMatchObject({
+          status: "queued_for_transmission",
+          s: "queued",
+        });
+        const t = await txRow(transmissionId as string);
+        expect(t.retry_count).toBe(0);
+        expect(t.transmission_started_at).toBeNull();
+        expect(vendorRequests).toEqual([]);
+        // ONE alert for the episode, through the real catalog-validating publisher, naming the class
+        const breaker = `dosespot-config_unavailable:${ORG_A}`;
+        const opened = await eventsNamed("m12.dosespot_degraded", breaker);
+        expect(opened).toHaveLength(1);
+        expect(opened[0]?.payload.lastErrorClass).toBe("config_unavailable");
+        // each tick logged the org id and the error class and code, never the key or the cipher's message
+        expect(warnings).toHaveLength(2);
+        expect(warnings[0]?.fields).toMatchObject({
+          organizationId: ORG_A,
+          cause: "ChartWardenError",
+          code: "DOSESPOT_CREDENTIAL_UNREADABLE",
+        });
+        const logged = JSON.stringify(warnings);
+        expect(logged).not.toContain(CLINIC_KEY);
+        expect(logged).not.toContain("Unsupported state");
+        // the key opens again: the order goes out, and the episode ends with exactly one recovery event
+        cipherOpens = "ok";
+        expect(await runTransmitNewRxForOrg(world, ORG_A)).toMatchObject({
+          claimed: 1,
+          transmitted: 1,
+          skippedConfigFault: 0,
+        });
+        expect(await runTransmitNewRxForOrg(world, ORG_A)).toMatchObject({ claimed: 0 });
+        expect(await eventsNamed("m12.dosespot_recovered", breaker)).toHaveLength(1);
+        expect(await eventsNamed("m12.dosespot_degraded", breaker)).toHaveLength(1);
+      });
+
+      it("the cron tick reports what it held back: an org skipped for a fault, and orders deferred mid-batch", async () => {
+        const activeOrgs = { listActiveOrgs: async () => [{ organizationId: ORG_A }] };
+        await registration("active");
+        // (a) a corrupt key: the org is skipped whole, and the tick says so
+        {
+          await queued();
+          cipherOpens = "corrupt";
+          const world = preflightDeps();
+          const runners = buildM12CronRunners({
+            ...world,
+            connection: {} as never,
+            activeOrgs,
+            config: world.config as never,
+          });
+          await runners.transmitNewRx();
+          expect(warnings.map((w) => w.fields)).toContainEqual({
+            cron: "M12_TRANSMIT_NEWRX",
+            deferredByOutage: 0,
+            orgsSkippedByConfigFault: 1,
+          });
+        }
+        // (b) an order the vendor boundary sends back to queued mid-batch is no longer discarded silently
+        {
+          await h.admin.query("DELETE FROM medication_order_transmission");
+          await h.admin.query("DELETE FROM medication_order");
+          await queued();
+          cipherOpens = "ok";
+          const world = preflightDeps();
+          const vendor = new FakeDoseSpotVendor({
+            transmit: async () => {
+              throw new NotEnabledError("dosespot", "transmitNewRx", "not enabled", "c9");
+            },
+          });
+          const runners = buildM12CronRunners({
+            ...world,
+            client: vendor,
+            connection: {} as never,
+            activeOrgs,
+            config: world.config as never,
+          });
+          await runners.transmitNewRx();
+          expect(warnings.map((w) => w.fields)).toContainEqual({
+            cron: "M12_TRANSMIT_NEWRX",
+            deferredByOutage: 1,
+            orgsSkippedByConfigFault: 0,
+          });
+        }
+      });
+
+      it("an order that waits in `queued` past the threshold raises ONE age alert (even for an org the cron skips as not live), and clears when it moves", async () => {
+        const { orderId } = await queued();
+        await registration("registered"); // not live: the transmit cron skips this org, so the age alert is all that speaks
+        await h.admin.query(
+          "UPDATE medication_order_transmission SET queued_at = now() - interval '2 hours' WHERE medication_order_id=$1",
+          [orderId],
+        );
+        const world = preflightDeps();
+        const runners = buildM12CronRunners({
+          ...world,
+          connection: {} as never,
+          activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+          config: world.config as never,
+        });
+        const before = await rowFacts(orderId);
+        await runners.transmitNewRx();
+        await runners.transmitNewRx();
+        const breaker = `dosespot-queued_orders_stale:${ORG_A}`;
+        const opened = await eventsNamed("m12.dosespot_degraded", breaker);
+        expect(opened).toHaveLength(1);
+        expect(opened[0]?.payload.lastErrorClass).toBe("queued_orders_stale");
+        expect(await rowFacts(orderId)).toEqual(before); // the skipped org's order was not touched
+        await h.admin.query(
+          "UPDATE medication_order_transmission SET queued_at = now() WHERE medication_order_id=$1",
+          [orderId],
+        );
+        await runners.transmitNewRx();
+        expect(await eventsNamed("m12.dosespot_recovered", breaker)).toHaveLength(1);
+        await runners.transmitNewRx();
+        expect(await eventsNamed("m12.dosespot_recovered", breaker)).toHaveLength(1);
+        expect(await eventsNamed("m12.dosespot_degraded", breaker)).toHaveLength(1);
+      });
+    });
 
     it("control: the same order goes out once the registration is active and its key opens (so the deferrals above are the registration's doing)", async () => {
       const { orderId } = await queued();

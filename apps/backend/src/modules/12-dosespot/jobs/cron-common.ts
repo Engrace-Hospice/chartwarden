@@ -2,18 +2,56 @@
 // Every cron is ORG-EXPLICIT: a tick fans out over the active orgs and runs one pass per org, each opening its
 // own `withOrgContext` (a cron tick is not a request). The vendor call is NEVER made inside a transaction.
 import type { DbClient } from "@chartwarden/db";
-import { type DegradedError, type DoseSpotClient, isDegradedError } from "@chartwarden/dosespot";
+import {
+  type DegradedError,
+  type DoseSpotClient,
+  type DoseSpotTenantConfigResolver,
+  isDegradedError,
+} from "@chartwarden/dosespot";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 
 /** A worker-driven write names no acting membership (the M12 sync worker's convention). */
 export const CRON_USER_ID = "";
 
+/**
+ * Remembers which faults are already reported, so one is alerted ONCE per episode (and its clearing once) instead of on every tick.
+ * `raise` is true on the first report of an episode; `clear` is true when an episode was open and has now ended.
+ * ponytail: in memory, per process: a restart (or a second worker) alerts once more. Persist it if that noise ever matters.
+ */
+export interface EpisodeTracker {
+  raise(key: string): boolean;
+  clear(key: string): boolean;
+}
+
+export function createEpisodeTracker(): EpisodeTracker {
+  const open = new Set<string>();
+  return {
+    raise(key) {
+      if (open.has(key)) return false;
+      open.add(key);
+      return true;
+    },
+    clear(key) {
+      return open.delete(key);
+    },
+  };
+}
+
 export interface M12CronDeps {
   readonly db: DbClient;
   readonly outbox: DoseSpotWriteOutboxPort;
   readonly client: DoseSpotClient;
   readonly now?: () => Date;
+  /**
+   * The same resolver the client reads. The transmit pass resolves the org's config ONCE before it claims anything, so a credential or
+   * resolver fault skips the pass (no claim, no UPDATE, no audit row) instead of being rediscovered, and audited, order by order.
+   */
+  readonly config?: Pick<DoseSpotTenantConfigResolver, "configFor">;
+  /** Episode memory for the degradation alerts. Absent = faults are logged on every tick but never alerted. */
+  readonly episodes?: EpisodeTracker;
+  /** A structured warning (pino's `(fields, message)` shape). Never given a secret, a key or a name: org ids and error classes. */
+  readonly warn?: (fields: Record<string, string | number>, message: string) => void;
 }
 
 export const nowOf = (deps: Pick<M12CronDeps, "now">): Date => (deps.now ?? (() => new Date()))();
