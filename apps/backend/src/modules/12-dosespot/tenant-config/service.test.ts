@@ -307,6 +307,65 @@ describe("put: changing an existing registration", () => {
   });
 });
 
+describe("an unopenable stored envelope refuses a PARTIAL rotation (it would silently drop the ops-set Subscription-Key)", () => {
+  async function withBrokenEnvelope() {
+    const h = build({ env: withPlatformKey });
+    await putFull(h, { subscriptionKey: SUB_KEY }, OPS); // ops set the clinic's own Subscription-Key
+    await h.store.update(ORG, h.store.rows()[0]?.version ?? 1, {
+      secretCipher: "v1.AAAA.AAAA.AAAA",
+    });
+    return h;
+  }
+
+  it("a new clinic key alone is refused with a typed 503 and the row is left as it was", async () => {
+    for (const actor of [OPS, TENANT]) {
+      const h = await withBrokenEnvelope();
+      const before = h.store.rows()[0];
+      await expect(
+        h.service.put(
+          h.store,
+          actor,
+          { ...BASE, clinicKey: "a-new-clinic-key-cccc3333" },
+          before?.version,
+        ),
+      ).rejects.toMatchObject({ statusCode: 503, code: "DOSESPOT_CREDENTIAL_UNREADABLE" });
+      expect(h.store.rows()[0]).toEqual(before);
+    }
+  });
+
+  it("platform support re-entering BOTH keys is a full replace and is accepted", async () => {
+    const h = await withBrokenEnvelope();
+    const out = await h.service.put(
+      h.store,
+      OPS,
+      {
+        ...BASE,
+        clinicKey: "a-new-clinic-key-cccc3333",
+        subscriptionKey: "a-new-sub-key-dddd4444",
+      },
+      h.store.rows()[0]?.version,
+    );
+    expect(out.view.status).toBe("registered");
+    const plan = await h.service.prepareVerify(h.store, OPS);
+    expect(plan.config).toMatchObject({
+      clinicKey: "a-new-clinic-key-cccc3333",
+      subscriptionKey: "a-new-sub-key-dddd4444",
+    });
+  });
+
+  it("a draft with no sealed key at all is not 'unopenable': saving the key for the first time works", async () => {
+    const h = build({ env: withPlatformKey });
+    await h.service.put(
+      h.store,
+      TENANT,
+      { environment: "sandbox", clinicId: "clinic-1" },
+      undefined,
+    );
+    const out = await h.service.put(h.store, TENANT, { ...BASE, clinicKey: CLINIC_KEY }, 1);
+    expect(out.view.status).toBe("registered");
+  });
+});
+
 describe("the Subscription-Key: ops may set it, the tenant lane may only rotate it", () => {
   it("the tenant lane cannot introduce one", async () => {
     const h = build();

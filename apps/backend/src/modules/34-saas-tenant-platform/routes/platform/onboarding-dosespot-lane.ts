@@ -78,6 +78,7 @@ export interface DoseSpotLaneHelpers {
       readonly value: T;
       readonly resourceId: string;
       readonly changedFields?: readonly string[];
+      readonly noChange?: boolean;
       readonly detail?: Readonly<Record<string, string | number | boolean>>;
     }>,
   ) => Promise<T>;
@@ -158,6 +159,7 @@ export function buildDoseSpotLane(h: DoseSpotLaneHelpers): DoseSpotLaneMethods {
             value: { created: done.created === true, view: done.view },
             resourceId: done.resourceId,
             ...(done.changedFields ? { changedFields: done.changedFields } : {}),
+            ...(done.changedFields?.length === 0 ? { noChange: true } : {}),
           };
         },
       );

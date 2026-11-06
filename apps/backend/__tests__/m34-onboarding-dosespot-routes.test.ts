@@ -240,6 +240,23 @@ describe("platform DoseSpot write guards", () => {
   }
 });
 
+describe("the AI-actor refusal says what it refuses", () => {
+  it("names the DoseSpot registration, not billing records", async () => {
+    const app = makeServer([]);
+    const res = await app.inject({
+      method: "PUT",
+      url: BASE,
+      headers: { ...fresh(), "x-actor-kind": "ai_agent" },
+      payload: PUT_BODY,
+    });
+    expect(res.statusCode).toBe(403);
+    const message = String(res.json().error?.message ?? res.json().message);
+    expect(message).toMatch(/DoseSpot/);
+    expect(message).not.toMatch(/billing/i);
+    await app.close();
+  });
+});
+
 describe("platform DoseSpot reads", () => {
   it("need the read key and the platform_ops predicate; a tenant admin and the clearinghouse keys are refused", async () => {
     const calls: Call[] = [];

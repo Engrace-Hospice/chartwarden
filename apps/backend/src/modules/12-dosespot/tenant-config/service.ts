@@ -346,6 +346,17 @@ export function createDoseSpotClinicService(
     const changed: string[] = [];
     // A retarget drops the old key (it is bound to the old target); nothing supplied => nothing carried.
     const stored = existing && !retargeted && supplied ? await openStored(existing) : null;
+    // The stored envelope exists but cannot be opened: a PARTIAL change would rebuild the bundle from the new half alone and silently drop
+    // whatever the other half was (an ops-set Subscription-Key). Only a caller who supplies BOTH keys is replacing it whole.
+    if (existing?.secretCipher && !retargeted && supplied && stored === null) {
+      if (input.clinicKey === undefined || input.subscriptionKey === undefined) {
+        throw new ChartWardenError(
+          "DOSESPOT_CREDENTIAL_UNREADABLE",
+          "the stored DoseSpot credential cannot be opened, so it cannot be partly changed; platform support must re-enter the clinic key and the Subscription-Key together",
+          503,
+        );
+      }
+    }
     if (input.subscriptionKey !== undefined && actor.lane !== "platform") {
       if (!stored?.subscriptionKey) {
         throw invalid(

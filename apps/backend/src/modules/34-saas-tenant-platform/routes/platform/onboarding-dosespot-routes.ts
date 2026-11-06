@@ -42,7 +42,7 @@ const WRITE: readonly PreHandler[] = [
   P(WRITE_KEY),
   OPS(WRITE_KEY),
   requireStepUp(WRITE_KEY) as PreHandler,
-  rejectAiActor(),
+  rejectAiActor("AI principals cannot change a tenant's DoseSpot registration"),
   requireIdempotencyKey,
 ];
 

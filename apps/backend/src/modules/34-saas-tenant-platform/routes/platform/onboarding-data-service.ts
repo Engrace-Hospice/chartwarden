@@ -248,6 +248,11 @@ interface WriteResult<T> {
   readonly value: T;
   readonly resourceId: string;
   readonly changedFields?: readonly string[];
+  /**
+   * The write changed NOTHING (a no-op save): the audit row stays, but a pending go-live attestation is NOT voided: it attested data that
+   * is exactly as it was.
+   */
+  readonly noChange?: boolean;
   /** Non-sensitive facts for the audit row (counts, codes, kinds). */
   readonly detail?: Readonly<Record<string, string | number | boolean>>;
 }
@@ -374,11 +379,13 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
           const done = await run(tx, target);
           // A pending go-live attestation said this data was ready: the write makes that stale, so it is voided in the same
           // transaction (the attestation and the write commit or roll back together).
-          await voidPendingGoLiveForDataChange(tx, {
-            organizationId: target.organizationId,
-            revokedByUserId: op.userId,
-            revokedByMembershipId: op.membershipId,
-          });
+          if (!done.noChange) {
+            await voidPendingGoLiveForDataChange(tx, {
+              organizationId: target.organizationId,
+              revokedByUserId: op.userId,
+              revokedByMembershipId: op.membershipId,
+            });
+          }
           await recordOnboardingAudit(tx, op, target, {
             eventType: spec.event,
             resourceKind: spec.resourceKind,
