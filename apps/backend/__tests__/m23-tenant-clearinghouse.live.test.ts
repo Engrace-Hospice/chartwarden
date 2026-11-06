@@ -92,6 +92,7 @@ import { createOnboardingAdvancer } from "../src/modules/34-saas-tenant-platform
 import { buildPricingOnboardingPort } from "../src/modules/34-saas-tenant-platform/onboarding/pricing-port";
 import { createSettleOnboardingForOrg } from "../src/modules/34-saas-tenant-platform/onboarding/settle-for-org";
 import { createDrizzleSubscriptionWorkBlockReader } from "../src/modules/35-subscription/addon/entitlement";
+import { reconcileThenStatement } from "../src/modules/35-subscription/billing-runtime/workers";
 import { M35_OUTBOX_EVENTS } from "../src/modules/35-subscription/events-by-m35";
 import {
   type ContractService,
@@ -101,6 +102,7 @@ import {
 } from "../src/modules/35-subscription/pricing/contract-service";
 import { SYSTEM_TRIGGER, modeTriggerOf } from "../src/modules/35-subscription/pricing/mode-trigger";
 import { buildOnboardingBillingModePort } from "../src/modules/35-subscription/pricing/onboarding-billing-mode-port";
+import { createOutsideModeReconciler } from "../src/modules/35-subscription/pricing/outside-reconcile";
 import {
   type PricingPlanService,
   buildPricingPlanService,
@@ -134,6 +136,7 @@ const ORG_H = "a8000000-0000-4000-8000-0000000000a8"; // only the operator's lis
 const ORG_I = "a9000000-0000-4000-8000-0000000000a9"; // a live tenant with a signed contract: its own outside choice sets billing mode none
 const ORG_J = "aa000000-0000-4000-8000-0000000000aa"; // onboarding with a signed contract: an operator moves it out of outside
 const ORG_K = "ab000000-0000-4000-8000-0000000000ab"; // live, no contract: its own switch out of outside is allowed
+const ORG_L = "ac000000-0000-4000-8000-0000000000ac"; // outside with a mode that is not none: the hourly sweep's backstop applies the rule
 const OPERATOR = "c9000000-0000-4000-8000-0000000000c9";
 const MEMBERSHIP = "e9000000-0000-4000-8000-0000000000e9";
 const TENANT_ADMIN = "7a000000-0000-4000-8000-0000000000a7";
@@ -266,6 +269,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_I, "ch-i"],
       [ORG_J, "ch-j"],
       [ORG_K, "ch-k"],
+      [ORG_L, "ch-l"],
     ] as const) {
       await admin.query(
         "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -291,6 +295,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_I, "onboarding"],
       [ORG_J, "onboarding"],
       [ORG_K, "active"],
+      [ORG_L, "onboarding"],
     ] as const) {
       await admin.query(
         "INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,$3,'b@x.test','p@x.test')",
@@ -298,7 +303,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       );
     }
     // Wizard tasks for the two onboarding tenants; steps 1-6 are done so step 7 (clearinghouse_selected) is the one in play.
-    for (const org of [ORG_B, ORG_F, ORG_J]) {
+    for (const org of [ORG_B, ORG_F, ORG_J, ORG_L]) {
       await admin.query(
         `INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key)
          SELECT $1, (SELECT id FROM tenant_account WHERE organization_id=$1), key FROM onboarding_task_template WHERE retired_at IS NULL`,
@@ -1948,6 +1953,51 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       expect(last?.context.reason).toBe(REASON);
       // the credential never reached the pricing side or any audit row
       expect(JSON.stringify(await modeAudits(ORG_J))).not.toContain(VENDOR_KEY);
+    });
+
+    it("the hourly sweep's backstop: an outside tenant whose mode is not none is set to none, before its statement, attributed to the system", async () => {
+      await contracts.createForTenant(operator, "ch-l", {
+        planSlug: await publishedPlanSlug(),
+        billingServiceMode: "billing_software",
+        orderFormRef: "OF-SWEEP-1",
+        reason: "order form signed by the customer's administrator",
+      });
+      // outside, but the wizard's best-effort sync never ran (or failed): the mode is still billing_software
+      const chose = await platformCall("PUT", "ch-l", "", { vendor: "outside", reason: REASON });
+      expect(chose.statusCode, chose.body).toBe(201);
+      expect(await inForce(ORG_L)).toBe("billing_software");
+
+      // the real reconciler over the real choice seam and the real contract service, driven by the sweep's own per-org step
+      const reconcile = createOutsideModeReconciler({
+        billsOutside: async (org) =>
+          (await getSeam("TenantClearinghouseReader").choiceForOrg(org)).vendor === "outside",
+        contracts: () => contracts,
+      });
+      const order: string[] = [];
+      await reconcileThenStatement(
+        async (org) => {
+          await reconcile(org);
+          order.push(`reconciled:${await inForce(ORG_L)}`);
+        },
+        undefined,
+        async () => void order.push(`statement:${await inForce(ORG_L)}`),
+        ORG_L,
+      );
+
+      // the statement is computed on the corrected mode, never before it
+      expect(order).toEqual(["reconciled:none", "statement:none"]);
+      const last = (await modeAudits(ORG_L)).at(-1);
+      expect(last?.context).toMatchObject({
+        from: "billing_software",
+        to: "none",
+        trigger: "clearinghouse_outside",
+        operatorUserId: "system",
+        triggeredBy: "system",
+        triggeredByUserId: null,
+      });
+      // a second sweep finds nothing to do: no second row, no second audit
+      await reconcile(ORG_L);
+      expect(await modeAudits(ORG_L)).toHaveLength(1);
     });
 
     it("refuses a billing mode on a write that is not a contracted tenant's switch out of outside (422), never silently ignoring it", async () => {
