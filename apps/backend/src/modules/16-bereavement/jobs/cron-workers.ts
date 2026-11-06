@@ -37,12 +37,14 @@ import type {
 } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { emitAlertBestEffort } from "../alert-port";
 import {
   isAssessmentTaskOverdue,
   transitionBereavementOutreach,
   transitionBereavementPlan,
 } from "../lifecycle/index";
 import { requestDischargeSummary } from "../render-payloads/index";
+import { settleOutstandingForClosure } from "../routes/closure-settlement";
 import { runEffects } from "../routes/effects-runner";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
 import {
@@ -63,6 +65,9 @@ const LOG = schema.bereavementContactLog;
 const TASK = schema.bereavementAssessmentTask;
 
 const MS_PER_DAY = 86_400_000;
+
+/** One alert as the port takes it. */
+type AlertInput = Parameters<AlertPort["emit"]>[0];
 
 /** §3.3 — a cron-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention: an empty
  *  string reads back as SQL NULL through the audit trigger's actor lookup, which the `user` FK accepts). */
@@ -217,19 +222,14 @@ async function closeOnePlan(
     .returning({ id: PLAN.id });
   if (updated.length !== 1) throw new LostRaceError();
 
-  // `cancel_future_outreach` (plan scope) — future-dated scheduled rows only, the route-path parity.
-  await tx
-    .update(OUTREACH)
-    .set({
-      status: "cancelled",
-      cancelledAt: now,
-      cancellationReasonRedacted: "plan closed at 13 months",
-      version: sql`${OUTREACH.version} + 1`, // §2.5 (GAP-194)
-      updatedAt: now,
-    })
-    .where(
-      and(eq(OUTREACH.planId, plan.id), eq(OUTREACH.status, "scheduled"), gte(OUTREACH.dueAt, now)),
-    );
+  // Everything still `scheduled` is settled before the counts freeze and the discharge summary is built: due -> missed (the d390
+  // `closeout_letter` is still inside its grace window when the 13-month close fires), future -> cancelled. The miss cron only reads
+  // ACTIVE plans, so a row left `scheduled` on this closed plan would be stranded, and M30 would count it for ever.
+  await settleOutstandingForClosure(tx, {
+    planId: plan.id,
+    at: now,
+    cancelReason: "plan closed at 13 months",
+  });
 
   const [outreach] = await tx
     .select({
@@ -398,17 +398,12 @@ async function missOneOutreach(
 }
 
 /**
- * ADR-0109 D3 — mark one overdue assessment checkpoint `missed` and tell oversight. The guarded UPDATE (`WHERE status =
- * 'scheduled'`) makes two overlapping ticks race safely; the plan must be `active` and the contact still in the program
- * (a contact that opted out, died or was referred out had its tasks cancelled, and a stray one is skipped here too).
+ * ADR-0109 D3 — mark one overdue assessment checkpoint `missed`. The guarded UPDATE (`WHERE status = 'scheduled'`) makes two overlapping
+ * ticks race safely; the plan must be `active` and the contact still in the program (a contact that opted out, died or was referred out
+ * had its tasks cancelled, and a stray one is skipped here too). Returns the oversight alert to raise: the caller emits it AFTER the
+ * transaction commits, so an alert is never raised for a miss that then rolled back.
  */
-async function missOneAssessmentTask(
-  tx: DbClient,
-  deps: M16WorkerDeps,
-  organizationId: string,
-  taskId: string,
-  now: Date,
-): Promise<void> {
+async function missOneAssessmentTask(tx: DbClient, taskId: string, now: Date): Promise<AlertInput> {
   const [row] = await tx
     .select({
       task: TASK,
@@ -431,20 +426,17 @@ async function missOneAssessmentTask(
     .returning({ id: TASK.id });
   if (updated.length !== 1) throw new LostRaceError();
 
-  // An alert is advisory and best-effort (rule 3 of the effect runner): a notification outage never un-misses the task.
-  await deps.alerts
-    ?.emit({
-      organizationId,
-      kind: "risk_assessment_overdue",
-      payload: {
-        planId: row.task.planId,
-        contactId: row.task.bereavedContactId,
-        taskId: row.task.id,
-        taskKind: row.task.taskKind,
-        dueAt: row.task.dueAt.toISOString(),
-      },
-    })
-    .catch(() => undefined);
+  return {
+    organizationId: row.task.organizationId,
+    kind: "risk_assessment_overdue",
+    payload: {
+      planId: row.task.planId,
+      contactId: row.task.bereavedContactId,
+      taskId: row.task.id,
+      taskKind: row.task.taskKind,
+      dueAt: row.task.dueAt.toISOString(),
+    },
+  };
 }
 
 /** §4.9 `m16-miss-deadline` — fan out over active orgs; mark every overdue `scheduled` outreach `missed`, then (ADR-0109
@@ -486,12 +478,16 @@ export async function runMissDeadlineCron(
           .select({ id: TASK.id })
           .from(TASK)
           .innerJoin(PLAN, eq(PLAN.id, TASK.planId))
+          // Only a contact still in the program can miss a checkpoint: an unreachable / ineligible contact's overdue row would be
+          // skipped by `missOneAssessmentTask` anyway, and would sit at the head of the oldest-first batch of 500 forever, clogging it.
+          .innerJoin(CONTACT, eq(CONTACT.id, TASK.bereavedContactId))
           .where(
             and(
               eq(TASK.organizationId, organizationId),
               eq(TASK.status, "scheduled"),
               lt(TASK.lateGraceUntil, now),
               eq(PLAN.status, "active"),
+              inArray(CONTACT.status, ["proposed", "active"]),
             ),
           )
           .orderBy(asc(TASK.lateGraceUntil))
@@ -499,10 +495,13 @@ export async function runMissDeadlineCron(
       ).map((r) => r.id),
     );
     for (const taskId of taskIds) {
-      const won = await inRowTx(deps, organizationId, "miss-assessment", taskId, (tx) =>
-        missOneAssessmentTask(tx, deps, organizationId, taskId, now),
-      );
-      if (won) assessmentsMissed += 1;
+      const raised: { alert?: AlertInput } = {};
+      const won = await inRowTx(deps, organizationId, "miss-assessment", taskId, async (tx) => {
+        raised.alert = await missOneAssessmentTask(tx, taskId, now);
+      });
+      if (!won) continue;
+      assessmentsMissed += 1;
+      if (raised.alert) await emitAlertBestEffort(deps.alerts, raised.alert);
     }
   }
   return { missed, assessmentsMissed };

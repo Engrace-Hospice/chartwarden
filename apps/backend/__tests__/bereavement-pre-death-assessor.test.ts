@@ -193,6 +193,32 @@ describe("draft factor rules", () => {
     expect(draftFactorsForStorage(stated, false).socialIsolation).toBe(false);
   });
 
+  it("an uncleared writer keeps the stored substance-use value instead of overwriting it with unknown", () => {
+    const storedByCleared = { ...stated, activeSubstanceUse: true };
+    const blindRewrite = { ...stated, activeSubstanceUse: "unknown" as const };
+    expect(draftFactorsForStorage(blindRewrite, false, storedByCleared).activeSubstanceUse).toBe(
+      true,
+    );
+    expect(
+      draftFactorsForStorage(blindRewrite, false, { ...stated, activeSubstanceUse: false })
+        .activeSubstanceUse,
+    ).toBe(false);
+    // a value the uncleared writer tries to SET never lands either; nothing stored (or a malformed slot) stays unknown
+    const attempt = { ...stated, activeSubstanceUse: true as const };
+    expect(draftFactorsForStorage(attempt, false, undefined).activeSubstanceUse).toBe("unknown");
+    expect(
+      draftFactorsForStorage(attempt, false, { activeSubstanceUse: "yes" }).activeSubstanceUse,
+    ).toBe("unknown");
+    // a cleared writer's statement is stored as stated, whatever was there
+    expect(draftFactorsForStorage(blindRewrite, true, storedByCleared).activeSubstanceUse).toBe(
+      "unknown",
+    );
+    // the other slots are always the writer's own
+    expect(
+      draftFactorsForStorage(blindRewrite, false, storedByCleared).ambivalentRelationship,
+    ).toBe(true);
+  });
+
   it("an uncleared reader never sees a stored substance-use value", () => {
     expect(draftFactorsForReader(stated, false).activeSubstanceUse).toBe("unknown");
     expect(draftFactorsForReader(stated, true).activeSubstanceUse).toBe(true);

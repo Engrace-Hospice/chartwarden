@@ -110,7 +110,6 @@ export function buildDrizzleM16DraftService(
       }
       const providerEntityId: string = siting.providerEntityId;
       const gate = await resolveBereavementDisclosure(actor, patientId, disclosure);
-      const stored = draftFactorsForStorage(input.factors, gate.sudAllowed);
       const discipline = disciplineForRoleKeys(actor.roles) ?? OVERSIGHT_DISCIPLINE;
 
       return withOrgContext(db, scope(actor), async (tx) => {
@@ -128,6 +127,12 @@ export function buildDrizzleM16DraftService(
           .where(eq(DRAFT.admissionId, admissionId))
           .limit(1);
         checkVersion(input.expectedVersion, existing?.version ?? 0);
+        // An uncleared writer keeps the stored Part 2 slot (it cannot see it, so it must not erase it).
+        const stored = draftFactorsForStorage(
+          input.factors,
+          gate.sudAllowed,
+          existing?.factorsJsonb,
+        );
         const stamp = {
           factorsJsonb: stored,
           lastEditedByMembershipId: actor.membershipId,

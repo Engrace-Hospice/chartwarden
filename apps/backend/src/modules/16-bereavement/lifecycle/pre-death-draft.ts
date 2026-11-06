@@ -29,20 +29,28 @@ export const EMPTY_DRAFT_FACTORS: BereavementRiskFactorInputs = Object.freeze({
   activeSubstanceUse: "unknown",
 });
 
+const isTriState = (value: unknown): value is BereavementFactorValue =>
+  value === true || value === false || value === "unknown";
+
 /**
- * The vector to STORE: the writer's eight tri-state values, with the substance-use slot forced to `unknown` unless the writer
- * is cleared for 42 CFR Part 2 content (the same disclosure verdict the risk reads use). Forced, not refused: a draft that
- * states "unknown" for a slot the writer may not see is the honest record, and the request still succeeds.
+ * The vector to STORE: the writer's eight tri-state values. The substance-use slot is the one a writer may not be cleared to see
+ * (42 CFR Part 2, the same disclosure verdict the risk reads use): an UNCLEARED writer neither sets nor erases it, so the slot keeps
+ * what is already stored (`previouslyStored`, the draft's jsonb), or `unknown` when nothing is. Preserved, not forced and not refused:
+ * an uncleared assessor reads `unknown` for the slot, so a read-modify-write would otherwise wipe a cleared colleague's value, and the
+ * request still succeeds.
  */
 export function draftFactorsForStorage(
   stated: BereavementRiskFactorInputs,
   sudAllowed: boolean,
+  previouslyStored?: unknown,
 ): BereavementRiskFactorInputs {
-  return sudAllowed ? { ...stated } : { ...stated, [SUD_GATED_FACTOR]: "unknown" };
+  if (sudAllowed) return { ...stated };
+  const prior =
+    typeof previouslyStored === "object" && previouslyStored !== null
+      ? (previouslyStored as Record<string, unknown>)[SUD_GATED_FACTOR]
+      : undefined;
+  return { ...stated, [SUD_GATED_FACTOR]: isTriState(prior) ? prior : "unknown" };
 }
-
-const isTriState = (value: unknown): value is BereavementFactorValue =>
-  value === true || value === false || value === "unknown";
 
 /**
  * The vector to SHOW a reader, from the stored jsonb. Read defensively (the column is jsonb): a slot that is missing or not
