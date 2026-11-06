@@ -55,7 +55,7 @@ export const AckBroadcastCreateBodySchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const AckBroadcastSummarySchema = Type.Object(SummaryProps);
+const AckBroadcastSummarySchema = Type.Object(SummaryProps);
 export const AckBroadcastCreatedSchema = Type.Object({
   ...SummaryProps,
   created: Type.Boolean(),

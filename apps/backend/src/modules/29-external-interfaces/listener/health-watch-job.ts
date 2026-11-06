@@ -9,7 +9,7 @@ import { type FeedHealthWatchDeps, runFeedHealthWatch } from "./health-watch";
 
 export const M29_FEED_HEALTH_WATCH_QUEUE = "m29.feed_health_watch";
 /** Every minute (5-field, the repo's other crons' shape); a stale heartbeat is 90s, so one tick can see it. */
-export const M29_FEED_HEALTH_WATCH_SCHEDULE = "* * * * *";
+const M29_FEED_HEALTH_WATCH_SCHEDULE = "* * * * *";
 
 export type FeedHealthWatchConfig =
   | { readonly enabled: false }

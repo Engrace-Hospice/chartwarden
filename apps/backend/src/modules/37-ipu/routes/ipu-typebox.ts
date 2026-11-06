@@ -166,7 +166,7 @@ export const DischargeBodySchema = Type.Object({
 });
 export type DischargeBody = Static<typeof DischargeBodySchema>;
 
-export const ConfirmBodySchema = Type.Object({
+const ConfirmBodySchema = Type.Object({
   /** The M6 LCP confirmation was force-flagged past the 30s window by an Admissions Coordinator. */
   forceFlag: Type.Optional(Type.Boolean()),
 });
@@ -398,7 +398,7 @@ export const RestraintViewSchema = Type.Object({
 // needs was obtainable only from the response of the POST that created it, inside one browser session.
 // A behavioral restraint is reassessed every 15 minutes and a visitor is checked out by a later shift:
 // both are, by definition, done by someone who did not perform the create. The lists close that.
-export const RestraintDetailViewSchema = Type.Object({
+const RestraintDetailViewSchema = Type.Object({
   id,
   ipuAdmissionId: id,
   restraintKind: Type.String(),
@@ -420,7 +420,7 @@ export const RestraintListSchema = Type.Object({
   items: Type.Array(RestraintDetailViewSchema),
 });
 
-export const GipCriteriaDetailViewSchema = Type.Object({
+const GipCriteriaDetailViewSchema = Type.Object({
   id,
   ipuAdmissionId: id,
   criterionKind: Type.String(),
@@ -507,7 +507,7 @@ export const LiftVisitorRestrictionBodySchema = Type.Object({ restrictionId: id 
 // was NO read route: the id existed only in the 201 of the POST. A `full_block` or `mask_required`
 // restriction persists until lifted, so this made an infection-control block liftable only by whoever
 // still had the tab that applied it. Same defect as the F-069 restraint/visitor ids, one module over.
-export const VisitorRestrictionDetailViewSchema = Type.Object({
+const VisitorRestrictionDetailViewSchema = Type.Object({
   id,
   scope: Type.String(),
   unitId: Type.Union([id, Type.Null()]),

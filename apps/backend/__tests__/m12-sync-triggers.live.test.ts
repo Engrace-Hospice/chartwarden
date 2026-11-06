@@ -34,7 +34,6 @@ import {
   type EnqueueInput,
   type EnqueueResult,
 } from "../src/modules/12-dosespot/jobs/repository";
-import { M12DosespotPatientIdUnbound } from "../src/modules/12-dosespot/jobs/vendor-boundary";
 import {
   type ActiveOrgListPort,
   type DoseSpotSyncWorkerDeps,
@@ -332,12 +331,6 @@ describe.skipIf(!DB_URL)(
           return isDegradedError(e) && e.retryable === false;
         },
       );
-    });
-
-    it("M12DosespotPatientIdUnbound carries the patient id and a precise, non-generic reason", () => {
-      const err = new M12DosespotPatientIdUnbound("patient-123");
-      expect(err.patientId).toBe("patient-123");
-      expect(err.message).toMatch(/no.*mapping table/i);
     });
   },
 );

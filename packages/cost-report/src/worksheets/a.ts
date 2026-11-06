@@ -6,7 +6,7 @@
 // INTEGER CENTS; no PHI — aggregate GL totals only (D18).
 //
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
-import { type Static, Type } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 
 /** Worksheet A — trial balance of expenses by cost center. Field set is verbatim from spec §4.2. */
 export const WorksheetA = Type.Object({
@@ -30,5 +30,3 @@ export const WorksheetA = Type.Object({
   grandTotalCostsCents: Type.Integer(),
   tiesToTrialBalanceWithinDollar: Type.Boolean(),
 });
-
-export type WorksheetAData = Static<typeof WorksheetA>;

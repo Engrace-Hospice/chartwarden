@@ -33,9 +33,9 @@ export const HASH_VERIFY_RANDOM_SAMPLE_SIZE = 500;
 /** The recent pass reaches this far before the previous run's start (covers commits that landed during that run). */
 export const HASH_VERIFY_RECENT_OVERLAP_MS = 60 * 60 * 1000;
 /** The audit event the cursor is read back from. */
-export const HASH_VERIFY_RUN_EVENT = "m36.hash_verify.run";
+const HASH_VERIFY_RUN_EVENT = "m36.hash_verify.run";
 /** Latest run rows scanned for the newest system-actor one (bounded; forged rows beyond it cannot hide the cursor cheaply). */
-export const PREVIOUS_RUN_SCAN_LIMIT = 50;
+const PREVIOUS_RUN_SCAN_LIMIT = 50;
 
 export interface RowMeta {
   readonly cipherBytes: Buffer;

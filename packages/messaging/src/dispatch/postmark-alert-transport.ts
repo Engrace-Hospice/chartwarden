@@ -9,7 +9,7 @@ import { TransportError } from "./transports";
 import type { OutOfBandTransport } from "./transports";
 import { type VendorFetch, postToVendor } from "./vendor-http";
 
-export const POSTMARK_ALERT_DEFAULT_BASE_URL = "https://api.postmarkapp.com";
+const POSTMARK_ALERT_DEFAULT_BASE_URL = "https://api.postmarkapp.com";
 
 export interface PostmarkAlertEmailOptions {
   readonly serverToken: string;

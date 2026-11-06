@@ -10,7 +10,7 @@ export function paddedSize(realTagCount: number): number {
 }
 
 /** A uniform integer in [0, 2^tagBits) from the CSPRNG (rejection-sampled by node:crypto). */
-export function randomTag(tagBits: number): number {
+function randomTag(tagBits: number): number {
   return randomInt(0, 2 ** assertTagBits(tagBits));
 }
 

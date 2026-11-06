@@ -14,7 +14,7 @@ export const M36_MEDICATION_QUESTION_NOTIFICATION_CONSUMER =
   "m36.medication-question-notifications" as const;
 
 /** One supervisor alert per (channel, asker) per window: a loop of unrouted asks must not flood the audience. */
-export const MEDICATION_QUESTION_ALERT_WINDOW_MS = 10 * 60 * 1000;
+const MEDICATION_QUESTION_ALERT_WINDOW_MS = 10 * 60 * 1000;
 
 export const MEDICATION_QUESTION_NOTIFICATION_TEXT = "A medication question has no assigned nurse";
 

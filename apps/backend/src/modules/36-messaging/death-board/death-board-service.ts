@@ -38,8 +38,8 @@ import type {
 export const OFFBOARDING_BATCH_SIZE = 100;
 /** Stall sweep bounds per organization per tick (ADR-0098 D13): items read, pages of that read, and items flagged. */
 export const STALL_SCAN_MAX = 2000;
-export const STALL_SCAN_PAGE = 500;
-export const STALL_FLAG_MAX = 200;
+const STALL_SCAN_PAGE = 500;
+const STALL_FLAG_MAX = 200;
 const NAME_LIMIT = 200;
 
 export interface DeathBoardActor {

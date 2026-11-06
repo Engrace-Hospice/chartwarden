@@ -14,7 +14,7 @@ import { RXNORM_SYSTEM } from "../uris";
 import type { MedicationAdministrationDomain } from "./domain";
 
 /** Base FHIR, not US Core — see the note on the `MedicationAdministration` type. */
-export const MEDICATION_ADMINISTRATION_PROFILE =
+const MEDICATION_ADMINISTRATION_PROFILE =
   "http://hl7.org/fhir/StructureDefinition/MedicationAdministration";
 
 function medicationConcept(

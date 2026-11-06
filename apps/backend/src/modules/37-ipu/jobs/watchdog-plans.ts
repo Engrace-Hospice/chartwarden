@@ -85,7 +85,7 @@ export function daysBetweenIsoDates(fromIsoDate: string, toIsoDate: string): num
 // ── IRC cap (§2.5, D6) ───────────────────────────────────────────────────────────────────────────────────
 
 /** Bounds one episode's catch-up so a corrupt `started_at` cannot spin the loop. */
-export const IRC_CATCH_UP_MAX_DAYS = 60;
+const IRC_CATCH_UP_MAX_DAYS = 60;
 
 export interface IrcEpisodeFact {
   readonly consecutiveDayCount: number;

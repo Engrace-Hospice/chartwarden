@@ -33,7 +33,7 @@ import type { ReportingDb } from "../repositories/db";
  * scheduled-run snapshot query + the chunked CSV stream (and is also the budget the MV-refresh worker uses
  * on the PRIMARY, though that path bypasses this wrapper).
  */
-export const REPORT_SESSION_STATEMENT_TIMEOUTS_MS = {
+const REPORT_SESSION_STATEMENT_TIMEOUTS_MS = {
   tile: 5_000,
   export: 30_000,
   scheduled: 300_000,
@@ -43,12 +43,12 @@ export const REPORT_SESSION_STATEMENT_TIMEOUTS_MS = {
 export type ReportSessionTier = keyof typeof REPORT_SESSION_STATEMENT_TIMEOUTS_MS;
 
 /** Resolve the §8.1.2 `statement_timeout` (ms) for a read tier. */
-export function statementTimeoutMsForTier(tier: ReportSessionTier): number {
+function statementTimeoutMsForTier(tier: ReportSessionTier): number {
   return REPORT_SESSION_STATEMENT_TIMEOUTS_MS[tier];
 }
 
 /** D14: the default replica-lag freshness threshold (10 min). Above this the breaker degrades the read. */
-export const DEFAULT_REPLICA_LAG_THRESHOLD_SECONDS = 600 as const;
+const DEFAULT_REPLICA_LAG_THRESHOLD_SECONDS = 600 as const;
 
 // ── injected ports ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -106,7 +106,7 @@ export type ReplicaGateDecision = "serve_replica" | "serve_fallback" | "degrade"
  * supplied one (the tile read path), else degrade (the wrapper throws `DegradedError`). Otherwise read the
  * replica. A non-breached read NEVER consults the fallback.
  */
-export function decideReplicaGate(input: {
+function decideReplicaGate(input: {
   readonly lagSeconds: number;
   readonly breakerOpen: boolean;
   readonly thresholdSeconds: number;
@@ -121,7 +121,7 @@ export function decideReplicaGate(input: {
 
 /** Raised when a session is opened with an empty `orgId` — fail-closed before a query that would silently
  *  return zero rows under an unset `app.org_id` GUC (D3). A missing scope is a bug, not an empty result. */
-export class ReportSessionScopeMissing extends Error {
+class ReportSessionScopeMissing extends Error {
   constructor() {
     super(
       "withReportSession requires a non-empty orgId — an unset app.org_id GUC returns zero rows by construction (D3)",

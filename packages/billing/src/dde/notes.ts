@@ -65,7 +65,6 @@ export const DDE_OUTCOME_CODES = [
   "adr_requested",
   "other",
 ] as const;
-export type DdeOutcomeCode = (typeof DDE_OUTCOME_CODES)[number];
 
 /** A DCN / ICN is a 13 to 23 character control number; an 11-character value (an MBI's length) is refused. */
 export const DDE_DCN_PATTERN = /^[A-Za-z0-9]{13,23}$/;

@@ -175,7 +175,7 @@ export interface MeasureUnavailability {
 }
 
 /** The `computation_snapshot` keys {@link unavailableResult} stamps (read back by {@link isDataUnavailable}). */
-export const MEASURE_UNAVAILABLE_SNAPSHOT_KEY = "dataUnavailable";
+const MEASURE_UNAVAILABLE_SNAPSHOT_KEY = "dataUnavailable";
 
 /**
  * The result for a measure whose input is structurally unavailable (see {@link MeasureUnavailability}).

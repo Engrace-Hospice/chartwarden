@@ -32,9 +32,9 @@ import {
 } from "../alert-recipient-fallback";
 
 /** The platform `alert_rule` key (packages/messaging seed). */
-export const CRITICAL_LAB_ALERT_TYPE = "m11.order.critical_lab_result";
-export const M36_CRITICAL_LAB_FROM_M11_CONSUMER = "m36.critical-lab-alert.from-m11";
-export const M36_CRITICAL_LAB_FROM_M29_CONSUMER = "m36.critical-lab-alert.from-m29";
+const CRITICAL_LAB_ALERT_TYPE = "m11.order.critical_lab_result";
+const M36_CRITICAL_LAB_FROM_M11_CONSUMER = "m36.critical-lab-alert.from-m11";
+const M36_CRITICAL_LAB_FROM_M29_CONSUMER = "m36.critical-lab-alert.from-m29";
 export const MEDICAL_DIRECTOR_ROLE_KEY = "medical_director";
 
 /** The facts M11 recorded for one critical observation (`critical_lab_result` + its order's drafter). */
@@ -129,7 +129,7 @@ async function pageAdminsWhenNoDirector(
 }
 
 /** The initial page: RN (+ drafter + attending for an order-bound result; + medical director when unsigned). */
-export async function pageCriticalLab(
+async function pageCriticalLab(
   deps: CriticalLabDeps,
   organizationId: string,
   observationId: string,

@@ -179,7 +179,7 @@ export const MdmRelationshipsResponseSchema = Type.Object({
 });
 
 /** A BAA register entry (§4.1 GET /mdm/baa) — the per-tenant view of `mdm_baa_record`. */
-export const BaaRegisterEntryResponseSchema = Type.Object({
+const BaaRegisterEntryResponseSchema = Type.Object({
   id: Type.String(),
   kind: Type.Union([
     Type.Literal("facility"),
@@ -204,7 +204,7 @@ export const MdmBaaCreatedResponseSchema = Type.Object({ id: Type.String() });
 export const MdmLicenseRecordedResponseSchema = Type.Object({ recorded: Type.Literal(true) });
 
 /** A merge-request row (§2.4.2) — the platform-ops surface. */
-export const MergeRequestRowResponseSchema = Type.Object({
+const MergeRequestRowResponseSchema = Type.Object({
   id: Type.String(),
   kind: KindSchema,
   canonicalId: Type.String(),
@@ -237,7 +237,7 @@ export const MdmNppesLookupResponseSchema = Type.Object({
 });
 
 /** An NPPES sync-log row (§4.1 GET …/nppes/sync-log). */
-export const NppesSyncRunResponseSchema = Type.Object({
+const NppesSyncRunResponseSchema = Type.Object({
   id: Type.String(),
   mode: Type.Union([
     Type.Literal("nightly_delta"),

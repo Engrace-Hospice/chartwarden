@@ -164,5 +164,3 @@ export const M27_PUBLISHED_SEAM_NAMES = [
   "GustoClientFactory",
   "CostReportMetricsProvider",
 ] as const;
-
-export type M27PublishedSeamName = (typeof M27_PUBLISHED_SEAM_NAMES)[number];

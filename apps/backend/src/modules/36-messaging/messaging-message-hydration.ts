@@ -129,7 +129,7 @@ export interface ReplyStats {
  * "a reply" a reader can open. Replies are channel-scoped (migration 1083), so a channel member's count is exactly the
  * set of rows that member can read: nothing here depends on the viewer, and nothing about another channel leaks.
  */
-export async function loadReplyStats(
+async function loadReplyStats(
   tx: Tx,
   orgId: string,
   channelId: string,

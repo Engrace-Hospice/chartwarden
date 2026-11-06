@@ -49,10 +49,10 @@ export class EmailDeliveryError extends Error {
   }
 }
 
-export const POSTMARK_DEFAULT_BASE_URL = "https://api.postmarkapp.com";
-export const POSTMARK_DEFAULT_MESSAGE_STREAM = "outbound";
-export const POSTMARK_DEFAULT_TIMEOUT_MS = 10_000;
-export const POSTMARK_DEFAULT_MAX_ATTEMPTS = 3;
+const POSTMARK_DEFAULT_BASE_URL = "https://api.postmarkapp.com";
+const POSTMARK_DEFAULT_MESSAGE_STREAM = "outbound";
+const POSTMARK_DEFAULT_TIMEOUT_MS = 10_000;
+const POSTMARK_DEFAULT_MAX_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 250;
 const MAX_BACKOFF_MS = 5_000;
 

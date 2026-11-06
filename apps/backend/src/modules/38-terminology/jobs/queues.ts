@@ -2,7 +2,6 @@
 // queue names and the cron cadences are M38's own pure catalog (`@chartwarden/terminology` TERMINOLOGY_QUEUES /
 // TERMINOLOGY_JOB_SCHEDULES); this file adds only what the BullMQ wiring needs. BullMQ job ids and queue names
 // must not contain ':'.
-import { TERMINOLOGY_QUEUES } from "@chartwarden/terminology";
 
 export { TERMINOLOGY_JOB_SCHEDULES, TERMINOLOGY_QUEUES } from "@chartwarden/terminology";
 
@@ -29,9 +28,6 @@ export const jobIds = {
     `terminology-embeddings-${system}-${versionId}`,
   scan: (versionId: string): string => `terminology-scan-${versionId}`,
 } as const;
-
-/** Every queue the module owns, for the DLQ alert / close-all wiring. */
-export const ALL_TERMINOLOGY_QUEUES: readonly string[] = Object.values(TERMINOLOGY_QUEUES);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

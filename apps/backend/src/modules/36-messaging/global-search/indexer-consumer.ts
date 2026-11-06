@@ -14,7 +14,7 @@ import type { IndexWriter } from "./index-writer";
 
 export const M36_MESSAGE_SEARCH_INDEXER_CONSUMER = "m36.message-search-indexer" as const;
 
-export const M36_MESSAGE_SEARCH_INDEXER_EVENT_TYPES = [
+const M36_MESSAGE_SEARCH_INDEXER_EVENT_TYPES = [
   "m36.message.sent",
   "m36.message.edited",
   "m36.message.deleted",

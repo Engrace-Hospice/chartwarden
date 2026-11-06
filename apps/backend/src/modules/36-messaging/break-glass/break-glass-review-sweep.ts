@@ -25,7 +25,7 @@ export const SWEEP_BATCH = 200;
 export const MAX_PAGES = 25;
 
 /** Provisional copy (compliance sign-off pending): what is overdue, never who, where or why. */
-export const BREAK_GLASS_OVERDUE_ALERT_TEXT =
+const BREAK_GLASS_OVERDUE_ALERT_TEXT =
   "A break-glass access review is overdue. Every read is recorded; please complete the review" as const;
 
 export interface BreakGlassReviewSweepDeps {

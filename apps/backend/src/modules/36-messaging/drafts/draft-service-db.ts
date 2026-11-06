@@ -42,7 +42,7 @@ export interface DraftServiceDeps {
 }
 
 /** A draft is scratch space, not storage: bound how many one user can accumulate. */
-export const DEFAULT_MAX_DRAFTS_PER_USER = 200;
+const DEFAULT_MAX_DRAFTS_PER_USER = 200;
 
 function isUniqueViolation(error: unknown): boolean {
   const code = (error as { code?: string; cause?: { code?: string } } | null) ?? null;

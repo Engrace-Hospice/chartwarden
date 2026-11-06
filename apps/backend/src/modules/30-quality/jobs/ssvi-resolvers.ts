@@ -85,7 +85,7 @@ export function ssviFiscalYearOf(periodEnd: string): number {
 }
 
 /** The cut table for a period: the latest published at or before the period's fiscal year. */
-export function ssviThresholdsForPeriod(periodEnd: string): SsviThresholdTable {
+function ssviThresholdsForPeriod(periodEnd: string): SsviThresholdTable {
   return ssviThresholdsFor(ssviFiscalYearOf(periodEnd));
 }
 

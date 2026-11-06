@@ -73,12 +73,6 @@ export const DDE_WORK_ITEM_TRANSITIONS: readonly DdeWorkItemTransition[] = [
   { from: "returned", event: "supersede", to: "closed" },
 ] as const;
 
-/** Terminal states: no outbound edge. */
-export const DDE_WORK_ITEM_TERMINAL_STATES: readonly DdeWorkItemState[] = [
-  "closed",
-  "cancelled",
-] as const;
-
 /** The states that still count as open work (a notice may have at most one open item per subject). */
 export const DDE_WORK_ITEM_OPEN_STATES: readonly DdeWorkItemState[] = [
   "queued",

@@ -44,7 +44,7 @@ import { aiLifecycleTransition } from "../lifecycle/state-machine";
 import { type AiGovernanceRefusal, aiGovernanceRefusal } from "./errors";
 
 /** The states in which a capability is live enough to owe a periodic re-approval (§3.2.1's index). */
-export const AI_REAPPROVAL_BEARING_STATES: readonly AiCapabilityLifecycleState[] = [
+const AI_REAPPROVAL_BEARING_STATES: readonly AiCapabilityLifecycleState[] = [
   "APPROVED",
   "MONITORING",
 ];

@@ -10,11 +10,6 @@ export function dateLte(a: IsoDate, b: IsoDate): boolean {
   return a <= b;
 }
 
-/** `a < b` on ISO calendar dates. */
-export function dateLt(a: IsoDate, b: IsoDate): boolean {
-  return a < b;
-}
-
 /** True iff `date` ∈ [`from`, `to`] inclusive (ISO calendar dates). */
 export function dateInRange(date: IsoDate, from: IsoDate, to: IsoDate): boolean {
   return from <= date && date <= to;

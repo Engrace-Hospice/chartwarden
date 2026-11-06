@@ -21,7 +21,7 @@ type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 const SYSTEM_USER_ID = "";
 
 /** The route that serves a completed export's file (replaces a signed object-store URL). */
-export const cahpsExportFilePath = (exportId: string): string =>
+const cahpsExportFilePath = (exportId: string): string =>
   `/api/v1/quality/cahps/export/${exportId}/file`;
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);

@@ -7,12 +7,8 @@
 
 import type { MapperContext } from "../interfaces/mapper";
 
-/** The platform-standard US NPI system (canonical, cross-tenant). */
-export const NPI_SYSTEM = "http://hl7.org/fhir/sid/us-npi";
 /** The platform-standard RxNorm system (canonical, cross-tenant). */
 export const RXNORM_SYSTEM = "http://www.nlm.nih.gov/research/umls/rxnorm";
-/** The platform-standard LOINC system. */
-export const LOINC_SYSTEM = "http://loinc.org";
 /** The platform-standard ICD-10-CM system. */
 export const ICD10CM_SYSTEM = "http://hl7.org/fhir/sid/icd-10-cm";
 /** The platform-standard SNOMED CT system. */

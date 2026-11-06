@@ -25,7 +25,7 @@ export interface PortalTerminologyPort {
  * seam is unregistered or the cast target is absent — the caller then falls back to the raw description, so
  * a terminology outage degrades the label, it does not fail the read.
  */
-export function resolvePortalTerminology(): PortalTerminologyPort | null {
+function resolvePortalTerminology(): PortalTerminologyPort | null {
   try {
     return getSeam("TerminologyProvider") as PortalTerminologyPort;
   } catch {

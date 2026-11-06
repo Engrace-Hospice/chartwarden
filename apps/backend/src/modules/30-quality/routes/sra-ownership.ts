@@ -7,7 +7,7 @@ import { ForbiddenError } from "@chartwarden/types";
 import { type M30WriteActor, isM30SystemActor } from "./actor";
 
 /** Roles that hold `sra.admin` in the system role templates. */
-export const SRA_ADMIN_ROLES: readonly string[] = [
+const SRA_ADMIN_ROLES: readonly string[] = [
   "org_admin",
   "administrator",
   "compliance_officer",

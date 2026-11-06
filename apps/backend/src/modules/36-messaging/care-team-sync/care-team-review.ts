@@ -22,7 +22,7 @@ import { type ReviewWarn, emitReviewQueuedAlert } from "../review/review-alerts"
 import type { ReviewStore } from "../review/review-store-db";
 import type { TaskStore } from "../tasks/task-store-db";
 
-export const CARE_TEAM_CHANGE_SOURCE = "care_team_change" as const;
+const CARE_TEAM_CHANGE_SOURCE = "care_team_change" as const;
 
 export interface CareTeamReviewDeps {
   readonly db: DbClient;

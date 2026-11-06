@@ -22,7 +22,7 @@ import { requirePortalWrite } from "./errors";
 export const PORTAL_UPLOAD_MAX_BYTES = 50 * 1024 * 1024;
 
 /** §7.8 / §2.3 — the MIME allowlist. The magic-byte prefixes below are validated against the declared MIME. */
-export const PORTAL_UPLOAD_MIME_ALLOWLIST = [
+const PORTAL_UPLOAD_MIME_ALLOWLIST = [
   "application/pdf",
   "image/jpeg",
   "image/png",

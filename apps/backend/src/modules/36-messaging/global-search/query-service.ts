@@ -96,11 +96,11 @@ import {
 import type { ServeContext } from "./serve-gate";
 
 /** Distinct channels authorised per authority call (ADR "bounded seam cost"); further channels are reached by a later round. */
-export const MAX_CHANNELS_PER_REQUEST = 50;
+const MAX_CHANNELS_PER_REQUEST = 50;
 /** ... and across all rounds of one request (cost amplification bound; later channels are reached by the cursor). */
-export const MAX_TOTAL_CHANNELS_PER_REQUEST = 100;
-export const GLOBAL_SEARCH_DEFAULT_LIMIT = 20;
-export const GLOBAL_SEARCH_MAX_LIMIT = 50;
+const MAX_TOTAL_CHANNELS_PER_REQUEST = 100;
+const GLOBAL_SEARCH_DEFAULT_LIMIT = 20;
+const GLOBAL_SEARCH_MAX_LIMIT = 50;
 
 export interface GlobalSearchLimits {
   readonly decryptBudget: number;

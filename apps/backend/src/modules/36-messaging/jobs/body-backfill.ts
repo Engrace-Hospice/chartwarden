@@ -34,9 +34,9 @@ const OPT = schema.messagePollOptions;
 
 /** The operator-set flag that records "the escrow restore drill passed" (ADR-0058 P1: no backfill without it). */
 export const BODY_BACKFILL_ESCROW_DRILL_ENV = "M36_BODY_BACKFILL_ESCROW_DRILL_CONFIRMED";
-export const BODY_BACKFILL_DEFAULT_BATCH_SIZE = 100;
-export const BODY_BACKFILL_DEFAULT_PAUSE_MS = 250;
-export const BODY_BACKFILL_DEFAULT_MAX_ROWS = 5_000;
+const BODY_BACKFILL_DEFAULT_BATCH_SIZE = 100;
+const BODY_BACKFILL_DEFAULT_PAUSE_MS = 250;
+const BODY_BACKFILL_DEFAULT_MAX_ROWS = 5_000;
 const LEGACY_ENVELOPE = 1;
 
 // `message_poll_option` (migration 1094) holds a label sealed like a body; it has no plaintext digest, so its pre-seal check
@@ -157,7 +157,7 @@ export async function countLegacyBodiesInTx(
 }
 
 /** Legacy-envelope row counts for one tenant (its own system transaction). */
-export async function countLegacyBodiesForOrg(
+async function countLegacyBodiesForOrg(
   db: DbClient,
   organizationId: string,
 ): Promise<LegacyBodyCounts> {

@@ -13,9 +13,9 @@ import type { LoadableSystemId } from "./types";
 /** The vector width of `concept_embedding.embedding` (BGE-small-en-v1.5). */
 export const EMBEDDING_DIMENSIONS = 384;
 /** Concepts embedded per call to the embedder and per write. */
-export const EMBEDDING_BATCH_SIZE = 256;
+const EMBEDDING_BATCH_SIZE = 256;
 /** Concepts one run will embed before yielding (the job re-enqueues itself for the remainder). */
-export const EMBEDDING_MAX_PER_RUN = 50_000;
+const EMBEDDING_MAX_PER_RUN = 50_000;
 
 export interface EmbedderPort {
   readonly available: boolean;

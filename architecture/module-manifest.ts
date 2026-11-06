@@ -34,7 +34,7 @@
  *   - Backend code for a module lives at  apps/backend/src/modules/<NN-slug>/
  *   - Shared domain-area logic lives in   packages/<area>/
  *   - LEAVES (importable by everyone, depend on nothing app-specific):
- *       packages/shared, packages/types, packages/domain, packages/ui
+ *       packages/shared, packages/types, packages/ui
  *   - FOUNDATION HELPERS (implicitly importable by every module — see ADR-0005 D4):
  *       packages/audit, packages/auth, packages/tenancy, packages/db/src/schema.
  *       A module may call audit()/requirePermission/withOrgContext and import its
@@ -71,12 +71,7 @@
  * proposals were reviewed and confirmed all no-edge — see audit/MANIFEST_DEPENDSON_REVIEW.md.
  */
 
-export const LEAF_PACKAGES = [
-  "packages/shared",
-  "packages/types",
-  "packages/domain",
-  "packages/ui",
-] as const;
+export const LEAF_PACKAGES = ["packages/shared", "packages/types", "packages/ui"] as const;
 
 /**
  * Foundation helper packages every module may import WITHOUT a dependsOn edge

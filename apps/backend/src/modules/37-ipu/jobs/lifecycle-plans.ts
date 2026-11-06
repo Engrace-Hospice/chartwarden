@@ -287,9 +287,9 @@ export function planNursingNoteOverdue(
 /** §2.2 — "cron `transfer-completion-watchdog` runs at +1h to flag unconfirmed transfers". */
 export const TRANSFER_CONFIRM_WINDOW_MS = HOUR_MS;
 /** An unconfirmed transfer is re-raised every 6 hours (the patient is in limbo between two sites). */
-export const TRANSFER_REMINDER_REPEAT_MS = 6 * HOUR_MS;
+const TRANSFER_REMINDER_REPEAT_MS = 6 * HOUR_MS;
 /** Wide enough that an hourly tick cannot miss a cycle (the cron period is 60 minutes). */
-export const TRANSFER_REMINDER_WINDOW_MS = 70 * MINUTE_MS;
+const TRANSFER_REMINDER_WINDOW_MS = 70 * MINUTE_MS;
 
 export interface TransferringFact {
   readonly ipuAdmissionId: string;

@@ -14,7 +14,7 @@ export interface HandoffPolicyStore {
   remove(orgId: string, userId: string): Promise<void>;
 }
 
-export async function readHandoffPolicyInTx(tx: Tx, orgId: string): Promise<number | null> {
+async function readHandoffPolicyInTx(tx: Tx, orgId: string): Promise<number | null> {
   const [row] = await tx.select().from(P).where(eq(P.organizationId, orgId)).limit(1);
   return row ? row.expiryMinutes : null;
 }

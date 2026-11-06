@@ -153,7 +153,7 @@ export interface RecipientValidity {
 }
 
 /** Split a re-validated recipient list into the survivors (kept) and the dropped (lost-access) sets (PURE). */
-export function partitionRecipients(validities: readonly RecipientValidity[]): {
+function partitionRecipients(validities: readonly RecipientValidity[]): {
   readonly survivors: readonly string[];
   readonly dropped: readonly string[];
 } {
@@ -176,7 +176,7 @@ export type RunDisposition =
  * Decide the run disposition from the schedule status + the surviving recipient set (PURE). Gate order:
  * schedule-active → at-least-one-survivor → proceed. Total over the three outcomes.
  */
-export function decideRunDisposition(
+function decideRunDisposition(
   schedule: Pick<schema.ReportSchedule, "status">,
   survivors: readonly string[],
 ): RunDisposition {
@@ -199,7 +199,7 @@ export type ScheduledRunResult =
   | { readonly kind: "render_requested"; readonly recipientCount: number };
 
 /** Raised when the job names a `report_schedule_run` that does not exist (the evaluator must create it first). */
-export class ScheduledRunMissing extends Error {
+class ScheduledRunMissing extends Error {
   constructor(runId: string, scheduledFor: string) {
     super(
       `report_schedule_run ${runId}@${scheduledFor} not found — the cron evaluator must create it first`,

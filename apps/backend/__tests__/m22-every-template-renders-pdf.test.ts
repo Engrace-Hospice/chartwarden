@@ -144,27 +144,6 @@ describe("every platform template renders a real PDF (GAP-033)", () => {
       }
     },
   );
-
-  it.each(["order_record", "medication_order"])(
-    "a legacy id-only %s event drained under the fallback flag renders generically, not as a form",
-    (key) => {
-      const bytes = renderPdfForTemplate(
-        key,
-        { aggregateId: "agg-1", patientId: "p-1", kind: "lab", legacyUntyped: true },
-        key,
-      );
-      expectValidPdf(bytes);
-    },
-  );
-
-  it("a legacy id-only M6 event drained under the explicit fallback flag renders generically, not as a form", () => {
-    const bytes = renderPdfForTemplate(
-      "cti",
-      { aggregateId: "agg-1", patientId: null, legacyUntyped: true },
-      "Certification of Terminal Illness",
-    );
-    expectValidPdf(bytes);
-  });
 });
 
 describe("appeal_packet (GAP-036)", () => {

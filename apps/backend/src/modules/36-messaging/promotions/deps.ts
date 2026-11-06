@@ -19,7 +19,7 @@ const MSG = schema.messages;
 const CH = schema.channels;
 
 /** Facts about one message in one channel: live (not deleted, not erased), the channel's kind and subject, who wrote it. */
-export function createDbPromotionMessageLookup(
+function createDbPromotionMessageLookup(
   db: DbClient,
 ): (orgId: string, channelId: string, messageId: string) => Promise<PromotionMessageFacts | null> {
   return (orgId, channelId, messageId) =>

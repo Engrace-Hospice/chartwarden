@@ -60,7 +60,7 @@ const MAX_POINTS: Readonly<Record<SsviMetricKey, number>> = {
 };
 
 /** What the composite reports when a metric could not contribute. */
-export const SSVI_COMPOSITE_INCOMPLETE_REASON =
+const SSVI_COMPOSITE_INCOMPLETE_REASON =
   "The SSVI total is the sum of nine metrics' points (0-16), so a partial sum is a lower bound, not a score. It is withheld until all nine contribute.";
 
 /** The nine metric results, keyed by metric; `null` = not yet computed for the period. */

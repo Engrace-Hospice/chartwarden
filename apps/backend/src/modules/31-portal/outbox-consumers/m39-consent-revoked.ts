@@ -59,7 +59,7 @@ const PAG = schema.portalAccessGrants;
 /** Mirrors the sibling consumers' system-actor sentinel — no actor column this update needs to stamp. */
 const CONSUMER_USER_ID = "";
 
-export const M31_CONSENT_REVOKED_CONSUMER = {
+const M31_CONSENT_REVOKED_CONSUMER = {
   eventName: "m39.consent.revoked",
   consumerName: "m31.m39-consent-revoked",
 } as const;

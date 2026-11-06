@@ -16,19 +16,6 @@ import {
   assertCorrectionPair,
 } from "./rules";
 
-/** CMS 837I NOE Companion Guide defaults (Loop 2300 CL1 / Loop 2400 SV2). */
-export const NOE_837I_DEFAULTS = {
-  /** CL101 — required by 005010X223A2 but not addressed by the NOE companion guide; NUBC "9" = information
-   *  not available. Recorded here so the gateway and the golden fixture agree. */
-  admissionTypeCode: "9",
-  admissionSourceCode: "1",
-  patientStatusCode: "30",
-  revenueCode: "0650",
-  hcpcs: "Q5009",
-  lineDescription: "NOE",
-  units: 1,
-} as const;
-
 export interface TransferNoticeDocument837i {
   readonly transferNoticeId: string;
   readonly controlNumber: string;

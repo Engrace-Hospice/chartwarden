@@ -48,7 +48,7 @@ const ReviewTaskSchema = Type.Object({
   channel_id: Type.String({ format: "uuid" }),
 });
 
-export const ReviewItemSchema = Type.Object({
+const ReviewItemSchema = Type.Object({
   id: Type.String({ format: "uuid" }),
   source: nullable(literals(REVIEW_SOURCES)),
   cause: nullable(literals(REVIEW_CAUSES)),

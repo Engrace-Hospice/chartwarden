@@ -13,14 +13,14 @@ import type {
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
 
-export const M31_SIGNATURE_PUSH_CONSUMER = "m31.signature-request-push" as const;
-export const M31_SIGNATURE_PUSH_EVENTS = [
+const M31_SIGNATURE_PUSH_CONSUMER = "m31.signature-request-push" as const;
+const M31_SIGNATURE_PUSH_EVENTS = [
   "m31.signature_request.requested",
   "m31.signature_request.reminded",
 ] as const;
 
 /** The alert-rule key (seeded in PLATFORM_DEFAULT_ALERT_RULES); an alert type, not an outbox event. */
-export const M31_SIGNATURE_PUSH_ALERT = "m36.portal_signature.pending" as const;
+const M31_SIGNATURE_PUSH_ALERT = "m36.portal_signature.pending" as const;
 
 export interface SignaturePushDeps {
   readonly alerts: AlertEmitter;

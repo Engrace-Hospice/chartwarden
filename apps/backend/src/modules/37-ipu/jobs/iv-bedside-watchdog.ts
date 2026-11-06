@@ -28,7 +28,7 @@ const A = schema.ipuAdmission;
 export const M37_IV_BEDSIDE_QUEUE = "ipu.iv-bedside-check-watchdog";
 /** §4.8 — every 5 minutes. */
 export const M37_IV_BEDSIDE_SCHEDULE = "*/5 * * * *";
-export const M37_IV_BEDSIDE_PARAMS = { priority: 1, attempts: 3, concurrency: 2 } as const;
+const M37_IV_BEDSIDE_PARAMS = { priority: 1, attempts: 3, concurrency: 2 } as const;
 
 const PAGE_SIZE = 200;
 const MAX_PAGES = 25;

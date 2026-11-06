@@ -25,7 +25,7 @@ import { requireUuidParams } from "./uuid-params";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
-export const TASK_LIST_DEFAULTS = { scope: "assigned", state: "active", limit: 50 } as const;
+const TASK_LIST_DEFAULTS = { scope: "assigned", state: "active", limit: 50 } as const;
 
 export interface TaskRouteDeps {
   /** The tenant flag `messaging.tasks`. A throw reads as off (fail closed). */

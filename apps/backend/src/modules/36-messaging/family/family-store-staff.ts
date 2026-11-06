@@ -19,7 +19,7 @@ const C = schema.messageFamilyContacts;
 const I = schema.messageFamilyInvitations;
 
 /** Contacts shown in the lane at once. */
-export const FAMILY_LIST_LIMIT = 500;
+const FAMILY_LIST_LIMIT = 500;
 
 type Raw = Record<string, unknown>;
 

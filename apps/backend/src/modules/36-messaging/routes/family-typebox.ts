@@ -6,7 +6,6 @@ import {
   FAMILY_ELIGIBILITY_REASONS,
   FAMILY_INVITE_MAX_DAYS,
   FAMILY_MODES,
-  FAMILY_PAGE_MAX,
   FAMILY_SESSION_STAGES,
   FAMILY_SETTING_TEXT_MAX,
 } from "@chartwarden/types";
@@ -158,13 +157,6 @@ export const FamilyContactVerifiedResponseSchema = Type.Object({
   sessionToken: NullableString,
 });
 
-export const FamilyContactMessagesQuerySchema = Type.Object(
-  {
-    cursor: Type.Optional(Type.String({ maxLength: 100 })),
-    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: FAMILY_PAGE_MAX })),
-  },
-  { additionalProperties: false },
-);
 export const FamilyContactMessagesResponseSchema = Type.Object({
   messages: Type.Array(
     Type.Object({

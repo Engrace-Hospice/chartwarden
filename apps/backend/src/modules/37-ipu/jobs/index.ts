@@ -67,7 +67,7 @@ export const COVERAGE_WINDOW_HOURS = COVERAGE_LOOKBACK_HOURS + COVERAGE_LOOKAHEA
  * and `resolveAlertHorizonHours` applies the tighten-only rule rather than trusting the column.
  */
 export const COVERAGE_ALERT_HORIZON_FLOOR_HOURS = 8;
-export const COVERAGE_ALERT_HORIZON_MIN_HOURS = 2;
+const COVERAGE_ALERT_HORIZON_MIN_HOURS = 2;
 
 /**
  * §2.3 — a unit's alert horizon, tighten-only against the platform floor.

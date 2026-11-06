@@ -24,7 +24,7 @@ const stateWhere = (organizationId: string, keyVersion: string) =>
  * the tenant's live messages times the padding floor (the mean message pads to the floor). A later growth check on the real row count
  * (`shouldResizeTagBits`) corrects an estimate that was off by 4x or more.
  */
-export async function estimateTagBits(tx: Tx, organizationId: string): Promise<number> {
+async function estimateTagBits(tx: Tx, organizationId: string): Promise<number> {
   const result = await tx.execute<{ n: number }>(sql`
     SELECT count(*)::float8 AS n FROM message
      WHERE organization_id = ${organizationId} AND status <> 'deleted'`);

@@ -2,7 +2,7 @@
 // the clearinghouse attempt resolution route. Named `*-typebox` for the same table-ownership-heuristic reason as
 // `billing-typebox.ts`. The OpenAPI enrichment reuses the SAME exports. No PHI: keys and control numbers are ours,
 // the vendor id is opaque.
-import { type Static, Type } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 
 const USAGE = Type.Union([Type.Literal("test"), Type.Literal("production")]);
 const COMMON = {
@@ -22,7 +22,6 @@ export const ResolveStaleAttemptBodySchema = Type.Union([
   }),
   Type.Object({ ...COMMON, outcome: Type.Literal("not_filed") }),
 ]);
-export type ResolveStaleAttemptBody = Static<typeof ResolveStaleAttemptBodySchema>;
 
 export const ResolvedAttemptSchema = Type.Object({
   idempotencyKey: Type.String(),

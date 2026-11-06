@@ -13,7 +13,7 @@ const KEY_BYTES = 32;
 const IV_BYTES = 12;
 const FORMAT = "v1";
 
-export class WebhookPayloadKeyError extends Error {
+class WebhookPayloadKeyError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "WebhookPayloadKeyError";

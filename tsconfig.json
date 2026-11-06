@@ -57,9 +57,6 @@
       "path": "./packages/discipline-plans"
     },
     {
-      "path": "./packages/domain"
-    },
-    {
       "path": "./packages/dosespot"
     },
     {

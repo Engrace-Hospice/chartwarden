@@ -33,7 +33,7 @@ export const RequestPromotionBodySchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const PromotionSchema = Type.Object({
+const PromotionSchema = Type.Object({
   id: Type.String({ format: "uuid" }),
   message_id: Type.String({ format: "uuid" }),
   channel_id: Type.String({ format: "uuid" }),

@@ -22,7 +22,6 @@ export type PlaybookStepStatus = (typeof PLAYBOOK_STEP_STATUSES)[number];
 
 // Product bounds, not rules: they keep a playbook short enough to read on a case panel.
 export const PLAYBOOK_MAX_STEPS = 30;
-export const PLAYBOOK_TITLE_MAX = 120;
 export const PLAYBOOK_SUMMARY_MAX = 1000;
 export const PLAYBOOK_STEP_TEXT_MAX = 500;
 export const PLAYBOOK_SOURCE_NOTE_MAX = 500;

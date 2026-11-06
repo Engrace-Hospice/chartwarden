@@ -24,7 +24,7 @@ export type MortalityReviewState = schema.MortalityReview["status"];
 // -----------------------------------------------------------------------------
 
 /** The M30 mortality-review lifecycle failure-code catalog → canonical HTTP status. */
-export const M30_MORTALITY_ERROR_STATUS = {
+const M30_MORTALITY_ERROR_STATUS = {
   // §2.2 — an event from a state that does not accept it.
   ILLEGAL_MORTALITY_TRANSITION: 409,
   // §2.2 `start` — a review cannot begin without an assigned reviewer.
@@ -140,7 +140,7 @@ export type MortalityEvent =
     };
 
 /** The legal §2.2 transition graph (from → events accepted). Guards are checked separately. */
-export const MORTALITY_GRAPH: Readonly<
+const MORTALITY_GRAPH: Readonly<
   Record<MortalityReviewState, ReadonlyArray<MortalityEvent["type"]>>
 > = {
   pending: ["start", "markOverdue"],

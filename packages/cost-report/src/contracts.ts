@@ -7,9 +7,7 @@
 export type OrganizationId = string;
 export type ProviderEntityId = string;
 export type CostReportId = string;
-export type CostReportSnapshotId = string;
 export type EcrSubmissionId = string;
-export type ValidationId = string;
 export type ValidationResultId = string;
 export type MembershipId = string;
 
@@ -79,7 +77,6 @@ export const DERIVED_WORKSHEET_CODES: readonly WorksheetCode[] = ["B", "C"] as c
 export type ValidationOutcome = "pass" | "fail" | "warn" | "skip";
 export type RuleSeverity = "block" | "warn" | "info";
 export type RuleStatus = "active" | "deprecated" | "draft_suggestion";
-export type SnapshotReason = "submit" | "reopen" | "mac_revision_request" | "admin_audit";
 export type WageSource = "gusto" | "manual";
 export type ImportSource = "xero" | "manual_csv" | "gusto";
 export type BadDebtKind = "deductible" | "coinsurance";

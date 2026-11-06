@@ -9,7 +9,7 @@ import type { AlertEmitter } from "@chartwarden/messaging";
 import type { AckClass } from "@chartwarden/types";
 
 export const ACK_SUPERVISOR_ATTENTION_EVENT = "m36.ack.supervisor_attention" as const;
-export const SUPERVISOR_UNPAGED_OPS_KIND = "m36.ack.supervisor_unpaged" as const;
+const SUPERVISOR_UNPAGED_OPS_KIND = "m36.ack.supervisor_unpaged" as const;
 export const SUPERVISOR_PAGE_FAILED_OPS_KIND = "m36.ack.supervisor_page_failed" as const;
 export const UNWATCHED_OPS_KIND = "m36.ack.failed_unreachable_unwatched" as const;
 
@@ -24,7 +24,7 @@ export type SupervisorAttentionReason =
   | "unwatched"
   | "assignee_departed";
 
-export const SUPERVISOR_ATTENTION_TEXT: Readonly<Record<SupervisorAttentionReason, string>> = {
+const SUPERVISOR_ATTENTION_TEXT: Readonly<Record<SupervisorAttentionReason, string>> = {
   ladder_exhausted:
     "A clinical message was not acknowledged in time and there is no further escalation tier; it needs a supervisor",
   route_unavailable:
@@ -51,7 +51,7 @@ export interface SupervisorAttentionDeps {
 }
 
 /** Where a supervisor goes: the unacknowledged queue (a supervisor may not be a member of the conversation, so no thread link). */
-export const SUPERVISOR_QUEUE_DEEP_LINK = "/messaging/unacknowledged";
+const SUPERVISOR_QUEUE_DEEP_LINK = "/messaging/unacknowledged";
 
 /**
  * Emit the supervisor alert (idempotent on `correlationId`: a redelivery or a second worker converges on the same alert), then, when no

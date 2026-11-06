@@ -17,7 +17,7 @@ import type {
 
 const DE = schema.deliveryEndpoints;
 
-export function createDbEndpointLink(): EndpointLinkPort {
+function createDbEndpointLink(): EndpointLinkPort {
   return {
     async linkedPushSessionIds(tx, userId, sessionIds) {
       if (sessionIds.length === 0) return new Set();

@@ -12,7 +12,7 @@
 import { type SearchKeyProvider, deriveOrgDek, deriveSearchKey } from "@chartwarden/messaging";
 import type { RingDekCache } from "../body-key-ring";
 
-export const LEGACY_TEST_KEY_VERSION = "legacy";
+const LEGACY_TEST_KEY_VERSION = "legacy";
 
 export class SearchKeyUnavailableError extends Error {
   constructor(cause?: unknown) {

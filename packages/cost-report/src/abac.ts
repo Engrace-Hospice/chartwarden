@@ -20,5 +20,3 @@ export const M27_ABAC_PREDICATES = [
   "cost_report_approver_for_provider",
   "cost_report_period_active",
 ] as const;
-
-export type M27AbacPredicateName = (typeof M27_ABAC_PREDICATES)[number];

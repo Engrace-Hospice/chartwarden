@@ -15,7 +15,7 @@
 // A caller outside those sets gets a non-leaking 404 (existence is not disclosed).
 
 /** The only org-wide role that bypasses the schedule owner check (the audit row: "owner or org_admin"). */
-export const SCHEDULE_ADMIN_ROLE = "org_admin";
+const SCHEDULE_ADMIN_ROLE = "org_admin";
 
 /** The minimal session-derived facts every decision needs. */
 export interface ScheduleActorFacts {

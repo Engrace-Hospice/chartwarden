@@ -2,7 +2,6 @@
 // Wire keys are camelCase (the contract in packages/types/src/messaging-external-share.ts). The partner shapes carry NO channel id, no staff
 // identity beyond a display name, and no hash; Fastify strips anything not listed.
 import {
-  EXTERNAL_PARTNER_PAGE_MAX,
   EXTERNAL_SESSION_STAGES,
   EXTERNAL_SHARE_BAA_MAX,
   EXTERNAL_SHARE_MAX_DAYS,
@@ -96,13 +95,6 @@ export const PartnerStateResponseSchema = Type.Object({
   partnerName: Type.String(),
   expiresAt: Instant,
 });
-export const PartnerMessagesQuerySchema = Type.Object(
-  {
-    cursor: Type.Optional(Type.String({ maxLength: 100 })),
-    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: EXTERNAL_PARTNER_PAGE_MAX })),
-  },
-  { additionalProperties: false },
-);
 export const PartnerMessagesResponseSchema = Type.Object({
   messages: Type.Array(
     Type.Object({

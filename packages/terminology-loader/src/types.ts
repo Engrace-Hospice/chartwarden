@@ -6,7 +6,7 @@ import type { CodeSystemId } from "@chartwarden/terminology";
 export type LoadableSystemId = Exclude<CodeSystemId, "cms_hope">;
 
 /** The ten systems that have a parser (CPT is absent by design — D4). */
-export const LOADABLE_SYSTEMS = [
+const LOADABLE_SYSTEMS = [
   "icd10cm",
   "icd10pcs",
   "snomed",

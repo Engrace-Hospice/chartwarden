@@ -6,7 +6,7 @@
 // (D18).
 //
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
-import { type Static, Type } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 
 /** A single reclassification entry: move `amountCents` from one cost center to another. */
 const ReclassificationEntry = Type.Object({
@@ -35,5 +35,3 @@ export const WorksheetA1 = Type.Object(
   },
   { additionalProperties: false },
 );
-
-export type WorksheetA1Data = Static<typeof WorksheetA1>;

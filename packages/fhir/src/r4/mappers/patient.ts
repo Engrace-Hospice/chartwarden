@@ -5,8 +5,7 @@ import type { FhirAddress, FhirContactPoint, FhirIdentifier, Patient } from "../
 import { mrnSystemUri } from "../uris";
 import type { PatientRow } from "./deps";
 
-export const US_CORE_PATIENT_PROFILE =
-  "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient";
+const US_CORE_PATIENT_PROFILE = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient";
 
 export const patientMapper: FhirMapper<PatientRow, Patient> = {
   version: "4.0.1",

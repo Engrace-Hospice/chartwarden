@@ -21,7 +21,7 @@ export const CreatePollBodySchema = Type.Object({
 
 export const VotePollBodySchema = Type.Object({ optionId: Uuid });
 
-export const PollVoterViewSchema = Type.Object({
+const PollVoterViewSchema = Type.Object({
   userId: Type.String(),
   displayName: Type.String(),
   votedAt: Type.String(),

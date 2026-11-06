@@ -11,9 +11,9 @@ import { WAITING } from "./unacknowledged-reader-db";
 const R = schema.messageAckRequests;
 
 /** Acknowledgments counted for the latency gauges: those made in the trailing window. */
-export const ACK_LATENCY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const ACK_LATENCY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-export const STATS_STATEMENT_TIMEOUT_MS = 5_000;
+const STATS_STATEMENT_TIMEOUT_MS = 5_000;
 
 export interface AckQueueStats {
   /** Waiting requests (pending, escalated, failed_unreachable) past their deadline. */

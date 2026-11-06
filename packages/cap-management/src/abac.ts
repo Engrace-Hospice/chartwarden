@@ -13,5 +13,3 @@ export const M26_ABAC_PREDICATES = [
   // the actor holds the platform_admin role (all /v1/platform/cap/* routes)
   "cap_platform_admin",
 ] as const;
-
-export type M26AbacPredicateName = (typeof M26_ABAC_PREDICATES)[number];

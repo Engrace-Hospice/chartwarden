@@ -37,8 +37,8 @@ export type HandoffActor =
   | { readonly kind: "user"; readonly userId: string }
   | { readonly kind: "system" };
 
-export const HANDOFF_LIST_DEFAULT_LIMIT = 50;
-export const HANDOFF_LIST_MAX_LIMIT = 100;
+const HANDOFF_LIST_DEFAULT_LIMIT = 50;
+const HANDOFF_LIST_MAX_LIMIT = 100;
 
 /** The handoff is not in a state this action may start from (closed, or a different outcome already recorded). */
 export class HandoffStateConflict extends Error {

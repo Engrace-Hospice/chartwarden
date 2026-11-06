@@ -16,7 +16,7 @@ export interface GlobalSearchMaintenanceDeps
 
 type TickDeps = Pick<GlobalSearchMaintenanceDeps, "activeOrgs" | "onError" | "reconcile">;
 
-export async function globalSearchMaintenanceTick(deps: TickDeps): Promise<number> {
+async function globalSearchMaintenanceTick(deps: TickDeps): Promise<number> {
   return fanOutOrgs(deps, "search_maintenance", async (organizationId) => {
     await purgeOrgIfRequested(deps.reconcile.db, organizationId);
     await reconcileOrg(deps.reconcile, organizationId);

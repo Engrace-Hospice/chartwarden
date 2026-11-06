@@ -10,7 +10,7 @@
 import type { LoadableSystemId } from "./types";
 
 /** Systems whose licence terms require an attestation regardless of what the catalog row says today. */
-export const LICENSE_GATED_SYSTEMS = [
+const LICENSE_GATED_SYSTEMS = [
   "snomed",
   "rxnorm",
   "loinc",

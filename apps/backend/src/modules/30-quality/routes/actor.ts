@@ -48,7 +48,7 @@ export function actorOf(request: FastifyRequest): M30ReadActor {
  * never sets it. A worker/consumer that authors a row through the write service presents this actor; the
  * PHI patient scope then does not apply (there is no human caseload to narrow by).
  */
-export const M30_SYSTEM_ACTOR: unique symbol = Symbol("m30.system-actor");
+const M30_SYSTEM_ACTOR: unique symbol = Symbol("m30.system-actor");
 
 /**
  * The MUTATING-route actor: the read actor PLUS the server-assembled active `membershipId` (the M2

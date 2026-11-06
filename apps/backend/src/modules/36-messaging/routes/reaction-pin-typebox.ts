@@ -7,7 +7,7 @@ import { ResolvedMessageSchema } from "./messaging-typebox";
 const Id = Type.String({ minLength: 1, maxLength: 64 });
 
 /** The closed reaction palette as a schema; an unknown key is a 422 before it reaches the service. */
-export const ReactionKeySchema = Type.Union(MESSAGE_REACTION_KEYS.map((key) => Type.Literal(key)));
+const ReactionKeySchema = Type.Union(MESSAGE_REACTION_KEYS.map((key) => Type.Literal(key)));
 
 export const ReactionParamsSchema = Type.Object({
   id: Id,
@@ -16,7 +16,7 @@ export const ReactionParamsSchema = Type.Object({
 });
 export const PinParamsSchema = Type.Object({ id: Id, messageId: Id });
 
-export const ReactionSummarySchema = Type.Object({
+const ReactionSummarySchema = Type.Object({
   emoji: ReactionKeySchema,
   count: Type.Integer({ minimum: 1 }),
   reactedByMe: Type.Boolean(),

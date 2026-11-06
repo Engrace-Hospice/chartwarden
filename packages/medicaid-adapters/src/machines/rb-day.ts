@@ -29,8 +29,6 @@ export const RB_DAY_TRANSITIONS: readonly RbDayTransition[] = [
   { from: "pending", event: "void", to: "voided" },
 ] as const;
 
-export const RB_DAY_TERMINAL_STATES: readonly RbDayStatus[] = ["voided"] as const;
-
 export function isTerminal(state: RbDayStatus): boolean {
   return !RB_DAY_TRANSITIONS.some((t) => t.from === state);
 }

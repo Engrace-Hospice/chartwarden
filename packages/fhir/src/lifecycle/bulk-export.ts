@@ -25,7 +25,7 @@ export const FHIR_BULK_EXPORT_TERMINAL_STATUSES: readonly FhirBulkExportStatus[]
   "cancelled",
 ];
 
-export const FHIR_BULK_EXPORT_TRANSITIONS: readonly FhirStatusTransition<FhirBulkExportStatus>[] = [
+const FHIR_BULK_EXPORT_TRANSITIONS: readonly FhirStatusTransition<FhirBulkExportStatus>[] = [
   {
     fromStatus: null,
     toStatus: "accepted",

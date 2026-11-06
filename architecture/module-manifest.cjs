@@ -35,7 +35,7 @@
  *   - Backend code for a module lives at  apps/backend/src/modules/<NN-slug>/
  *   - Shared domain-area logic lives in   packages/<area>/
  *   - LEAVES (importable by everyone, depend on nothing app-specific):
- *       packages/shared, packages/types, packages/domain, packages/ui
+ *       packages/shared, packages/types, packages/ui
  *   - FOUNDATION HELPERS (implicitly importable by every module — ADR-0005 D4):
  *       packages/audit, packages/auth, packages/tenancy, packages/db/src/schema.
  *   - A module may import from: own codePaths + dependsOn codePaths + LEAVES +
@@ -59,7 +59,7 @@ exports.ALL_OWNED_PATHS =
     void 0;
 exports.allowedImportPaths = allowedImportPaths;
 exports.allowedTables = allowedTables;
-exports.LEAF_PACKAGES = ["packages/shared", "packages/types", "packages/domain", "packages/ui"];
+exports.LEAF_PACKAGES = ["packages/shared", "packages/types", "packages/ui"];
 /**
  * Foundation helper packages every module may import WITHOUT a dependsOn edge
  * (ADR-0005 D4): audit() (packages/audit), requirePermission/requireAbac/

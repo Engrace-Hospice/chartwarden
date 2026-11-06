@@ -20,7 +20,7 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The comma-separated ids as a bounded list of uuids (any other shape is a 422, before a uuid cast can fail in SQL). */
-export function parseMessageIds(raw: string): readonly string[] {
+function parseMessageIds(raw: string): readonly string[] {
   const ids = raw.split(",").map((s) => s.trim());
   if (ids.length > AFTERHOURS_LINES_MAX_MESSAGES || ids.some((id) => !UUID.test(id))) {
     throw new ValidationError("request validation failed", [

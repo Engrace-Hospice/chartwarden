@@ -159,7 +159,7 @@ export interface OnboardingFactReaders {
 }
 
 /** Gather the §2.3 context: spine facts through injected readers (arch:tables), the M34 BAA register + task rows here. */
-export async function gatherOnboardingContext(
+async function gatherOnboardingContext(
   tx: DbClient,
   input: { tenantAccountId: string; orgId: string },
   readers: OnboardingFactReaders,
@@ -517,7 +517,7 @@ export function registerM34OnboardingAdvanceWorker(deps: PlatformSweepWorkerDeps
 }
 
 /** Daily onboarding fan-out cadence (06:00, ahead of the 07:00 BAA radar). */
-export const M34_ONBOARDING_SWEEP_SCHEDULE = "0 6 * * *";
+const M34_ONBOARDING_SWEEP_SCHEDULE = "0 6 * * *";
 
 /** The three scheduled sweeps and their cron patterns (logged at registration, used to schedule them). */
 export function describeM34SweepSchedules(): readonly {

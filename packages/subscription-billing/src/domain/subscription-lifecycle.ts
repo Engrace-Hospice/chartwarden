@@ -37,18 +37,3 @@ export function canTransitionSubscription(
 export function isTerminalSubscriptionStatus(status: SubscriptionStatus): boolean {
   return SUBSCRIPTION_TERMINAL_STATUSES.includes(status);
 }
-
-/** The statuses in which billing does NOT block tenant access (`BillingStatus.isBlockedByBilling=false`).
- *  `suspended` blocks; `past_due`/`at_risk` warn but do not yet block (D7). */
-export const SUBSCRIPTION_BILLABLE_NON_BLOCKING_STATUSES: readonly SubscriptionStatus[] = [
-  "trialing",
-  "active",
-  "past_due",
-  "at_risk",
-  "paused",
-];
-
-/** True iff the subscription status hard-blocks tenant access (`suspended` only, per D7). */
-export function isBillingBlocked(status: SubscriptionStatus): boolean {
-  return status === "suspended";
-}

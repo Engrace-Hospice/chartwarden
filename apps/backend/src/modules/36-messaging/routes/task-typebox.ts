@@ -65,7 +65,7 @@ export const TaskSchema = Type.Object({
   allowed_actions: Type.Array(literals(TASK_ACTIONS)),
 });
 
-export const TaskEventSchema = Type.Object({
+const TaskEventSchema = Type.Object({
   id: Type.String({ format: "uuid" }),
   task_id: Type.String({ format: "uuid" }),
   event_type: literals(TASK_EVENT_TYPES),

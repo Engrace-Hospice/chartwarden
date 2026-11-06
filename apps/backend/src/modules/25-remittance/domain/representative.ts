@@ -15,13 +15,10 @@ export const REPRESENTATIVE_KINDS = [
   "attorney",
   "other",
 ] as const;
-export type RepresentativeKind = (typeof REPRESENTATIVE_KINDS)[number];
 
 export const INSTRUMENT_KINDS = ["org_form", "other_written_instrument"] as const;
-export type InstrumentKind = (typeof INSTRUMENT_KINDS)[number];
 
 export const APPOINTMENT_STATES = ["draft", "active", "revoked", "superseded"] as const;
-export type AppointmentState = (typeof APPOINTMENT_STATES)[number];
 
 /** Validation bounds (not rule values). */
 export const REPRESENTATIVE_BOUNDS = {

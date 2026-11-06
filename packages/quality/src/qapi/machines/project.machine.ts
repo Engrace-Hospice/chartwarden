@@ -46,7 +46,7 @@ export type QapiProjectEvent =
     };
 
 /** The legal §2.2 transition graph (from → events accepted). Guards are checked separately. */
-export const QAPI_PROJECT_GRAPH: Readonly<
+const QAPI_PROJECT_GRAPH: Readonly<
   Record<QapiProjectPhase, ReadonlyArray<QapiProjectEvent["type"]>>
 > = {
   proposed: ["activate", "abandon"],

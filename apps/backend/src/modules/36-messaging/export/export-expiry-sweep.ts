@@ -15,10 +15,10 @@ const J = schema.messageExportJobs;
 
 export const EXPIRY_SWEEP_BATCH = 100;
 export const MAX_PAGES = 25;
-export const EXPORT_BUILD_TIMEOUT_MINUTES = 30;
+const EXPORT_BUILD_TIMEOUT_MINUTES = 30;
 /** An `approved` job this old has had its build enqueued long ago: the enqueue was lost (queue flushed), so the sweep enqueues it again. */
 export const EXPORT_APPROVED_REENQUEUE_MINUTES = 15;
-export const EXPORT_FAIL_TIMEOUT = "EXPORT_BUILD_TIMEOUT";
+const EXPORT_FAIL_TIMEOUT = "EXPORT_BUILD_TIMEOUT";
 
 /** The database half of the sweep (each call its own tenant transaction). */
 export interface ExportExpiryStore {

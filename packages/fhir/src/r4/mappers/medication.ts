@@ -15,9 +15,9 @@ import type {
 import { RXNORM_SYSTEM } from "../uris";
 import type { MedicationRequestDomain, MedicationStatementDomain } from "./domain";
 
-export const US_CORE_MEDICATION_REQUEST_PROFILE =
+const US_CORE_MEDICATION_REQUEST_PROFILE =
   "http://hl7.org/fhir/us/core/StructureDefinition/us-core-medicationrequest";
-export const US_CORE_MEDICATION_STATEMENT_PROFILE =
+const US_CORE_MEDICATION_STATEMENT_PROFILE =
   "http://hl7.org/fhir/StructureDefinition/MedicationStatement";
 
 /** RxNorm coding + text fallback, shared by both mappers. */

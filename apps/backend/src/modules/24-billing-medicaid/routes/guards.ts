@@ -20,10 +20,6 @@ const bodyField = (request: TargetRequest, key: string): string => {
   const v = (request.body as Record<string, unknown> | undefined)?.[key];
   return typeof v === "string" ? v : "";
 };
-const queryField = (request: TargetRequest, key: string): string => {
-  const v = (request.query as Record<string, unknown> | undefined)?.[key];
-  return typeof v === "string" ? v : "";
-};
 
 /** RBAC gate — `requirePermission(key)` from M3 (the §4.7 key catalog M24 contributes). */
 export const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -67,13 +63,6 @@ export const ABAC_RULE = (key: string, predicate: string): PreHandler =>
 export const ABAC_BODY_PE = (key: string, predicate: string): PreHandler =>
   requireAbac(key, predicate, {
     getTarget: (r) => ({ providerEntityId: bodyField(r, "providerEntityId") }),
-    notFoundOnDeny: false,
-  }) as PreHandler;
-
-/** §4.8 ABAC over the `providerEntityId` carried in the query string (list / dashboard / metrics). */
-export const ABAC_QUERY_PE = (key: string, predicate: string): PreHandler =>
-  requireAbac(key, predicate, {
-    getTarget: (r) => ({ providerEntityId: queryField(r, "providerEntityId") }),
     notFoundOnDeny: false,
   }) as PreHandler;
 

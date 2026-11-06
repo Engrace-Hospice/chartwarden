@@ -37,11 +37,6 @@ export const M35_PLATFORM_SHARED_TABLES = [
   "platform_retained_invoice_line",
 ] as const satisfies readonly M35TableName[];
 
-/** True iff the table is tenant-RLS-scoped (drives the T02 RLS policy choice + the eraser plan). */
-export function isTenantScopedTable(table: M35TableName): boolean {
-  return (M35_TENANT_SCOPED_TABLES as readonly M35TableName[]).includes(table);
-}
-
 /**
  * §3.6 the ADVISORY audit posture M35 requests per table (M4 applies/overrides its own policy):
  *  - `audit_writes`      — request an audit row on writes (optionally excluding high-churn/secret fields).

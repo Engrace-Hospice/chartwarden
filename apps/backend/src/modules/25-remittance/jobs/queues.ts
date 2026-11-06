@@ -45,14 +45,3 @@ export const M25_QUEUE_PARAMS = {
   appealDeadlineScan: { concurrency: 1, attempts: 2, backoff: EXPONENTIAL() },
   remittancePull: { concurrency: 1, attempts: 3, backoff: EXPONENTIAL(30000) },
 } as const satisfies Record<string, M25QueueParam>;
-
-/** The day bucket (UTC `yyyy-mm-dd`) the cron dedupe keys quantize on (one tick per day). */
-function dayBucket(at: Date): string {
-  return at.toISOString().slice(0, 10);
-}
-
-/** The §4.8 idempotency-key builders (PHI-free; a date bucket per cron tick). */
-export const M25_IDEMPOTENCY_KEYS = {
-  denialAgingScan: (at: Date): string => `denial-aging:${dayBucket(at)}`,
-  appealDeadlineScan: (at: Date): string => `appeal-deadline:${dayBucket(at)}`,
-} as const;

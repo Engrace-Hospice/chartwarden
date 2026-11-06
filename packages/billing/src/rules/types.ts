@@ -40,7 +40,6 @@ import type { PayerStatusDateSource } from "../notice/payer-status-date";
 
 /** A rule's severity (mirrors `m23_validation_severity`); reused from the package contract for lockstep. */
 export type RuleSeverity = ValidationSeverity;
-export const RULE_SEVERITIES: readonly RuleSeverity[] = ["error", "warn", "info"] as const;
 
 /**
  * The §4.5 rule category — the UI grouping dimension for the validation worklist. Not a DB enum (the
@@ -71,31 +70,6 @@ export type RuleCategory =
   | "visits"
   | "admission"
   | "wage";
-
-export const RULE_CATEGORIES: readonly RuleCategory[] = [
-  "eligibility",
-  "period",
-  "cert",
-  "f2f",
-  "loc",
-  "perDiemClass",
-  "sia",
-  "icd",
-  "physician",
-  "noe",
-  "tob_dates",
-  "duplicates",
-  "pos",
-  "cap",
-  "discharge",
-  "modifiers",
-  "evv",
-  "election",
-  "charges",
-  "visits",
-  "admission",
-  "wage",
-] as const;
 
 /** The target a remediation hint blames, so the worklist can deep-link to the owning module's editor. */
 export type BlameTarget =

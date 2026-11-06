@@ -15,7 +15,7 @@
 // failed" alert that is always true, and an alarm that is always true is ignored. Such a consumer goes in
 // {@link CASCADE_DEFERRED_CONSUMERS} (empty today) until it gains a binding (no data migration: rows keep every
 // key, the arbiter just filters).
-import { CASCADE_MAX_ATTEMPTS, nextCascadeStatus } from "@chartwarden/consent";
+import { nextCascadeStatus } from "@chartwarden/consent";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
@@ -94,9 +94,6 @@ export function evaluateCascade(
   const status: CascadeStatus = next.ok ? next.value : "partial_failed";
   return { status, attempts: attemptsAfter, pendingConsumers, consumers };
 }
-
-/** True once a cascade has spent its whole retry budget. */
-export const cascadeBudgetSpent = (attempts: number): boolean => attempts >= CASCADE_MAX_ATTEMPTS;
 
 export interface CascadeAckInput {
   readonly organizationId: string;

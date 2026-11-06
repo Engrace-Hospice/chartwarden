@@ -10,7 +10,7 @@ import { cacheFlagRead } from "../presence/binding";
 import type { IdgDiscussionRouteDeps } from "../routes/idg-discussion-routes";
 import { createDbIdgDiscussionStore } from "./idg-discussion-store-db";
 
-export const IDG_FLAG_KEY = "messaging.idg";
+const IDG_FLAG_KEY = "messaging.idg";
 
 export interface IdgDiscussionBindingInput {
   readonly db: DbClient;

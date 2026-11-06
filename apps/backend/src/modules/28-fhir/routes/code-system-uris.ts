@@ -11,7 +11,7 @@
 // licence decision (M38 §1.2 D4), so a CPT `$validate-code` is not-supported rather than a lookup miss.
 
 /** Canonical FHIR URI → M38 `code_system_id`. */
-export const FHIR_CODE_SYSTEM_URIS: Readonly<Record<string, string>> = {
+const FHIR_CODE_SYSTEM_URIS: Readonly<Record<string, string>> = {
   "http://hl7.org/fhir/sid/icd-10-cm": "icd10cm",
   "http://www.cms.gov/Medicare/Coding/ICD10": "icd10pcs",
   "http://snomed.info/sct": "snomed",

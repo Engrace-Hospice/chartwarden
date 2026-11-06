@@ -39,7 +39,7 @@ export type QualityReadSurface = "incident" | "mortality" | "infection";
  * Infection Control Lead: incident, infection (mortality.read is ✗ for ICL, so it has no arm there). This is
  * deliberately NOT in the shared `hasOrgWideScope` (@chartwarden/auth), and it is never consulted for a write.
  */
-export const M30_ORG_READ_ROLES: Readonly<Record<QualityReadSurface, readonly string[]>> = {
+const M30_ORG_READ_ROLES: Readonly<Record<QualityReadSurface, readonly string[]>> = {
   incident: ["qapi_coordinator", "infection_control_lead"],
   mortality: ["qapi_coordinator"],
   infection: ["qapi_coordinator", "infection_control_lead"],

@@ -14,9 +14,9 @@ import type {
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
 
-export const M36_AMENDMENT_SLA_ALERT_CONSUMER = "m36.amendment-sla-alerts" as const;
+const M36_AMENDMENT_SLA_ALERT_CONSUMER = "m36.amendment-sla-alerts" as const;
 
-export const M36_AMENDMENT_SLA_ALERT_EVENT_TYPES = [
+const M36_AMENDMENT_SLA_ALERT_EVENT_TYPES = [
   "m5.patient.amendment_sla_due_soon",
   "m5.patient.amendment_sla_overdue",
 ] as const;

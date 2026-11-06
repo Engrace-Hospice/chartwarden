@@ -17,7 +17,7 @@ export interface TitrationWindow {
  * ketorolac PCA at sedating doses, dexmedetomidine). Keyed by a normalized medication name; the overlay
  * builder falls back to a name-substring match so an unseeded RxNorm code still classifies correctly.
  */
-export const SEDATION_CLASS_MED_NAMES: readonly string[] = [
+const SEDATION_CLASS_MED_NAMES: readonly string[] = [
   "midazolam",
   "propofol",
   "ketamine",
@@ -30,7 +30,7 @@ export const SEDATION_CLASS_MED_NAMES: readonly string[] = [
  * a conservative non-sedation default with a wide window the tenant overlay is expected to tighten; the
  * `is_sedation_class` flag still derives from the name classifier so a novel sedation drip is caught.
  */
-export const TITRATION_CATALOG: Readonly<Record<string, TitrationWindow>> = {
+const TITRATION_CATALOG: Readonly<Record<string, TitrationWindow>> = {
   midazolam: { minRate: 0.5, maxRate: 10, rateUnit: "mg_per_hour", isSedationClass: true },
   propofol: { minRate: 5, maxRate: 50, rateUnit: "mcg_per_kg_per_min", isSedationClass: true },
   ketamine: { minRate: 0.1, maxRate: 1.0, rateUnit: "mg_per_hour", isSedationClass: true },
@@ -54,7 +54,7 @@ export const DEFAULT_TITRATION_WINDOW: TitrationWindow = {
 };
 
 /** Normalize a medication display name for catalog lookup (lowercase, trimmed). */
-export function normalizeMedName(displayName: string): string {
+function normalizeMedName(displayName: string): string {
   return displayName.trim().toLowerCase();
 }
 

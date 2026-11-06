@@ -49,7 +49,7 @@ export interface OllamaModelBackendOptions {
 }
 
 /** The Ollama server answered, but not with a usable completion. */
-export class OllamaBackendError extends Error {
+class OllamaBackendError extends Error {
   constructor(detail: string) {
     super(detail);
     this.name = "OllamaBackendError";
