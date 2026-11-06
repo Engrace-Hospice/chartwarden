@@ -133,6 +133,9 @@ export {
   type M16MailingDeps,
   type M16MailingService,
   buildDrizzleM16MailingService,
+  type M16MemorialDeps,
+  type M16MemorialService,
+  buildDrizzleM16MemorialService,
   type M16GroupDeps,
   type M16GroupService,
   buildDrizzleM16GroupService,
@@ -219,3 +222,9 @@ export {
   scheduleM16Jobs,
 } from "./jobs/cron-workers";
 export { M16_PLATFORM_JOB_ID, wireM16Tenancy } from "./wiring";
+
+// ADR-0109 D10 (PR 3) — the bereaved family's memorial invitations / RSVP for M31 (`BereavementPortalContentProvider`).
+export {
+  type BereavementPortalContentDeps,
+  createBereavementPortalContentProvider,
+} from "./seams/portal-content";

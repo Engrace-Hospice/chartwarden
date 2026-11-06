@@ -34,6 +34,7 @@ import {
   bereavementEncounterReaderDenyStub,
   bereavementOutreachProviderDenyStub,
   bereavementPlanProviderDenyStub,
+  bereavementPortalContentProviderDenyStub,
   bereavementRiskFactorsProviderDenyStub,
   bereavementRiskNarrativeProviderDenyStub,
   bereavementRiskTierProviderDenyStub,
@@ -1234,6 +1235,13 @@ export const REQUIRED_SEAMS = [
     ownerModule: 16,
     phi: true,
     denyStub: bereavedPortalScopeProviderDenyStub,
+  },
+  // ADR-0109 D10 (PR 3) — the family's memorial invitations / RSVP in the portal. PHI: an invitation says whose death the family is grieving.
+  {
+    key: "BereavementPortalContentProvider",
+    ownerModule: 16,
+    phi: true,
+    denyStub: bereavementPortalContentProviderDenyStub,
   },
   {
     key: "BereavementComplianceProvider",

@@ -165,6 +165,8 @@ const MODULES: ReadonlyArray<{
       "packages/db/migrations/1374_m16_mailings.sql",
       // ADR-0109 D10 (PR 3) — support groups (the agency-authored description is prose and is scrubbed).
       "packages/db/migrations/1390_m16_support_groups.sql",
+      // ADR-0109 D10 (PR 3) — memorial services (the agency-authored description is prose and is scrubbed).
+      "packages/db/migrations/1391_m16_memorial_services.sql",
     ],
   },
   {

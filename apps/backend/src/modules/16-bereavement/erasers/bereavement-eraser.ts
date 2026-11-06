@@ -61,6 +61,8 @@ export interface BereavementEraseCounts {
   readonly mailingItems: number;
   /** `bereavement_support_group_attendance` + `_enrollment` rows deleted (ADR-0109 D10, PR 3: they name a plan and a contact; RESTRICT FKs). */
   readonly groupParticipation: number;
+  /** `bereavement_memorial_invitation` rows deleted (ADR-0109 D10, PR 3: they name a plan and a contact; RESTRICT FKs). */
+  readonly memorialInvitations: number;
   /** `bereaved_contact` rows deleted. */
   readonly contacts: number;
   /** `bereavement_plan` roots tombstoned (rows PRESERVED for FK integrity — not part of the tally). */
@@ -127,6 +129,7 @@ export async function eraseBereavementRecord(
     counts.physicianLetters +
     counts.mailingItems +
     counts.groupParticipation +
+    counts.memorialInvitations +
     counts.contacts;
   return { erased, shredded, counts };
 }
@@ -142,6 +145,7 @@ const ZERO: BereavementEraseCounts = {
   physicianLetters: 0,
   mailingItems: 0,
   groupParticipation: 0,
+  memorialInvitations: 0,
   contacts: 0,
   plansTombstoned: 0,
   closuresShredded: 0,
@@ -198,6 +202,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
   const MAILING_ITEM = schema.bereavementMailingItem;
   const GROUP_ATTENDANCE = schema.bereavementSupportGroupAttendance;
   const GROUP_ENROLLMENT = schema.bereavementSupportGroupEnrollment;
+  const MEMORIAL_INVITATION = schema.bereavementMemorialInvitation;
   const CLOSURE = schema.bereavementPlanClosure;
 
   /** The decedent's plan-root ids — every child table is keyed on `plan_id`, not on the patient. */
@@ -361,6 +366,13 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
             .where(inArray(GROUP_ENROLLMENT.planId, planIds))
             .returning({ id: GROUP_ENROLLMENT.id }),
         );
+        // ADR-0109 D10 (PR 3) — memorial invitations name a plan and a contact (RESTRICT); the service is org-level and survives.
+        const memorialInvitations = await del(() =>
+          tx
+            .delete(MEMORIAL_INVITATION)
+            .where(inArray(MEMORIAL_INVITATION.planId, planIds))
+            .returning({ id: MEMORIAL_INVITATION.id }),
+        );
         const contacts = await del(() =>
           tx.delete(CONTACT).where(inArray(CONTACT.planId, planIds)).returning({ id: CONTACT.id }),
         );
@@ -403,6 +415,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
           physicianLetters,
           mailingItems,
           groupParticipation: groupAttendance + groupEnrollments,
+          memorialInvitations,
           contacts,
           plansTombstoned: tombstoned.length,
           closuresShredded: closures.length,

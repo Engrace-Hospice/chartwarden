@@ -18,6 +18,7 @@ import type {
   BereavementComplianceProvider,
   BereavementOutreachProvider,
   BereavementPlanProvider,
+  BereavementPortalContentProvider,
   BereavementRiskFactorsProvider,
   BereavementRiskTierProvider,
   ExternalGriefResourceReader,
@@ -357,6 +358,7 @@ export type SeamName =
   | "BereavementRiskFactorsProvider" // M16 — D3/D17 factor snapshot + deterministic score + the M32 Layer-2 append
   | "BereavementAssignmentReader" // M16 — plan assignment + counselor caseload (M36 recipient resolver, M3 ABAC)
   | "BereavedPortalScopeProvider" // M16 — the M31 bereaved-family session scope (§1.2 / D10 narrow)
+  | "BereavementPortalContentProvider" // M16 — ADR-0109 D10 (PR 3): the family's memorial invitations / RSVP in the M31 portal
   | "BereavementComplianceProvider" // M16 — CoP / screening-completeness / closure COUNTS (M30 HQRP, M33)
   | "BereavementRiskTierProvider" // M16 — risk-tier distribution (M30 chart, M33 dashboard)
   // M21 (Supplies, DME & Comfort Kits) owned seams (§4.8 / D14) — leaf-typed in ./supplies (this package).
@@ -1335,6 +1337,7 @@ export interface SeamContracts {
   BereavementRiskFactorsProvider: BereavementRiskFactorsProvider;
   BereavementAssignmentReader: BereavementAssignmentReader;
   BereavedPortalScopeProvider: BereavedPortalScopeProvider;
+  BereavementPortalContentProvider: BereavementPortalContentProvider;
   BereavementComplianceProvider: BereavementComplianceProvider;
   BereavementRiskTierProvider: BereavementRiskTierProvider;
   // M21's owned seams (§4.8 / D14) — interfaces live in ./supplies (this package). No free-text column

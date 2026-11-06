@@ -136,6 +136,17 @@ export const M16_ERROR_STATUS = {
   CONTACT_NOT_ENROLLABLE: 409,
   /** Attendance for a contact with no live enrollment in a group that requires one. */
   CONTACT_NOT_ENROLLED: 409,
+  // ADR-0109 D10 (PR 3) — memorial services
+  MEMORIAL_NOT_FOUND: 404,
+  MEMORIAL_INVITATION_NOT_FOUND: 404,
+  /** A held or cancelled service is history; a published one keeps its invitation window. */
+  MEMORIAL_NOT_EDITABLE: 409,
+  /** An RSVP or attendance for a service that is not published (or, for attendance, not yet started). */
+  MEMORIAL_NOT_OPEN: 409,
+  /** The family's portal RSVP after the RSVP-by date, or any RSVP once the service started (staff may still take a late phone answer before it starts). */
+  MEMORIAL_RSVP_CLOSED: 409,
+  /** Accepting would put the yes answers (with their guests) over the service's capacity. */
+  MEMORIAL_FULL: 409,
   // Optimistic concurrency (§2.5)
   STALE_VERSION: 412,
   // Structural — an event dispatched from a state that does not accept it (§2.2–§2.4 graphs).

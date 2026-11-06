@@ -40,6 +40,16 @@ export {
   buildDrizzleM16GroupService,
   withdrawLapsedGroupEnrollments,
 } from "./group-service-drizzle";
+export { type M16MemorialDeps, buildDrizzleM16MemorialService } from "./memorial-service-drizzle";
+export type {
+  ContactMemorialInvitationView,
+  M16MemorialService,
+  MemorialDetailView,
+  MemorialFieldsInput,
+  MemorialInvitationView,
+  MemorialRsvpCounts,
+  MemorialView,
+} from "./memorial-service";
 export type {
   AttendanceResultView,
   CreateGroupInput,
@@ -108,6 +118,7 @@ import type { M16DraftService } from "./draft-service";
 import type { M16GroupService } from "./group-service";
 import type { M16LetterService } from "./letter-service";
 import type { M16MailingService } from "./mailing-service";
+import type { M16MemorialService } from "./memorial-service";
 import type { M16ReadService } from "./read-service";
 import type { M16WriteService } from "./write-service";
 
@@ -123,4 +134,6 @@ export interface M16RouteServices {
   readonly mailingService: M16MailingService;
   /** ADR-0109 D10 (PR 3) — support groups: groups, sessions, enrollment, roster and attendance. */
   readonly groupService: M16GroupService;
+  /** ADR-0109 D10 (PR 3) — memorial services: publish (invitations + the invitation mailing run), RSVP and attendance. */
+  readonly memorialService: M16MemorialService;
 }

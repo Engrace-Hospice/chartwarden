@@ -48,6 +48,8 @@ import {
   NotificationPreferenceUpdateRequest,
   PortalDocumentUploadInitRequest,
   PortalInvitationAcceptRequest,
+  PortalMemorialRsvpParams,
+  PortalMemorialRsvpRequest,
   parse,
 } from "./portal-typebox";
 
@@ -569,6 +571,43 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         allowMailings: body.allowMailings,
       });
       return { ok: true, ...result };
+    },
+  );
+
+  // ADR-0109 D10 (PR 3) — the family's own memorial RSVP (→ M16), window-gated. M16 refuses another family's invitation (404), an answer after the
+  // RSVP-by date or once the service started (409 MEMORIAL_RSVP_CLOSED) and one over capacity (409 MEMORIAL_FULL).
+  app.post(
+    "/api/v1/portal/bereavement/memorials/:invitationId/rsvp",
+    {
+      preHandler: [
+        P("portal.bereavement.rsvp_own"),
+        ABAC_BEREAVED("portal.bereavement.rsvp_own"),
+        IDEMPOTENT,
+      ],
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const { invitationId } = parse(PortalMemorialRsvpParams, request.params);
+      const body = parse(PortalMemorialRsvpRequest, request.body);
+      try {
+        return await getSeam("BereavementPortalContentProvider").recordPortalRsvp({
+          organizationId: actor.organizationId,
+          userId: actor.userId,
+          portalAccountId: portalAccountIdOf(actor),
+          invitationId,
+          response: body.response,
+          guests: body.guests,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === "NotImplementedError") {
+          throw new ChartWardenError(
+            "BEREAVEMENT_PORTAL_CONTENT_UNAVAILABLE",
+            "Replying is not available right now. Please contact your care team.",
+            503,
+          );
+        }
+        throw error;
+      }
     },
   );
 

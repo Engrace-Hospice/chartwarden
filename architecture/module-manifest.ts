@@ -752,6 +752,8 @@ export const MODULES: ModuleDef[] = [
       "bereavement_support_group_session",
       "bereavement_support_group_enrollment",
       "bereavement_support_group_attendance",
+      "bereavement_memorial_service",
+      "bereavement_memorial_invitation",
       "tenant_bereavement_external_source_gate_override",
     ],
   },

@@ -808,6 +808,8 @@ import {
   buildDrizzleBereavementAbacResolver,
   buildDrizzleM16DraftService,
   buildDrizzleM16GroupService,
+  buildDrizzleM16MemorialService,
+  createBereavementPortalContentProvider,
   buildDrizzleM16LetterService,
   buildDrizzleM16MailingService,
   buildDrizzleM16ReadService,
@@ -2216,6 +2218,22 @@ export function wireModuleSeams(
   // methods incl. the ONE write: the append to the immutable risk-score ledger; contact channel
   // ciphers never cross the seam).
   registerBereavementSeams(deps.db ? { store: createDrizzleBereavementSeamStore(deps.db) } : {});
+  // ADR-0109 D10 (PR 3) — `BereavementPortalContentProvider`: the bereaved family's own memorial invitations and RSVP for M31's portal routes. The
+  // RSVP emits `m16.bereavement.memorial_rsvp_recorded` through the catalog-validating publisher (callerModule `m16`); a virtual service's link is
+  // opened with the tenant-DEK envelope (resolved per call). Without a db or a publisher the deny-stub stands (the portal routes answer 503).
+  if (deps.db && deps.outboxPublisher) {
+    registerSeam(
+      "BereavementPortalContentProvider",
+      createBereavementPortalContentProvider(deps.db, {
+        outbox: bindCallerModule(deps.outboxPublisher, "m16") as never,
+        cipher: createBereavementCipher({
+          dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+          dekForOrgVersion: (orgId, version) =>
+            getTenantKeyProvider().dekForOrgVersion(orgId, version),
+        }),
+      }),
+    );
+  }
   // M16-T06 — the four §4.8 ABAC predicates M16 OWNS (bereavement_window / discipline_can_provide_bereavement
   // / org_scope_bereavement_oversight / portal_self_service) into M3's named-predicate registry. §4.8 calls
   // the last two "reused / M3 §4.2 family", but nothing on the platform registers either name, and an
@@ -6656,6 +6674,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 );
                 return status.isActive === true;
               },
+            }),
+            // ADR-0109 D10 (PR 3) — memorial services. Publish selects the invitations set-based and drafts the invitation mailing run (worded,
+            // generated and confirmed on the mailing screens); an RSVP emits `memorial_rsvp_recorded` on its own transaction.
+            memorialService: buildDrizzleM16MemorialService(dbHandle.db, {
+              outbox: m16OutboxPublisher,
+              cipher: m16Cipher,
             }),
           });
           // M21 (Supplies, DME & Comfort Kits) — mount the §4.1 route plugins over the Drizzle READ +

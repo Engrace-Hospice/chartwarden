@@ -334,6 +334,20 @@ import {
   PutMailingConfigBody as M16PutMailingConfigBody,
   UpdateMailingRunContentBody as M16UpdateMailingRunContentBody,
 } from "../../apps/backend/src/modules/16-bereavement/routes/mailing-typebox";
+// ADR-0109 D10 (PR 3) — the M16 memorial services (routes 67-76).
+import {
+  CloseMemorialBody as M16CloseMemorialBody,
+  ContactMemorialInvitationListResponseSchema as M16ContactMemorialInvitationListResponse,
+  ContactMemorialInvitationResponseSchema as M16ContactMemorialInvitationResponse,
+  MemorialAttendanceBody as M16MemorialAttendanceBody,
+  MemorialDetailResponseSchema as M16MemorialDetailResponse,
+  MemorialFieldsBody as M16MemorialFieldsBody,
+  MemorialInvitationListResponseSchema as M16MemorialInvitationListResponse,
+  MemorialInvitationResponseSchema as M16MemorialInvitationResponse,
+  MemorialListQuerySchema as M16MemorialListQuerySchema,
+  MemorialPageResponseSchema as M16MemorialPageResponse,
+  MemorialRsvpBody as M16MemorialRsvpBody,
+} from "../../apps/backend/src/modules/16-bereavement/routes/memorial-typebox";
 // M19 On-Call Triage — the §4.2 request bodies + list queries the §4.1 route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M19-T08
 // web screens call the surface these type. Note what is deliberately ABSENT from every body and therefore
@@ -2442,6 +2456,9 @@ import {
   PortalInvitationIssueRequest as M31PortalInvitationIssueRequest,
   PortalInvitationIssueResponse as M31PortalInvitationIssueResponse,
   PortalInvitationListResponse as M31PortalInvitationListResponse,
+  PortalMemorialInvitationListResponse as M31PortalMemorialInvitationListResponse,
+  PortalMemorialInvitationResponse as M31PortalMemorialInvitationResponse,
+  PortalMemorialRsvpRequest as M31PortalMemorialRsvpRequest,
   PortalMessageHistoryQuery as M31PortalMessageHistoryQuery,
   PortalMessageHistoryResponse as M31PortalMessageHistoryResponse,
   PortalSessionCurrentResponse as M31PortalSessionCurrentResponse,
@@ -4361,6 +4378,17 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "POST /api/v1/portal/bereavement/opt-out": {
     summary: "Self opt-out of the bereavement program (M16)",
     response: M31AckResponse,
+  },
+  "GET /api/v1/portal/bereavement/memorials": {
+    summary:
+      "The bereaved family's own memorial-service invitations (published services only; a virtual link once they said yes), window-gated (M16, ADR-0109 D10)",
+    response: M31PortalMemorialInvitationListResponse,
+  },
+  "POST /api/v1/portal/bereavement/memorials/:invitationId/rsvp": {
+    summary:
+      "The family's own RSVP (yes with a guest count, no, maybe); 404 for another family's invitation, 409 `MEMORIAL_RSVP_CLOSED` after the RSVP-by date or once the service started, 409 `MEMORIAL_FULL` over capacity; `Idempotency-Key` required (M16, ADR-0109 D10)",
+    body: M31PortalMemorialRsvpRequest,
+    response: M31PortalMemorialInvitationResponse,
   },
   "POST /api/v1/portal/bereavement/mailing-preference": {
     summary:
@@ -8049,6 +8077,62 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/bereavement/contacts/:contactId/support-groups": {
     summary: "One contact's support-group enrollments, live and past (ADR-0109 D10, #66)",
     response: M16GroupEnrollmentListResponse,
+  },
+
+  // ── memorial.routes.ts (ADR-0109 D10, PR 3) ──
+  "GET /api/v1/bereavement/memorials": {
+    summary:
+      "Memorial services, newest start first (`?status=`), cursor-paginated, each with its RSVP counts; oversight or bereavement-capable staff; names no family (ADR-0109 D10, #67)",
+    query: M16MemorialListQuerySchema,
+    response: M16MemorialPageResponse,
+  },
+  "POST /api/v1/bereavement/memorials": {
+    summary:
+      "Create a DRAFT memorial service (title, time, place or meeting link, capacity, RSVP-by date, invitation window of 1..13 months, default 12); oversight only; `Idempotency-Key` required (ADR-0109 D10, #68)",
+    body: M16MemorialFieldsBody,
+    response: M16MemorialDetailResponse,
+  },
+  "GET /api/v1/bereavement/memorials/:serviceId": {
+    summary: "One memorial service with its meeting link and RSVP counts (ADR-0109 D10, #69)",
+    response: M16MemorialDetailResponse,
+  },
+  "PATCH /api/v1/bereavement/memorials/:serviceId": {
+    summary:
+      "Edit a draft or published service (the invitation window is fixed once published); oversight only; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #70)",
+    body: M16MemorialFieldsBody,
+    response: M16MemorialDetailResponse,
+  },
+  "POST /api/v1/bereavement/memorials/:serviceId/publish": {
+    summary:
+      "Publish: invite, set-based, every program family whose decedent died within the window before the service (`mailing` when the mailing rule lets them receive a letter, else `portal_only`) and draft ONE `memorial_invitation` mailing run for the mailing invitees (no default wording); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #71)",
+    response: M16MemorialDetailResponse,
+  },
+  "POST /api/v1/bereavement/memorials/:serviceId/close": {
+    summary:
+      "Mark a started service held, or cancel a draft or published one (its unmailed invitation run is cancelled too); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #72)",
+    body: M16CloseMemorialBody,
+    response: M16MemorialDetailResponse,
+  },
+  "GET /api/v1/bereavement/memorials/:serviceId/invitations": {
+    summary:
+      "Every invitation of a service by family name, with delivery, RSVP and attendance; oversight only (ADR-0109 D10, #73)",
+    response: M16MemorialInvitationListResponse,
+  },
+  "PUT /api/v1/bereavement/contacts/:contactId/memorial-invitations/:invitationId/rsvp": {
+    summary:
+      "Record a family's RSVP taken by phone (yes with a guest count, no, maybe) until the service starts; 409 `MEMORIAL_FULL` over capacity; emits `m16.bereavement.memorial_rsvp_recorded`; `Idempotency-Key` required (ADR-0109 D10, #74)",
+    body: M16MemorialRsvpBody,
+    response: M16ContactMemorialInvitationResponse,
+  },
+  "POST /api/v1/bereavement/memorials/:serviceId/invitations/:invitationId/attendance": {
+    summary:
+      "Mark an invitee attended (a contact-log activity row `memorial_service_attendance`, no cadence item; final) or a no-show, once the service has started; oversight only; `Idempotency-Key` required (ADR-0109 D10, #75)",
+    body: M16MemorialAttendanceBody,
+    response: M16MemorialInvitationResponse,
+  },
+  "GET /api/v1/bereavement/contacts/:contactId/memorial-invitations": {
+    summary: "One contact's memorial invitations, newest service first (ADR-0109 D10, #76)",
+    response: M16ContactMemorialInvitationListResponse,
   },
 
   // ── contacts.routes.ts ──

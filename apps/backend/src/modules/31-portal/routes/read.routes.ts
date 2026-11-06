@@ -468,6 +468,41 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
     },
   );
 
+  // ADR-0109 D10 (PR 3) — the family's own memorial invitations (M16 `BereavementPortalContentProvider`), window-gated. M16 decides which rows are
+  // this account's; only published services are listed.
+  app.get(
+    "/api/v1/portal/bereavement/memorials",
+    {
+      preHandler: [
+        P("portal.bereavement.read_program"),
+        ABAC_BEREAVED("portal.bereavement.read_program"),
+      ],
+      config: PHI("portal_bereavement"),
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      try {
+        const items = await getSeam(
+          "BereavementPortalContentProvider",
+        ).memorialInvitationsForPortalAccount({
+          organizationId: actor.organizationId,
+          userId: actor.userId,
+          portalAccountId: portalAccountIdOf(actor),
+        });
+        return { items };
+      } catch (error) {
+        if (error instanceof Error && error.name === "NotImplementedError") {
+          throw new ChartWardenError(
+            "BEREAVEMENT_PORTAL_CONTENT_UNAVAILABLE",
+            "Memorial services are not available right now. Please contact your care team.",
+            503,
+          );
+        }
+        throw error;
+      }
+    },
+  );
+
   // bereavement resources (M40 grief resources + M22 tenant catalog).
   app.get(
     "/api/v1/portal/bereavement/resources",

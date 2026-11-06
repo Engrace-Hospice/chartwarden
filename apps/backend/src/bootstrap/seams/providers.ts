@@ -28,6 +28,7 @@ import type {
   BereavementEncounterReader,
   BereavementOutreachProvider,
   BereavementPlanProvider,
+  BereavementPortalContentProvider,
   BereavementRiskFactorsProvider,
   BereavementRiskTierProvider,
   BillableEncounterReader,
@@ -1486,6 +1487,16 @@ export const bereavedPortalScopeProviderDenyStub: BereavedPortalScopeProvider = 
   },
   isWindowOpen() {
     throw new NotImplementedError("BereavedPortalScopeProvider");
+  },
+};
+
+/** M16 — ADR-0109 D10 (PR 3): the bereaved family's memorial invitations / RSVP in the portal. Denies until M16 registers the real provider. */
+export const bereavementPortalContentProviderDenyStub: BereavementPortalContentProvider = {
+  memorialInvitationsForPortalAccount() {
+    throw new NotImplementedError("BereavementPortalContentProvider");
+  },
+  recordPortalRsvp() {
+    throw new NotImplementedError("BereavementPortalContentProvider");
   },
 };
 

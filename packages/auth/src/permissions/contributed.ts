@@ -4623,6 +4623,21 @@ export const M16_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "bereavement_group_scope",
   },
+  // ADR-0109 D10 (PR 3) — memorial services. `manage` creates, edits, publishes (the set-based invitations and the invitation mailing run),
+  // closes a service and records attendance: oversight only (an invitation list names every recently bereaved family). `rsvp` records a family's
+  // answer taken by phone, on the family's window (their counselor or oversight); the service list it also reads names no family. Migration 1391.
+  "bereavement.memorial.manage": {
+    resource: "bereavement_memorial_service",
+    action: "manage",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.memorial.rsvp": {
+    resource: "bereavement_memorial_service",
+    action: "rsvp",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
 } satisfies Record<string, PermissionDef>;
 
 /** Union of the M16 contributed permission keys. */
@@ -6110,6 +6125,13 @@ export const M31_CONTRIBUTED_PERMISSIONS = {
   "portal.bereavement.opt_out_own": {
     resource: "portal_bereavement",
     action: "opt_out_own",
+    category: "portal",
+    abac: "bereaved_portal_window_open",
+  },
+  // ADR-0109 D10 (PR 3) — the bereaved family's own memorial RSVP (M16 checks the invitation is the account's own contact's). Migration 1391.
+  "portal.bereavement.rsvp_own": {
+    resource: "portal_bereavement",
+    action: "rsvp_own",
     category: "portal",
     abac: "bereaved_portal_window_open",
   },

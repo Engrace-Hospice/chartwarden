@@ -67,6 +67,20 @@ import type {
   MailingRunViewResponseSchema,
 } from "./mailing-typebox";
 import type {
+  ContactMemorialInvitationView as SvcContactMemorialInvitationView,
+  MemorialDetailView as SvcMemorialDetailView,
+  MemorialInvitationView as SvcMemorialInvitationView,
+  MemorialView as SvcMemorialView,
+} from "./memorial-service";
+import type {
+  ContactMemorialInvitationListResponseSchema,
+  ContactMemorialInvitationResponseSchema,
+  MemorialDetailResponseSchema,
+  MemorialInvitationListResponseSchema,
+  MemorialPageResponseSchema,
+  MemorialViewResponseSchema,
+} from "./memorial-typebox";
+import type {
   BereavedContactRowView as SvcBereavedContactRowView,
   BereavementAssessmentTaskList as SvcBereavementAssessmentTaskList,
   BereavementClosureView as SvcBereavementClosureView,
@@ -206,3 +220,23 @@ type _GroupEnrollments = Conforms<
   SvcGroupEnrollmentView[]
 >;
 type _Attendance = Conforms<Static<typeof AttendanceResultResponseSchema>, SvcAttendanceResultView>;
+
+// ADR-0109 D10 (PR 3) — memorial services (routes 67-76).
+type _Memorial = Conforms<Static<typeof MemorialViewResponseSchema>, SvcMemorialView>;
+type _MemorialDetail = Conforms<Static<typeof MemorialDetailResponseSchema>, SvcMemorialDetailView>;
+type _MemorialPage = Conforms<
+  Static<typeof MemorialPageResponseSchema>,
+  CursorPage<SvcMemorialView>
+>;
+type _MemorialInvitations = Conforms<
+  Static<typeof MemorialInvitationListResponseSchema>,
+  SvcMemorialInvitationView[]
+>;
+type _ContactInvitation = Conforms<
+  Static<typeof ContactMemorialInvitationResponseSchema>,
+  SvcContactMemorialInvitationView
+>;
+type _ContactInvitations = Conforms<
+  Static<typeof ContactMemorialInvitationListResponseSchema>,
+  SvcContactMemorialInvitationView[]
+>;

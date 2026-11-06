@@ -274,6 +274,23 @@ export interface BereavementGroupRecurrence {
   readonly count: number;
 }
 
+// ── ADR-0109 D10 (PR 3) — memorial services (mirrors the `bereavement_memorial_*` text + CHECK value sets, migration 1391) ─────────────
+
+export type BereavementMemorialStatus = "draft" | "published" | "held" | "cancelled";
+/** `mailing` = in the service's invitation mailing run; `portal_only` = no letter (no-mailings, no address): the portal and a call still reach them. */
+export type BereavementMemorialDelivery = "mailing" | "portal_only";
+export type BereavementMemorialInvitationStatus =
+  | "invited"
+  | "rsvp_yes"
+  | "rsvp_no"
+  | "rsvp_maybe"
+  | "attended"
+  | "no_show"
+  | "withdrawn";
+export type BereavementMemorialRsvpSource = "staff_phone" | "portal";
+/** A family's answer to a memorial invitation. */
+export type BereavementMemorialRsvpResponse = "yes" | "no" | "maybe";
+
 // ── §3.3 owned tables + D11 audit denylists ───────────────────────────────────────────────────────────
 
 /** M16's owned tables (the manifest `ownedTables` set). */
@@ -297,6 +314,8 @@ export type M16TableName =
   | "bereavement_support_group_session"
   | "bereavement_support_group_enrollment"
   | "bereavement_support_group_attendance"
+  | "bereavement_memorial_service"
+  | "bereavement_memorial_invitation"
   | "tenant_bereavement_external_source_gate_override";
 
 /**
@@ -340,6 +359,9 @@ export const M16_AUDIT_DENYLIST: { readonly [K in M16TableName]: readonly string
   bereavement_support_group_session: [],
   bereavement_support_group_enrollment: [],
   bereavement_support_group_attendance: [],
+  // ADR-0109 D10 (PR 3) — a memorial's description is agency prose.
+  bereavement_memorial_service: ["description"],
+  bereavement_memorial_invitation: [],
   tenant_bereavement_external_source_gate_override: ["additional_rationale"],
 } as const;
 
@@ -393,6 +415,7 @@ export const M16_EVENT_NAMES = [
   "m16.bereavement.document_requested",
   "m16.bereavement.mailing_run_mailed",
   "m16.bereavement.support_group_attendance_recorded",
+  "m16.bereavement.memorial_rsvp_recorded",
   "m16.bereavement.risk_score_computed",
   "m16.bereavement.anniversary_due_in_14_days",
 ] as const;
@@ -1084,6 +1107,47 @@ export interface BereavedPortalScopeProvider {
     readonly patientId: PatientId;
     readonly asOf: IsoInstant;
   }): Promise<boolean>;
+}
+
+/** ADR-0109 D10 (PR 3) — one memorial invitation as the bereaved family sees it in the portal (no other family, no contact id). */
+export interface BereavementPortalMemorialInvitation {
+  readonly invitationId: string;
+  readonly title: string;
+  readonly description: string | null;
+  readonly startsAt: IsoInstant;
+  readonly endsAt: IsoInstant;
+  readonly modality: BereavementProgramModality;
+  readonly venueText: string | null;
+  /** A virtual service's link, shown once the family said yes; null otherwise. */
+  readonly joinUrl: string | null;
+  /** `YYYY-MM-DD`; the portal stops taking answers after it. */
+  readonly rsvpBy: string | null;
+  readonly status: BereavementMemorialInvitationStatus;
+  readonly guests: number;
+  /** May the family still answer here (published, not started, not past the RSVP-by date, not closed)? */
+  readonly rsvpOpen: boolean;
+}
+
+/**
+ * ADR-0109 D10 (PR 3) — what M16 shows a bereaved family in the M31 portal beyond the plan scope: their memorial invitations and RSVP. Every call
+ * names the portal ACCOUNT; M16 resolves which contacts are its own (`bereaved_contact.portal_account_id`), so an invitation of another family is
+ * "not found". The library arm is added with the grief library.
+ */
+export interface BereavementPortalContentProvider {
+  memorialInvitationsForPortalAccount(args: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly portalAccountId: string;
+  }): Promise<readonly BereavementPortalMemorialInvitation[]>;
+  /** The family's own answer; refused after the RSVP-by date, once the service started, or over capacity. */
+  recordPortalRsvp(args: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly portalAccountId: string;
+    readonly invitationId: string;
+    readonly response: BereavementMemorialRsvpResponse;
+    readonly guests: number;
+  }): Promise<BereavementPortalMemorialInvitation>;
 }
 
 /** §4.6 / D13 — the M30 HQRP + M33 rollups. Counts, never rates: a zero denominator must stay visible so

@@ -10,6 +10,7 @@ import {
   recurrenceProblem,
   wallTimeToUtc,
 } from "../src/modules/16-bereavement/groups/recurrence";
+import { rsvpWindowOpen } from "../src/modules/16-bereavement/memorials/rsvp-drizzle";
 import { isProgramFamily } from "../src/modules/16-bereavement/program/program-contacts";
 
 const ORG = "00000000-0000-4000-8000-000000000001";
@@ -181,5 +182,35 @@ describe("program families only (groups and memorials)", () => {
     expect(
       isProgramFamily({ contactStatus: "active", planStatus: "paused", openOptOutKinds: [] }),
     ).toBe(false);
+  });
+});
+
+describe("memorial RSVP window (staff phone vs the family's portal)", () => {
+  const svc = (over: Partial<{ status: string; startsAt: Date; rsvpBy: string | null }> = {}) => ({
+    status: "published",
+    startsAt: new Date("2026-12-10T18:00:00.000Z"),
+    rsvpBy: "2026-12-01" as string | null,
+    ...over,
+  });
+  const at = (iso: string) => new Date(iso);
+
+  it("both doors answer while published, before the RSVP-by date", () => {
+    expect(rsvpWindowOpen(svc(), "portal", at("2026-11-20T12:00:00Z"))).toBe(true);
+    expect(rsvpWindowOpen(svc(), "staff_phone", at("2026-11-20T12:00:00Z"))).toBe(true);
+    // the RSVP-by day itself is still open
+    expect(rsvpWindowOpen(svc(), "portal", at("2026-12-01T23:00:00Z"))).toBe(true);
+  });
+
+  it("after the RSVP-by date only staff may take a late answer; once the service starts nobody may", () => {
+    expect(rsvpWindowOpen(svc(), "portal", at("2026-12-02T09:00:00Z"))).toBe(false);
+    expect(rsvpWindowOpen(svc(), "staff_phone", at("2026-12-02T09:00:00Z"))).toBe(true);
+    expect(rsvpWindowOpen(svc(), "staff_phone", at("2026-12-10T18:00:00Z"))).toBe(false);
+  });
+
+  it("a draft, held or cancelled service takes no answers", () => {
+    for (const status of ["draft", "held", "cancelled"]) {
+      expect(rsvpWindowOpen(svc({ status }), "staff_phone", at("2026-11-20T12:00:00Z"))).toBe(false);
+    }
+    expect(rsvpWindowOpen(svc({ rsvpBy: null }), "portal", at("2026-12-09T12:00:00Z"))).toBe(true);
   });
 });

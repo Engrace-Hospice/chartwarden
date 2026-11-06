@@ -314,6 +314,35 @@ export const PortalInvitationIssueResponse = Type.Object({
 /** ADR-0109 D10 — the bereaved family's mailing preference: `false` stops mailings (calls continue), `true` resumes them. */
 export const BereavementMailingPreferenceRequest = Type.Object({ allowMailings: Type.Boolean() });
 
+// ADR-0109 D10 (PR 3) — the bereaved family's memorial invitations and RSVP (M16 `BereavementPortalContentProvider`).
+const MemorialInvitationStatusLiteral = Type.Union(
+  ["invited", "rsvp_yes", "rsvp_no", "rsvp_maybe", "attended", "no_show", "withdrawn"].map((v) =>
+    Type.Literal(v),
+  ),
+);
+export const PortalMemorialRsvpParams = Type.Object({ invitationId: Uuid });
+export const PortalMemorialRsvpRequest = Type.Object({
+  response: Type.Union([Type.Literal("yes"), Type.Literal("no"), Type.Literal("maybe")]),
+  guests: Type.Integer({ minimum: 0, maximum: 10 }),
+});
+export const PortalMemorialInvitationResponse = Type.Object({
+  invitationId: Type.String(),
+  title: Type.String(),
+  description: Type.Union([Type.String(), Type.Null()]),
+  startsAt: Type.String(),
+  endsAt: Type.String(),
+  modality: Type.Union([Type.Literal("in_person"), Type.Literal("virtual")]),
+  venueText: Type.Union([Type.String(), Type.Null()]),
+  joinUrl: Type.Union([Type.String(), Type.Null()]),
+  rsvpBy: Type.Union([Type.String(), Type.Null()]),
+  status: MemorialInvitationStatusLiteral,
+  guests: Type.Integer(),
+  rsvpOpen: Type.Boolean(),
+});
+export const PortalMemorialInvitationListResponse = Type.Object({
+  items: Type.Array(PortalMemorialInvitationResponse),
+});
+
 export const PortalInvitationAcceptRequest = Type.Object({
   token: Type.String({ minLength: 40, maxLength: 200 }),
 });
