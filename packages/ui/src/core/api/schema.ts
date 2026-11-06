@@ -21013,6 +21013,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's clearinghouse choice, masked (hasSecret; the credential is never returned) — platform ops; read is audited */
+        get: operations["getApiV1PlatformTenantsByOrgSlugClearinghouse"];
+        /** Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        put: operations["putApiV1PlatformTenantsByOrgSlugClearinghouse"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a tenant's verified clearinghouse config; settles wizard step 7 once every earlier step allows it. tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugClearinghouseActivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify a tenant's clearinghouse connection (a no-PHI connection test for Claim.MD, an attestation with evidence for Stedi). tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugClearinghouseVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/compliance-officer": {
         parameters: {
             query?: never;
@@ -26858,6 +26910,58 @@ export interface paths {
         put?: never;
         /** Compliance-officer attestation of a BAA record (step-up) */
         post: operations["postApiV1TenantBaaByIdAttest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/clearinghouse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's clearinghouse choice, masked (hasSecret; the credential is never returned) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.mac_credential.read */
+        get: operations["getApiV1TenantClearinghouse"];
+        /** Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; a vendor or mode change needs its own credential and restarts at draft, a credential rotation keeps the status; vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) once a production submission exists — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.mac_credential.admin + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        put: operations["putApiV1TenantClearinghouse"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/clearinghouse/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification; idempotent once active). billing.mac_credential.admin + a fresh step-up; Idempotency-Key required */
+        post: operations["postApiV1TenantClearinghouseActivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/clearinghouse/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify the vendor connection: a no-PHI connection test where the vendor has a safe probe (Claim.MD), an attestation with an evidence note where it has none (Stedi; evidenceNote required). A failed test is a 200 with the outcome and leaves the config at draft. billing.mac_credential.admin + a fresh step-up; Idempotency-Key required */
+        post: operations["postApiV1TenantClearinghouseVerify"];
         delete?: never;
         options?: never;
         head?: never;
@@ -49224,7 +49328,7 @@ export interface operations {
                         claimsBilling?: {
                             entitled: boolean;
                             status: "none" | "trialing" | "active" | "canceled";
-                            reason: ("never_purchased" | "lapsed" | "subscription_suspended" | "subscription_canceled" | "subscription_paused") | null;
+                            reason: ("clearinghouse_not_chosen" | "clearinghouse_outside" | "clearinghouse_not_active" | "never_purchased" | "lapsed" | "subscription_suspended" | "subscription_canceled" | "subscription_paused") | null;
                             trialEndsAt: string | null;
                             activePatientCount: number | null;
                             enforced: boolean;
@@ -91773,6 +91877,233 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformTenantsByOrgSlugClearinghouse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        /** @description The credential itself is never projected. */
+                        hasSecret: boolean;
+                        verifiableBy: ("connection_test" | "attestation") | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1PlatformTenantsByOrgSlugClearinghouse: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The config's current integer version; required to change an existing config, absent on a first choice. */
+                "If-Match"?: string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    vendor: "stedi" | "claimmd" | "outside";
+                    mode?: "test" | "production";
+                    /** @description The vendor credential (the Stedi API key, or the Claim.MD account key). Write-only: sealed under the tenant's own key and never returned. Required with a first choice and whenever vendor or mode changes. */
+                    secret?: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        /** @description The credential itself is never projected. */
+                        hasSecret: boolean;
+                        verifiableBy: ("connection_test" | "attestation") | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugClearinghouseActivate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        /** @description The credential itself is never projected. */
+                        hasSecret: boolean;
+                        verifiableBy: ("connection_test" | "attestation") | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugClearinghouseVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Required where the vendor has no safe connection test (Stedi): what was checked and by whom (8-500 characters; no patient information). */
+                    evidenceNote?: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        config: {
+                            vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                            mode: ("test" | "production") | null;
+                            status: ("draft" | "verified" | "active") | null;
+                            source: "tenant" | "platform_env" | "none";
+                            /** @description The credential itself is never projected. */
+                            hasSecret: boolean;
+                            verifiableBy: ("connection_test" | "attestation") | null;
+                            verification: {
+                                kind: "connection_test" | "attested";
+                                evidence: string | null;
+                                /** Format: date-time */
+                                verifiedAt: string;
+                            } | null;
+                            lastTest: {
+                                outcome: "ok" | "credential_rejected" | "unreachable";
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            activatedAt: string | null;
+                            version: number | null;
+                            updatedAt: string | null;
+                        };
+                        test: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     putApiV1PlatformTenantsByOrgSlugComplianceofficer: {
         parameters: {
             query?: never;
@@ -108945,6 +109276,210 @@ export interface operations {
                         attestedAt: string | null;
                         /** Format: date-time */
                         createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TenantClearinghouse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        hasSecret: boolean;
+                        verifiableBy: "connection_test" | "attestation" | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1TenantClearinghouse: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The config's current integer version; required to change an existing config, absent on a first choice. */
+                "If-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    vendor: "stedi" | "claimmd" | "outside";
+                    mode?: "test" | "production";
+                    /** @description The vendor credential (the Stedi API key, or the Claim.MD account key). Write-only: it is sealed under the tenant's own key and never returned. Required with a first choice and whenever vendor or mode changes; omit it to keep the stored one. */
+                    secret?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        hasSecret: boolean;
+                        verifiableBy: "connection_test" | "attestation" | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantClearinghouseActivate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                        mode: ("test" | "production") | null;
+                        status: ("draft" | "verified" | "active") | null;
+                        source: "tenant" | "platform_env" | "none";
+                        hasSecret: boolean;
+                        verifiableBy: "connection_test" | "attestation" | null;
+                        verification: {
+                            kind: "connection_test" | "attested";
+                            evidence: string | null;
+                            /** Format: date-time */
+                            verifiedAt: string;
+                        } | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        activatedAt: string | null;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantClearinghouseVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Required where the vendor has no safe connection test (Stedi): what was checked and by whom (8-500 characters after whitespace is collapsed; no patient information). Ignored where a connection test runs (Claim.MD). */
+                    evidenceNote?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        config: {
+                            vendor: ("stedi" | "claimmd" | "outside" | "direct_mac" | "in_memory") | null;
+                            mode: ("test" | "production") | null;
+                            status: ("draft" | "verified" | "active") | null;
+                            source: "tenant" | "platform_env" | "none";
+                            hasSecret: boolean;
+                            verifiableBy: "connection_test" | "attestation" | null;
+                            verification: {
+                                kind: "connection_test" | "attested";
+                                evidence: string | null;
+                                /** Format: date-time */
+                                verifiedAt: string;
+                            } | null;
+                            lastTest: {
+                                outcome: "ok" | "credential_rejected" | "unreachable";
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            activatedAt: string | null;
+                            version: number | null;
+                            updatedAt: string | null;
+                        };
+                        test: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                        } | null;
                     };
                 };
             };

@@ -86810,6 +86810,18 @@
                             {
                               "anyOf": [
                                 {
+                                  "const": "clearinghouse_not_chosen",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "clearinghouse_outside",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "clearinghouse_not_active",
+                                  "type": "string"
+                                },
+                                {
                                   "const": "never_purchased",
                                   "type": "string"
                                 },
@@ -255489,6 +255501,1283 @@
         }
       }
     },
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantsByOrgSlugClearinghouse",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "A tenant's clearinghouse choice, masked (hasSecret; the credential is never returned) — platform ops; read is audited",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "vendor",
+                    "mode",
+                    "status",
+                    "source",
+                    "hasSecret",
+                    "verifiableBy",
+                    "verification",
+                    "lastTest",
+                    "activatedAt",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "vendor": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "stedi",
+                              "type": "string"
+                            },
+                            {
+                              "const": "claimmd",
+                              "type": "string"
+                            },
+                            {
+                              "const": "outside",
+                              "type": "string"
+                            },
+                            {
+                              "const": "direct_mac",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_memory",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "description": "The credential itself is never projected.",
+                      "type": "boolean"
+                    },
+                    "verifiableBy": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "connection_test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "attestation",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verification": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "kind",
+                            "evidence",
+                            "verifiedAt"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "const": "connection_test",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "attested",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "evidence": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "verifiedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1PlatformTenantsByOrgSlugClearinghouse",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "description": "The config's current integer version; required to change an existing config, absent on a first choice.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "vendor",
+                    "mode",
+                    "status",
+                    "source",
+                    "hasSecret",
+                    "verifiableBy",
+                    "verification",
+                    "lastTest",
+                    "activatedAt",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "vendor": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "stedi",
+                              "type": "string"
+                            },
+                            {
+                              "const": "claimmd",
+                              "type": "string"
+                            },
+                            {
+                              "const": "outside",
+                              "type": "string"
+                            },
+                            {
+                              "const": "direct_mac",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_memory",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "description": "The credential itself is never projected.",
+                      "type": "boolean"
+                    },
+                    "verifiableBy": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "connection_test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "attestation",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verification": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "kind",
+                            "evidence",
+                            "verifiedAt"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "const": "connection_test",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "attested",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "evidence": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "verifiedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "vendor",
+                  "reason"
+                ],
+                "properties": {
+                  "vendor": {
+                    "anyOf": [
+                      {
+                        "const": "stedi",
+                        "type": "string"
+                      },
+                      {
+                        "const": "claimmd",
+                        "type": "string"
+                      },
+                      {
+                        "const": "outside",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "mode": {
+                    "anyOf": [
+                      {
+                        "const": "test",
+                        "type": "string"
+                      },
+                      {
+                        "const": "production",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "secret": {
+                    "minLength": 8,
+                    "maxLength": 512,
+                    "description": "The vendor credential (the Stedi API key, or the Claim.MD account key). Write-only: sealed under the tenant's own key and never returned. Required with a first choice and whenever vendor or mode changes.",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/activate": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugClearinghouseActivate",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Activate a tenant's verified clearinghouse config; settles wizard step 7 once every earlier step allows it. tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "vendor",
+                    "mode",
+                    "status",
+                    "source",
+                    "hasSecret",
+                    "verifiableBy",
+                    "verification",
+                    "lastTest",
+                    "activatedAt",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "vendor": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "stedi",
+                              "type": "string"
+                            },
+                            {
+                              "const": "claimmd",
+                              "type": "string"
+                            },
+                            {
+                              "const": "outside",
+                              "type": "string"
+                            },
+                            {
+                              "const": "direct_mac",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_memory",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "description": "The credential itself is never projected.",
+                      "type": "boolean"
+                    },
+                    "verifiableBy": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "connection_test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "attestation",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verification": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "kind",
+                            "evidence",
+                            "verifiedAt"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "const": "connection_test",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "attested",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "evidence": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "verifiedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/verify": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugClearinghouseVerify",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Verify a tenant's clearinghouse connection (a no-PHI connection test for Claim.MD, an attestation with evidence for Stedi). tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "config",
+                    "test"
+                  ],
+                  "properties": {
+                    "config": {
+                      "type": "object",
+                      "required": [
+                        "vendor",
+                        "mode",
+                        "status",
+                        "source",
+                        "hasSecret",
+                        "verifiableBy",
+                        "verification",
+                        "lastTest",
+                        "activatedAt",
+                        "version",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "vendor": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "stedi",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "claimmd",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "outside",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "direct_mac",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "in_memory",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "mode": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "test",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "production",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "verified",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "active",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "source": {
+                          "anyOf": [
+                            {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "platform_env",
+                              "type": "string"
+                            },
+                            {
+                              "const": "none",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "hasSecret": {
+                          "description": "The credential itself is never projected.",
+                          "type": "boolean"
+                        },
+                        "verifiableBy": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "connection_test",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "attestation",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "verification": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "kind",
+                                "evidence",
+                                "verifiedAt"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "connection_test",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "attested",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "evidence": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "verifiedAt": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastTest": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "outcome",
+                                "at"
+                              ],
+                              "properties": {
+                                "outcome": {
+                                  "anyOf": [
+                                    {
+                                      "const": "ok",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "credential_rejected",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "unreachable",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "at": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "activatedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "version": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "updatedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "test": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "evidenceNote": {
+                    "maxLength": 2000,
+                    "description": "Required where the vendor has no safe connection test (Stedi): what was checked and by whom (8-500 characters; no patient information).",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/platform/tenants/{orgSlug}/compliance-officer": {
       "put": {
         "operationId": "putApiV1PlatformTenantsByOrgSlugComplianceofficer",
@@ -325077,6 +326366,1195 @@
                   "attestationConfirmed": {
                     "const": true,
                     "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/clearinghouse": {
+      "get": {
+        "operationId": "getApiV1TenantClearinghouse",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "The organization's clearinghouse choice, masked (hasSecret; the credential is never returned) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.mac_credential.read",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "vendor",
+                    "mode",
+                    "status",
+                    "source",
+                    "hasSecret",
+                    "verifiableBy",
+                    "verification",
+                    "lastTest",
+                    "activatedAt",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "vendor": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "stedi",
+                              "type": "string"
+                            },
+                            {
+                              "const": "claimmd",
+                              "type": "string"
+                            },
+                            {
+                              "const": "outside",
+                              "type": "string"
+                            },
+                            {
+                              "const": "direct_mac",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_memory",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "type": "boolean"
+                    },
+                    "verifiableBy": {
+                      "anyOf": [
+                        {
+                          "const": "connection_test",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attestation",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verification": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "kind",
+                            "evidence",
+                            "verifiedAt"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "const": "connection_test",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "attested",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "evidence": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "verifiedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1TenantClearinghouse",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; a vendor or mode change needs its own credential and restarts at draft, a credential rotation keeps the status; vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) once a production submission exists — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.mac_credential.admin + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "description": "The config's current integer version; required to change an existing config, absent on a first choice.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "vendor",
+                    "mode",
+                    "status",
+                    "source",
+                    "hasSecret",
+                    "verifiableBy",
+                    "verification",
+                    "lastTest",
+                    "activatedAt",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "vendor": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "stedi",
+                              "type": "string"
+                            },
+                            {
+                              "const": "claimmd",
+                              "type": "string"
+                            },
+                            {
+                              "const": "outside",
+                              "type": "string"
+                            },
+                            {
+                              "const": "direct_mac",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_memory",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "type": "boolean"
+                    },
+                    "verifiableBy": {
+                      "anyOf": [
+                        {
+                          "const": "connection_test",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attestation",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verification": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "kind",
+                            "evidence",
+                            "verifiedAt"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "const": "connection_test",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "attested",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "evidence": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "verifiedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "vendor"
+                ],
+                "properties": {
+                  "vendor": {
+                    "anyOf": [
+                      {
+                        "const": "stedi",
+                        "type": "string"
+                      },
+                      {
+                        "const": "claimmd",
+                        "type": "string"
+                      },
+                      {
+                        "const": "outside",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "mode": {
+                    "anyOf": [
+                      {
+                        "const": "test",
+                        "type": "string"
+                      },
+                      {
+                        "const": "production",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "secret": {
+                    "minLength": 8,
+                    "maxLength": 512,
+                    "description": "The vendor credential (the Stedi API key, or the Claim.MD account key). Write-only: it is sealed under the tenant's own key and never returned. Required with a first choice and whenever vendor or mode changes; omit it to keep the stored one.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/clearinghouse/activate": {
+      "post": {
+        "operationId": "postApiV1TenantClearinghouseActivate",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification; idempotent once active). billing.mac_credential.admin + a fresh step-up; Idempotency-Key required",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "vendor",
+                    "mode",
+                    "status",
+                    "source",
+                    "hasSecret",
+                    "verifiableBy",
+                    "verification",
+                    "lastTest",
+                    "activatedAt",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "vendor": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "stedi",
+                              "type": "string"
+                            },
+                            {
+                              "const": "claimmd",
+                              "type": "string"
+                            },
+                            {
+                              "const": "outside",
+                              "type": "string"
+                            },
+                            {
+                              "const": "direct_mac",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_memory",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "type": "boolean"
+                    },
+                    "verifiableBy": {
+                      "anyOf": [
+                        {
+                          "const": "connection_test",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attestation",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verification": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "kind",
+                            "evidence",
+                            "verifiedAt"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "const": "connection_test",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "attested",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "evidence": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "verifiedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/clearinghouse/verify": {
+      "post": {
+        "operationId": "postApiV1TenantClearinghouseVerify",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Verify the vendor connection: a no-PHI connection test where the vendor has a safe probe (Claim.MD), an attestation with an evidence note where it has none (Stedi; evidenceNote required). A failed test is a 200 with the outcome and leaves the config at draft. billing.mac_credential.admin + a fresh step-up; Idempotency-Key required",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "config",
+                    "test"
+                  ],
+                  "properties": {
+                    "config": {
+                      "type": "object",
+                      "required": [
+                        "vendor",
+                        "mode",
+                        "status",
+                        "source",
+                        "hasSecret",
+                        "verifiableBy",
+                        "verification",
+                        "lastTest",
+                        "activatedAt",
+                        "version",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "vendor": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "stedi",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "claimmd",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "outside",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "direct_mac",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "in_memory",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "mode": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "test",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "production",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "verified",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "active",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "source": {
+                          "anyOf": [
+                            {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "platform_env",
+                              "type": "string"
+                            },
+                            {
+                              "const": "none",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "hasSecret": {
+                          "type": "boolean"
+                        },
+                        "verifiableBy": {
+                          "anyOf": [
+                            {
+                              "const": "connection_test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "attestation",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "verification": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "kind",
+                                "evidence",
+                                "verifiedAt"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "connection_test",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "attested",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "evidence": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "verifiedAt": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastTest": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "outcome",
+                                "at"
+                              ],
+                              "properties": {
+                                "outcome": {
+                                  "anyOf": [
+                                    {
+                                      "const": "ok",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "credential_rejected",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "unreachable",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "at": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "activatedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "version": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "updatedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "test": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "evidenceNote": {
+                    "maxLength": 2000,
+                    "description": "Required where the vendor has no safe connection test (Stedi): what was checked and by whom (8-500 characters after whitespace is collapsed; no patient information). Ignored where a connection test runs (Claim.MD).",
+                    "type": "string"
                   }
                 }
               }

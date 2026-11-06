@@ -15333,3 +15333,81 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34OnboardingMedicaidCredentialIdSchema,
   },
 });
+
+// ── ADR-0053 amendment 2026-11-06: the tenant's clearinghouse choice (M23 tenant routes + the M34 platform copy) ──
+import {
+  ClearinghouseConfigViewSchema as M23ClearinghouseConfigViewSchema,
+  PutClearinghouseBodySchema as M23PutClearinghouseBodySchema,
+  VerifyClearinghouseBodySchema as M23VerifyClearinghouseBodySchema,
+  VerifyClearinghouseResponseSchema as M23VerifyClearinghouseResponseSchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/typebox";
+import {
+  OnboardingClearinghousePutRequest as M34OnboardingClearinghousePutRequest,
+  OnboardingClearinghouseVerifyRequest as M34OnboardingClearinghouseVerifyRequest,
+  OnboardingClearinghouseVerifyResponseSchema as M34OnboardingClearinghouseVerifyResponseSchema,
+  OnboardingClearinghouseViewSchema as M34OnboardingClearinghouseViewSchema,
+  OnboardingReasonSchema as M34OnboardingReasonSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-typebox";
+
+const CLEARINGHOUSE_IF_MATCH_HEADERS = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  "If-Match": {
+    required: false,
+    description:
+      "The config's current integer version; required to change an existing config, absent on a first choice.",
+  },
+};
+const M34_CLEARINGHOUSE_WRITE_NOTE =
+  "tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused";
+const CLEARINGHOUSE_CHOICE_NOTE =
+  "stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work";
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/tenant/clearinghouse": {
+    summary: `The organization's clearinghouse choice, masked (hasSecret; the credential is never returned) — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.mac_credential.read`,
+    response: M23ClearinghouseConfigViewSchema,
+  },
+  "PUT /api/v1/tenant/clearinghouse": {
+    summary: `Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; a vendor or mode change needs its own credential and restarts at draft, a credential rotation keeps the status; vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) once a production submission exists — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.mac_credential.admin + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
+    body: M23PutClearinghouseBodySchema,
+    headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
+    status: 201,
+    response: M23ClearinghouseConfigViewSchema,
+  },
+  "POST /api/v1/tenant/clearinghouse/verify": {
+    summary:
+      "Verify the vendor connection: a no-PHI connection test where the vendor has a safe probe (Claim.MD), an attestation with an evidence note where it has none (Stedi; evidenceNote required). A failed test is a 200 with the outcome and leaves the config at draft. billing.mac_credential.admin + a fresh step-up; Idempotency-Key required",
+    body: M23VerifyClearinghouseBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23VerifyClearinghouseResponseSchema,
+  },
+  "POST /api/v1/tenant/clearinghouse/activate": {
+    summary:
+      "Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification; idempotent once active). billing.mac_credential.admin + a fresh step-up; Idempotency-Key required",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23ClearinghouseConfigViewSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/clearinghouse": {
+    summary:
+      "A tenant's clearinghouse choice, masked (hasSecret; the credential is never returned) — platform ops; read is audited",
+    response: M34OnboardingClearinghouseViewSchema,
+  },
+  "PUT /api/v1/platform/tenants/:orgSlug/clearinghouse": {
+    summary: `Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key — ${CLEARINGHOUSE_CHOICE_NOTE}. ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
+    body: M34OnboardingClearinghousePutRequest,
+    headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
+    status: 201,
+    response: M34OnboardingClearinghouseViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/verify": {
+    summary: `Verify a tenant's clearinghouse connection (a no-PHI connection test for Claim.MD, an attestation with evidence for Stedi). ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
+    body: M34OnboardingClearinghouseVerifyRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingClearinghouseVerifyResponseSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/activate": {
+    summary: `Activate a tenant's verified clearinghouse config; settles wizard step 7 once every earlier step allows it. ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
+    body: M34OnboardingReasonSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingClearinghouseViewSchema,
+  },
+});
