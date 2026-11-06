@@ -55,8 +55,8 @@ interface Call {
   readonly reason?: string;
   readonly id?: string;
   readonly expectedVersion?: number | undefined;
-  /** The BAA verification's pin: the `baa.recordedAt` the operator read (its If-Match). */
-  readonly expected?: { readonly recordedAt: string };
+  /** The BAA verification's pin (the `baa.recordedAt` the operator read, its If-Match); a withdrawal's may be null (none sent). */
+  readonly expected?: { readonly recordedAt: string | null };
   /** `withdrawNoticeExternalFiling`: which notice (NOE / NOTR) and its id. */
   readonly noticeKind?: "noe" | "notr";
   readonly noticeId?: string;
@@ -136,7 +136,7 @@ function recordingService(calls: Call[]): OnboardingDataService {
       noticeKind: "noe" | "notr",
       noticeId: string,
       reason: string,
-      expected: { recordedAt: string },
+      expected: { recordedAt: string | null },
     ) => {
       calls.push({
         method: "withdrawNoticeExternalFiling",
@@ -690,7 +690,7 @@ describe.each([
     await app.close();
   });
 
-  it("is pinned to the record the operator read: If-Match (its recordedAt) is required (428) and must be a real timestamp (422)", async () => {
+  it("is pinned to the record the operator read: If-Match (its recordedAt) must be a real timestamp (422); a missing one reaches the service, which answers 428 with the current recordedAt", async () => {
     const calls: Call[] = [];
     const app = makeServer(calls);
     const bare = (headers: Record<string, string>) =>
@@ -700,13 +700,14 @@ describe.each([
         headers: { ...fresh(), ...headers },
         payload: { reason: "Filed in error, ticket CHG-77" },
       });
-    const missing = await bare({});
-    expect(missing.statusCode).toBe(428);
-    expect(missing.json().error?.code ?? missing.json().code).toBe("IF_MATCH_REQUIRED");
     for (const badPin of ['"3"', '"yesterday"', '"2026-11-06"', '"2026-02-30T00:00:00.000Z"']) {
       expect((await bare({ "if-match": badPin })).statusCode, badPin).toBe(422);
     }
     expect(calls).toEqual([]);
+    // no If-Match: the 428 needs the record's CURRENT recordedAt, which only the service can read, so it decides
+    await bare({});
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ expected: { recordedAt: null } });
     for (const header of [`"${RECORDED_AT}"`, `W/"${RECORDED_AT}"`, RECORDED_AT]) {
       calls.length = 0;
       expect((await bare({ "if-match": header })).statusCode, header).toBe(200);

@@ -128,8 +128,9 @@ export interface OnboardingDataService {
   ): Promise<unknown>;
   /**
    * The operator withdraws the tenant's "filed outside ChartWarden" record of one NOE / NOTR: the notice returns to its pre-record
-   * state (a watchdog's breach stamp stays; the one a withdrawn LATE record wrote itself is cleared with it). NOT gated on the tenant's onboarding status. `expected` is the `externalFiling.recordedAt`
-   * the operator read: a record that changed since is a 409.
+   * state (a watchdog's breach stamp stays; the one a withdrawn LATE record wrote itself is cleared with it). NOT gated on the
+   * tenant's onboarding status. `expected` is the `externalFiling.recordedAt` the operator read (null: the request named none): a
+   * record that changed since is a 409 and none named is a 428, both carrying the current `recordedAt` in the error details.
    */
   withdrawNoticeExternalFiling(
     op: OnboardingOperator,
@@ -137,7 +138,7 @@ export interface OnboardingDataService {
     kind: OnboardingNoticeKind,
     noticeId: string,
     reason: string,
-    expected: { readonly recordedAt: string },
+    expected: { readonly recordedAt: string | null },
   ): Promise<OnboardingNoticeView>;
   listMedicaidCredentials(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
   upsertMedicaidCredential(

@@ -15398,7 +15398,7 @@ const M34_NOTICE_WITHDRAW_HEADERS = {
   "If-Match": {
     required: true,
     description:
-      "The `externalFiling.recordedAt` (UTC ISO timestamp) of the filing record the operator read from the notice; a record withdrawn and re-recorded since is refused with 409 NOTICE_FILING_RECORD_CHANGED.",
+      "The `externalFiling.recordedAt` (UTC ISO timestamp) of the filing record the operator read from the notice; a record withdrawn and re-recorded since is refused with 409 NOTICE_FILING_RECORD_CHANGED, and a request without it with 428 IF_MATCH_REQUIRED; both put the record's current recordedAt in the error details (field currentRecordedAt), so the operator can retry.",
   },
 };
 const CLEARINGHOUSE_CHOICE_NOTE =
@@ -15467,13 +15467,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34OnboardingClearinghouseViewSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/noe-records/:id/withdraw-external-filing": {
-    summary: `Withdraw the "filed outside ChartWarden" record of a tenant's NOE (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match). ${M34_NOTICE_WITHDRAW_NOTE}`,
+    summary: `Withdraw the "filed outside ChartWarden" record of a tenant's NOE (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match, 428 IF_MATCH_REQUIRED for none; the last two carry the record's current recordedAt in the error details as {field: "currentRecordedAt", message: <timestamp>}, the value to retry with). ${M34_NOTICE_WITHDRAW_NOTE}`,
     body: M34OnboardingReasonSchema,
     headers: M34_NOTICE_WITHDRAW_HEADERS,
     response: M34OnboardingNoticeWithdrawalViewSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/notr-records/:id/withdraw-external-filing": {
-    summary: `Withdraw the "filed outside ChartWarden" record of a tenant's NOTR, which reopens the prior election that record closed (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match). ${M34_NOTICE_WITHDRAW_NOTE}`,
+    summary: `Withdraw the "filed outside ChartWarden" record of a tenant's NOTR, which reopens the prior election that record closed (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match, 428 IF_MATCH_REQUIRED for none; the last two carry the record's current recordedAt in the error details as {field: "currentRecordedAt", message: <timestamp>}, the value to retry with). ${M34_NOTICE_WITHDRAW_NOTE}`,
     body: M34OnboardingReasonSchema,
     headers: M34_NOTICE_WITHDRAW_HEADERS,
     response: M34OnboardingNoticeWithdrawalViewSchema,

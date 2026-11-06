@@ -184,24 +184,18 @@ export const targetTenantScopeOf = (request: FastifyRequest): string | undefined
 const RECORDED_AT_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 /**
- * The REQUIRED `If-Match` of an action pinned to a record the operator read: that record's `recordedAt`, a UTC ISO timestamp
- * (quoted, weak-prefixed or bare). The action applies to that record or to nothing, so a tenant that swaps its BAA (or re-records a
- * filing) between the operator's read and click cannot get the new one acted on unseen (re-review M1). `subject` names the record
- * in the refusal messages.
+ * The `If-Match` of an action pinned to a record the operator read: that record's `recordedAt`, a UTC ISO timestamp (quoted,
+ * weak-prefixed or bare), or null when the request named none. The action applies to that record or to nothing, so a tenant that
+ * swaps its BAA (or re-records a filing) between the operator's read and click cannot get the new one acted on unseen (re-review
+ * M1). `subject` names the record in the refusal message. A malformed pin is a 422 here.
  */
-function requiredRecordedAtPin(
+function recordedAtPinOrNull(
   request: FastifyRequest,
   subject: string,
-): { readonly recordedAt: string } {
+): { readonly recordedAt: string | null } {
   const raw = request.headers["if-match"];
   const value = Array.isArray(raw) ? raw[0] : raw;
-  if (typeof value !== "string" || value.length === 0) {
-    throw new ChartWardenError(
-      "IF_MATCH_REQUIRED",
-      `an If-Match header naming the ${subject}'s recordedAt is required on this route`,
-      428,
-    );
-  }
+  if (typeof value !== "string" || value.length === 0) return { recordedAt: null };
   const recordedAt = value
     .trim()
     .replace(/^W\//, "")
@@ -216,6 +210,22 @@ function requiredRecordedAtPin(
         message: `If-Match must be the ${subject}'s recordedAt, a UTC timestamp such as 2026-11-05T21:30:00.123Z`,
       },
     ]);
+  }
+  return { recordedAt };
+}
+
+/** {@link recordedAtPinOrNull} for a route with no record to read first: a missing pin is the 428 right here. */
+function requiredRecordedAtPin(
+  request: FastifyRequest,
+  subject: string,
+): { readonly recordedAt: string } {
+  const { recordedAt } = recordedAtPinOrNull(request, subject);
+  if (recordedAt === null) {
+    throw new ChartWardenError(
+      "IF_MATCH_REQUIRED",
+      `an If-Match header naming the ${subject}'s recordedAt is required on this route`,
+      428,
+    );
   }
   return { recordedAt };
 }
@@ -416,7 +426,8 @@ export function registerOnboardingDataRoutes(
   // POST {noe,notr}-records/:id/withdraw-external-filing — the operator withdraws the tenant's "filed outside ChartWarden" record of
   // one notice: it returns to its pre-record state and can be recorded or submitted again; a breach stamp the watchdog set stays and the
   // one a withdrawn LATE record wrote itself goes with it (a NOTR reopens the prior election its record closed). Not gated on the tenant's onboarding status. Pinned: `If-Match` is the record's
-  // `externalFiling.recordedAt` (see requiredRecordedAtPin); a record that changed since is a 409. The audit row names the operator,
+  // `externalFiling.recordedAt` (see recordedAtPinOrNull); a record that changed since is a 409, and none at all is a 428 that is
+  // raised by the service (only it can read the record), so both carry the current `recordedAt` in the error details. The audit row names the operator,
   // the tenant, the reason and the filed date withdrawn.
   app.post(
     "/api/v1/platform/tenants/:orgSlug/noe-records/:id/withdraw-external-filing",
@@ -431,7 +442,7 @@ export function registerOnboardingDataRoutes(
         "noe",
         id,
         reason,
-        requiredRecordedAtPin(request, "filing record"),
+        recordedAtPinOrNull(request, "filing record"),
       );
     },
   );
@@ -448,7 +459,7 @@ export function registerOnboardingDataRoutes(
         "notr",
         id,
         reason,
-        requiredRecordedAtPin(request, "filing record"),
+        recordedAtPinOrNull(request, "filing record"),
       );
     },
   );

@@ -21263,7 +21263,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Withdraw the "filed outside ChartWarden" record of a tenant's NOE (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match). tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp the watchdog set is kept, the stamp a withdrawn LATE record wrote itself is cleared with it, and a NOTR's prior-election closure goes with the record */
+        /** Withdraw the "filed outside ChartWarden" record of a tenant's NOE (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match, 428 IF_MATCH_REQUIRED for none; the last two carry the record's current recordedAt in the error details as {field: "currentRecordedAt", message: <timestamp>}, the value to retry with). tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp the watchdog set is kept, the stamp a withdrawn LATE record wrote itself is cleared with it, and a NOTR's prior-election closure goes with the record */
         post: operations["postApiV1PlatformTenantsByOrgSlugNoerecordsByIdWithdrawexternalfiling"];
         delete?: never;
         options?: never;
@@ -21280,7 +21280,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Withdraw the "filed outside ChartWarden" record of a tenant's NOTR, which reopens the prior election that record closed (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match). tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp the watchdog set is kept, the stamp a withdrawn LATE record wrote itself is cleared with it, and a NOTR's prior-election closure goes with the record */
+        /** Withdraw the "filed outside ChartWarden" record of a tenant's NOTR, which reopens the prior election that record closed (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match, 428 IF_MATCH_REQUIRED for none; the last two carry the record's current recordedAt in the error details as {field: "currentRecordedAt", message: <timestamp>}, the value to retry with). tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp the watchdog set is kept, the stamp a withdrawn LATE record wrote itself is cleared with it, and a NOTR's prior-election closure goes with the record */
         post: operations["postApiV1PlatformTenantsByOrgSlugNotrrecordsByIdWithdrawexternalfiling"];
         delete?: never;
         options?: never;
@@ -93082,7 +93082,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The `externalFiling.recordedAt` (UTC ISO timestamp) of the filing record the operator read from the notice; a record withdrawn and re-recorded since is refused with 409 NOTICE_FILING_RECORD_CHANGED. */
+                /** @description The `externalFiling.recordedAt` (UTC ISO timestamp) of the filing record the operator read from the notice; a record withdrawn and re-recorded since is refused with 409 NOTICE_FILING_RECORD_CHANGED, and a request without it with 428 IF_MATCH_REQUIRED; both put the record's current recordedAt in the error details (field currentRecordedAt), so the operator can retry. */
                 "If-Match": string;
             };
             path: {
@@ -93130,7 +93130,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The `externalFiling.recordedAt` (UTC ISO timestamp) of the filing record the operator read from the notice; a record withdrawn and re-recorded since is refused with 409 NOTICE_FILING_RECORD_CHANGED. */
+                /** @description The `externalFiling.recordedAt` (UTC ISO timestamp) of the filing record the operator read from the notice; a record withdrawn and re-recorded since is refused with 409 NOTICE_FILING_RECORD_CHANGED, and a request without it with 428 IF_MATCH_REQUIRED; both put the record's current recordedAt in the error details (field currentRecordedAt), so the operator can retry. */
                 "If-Match": string;
             };
             path: {

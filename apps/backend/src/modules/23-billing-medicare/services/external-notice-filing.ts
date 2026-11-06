@@ -267,7 +267,8 @@ export async function withdrawExternalNoticeFiling(
     readonly kind: ExternalNoticeKind;
     readonly organizationId: string;
     readonly noticeId: string;
-    readonly expectedRecordedAt: string;
+    /** The `recordedAt` the operator read (its `If-Match`); null when the request named none (a 428 that says what to send). */
+    readonly expectedRecordedAt: string | null;
   },
 ): Promise<{
   readonly notice: repositories.NoeRecord | repositories.NotrRecord;
@@ -289,7 +290,17 @@ export async function withdrawExternalNoticeFiling(
     windowTargetAt: notice.windowTargetAt,
     windowBreachedAt: notice.windowBreachedAt,
   });
-  if (plan.kind === "refuse") throw new ChartWardenError(plan.code, plan.message, plan.status);
+  if (plan.kind === "refuse") {
+    // The retry's If-Match rides in the envelope's details (a timestamp, no id or free text) so the operator can read it.
+    throw new ChartWardenError(
+      plan.code,
+      plan.message,
+      plan.status,
+      plan.currentRecordedAt
+        ? [{ field: "currentRecordedAt", code: plan.code, message: plan.currentRecordedAt }]
+        : undefined,
+    );
+  }
   const saved = await patchExternalFiling(
     ops.repo(tx) as ExternalFilingRepo<typeof notice>,
     notice,
@@ -298,7 +309,7 @@ export async function withdrawExternalNoticeFiling(
   return {
     notice: saved,
     withdrawnFiledOn: plan.withdrawnFiledOn,
-    withdrawnRecordedAt: input.expectedRecordedAt,
+    withdrawnRecordedAt: plan.withdrawnRecordedAt,
     clearedBreachStamp: plan.clearBreach ? notice.windowBreachedAt : null,
   };
 }
