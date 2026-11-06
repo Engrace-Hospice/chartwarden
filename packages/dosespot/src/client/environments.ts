@@ -2,10 +2,11 @@
 //
 // A tenant (or an operator on its behalf) picks an ENVIRONMENT, never a URL: the host is platform configuration. A URL the
 // caller could type would let a registration aim the clinic key and PHI at any server (SSRF), so none is ever accepted.
-//   sandbox     DoseSpot's public staging host by default (`DOSESPOT_BASE_URL_SANDBOX` may override it).
+//   sandbox     DoseSpot's public staging host (`DOSESPOT_BASE_URL_SANDBOX` may change its port or path, never its hostname).
 //   production  NO baked-in host: it needs `DOSESPOT_PRODUCTION_ENABLED=true` (set only once the ChartWarden / DoseSpot BAA is
 //               executed and a sandbox run has confirmed the wire shapes) AND an explicit `DOSESPOT_BASE_URL_PRODUCTION`.
-// Every override must be https, on a `dosespot.com` host, with no credentials in the URL and no IP literal.
+// Every override must be https, on a `dosespot.com` host, with no credentials in the URL and no IP literal; a sandbox one must
+// also name the sandbox hostname.
 export type DoseSpotEnvironment = "sandbox" | "production";
 
 export const DOSESPOT_SANDBOX_DEFAULT_BASE_URL = "https://my.staging.dosespot.com/webapi/v2";
@@ -32,10 +33,12 @@ export type DoseSpotEnvironmentResolution =
 
 const HOST_SUFFIX = ".dosespot.com";
 /**
- * Hosts known to be PRODUCTION, so a sandbox override can never name one even while `DOSESPOT_BASE_URL_PRODUCTION` is unset (the flag guards
- * production only). Unverified against DoseSpot until the sandbox run; extend it when that run confirms the real hosts.
+ * The ONE hostname a sandbox base URL may name. The guard compares HOSTNAMES (port and case stripped), and refuses every other
+ * `*.dosespot.com` host, not just the one production host we know: the production flag guards production only, so a sandbox variable
+ * naming `my.dosespot.com:8443`, `api.dosespot.com` or any host we have not seen must not reach a real environment.
+ * Extend it when the sandbox run confirms another genuine sandbox host.
  */
-const KNOWN_PRODUCTION_HOSTS: ReadonlySet<string> = new Set(["my.dosespot.com"]);
+const SANDBOX_HOSTNAME = new URL(DOSESPOT_SANDBOX_DEFAULT_BASE_URL).hostname;
 
 /** The URL without a trailing slash, or null when it is not an https `*.dosespot.com` URL with no credentials. */
 function vendorUrlOrNull(raw: string): string | null {
@@ -66,17 +69,9 @@ export function resolveDoseSpotEnvironment(
   }
   const baseUrl = vendorUrlOrNull(override);
   if (baseUrl === null) return { ok: false, reason: "base_url_invalid" };
-  // The production flag guards production only, so the sandbox variable must never name the production host.
-  if (environment === "sandbox") {
-    const production = env[BASE_URL_ENV.production]?.trim();
-    const productionUrl = production ? vendorUrlOrNull(production) : null;
-    const host = new URL(baseUrl).host;
-    if (
-      KNOWN_PRODUCTION_HOSTS.has(host) ||
-      (productionUrl !== null && new URL(productionUrl).host === host)
-    ) {
-      return { ok: false, reason: "base_url_invalid" };
-    }
+  // The production flag guards production only, so the sandbox variable may name the sandbox hostname and nothing else.
+  if (environment === "sandbox" && new URL(baseUrl).hostname !== SANDBOX_HOSTNAME) {
+    return { ok: false, reason: "base_url_invalid" };
   }
   return { ok: true, baseUrl };
 }

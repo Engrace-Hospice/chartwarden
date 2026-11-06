@@ -78,13 +78,12 @@ describe("DoseSpot environment resolution", () => {
         DOSESPOT_BASE_URL_PRODUCTION: "https://MY.dosespot.com/webapi/v2",
       }),
     ).toEqual({ ok: false, reason: "base_url_invalid" });
-    // a different, genuine sandbox host is fine
+    // a sandbox override may change the path or port, never the hostname
     expect(
       resolveDoseSpotEnvironment("sandbox", {
-        DOSESPOT_BASE_URL_SANDBOX: "https://sandbox2.dosespot.com/webapi/v2",
-        DOSESPOT_BASE_URL_PRODUCTION: host,
+        DOSESPOT_BASE_URL_SANDBOX: "https://my.staging.dosespot.com:8443/webapi/v3",
       }),
-    ).toEqual({ ok: true, baseUrl: "https://sandbox2.dosespot.com/webapi/v2" });
+    ).toEqual({ ok: true, baseUrl: "https://my.staging.dosespot.com:8443/webapi/v3" });
   });
 
   it("a sandbox registration may be VERIFIED anywhere, but may only be LIVE where the platform enables sandbox (exactly 'true')", () => {
@@ -113,12 +112,15 @@ describe("DoseSpot environment resolution", () => {
     );
   });
 
-  it("a sandbox override can never name the KNOWN production host, even when the production URL is unset", () => {
-    for (const host of [
+  it("a sandbox override names the sandbox HOSTNAME and nothing else in the dosespot.com family (a port or an unseen host does not slip past)", () => {
+    for (const bad of [
       "https://my.dosespot.com/webapi/v2",
       "https://MY.dosespot.com/webapi/v2/",
+      "https://my.dosespot.com:8443/webapi/v2", // the port does not make it a different host
+      "https://api.dosespot.com/webapi/v2", // a production-family host we have never listed
+      "https://sandbox2.dosespot.com/webapi/v2", // nor is any other host trusted as a sandbox until the sandbox run says so
     ]) {
-      expect(resolveDoseSpotEnvironment("sandbox", { DOSESPOT_BASE_URL_SANDBOX: host })).toEqual({
+      expect(resolveDoseSpotEnvironment("sandbox", { DOSESPOT_BASE_URL_SANDBOX: bad })).toEqual({
         ok: false,
         reason: "base_url_invalid",
       });
