@@ -1628,13 +1628,11 @@ describe("choosing outside ChartWarden: the billing steps follow (D5)", () => {
     await expect(billingWizard().syncClearinghouseSteps(ORG)).resolves.toBeUndefined();
     expect(statusOf("mac_configured")).toBe("pending");
     expect(statusOf("payer_enrollment")).toBe("pending");
-    // ...and the skip lands as soon as the wizard settles that step (the wizard re-runs the sync after every change)
-    settle("clearinghouse_selected");
-    await billingWizard()
-      .attestPlatform("acme", taskId("go_live_checklist_complete"), OPS, evidence)
-      .catch(() => undefined);
-    await billingWizard().syncClearinghouseSteps(ORG);
+    // ...and the skip lands as soon as the wizard settles that step: every wizard change re-runs the sync, no explicit pass needed
+    await billingWizard().attestPlatform("acme", taskId("clearinghouse_selected"), OPS, evidence);
+    expect(statusOf("clearinghouse_selected")).toBe("done");
     expect(statusOf("mac_configured")).toBe("skipped");
+    expect(statusOf("payer_enrollment")).toBe("skipped");
   });
 
   it("leaves a step an operator already settled alone, and leaves a tenant that is no longer onboarding alone", async () => {
@@ -1643,13 +1641,11 @@ describe("choosing outside ChartWarden: the billing steps follow (D5)", () => {
     expect(statusOf("mac_configured")).toBe("done");
     expect(statusOf("payer_enrollment")).toBe("skipped");
     state.tenants[0] = { ...(state.tenants[0] as TenantRef), status: "active" };
-    const live = state.tasks.map((t) => ({ ...t }));
     state.tasks = state.tasks.map((t) =>
       t.templateKey === "payer_enrollment" ? { ...t, status: "pending" as const } : t,
     );
     await billingWizard().syncClearinghouseSteps(ORG);
     expect(statusOf("payer_enrollment")).toBe("pending");
-    void live;
   });
 
   it("switching back to a vendor reopens ONLY the steps the system skipped", async () => {
