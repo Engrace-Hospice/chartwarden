@@ -99,6 +99,20 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
 13. **A vendor rejection of a rotated key at runtime** still fails the order permanently (a token-mint 4xx is permanent); a guard that
     holds orders and alerts once, as the clearinghouse has (#714), is not built.
 
+**Independent review of slice 4 (what it found and what now stops it):**
+
+- *A sandbox registration could reach `active` on a production deployment* and send real prescriptions to DoseSpot's test
+  environment. `DOSESPOT_SANDBOX_ENABLED` (exactly `true`) now gates it: `activate` is refused (409 `DOSESPOT_SANDBOX_NOT_ENABLED`), and
+  the resolver, the sign-time gate and the wizard's `dosespotSettled` all call ONE predicate (`registrationIsLive`: active, and the
+  environment allowed on this deployment), so an active sandbox row stops transmitting if the flag is later unset and a not-live row
+  activates orders locally instead of stalling them in `queued`.
+- A claimed order whose registration stops being live, or whose resolver, key ring or credential faults (a corrupt envelope is a 503), goes
+  back to `queued` with no retry spent. `addClinician` is never re-POSTed in-call (no idempotency key); the enrolment claim is released only
+  after a definitive refusal and only by the attempt that made it, outlasts the worst-case vendor call, and a first-enrol race is a 409.
+- Open, not fixed here: `verify` lets a tenant administrator probe candidate clinic keys against the vendor (ADR-0110 open items); the
+  request body, secret included, is hashed into the idempotency record's fingerprint by shared middleware that predates this slice
+  (tracked separately).
+
 ## Operational notes
 
 - Enabling a tenant = it (or an operator for it) registers, tests and activates its clinic (sandbox first), then enrols its prescribers
