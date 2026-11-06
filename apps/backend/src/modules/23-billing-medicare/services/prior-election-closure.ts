@@ -4,8 +4,9 @@
 // ch. 11 §20.1.6). Read over M23's OWN tables only:
 //
 //   NOTR filed         a notr_record of the admission that left our hands (SUBMITTED / ACK_PENDING / ACK_ACCEPTED), or that
-//                      a tenant billing outside ChartWarden recorded as filed itself (`external_filing_status = 'filed'`) and
-//                      that is not CANCELLED (a cancelled notice is not a filing, whatever marker it still carries)
+//                      a tenant billing outside ChartWarden recorded as filed itself (`external_filing_status = 'filed'`).
+//                      The closure is DERIVED from that marker: a platform operator who withdraws the record
+//                      (`withdrawExternalNoticeFiling`) clears the marker and so reopens the election, with nothing stored.
 //   final claim filed  a claim of the admission with a discharge type of bill (811 admit-through-discharge, 814 final)
 //                      that left our hands (submitted, acknowledged, paid / denied — not draft, rejected, voided,
 //                      replaced)
@@ -16,7 +17,7 @@ import type { BillingDb } from "@chartwarden/billing";
 import * as schema from "@chartwarden/db/schema";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
-import { and, eq, inArray, ne, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 
 const NOTR = schema.notrRecord;
 const CLAIM = schema.claim;
@@ -55,9 +56,9 @@ export async function priorElectionClosureTx(
         or(
           inArray(NOTR.state, [...NOTR_FILED_STATES]),
           // A tenant that bills outside ChartWarden files the NOTR itself, so ChartWarden's own state stays draft / ready (owner
-          // decision D4). A filed one cannot be cancelled by hand (409), but the M6 election-reversal consumer can still cancel
-          // it, and a cancelled notice is not a filing: it never closes the prior election.
-          and(eq(NOTR.externalFilingStatus, "filed"), ne(NOTR.state, "CANCELLED")),
+          // decision D4). A filed one is never cancelled (the cancel route refuses it and nothing else cancels a notice), so the
+          // marker alone is the filing; withdrawing the record clears it.
+          eq(NOTR.externalFilingStatus, "filed"),
         ),
       ),
     )
