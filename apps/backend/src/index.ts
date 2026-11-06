@@ -345,6 +345,7 @@ import { buildActivePermissionHolderIds } from "./bootstrap/active-permission-ho
 // each billing module's route classes (new work vs. open).
 import {
   assertClaimsBillingSeamBound,
+  claimsBillingEnforcementBootWarning,
   configureClaimsBillingGate,
   isClaimsBillingEntitled,
   parseClaimsBillingEnforcement,
@@ -5988,6 +5989,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               await onboardingWizardHolder.current?.syncClearinghouseSteps(organizationId);
             },
           });
+          // Owner decisions D4 and round 2 Q3: does the org bill outside ChartWarden? Read lazily per call (the reader seam registers
+          // after this is built); the callers turn a throw into a typed 503, never a transmission.
+          const m23BillsOutside = async (organizationId: string): Promise<boolean> =>
+            (await getSeam("TenantClearinghouseReader").choiceForOrg(organizationId)).vendor ===
+            "outside";
           const tenantClearinghouseService = createTenantClearinghouseService({
             ...(clearinghouseSecretCipher ? { cipher: clearinghouseSecretCipher } : {}),
             // Claim.MD has a safe no-PHI probe (uploadlist); Stedi has none, so its `verify` is an attestation with evidence.
@@ -6551,9 +6557,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   // Owner decision D4: an org that bills outside ChartWarden files its NOE / NOTR itself, so submit parks the
                   // notice and the tenant records the date. Read lazily per call (the reader seam registers after this is built);
                   // a throw fails closed with a typed 503, never a transmission.
-                  billsOutside: async (organizationId) =>
-                    (await getSeam("TenantClearinghouseReader").choiceForOrg(organizationId))
-                      .vendor === "outside",
+                  billsOutside: m23BillsOutside,
                   // Readmission — a new NOE waits for the prior election's NOTR / final claim (M6's prior-stay facts).
                   priorLiveEndedStay: {
                     async latestPriorLiveEndedAdmission(organizationId, q) {
@@ -6633,6 +6637,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 }),
                 transferNoticeService: buildTransferNoticeService(dbHandle.db, {
                   outbox: m23OutboxPublisher,
+                  // Owner decision (round 2): an outside org's transfer notice is refused at submit (409), not queued.
+                  billsOutside: m23BillsOutside,
                   jobs: buildM23OutboxBackedSubmissionGate({
                     "transfer_notice.submit": m23SubmissionQueues !== null,
                   }),
@@ -7579,6 +7585,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   });
   if (dbHandle) assertClaimsBillingSeamBound(claimsBillingMode);
   app.log.info(`Claims-billing add-on enforcement: ${claimsBillingMode}`);
+  const enforcementWarning = claimsBillingEnforcementBootWarning(
+    claimsBillingMode,
+    process.env.NODE_ENV,
+  );
+  if (enforcementWarning) app.log.warn(enforcementWarning);
   m31Warn = (message, context) => app.log.warn(context, message);
   m36TaskWarn = (message, context) => app.log.warn(context, message);
   m36HandoffWarn = (message, context) => app.log.warn(context, message);
