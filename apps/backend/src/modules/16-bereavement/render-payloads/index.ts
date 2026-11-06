@@ -6,3 +6,4 @@ export {
   loadDischargeSummaryRows,
   requestDischargeSummary,
 } from "./request-discharge-summary";
+export { BEREAVEMENT_LETTER_TEMPLATE_KEY, outreachLetterRequestOf } from "./outreach-letter";

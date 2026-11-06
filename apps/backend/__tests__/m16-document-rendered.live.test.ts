@@ -283,6 +283,38 @@ describe.skipIf(!DB_URL)("GAP-130 — M16 ↔ M22 outreach artifact back-ref —
     expect(await outbox("m16.bereavement.outreach_completed", outreachId)).toHaveLength(1);
   });
 
+  // ADR-0109 D2 — the day-390 closeout_letter floor item renders under ITS OWN template, and the outreach back-ref still stamps it.
+  it("start → M22 render → the closeout letter renders as a closeout letter, stamped and completed", async () => {
+    const { outreachId } = await seedOutreach("sympathy_letter");
+    await admin.query(
+      "UPDATE bereavement_outreach SET cadence_mark='closeout_letter' WHERE id=$1",
+      [outreachId],
+    );
+    await svc.startOutreach(actor(), outreachId);
+    const requests = await outbox("m16.bereavement.outreach_artifact_requested", outreachId);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].payload).toMatchObject({
+      outreachId,
+      templateKey: "bereavement_closeout_letter",
+      payloadJsonb: { cadenceMark: "closeout_letter", outreachKind: "sympathy_letter" },
+    });
+
+    const announced = await renderThroughM22(requests[0]);
+    expect(announced).toHaveLength(1);
+    const rendered = announced[0] as Record<string, unknown>;
+    expect(rendered).toMatchObject({
+      aggregateType: "bereavement_letter",
+      aggregateId: outreachId,
+      templateKey: "bereavement_closeout_letter",
+      retentionClass: "bereavement",
+    });
+    const { organizationId: _org, ...wire } = rendered;
+    await consumer.handle({ organizationId: ORG_A, payload: wire });
+    const done = await outreachRow(outreachId);
+    expect(done.rendered_document_id).toBe(rendered.documentId);
+    expect(done.status).toBe("completed");
+  });
+
   it("stamps an invitation but leaves it open for the family's response", async () => {
     const { outreachId } = await seedOutreach("group_support_invitation", "in_progress");
     const documentId = randomUUID();

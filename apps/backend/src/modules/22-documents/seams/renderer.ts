@@ -199,6 +199,14 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "bereavement",
     defaultTitle: "Bereavement Welcome Packet",
   },
+  // ADR-0109 D2 — the day-390 `closeout_letter` floor item: the letter that ends the program. Family-facing like every other per-outreach
+  // letter, so it files under the same `bereavement_letter` aggregate type (the outreach back-ref routes on it) but renders under its own
+  // template and typed payload instead of the generic condolence letter.
+  bereavement_closeout_letter: {
+    aggregateType: "bereavement_letter",
+    retentionClass: "bereavement",
+    defaultTitle: "Bereavement Closeout Letter",
+  },
   // ADR-0109 D6 — the approved physician condolence letter M16 requests through `m16.bereavement.document_requested` once a human
   // reviewer approves it. INTERNAL: it goes to the patient's attending clinician, never to the family or the portal. Its own
   // aggregate type (the letter id), under the `bereavement` retention class like every other bereavement artifact.
