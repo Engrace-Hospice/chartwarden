@@ -67,7 +67,7 @@ export function stripControlChars(text: string): string {
  * Compatibility-normalise (fullwidth to ASCII), drop invisible format characters (zero-width joiners, soft hyphens, bidi marks, BOM) and fold
  * accents, so "Jos\u00e9", "J\u200bohn" and a fullwidth digit cannot slip past a name or identifier match. Applied to the body AND the names.
  */
-export function foldForMatching(text: string): string {
+function foldForMatching(text: string): string {
   return text
     .normalize("NFKC")
     .replace(/\p{Cf}/gu, "")

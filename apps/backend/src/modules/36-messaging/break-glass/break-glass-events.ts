@@ -11,7 +11,7 @@ export const M36_BREAK_GLASS_EVENTS = {
   reviewed: "m36.break_glass.reviewed",
 } as const;
 
-export const BREAK_GLASS_AGGREGATE_KIND = "message_break_glass_grant";
+const BREAK_GLASS_AGGREGATE_KIND = "message_break_glass_grant";
 
 export type BreakGlassEventFacts =
   | {
@@ -44,7 +44,7 @@ export type BreakGlassEventFacts =
     };
 
 /** The event payload: everything but `kind`, instants as ISO strings, `organizationId` named as the catalog expects. */
-export function breakGlassEventPayload(facts: BreakGlassEventFacts): Record<string, unknown> {
+function breakGlassEventPayload(facts: BreakGlassEventFacts): Record<string, unknown> {
   const { kind: _kind, orgId, ...rest } = facts;
   const entries = Object.entries(rest).map(([key, value]) => [
     key,

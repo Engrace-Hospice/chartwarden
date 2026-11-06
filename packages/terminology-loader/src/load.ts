@@ -25,7 +25,7 @@ import type {
 import type { LoadableSystemId } from "./types";
 
 /** Rows per staging call: bounds one definer-function payload (the DB rejects more than 5000). */
-export const STAGE_CHUNK_SIZE = 2000;
+const STAGE_CHUNK_SIZE = 2000;
 
 export interface LoadVersionDeps {
   readonly store: LoaderStorePort;

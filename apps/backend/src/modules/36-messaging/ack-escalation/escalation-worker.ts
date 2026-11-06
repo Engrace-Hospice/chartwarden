@@ -99,7 +99,7 @@ export async function sweepTick(
 }
 
 /** BullMQ's reason when a job's lock expired more often than `maxStalledCount` allows: it is failed inside Redis, final. */
-export const STALLED_LIMIT_REASON = "stalled more than allowable limit";
+const STALLED_LIMIT_REASON = "stalled more than allowable limit";
 
 export const isFinalFailure = (job: Pick<Job, "attemptsMade" | "opts">, error: Error): boolean =>
   error instanceof UnrecoverableError ||

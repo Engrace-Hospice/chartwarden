@@ -31,15 +31,13 @@ export interface M35WebhookIngestDeps {
 }
 
 /** Tenant attribution is best-effort and ONLY from a value M35 itself stamped on the Stripe object. */
-export function orgFromStripeMetadata(event: StripeEventEnvelope): string | null {
+function orgFromStripeMetadata(event: StripeEventEnvelope): string | null {
   const data = event.raw.data as { object?: { metadata?: Record<string, unknown> } } | undefined;
   const candidate = data?.object?.metadata?.organization_id;
   return typeof candidate === "string" && UUID_RE.test(candidate) ? candidate : null;
 }
 
-export function createDrizzleWebhookEventStore(
-  platformRunner: PlatformRunner,
-): StripeWebhookEventStore {
+function createDrizzleWebhookEventStore(platformRunner: PlatformRunner): StripeWebhookEventStore {
   return {
     async insertIfNew(row) {
       return platformRunner(async (tx) => {

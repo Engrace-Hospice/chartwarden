@@ -234,7 +234,7 @@ const targetStr = (target: AbacTarget, ...fields: string[]): string | null => {
 };
 
 /** The SERVER-assembled session class (M2). Never a header, body or query field. */
-export function portalSessionClassOf(context: AbacContext): string {
+function portalSessionClassOf(context: AbacContext): string {
   const value = context.attributes.sessionClass;
   return typeof value === "string" && value.length > 0 ? value : "staff";
 }

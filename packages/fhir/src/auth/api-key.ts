@@ -15,7 +15,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 /** §2.2 — the `fhir_client_credential.fingerprint`: the first 8 hex chars of the secret's sha256. Ops-only
  *  display (never a comparison basis — an 8-char prefix is not a credential); a full compare is
  *  {@link verifyApiKey}. Deterministic so the onboarding flow can echo it back for the Org Admin to note. */
-export const FHIR_API_KEY_FINGERPRINT_CHARS = 8;
+const FHIR_API_KEY_FINGERPRINT_CHARS = 8;
 
 /** §2.2 — compute the ops-display fingerprint of an API-key secret (sha256 hex, first 8 chars). */
 export function apiKeyFingerprint(secret: string): string {

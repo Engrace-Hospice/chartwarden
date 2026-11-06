@@ -16,7 +16,7 @@ import type {
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
 
-export const M36_ADMISSION_COMPLIANCE_ALERT_CONSUMER = "m36.admission-compliance-alerts" as const;
+const M36_ADMISSION_COMPLIANCE_ALERT_CONSUMER = "m36.admission-compliance-alerts" as const;
 
 export const M36_ADMISSION_COMPLIANCE_ALERT_EVENT_TYPES = [
   "m6.election_addendum.overdue",

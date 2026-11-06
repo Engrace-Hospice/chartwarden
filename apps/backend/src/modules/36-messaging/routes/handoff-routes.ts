@@ -31,7 +31,7 @@ import { parse } from "./messaging-typebox";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
-export const HANDOFF_LIST_DEFAULTS = { scope: "incoming", state: "active", limit: 50 } as const;
+const HANDOFF_LIST_DEFAULTS = { scope: "incoming", state: "active", limit: 50 } as const;
 
 export interface HandoffRouteDeps {
   /** The tenant flag `messaging.handoffs`. A throw reads as off (fail closed). */

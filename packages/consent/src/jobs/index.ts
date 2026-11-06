@@ -28,7 +28,7 @@ export const M39_QUEUES = {
 export type M39QueueName = (typeof M39_QUEUES)[keyof typeof M39_QUEUES];
 
 /** The platform-floor reminder cadence in days (D9), newest-threshold first. */
-export const REMINDER_CADENCE_DAYS: ReadonlyArray<{ kind: ConsentReminderKind; days: number }> = [
+const REMINDER_CADENCE_DAYS: ReadonlyArray<{ kind: ConsentReminderKind; days: number }> = [
   { kind: "90_days", days: 90 },
   { kind: "30_days", days: 30 },
   { kind: "14_days", days: 14 },

@@ -49,7 +49,6 @@ export type SubmissionSubjectTable =
   | "audit_request";
 
 export const RECEIPT_SOURCES = ["entered", "adapter_ack"] as const;
-export type ReceiptSource = (typeof RECEIPT_SOURCES)[number];
 
 export function purposeSubject(purpose: SubmissionPurpose): SubmissionSubjectTable {
   if (purpose === "adr_response") return "adr_case";

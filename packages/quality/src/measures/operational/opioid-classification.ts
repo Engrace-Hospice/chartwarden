@@ -26,7 +26,7 @@
  * not a reverse-engineering exercise (the `HCI_THRESHOLDS_v<FY>` / `HVLDL_QUALIFYING_DISCIPLINES_v<FY>`
  * precedent).
  */
-export const OPIOID_DRUG_NAME_PATTERNS_v2025: readonly string[] = [
+const OPIOID_DRUG_NAME_PATTERNS_v2025: readonly string[] = [
   // Generic ingredient names.
   "morphine",
   "oxycodone",

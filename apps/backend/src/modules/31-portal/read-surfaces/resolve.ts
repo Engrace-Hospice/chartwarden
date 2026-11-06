@@ -25,7 +25,6 @@ import {
   projectTriageList,
   projectVisitList,
 } from "./project";
-import { layLabelForCode } from "./terminology";
 import type {
   PortalAdministrationListView,
   PortalBereavementScopeView,
@@ -35,14 +34,6 @@ import type {
   PortalTriageListView,
   PortalVisitListView,
 } from "./views";
-
-/** The live M38-backed code→lay-label function the care-plan projector consumes (re-exported so M31-T07 can
- *  inject it once M7's portal care-plan reader lands). Resolves the terminology seam per call, fail-open. */
-export const liveLayLabelForCode = (
-  system: string,
-  code: string | null | undefined,
-  fallback: string,
-) => layLabelForCode(system, code, fallback);
 
 /** §5.1 medications — M12 `getPortalMedicationSummary`, fail-closed to an empty list. */
 export async function resolveMedicationList(

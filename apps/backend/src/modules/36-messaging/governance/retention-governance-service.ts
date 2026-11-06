@@ -129,11 +129,11 @@ export interface RetentionGovernanceDeps {
 }
 
 /** Overlay statements run in the apply transaction (5000 rows each); the next weekly scan covers any remainder. */
-export const APPLY_MATERIALISE_MAX_BATCHES = 4;
+const APPLY_MATERIALISE_MAX_BATCHES = 4;
 /** Holds listed (newest first). */
-export const HOLD_LIST_LIMIT = 100;
+const HOLD_LIST_LIMIT = 100;
 /** The criteria marker of an org-wide messaging hold: M4 needs a selector, and "message" names no audit resource kind. */
-export const ORG_WIDE_RESOURCE_KIND = "message";
+const ORG_WIDE_RESOURCE_KIND = "message";
 const SCAN_EVENT_TYPE = "m36.retention_scan.run";
 
 /** Next Sunday 02:00 UTC strictly after `from` (the weekly `messaging.retention_scan` cron). */

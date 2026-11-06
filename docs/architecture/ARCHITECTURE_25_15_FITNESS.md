@@ -71,7 +71,7 @@ contents are re-homed: outbox helper → `packages/shared`; `withOrgContext` + R
 |---|---|---|---|
 | 1 | **Module import boundaries** | dependency-cruiser (rules generated from manifest) | A module importing code from an undeclared module. M8 may import its deps (6, 7, 36, 38) + leaves; importing M12 fails. |
 | 2 | **Adapter mandate** | dependency-cruiser (`VENDOR_ADAPTERS`) | A vendor SDK (`stripe`, `twilio`, `@anthropic-ai/sdk`, …) imported outside its adapter package. Keeps vendor swaps to one package. |
-| 3 | **Domain purity + FHIR direction** | dependency-cruiser | `packages/domain` importing I/O, app packages, or FHIR. Locks the §9 dependency direction. |
+| 3 | **Domain purity + FHIR direction** | dependency-cruiser | `packages/domain` importing I/O, app packages, or FHIR. Locks the §9 dependency direction. The empty placeholder package no longer exists (domain types live in `packages/types` and the per-area packages); the rule stays armed should it be reintroduced. |
 | 4 | **Leaves stay leaves** | dependency-cruiser | `shared`/`types`/`ui` importing feature packages (which would make everyone depend on everything). |
 | 5 | **Helper-only tables** | dependency-cruiser + ownership check | Direct schema import of `audit_event` / `outbox_event` / `idempotency_key` outside their helper. |
 | 6 | **Table ownership** | `scripts/check-table-ownership.ts` | The leak RLS cannot catch: same-tenant cross-module table access. Cross-module reads must go through the owner's repository, not its schema. |

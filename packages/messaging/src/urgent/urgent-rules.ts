@@ -8,13 +8,13 @@ import { isSbarBody } from "../sbar/sbar-write";
 const refuse = (code: UrgentErrorCode, message: string): ChartWardenError =>
   new ChartWardenError(code, message, 422);
 
-export const urgentNotPatientChannel = (): ChartWardenError =>
+const urgentNotPatientChannel = (): ChartWardenError =>
   refuse("URGENT_NOT_PATIENT_CHANNEL", "An urgent clinical message needs a patient conversation.");
-export const urgentSbarRequired = (): ChartWardenError =>
+const urgentSbarRequired = (): ChartWardenError =>
   refuse("URGENT_SBAR_REQUIRED", "An urgent clinical message needs an SBAR message.");
 export const urgentRecipientInvalid = (): ChartWardenError =>
   refuse("URGENT_RECIPIENT_INVALID", "Choose a colleague who can take this message.");
-export const urgentNotEditable = (): ChartWardenError =>
+const urgentNotEditable = (): ChartWardenError =>
   refuse(
     "URGENT_MESSAGE_NOT_EDITABLE",
     "An urgent clinical message cannot be edited; send a new message instead.",

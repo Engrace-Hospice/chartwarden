@@ -48,11 +48,8 @@ import type {
 
 import { type AiGovernanceRefusal, aiGovernanceRefusal } from "./errors";
 
-/** The routing preferences under which a local backend is the only thing that may run (§10.8). */
-export const AI_LOCAL_ONLY_PREFERENCES: readonly AiRoutingPreference[] = ["local_only"];
-
 /** The preferences that trigger §10.10's calibration trade-off disclosure. */
-export const AI_TRADE_OFF_DISCLOSURE_PREFERENCES: readonly AiRoutingPreference[] = [
+const AI_TRADE_OFF_DISCLOSURE_PREFERENCES: readonly AiRoutingPreference[] = [
   "prefer_local",
   "local_only",
 ];

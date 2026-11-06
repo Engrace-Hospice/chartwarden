@@ -259,8 +259,7 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
         ? { kind: "requeue", error: error.customerMessage }
         : { kind: "failed", error: error.customerMessage };
     } else if (error instanceof Error) {
-      // `./vendor-boundary.ts`'s `M12DosespotPatientIdUnbound` (medhx_fetch's still-deferred edge) lands
-      // here — deterministic, non-retryable, honestly reported.
+      // A plain Error is deterministic and non-retryable — reported as-is.
       outcome = { kind: "failed", error: error.message };
     } else {
       outcome = { kind: "failed", error: String(error) };

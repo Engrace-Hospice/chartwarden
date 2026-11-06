@@ -5,7 +5,7 @@
 // CENTS at the boundary; no PHI — aggregate financial/identification data only (D18).
 //
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
-import { type Static, Type } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 
 /** Worksheet S — certification statement + settlement summary. */
 export const WorksheetS = Type.Object(
@@ -36,5 +36,3 @@ export const WorksheetS = Type.Object(
   },
   { additionalProperties: false },
 );
-
-export type WorksheetSData = Static<typeof WorksheetS>;

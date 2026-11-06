@@ -49,7 +49,7 @@ const isoInstant = Type.String({ minLength: 1 });
  * shape the §4.9 table specifies (a subset of the firing `m33.*` event payload). UPSERT of the matching
  * M36 platform-default `alert_rule` rows is a Phase-2D wiring TODO (the M34 alert-rules precedent).
  */
-export const M33_ALERTS = {
+const M33_ALERTS = {
   /** A scheduled report rendered + fanned out to its recipients (§4.9). */
   scheduledReportDelivered: {
     alertKey: "scheduledReportDelivered",
@@ -164,6 +164,3 @@ export const M33_ALERTS = {
 
 /** Every M33 alert key (the §4.9 set). */
 export type M33AlertKey = keyof typeof M33_ALERTS;
-
-/** The nine M33 alert definitions as a list (for seeding / iteration). */
-export const M33_ALERT_LIST: readonly ReportingAlertDef[] = Object.values(M33_ALERTS);

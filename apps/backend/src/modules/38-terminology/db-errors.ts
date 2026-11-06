@@ -35,7 +35,7 @@ export function isUniqueViolation(err: unknown): boolean {
  * A terminology function's refusal as a clean error: `message` is `TERMINOLOGY_<REASON>: detail` (the driver's
  * "Failed query: …" wrapper is dropped), `code` the machine token.
  */
-export class TerminologyRefusalError extends Error {
+class TerminologyRefusalError extends Error {
   constructor(
     readonly code: string,
     detail: string,

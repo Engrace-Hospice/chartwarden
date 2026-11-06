@@ -5,7 +5,7 @@ import type { Condition, FhirCoding } from "../types";
 import { ICD10CM_SYSTEM, SNOMED_SYSTEM } from "../uris";
 import type { ConditionDomain } from "./domain";
 
-export const US_CORE_CONDITION_PROFILE =
+const US_CORE_CONDITION_PROFILE =
   "http://hl7.org/fhir/us/core/StructureDefinition/us-core-condition-problems-health-concerns";
 
 const CLINICAL_STATUS_SYSTEM = "http://terminology.hl7.org/CodeSystem/condition-clinical";

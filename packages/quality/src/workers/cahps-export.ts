@@ -147,7 +147,7 @@ export type CahpsExportResult =
 
 /** Raised when render/push fails — rethrown so BullMQ applies the §4.8 backoff / DLQ. On the terminal
  *  attempt the rows are already flipped to `export_failed` + the failure event emitted before this throws. */
-export class CahpsExportError extends Error {
+class CahpsExportError extends Error {
   constructor(
     public readonly organizationId: string,
     reason: string,

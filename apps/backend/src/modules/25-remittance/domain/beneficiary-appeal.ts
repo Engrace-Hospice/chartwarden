@@ -14,7 +14,6 @@ import {
 import type { AppealTier } from "./types";
 
 export const BENEFICIARY_FILER_KINDS = ["beneficiary", "representative"] as const;
-export type BeneficiaryFilerKind = (typeof BENEFICIARY_FILER_KINDS)[number];
 
 const MEDICARE_TIERS: readonly AppealTier[] = [
   "redetermination",
@@ -59,9 +58,6 @@ export const canTransitionBeneficiaryAppeal = (
   from: BeneficiaryAppealState,
   to: BeneficiaryAppealState,
 ): boolean => TRANSITIONS[from]?.includes(to) ?? false;
-
-export const isBeneficiaryAppealTerminal = (state: string): boolean =>
-  state === "closed" || state === "withdrawn";
 
 const blank = (v: string | null | undefined): boolean =>
   v === null || v === undefined || v.trim() === "";

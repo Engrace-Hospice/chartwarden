@@ -105,10 +105,10 @@ export const AI_SAFETY_OWNER_ROLE_KEYS = [
  * platform keys (`@chartwarden/auth` `isReservedPlatformRoleKey`): the enrichment reader and the
  * effective-permission store drop them unless they come from a platform-owned role row.
  */
-export const AI_SAFETY_OWNER_SINGLE_TENANT_ROLE_KEYS: readonly string[] = ["clinical_safety_lead"];
+const AI_SAFETY_OWNER_SINGLE_TENANT_ROLE_KEYS: readonly string[] = ["clinical_safety_lead"];
 
 /** The env flag that declares a single-tenant deployment (§4.7's second clause). Default: multi-tenant. */
-export const SINGLE_TENANT_DEPLOYMENT_ENV = "CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT";
+const SINGLE_TENANT_DEPLOYMENT_ENV = "CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT";
 
 /** True only for an explicit `CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT=true` — anything else is multi-tenant. */
 export function isSingleTenantDeployment(
@@ -278,11 +278,6 @@ async function isAiSafetyOwner(
   const roles = await resolver.roleKeysOf(context.organizationId, membershipId).catch(() => null);
   if (roles === null) return false;
   return roles.some((role) => ownerKeys.includes(role));
-}
-
-/** Whether the SESSION holds a compliance-side read role (the R9/R16 second arm — see the role lists). */
-export function isAiComplianceReader(context: AbacContext): boolean {
-  return context.roles.some((role) => AI_COMPLIANCE_READER_ROLE_KEYS.includes(role as never));
 }
 
 // ── the predicates ───────────────────────────────────────────────────────────────────────────────────

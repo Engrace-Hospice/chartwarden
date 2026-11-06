@@ -8,7 +8,6 @@ export type DenialCategory = "denial" | "reduction" | "informational" | "recoupm
 export type TaxonomyStatus = "mapped" | "unmapped";
 export type PostAction = "auto_posted" | "ledger_recorded" | "flagged_review" | "denial_seeded";
 export type MatchStrategy = "payer_icn" | "patient_control" | "heuristic" | "manual";
-export type MatchState = "unmatched" | "auto_matched" | "manual_matched" | "reversed" | "posted";
 
 export type DenialState = "open" | "in_progress" | "escalated" | "appealed" | "resolved" | "closed";
 

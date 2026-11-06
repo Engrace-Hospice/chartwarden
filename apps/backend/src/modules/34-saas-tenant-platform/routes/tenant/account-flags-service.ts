@@ -63,10 +63,10 @@ export interface TenantAccountFlagsService {
 }
 
 /** Flag kinds a tenant may ever toggle (the platform floor). */
-export const TENANT_TOGGLEABLE_KINDS = ["product", "rollout"] as const;
+const TENANT_TOGGLEABLE_KINDS = ["product", "rollout"] as const;
 
 /** PURE - the tenant's own row, when it is boolean, toggle-eligible and not emergency-disabled. */
-export function isTenantToggleable(
+function isTenantToggleable(
   row: Pick<FeatureFlagView, "organizationId" | "flagKind" | "valueType" | "killSwitchActive">,
   organizationId: string,
 ): boolean {
@@ -82,7 +82,7 @@ export function isTenantToggleable(
  * PURE - fold the platform-wide rows + this tenant's rows into the EFFECTIVE set: the tenant's own row wins
  * over the global row of the same key; another tenant's rows never appear.
  */
-export function effectiveFlags(
+function effectiveFlags(
   rows: readonly FeatureFlagView[],
   organizationId: string,
 ): readonly TenantFlagView[] {

@@ -82,7 +82,7 @@ export function normalizeBodySite(bodySite: string): string {
  * or via {@link normalizeSurveillanceEvent}). The `` separator cannot occur in a code, so the key
  * is injective over the triple.
  */
-export function surveillanceClusterKey(
+function surveillanceClusterKey(
   providerEntityId: string,
   pathogen: string,
   bodySite: string,

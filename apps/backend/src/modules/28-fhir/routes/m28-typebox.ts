@@ -67,7 +67,7 @@ export const FhirClientTierSchema = Lit(FHIR_CLIENT_TIERS);
 export const FhirClientStatusSchema = Lit(FHIR_CLIENT_STATUSES);
 export const FhirInboundOwnerModuleSchema = Lit(FHIR_INBOUND_OWNER_MODULES);
 export const FhirInboundStatusSchema = Lit(FHIR_INBOUND_STATUSES);
-export const FhirBulkExportStatusSchema = Lit(FHIR_BULK_EXPORT_STATUSES);
+const FhirBulkExportStatusSchema = Lit(FHIR_BULK_EXPORT_STATUSES);
 
 // ── path params ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -75,24 +75,12 @@ export const ClientIdParams = Type.Object({ id: Uuid });
 export const ClientSessionParams = Type.Object({ id: Uuid, jti: Uuid });
 export const JobIdParams = Type.Object({ id: Uuid });
 export const ProposalIdParams = Type.Object({ id: Uuid });
-export const PollJobParams = Type.Object({ jobId: Uuid });
 export const ResourceReadParams = Type.Object({
   resourceType: Type.String({ minLength: 1, maxLength: 60 }),
   id: Type.String({ minLength: 1, maxLength: 200 }),
 });
 export const ResourceTypeParams = Type.Object({
   resourceType: Type.String({ minLength: 1, maxLength: 60 }),
-});
-export const PatientEverythingParams = Type.Object({
-  id: Type.String({ minLength: 1, maxLength: 200 }),
-});
-export const CodeSystemParams = Type.Object({
-  system: Type.String({ minLength: 1, maxLength: 200 }),
-});
-export const ValueSetParams = Type.Object({ vs: Type.String({ minLength: 1, maxLength: 200 }) });
-export const GroupExportParams = Type.Object({ id: Type.String({ minLength: 1, maxLength: 200 }) });
-export const Phase2ResourceParams = Type.Object({
-  id: Type.String({ minLength: 1, maxLength: 200 }),
 });
 
 // ── §4.2 admin bodies — client registry (R24-R30) ────────────────────────────────────────────────────

@@ -20,7 +20,7 @@
 import { ChartWardenError } from "@chartwarden/types";
 
 /** The §7.7–§7.9 write-path failure-code catalog → HTTP status. */
-export const M31_WRITE_ERROR_STATUS = {
+const M31_WRITE_ERROR_STATUS = {
   // ── §7.7 caregiver-attested medication administration (M13 D10) ───────────────────────────────────────
   /** §7.7 VERBATIM — `410 Gone`. The medication order is no longer active; attesting a dose against a dead
    *  order would write a clinical fact with no live basis. Rendered as "This medication order is no longer

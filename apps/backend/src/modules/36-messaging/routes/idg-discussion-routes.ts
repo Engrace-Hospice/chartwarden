@@ -18,7 +18,7 @@ import { requireUuidParams } from "./uuid-params";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
-export const IDG_DISCUSSION_DEFAULT_LIMIT = 50;
+const IDG_DISCUSSION_DEFAULT_LIMIT = 50;
 
 export interface IdgDiscussionRouteDeps {
   /** `messaging.idg` AND `messaging.clinical_links`. A throw reads as off (fail closed). */

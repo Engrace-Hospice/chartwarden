@@ -299,7 +299,7 @@ const DeliveryStatusSchema = Type.Union([
 ]);
 
 // ── channels & messages ──────────────────────────────────────────────────────────────────────
-export const ChannelSummaryResponseSchema = Type.Object({
+const ChannelSummaryResponseSchema = Type.Object({
   channelId: Type.String(),
   kind: ChannelKindSchema,
   title: NullableString(),
@@ -334,7 +334,7 @@ export const ChannelMembersResponseSchema = Type.Object({
   members: Type.Array(ChannelMemberViewSchema),
 });
 /** D18 (ADR-0096): present on the channel detail only while an ACTIVE external partner share exists and partner access is on. */
-export const ExternalShareIndicatorSchema = Type.Object({
+const ExternalShareIndicatorSchema = Type.Object({
   active: Type.Literal(true),
   partnerKind: Type.Union([Type.Literal("pharmacy"), Type.Literal("dme"), Type.Literal("other")]),
   expiresAt: Type.String({ format: "date-time" }),

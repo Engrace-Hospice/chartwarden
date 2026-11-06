@@ -19,8 +19,6 @@ export type AlertBand =
 
 export type PeriodStatus = "open" | "active" | "in_settlement" | "settled" | "reopened";
 
-export type SettlementStatus = "proposed" | "reviewed" | "final";
-
 export type SettlementDirection =
   | "overpayment_owed_to_cms"
   | "underpayment_owed_to_provider"

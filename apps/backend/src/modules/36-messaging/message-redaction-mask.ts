@@ -7,9 +7,6 @@ import type { Tx } from "./messaging-write-core";
 
 const RED = schema.messageRedactions;
 
-/** What a reader sees in place of a redacted body: nothing, and when it was redacted (never the reason or the people). */
-export const REDACTED_BODY = "";
-
 /**
  * `messageId -> approved_at (ISO)` for the approved redactions among `messageIds`, in one org-filtered query (the unique
  * (organization_id, message_id) index serves it). Absent id = not redacted.

@@ -19,7 +19,7 @@ export const SUD_SECURITY_MARKER_CODE = "R-SUD";
 
 /** The FHIR-standard confidentiality label surfaced on a redacted report so a conforming consumer knows
  *  a Part-2 filter ran (D20). */
-export const FHIR_RESTRICTED_SECURITY: {
+const FHIR_RESTRICTED_SECURITY: {
   readonly system: string;
   readonly code: string;
   readonly display: string;
@@ -34,7 +34,7 @@ export const SUD_REDACTION_BANNER =
   "Results subject to 42 CFR Part 2 protections. To view values, request an unredact grant via the SUD Disclosure workflow at the source EHR.";
 
 /** True when a report carries at least one SUD-class contained Observation. */
-export function reportHasSudResult(report: DiagnosticReport): boolean {
+function reportHasSudResult(report: DiagnosticReport): boolean {
   return (report.contained ?? []).some((obs) =>
     obs.meta?.security?.some((s) => s.code === SUD_SECURITY_MARKER_CODE),
   );

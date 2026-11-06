@@ -8,7 +8,7 @@ import {
 } from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 
-export const EXTERNAL_SHARE_AGGREGATE_KIND = "message_external_share";
+const EXTERNAL_SHARE_AGGREGATE_KIND = "message_external_share";
 
 export interface ExternalShareEventFacts {
   readonly kind: "created" | "revoked" | "reissued";
@@ -21,7 +21,7 @@ export interface ExternalShareEventFacts {
   readonly expiresAt?: Date;
 }
 
-export function externalShareEventPayload(facts: ExternalShareEventFacts): Record<string, unknown> {
+function externalShareEventPayload(facts: ExternalShareEventFacts): Record<string, unknown> {
   return {
     organizationId: facts.orgId,
     shareId: facts.shareId,

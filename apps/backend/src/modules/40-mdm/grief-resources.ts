@@ -173,7 +173,7 @@ export const GriefResourceBodySchema = Type.Object({
   audience: OptText(200),
 });
 export const GriefResourcePatchSchema = Type.Partial(GriefResourceBodySchema);
-export const GriefResourceIdParams = Type.Object({ id: Type.String({ format: "uuid" }) });
+const GriefResourceIdParams = Type.Object({ id: Type.String({ format: "uuid" }) });
 export const GriefResourceListQuery = Type.Object({
   includeInactive: Type.Optional(Type.Boolean()),
 });

@@ -22,9 +22,7 @@ export const NIGHTLY_REFRESH_CRON = "0 2 * * *" as const;
  * MV is excluded (a suspended MV recovers only via a manual refresh, §4.8). Defensive — the metadata read
  * port already filters by strategy, but a belt-and-braces filter keeps the selection total + unit-testable.
  */
-export function selectNightlyTargets(
-  mvs: readonly schema.MaterializedViewMetadata[],
-): readonly string[] {
+function selectNightlyTargets(mvs: readonly schema.MaterializedViewMetadata[]): readonly string[] {
   return mvs
     .filter((mv) => mv.refreshStrategy === "nightly" && mv.status === "active")
     .map((mv) => mv.mvKey);

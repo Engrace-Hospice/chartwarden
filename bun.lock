@@ -231,10 +231,6 @@
         "@chartwarden/types": "workspace:*",
       },
     },
-    "packages/domain": {
-      "name": "@chartwarden/domain",
-      "version": "0.0.0",
-    },
     "packages/dosespot": {
       "name": "@chartwarden/dosespot",
       "version": "0.0.0",
@@ -599,8 +595,6 @@
     "@chartwarden/db": ["@chartwarden/db@workspace:packages/db"],
 
     "@chartwarden/discipline-plans": ["@chartwarden/discipline-plans@workspace:packages/discipline-plans"],
-
-    "@chartwarden/domain": ["@chartwarden/domain@workspace:packages/domain"],
 
     "@chartwarden/dosespot": ["@chartwarden/dosespot@workspace:packages/dosespot"],
 

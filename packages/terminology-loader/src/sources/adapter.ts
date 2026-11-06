@@ -31,7 +31,7 @@ export interface PublicSourceAdapter {
 }
 
 /** Ceiling on one downloaded release (the largest public file, the NDC zip, is tens of MB). */
-export const MAX_DOWNLOAD_BYTES = 250_000_000;
+const MAX_DOWNLOAD_BYTES = 250_000_000;
 const FETCH_TIMEOUT_MS = 120_000;
 
 /** GET `url`; 404 → null; any other non-2xx or an oversized body → throws (a retryable infrastructure fault). */

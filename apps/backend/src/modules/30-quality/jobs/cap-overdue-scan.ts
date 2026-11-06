@@ -14,7 +14,7 @@ import { sql } from "drizzle-orm";
 
 export const M30_CAP_OVERDUE_QUEUE = "m30.cap_overdue_scan";
 /** 08:00 UTC daily — clear of the 03:15 recompute, 04:00 risk-register, 05:00 mortality and 09:00 SRA crons. */
-export const M30_CAP_OVERDUE_SCHEDULE = "0 8 * * *";
+const M30_CAP_OVERDUE_SCHEDULE = "0 8 * * *";
 const MS_PER_DAY = 86_400_000;
 const REPEAT_BUCKET_DAYS = 2;
 const SYSTEM_USER_ID = "";

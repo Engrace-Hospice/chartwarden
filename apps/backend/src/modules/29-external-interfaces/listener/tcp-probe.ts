@@ -8,7 +8,7 @@
 // (the outbound destination), not where our listener binds.
 import net from "node:net";
 
-export const TCP_PROBE_TIMEOUT_MS = 2_000;
+const TCP_PROBE_TIMEOUT_MS = 2_000;
 
 export type TcpProbe = (host: string, port: number) => Promise<boolean>;
 

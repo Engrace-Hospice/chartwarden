@@ -24,7 +24,7 @@ import type {
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
 
-export const M36_IPU_IV_ALERT_CONSUMER = "m36.ipu-iv-alerts" as const;
+const M36_IPU_IV_ALERT_CONSUMER = "m36.ipu-iv-alerts" as const;
 export const M36_IPU_IV_ALERT_EVENT_TYPES = [
   "m37.iv_safety_overlay.bedside_check_overdue",
 ] as const;
@@ -37,7 +37,7 @@ function requireString(p: Record<string, unknown>, key: string, eventName: strin
   return v;
 }
 
-export function planIpuIvAlert(event: DispatchableOutboxEvent): {
+function planIpuIvAlert(event: DispatchableOutboxEvent): {
   readonly correlationKey: string;
   readonly safe: Record<string, unknown>;
 } {

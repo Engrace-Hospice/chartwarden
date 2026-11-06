@@ -60,11 +60,11 @@ const CH = schema.channels;
 const USER = schema.users;
 
 /** Reads listed on one review (a grant is at most 24 hours; this bounds a very chatty reader). */
-export const REVIEW_READS_LIMIT = 500;
-export const REVIEW_LIST_DEFAULT_LIMIT = 50;
-export const REVIEW_LIST_MAX_LIMIT = 200;
+const REVIEW_READS_LIMIT = 500;
+const REVIEW_LIST_DEFAULT_LIMIT = 50;
+const REVIEW_LIST_MAX_LIMIT = 200;
 /** A holder's own grants listed (newest first). */
-export const MINE_LIST_LIMIT = 20;
+const MINE_LIST_LIMIT = 20;
 
 export interface BreakGlassActor {
   readonly organizationId: string;

@@ -11,7 +11,7 @@ import {
   COMMERCIAL_RECONCILE_OUTCOME_VALUES,
   COMMERCIAL_SUBMISSION_STATUS_VALUES,
 } from "@chartwarden/types";
-import { type Static, Type } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 
 // FormatRegistry entries (uuid, date) are registered by the shared M23 `parse` helper module imported by the routes.
 const uuid = () => Type.String({ format: "uuid" });
@@ -336,9 +336,6 @@ export const TimelineViewSchema = Type.Object({
   /** True when the oldest rows were cut by the bound. */
   truncated: Type.Boolean(),
 });
-
-export type AssembleCommercialClaimBody = Static<typeof AssembleCommercialClaimBodySchema>;
-export type RecordAuthorizationBody = Static<typeof RecordAuthorizationBodySchema>;
 
 // -- Held-acknowledgment quarantine: operator routes (issue #820). Ids, reasons, control numbers and counts only. --
 export const AckQuarantineListQuerySchema = Type.Object(

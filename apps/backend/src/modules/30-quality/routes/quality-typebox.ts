@@ -454,7 +454,7 @@ const m30PageOf = <T extends TSchema>(item: T) =>
 
 /** `read-service.ts` → `MeasureValueView`. The numerator/denominator PAIR is on the wire deliberately:
  *  a UI that showed only the rate could not distinguish a suppressed measure from a real 0%. */
-export const MeasureValueViewSchema = Type.Object({
+const MeasureValueViewSchema = Type.Object({
   valueId: Type.String(),
   organizationId: Type.String(),
   measureId: Type.String(),
@@ -475,7 +475,7 @@ export const MeasureValueViewSchema = Type.Object({
 });
 
 /** `read-service.ts` → `MeasureSummaryView`. */
-export const MeasureSummaryViewSchema = Type.Object({
+const MeasureSummaryViewSchema = Type.Object({
   measureId: Type.String(),
   displayName: Type.String(),
   domain: lit(MEASURE_DOMAIN),
@@ -485,7 +485,7 @@ export const MeasureSummaryViewSchema = Type.Object({
 export const MeasureListResponseSchema = m30PageOf(MeasureSummaryViewSchema);
 
 /** `read-service.ts` → `IncidentSummaryView`. `patientId` is nullable — not every incident is clinical. */
-export const IncidentSummaryViewSchema = Type.Object({
+const IncidentSummaryViewSchema = Type.Object({
   incidentId: Type.String(),
   organizationId: Type.String(),
   kind: lit(INCIDENT_KIND),
@@ -500,7 +500,7 @@ export const IncidentSummaryViewSchema = Type.Object({
 export const IncidentListResponseSchema = m30PageOf(IncidentSummaryViewSchema);
 
 /** `read-service.ts` → `QapiProjectView`. */
-export const QapiProjectViewSchema = Type.Object({
+const QapiProjectViewSchema = Type.Object({
   projectId: Type.String(),
   organizationId: Type.String(),
   qapiProgramId: Type.String(),
@@ -514,7 +514,7 @@ export const QapiProjectViewSchema = Type.Object({
 export const QapiProjectListResponseSchema = m30PageOf(QapiProjectViewSchema);
 
 /** `read-service.ts` → `CopCitationView` (the §1.2 CoP compliance posture). */
-export const CopCitationViewSchema = Type.Object({
+const CopCitationViewSchema = Type.Object({
   citationId: Type.String(),
   organizationId: Type.String(),
   citationRef: Type.String(),
@@ -585,7 +585,7 @@ export const MeasureValueSnapshotResponseSchema = Type.Object({
 
 /** `read-service.ts` → `RecomputeQueueEntryView`. The scope is a discriminated union, published as
  *  one so a client can narrow on `kind` instead of probing for optional fields. */
-export const RecomputeQueueEntryViewSchema = Type.Object({
+const RecomputeQueueEntryViewSchema = Type.Object({
   jobId: Type.String(),
   scope: Type.Union([
     Type.Object({ kind: Type.Literal("all") }),
@@ -605,7 +605,7 @@ export const RecomputeQueueResponseSchema = Type.Array(RecomputeQueueEntryViewSc
 // ── CAHPS (R-10, R-12, R-15, R-17) ────────────────────────────────────────────────────────────
 
 /** `read-service.ts` → `CahpsVendorBindingView`. */
-export const CahpsVendorBindingViewSchema = Type.Object({
+const CahpsVendorBindingViewSchema = Type.Object({
   bindingId: Type.String(),
   organizationId: Type.String(),
   vendorAdapterId: Type.String(),
@@ -619,7 +619,7 @@ export const CahpsVendorBindingViewSchema = Type.Object({
 export const CahpsVendorResponseSchema = m30Nullable(CahpsVendorBindingViewSchema);
 
 /** `read-service.ts` → `CahpsDecedentView`. PHI (patient-linked). */
-export const CahpsDecedentViewSchema = Type.Object({
+const CahpsDecedentViewSchema = Type.Object({
   sampleId: Type.String(),
   organizationId: Type.String(),
   patientId: Type.String(),
@@ -649,7 +649,7 @@ export const CahpsExportJobResponseSchema = Type.Object({
 
 /** `read-service.ts` → `CahpsResultSummaryView`. `topBoxPercent` is null when the cell was
  *  suppressed — `suppressedMinCell` is what distinguishes that from "not yet reported". */
-export const CahpsResultSummaryViewSchema = Type.Object({
+const CahpsResultSummaryViewSchema = Type.Object({
   resultId: Type.String(),
   organizationId: Type.String(),
   measureId: Type.String(),
@@ -664,7 +664,7 @@ export const CahpsResultListResponseSchema = m30PageOf(CahpsResultSummaryViewSch
 // ── QAPI (R-20, R-23, R-29, R-33) ─────────────────────────────────────────────────────────────
 
 /** `read-service.ts` → `QapiProgramView`. */
-export const QapiProgramViewSchema = Type.Object({
+const QapiProgramViewSchema = Type.Object({
   programId: Type.String(),
   organizationId: Type.String(),
   planYear: Type.Integer(),
@@ -677,7 +677,7 @@ export const QapiProgramListResponseSchema = m30PageOf(QapiProgramViewSchema);
 /** `read-service.ts` → `QapiIndicatorView`. `breached` is the SERVER's verdict against the
  *  threshold direction — a client re-deriving it from `currentRate` would get the `min`/`max`
  *  cases backwards half the time. */
-export const QapiIndicatorViewSchema = Type.Object({
+const QapiIndicatorViewSchema = Type.Object({
   indicatorId: Type.String(),
   organizationId: Type.String(),
   qapiProgramId: Type.String(),
@@ -692,7 +692,7 @@ export const QapiIndicatorViewSchema = Type.Object({
 export const QapiIndicatorListResponseSchema = m30PageOf(QapiIndicatorViewSchema);
 
 /** `read-service.ts` → `QapiPipView`. */
-export const QapiPipViewSchema = Type.Object({
+const QapiPipViewSchema = Type.Object({
   pipId: Type.String(),
   organizationId: Type.String(),
   projectId: Type.String(),
@@ -707,7 +707,7 @@ export const QapiPipViewSchema = Type.Object({
 export const QapiPipListResponseSchema = m30PageOf(QapiPipViewSchema);
 
 /** `read-service.ts` → `QapiGovernanceMinutesView`. */
-export const QapiGovernanceMinutesViewSchema = Type.Object({
+const QapiGovernanceMinutesViewSchema = Type.Object({
   minutesId: Type.String(),
   organizationId: Type.String(),
   qapiProgramId: Type.String(),
@@ -721,7 +721,7 @@ export const QapiGovernanceListResponseSchema = m30PageOf(QapiGovernanceMinutesV
 // ── SRA (R-40, R-42) ──────────────────────────────────────────────────────────────────────────
 
 /** `read-service.ts` → `SraCycleView`. */
-export const SraCycleViewSchema = Type.Object({
+const SraCycleViewSchema = Type.Object({
   cycleId: Type.String(),
   organizationId: Type.String(),
   cycleYear: Type.Integer(),
@@ -737,7 +737,7 @@ export const SraCycleListResponseSchema = m30PageOf(SraCycleViewSchema);
 
 /** `read-service.ts` → `SraFindingView`. `riskScore`/`riskBand` are server-computed from
  *  likelihood × impact; both ride the wire so a UI never re-implements the banding. */
-export const SraFindingViewSchema = Type.Object({
+const SraFindingViewSchema = Type.Object({
   findingId: Type.String(),
   cycleId: Type.String(),
   findingNumber: Type.Integer(),
@@ -750,7 +750,7 @@ export const SraFindingViewSchema = Type.Object({
 });
 
 /** `read-service.ts` → `SraRemediationView`. */
-export const SraRemediationViewSchema = Type.Object({
+const SraRemediationViewSchema = Type.Object({
   remediationId: Type.String(),
   findingId: Type.String(),
   remediationNumber: Type.Integer(),
@@ -778,7 +778,7 @@ export const SraCycleDetailResponseSchema = Type.Intersect([
 // ── Incidents (R-52, R-61) ────────────────────────────────────────────────────────────────────
 
 /** `read-service.ts` → `IncidentStateHistoryView`. `fromState` is null on the opening entry. */
-export const IncidentStateHistoryViewSchema = Type.Object({
+const IncidentStateHistoryViewSchema = Type.Object({
   fromState: m30Nullable(lit(INCIDENT_STATE)),
   toState: lit(INCIDENT_STATE),
   actorMembershipId: Type.String(),
@@ -786,7 +786,7 @@ export const IncidentStateHistoryViewSchema = Type.Object({
 });
 
 /** `read-service.ts` → `IncidentInvestigationNoteView` (append-only). */
-export const IncidentInvestigationNoteViewSchema = Type.Object({
+const IncidentInvestigationNoteViewSchema = Type.Object({
   noteId: Type.String(),
   incidentId: Type.String(),
   authorMembershipId: Type.String(),
@@ -795,7 +795,7 @@ export const IncidentInvestigationNoteViewSchema = Type.Object({
 });
 
 /** `read-service.ts` → `IncidentCapPlanView` (corrective-action plan). */
-export const IncidentCapPlanViewSchema = Type.Object({
+const IncidentCapPlanViewSchema = Type.Object({
   rootCauseSummary: Type.String(),
   actions: Type.Array(
     Type.Object({
@@ -830,7 +830,7 @@ export const IncidentDetailResponseSchema = Type.Intersect([
 // ── Mortality (R-70, R-71) ────────────────────────────────────────────────────────────────────
 
 /** `read-service.ts` → `MortalityReviewSummaryView`. PHI. */
-export const MortalityReviewSummaryViewSchema = Type.Object({
+const MortalityReviewSummaryViewSchema = Type.Object({
   reviewId: Type.String(),
   organizationId: Type.String(),
   patientId: Type.String(),
@@ -864,7 +864,7 @@ export const MortalityReviewDetailResponseSchema = Type.Intersect([
 // ── Infection (R-90, R-92) ────────────────────────────────────────────────────────────────────
 
 /** `read-service.ts` → `InfectionEventView`. PHI. */
-export const InfectionEventViewSchema = Type.Object({
+const InfectionEventViewSchema = Type.Object({
   eventId: Type.String(),
   organizationId: Type.String(),
   patientId: Type.String(),
@@ -878,7 +878,7 @@ export const InfectionEventListResponseSchema = m30PageOf(InfectionEventViewSche
 
 /** `read-service.ts` → `InfectionOutbreakView`. Aggregate-only — the case carries counts, never
  *  the patient ids of its member events. */
-export const InfectionOutbreakViewSchema = Type.Object({
+const InfectionOutbreakViewSchema = Type.Object({
   caseId: Type.String(),
   organizationId: Type.String(),
   pathogen: Type.String(),
@@ -895,7 +895,7 @@ export const InfectionOutbreakListResponseSchema = m30PageOf(InfectionOutbreakVi
 
 /** `read-service.ts` → `RiskRegisterEntryView`, projected from the `risk_register_view` MV.
  *  `status` stays open: it is the SOURCE module's status vocabulary, six different ones unioned. */
-export const RiskRegisterEntryViewSchema = Type.Object({
+const RiskRegisterEntryViewSchema = Type.Object({
   entryId: Type.String(),
   organizationId: Type.String(),
   source: lit(RISK_SOURCE),

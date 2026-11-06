@@ -194,27 +194,6 @@ export interface RecipientRevocationApplyPorts {
   };
 }
 
-/**
- * Execute a {@link RecipientRevocationCascadeResult} for one schedule (thin). A no-op when the membership was
- * not on the list; otherwise writes the trimmed recipient list and (when emptied) flips the schedule
- * `paused`. MUST run inside the tenant's `withOrgContext`. Returns the result for the seam's affected/paused
- * counts.
- */
-export async function applyRecipientRevocationCascade(
-  scheduleId: string,
-  result: RecipientRevocationCascadeResult,
-  ports: RecipientRevocationApplyPorts,
-): Promise<RecipientRevocationCascadeResult> {
-  if (result.affected) {
-    await ports.schedules.setRecipients(
-      scheduleId,
-      result.newRecipientMembershipIds,
-      result.autoPause ? "paused" : undefined,
-    );
-  }
-  return result;
-}
-
 // ── forward-declared subscription binding (the boot dispatcher wires this; P2C binds the live rail) ───────
 
 /** The consumer name the delivery binding registers under. Consumer dedup is keyed `(eventId, consumerName)`

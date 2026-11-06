@@ -40,19 +40,19 @@ const MSG = schema.messages;
 
 export const SCHEDULE_BLOCKED_EVENT = "m36.message.schedule_blocked";
 /** Due rows one org tick handles; the rest wait for the next minute. */
-export const DISPATCH_BATCH_LIMIT = 100;
+const DISPATCH_BATCH_LIMIT = 100;
 /**
  * Consecutive dependency failures across DISTINCT senders (resolver / visibility) after which the rest of an org's tick
  * is left for the next: one sender's rows failing is that sender, several different ones is an outage.
  */
-export const DEPENDENCY_FAILURE_TRIP = 3;
+const DEPENDENCY_FAILURE_TRIP = 3;
 /** A row this far past its time counts a dependency failure as a real attempt, so a stuck row ends up blocked + notified. */
 export const OVERDUE_COUNTS_AS_ATTEMPT_MS = 15 * 60_000;
 /**
  * Past this, a dependency failure counts as an attempt even while an outage pattern holds: a head of queue that fails
  * deterministically for several senders at once would otherwise trip every tick, never be counted, and stall the org.
  */
-export const OVERDUE_HARD_CAP_MS = 60 * 60_000;
+const OVERDUE_HARD_CAP_MS = 60 * 60_000;
 // DELIBERATE TRADE-OFF: during a LONG outage, a row more than OVERDUE_HARD_CAP_MS late is counted and, after the attempt
 // limit, blocked (dispatch_failed, sender notified, who can reschedule it). The alternative, never counting while an
 // outage pattern holds, lets a deterministically failing head of queue stall the whole org forever.

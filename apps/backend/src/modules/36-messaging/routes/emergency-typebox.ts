@@ -26,7 +26,7 @@ const SummaryProps = {
   pastDeadline: Type.Boolean(),
 };
 
-export const EmergencySummarySchema = Type.Object(SummaryProps);
+const EmergencySummarySchema = Type.Object(SummaryProps);
 export const EmergencyCreatedSchema = Type.Object({ ...SummaryProps, created: Type.Boolean() });
 export const EmergencyDetailSchema = Type.Object({
   ...SummaryProps,

@@ -58,7 +58,7 @@ export interface AiHallucinationTriageEdge {
  * a report left the queue without anyone recording that they looked. `open → investigating → closed`
  * costs one extra write and leaves a triage owner on the row.
  */
-export const AI_HALLUCINATION_TRIAGE_EDGES: readonly AiHallucinationTriageEdge[] = [
+const AI_HALLUCINATION_TRIAGE_EDGES: readonly AiHallucinationTriageEdge[] = [
   { fromStatus: "open", toStatus: "investigating", requiresDisposition: false },
   { fromStatus: "open", toStatus: "escalated_to_clinical_safety", requiresDisposition: false },
   { fromStatus: "investigating", toStatus: "root_cause_identified", requiresDisposition: true },

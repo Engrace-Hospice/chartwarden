@@ -28,7 +28,7 @@ import { requireUuidParams } from "./uuid-params";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
-export const PROMOTION_LIST_DEFAULTS = { status: "active", limit: 50 } as const;
+const PROMOTION_LIST_DEFAULTS = { status: "active", limit: 50 } as const;
 
 export interface PromotionRouteDeps {
   /** The tenant flag `messaging.promotions`. A throw reads as off (fail closed). */

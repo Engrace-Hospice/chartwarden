@@ -17,15 +17,15 @@ import type {
 import { M36_HANDOFF_EVENTS } from "../handoffs/handoff-events";
 
 export const M36_HANDOFF_NOTIFICATION_CONSUMER = "m36.handoff-notifications" as const;
-export const M36_HANDOFF_NOTIFICATION_EVENTS = [
+const M36_HANDOFF_NOTIFICATION_EVENTS = [
   M36_HANDOFF_EVENTS.offered,
   M36_HANDOFF_EVENTS.accepted,
   M36_HANDOFF_EVENTS.unaccepted,
 ] as const;
 
 /** Alert types that are alert-rule keys only (not outbox catalog events); seeded in PLATFORM_DEFAULT_ALERT_RULES. */
-export const HANDOFF_SUPERVISOR_ALERT = "m36.handoff.supervisor_review" as const;
-export const HANDOFF_NO_SUPERVISOR_ALERT = "m36.handoff.no_supervisor" as const;
+const HANDOFF_SUPERVISOR_ALERT = "m36.handoff.supervisor_review" as const;
+const HANDOFF_NO_SUPERVISOR_ALERT = "m36.handoff.no_supervisor" as const;
 
 export const HANDOFF_NOTIFICATION_TEXT = {
   offered: "A colleague offered you a handoff",

@@ -84,15 +84,15 @@ function str(v: unknown): string | null {
 }
 
 // ── constant, PHI-free copy (M36 composes the final text from the catalog payload; it never re-templates) ──────
-export const IDG_PACKETS_READY_BODY =
+const IDG_PACKETS_READY_BODY =
   "Patient packets for an upcoming IDG meeting are built and ready to review.";
-export const IDG_ACTION_ITEM_ASSIGNED_BODY =
+const IDG_ACTION_ITEM_ASSIGNED_BODY =
   "An IDG action item has been assigned to you. Review it on your IDG action-item list.";
-export const IDG_NON_QUORATE_BODY =
+const IDG_NON_QUORATE_BODY =
   "A decision was recorded at an IDG meeting without the required quorum. Review the meeting.";
-export const IDG_REVIEW_FLOOR_OVERRIDE_BODY =
+const IDG_REVIEW_FLOOR_OVERRIDE_BODY =
   "An IDG meeting was cancelled or rescheduled under an audited override of the per-patient 15-day review floor.";
-export const IDG_REVIEW_CLOCK_BODY = {
+const IDG_REVIEW_CLOCK_BODY = {
   t_minus_3:
     "A patient's 15-day IDG review is due in 3 days and no covering meeting has completed. Schedule or confirm a covering IDG review.",
   t_zero:
@@ -103,7 +103,7 @@ export const IDG_REVIEW_CLOCK_BODY = {
 
 /** The review-clock audience tiers (M14 §4.9 / §7.14): T-3 coordinator only; T-0 + clinical supervisor; T+1 + the
  *  compliance inbox (`compliance_officer`, with the `org_admin` backstop `idg_compliance_inbox` uses elsewhere). */
-export const IDG_REVIEW_CLOCK_AUDIENCE_ROLES = {
+const IDG_REVIEW_CLOCK_AUDIENCE_ROLES = {
   t_minus_3: [],
   t_zero: ["clinical_supervisor"],
   t_plus_1: ["clinical_supervisor", "compliance_officer", "org_admin"],

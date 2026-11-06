@@ -60,9 +60,6 @@ export const InvitationAcceptRequestSchema = Type.Object({
   token: Type.String({ minLength: 1 }),
 });
 
-/** POST /api/v1/orgs/:id/invitations/:invId/resend — no input beyond the path (TASK-030). */
-export const InvitationResendRequestSchema = Type.Object({}, { additionalProperties: false });
-
 /** GET /api/v1/orgs/:id/members — optional staff-facet search narrowing (FB-T11). */
 export const MembersListQuerySchema = Type.Object({
   q: Type.Optional(Type.String()),

@@ -24,8 +24,6 @@ export const M26_CRON_QUEUES = {
   psrVarianceWatchdog: "cap-psr-variance-watchdog",
 } as const;
 
-export type M26CronQueueName = (typeof M26_CRON_QUEUES)[keyof typeof M26_CRON_QUEUES];
-
 /** The §4.8 cron schedules (UTC). 02:00 nightly projection; 03:00 Oct-1 close; staggered to avoid overlap. */
 export const M26_JOB_SCHEDULES = {
   nightlyProjection: "0 2 * * *", // 02:00 UTC nightly (low-traffic US overnight; M26-F17 rationale)
@@ -84,16 +82,3 @@ export const M26_QUEUE_PARAMS = {
     dlq: "cap-psr-variance-watchdog.dlq",
   },
 } as const satisfies Record<string, M26QueueParam>;
-
-/** The day bucket (UTC `yyyy-mm-dd`) cron dedupe keys quantize on (one tick per day). */
-function dayBucket(at: Date): string {
-  return at.toISOString().slice(0, 10);
-}
-
-/** The §4.8 idempotency-key builders (PHI-free; a date/cap-year bucket per cron tick). */
-export const M26_IDEMPOTENCY_KEYS = {
-  nightlyProjection: (at: Date): string => `cap-nightly:${dayBucket(at)}`,
-  capYearClose: (capYear: string): string => `cap-year-close:${capYear}`,
-  platformConstantRefresh: (capYear: string): string => `cap-constant-refresh:${capYear}`,
-  psrVarianceWatchdog: (at: Date): string => `cap-psr-watchdog:${dayBucket(at)}`,
-} as const;

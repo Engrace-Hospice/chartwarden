@@ -19,8 +19,8 @@ import { assigneeInvalid, isWaiting, orElse, requestNotFound } from "./ack-share
 import type { AckRow, AckStore } from "./ack-types";
 
 /** At most this many supervisor reassigns of ONE request inside the rolling window: a ping-pong between supervisors stops here. */
-export const SUPERVISOR_REASSIGN_CAP = 5;
-export const SUPERVISOR_REASSIGN_WINDOW_MS = 24 * 3_600_000;
+const SUPERVISOR_REASSIGN_CAP = 5;
+const SUPERVISOR_REASSIGN_WINDOW_MS = 24 * 3_600_000;
 
 interface Actor {
   readonly orgId: string;

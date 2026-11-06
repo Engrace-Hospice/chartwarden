@@ -875,7 +875,7 @@ Funeral home staff get a tightly scoped per-deceased-patient session for body re
 ├──────────────────────────────────────────────────────┤
 │  Application services (apps/backend/src/modules/NN-name)        │  ← orchestration
 ├──────────────────────────────────────────────────────┤
-│  Domain layer (packages/domain)                      │  ← pure, no I/O
+│  Domain layer (packages/types + per-area packages)   │  ← pure, no I/O
 ├──────────────────────────────────────────────────────┤
 │  Stores (per-module, over packages/db schema)        │  ← Drizzle queries
 ├──────────────────────────────────────────────────────┤
@@ -892,7 +892,7 @@ Funeral home staff get a tightly scoped per-deceased-patient session for body re
 └──────────────────────────────────────────────────────┘
 ```
 
-Domain types never import from `packages/fhir`. FHIR mappers import from `packages/domain`. R6 adoption is a new mapper module, not a domain rewrite.
+Domain types never import from `packages/fhir`. FHIR mappers import domain types from `packages/types`. R6 adoption is a new mapper module, not a domain rewrite.
 
 ### Core domain entities (catalog, not exhaustive)
 

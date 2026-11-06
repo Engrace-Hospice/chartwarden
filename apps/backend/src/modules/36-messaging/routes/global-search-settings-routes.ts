@@ -18,8 +18,8 @@ import { parse } from "./messaging-typebox";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
-export const GLOBAL_SEARCH_MANAGE_KEY = "messaging.global_search.manage";
-export const GLOBAL_SEARCH_STEP_UP_KEY = "messaging.global_search.configure";
+const GLOBAL_SEARCH_MANAGE_KEY = "messaging.global_search.manage";
+const GLOBAL_SEARCH_STEP_UP_KEY = "messaging.global_search.configure";
 const MANAGE = requirePermission(GLOBAL_SEARCH_MANAGE_KEY) as PreHandler;
 const STEP_UP = requireStepUp(GLOBAL_SEARCH_STEP_UP_KEY) as PreHandler;
 

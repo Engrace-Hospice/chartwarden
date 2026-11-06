@@ -110,12 +110,7 @@ export const RuleConfigListQuerySchema = Type.Object({
   enabled: Type.Optional(Type.Boolean()),
   isCustom: Type.Optional(Type.Boolean()),
 });
-export const ValidationRunListQuerySchema = Type.Object({
-  state: Type.Optional(lit(CLAIM_STATE)),
-});
 export const PatientQuerySchema = Type.Object({ patientId: uuid() });
-export const ProviderEntityQuerySchema = Type.Object({ providerEntityId: Type.Optional(uuid()) });
-export const RequiredProviderEntityQuerySchema = Type.Object({ providerEntityId: uuid() });
 export const MacCredentialListQuerySchema = Type.Object({ ...PageQuery });
 /** GET /billing/validation-overrides — the org-wide override audit view (spec #17). */
 export const ValidationOverrideListQuerySchema = Type.Object({
@@ -250,7 +245,6 @@ export const ClaimPatchDraftBodySchema = Type.Object({
   totalChargeCents: Type.Optional(Type.Integer({ minimum: 0 })),
   totalExpectedPaymentCents: Type.Optional(Type.Integer({ minimum: 0 })),
 });
-export type ClaimPatchDraftBody = Static<typeof ClaimPatchDraftBodySchema>;
 
 /**
  * Validate `raw` against `schema` (Convert-then-Check), throwing M1's VALIDATION_FAILED envelope on the
@@ -366,4 +360,3 @@ export const HospicePeriodsResponseSchema = Type.Object({
   ),
   rhcCarryOver: nullable(RhcCarryOverSchema),
 });
-export type HospicePeriodsResponse = Static<typeof HospicePeriodsResponseSchema>;

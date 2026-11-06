@@ -48,7 +48,7 @@ export const TemplateViewSchema = Type.Object({
 
 export const TemplateListResponseSchema = Type.Object({ items: Type.Array(TemplateViewSchema) });
 
-export const PlatformTemplateAdminViewSchema = Type.Object({
+const PlatformTemplateAdminViewSchema = Type.Object({
   id: Type.String(),
   templateKey: Type.String(),
   category: CategorySchema,

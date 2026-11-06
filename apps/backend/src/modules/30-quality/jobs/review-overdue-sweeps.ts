@@ -14,7 +14,7 @@ import { sql } from "drizzle-orm";
 
 export const M30_REVIEW_OVERDUE_QUEUE = "m30.review_overdue_sweep";
 /** 08:30 UTC daily — clear of the 08:00 CAP-overdue scan. */
-export const M30_REVIEW_OVERDUE_SCHEDULE = "30 8 * * *";
+const M30_REVIEW_OVERDUE_SCHEDULE = "30 8 * * *";
 const MS_PER_DAY = 86_400_000;
 const MORTALITY_REPEAT_DAYS = 2;
 const COP_REPEAT_DAYS = 14;

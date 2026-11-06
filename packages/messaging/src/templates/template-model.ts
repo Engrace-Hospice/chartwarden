@@ -118,7 +118,7 @@ export function overlayViolatesFloor(
   return platform.requiredPhrases.some((phrase) => !haystack.includes(matchForm(phrase)));
 }
 
-export function floorError(missing: readonly string[]): ChartWardenError {
+function floorError(missing: readonly string[]): ChartWardenError {
   return new ChartWardenError(
     "TEMPLATE_FLOOR_VIOLATION",
     "This template must keep the platform's required wording.",
@@ -132,7 +132,7 @@ export function floorError(missing: readonly string[]): ChartWardenError {
 }
 
 /** Throws TEMPLATE_FLOOR_VIOLATION naming the missing required phrases (the phrases are platform text, not PHI). */
-export function assertOverlayRespectsFloor(
+function assertOverlayRespectsFloor(
   platform: Pick<PlatformTemplate, "requiredPhrases">,
   overlay: { readonly body: string | null },
 ): void {

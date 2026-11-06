@@ -35,7 +35,7 @@ import { sql } from "drizzle-orm";
 
 export const M30_ALERT_REPEAT_QUEUE = "m30.alert_repeat_sweep";
 /** Every 15 minutes: the finest cadence is 4h, so a repeat lands within 15 minutes of its due instant. */
-export const M30_ALERT_REPEAT_SCHEDULE = "*/15 * * * *";
+const M30_ALERT_REPEAT_SCHEDULE = "*/15 * * * *";
 const SYSTEM_USER_ID = "";
 
 /** One still-open item the owning module says is unresolved, with the data a repeat page needs. */

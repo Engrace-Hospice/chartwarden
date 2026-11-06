@@ -6,7 +6,7 @@
 import { requireIpu } from "../../errors";
 
 /** §2.3 — the maximum RN-coverage break-glass override window (hours). */
-export const RN_BREAK_GLASS_MAX_HOURS = 4;
+const RN_BREAK_GLASS_MAX_HOURS = 4;
 
 /** An active break-glass override the coverage evaluator merges into the `rn_coverage_active` reading. */
 export interface RnCoverageBreakGlass {
@@ -46,14 +46,5 @@ export function validateBreakGlassEnd(enderIsBreakGlassActor: boolean): void {
     !enderIsBreakGlassActor,
     "RN_BREAK_GLASS_ENDER_INVALID",
     "An RN-coverage break-glass override must be ended by a non-break-glass actor.",
-  );
-}
-
-/** §2.3 — validate a break-glass invocation carries fresh step-up (Org Admin / Compliance Officer / Med Director). */
-export function validateBreakGlassInvoke(stepUpVerified: boolean): void {
-  requireIpu(
-    stepUpVerified,
-    "RN_BREAK_GLASS_STEP_UP_REQUIRED",
-    "An RN-coverage break-glass requires fresh M2 step-up (Org Admin / Compliance Officer / Medical Director).",
   );
 }

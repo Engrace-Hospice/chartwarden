@@ -140,7 +140,7 @@ export const AI_ROUTABLE_HEALTH_STATUSES: readonly AiBackendHealthStatus[] = [
 ];
 
 /** True when a registry row is in a state a call may be dispatched to. */
-export function aiBackendIsRoutable(row: AiBackendRoutingRow): boolean {
+function aiBackendIsRoutable(row: AiBackendRoutingRow): boolean {
   return row.isActive && AI_ROUTABLE_HEALTH_STATUSES.includes(row.lastHealthStatus);
 }
 

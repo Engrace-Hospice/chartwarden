@@ -21,7 +21,7 @@ export const M36_EXPORT_EVENTS = {
   expired: EXPORT_EVENT_EXPIRED,
 } as const;
 
-export const EXPORT_AGGREGATE_KIND = "message_export_job";
+const EXPORT_AGGREGATE_KIND = "message_export_job";
 
 export type ExportEventFacts =
   | {

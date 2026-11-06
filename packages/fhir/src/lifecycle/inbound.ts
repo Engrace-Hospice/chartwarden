@@ -35,7 +35,7 @@ export const FHIR_INBOUND_TERMINAL_STATUSES: readonly FhirInboundStatus[] = [
   "expired",
 ];
 
-export const FHIR_INBOUND_TRANSITIONS: readonly FhirStatusTransition<FhirInboundStatus>[] = [
+const FHIR_INBOUND_TRANSITIONS: readonly FhirStatusTransition<FhirInboundStatus>[] = [
   {
     fromStatus: null,
     toStatus: "pending",

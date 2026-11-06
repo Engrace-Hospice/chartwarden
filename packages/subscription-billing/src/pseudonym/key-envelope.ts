@@ -191,11 +191,3 @@ export function openPseudonymKeyMaterial(
 export function mintPseudonymKeyMaterial(): Buffer {
   return randomBytes(KEY_LEN);
 }
-
-/** Hex-encode raw key-material bytes into the string form {@link computeBillingPseudonym} (and the
- *  `PseudonymKeyProvider.activeKey()` contract) expects — an HMAC key may be any byte string; hex keeps
- *  it printable/loggable-safe-by-construction (never accidentally valid JSON, never containing control
- *  bytes) without weakening it (64 hex chars carries the full 256 bits of entropy). */
-export function keyMaterialToString(raw: Buffer): string {
-  return raw.toString("hex");
-}

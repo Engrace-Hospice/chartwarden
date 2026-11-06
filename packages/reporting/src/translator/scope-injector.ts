@@ -53,7 +53,7 @@ export interface ReportScopeColumns {
 }
 
 /** No scope column of either kind — every narrowing scope denies. The safe default for an unknown base. */
-export const NO_SCOPE_COLUMNS: ReportScopeColumns = { membership: null, location: null };
+const NO_SCOPE_COLUMNS: ReportScopeColumns = { membership: null, location: null };
 
 /** A compiled scope fragment: predicate text (or null when org-wide adds nothing), bound params, next index. */
 export interface CompiledScope {

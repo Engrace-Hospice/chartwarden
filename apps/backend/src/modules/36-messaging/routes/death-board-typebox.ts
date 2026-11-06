@@ -28,7 +28,7 @@ export const ReassignDeathBoardItemBodySchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const DeathBoardItemSchema = Type.Object({
+const DeathBoardItemSchema = Type.Object({
   id: Uuid,
   item_key: literals(DEATH_BOARD_ITEM_KEYS),
   label: Type.String(),
@@ -43,7 +43,7 @@ export const DeathBoardItemSchema = Type.Object({
   actions: Type.Array(literals(["complete", "reassign"] as const)),
 });
 
-export const DeathBoardSchema = Type.Object({
+const DeathBoardSchema = Type.Object({
   id: Uuid,
   patient_id: Uuid,
   patient_display_name: nullable(Type.String()),

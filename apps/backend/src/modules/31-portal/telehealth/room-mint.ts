@@ -79,7 +79,7 @@ export interface RoomMintPorts {
 }
 
 /** M17 visit states in which a room is still useful (a published or in-progress visit; never a terminal one). */
-export const ROOM_ELIGIBLE_VISIT_STATUSES: ReadonlySet<string> = new Set([
+const ROOM_ELIGIBLE_VISIT_STATUSES: ReadonlySet<string> = new Set([
   "published",
   "en_route",
   "in_visit",
@@ -90,7 +90,7 @@ export const ROOM_ELIGIBLE_VISIT_STATUSES: ReadonlySet<string> = new Set([
  * settings, terminal states, a visit from another org) is not a room the caller may mint — the caller answers 404,
  * indistinguishable from "no such visit".
  */
-export function isRoomEligible(visit: M17VisitForRoom, organizationId: string): boolean {
+function isRoomEligible(visit: M17VisitForRoom, organizationId: string): boolean {
   return (
     visit.organizationId === organizationId &&
     visit.visitSetting === "telephonic" &&

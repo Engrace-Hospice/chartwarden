@@ -250,9 +250,3 @@ export class M33RefreshPortUnbound extends Error {
     this.name = "M33RefreshPortUnbound";
   }
 }
-
-/** Throw the unbound-port error. Use ONLY inside a thunk (`() => unboundRefreshPort("exec.refreshConcurrently",
- *  "bind the primary-pool REFRESH executor")`) so it is lazy — never call it eagerly at port-bundle construction. */
-export function unboundRefreshPort(port: string, reason: string): never {
-  throw new M33RefreshPortUnbound(port, reason);
-}

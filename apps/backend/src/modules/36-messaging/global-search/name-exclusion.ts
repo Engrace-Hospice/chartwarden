@@ -45,7 +45,7 @@ export interface PatientNameSource {
   ): Promise<{ readonly fragments: readonly string[]; readonly nextAfterId: string | null }>;
 }
 
-export class NameExclusionNotConfiguredError extends Error {
+class NameExclusionNotConfiguredError extends Error {
   constructor() {
     super("global search name exclusion has no name source; failing closed");
     this.name = "NameExclusionNotConfiguredError";
@@ -100,7 +100,7 @@ export interface NameExclusions {
 }
 
 /** Writers cache the digest set this long; a pending reindex waits twice as long before it looks for affected messages. */
-export const EXCLUSION_CACHE_TTL_MS = 60_000;
+const EXCLUSION_CACHE_TTL_MS = 60_000;
 export const EXCLUSION_REINDEX_DELAY_MS = 2 * EXCLUSION_CACHE_TTL_MS;
 const NAME_PAGE_SIZE = 500;
 /** A full name enumeration is capped per call so one big tenant cannot hold the (sequential) maintenance tick. */
@@ -297,8 +297,8 @@ export function createNameExclusions(deps: NameExclusionDeps): NameExclusions {
 // ── targeted reindex ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 /** (token x channel) tag probes per statement, and per reconcile tick for one tenant. */
-export const REINDEX_PAIRS_PER_STATEMENT = 5000;
-export const REINDEX_BUDGET_MS = 30_000;
+const REINDEX_PAIRS_PER_STATEMENT = 5000;
+const REINDEX_BUDGET_MS = 30_000;
 
 export interface PendingReindexDeps {
   readonly db: DbClient;

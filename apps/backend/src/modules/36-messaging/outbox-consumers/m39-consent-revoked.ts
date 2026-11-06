@@ -14,7 +14,7 @@
 // ever added, the membership removal belongs HERE, before the ACK. A malformed payload THROWS (relay retry -> DLQ).
 //
 // TENANT from the envelope, never the payload. The ACK is idempotent; it runs on every delivery.
-export const M36_CONSENT_REVOKED_CONSUMER = {
+const M36_CONSENT_REVOKED_CONSUMER = {
   eventName: "m39.consent.revoked",
   consumerName: "m36.m39-consent-revoked",
 } as const;

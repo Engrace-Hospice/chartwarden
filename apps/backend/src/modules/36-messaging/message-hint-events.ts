@@ -18,7 +18,7 @@ export interface HintOutboxPort {
   ): Promise<void>;
 }
 
-export const M36_MESSAGE_HINT_EVENTS = {
+const M36_MESSAGE_HINT_EVENTS = {
   sent: "m36.message.sent",
   edited: "m36.message.edited",
   deleted: "m36.message.deleted",

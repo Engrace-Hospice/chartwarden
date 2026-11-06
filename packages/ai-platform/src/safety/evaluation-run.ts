@@ -33,7 +33,7 @@ import type {
 import { type AiGovernanceRefusal, aiGovernanceRefusal } from "../governance/errors";
 
 /** The statuses a run can no longer leave. */
-export const AI_EVALUATION_TERMINAL_STATUSES: readonly AiEvaluationRunStatus[] = [
+const AI_EVALUATION_TERMINAL_STATUSES: readonly AiEvaluationRunStatus[] = [
   "passed",
   "failed",
   "aborted",
@@ -52,7 +52,7 @@ export function aiEvaluationRunIsTerminal(status: AiEvaluationRunStatus): boolea
  * the old one's MLflow artifact already exists and reusing the row would make two replays share one
  * `mlflow_run_id`).
  */
-export const AI_EVALUATION_RUN_EDGES: readonly {
+const AI_EVALUATION_RUN_EDGES: readonly {
   readonly from: AiEvaluationRunStatus;
   readonly to: AiEvaluationRunStatus;
 }[] = [

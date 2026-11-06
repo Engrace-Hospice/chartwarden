@@ -67,14 +67,8 @@ export {
   registerMedicaidErasers,
 } from "./erasers/medicaid-eraser";
 
-// §4.4 — the upstream-event consumer surface (M25 remittance / M23 medicare-primary / M5·M6·M8·M18·M40 change).
-export {
-  type M24ConsumerStore,
-  type M24ConsumeReport,
-  createInMemoryM24ConsumerStore,
-  dispatchM24UpstreamEvent,
-  M24_UPSTREAM_SUBSCRIPTIONS,
-} from "./consumers/index";
+// §4.4 — the upstream-event subscription declaration (the live bindings are under ./outbox-consumers/).
+export { M24_UPSTREAM_SUBSCRIPTIONS } from "./consumers/subscription-map";
 
 // §4.9 — the BullMQ queue/cron catalog + the worker/schedule construction (boot wiring deferred — adapter).
 export {

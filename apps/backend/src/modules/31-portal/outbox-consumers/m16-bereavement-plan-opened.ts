@@ -96,7 +96,7 @@ const PORTAL_SCOPE_FLOOR_VERSION = "1";
 
 const BEREAVEMENT_OUTREACH_CONSENT_TYPE_KEY = "bereavement_outreach_consent";
 
-export const M31_BEREAVEMENT_PLAN_OPENED_CONSUMER = {
+const M31_BEREAVEMENT_PLAN_OPENED_CONSUMER = {
   eventName: "m16.bereavement.plan_opened",
   consumerName: "m31.m16-bereavement-plan-opened",
 } as const;

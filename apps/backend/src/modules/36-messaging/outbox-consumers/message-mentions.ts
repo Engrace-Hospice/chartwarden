@@ -4,8 +4,8 @@ import type {
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
 
-export const M36_MESSAGE_MENTION_CONSUMER = "m36.message-mentions" as const;
-export const M36_MESSAGE_MENTION_EVENTS = ["m36.message.mentioned"] as const;
+const M36_MESSAGE_MENTION_CONSUMER = "m36.message-mentions" as const;
+const M36_MESSAGE_MENTION_EVENTS = ["m36.message.mentioned"] as const;
 
 function requireId(payload: Record<string, unknown>, key: string): string {
   const value = payload[key];
@@ -21,7 +21,7 @@ const ASCII_CONTROL_LIMIT = 0x20;
 const ASCII_DELETE = 0x7f;
 
 /** WP 2.3 (PROVISIONAL wording): the sender's display name is the only variable; no body, channel or patient text. */
-export function mentionNotificationText(displayName: string | null | undefined): string {
+function mentionNotificationText(displayName: string | null | undefined): string {
   const safe = [...(displayName ?? "")]
     .filter((char) => {
       const code = char.codePointAt(0) ?? 0;

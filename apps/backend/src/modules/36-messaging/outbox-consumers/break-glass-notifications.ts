@@ -14,7 +14,7 @@ import type {
 import { M36_BREAK_GLASS_EVENTS } from "../break-glass/break-glass-events";
 
 export const M36_BREAK_GLASS_NOTIFICATION_CONSUMER = "m36.break-glass-notifications" as const;
-export const M36_BREAK_GLASS_NOTIFICATION_EVENTS = [M36_BREAK_GLASS_EVENTS.granted] as const;
+const M36_BREAK_GLASS_NOTIFICATION_EVENTS = [M36_BREAK_GLASS_EVENTS.granted] as const;
 
 /** Provisional copy (compliance sign-off pending): says what happened, never who, where or why. */
 export const BREAK_GLASS_GRANTED_ALERT_TEXT =

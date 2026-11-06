@@ -18,7 +18,7 @@
 import type { schema } from "@chartwarden/db";
 
 /** §2.3: the minimum gap a schedule's cron must leave between successive fires (5 min). */
-export const MIN_SCHEDULE_INTERVAL_MS = 5 * 60_000;
+const MIN_SCHEDULE_INTERVAL_MS = 5 * 60_000;
 
 // ── injected ports ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -87,7 +87,7 @@ export type ScheduleFireDecision =
  * and that `next_run_at <= now` (the due slot becomes the `scheduled_for`). A `listDue` port already filters
  * to this set; this is the belt-and-braces guard that keeps the decision unit-testable + total.
  */
-export function decideScheduleFire(
+function decideScheduleFire(
   schedule: Pick<schema.ReportSchedule, "status" | "nextRunAt">,
   now: Date,
 ): ScheduleFireDecision {
@@ -101,7 +101,7 @@ export function decideScheduleFire(
  * §2.3 `CRON_TOO_FREQUENT`: the cron leaves < 5 min between the due fire and the next one (PURE). A schedule
  * this dense is rejected for the tick (no run enqueued) — it should have been blocked at the create route.
  */
-export function isCadenceTooFrequent(
+function isCadenceTooFrequent(
   scheduledFor: Date,
   nextFire: Date,
   minIntervalMs: number = MIN_SCHEDULE_INTERVAL_MS,

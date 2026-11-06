@@ -76,15 +76,11 @@ export const ProposalOwnerModuleSchema = Lit(HL7_PROPOSAL_OWNER_MODULES);
 export const ParseStatusSchema = Lit(HL7_INBOUND_PARSE_STATUSES);
 export const OutboundStatusSchema = Lit(HL7_OUTBOUND_STATUSES);
 export const AbnormalFlagSchema = Lit(LAB_ABNORMAL_FLAGS);
-export const NppesSyncKindSchema = Lit(NPPES_SYNC_KINDS);
+const NppesSyncKindSchema = Lit(NPPES_SYNC_KINDS);
 
 // ── path params ─────────────────────────────────────────────────────────────────────────────────────
 
-export const FeedIdParams = Type.Object({ feedId: Uuid });
 export const ProposalIdParams = Type.Object({ proposalId: Uuid });
-export const MessageIdParams = Type.Object({ messageId: Uuid });
-export const ObservationIdParams = Type.Object({ observationId: Uuid });
-export const NpiParams = Type.Object({ npi: Type.String({ pattern: "^[0-9]{10}$" }) });
 
 const Cursor = Type.Optional(Type.String({ maxLength: 200 }));
 const Limit = Type.Optional(Type.Integer({ minimum: 1, maximum: 200 }));

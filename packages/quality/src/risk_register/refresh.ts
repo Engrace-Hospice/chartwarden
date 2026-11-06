@@ -64,7 +64,7 @@ export interface RiskRegisterRow {
 // -----------------------------------------------------------------------------
 
 /** Incident severity → register score (matches the SQL `CASE i.severity` ladder). */
-export const INCIDENT_SEVERITY_RISK_SCORE: Readonly<Record<IncidentSeverity, number>> = {
+const INCIDENT_SEVERITY_RISK_SCORE: Readonly<Record<IncidentSeverity, number>> = {
   critical: 25,
   severe: 20,
   moderate: 12,
@@ -72,17 +72,17 @@ export const INCIDENT_SEVERITY_RISK_SCORE: Readonly<Record<IncidentSeverity, num
 };
 
 /** CoP status → register score (matches the SQL `CASE c.status` ladder; `compliant` is excluded). */
-export const COP_STATUS_RISK_SCORE: Readonly<Record<CopStatus, number>> = {
+const COP_STATUS_RISK_SCORE: Readonly<Record<CopStatus, number>> = {
   deficient: 20,
   at_risk: 12,
   compliant: 0,
 };
 
 /** Flat score for a QAPI project in `corrective_action` (the SQL literal `12`). */
-export const QAPI_CORRECTIVE_ACTION_RISK_SCORE = 12;
+const QAPI_CORRECTIVE_ACTION_RISK_SCORE = 12;
 
 /** The "medium" residual-risk threshold on the 5×5 matrix gating SRA-finding inclusion (SQL `>= 8`). */
-export const SRA_RESIDUAL_RISK_THRESHOLD = 8;
+const SRA_RESIDUAL_RISK_THRESHOLD = 8;
 
 /** Incident severities that land on the register (the SQL `IN (...)` set). */
 const INCIDENT_OPEN_SEVERITIES: ReadonlySet<IncidentSeverity> = new Set<IncidentSeverity>([
@@ -92,7 +92,7 @@ const INCIDENT_OPEN_SEVERITIES: ReadonlySet<IncidentSeverity> = new Set<Incident
 ]);
 
 /** True iff an SRA finding is an OPEN register risk: not yet closed-out AND residual ≥ medium (WF-20). */
-export function sraFindingIsOpenRisk(finding: schema.SraFinding): boolean {
+function sraFindingIsOpenRisk(finding: schema.SraFinding): boolean {
   return (
     finding.status !== "mitigated" &&
     finding.status !== "accepted_risk" &&
@@ -101,7 +101,7 @@ export function sraFindingIsOpenRisk(finding: schema.SraFinding): boolean {
 }
 
 /** True iff an incident is an OPEN register risk: not closed-followup-complete AND severity ≥ moderate. */
-export function incidentIsOpenRisk(incident: schema.IncidentReport): boolean {
+function incidentIsOpenRisk(incident: schema.IncidentReport): boolean {
   return (
     incident.lifecycle !== "closed_followup_complete" &&
     INCIDENT_OPEN_SEVERITIES.has(incident.severity)
@@ -109,12 +109,12 @@ export function incidentIsOpenRisk(incident: schema.IncidentReport): boolean {
 }
 
 /** True iff a QAPI project is an OPEN register risk: it is in the `corrective_action` phase (D13). */
-export function qapiProjectIsOpenRisk(project: schema.QapiProject): boolean {
+function qapiProjectIsOpenRisk(project: schema.QapiProject): boolean {
   return project.status === "corrective_action";
 }
 
 /** True iff a CoP citation status is an OPEN register risk: `at_risk` or `deficient` (D13). */
-export function copStatusIsOpenRisk(status: schema.CopComplianceStatus): boolean {
+function copStatusIsOpenRisk(status: schema.CopComplianceStatus): boolean {
   return status.status === "at_risk" || status.status === "deficient";
 }
 
@@ -128,7 +128,7 @@ export function copStatusIsOpenRisk(status: schema.CopComplianceStatus): boolean
  * incidents (12) / at-risk CoP / corrective-action QAPI (12) / medium residual → `medium`; the rest
  * → `low`.
  */
-export function scoreToRiskSeverityBand(score: number): RiskSeverityBand {
+function scoreToRiskSeverityBand(score: number): RiskSeverityBand {
   if (score >= 20) return "critical";
   if (score >= 13) return "high";
   if (score >= 8) return "medium";
@@ -136,7 +136,7 @@ export function scoreToRiskSeverityBand(score: number): RiskSeverityBand {
 }
 
 /** Build the relative back-link to a source's detail surface (WF-20). */
-export function buildRiskBackLink(source: RiskRegisterSource, sourceId: string): string {
+function buildRiskBackLink(source: RiskRegisterSource, sourceId: string): string {
   switch (source) {
     case "sra_finding":
       return `/quality/sra/findings/${sourceId}`;
@@ -173,7 +173,7 @@ function makeRow(
 }
 
 /** Project an open SRA finding into a register row (severity = residual 5×5 score). */
-export function sraFindingToRiskRow(finding: schema.SraFinding): RiskRegisterRow {
+function sraFindingToRiskRow(finding: schema.SraFinding): RiskRegisterRow {
   return makeRow("sra_finding", finding.id, {
     organizationId: finding.organizationId,
     parentRef: finding.sraCycleId,
@@ -187,7 +187,7 @@ export function sraFindingToRiskRow(finding: schema.SraFinding): RiskRegisterRow
 }
 
 /** Project an open incident into a register row (severity per the incident-severity ladder). */
-export function incidentToRiskRow(incident: schema.IncidentReport): RiskRegisterRow {
+function incidentToRiskRow(incident: schema.IncidentReport): RiskRegisterRow {
   const summary = typeof incident.kindData.summary === "string" ? incident.kindData.summary : "";
   return makeRow("incident_report", incident.id, {
     organizationId: incident.organizationId,
@@ -202,7 +202,7 @@ export function incidentToRiskRow(incident: schema.IncidentReport): RiskRegister
 }
 
 /** Project a corrective-action QAPI project into a register row (flat medium score). */
-export function qapiProjectToRiskRow(project: schema.QapiProject): RiskRegisterRow {
+function qapiProjectToRiskRow(project: schema.QapiProject): RiskRegisterRow {
   return makeRow("qapi_project", project.id, {
     organizationId: project.organizationId,
     parentRef: project.qapiProgramId,
@@ -216,7 +216,7 @@ export function qapiProjectToRiskRow(project: schema.QapiProject): RiskRegisterR
 }
 
 /** Project a non-compliant CoP citation status into a register row. */
-export function copStatusToRiskRow(status: schema.CopComplianceStatus): RiskRegisterRow {
+function copStatusToRiskRow(status: schema.CopComplianceStatus): RiskRegisterRow {
   return makeRow("cop_compliance_status", status.id, {
     organizationId: status.organizationId,
     parentRef: status.copCitation,

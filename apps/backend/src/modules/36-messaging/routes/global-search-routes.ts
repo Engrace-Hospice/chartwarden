@@ -29,7 +29,7 @@ export type GlobalSearchRateLimit = PreHandler;
 const READ = requirePermission("messaging.read") as PreHandler;
 
 /** The default limiter: with no real one injected the route refuses (ADR P2: the limiter is a probing control). */
-export const failClosedRateLimit: GlobalSearchRateLimit = async () => {
+const failClosedRateLimit: GlobalSearchRateLimit = async () => {
   throw new ChartWardenError("DEGRADED", "global search rate limiting is not available", 503);
 };
 
@@ -43,7 +43,7 @@ export interface GlobalSearchRouteDeps {
 }
 
 /** Each search is held for >= 1.5 s by the timing floor, so a caller could otherwise pin many pool connections at once. */
-export const MAX_IN_FLIGHT_SEARCHES_PER_USER = 2;
+const MAX_IN_FLIGHT_SEARCHES_PER_USER = 2;
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
   const ctx = request.context;

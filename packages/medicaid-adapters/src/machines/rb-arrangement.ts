@@ -18,12 +18,6 @@ export const RB_ARRANGEMENT_TRANSITIONS: readonly RbArrangementTransition[] = [
   { from: "ACTIVE", event: "supersede", to: "SUPERSEDED" },
 ] as const;
 
-export const RB_ARRANGEMENT_TERMINAL_STATES: readonly RbArrangementState[] = [
-  "EXPIRED",
-  "TERMINATED",
-  "SUPERSEDED",
-] as const;
-
 export function isTerminal(state: RbArrangementState): boolean {
   return !RB_ARRANGEMENT_TRANSITIONS.some((t) => t.from === state);
 }

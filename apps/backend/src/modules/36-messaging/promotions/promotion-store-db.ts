@@ -15,9 +15,9 @@ const T = schema.chartPromotionRequests;
 
 export type PromotionRow = typeof T.$inferSelect;
 
-export const PROMOTION_LIST_DEFAULT_LIMIT = 50;
-export const PROMOTION_LIST_MAX_LIMIT = 100;
-export const PROMOTION_MESSAGE_LIST_MAX = 50;
+const PROMOTION_LIST_DEFAULT_LIMIT = 50;
+const PROMOTION_LIST_MAX_LIMIT = 100;
+const PROMOTION_MESSAGE_LIST_MAX = 50;
 
 export interface PromotionKey {
   readonly messageId: string;

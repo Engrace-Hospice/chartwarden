@@ -28,13 +28,13 @@ import type {
 export const M36_PROMOTION_OUTCOME_CONSUMER = "m36.chart-promotion-outcomes" as const;
 
 /** The two owner events, keyed by the module that owns the target (the catalog entries live in events-by-m8 / m14). */
-export const M36_PROMOTION_OUTCOME_EVENTS = [
+const M36_PROMOTION_OUTCOME_EVENTS = [
   CHART_PROMOTION_OWNER_EVENT.m8,
   CHART_PROMOTION_OWNER_EVENT.m14,
 ] as const;
 
 /** Alert type that is an alert-rule key only (not an outbox catalog event); seeded in PLATFORM_DEFAULT_ALERT_RULES. */
-export const PROMOTION_DECIDED_ALERT = "m36.promotion.decided" as const;
+const PROMOTION_DECIDED_ALERT = "m36.promotion.decided" as const;
 
 /** PROVISIONAL wording (clinical-lead sign-off pending): no name, patient or message text. */
 export const PROMOTION_DECIDED_TEXT = {

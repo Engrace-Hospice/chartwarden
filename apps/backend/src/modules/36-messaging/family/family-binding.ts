@@ -42,7 +42,7 @@ export interface FamilyServices {
  * The staff member is on the patient's CURRENT care-team roster, or (after a death) is the counsellor assigned to the patient's open bereavement plan, AND
  * the Part 2 gate admits them. An unavailable seam is a denial.
  */
-export function createFamilyPatientAccess(deps: {
+function createFamilyPatientAccess(deps: {
   readonly db: DbClient;
   readonly part2Gate: Part2ChannelGate;
   readonly careTeamMembers: (orgId: string, patientId: string) => Promise<readonly string[]>;

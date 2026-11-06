@@ -48,7 +48,7 @@ import type {
 } from "./family-store-types";
 
 /** Messages a staff member reads at once (the newest N, oldest first). */
-export const FAMILY_STAFF_THREAD_LIMIT = 200;
+const FAMILY_STAFF_THREAD_LIMIT = 200;
 
 export interface FamilyStaffServiceDeps {
   /** false => creating an invitation answers FAMILY_ACCESS_UNAVAILABLE (503): a link nobody can use is never made. Default true. */

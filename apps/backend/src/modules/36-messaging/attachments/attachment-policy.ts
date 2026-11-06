@@ -147,7 +147,7 @@ export function attachmentQuotaFromEnv(env: Record<string, string | undefined>):
  * How long the OBJECT of a quarantined file, or of a file on a deleted message, is kept before the reaper destroys it (the
  * row stays for audit). MESSAGING_ATTACHMENT_RETENTION_DAYS; unset or not a positive integer => 7 days.
  */
-export const DEFAULT_ATTACHMENT_RETENTION_DAYS = 7;
+const DEFAULT_ATTACHMENT_RETENTION_DAYS = 7;
 export function attachmentRetentionMsFromEnv(env: Record<string, string | undefined>): number {
   const days = positiveInt(
     env.MESSAGING_ATTACHMENT_RETENTION_DAYS,

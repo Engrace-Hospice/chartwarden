@@ -24,8 +24,7 @@
 //     function directly (it may; only feature modules are boundary-restricted) and passes it in.
 //   • `DosespotPatientIdResolver` — F-230 UPDATE: no longer deferred. Migration 0303 added
 //     `dosespot_patient_sync` (written only from a real `upsertPatient` response) and the worker's DEFAULT is
-//     now `createDrizzleDosespotPatientIdResolver` (`./patient-sync-store.ts`); the unbound stub below is kept
-//     only as the explicit fail-closed option and for its own test. The original finding, for the record:
+//     now `createDrizzleDosespotPatientIdResolver` (`./patient-sync-store.ts`). The original finding, for the record:
 //     `DoseSpotMedHistoryPayload.dosespotPatientId` is
 //     the VENDOR-side patient id a prior successful `upsertPatient` call would have returned. No table
 //     anywhere in M12's schema (`dosespot_prescriber`, `dosespot_webhook_event`, `epcs_signing_attempt`,
@@ -44,21 +43,6 @@
 // (retryable: false, no retry storm, DLQ immediately).
 import type { PatientSyncSnapshot } from "@chartwarden/dosespot";
 import type { DosespotSyncDemographics } from "../../05-patient/index";
-
-/** Raised by {@link createUnboundDosespotPatientIdResolver}. Never retryable — no mapping table exists
- *  in M12's schema to ever answer this until one is added. */
-export class M12DosespotPatientIdUnbound extends Error {
-  constructor(public readonly patientId: string) {
-    super(
-      "No DoseSpot-side patient id is recorded for this patient: M12's schema has no " +
-        "patient→dosespot_patient_id mapping table (checked against the full ownedTables list, " +
-        "architecture/module-manifest.ts id 12). A MedHx fetch cannot name which vendor patient to pull " +
-        "history for until a successful patient-sync upsert has somewhere to record its response and " +
-        "that table is built.",
-    );
-    this.name = "M12DosespotPatientIdUnbound";
-  }
-}
 
 /** The §2.6 M5 demographic snapshot `planPatientSync`/`buildPatientUpsertPayload` (`@chartwarden/dosespot`)
  *  need. `null` is the honest "no such patient under this org any more" outcome — a clean skip, not a
@@ -114,14 +98,4 @@ export function createDrizzlePatientSyncSnapshotResolver(
  *  the mapping, at which point a future MedHx trigger (or a manual retry) can proceed. */
 export interface DosespotPatientIdResolver {
   resolve(organizationId: string, patientId: string): Promise<string | null>;
-}
-
-/** The Phase-1 deny-stub — no mapping table exists yet (see the file header). The ONLY implementation
- *  today; there is no real one to prefer it over. */
-export function createUnboundDosespotPatientIdResolver(): DosespotPatientIdResolver {
-  return {
-    resolve(_organizationId: string, patientId: string): Promise<never> {
-      return Promise.reject(new M12DosespotPatientIdUnbound(patientId));
-    },
-  };
 }

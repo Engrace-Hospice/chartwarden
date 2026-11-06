@@ -11,7 +11,7 @@ export const DeviceParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const DeviceSchema = Type.Object({
+const DeviceSchema = Type.Object({
   id: Type.String(),
   label: Type.String(),
   current: Type.Boolean(),

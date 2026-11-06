@@ -45,7 +45,7 @@ const PAG = schema.portalAccessGrants;
  *  this table writes on a revoke needs an acting membership (`revoked_by_membership_id` is nullable). */
 const CONSUMER_USER_ID = "";
 
-export const M31_BEREAVEMENT_PLAN_CLOSED_CONSUMER = {
+const M31_BEREAVEMENT_PLAN_CLOSED_CONSUMER = {
   eventName: "m16.bereavement.plan_closed_completed",
   consumerName: "m31.m16-bereavement-plan-closed",
 } as const;

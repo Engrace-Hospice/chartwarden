@@ -399,7 +399,7 @@ export function buildDrizzleM33ReadService(deps: {
  * to `org`, so the authorization gate and the query narrowing disagreed about what the actor may see and
  * only the gate's answer was ever wrong-side-safe. One resolver now feeds both.
  */
-export function buildReportScopeResolver(db: DbClient): ReportScopeResolverPort {
+function buildReportScopeResolver(db: DbClient): ReportScopeResolverPort {
   const resolver = buildDrizzleReportingAbacResolver(db);
   return {
     async resolve(actor) {

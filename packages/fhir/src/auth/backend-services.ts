@@ -50,7 +50,7 @@ export const FHIR_ASSERTION_MAX_LIFETIME_MS = 5 * 60 * 1000;
  * between the client's signer and this gateway. Applied ONLY to the expiry check, never to the lifetime
  * ceiling (a client cannot buy a longer-lived token by being skewed).
  */
-export const FHIR_ASSERTION_CLOCK_SKEW_MS = 30 * 1000;
+const FHIR_ASSERTION_CLOCK_SKEW_MS = 30 * 1000;
 
 /** RFC 7523 — the `client_assertion_type` the token request must carry for this flow. */
 export const FHIR_JWT_BEARER_ASSERTION_TYPE =

@@ -67,7 +67,7 @@ export function decideBreakGlassRead(f: BreakGlassReadFacts): BreakGlassReadDeci
 }
 
 /** The live (un-revoked, unexpired on the database clock) grant of this user on this channel, if any. Run inside an org context. */
-export async function findLiveBreakGlassGrant(
+async function findLiveBreakGlassGrant(
   tx: Pick<Tx, "select">,
   q: { readonly orgId: string; readonly userId: string; readonly channelId: string },
 ): Promise<{ readonly id: string } | null> {

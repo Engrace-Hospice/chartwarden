@@ -81,9 +81,6 @@ export const OrgSlugParamsSchema = Type.Object({
 export const InvitationParamsSchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 64 }),
 });
-export const TemplateKeyParamsSchema = Type.Object({
-  key: Type.String({ minLength: 1, maxLength: 128 }),
-});
 // §4.1 — support-session / signup-intent / BAA routes key by uuid id; feature-flags by flag key.
 export const SessionParamsSchema = Type.Object({
   id: Type.String({ format: "uuid" }),
@@ -302,7 +299,7 @@ const CursorPageOf = <T extends TSchema>(item: T) =>
     hasMore: Type.Boolean(),
   });
 
-export const TenantSummaryViewSchema = Type.Object({
+const TenantSummaryViewSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   orgSlug: Type.String(),
@@ -334,7 +331,7 @@ export const OnboardingTemplateViewSchema = Type.Object({
 });
 export const OnboardingTemplateListResponseSchema = CursorPageOf(OnboardingTemplateViewSchema);
 
-export const SupportSessionViewSchema = Type.Object({
+const SupportSessionViewSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   supportConsentGrantId: Type.String(),
@@ -348,7 +345,7 @@ export const SupportSessionViewSchema = Type.Object({
 });
 export const SupportSessionListResponseSchema = CursorPageOf(SupportSessionViewSchema);
 
-export const SupportSessionEventViewSchema = Type.Object({
+const SupportSessionEventViewSchema = Type.Object({
   id: Type.String(),
   supportSessionId: Type.String(),
   eventKind: Type.String(),

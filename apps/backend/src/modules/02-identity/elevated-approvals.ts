@@ -19,7 +19,6 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ConflictError, type ElevatedApprovalReader, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { getSeam, registerSeam } from "../../bootstrap/index";
 
 const EA = schema.membershipElevatedApprovals;
 
@@ -297,19 +296,4 @@ export function createInMemoryElevatedApprovalStore(seed: readonly SeedElevatedA
       },
     },
   };
-}
-
-// ── registration ───────────────────────────────────────────────────────────────────────────────────
-
-/** Register M2's `ElevatedApprovalReader` into the M1 registry (before validateSeams()). */
-export function registerElevatedApprovalSeam(store?: ElevatedApprovalStore): void {
-  registerSeam(
-    "ElevatedApprovalReader",
-    createElevatedApprovalReader(store ?? createInMemoryElevatedApprovalStore().store),
-  );
-}
-
-/** Typed resolver for the registered reader (validateSeams() guarantees an instance, fail-closed). */
-export function getElevatedApprovalReader(): ElevatedApprovalReader {
-  return getSeam("ElevatedApprovalReader");
 }

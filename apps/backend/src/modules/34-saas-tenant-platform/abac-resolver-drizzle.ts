@@ -86,7 +86,7 @@ export interface DrizzleTenantPlatformAbacResolverDeps {
 }
 
 /** Production readers over the M34 repositories. */
-export function repositoryFactsReader(tx: Tx): PlatformFactsReader {
+function repositoryFactsReader(tx: Tx): PlatformFactsReader {
   const support = new SupportRepository(tx);
   const onboarding = new OnboardingRepository(tx);
   const tenants = new TenantAccountRepository(tx);
