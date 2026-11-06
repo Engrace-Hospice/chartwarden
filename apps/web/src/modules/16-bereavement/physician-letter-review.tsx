@@ -35,6 +35,7 @@ import {
   tableStyle,
   td,
   th,
+  visuallyHidden,
 } from "./bereavement-ui";
 
 /** The reviewer's note and a decline reason are bounded the way the server bounds them. */
@@ -121,7 +122,7 @@ export function PhysicianLetterReview(): JSX.Element | null {
                 <th style={th}>Due</th>
                 <th style={th}>Attending</th>
                 <th style={th}>
-                  <span style={{ position: "absolute", left: "-9999px" }}>Review</span>
+                  <span style={visuallyHidden}>Review</span>
                 </th>
               </tr>
             </thead>
