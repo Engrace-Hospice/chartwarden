@@ -281,6 +281,12 @@ describe.skipIf(!DB_URL)("F-105 — M16 opens the bereavement plan, LIVE Postgre
         buildM16BereavementIntakeConsumer({
           db: handle.db,
           outbox: bind("m16") as never,
+          // ADR-0110 D7 — records the `death_intake` alert the intake emits when (and only when) it opens a plan.
+          alerts: {
+            emit: async (alert) => {
+              deathIntakeAlerts.push(alert);
+            },
+          },
           // M6's ORG-EXPLICIT reader. The §4.7 `AdmissionStatusReader` pins the tenant from the ambient
           // REQUEST scope, and a relay tick is not a request — binding that instead is how every one of
           // these deliveries dead-letters with `no ambient request context`.
@@ -298,6 +304,15 @@ describe.skipIf(!DB_URL)("F-105 — M16 opens the bereavement plan, LIVE Postgre
     if (admin) await admin.end();
   });
 
+  /** Every alert the intake consumer handed its `AlertPort`, in order. */
+  const deathIntakeAlerts: Array<{
+    organizationId: string;
+    kind: string;
+    payload: Record<string, unknown>;
+  }> = [];
+  const alertsForPlan = (planId: string) =>
+    deathIntakeAlerts.filter((a) => a.payload.planId === planId);
+
   it("opens the plan — `bereavement_plan`'s first row in any database", async () => {
     const at = "2026-03-01";
     const { admissionId, patientId } = await decedent(ORG_A, at);
@@ -314,6 +329,14 @@ describe.skipIf(!DB_URL)("F-105 — M16 opens the bereavement plan, LIVE Postgre
     // D1 — created `eligible`, NOT `active`: a counselor has not been assigned and no roster exists.
     expect(plans[0].status).toBe("eligible");
     expect(plans[0].opened_at).toBeNull();
+    // ADR-0110 D7 — opening the plan tells the oversight roles (ids and the death date only).
+    expect(alertsForPlan(plans[0].id)).toEqual([
+      {
+        organizationId: ORG_A,
+        kind: "death_intake",
+        payload: { planId: plans[0].id, deathDate: at },
+      },
+    ]);
   });
 
   it("anchors the 13-month clock on the DEATH, read through M6's census seam", async () => {
@@ -363,6 +386,9 @@ describe.skipIf(!DB_URL)("F-105 — M16 opens the bereavement plan, LIVE Postgre
     );
     await dispatcher.tick();
     expect(await plansFor(admissionId)).toHaveLength(1);
+    // the redelivery inserted nothing, so it alerts nothing: one alert for the one plan.
+    const [plan] = await plansFor(admissionId);
+    expect(alertsForPlan(plan.id)).toHaveLength(1);
   });
 
   it("does not leak across tenants — org B's death opens org B's plan only", async () => {
