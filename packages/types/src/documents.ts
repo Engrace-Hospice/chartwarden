@@ -415,6 +415,15 @@ export interface DocumentDigest {
   readonly updatedAt: IsoInstant;
 }
 
+/**
+ * ADR-0109 D6 / D9 — the aggregate types that are INTERNAL to the agency (M16's physician condolence letter and discharge summary):
+ * read by role only, render-only (no hand write), never portal-facing and never enclosed in a payer filing. ONE definition: M22's
+ * internal-documents leaf re-exports it and M25's enclosure rule (`appealEnclosureRefusal`) reads it. A new internal template flags its
+ * renderer descriptor AND is added here (a test fails if they disagree).
+ */
+export const INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES: ReadonlySet<DocumentAggregateType> =
+  new Set<DocumentAggregateType>(["bereavement_physician_letter", "bereavement_discharge_summary"]);
+
 /** §4.3 — the portal-safe digest (internal-only tags stripped; SUD content filtered per consent by the
  * reader). M31 only ever sees this projection, never {@link DocumentDigest}. */
 export interface PortalDocumentDigest {

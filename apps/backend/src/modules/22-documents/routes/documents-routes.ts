@@ -26,6 +26,7 @@ import { getSeam } from "../../../bootstrap/index";
 import { canReadInternalDocuments } from "../abac-predicates";
 import {
   INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES,
+  assertNotInternalOnlyForWrite,
   isInternalOnlyAggregateType,
 } from "../internal-documents";
 import {
@@ -292,8 +293,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     }
     // ADR-0109 — an internal-only document (M16's physician letter / discharge summary) is read by ROLE, never by caseload.
     if (isInternalOnlyAggregateType(doc.aggregateType)) {
-      if (canReadInternalDocuments(actorOf(request).roles)) return;
-      throw new NotFoundError("document");
+      // 404 for a caller who may not read it (an id probe learns nothing); 422 for one who may but tries to WRITE (render-only).
+      if (!canReadInternalDocuments(actorOf(request).roles)) throw new NotFoundError("document");
+      if (purpose === "write") assertNotInternalOnlyForWrite(doc.aggregateType);
+      return;
     }
     const scope = await metadataScopeOf(request, purpose);
     if (scope === null) return;
@@ -318,7 +321,11 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
       const doc = await service.getDocument(organizationId, docIdOf(request as FastifyRequest));
       // #641 — remembered for the handler, which hands it to the service to re-check under the row lock.
       observedPatient.set(request as object, doc.patientId);
-      if (doc.patientId === null && doc.aggregateType !== "referral") {
+      if (
+        doc.patientId === null &&
+        doc.aggregateType !== "referral" &&
+        !isInternalOnlyAggregateType(doc.aggregateType)
+      ) {
         if (allowUnlinked || (await metadataScopeOf(request as FastifyRequest, "write")) === null)
           return;
         throw new NotFoundError("document");
