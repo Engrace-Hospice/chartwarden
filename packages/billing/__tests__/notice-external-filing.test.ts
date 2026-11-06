@@ -156,6 +156,7 @@ describe("planExternalFilingWithdrawal", () => {
     expect(planExternalFilingWithdrawal(filed)).toEqual({
       kind: "withdraw",
       withdrawnFiledOn: "2026-11-04",
+      withdrawnRecordedAt: RECORDED,
       clearBreach: false,
     });
   });
@@ -169,7 +170,12 @@ describe("planExternalFilingWithdrawal", () => {
         filedExternallyOn: "2026-11-08",
         windowBreachedAt: "2026-11-08",
       }),
-    ).toEqual({ kind: "withdraw", withdrawnFiledOn: "2026-11-08", clearBreach: true });
+    ).toEqual({
+      kind: "withdraw",
+      withdrawnFiledOn: "2026-11-08",
+      withdrawnRecordedAt: RECORDED,
+      clearBreach: true,
+    });
   });
 
   it.each([
@@ -196,12 +202,39 @@ describe("planExternalFilingWithdrawal", () => {
     },
   );
 
-  it("refuses when the record changed since the operator read it (re-recorded after a withdrawal)", () => {
+  // The operator can only retry if the refusal says what the record's recordedAt is NOW (the If-Match to send).
+  it("refuses when the record changed since the operator read it (re-recorded after a withdrawal), naming the current recordedAt to retry with", () => {
     expect(
       planExternalFilingWithdrawal({
         ...filed,
         filedExternallyRecordedAt: "2026-11-11T09:00:00.000Z",
       }),
-    ).toMatchObject({ kind: "refuse", code: "NOTICE_FILING_RECORD_CHANGED", status: 409 });
+    ).toMatchObject({
+      kind: "refuse",
+      code: "NOTICE_FILING_RECORD_CHANGED",
+      status: 409,
+      currentRecordedAt: "2026-11-11T09:00:00.000Z",
+    });
+  });
+
+  it("answers a withdrawal that named no record (no If-Match) with 428 and the current recordedAt to send", () => {
+    expect(planExternalFilingWithdrawal({ ...filed, expectedRecordedAt: null })).toMatchObject({
+      kind: "refuse",
+      code: "IF_MATCH_REQUIRED",
+      status: 428,
+      currentRecordedAt: RECORDED,
+    });
+  });
+
+  it("answers an un-pinned withdrawal of a notice that is not filed with the 409 'nothing to withdraw' (there is no record to name)", () => {
+    expect(
+      planExternalFilingWithdrawal({
+        ...filed,
+        expectedRecordedAt: null,
+        externalFilingStatus: null,
+        filedExternallyOn: null,
+        filedExternallyRecordedAt: null,
+      }),
+    ).toMatchObject({ kind: "refuse", code: "NOTICE_NOT_FILED_EXTERNALLY", status: 409 });
   });
 });

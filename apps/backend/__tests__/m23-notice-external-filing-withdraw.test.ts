@@ -163,6 +163,28 @@ describe.each([
     expect(table.get("n-1")).toEqual(row);
   });
 
+  // The operator's retry needs the record's CURRENT recordedAt (the If-Match to send): the error envelope's details carry it, and
+  // only it (an id-free timestamp).
+  it("carries the record's current recordedAt in the error details on a stale pin (409) and on no pin (428)", async () => {
+    table.set("n-1", filed());
+    const current = [
+      { field: "currentRecordedAt", code: expect.any(String), message: RECORDED_ISO },
+    ];
+    await expect(
+      withdraw({ expectedRecordedAt: "2026-11-08T08:00:00.000Z" }),
+    ).rejects.toMatchObject({
+      code: "NOTICE_FILING_RECORD_CHANGED",
+      statusCode: 409,
+      details: current,
+    });
+    await expect(withdraw({ expectedRecordedAt: null })).rejects.toMatchObject({
+      code: "IF_MATCH_REQUIRED",
+      statusCode: 428,
+      details: current,
+    });
+    expect(table.get("n-1")).toMatchObject({ externalFilingStatus: "filed", version: 3 });
+  });
+
   it("answers 404 for another organization's notice and for an unknown one", async () => {
     table.set("n-1", filed({ organizationId: OTHER_ORG }));
     await expect(withdraw()).rejects.toMatchObject({ code: "NOT_FOUND" });

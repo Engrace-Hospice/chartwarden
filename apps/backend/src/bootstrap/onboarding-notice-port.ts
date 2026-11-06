@@ -38,7 +38,8 @@ export interface OnboardingNoticeWithdrawal {
 export interface OnboardingNoticePort {
   /**
    * Withdraw the tenant's external-filing record of one notice. `expectedRecordedAt` is the `externalFiling.recordedAt` the operator
-   * read; a record that changed since (or none) is a 409. A notice of another organization is a 404.
+   * read (null: the request named none, a 428); a record that changed since is a 409, both carrying the record's current
+   * `recordedAt` in the error details, and a notice with no record is a 409. A notice of another organization is a 404.
    */
   withdrawExternalFiling(
     tx: DbClient,
@@ -46,7 +47,7 @@ export interface OnboardingNoticePort {
     input: {
       readonly kind: OnboardingNoticeKind;
       readonly noticeId: string;
-      readonly expectedRecordedAt: string;
+      readonly expectedRecordedAt: string | null;
     },
   ): Promise<OnboardingNoticeWithdrawal>;
 }

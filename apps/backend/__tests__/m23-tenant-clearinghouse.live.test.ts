@@ -1348,12 +1348,23 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       expect((await withdraw("noe", id, { payload: { reason: "          " } })).statusCode).toBe(
         422,
       );
+      // The operator's retry needs the record's CURRENT recordedAt (the If-Match to send): both refusals carry it in the details.
+      const currentPin = [
+        {
+          field: "currentRecordedAt",
+          code: expect.any(String),
+          message: RECORDED_AT.toISOString(),
+        },
+      ];
       const noPin = await withdraw("noe", id, { pin: null });
       expect(noPin.statusCode).toBe(428);
+      expect(errorCode(noPin)).toBe("IF_MATCH_REQUIRED");
+      expect(noPin.json().error.details).toEqual(currentPin);
 
       const stale = await withdraw("noe", id, { pin: "2026-11-08T08:00:00.000Z" });
       expect(stale.statusCode).toBe(409);
       expect(errorCode(stale)).toBe("NOTICE_FILING_RECORD_CHANGED");
+      expect(stale.json().error.details).toEqual(currentPin);
       expect(await rowOf("noe", id)).toMatchObject({ external_filing_status: "filed", version: 0 });
       // the failed attempt leaves its own denied row (the operator, the reason, the error code; never a body value)
       const failed = await q<{ actor_user_id: string; context: Record<string, unknown> }>(
@@ -1364,6 +1375,15 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       );
       expect(failed.length).toBeGreaterThanOrEqual(1);
       expect(failed[0]?.actor_user_id).toBe(OPERATOR);
+
+      // the operator retries with the value the refusal gave: that is the whole point of carrying it
+      const retryId = await seedFiledNotice("noe");
+      const refused = await withdraw("noe", retryId, { pin: "2026-11-08T08:00:00.000Z" });
+      const [{ message: currentRecordedAt }] = refused.json().error.details as {
+        message: string;
+      }[];
+      const retried = await withdraw("noe", retryId, { pin: currentRecordedAt });
+      expect(retried.statusCode, retried.body).toBe(200);
 
       const pending = await seedFiledNotice("noe", ORG_A, { marker: "pending" });
       const notFiled = await withdraw("noe", pending);

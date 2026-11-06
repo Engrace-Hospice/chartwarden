@@ -110,13 +110,16 @@ export function planExternalFilingRecord(input: ExternalFilingRecordInput): Exte
 
 export type ExternalFilingWithdrawalRefusalCode =
   | "NOTICE_NOT_FILED_EXTERNALLY"
-  | "NOTICE_FILING_RECORD_CHANGED";
+  | "NOTICE_FILING_RECORD_CHANGED"
+  | "IF_MATCH_REQUIRED";
 
 export type ExternalFilingWithdrawalPlan =
   | {
       readonly kind: "withdraw";
       /** The filed date the withdrawn record carried (the platform audit row names it). */
       readonly withdrawnFiledOn: IsoDate;
+      /** The `recordedAt` of the record withdrawn (what the operator pinned: the audit row names it). */
+      readonly withdrawnRecordedAt: string;
       /**
        * The breach stamp on the notice was written by the withdrawn record itself (a LATE record stamps `windowBreachedAt = filedOn`):
        * the caller clears it with the record. A stamp the watchdog wrote stays.
@@ -126,8 +129,13 @@ export type ExternalFilingWithdrawalPlan =
   | {
       readonly kind: "refuse";
       readonly code: ExternalFilingWithdrawalRefusalCode;
-      readonly status: 409;
+      readonly status: 409 | 428;
       readonly message: string;
+      /**
+       * The record's `recordedAt` as it stands now: what the operator must send as `If-Match` to retry. Present on the two pin
+       * refusals (a stale pin, no pin); absent when there is no record to name.
+       */
+      readonly currentRecordedAt?: string;
     };
 
 export interface ExternalFilingWithdrawalInput {
@@ -135,8 +143,8 @@ export interface ExternalFilingWithdrawalInput {
   readonly filedExternallyOn: IsoDate | null;
   /** When the tenant recorded the filing (UTC ISO instant), the identity of the record the operator read. */
   readonly filedExternallyRecordedAt: string | null;
-  /** The `recordedAt` the operator read (the route's `If-Match`). */
-  readonly expectedRecordedAt: string;
+  /** The `recordedAt` the operator read (the route's `If-Match`); null when the request named none. */
+  readonly expectedRecordedAt: string | null;
   readonly windowTargetAt: IsoDate;
   readonly windowBreachedAt: IsoDate | null;
 }
@@ -166,13 +174,24 @@ export function planExternalFilingWithdrawal(
         "this notice is not recorded as filed outside ChartWarden: there is nothing to withdraw",
     };
   }
+  if (input.expectedRecordedAt === null) {
+    return {
+      kind: "refuse",
+      code: "IF_MATCH_REQUIRED",
+      status: 428,
+      message:
+        "an If-Match header naming the filing record's recordedAt is required on this route (the current one is in the error details)",
+      currentRecordedAt: input.filedExternallyRecordedAt,
+    };
+  }
   if (input.filedExternallyRecordedAt !== input.expectedRecordedAt) {
     return {
       kind: "refuse",
       code: "NOTICE_FILING_RECORD_CHANGED",
       status: 409,
       message:
-        "the filing record changed since it was read; read the notice again and withdraw the record it now shows",
+        "the filing record changed since it was read; withdraw the record it now shows (its recordedAt is in the error details)",
+      currentRecordedAt: input.filedExternallyRecordedAt,
     };
   }
   const wroteItsOwnBreach =
@@ -181,6 +200,7 @@ export function planExternalFilingWithdrawal(
   return {
     kind: "withdraw",
     withdrawnFiledOn: input.filedExternallyOn,
+    withdrawnRecordedAt: input.filedExternallyRecordedAt,
     clearBreach: wroteItsOwnBreach,
   };
 }
