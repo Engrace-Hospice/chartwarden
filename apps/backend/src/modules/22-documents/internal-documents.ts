@@ -8,13 +8,15 @@
 //
 // The set is derived from the renderer table's `internalOnly` descriptors (a test pins the two equal); this leaf holds the
 // vocabulary so the ABAC predicate, the route scope and the portal reader import ONE definition without importing the renderer.
-import { ChartWardenError, type DocumentAggregateType } from "@chartwarden/types";
+// Internal-only documents are also render-only: every hand write path refuses them (`assertNotInternalOnlyForWrite`).
+import {
+  ChartWardenError,
+  type DocumentAggregateType,
+  INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES,
+} from "@chartwarden/types";
 
-/** The aggregate types that are internal-only. A new internal template flags its descriptor AND is added here (a test fails if they disagree). */
-export const INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES: ReadonlySet<DocumentAggregateType> = new Set([
-  "bereavement_physician_letter",
-  "bereavement_discharge_summary",
-]);
+/** The aggregate types that are internal-only (one definition in `@chartwarden/types`; M25's payer-enclosure rule reads it too). */
+export { INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES };
 
 /** True for an internal-only aggregate type. An absent or unknown type is not internal (the real loaders always supply one). */
 export const isInternalOnlyAggregateType = (aggregateType: string | null | undefined): boolean =>
@@ -40,6 +42,21 @@ export function assertNotInternalOnlyForPatientFacing(
     throw new ChartWardenError(
       "DOCUMENT_INTERNAL_ONLY",
       "this document is internal to the agency and cannot be made patient-facing",
+      422,
+    );
+  }
+}
+
+/**
+ * An internal-only document is RENDER-ONLY: M22's renderer is the only writer. A hand write (a PATCH, a tag, a link, a new version, an
+ * upload filed under an internal aggregate type, or `attachToDisclosures`) is refused 422 `DOCUMENT_INTERNAL_ONLY`, so none of them can
+ * rewrite the letter, retag it into a caseload query or widen where it travels.
+ */
+export function assertNotInternalOnlyForWrite(aggregateType: string | null | undefined): void {
+  if (isInternalOnlyAggregateType(aggregateType)) {
+    throw new ChartWardenError(
+      "DOCUMENT_INTERNAL_ONLY",
+      "this document is internal to the agency and render-only: it cannot be created or changed by hand",
       422,
     );
   }

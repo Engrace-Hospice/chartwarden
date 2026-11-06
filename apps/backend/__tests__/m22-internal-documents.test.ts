@@ -17,6 +17,11 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
+import { BEREAVEMENT_OVERSIGHT_ROLES } from "../src/modules/16-bereavement/abac-predicates";
+import {
+  SCOPE_BYPASS_ROLES,
+  canReadInternalDocuments,
+} from "../src/modules/22-documents/abac-predicates";
 import {
   createInMemoryDocumentBackend,
   createSignedUrlService,
@@ -24,10 +29,12 @@ import {
   registerDocumentRoutes,
 } from "../src/modules/22-documents/index";
 import {
+  INTERNAL_DOCUMENT_OVERSIGHT_ROLES,
   INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES,
   isInternalOnlyAggregateType,
 } from "../src/modules/22-documents/internal-documents";
 import { PLATFORM_TEMPLATE_TABLE } from "../src/modules/22-documents/seams/renderer";
+import { hasBereavementOversightRole } from "../src/modules/39-consent/access-scope";
 
 const ORG = "org_a";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
@@ -68,6 +75,7 @@ const backend = createInMemoryDocumentBackend({
 });
 
 const KEYS = [
+  "documents.upload",
   "documents.read",
   "documents.read_phi_content",
   "documents.edit_metadata",
@@ -158,6 +166,29 @@ describe("the internal-only document types", () => {
     expect(flagged).toEqual([...INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES].sort());
     expect(flagged).toEqual(["bereavement_discharge_summary", "bereavement_physician_letter"]);
     expect(isInternalOnlyAggregateType("bereavement_letter")).toBe(false);
+  });
+
+  // M22 mirrors the role KEYS (its `dependsOn` is [1, 5]) and M39 keeps its own mirror: a role added to or renamed in M16's set must
+  // reach every reader of an internal document, or that role could review the letter yet never open the rendered PDF.
+  it("M22's oversight roles are M16's oversight roles, modulo the roles that already bypass the caseload scope", () => {
+    const expected = BEREAVEMENT_OVERSIGHT_ROLES.filter((r) => !SCOPE_BYPASS_ROLES.includes(r));
+    expect([...INTERNAL_DOCUMENT_OVERSIGHT_ROLES].sort()).toEqual([...expected].sort());
+    for (const role of BEREAVEMENT_OVERSIGHT_ROLES) {
+      expect(canReadInternalDocuments([role]), role).toBe(true);
+    }
+  });
+
+  it("M39's mirror of the oversight roles admits exactly M16's set", () => {
+    for (const role of BEREAVEMENT_OVERSIGHT_ROLES) {
+      expect(hasBereavementOversightRole([role]), role).toBe(true);
+    }
+    expect(
+      hasBereavementOversightRole([
+        "rn",
+        "bereavement_volunteer",
+        "bereavement_program_coordinator",
+      ]),
+    ).toBe(false);
   });
 
   it("file the two M16 templates under their own retention class", () => {
@@ -257,24 +288,60 @@ describe("metadata and the list", () => {
   });
 });
 
-describe("PATCH /documents/:id", () => {
-  it("can never flip an internal document patient-facing (422), but may still rename it", async () => {
+describe("internal documents are render-only: every hand write path is refused", () => {
+  const code = (res: { json(): { error?: { code?: string }; code?: string } }) =>
+    res.json().error?.code ?? res.json().code;
+
+  it("PATCH is refused 422 for a reader who may see the document, whatever it changes", async () => {
     const app = makeServer();
-    const flip = await app.inject({
-      method: "PATCH",
-      url: `/api/v1/documents/${DOC_LETTER}`,
-      headers: COMPLIANCE,
-      payload: { patientFacing: true },
-    });
-    expect(flip.statusCode).toBe(422);
-    expect(flip.json().error?.code ?? flip.json().code).toBe("DOCUMENT_INTERNAL_ONLY");
-    const rename = await app.inject({
-      method: "PATCH",
-      url: `/api/v1/documents/${DOC_LETTER}`,
-      headers: COMPLIANCE,
-      payload: { title: "Condolence letter (reviewed)" },
-    });
-    expect(rename.statusCode).toBe(200);
+    for (const payload of [
+      { patientFacing: true },
+      { title: "Condolence letter (reviewed)" },
+      { attachToDisclosures: true },
+    ]) {
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/documents/${DOC_LETTER}`,
+        headers: COMPLIANCE,
+        payload,
+      });
+      expect(res.statusCode).toBe(422);
+      expect(code(res)).toBe("DOCUMENT_INTERNAL_ONLY");
+    }
+    await app.close();
+  });
+
+  it("tags, links and versions are refused 422 for oversight and 404 for a caseload member (no id probe)", async () => {
+    const app = makeServer();
+    const writes = [
+      {
+        method: "POST" as const,
+        url: `/api/v1/documents/${DOC_SUMMARY}/tags`,
+        payload: { tagKind: "free", tagKey: "note", tagValue: "x" },
+      },
+      {
+        method: "DELETE" as const,
+        url: `/api/v1/documents/${DOC_SUMMARY}/tags/c0000000-0000-4000-8000-0000000000b1`,
+        payload: undefined,
+      },
+      {
+        method: "POST" as const,
+        url: `/api/v1/documents/${DOC_SUMMARY}/links`,
+        payload: { patientId: PATIENT },
+      },
+      {
+        method: "POST" as const,
+        url: `/api/v1/documents/${DOC_SUMMARY}/versions`,
+        payload: { contentBase64: "JVBERi0xLjQK", mimeType: "application/pdf" },
+      },
+    ];
+    for (const write of writes) {
+      const refused = await app.inject({ ...write, headers: COORDINATOR });
+      expect(refused.statusCode, `${write.method} ${write.url}`).toBe(422);
+      expect(code(refused)).toBe("DOCUMENT_INTERNAL_ONLY");
+      const hidden = await app.inject({ ...write, headers: RN });
+      expect(hidden.statusCode, `${write.method} ${write.url}`).toBe(404);
+    }
     await app.close();
   });
 });

@@ -51,6 +51,9 @@ describe("enclosureRefusal", () => {
     [digest({ patientId: OTHER_PATIENT }), "other_patient"],
     [digest({ patientId: null }), "other_patient"],
     [digest({ retentionClass: "compliance_42cfr_part2" }), "part2_restricted"],
+    // ADR-0109: M16's physician letter and discharge summary are the agency's own record, never payer-facing, even when the chart matches
+    [digest({ aggregateType: "bereavement_physician_letter" }), "internal_only"],
+    [digest({ aggregateType: "bereavement_discharge_summary" }), "internal_only"],
     // Part 2 wins over every other reason: a restricted record is never named, whatever else is true of it
     [
       digest({ retentionClass: "compliance_42cfr_part2", patientId: OTHER_PATIENT }),
