@@ -80,6 +80,13 @@ export {
   decideRenderedBackref,
 } from "./outbox-consumers/m22-document-rendered";
 
+// ADR-0110 D7 — the real `AlertPort` over the M36 `AlertEmitter` seam (routed kinds only).
+export {
+  type M16AlertEmitterLike,
+  M16_ALERT_ROUTES,
+  createM16AlertPort,
+} from "./alert-port";
+
 // §4.7 — the twenty-nine permission keys M16 contributes to M3's catalog.
 export {
   type M16ContributedPermissionKey,
