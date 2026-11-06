@@ -488,11 +488,36 @@ describe("pullRemittances with a clearinghouse per organization (ADR-0053 amendm
     expect(ingest.received).toHaveLength(1);
   });
 
-  it("reports an organization whose binding cannot be resolved as a failure and does not throw", async () => {
+  it("reports an organization whose binding cannot be resolved as a failure, with the error CLASS (never its text), and does not throw", async () => {
     const { deps } = perOrg({});
 
     const result = await pullRemittances(deps, ORG);
 
-    expect(result.failures).toEqual([`org ${ORG}: clearinghouse binding could not be resolved`]);
+    // a plain failure names its class; the cause text (which could carry anything) is never copied
+    expect(result.failures).toEqual([
+      `org ${ORG}: clearinghouse binding could not be resolved (Error)`,
+    ]);
+  });
+
+  it("names the typed code when the resolver refused with one (an unreadable credential)", async () => {
+    const { ChartWardenError } = await import("@chartwarden/types");
+    const { deps } = perOrg({});
+    const typed = {
+      ...deps,
+      forOrg: async () => {
+        throw new ChartWardenError(
+          "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+          "secret-looking text sk_live_NOT_TO_LEAK",
+          503,
+        );
+      },
+    };
+
+    const result = await pullRemittances(typed as never, ORG);
+
+    expect(result.failures).toEqual([
+      `org ${ORG}: clearinghouse binding could not be resolved (CLEARINGHOUSE_CREDENTIAL_UNREADABLE)`,
+    ]);
+    expect(JSON.stringify(result)).not.toContain("sk_live");
   });
 });

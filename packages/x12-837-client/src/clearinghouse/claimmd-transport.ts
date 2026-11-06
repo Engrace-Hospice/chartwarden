@@ -8,10 +8,12 @@ import { createHash } from "node:crypto";
 // has no dry run). CH_NOT_WIRED: verifyAndParseEvent (Claim.MD pushes enrollment/appeal events only).
 //
 // Rules this file enforces:
-//   - ONE Claim.MD account (one key) per usage mode; a call whose usage has no key answers CH_NOT_WIRED, so test traffic
-//     can never reach the production account or the reverse.
-//   - the account is shared by every tenant: every read is filtered to `ctx.billingNpi` (provider_entity.npi is unique
-//     platform-wide), and no call runs without it;
+//   - ONE Claim.MD account (one key) per usage mode PER TRANSPORT INSTANCE; a call whose usage has no key answers CH_NOT_WIRED, so
+//     test traffic can never reach the production account or the reverse. A transport is the platform's own account (the env
+//     binding for the demo tenants) or ONE tenant's own account (built per organization by the backend resolver, which also binds it
+//     to that organization: a call naming another one is refused before it reaches this file);
+//   - an account may serve more than one provider entity (and the platform account serves every demo tenant): every read is
+//     filtered to `ctx.billingNpi` (provider_entity.npi is unique platform-wide), and no call runs without it;
 //   - Claim.MD refuses only a repeated Filename (code 61, observed 2026-11-05), not a repeated claim, so OUR attempt store is the idempotency authority: a submission is reserved
 //     before the upload, the upload's Filename is derived from (scope, key), and an attempt whose upload may have landed
 //     (timeout, 5xx, unreadable 2xx) is NEVER re-sent blind: after the in-flight window `/uploadlist/` is searched for that

@@ -13,6 +13,7 @@
 //   - the cursor moves only after every file of a page was received (queued or duplicate).
 // The transport is a structural view (M25 does not import the M23/transport wiring); the composition root supplies it.
 import { createHash } from "node:crypto";
+import { ChartWardenError } from "@chartwarden/types";
 import type { ClearinghouseContext, ClearinghouseTransport } from "@chartwarden/x12-837-client";
 import { CH } from "@chartwarden/x12-837-client";
 import type { M25IngestService } from "./service";
@@ -116,6 +117,10 @@ export interface RemittancePullResult {
 
 const sha256 = (text: string): string => createHash("sha256").update(text, "utf8").digest("hex");
 
+/** A PHI-free label for a failure: a typed refusal's stable code, else the error's class name. */
+const errorClassOf = (err: unknown): string =>
+  err instanceof ChartWardenError ? err.code : err instanceof Error ? err.name : "unknown";
+
 /** Pull and receive every pending remittance for one org. A failing provider entity does not stop the others. */
 export async function pullRemittances(
   deps: RemittancePullDeps,
@@ -129,13 +134,17 @@ export async function pullRemittances(
   let binding: Awaited<ReturnType<typeof bindingOf>>;
   try {
     binding = await bindingOf(deps, organizationId);
-  } catch {
+  } catch (err) {
+    // The error CLASS only (a typed refusal's code, else the class name): the cause text could carry anything, and this string
+    // reaches job data and logs. Without it a tenant whose credential is unreadable and one whose config read failed look alike.
     return {
       queued,
       duplicates,
       unsupported,
       quarantined,
-      failures: [`org ${organizationId}: clearinghouse binding could not be resolved`],
+      failures: [
+        `org ${organizationId}: clearinghouse binding could not be resolved (${errorClassOf(err)})`,
+      ],
     };
   }
   // No clearinghouse of its own (billing outside ChartWarden, or none chosen yet): nothing to pull, nothing failed.
