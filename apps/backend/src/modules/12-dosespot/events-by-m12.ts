@@ -491,6 +491,34 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
+  // ── tenant onboarding slice 4 (ADR-0110): the clinic registration going live / out of service ───────────
+  {
+    eventName: "m12.dosespot_config.activated",
+    moduleOwner: "m12",
+    description:
+      "A tenant's DoseSpot clinic registration went active (connection tested, then activated): e-prescribing now transmits for the organization. Ids and the environment only; never a credential.",
+    payloadSchema: Type.Object({
+      registrationId: id,
+      environment: Type.Union([Type.Literal("sandbox"), Type.Literal("production")]),
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m12.dosespot_config.deactivated",
+    moduleOwner: "m12",
+    description:
+      "A tenant's DoseSpot clinic registration stopped being active (deactivated, or its credential or target changed): newly signed orders activate locally and queued ones wait. M36 alert to the tenant's administrators. Ids, the environment and the cause only.",
+    payloadSchema: Type.Object({
+      registrationId: id,
+      environment: Type.Union([Type.Literal("sandbox"), Type.Literal("production")]),
+      cause: Type.Union([Type.Literal("deactivated"), Type.Literal("credential_changed")]),
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
   {
     eventName: "m12.dosespot_recovered",
     moduleOwner: "m12",

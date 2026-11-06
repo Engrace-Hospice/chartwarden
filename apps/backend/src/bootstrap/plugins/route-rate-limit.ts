@@ -64,6 +64,14 @@ export const CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "open",
 };
 
+/** M12 `POST /tenant/dosespot/verify` and the platform copy (a vendor token mint per request): 6/min/user and 30/min/org. Fail-open: an availability control. */
+export const DOSESPOT_VERIFY_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 6,
+  perOrg: 30,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
 /** M36 WP 6.8 (ADR-0097): the acknowledge-required broadcast routes, 20/min/user and 200/min/org. Fail-open: an availability control. */
 export const ACK_BROADCAST_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 20,
