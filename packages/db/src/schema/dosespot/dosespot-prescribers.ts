@@ -37,6 +37,10 @@ export const dosespotPrescribers = pgTable(
     // Migration 0412 — the last IAL2-expiry stage alerted ('warn' | 'critical'); NULL = none / reset on re-verify.
     ial2AlertStage: text("ial2_alert_stage"),
 
+    // Migration 1381 — committed BEFORE the DoseSpot vendor call (create-then-record); `dosespotPrescriberId` is the vendor link.
+    vendorEnrollmentRequestedAt: timestamp("vendor_enrollment_requested_at", {
+      withTimezone: true,
+    }),
     enrolledAt: timestamp("enrolled_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     revocationReason: text("revocation_reason"),

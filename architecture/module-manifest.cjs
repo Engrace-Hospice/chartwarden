@@ -586,6 +586,8 @@ exports.MODULES = [
     dependsOn: [1, 5, 11, 38, 40], // +M1: the bootstrap seam registry (registerSeam/getSeam) M12's backend module wires its §2.10 D17 owned seams (MedicationOrderProvider/RefillInboxProvider) into (M12-T07; M6..M11 seam-task precedent)
     ownedTables: [
       "dosespot_prescriber",
+      // Tenant onboarding slice 4 (ADR-0110, migration 1380): the DoseSpot clinic each tenant registered, with its sealed credential.
+      "dosespot_clinic_registration",
       "dosespot_webhook_event",
       "epcs_signing_attempt",
       "medication_order",
