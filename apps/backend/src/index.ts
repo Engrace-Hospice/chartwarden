@@ -6001,18 +6001,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // Choosing a clearinghouse (platform or tenant route) settles wizard step 7 at once, post-commit and best effort.
           // The wizard is built below; the settle hook reaches it through this holder (owner decision D5: a clearinghouse change
           // also makes the billing steps follow the choice, through the wizard's own skip / reopen).
-          const onboardingWizardHolder: {
-            current?: { syncClearinghouseSteps(orgId: string): Promise<void> };
-          } = {};
+          // A lost binding must be loud: `get()` throws a named error (the sync is best effort, so it is warned about, never silent) and
+          // boot asserts the binding right after the wizard's routes mount.
+          const onboardingWizard = lateBound<{
+            syncClearinghouseSteps(orgId: string): Promise<void>;
+          }>("the onboarding wizard");
           const settleOnboardingForOrg = createSettleOnboardingForOrg({
             db: dbHandle.db,
             advance: async ({ tenantAccountId, organizationId }) => {
               await m34OnboardingAdvance({ tenantAccountId, orgId: organizationId });
-              await onboardingWizardHolder.current?.syncClearinghouseSteps(organizationId);
+              await onboardingWizard.get().syncClearinghouseSteps(organizationId);
             },
             // A LIVE tenant has nothing for the onboarding sweep, but a switch to outside still has to reach its billing mode.
             afterChange: async (organizationId) => {
-              await onboardingWizardHolder.current?.syncClearinghouseSteps(organizationId);
+              await onboardingWizard.get().syncClearinghouseSteps(organizationId);
             },
           });
           // Owner decisions D4 and round 2 Q3: does the org bill outside ChartWarden? Read lazily per call (the reader seam registers
@@ -6151,7 +6153,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               warn: (message, context) => app.log.warn(context, message),
             }),
           };
-          onboardingWizardHolder.current = m34Onboarding.wizard;
+          onboardingWizard.bind(m34Onboarding.wizard);
           mountTenantPlatformRoutes(app, dbHandle.db, {
             tenantBaseDomain,
             // Each slug probe is an audited platform read: 30/min/user, 300/min/org, fail-open (an availability control).
@@ -6276,6 +6278,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 : {}),
             },
           });
+          // Every clearinghouse settle reaches the wizard through the late-bound holder: prove the wiring at boot.
+          onboardingWizard.assertBound();
           // M33 (Phase 2C) — mount the Reporting READ + WRITE + EXPORT/DRILLDOWN surfaces over the DRIZZLE
           // route services. Reads run under withReportSession (replica-over-primary, RLS-scoped, read-only,
           // tiered statement_timeout); writes run under withOrgContext on the primary. The MV-admin command
