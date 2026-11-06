@@ -444,6 +444,36 @@ export const AdmissionParams = Type.Object({ admissionId: Uuid });
  *  it; the substance-use slot is forced `unknown` server-side unless the writer is cleared for 42 CFR Part 2 content. */
 export const PreDeathDraftBody = Type.Object({ factors: RiskFactorsTriStateSchema });
 
+/** Routes 39 / 40 — a physician letter is addressed by its own id. */
+export const LetterParams = Type.Object({ letterId: Uuid });
+
+/** `bereavement_physician_letter.status` (migration 1345). */
+export const PhysicianLetterStatus = Type.Union([
+  Type.Literal("pending_review"),
+  Type.Literal("approved"),
+  Type.Literal("rendered"),
+  Type.Literal("declined"),
+]);
+
+/** Route 38 — the physician-letter review queue (cursor-paged; `offset` is refused by the preHandler). */
+export const PhysicianLetterListQuerySchema = Type.Object({
+  status: Type.Optional(PhysicianLetterStatus),
+  cursor: Type.Optional(Type.String({ maxLength: 512 })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+});
+
+/** Route 39 — approve a pending letter (ADR-0109 D6): an optional personal note (at most 1000 characters, sealed at rest) and,
+ *  when the care team resolved nobody, the INTERNAL clinician who should receive it. `If-Match` + `Idempotency-Key` ride the headers. */
+export const ApproveLetterBody = Type.Object({
+  personalNote: Type.Optional(Type.String({ maxLength: 1000 })),
+  attendingUserId: Type.Optional(Uuid),
+});
+
+/** Route 40 — decline a pending letter; the reason is documented (at least 20 characters). */
+export const DeclineLetterBody = Type.Object({
+  reason: Type.String({ minLength: 20, maxLength: 2000 }),
+});
+
 /** Route 28 — §4.2 `RiskFactorsInput` verbatim (the eight factors + the screen totals), plus the D8 override fields §7.3
  *  requires and the ADR-0109 D3 assessment checkpoint this human-appended score completes. `factors` is honored: it merges
  *  into the score with "true wins" (it never lowers a derived `true`). `notes` is accepted and not stored. */
@@ -483,6 +513,7 @@ export const InitiateContactBody = Type.Object({
 export type PlanListQuery = Static<typeof PlanListQuerySchema>;
 export type OutreachListQuery = Static<typeof OutreachListQuerySchema>;
 export type RiskScoreListQuery = Static<typeof RiskScoreListQuerySchema>;
+export type PhysicianLetterListQuery = Static<typeof PhysicianLetterListQuerySchema>;
 export type CounselorDashboardQuery = Static<typeof CounselorDashboardQuerySchema>;
 export type SupervisorDashboardQuery = Static<typeof SupervisorDashboardQuerySchema>;
 export type LocalDateString = Static<typeof LocalDate>;
@@ -751,6 +782,22 @@ export const BereavementAssessmentTaskListResponseSchema = Type.Object({
   redactedCategories: Type.Array(RedactedCategory),
 });
 
+/** Routes 38 / 39 / 40 — one physician condolence letter (ADR-0109 D6). The sealed note is never returned. */
+export const PhysicianLetterViewResponseSchema = Type.Object({
+  letterId: Str,
+  planId: Str,
+  patientId: Str,
+  status: PhysicianLetterStatus,
+  dueAt: Str,
+  createdAt: Str,
+  attendingUserId: Nullable(Str),
+  hasPersonalNote: Bool,
+  declineReason: Nullable(Str),
+  reviewedAt: Nullable(Str),
+  renderedDocumentId: Nullable(Str),
+  version: Int,
+});
+
 /** Routes 35 / 36 — the pre-death draft as the web reads it (wire keys, the same shape the PUT body carries). */
 export const PreDeathDraftViewResponseSchema = Type.Object({
   admissionId: Str,
@@ -862,3 +909,5 @@ export const BereavementOutreachPageResponseSchema = pageOf(
 export const BereavementRiskScorePageResponseSchema = pageOf(
   BereavementRiskScoreViewResponseSchema,
 );
+/** Route 38 — `CursorPage<PhysicianLetterView>`. */
+export const PhysicianLetterPageResponseSchema = pageOf(PhysicianLetterViewResponseSchema);

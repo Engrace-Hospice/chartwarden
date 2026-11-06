@@ -43,7 +43,12 @@ import {
   buildBereavementAbacPredicates,
   mountM16Routes,
 } from "../src/modules/16-bereavement/index";
-import { BereavementStateError } from "../src/modules/16-bereavement/lifecycle/index";
+import {
+  BereavementStateError,
+  checkVersion,
+  decideLetterApproval,
+  decideLetterDecline,
+} from "../src/modules/16-bereavement/lifecycle/index";
 import type {
   M16DraftService,
   PreDeathDraftView,
@@ -62,6 +67,10 @@ import type {
   PlanActivationView,
   ScheduleRegenerationView,
 } from "../src/modules/16-bereavement/routes/index";
+import type {
+  M16LetterService,
+  PhysicianLetterView,
+} from "../src/modules/16-bereavement/routes/letter-service";
 import type { RecomputeRiskInput } from "../src/modules/16-bereavement/routes/write-service";
 
 // ── the M2 header-auth test shim (the M11/M40 `orders-routes.test.ts` / `mdm-routes.test.ts` precedent) ──
@@ -103,6 +112,10 @@ const EXTERNAL_RESOURCE = "77777777-7777-4777-8777-777777777777";
 const ADMISSION_ID = "10000000-0000-4000-8000-000000000001";
 const UNKNOWN_ADMISSION = "10000000-0000-4000-8000-0000000000ff";
 const DRAFT_PATIENT = "10000000-0000-4000-8000-0000000000aa";
+/** ADR-0109 D6 — the physician letter fixtures: the plan the letter belongs to and the internal clinician it addresses. */
+const LETTER_PLAN_ID = "10000000-0000-4000-8000-0000000000bb";
+const LETTER_ATTENDING = "10000000-0000-4000-8000-0000000000cc";
+const PICKED_CLINICIAN = "10000000-0000-4000-8000-0000000000dd";
 /** The care team of `DRAFT_PATIENT`: only the plan counselor's user sits on it. */
 const ASSESSOR_PROBE: PreDeathAssessorProbe = {
   async patientOfAdmission(_org, admissionId) {
@@ -909,10 +922,99 @@ function createFakeBackend() {
     },
   };
 
+  // ADR-0109 D6 — the physician letter queue. The fake applies the REAL pure approve / decline rules, so the wiring tests also see
+  // the 409 / 422 / 412 a reviewer would, without a database.
+  const letters = new Map<string, PhysicianLetterView & { note: string | null }>();
+  const letterEvents: Array<{ letterId: string; templateKey: string; documentKind: string }> = [];
+  const seedLetter = (over: Partial<PhysicianLetterView> = {}) => {
+    const letterId =
+      over.letterId ?? `aaaa0000-0000-4000-8000-${String(letters.size + 1).padStart(12, "0")}`;
+    const letter = {
+      letterId,
+      planId: LETTER_PLAN_ID,
+      patientId: DRAFT_PATIENT,
+      status: "pending_review" as const,
+      dueAt: "2026-06-10T00:00:00.000Z",
+      createdAt: NOW,
+      attendingUserId: LETTER_ATTENDING as string | null,
+      hasPersonalNote: false,
+      declineReason: null,
+      reviewedAt: null,
+      renderedDocumentId: null,
+      version: 0,
+      note: null as string | null,
+      ...over,
+    };
+    letters.set(letterId, letter);
+    return letter;
+  };
+  const publicLetter = ({ note: _note, ...view }: PhysicianLetterView & { note: string | null }) =>
+    view;
+  const letterOf = (letterId: string) => {
+    const letter = letters.get(letterId);
+    if (!letter) throw new BereavementStateError("PHYSICIAN_LETTER_NOT_FOUND", "not found");
+    return letter;
+  };
+  const letterService: M16LetterService = {
+    async listLetters(_actor, input) {
+      const data = [...letters.values()]
+        .filter((l) => input.status === undefined || l.status === input.status)
+        .sort((a, b) => a.dueAt.localeCompare(b.dueAt))
+        .map(publicLetter);
+      return { data, next_cursor: null, has_more: false };
+    },
+    async getLetterForPlan(_actor, planId) {
+      const found = [...letters.values()].find((l) => l.planId === planId);
+      return found ? publicLetter(found) : null;
+    },
+    async approveLetter(actor, letterId, input) {
+      const letter = letterOf(letterId);
+      checkVersion(input.expectedVersion, letter.version);
+      const decision = decideLetterApproval(letter, {
+        personalNote: input.personalNote,
+        attendingUserId: input.attendingUserId,
+      });
+      const next = {
+        ...letter,
+        status: "approved" as const,
+        attendingUserId: decision.attendingUserId,
+        hasPersonalNote: decision.personalNote !== null,
+        note: decision.personalNote,
+        reviewedAt: NOW,
+        version: letter.version + 1,
+      };
+      letters.set(letterId, next);
+      letterEvents.push({
+        letterId,
+        templateKey: "bereavement_physician_condolence_letter",
+        documentKind: `by:${actor.membershipId}`,
+      });
+      return publicLetter(next);
+    },
+    async declineLetter(_actor, letterId, input) {
+      const letter = letterOf(letterId);
+      checkVersion(input.expectedVersion, letter.version);
+      const reason = decideLetterDecline(letter, input.reason);
+      const next = {
+        ...letter,
+        status: "declined" as const,
+        declineReason: reason,
+        reviewedAt: NOW,
+        version: letter.version + 1,
+      };
+      letters.set(letterId, next);
+      return publicLetter(next);
+    },
+  };
+
   return {
     readService,
     writeService,
     draftService,
+    letterService,
+    seedLetter,
+    letters,
+    letterEvents,
     resolver,
     seedPlan,
     seedContact,
@@ -991,6 +1093,7 @@ function makeServer(): { app: ReturnType<typeof buildServer>; backend: FakeBacke
     readService: backend.readService,
     writeService: backend.writeService,
     draftService: backend.draftService,
+    letterService: backend.letterService,
   });
   return { app, backend };
 }
@@ -1777,6 +1880,263 @@ describe("M16 §4.1 routes 35 / 36 — pre-death risk-assessment draft", () => {
     expect(
       (await put(app, { ...NO_PERMS, "idempotency-key": "d-10", "if-match": '"0"' })).statusCode,
     ).toBe(403);
+    await app.close();
+  });
+});
+
+// ── routes 38 / 39 / 40 — the physician condolence letter queue (ADR-0109 D6) ────────────────────────────
+
+describe("M16 §4.1 routes 38 / 39 / 40 — physician letter review queue", () => {
+  const LIST = "/api/v1/bereavement/physician-letters";
+  const forPlan = (planId = LETTER_PLAN_ID) =>
+    `/api/v1/bereavement/plans/${planId}/physician-letter`;
+  const approve = (
+    app: ReturnType<typeof buildServer>,
+    letterId: string,
+    headers: Record<string, string>,
+    payload: unknown = {},
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `${LIST}/${letterId}/approve`,
+      headers,
+      payload: payload as object,
+    });
+  const decline = (
+    app: ReturnType<typeof buildServer>,
+    letterId: string,
+    headers: Record<string, string>,
+    payload: unknown,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `${LIST}/${letterId}/decline`,
+      headers,
+      payload: payload as object,
+    });
+
+  it("oversight lists the queue (filtered by status) and reads the plan's letter", async () => {
+    const { app, backend } = makeServer();
+    const pending = backend.seedLetter();
+    backend.seedLetter({ planId: "10000000-0000-4000-8000-0000000000be", status: "declined" });
+    const all = await app.inject({ method: "GET", url: LIST, headers: SUPERVISOR });
+    expect(all.statusCode).toBe(200);
+    expect(all.json().data).toHaveLength(2);
+    const only = await app.inject({
+      method: "GET",
+      url: `${LIST}?status=pending_review`,
+      headers: SUPERVISOR,
+    });
+    expect(only.json().data.map((l: { letterId: string }) => l.letterId)).toEqual([
+      pending.letterId,
+    ]);
+    const plan = await app.inject({ method: "GET", url: forPlan(), headers: SUPERVISOR });
+    expect(plan.statusCode).toBe(200);
+    expect(plan.json()).toMatchObject({ letterId: pending.letterId, status: "pending_review" });
+    expect(plan.json()).not.toHaveProperty("note");
+    await app.close();
+  });
+
+  it("answers 404 when a plan has no letter, and refuses offset pagination and a bad status", async () => {
+    const { app } = makeServer();
+    expect(
+      (await app.inject({ method: "GET", url: forPlan(), headers: SUPERVISOR })).statusCode,
+    ).toBe(404);
+    expect(
+      (await app.inject({ method: "GET", url: `${LIST}?offset=5`, headers: SUPERVISOR }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (await app.inject({ method: "GET", url: `${LIST}?status=bogus`, headers: SUPERVISOR }))
+        .statusCode,
+    ).toBe(422);
+    await app.close();
+  });
+
+  it("approves with a trimmed personal note: If-Match + Idempotency-Key, version bumps, the stamp is the reviewer", async () => {
+    const { app, backend } = makeServer();
+    const letter = backend.seedLetter();
+    const res = await approve(
+      app,
+      letter.letterId,
+      { ...SUPERVISOR, "idempotency-key": "l-1", "if-match": '"0"' },
+      { personalNote: "  Thank you for caring for this family.  " },
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      status: "approved",
+      version: 1,
+      attendingUserId: LETTER_ATTENDING,
+      hasPersonalNote: true,
+    });
+    expect(res.json()).not.toHaveProperty("note");
+    expect(backend.letters.get(letter.letterId)?.note).toBe(
+      "Thank you for caring for this family.",
+    );
+    expect(backend.letterEvents).toEqual([
+      {
+        letterId: letter.letterId,
+        templateKey: "bereavement_physician_condolence_letter",
+        documentKind: `by:${SUPERVISOR_ID}`,
+      },
+    ]);
+    await app.close();
+  });
+
+  it("requires If-Match (428) and Idempotency-Key (400); a stale version is 412", async () => {
+    const { app, backend } = makeServer();
+    const letter = backend.seedLetter();
+    expect(
+      (await approve(app, letter.letterId, { ...SUPERVISOR, "idempotency-key": "l-2" })).statusCode,
+    ).toBe(428);
+    expect(
+      (await approve(app, letter.letterId, { ...SUPERVISOR, "if-match": '"0"' })).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await approve(app, letter.letterId, {
+          ...SUPERVISOR,
+          "idempotency-key": "l-3",
+          "if-match": '"7"',
+        })
+      ).statusCode,
+    ).toBe(412);
+    expect(backend.letterEvents).toHaveLength(0);
+    await app.close();
+  });
+
+  it("refuses to approve with no attending (422), then approves once the reviewer names an internal clinician", async () => {
+    const { app, backend } = makeServer();
+    const letter = backend.seedLetter({ attendingUserId: null });
+    const headers = { ...SUPERVISOR, "if-match": '"0"' };
+    const refused = await approve(app, letter.letterId, { ...headers, "idempotency-key": "l-4a" });
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json().error?.code ?? refused.json().code).toBe(
+      "PHYSICIAN_LETTER_ATTENDING_REQUIRED",
+    );
+    const ok = await approve(
+      app,
+      letter.letterId,
+      { ...headers, "idempotency-key": "l-4b" },
+      { attendingUserId: PICKED_CLINICIAN },
+    );
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().attendingUserId).toBe(PICKED_CLINICIAN);
+    await app.close();
+  });
+
+  it("rejects a note over 1000 characters and a non-uuid clinician with a TypeBox 422", async () => {
+    const { app, backend } = makeServer();
+    const letter = backend.seedLetter();
+    const headers = { ...SUPERVISOR, "if-match": '"0"' };
+    expect(
+      (
+        await approve(
+          app,
+          letter.letterId,
+          { ...headers, "idempotency-key": "l-5a" },
+          { personalNote: "x".repeat(1001) },
+        )
+      ).statusCode,
+    ).toBe(422);
+    expect(
+      (
+        await approve(
+          app,
+          letter.letterId,
+          { ...headers, "idempotency-key": "l-5b" },
+          { attendingUserId: "not-a-uuid" },
+        )
+      ).statusCode,
+    ).toBe(422);
+    expect(backend.letterEvents).toHaveLength(0);
+    await app.close();
+  });
+
+  it("declines with a reason of 20+ characters; a short one is 422 and a second decision is 409", async () => {
+    const { app, backend } = makeServer();
+    const letter = backend.seedLetter();
+    const headers = { ...SUPERVISOR, "if-match": '"0"' };
+    expect(
+      (
+        await decline(
+          app,
+          letter.letterId,
+          { ...headers, "idempotency-key": "l-6a" },
+          {
+            reason: "too short",
+          },
+        )
+      ).statusCode,
+    ).toBe(422);
+    const ok = await decline(
+      app,
+      letter.letterId,
+      { ...headers, "idempotency-key": "l-6b" },
+      {
+        reason: "The attending left the practice last month.",
+      },
+    );
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({ status: "declined", version: 1 });
+    const again = await approve(app, letter.letterId, {
+      ...headers,
+      "idempotency-key": "l-6c",
+      "if-match": '"1"',
+    });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error?.code ?? again.json().code).toBe("PHYSICIAN_LETTER_NOT_PENDING");
+    await app.close();
+  });
+
+  it("denies a counselor (permission without the oversight predicate), a volunteer and a portal session; a keyless user is 403", async () => {
+    const { app, backend } = makeServer();
+    const letter = backend.seedLetter();
+    for (const [i, who] of [COUNSELOR, VOLUNTEER].entries()) {
+      expect((await app.inject({ method: "GET", url: LIST, headers: who })).statusCode).toBe(403);
+      expect((await app.inject({ method: "GET", url: forPlan(), headers: who })).statusCode).toBe(
+        403,
+      );
+      expect(
+        (
+          await approve(app, letter.letterId, {
+            ...who,
+            "idempotency-key": `l-7-${i}`,
+            "if-match": '"0"',
+          })
+        ).statusCode,
+      ).toBe(403);
+    }
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: LIST,
+          // A bereaved family member's session: a portal class, a portal account, and no staff role.
+          headers: {
+            ...COUNSELOR,
+            "x-test-roles": "bereaved_family",
+            "x-test-session-class": "bereaved_portal",
+            "x-test-portal-account": "acct-1",
+          },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect((await app.inject({ method: "GET", url: LIST, headers: NO_PERMS })).statusCode).toBe(
+      403,
+    );
+    expect(backend.letterEvents).toHaveLength(0);
+    await app.close();
+  });
+
+  it("a letter that does not exist is a 404", async () => {
+    const { app } = makeServer();
+    const res = await approve(app, "10000000-0000-4000-8000-0000000000ff", {
+      ...SUPERVISOR,
+      "idempotency-key": "l-8",
+      "if-match": '"0"',
+    });
+    expect(res.statusCode).toBe(404);
     await app.close();
   });
 });

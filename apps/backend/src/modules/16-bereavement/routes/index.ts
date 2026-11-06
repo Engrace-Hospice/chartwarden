@@ -31,6 +31,15 @@ export type {
   PreDeathDraftView,
   PutPreDeathDraftInput,
 } from "./draft-service";
+export { type M16LetterDeps, buildDrizzleM16LetterService } from "./letter-service-drizzle";
+export type {
+  ApprovePhysicianLetterInput,
+  DeclinePhysicianLetterInput,
+  ListPhysicianLettersInput,
+  M16LetterService,
+  PhysicianLetterStatus,
+  PhysicianLetterView,
+} from "./letter-service";
 export {
   type M16MutatingActor,
   type M16ReadActor,
@@ -65,6 +74,7 @@ export {
 } from "./effects-runner";
 
 import type { M16DraftService } from "./draft-service";
+import type { M16LetterService } from "./letter-service";
 import type { M16ReadService } from "./read-service";
 import type { M16WriteService } from "./write-service";
 
@@ -74,4 +84,6 @@ export interface M16RouteServices {
   readonly writeService: M16WriteService;
   /** ADR-0109 D5 — the pre-death risk-assessment draft (addressed by admission, before any plan). */
   readonly draftService: M16DraftService;
+  /** ADR-0109 D6 — the physician condolence letter review queue (bereavement oversight only). */
+  readonly letterService: M16LetterService;
 }

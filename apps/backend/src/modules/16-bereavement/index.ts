@@ -128,6 +128,8 @@ export {
 export {
   type M16DraftDeps,
   type M16DraftService,
+  type M16LetterDeps,
+  type M16LetterService,
   type M16ReadDeps,
   type M16ReadService,
   type M16RouteServices,
@@ -136,6 +138,7 @@ export {
   type OutboxEmission as M16OutboxEmission,
   type WriteOutboxPort as M16WriteOutboxPort,
   buildDrizzleM16DraftService,
+  buildDrizzleM16LetterService,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
 } from "./routes/index";

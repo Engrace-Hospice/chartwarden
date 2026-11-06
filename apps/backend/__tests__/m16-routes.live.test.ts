@@ -49,10 +49,12 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import { registerBereavementAbacPredicates } from "../src/modules/16-bereavement/abac-predicates";
 import { buildDrizzleBereavementAbacResolver } from "../src/modules/16-bereavement/abac-resolver-drizzle";
 import { createBereavementCipher } from "../src/modules/16-bereavement/bereavement-crypto";
+import { createDrizzleBereavementEraseStore } from "../src/modules/16-bereavement/erasers/bereavement-eraser";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/events-by-m16";
 import { M16_PERMISSION_KEY_LIST } from "../src/modules/16-bereavement/permission-keys";
 import {
   buildDrizzleM16DraftService,
+  buildDrizzleM16LetterService,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
 } from "../src/modules/16-bereavement/routes/index";
@@ -313,6 +315,8 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
       draftService: buildDrizzleM16DraftService(handle.db, {
         admissions: () => admissionReader as never,
       }),
+      // ADR-0109 D6 — the physician letter queue over the same publisher and envelope the write service uses.
+      letterService: buildDrizzleM16LetterService(handle.db, { outbox: outbox as never, cipher }),
       writeService: buildDrizzleM16WriteService(handle.db, readService, {
         outbox: outbox as never,
         cipher,
@@ -1727,6 +1731,225 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect(
       (await call("PUT", url, "donB", { goals }, { "if-match": `"${v0 + 2}"` })).statusCode,
     ).toBe(404);
+  });
+
+  it("physician letter: oversight reviews it, the recipient must be an active member, the note is sealed, approval emits the render request (ADR-0109 D6)", async () => {
+    /** A `pending_review` letter on a fresh plan, as the intake consumer would have left it. */
+    const seedLetter = async (
+      attending: string | null,
+    ): Promise<{ plan: string; letter: string }> => {
+      const plan = await seedPlan(ORG_A);
+      const patient = (
+        await admin.query("SELECT patient_id FROM bereavement_plan WHERE id=$1", [plan])
+      ).rows[0].patient_id as string;
+      const letter = (
+        await admin.query(
+          `INSERT INTO bereavement_physician_letter (organization_id, provider_entity_id, plan_id, patient_id,
+             attending_user_id, due_at)
+           VALUES ($1,$2,$3,$4,$5, now() + interval '2 days') RETURNING id`,
+          [ORG_A, pe[ORG_A], plan, patient, attending],
+        )
+      ).rows[0].id as string;
+      return { plan, letter };
+    };
+    const row = async (letter: string) =>
+      (await admin.query("SELECT * FROM bereavement_physician_letter WHERE id=$1", [letter]))
+        .rows[0] as Record<string, unknown>;
+    const act = (
+      letter: string,
+      verb: "approve" | "decline",
+      as: string,
+      body: unknown,
+      v: number,
+    ) =>
+      call("POST", `/api/v1/bereavement/physician-letters/${letter}/${verb}`, as, body, {
+        "if-match": `"${v}"`,
+      });
+    const reviewable = await seedLetter(null);
+    const note = "Thank you for walking this family home with such care.";
+
+    // the queue and the plan's letter: oversight reads, a counselor does not, another tenant sees nothing
+    const queue = await call(
+      "GET",
+      "/api/v1/bereavement/physician-letters?status=pending_review",
+      "don",
+    );
+    expect(queue.statusCode).toBe(200);
+    expect(queue.json().data.map((l: { letterId: string }) => l.letterId)).toContain(
+      reviewable.letter,
+    );
+    expect(
+      (await call("GET", "/api/v1/bereavement/physician-letters", "counselor")).statusCode,
+    ).toBe(403);
+    const donB = await call("GET", "/api/v1/bereavement/physician-letters", "donB");
+    expect(donB.statusCode).toBe(200);
+    expect(JSON.stringify(donB.json())).not.toContain(reviewable.letter);
+    const forPlan = await call(
+      "GET",
+      `/api/v1/bereavement/plans/${reviewable.plan}/physician-letter`,
+      "don",
+    );
+    expect(forPlan.json()).toMatchObject({
+      letterId: reviewable.letter,
+      attendingUserId: null,
+      version: 0,
+    });
+    expect(
+      (await call("GET", `/api/v1/bereavement/plans/${reviewable.plan}/physician-letter`, "donB"))
+        .statusCode,
+    ).toBe(404);
+
+    // no recipient anywhere => refused; a stranger, a user of another tenant and a counselor caller are refused
+    expect((await act(reviewable.letter, "approve", "don", {}, 0)).statusCode).toBe(422);
+    const stranger = await act(
+      reviewable.letter,
+      "approve",
+      "don",
+      { attendingUserId: randomUUID() },
+      0,
+    );
+    expect(stranger.statusCode).toBe(422);
+    expect(stranger.json().error?.code ?? stranger.json().code).toBe(
+      "PHYSICIAN_LETTER_ATTENDING_INVALID",
+    );
+    expect(
+      (await act(reviewable.letter, "approve", "don", { attendingUserId: actors.donB?.user }, 0))
+        .statusCode,
+    ).toBe(422);
+    expect(
+      (
+        await act(
+          reviewable.letter,
+          "approve",
+          "counselor",
+          { attendingUserId: actors.counselor?.user },
+          0,
+        )
+      ).statusCode,
+    ).toBe(403);
+    expect((await row(reviewable.letter)).status).toBe("pending_review");
+    expect(await events("m16.bereavement.document_requested")).toBe(0);
+
+    // approve: the reviewer names an ACTIVE member; the note is sealed; the render request rides the same transaction
+    const approved = await act(
+      reviewable.letter,
+      "approve",
+      "don",
+      { attendingUserId: actors.counselor?.user, personalNote: `  ${note}  ` },
+      0,
+    );
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json()).toMatchObject({
+      status: "approved",
+      version: 1,
+      attendingUserId: actors.counselor?.user,
+      hasPersonalNote: true,
+    });
+    expect(JSON.stringify(approved.json())).not.toContain("walking this family");
+    const stored = await row(reviewable.letter);
+    expect(stored).toMatchObject({
+      status: "approved",
+      attending_user_id: actors.counselor?.user,
+      reviewed_by_membership_id: actors.don?.membership,
+    });
+    expect(String(stored.personal_note_cipher)).toMatch(/^v1\./);
+    expect(String(stored.personal_note_cipher)).not.toContain("walking this family");
+    expect(stored.m22_render_requested_at).not.toBeNull();
+    expect(await events("m16.bereavement.document_requested")).toBe(1);
+    const emitted = (
+      await admin.query(
+        "SELECT payload FROM outbox_event WHERE event_type='m16.bereavement.document_requested'",
+      )
+    ).rows[0].payload as Record<string, unknown>;
+    expect(emitted).toMatchObject({
+      planId: reviewable.plan,
+      documentKind: "physician_condolence_letter",
+      aggregateId: reviewable.letter,
+      templateKey: "bereavement_physician_condolence_letter",
+    });
+    expect((emitted.payloadJsonb as Record<string, unknown>).personalNote).toBe(note);
+
+    // a second decision on a decided letter is refused; a stale token is 412
+    expect((await act(reviewable.letter, "approve", "don", {}, 1)).statusCode).toBe(409);
+    expect(
+      (
+        await act(
+          reviewable.letter,
+          "decline",
+          "don",
+          { reason: "The attending retired last spring." },
+          1,
+        )
+      ).statusCode,
+    ).toBe(409);
+    expect((await act(reviewable.letter, "approve", "don", {}, 0)).statusCode).toBe(412);
+    expect(await events("m16.bereavement.document_requested")).toBe(1);
+
+    // the care team resolved the attending at intake: approval needs no pick and no note
+    const resolved = await seedLetter(actors.counselor?.user as string);
+    const plain = await act(resolved.letter, "approve", "don2", {}, 0);
+    expect(plain.statusCode).toBe(200);
+    expect(plain.json()).toMatchObject({
+      attendingUserId: actors.counselor?.user,
+      hasPersonalNote: false,
+    });
+    expect((await row(resolved.letter)).personal_note_cipher).toBeNull();
+
+    // decline: a documented reason (TypeBox 422 under 20, service-checked after trimming), stored redacted; terminal
+    const declinable = await seedLetter(null);
+    expect(
+      (await act(declinable.letter, "decline", "don", { reason: "too short" }, 0)).statusCode,
+    ).toBe(422);
+    expect(
+      (await act(declinable.letter, "decline", "don", { reason: `   ${"x".repeat(19)}   ` }, 0))
+        .statusCode,
+    ).toBe(422);
+    const declined = await act(
+      declinable.letter,
+      "decline",
+      "don",
+      { reason: "The attending left the practice in March." },
+      0,
+    );
+    expect(declined.statusCode).toBe(200);
+    expect(declined.json()).toMatchObject({
+      status: "declined",
+      version: 1,
+      declineReason: "The attending left the practice in March.",
+    });
+    expect((await row(declinable.letter)).decline_reason_redacted).toBe(
+      "The attending left the practice in March.",
+    );
+    expect(
+      (
+        await act(
+          declinable.letter,
+          "approve",
+          "don",
+          { attendingUserId: actors.counselor?.user },
+          1,
+        )
+      ).statusCode,
+    ).toBe(409);
+    expect(await events("m16.bereavement.document_requested")).toBe(2); // the declined letter emitted nothing
+
+    // the eraser shreds the sealed note and the decline reason first, then deletes the letters of the decedent's plan
+    const adminHandle = createDbClient({ connectionString: DB_URL as string });
+    const eraser = createDrizzleBereavementEraseStore(adminHandle.db);
+    const decedent = (
+      await admin.query("SELECT patient_id FROM bereavement_plan WHERE id=$1", [reviewable.plan])
+    ).rows[0].patient_id as string;
+    expect(await eraser.shredPhiColumns(ORG_A, decedent)).toBeGreaterThan(0);
+    expect((await row(reviewable.letter)).personal_note_cipher).toBeNull();
+    const declinedPatient = (
+      await admin.query("SELECT patient_id FROM bereavement_plan WHERE id=$1", [declinable.plan])
+    ).rows[0].patient_id as string;
+    await eraser.shredPhiColumns(ORG_A, declinedPatient);
+    expect((await row(declinable.letter)).decline_reason_redacted).toBeNull();
+    const erased = await eraser.erasePatientRecords(ORG_A, decedent, new Date().toISOString());
+    expect(erased.physicianLetters).toBe(1);
+    expect(await row(reviewable.letter)).toBeUndefined();
+    await adminHandle.close();
   });
 
   it("dashboards: the counselor sees her caseload; the supervisor board needs oversight", async () => {

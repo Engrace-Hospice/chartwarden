@@ -61,6 +61,7 @@ type SeedIds = {
   idgRiskFlag: string;
   assessmentTask: string;
   assessmentDraft: string;
+  physicianLetter: string;
 };
 
 /** The 9 manifest-owned M16 tables, each with the seeded row the isolation case looks for. */
@@ -77,6 +78,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "bereavement_idg_risk_flag", key: "idgRiskFlag" },
   { table: "bereavement_assessment_task", key: "assessmentTask" },
   { table: "bereavement_risk_assessment_draft", key: "assessmentDraft" },
+  { table: "bereavement_physician_letter", key: "physicianLetter" },
 ];
 
 describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -251,6 +253,15 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
         [org, pe, location, patient, `6666666${n}-6666-4666-8666-666666666666`, MEMBERSHIP],
       )
     ).rows[0].id as string;
+    // ADR-0109 D6 — the plan's physician condolence letter (one per plan).
+    const physicianLetter = (
+      await db.query(
+        `INSERT INTO bereavement_physician_letter (organization_id, provider_entity_id, location_id, plan_id,
+           patient_id, due_at)
+         VALUES ($1,$2,$3,$4,$5, now() + interval '2 days') RETURNING id`,
+        [org, pe, location, plan, patient],
+      )
+    ).rows[0].id as string;
     return {
       pe,
       location,
@@ -266,6 +277,7 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       idgRiskFlag,
       assessmentTask,
       assessmentDraft,
+      physicianLetter,
     };
   }
 
@@ -300,6 +312,7 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       "0168_idg_downstream_consumer_projections.sql",
       "1342_m16_assessment_task.sql",
       "1343_m16_risk_assessment_draft.sql",
+      "1345_m16_physician_letter.sql",
     ]
       .map((file) => readFileSync(join(MIGRATIONS_DIR, file), "utf8"))
       .join("\n");
@@ -498,6 +511,79 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
         ),
       ),
     ).rejects.toThrow(/berv_assessment_draft_admission_uniq/);
+  });
+
+  it("a physician letter pins its lifecycle: one per plan, a reviewer on every decision, a recipient before approval", async () => {
+    // pending_review names no reviewer; any other status must
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query("UPDATE bereavement_physician_letter SET status='declined' WHERE id=$1", [
+          a.physicianLetter,
+        ]),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_review_chk/);
+    // an approved letter goes to an internal clinician and carries the render request instant
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `UPDATE bereavement_physician_letter SET status='approved', reviewed_at=now(),
+             reviewed_by_membership_id=$2, m22_render_requested_at=now() WHERE id=$1`,
+          [a.physicianLetter, MEMBERSHIP],
+        ),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_attending_chk/);
+    // a decline reason is prose of at least 20 characters, and only a declined letter carries one
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `UPDATE bereavement_physician_letter SET status='declined', reviewed_at=now(),
+             reviewed_by_membership_id=$2, decline_reason_redacted='too short' WHERE id=$1`,
+          [a.physicianLetter, MEMBERSHIP],
+        ),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_decline_chk/);
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query("UPDATE bereavement_physician_letter SET decline_reason_redacted=$2 WHERE id=$1", [
+          a.physicianLetter,
+          "x".repeat(25),
+        ]),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_decline_chk/);
+    // a sealed note rides only an approved or rendered letter
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          "UPDATE bereavement_physician_letter SET personal_note_cipher='v1.x' WHERE id=$1",
+          [a.physicianLetter],
+        ),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_note_chk/);
+    // the whole legal path: decline with a real reason, and the audit row scrubs it
+    await withOrg(ORG_A, () =>
+      db.query(
+        `UPDATE bereavement_physician_letter SET status='declined', reviewed_at=now(),
+           reviewed_by_membership_id=$2, decline_reason_redacted=$3, version=version+1 WHERE id=$1`,
+        [a.physicianLetter, MEMBERSHIP, "The attending retired last spring."],
+      ),
+    );
+    const audit = await db.query(
+      `SELECT after FROM audit_event WHERE resource_kind='bereavement_physician_letter' AND resource_id=$1
+       ORDER BY created_at DESC LIMIT 1`,
+      [a.physicianLetter],
+    );
+    expect(audit.rows[0].after.status).toBe("declined");
+    expect(JSON.stringify(audit.rows[0].after)).not.toContain("retired last spring");
+    // one letter per plan
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO bereavement_physician_letter (organization_id, provider_entity_id, plan_id, patient_id, due_at)
+           SELECT organization_id, provider_entity_id, plan_id, patient_id, due_at FROM bereavement_physician_letter WHERE id=$1`,
+          [a.physicianLetter],
+        ),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_plan_uniq/);
   });
 
   it("chartwarden_app holds no DELETE on the M16 tables — destruction runs through the eraser (§8.5)", async () => {
