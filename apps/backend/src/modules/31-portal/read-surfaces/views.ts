@@ -124,6 +124,8 @@ export interface PortalBereavementScopeView {
     readonly inWindow: boolean;
     readonly mayOptOut: boolean;
     readonly mayRescindOptOut: boolean;
+    /** ADR-0109 D10 — false while the family has stopped mailings (the program and its calls continue). */
+    readonly mailingsAllowed: boolean;
     readonly statusLabel: string; // lay contact status
   }[];
 }

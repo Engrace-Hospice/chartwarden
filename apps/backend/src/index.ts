@@ -6899,6 +6899,60 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 return { contactsOptedOut, alreadyOptedOut };
               },
             },
+            // ADR-0109 D10 — the mailing preference: stop (or resume) MAILINGS for every contact of the account that is
+            // still in the program. M16's own `no_mailings` opt-out / its rescind — the contact stays active, its calls
+            // continue, and the already-scheduled mailed rows become calls.
+            bereavementMailingPreference: {
+              async setMailingPreference({
+                organizationId,
+                userId,
+                portalAccountId,
+                allowMailings,
+              }) {
+                const scopes = await getSeam("BereavedPortalScopeProvider").scopeForPortalAccount(
+                  organizationId,
+                  portalAccountId as never,
+                );
+                const portalActor = {
+                  organizationId,
+                  userId,
+                  membershipId: null,
+                  roles: [],
+                  sessionClass: "bereaved_portal",
+                  locationIds: [],
+                  portalAccountId,
+                  stepUpRecent: false,
+                };
+                let contactsUpdated = 0;
+                let alreadyInState = 0;
+                for (const scope of scopes) {
+                  // Only a contact still in the program and inside its window has a mailing preference to change.
+                  if (scope.status !== "active" || !scope.inBereavementWindow) continue;
+                  if (scope.mailingsAllowed === allowMailings) {
+                    alreadyInState += 1;
+                    continue;
+                  }
+                  if (allowMailings) {
+                    await m16WriteService.rescindOptOut(portalActor, scope.contactId, {});
+                  } else {
+                    await m16WriteService.optOutContact(portalActor, scope.contactId, {
+                      optOutKind: "no_mailings",
+                      sourceKind: "portal_self_service",
+                      reason: "stopped mailings by the bereaved family member in the portal",
+                    });
+                  }
+                  contactsUpdated += 1;
+                }
+                if (contactsUpdated === 0 && alreadyInState === 0) {
+                  throw new ChartWardenError(
+                    "BEREAVEMENT_MAILING_PREFERENCE_NOT_AVAILABLE",
+                    "there is no bereavement contact on this account whose mailing preference can change right now",
+                    409,
+                  );
+                }
+                return { contactsUpdated, alreadyInState };
+              },
+            },
             // GAP-092 — the admin audit-views list: the account user's own read / disclosure trail from M4's
             // sanctioned `audit_event` reader (a page of the user's events, kept to the view / disclosure kinds).
             accountAudit: {

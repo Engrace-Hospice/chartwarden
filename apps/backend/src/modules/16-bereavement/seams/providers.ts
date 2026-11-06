@@ -321,7 +321,7 @@ export function createBereavedPortalScopeProvider(
     async scopeForPortalAccount(_orgId, portalAccountId) {
       const now = clock();
       const rows = await store.contactsForPortalAccount(portalAccountId);
-      return rows.map(({ contact, plan }): BereavedPortalScope => {
+      return rows.map(({ contact, plan, mailingsAllowed }): BereavedPortalScope => {
         const inWindow = isPlanInWindow(plan, now);
         const optedOut = contact.status === "opted_out";
         return {
@@ -335,6 +335,7 @@ export function createBereavedPortalScopeProvider(
             optedOut &&
             contact.optedOutAt !== null &&
             isWithinOptOutRescindWindow(contact.optedOutAt, now),
+          mailingsAllowed,
         };
       });
     },

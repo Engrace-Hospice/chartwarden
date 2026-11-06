@@ -93,6 +93,8 @@ export interface BereavedContactRowView {
   readonly deceasedAt: IsoInstant | null;
   /** D9 — true while the 90-day self-service rescind window is still open on the active opt-out row. */
   readonly mayRescindOptOut: boolean;
+  /** ADR-0109 D10 — false while the contact holds an open `no_mailings` opt-out (the contact stays `active`; calls continue). */
+  readonly mailingsAllowed: boolean;
   /** Absent under the D10 volunteer scope / §7.13 redaction. */
   readonly currentRiskTier?: BereavementRiskTier | null;
   readonly version: number;

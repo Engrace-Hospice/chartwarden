@@ -43,7 +43,7 @@ export type BereavedContactEvent =
       readonly optOutKind: BereavementOptOutKind;
       readonly source: BereavementOptOutSourceKind;
       readonly reason: string;
-      /** Required iff `optOutKind = 'channel_specific'` (§3.3.8). */
+      /** Required iff `optOutKind = 'channel_specific'` (§3.3.8); forbidden for `no_mailings`. */
       readonly channelKinds?: ReadonlyArray<string>;
     }
   | {
@@ -53,6 +53,11 @@ export type BereavedContactEvent =
       readonly optedOutAt: IsoInstant;
       /** A counselor rescind with a documented reason is not bound by the self-service window (§2.3). */
       readonly byCounselor: boolean;
+      /**
+       * The kind of the open row being rescinded (ADR-0109 D10). `no_mailings` leaves the contact `active` and is not
+       * bound by the 90-day window; anything else (or unstated) is the §2.3 `opted_out → active` re-enrolment.
+       */
+      readonly optOutKind?: BereavementOptOutKind;
     }
   | {
       readonly type: "markDeceased";
@@ -93,7 +98,8 @@ export const BEREAVED_CONTACT_GRAPH: Readonly<
   Record<BereavedContactLifecycleState, ReadonlyArray<BereavedContactEvent["type"]>>
 > = {
   proposed: ["confirmContact"],
-  active: ["optOut", "markDeceased", "markUnreachable", "flagComplicatedGrief"],
+  // `rescindOptOut` from `active` is legal ONLY for an open `no_mailings` row (ADR-0109 D10); the machine enforces that.
+  active: ["optOut", "markDeceased", "markUnreachable", "flagComplicatedGrief", "rescindOptOut"],
   opted_out: ["rescindOptOut"],
   unreachable: ["rescindUnreachable"],
   ineligible_post_review: ["clinicalReevaluation"],
@@ -158,6 +164,22 @@ export function transitionBereavedContact(
         "OPT_OUT_REASON_REQUIRED",
         "an opt-out must record the reason given",
       );
+      if (event.optOutKind === "no_mailings") {
+        // ADR-0109 D10 — stop MAILINGS, keep the program. The contact STAYS `active` and its calls and visits continue
+        // (the schedule re-modalizes the mailed kinds to a call); nothing is cancelled, no `opted_out_at` is stamped, and
+        // the event is `contact_mailing_preference_changed` — NOT `contact_opted_out`, which would make M36 drop the
+        // family channel and the D6 roster evaluation count a family that still wants our calls.
+        require_(
+          (event.channelKinds?.length ?? 0) === 0,
+          "OPT_OUT_CHANNEL_KINDS_NOT_ALLOWED",
+          "a no-mailings opt-out stops the mailed kinds as a class; it names no channels",
+        );
+        return result(from, event.type, "active", [
+          { kind: "insert_opt_out", optOutKind: event.optOutKind, source: event.source },
+          { kind: "audit" },
+          { kind: "outbox", event: "m16.bereavement.contact_mailing_preference_changed" },
+        ]);
+      }
       require_(
         event.optOutKind !== "channel_specific" || (event.channelKinds?.length ?? 0) > 0,
         "OPT_OUT_CHANNEL_KINDS_REQUIRED",
@@ -179,6 +201,26 @@ export function transitionBereavedContact(
       ]);
     }
     case "rescindOptOut": {
+      if (event.optOutKind === "no_mailings") {
+        // ADR-0109 D10 — mailings resume. No 90-day window (a family may change its mailing preference any time) and no
+        // schedule regeneration (the contact never left the program; rows already re-modalized to a call stay calls).
+        require_(
+          from === "active",
+          "ILLEGAL_TRANSITION",
+          `a no-mailings opt-out is rescinded on an active contact, not from '${from}'`,
+        );
+        return result(from, event.type, "active", [
+          { kind: "rescind_opt_out", at: event.at },
+          { kind: "audit" },
+          { kind: "outbox", event: "m16.bereavement.contact_mailing_preference_changed" },
+        ]);
+      }
+      // Only the `no_mailings` row is rescindable from `active`; every other opt-out leaves the contact `opted_out`.
+      require_(
+        from === "opted_out",
+        "ILLEGAL_TRANSITION",
+        `bereaved contact cannot rescindOptOut from '${from}'`,
+      );
       // D9 — the portal self-service window is 90 days. A counselor rescind with a documented reason is
       // NOT bound by it (§2.3), because a survivor who calls back at month 5 asking to re-enrol should not
       // be told the software forgot how.

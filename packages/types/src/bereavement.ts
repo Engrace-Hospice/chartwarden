@@ -266,6 +266,7 @@ export const M16_EVENT_NAMES = [
   "m16.bereavement.contact_active",
   "m16.bereavement.contact_opted_out",
   "m16.bereavement.contact_opt_out_rescinded",
+  "m16.bereavement.contact_mailing_preference_changed",
   "m16.bereavement.contact_deceased",
   "m16.bereavement.contact_unreachable",
   "m16.bereavement.contact_unreachable_proposed",
@@ -456,6 +457,17 @@ export interface M16ContactOptOutRescindedPayload {
   readonly contactId: BereavedContactId;
 }
 
+/** `m16.bereavement.contact_mailing_preference_changed` — ADR-0109 D10. A bereaved contact stopped (or resumed) MAILINGS
+ *  only; the contact stays active and calls continue, which is why this is not `contact_opted_out` (M36 would drop the
+ *  family channel for that one). Ids and a flag, no PHI. Consumers: M33 (seam). */
+export interface M16ContactMailingPreferenceChangedPayload {
+  readonly planId: BereavementPlanId;
+  readonly contactId: BereavedContactId;
+  /** False = the family asked to stop mailings; true = mailings resumed. */
+  readonly mailingsAllowed: boolean;
+  readonly source: BereavementOptOutSourceKind;
+}
+
 /** `m16.bereavement.contact_deceased` — the bereaved contact themselves died. Consumers: M33, M36. */
 export interface M16ContactDeceasedPayload {
   readonly planId: BereavementPlanId;
@@ -560,6 +572,7 @@ export interface M16EventPayloadMap {
   "m16.bereavement.contact_active": M16ContactActivePayload;
   "m16.bereavement.contact_opted_out": M16ContactOptedOutPayload;
   "m16.bereavement.contact_opt_out_rescinded": M16ContactOptOutRescindedPayload;
+  "m16.bereavement.contact_mailing_preference_changed": M16ContactMailingPreferenceChangedPayload;
   "m16.bereavement.contact_deceased": M16ContactDeceasedPayload;
   "m16.bereavement.contact_unreachable": M16ContactUnreachablePayload;
   "m16.bereavement.contact_unreachable_proposed": M16ContactUnreachableProposedPayload;
@@ -851,6 +864,8 @@ export interface BereavedPortalScope {
   readonly mayOptOut: boolean;
   /** D9 — true only inside the 90-day self-service rescind window. */
   readonly mayRescindOptOut: boolean;
+  /** ADR-0109 D10 — false while the contact holds an open `no_mailings` opt-out (calls continue). */
+  readonly mailingsAllowed: boolean;
 }
 
 // ── §4.6 / D13 seams this module publishes (impls injected at boot in M16-T05) ────────────────────────

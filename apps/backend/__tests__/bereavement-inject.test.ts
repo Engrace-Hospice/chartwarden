@@ -316,6 +316,7 @@ function createFakeBackend() {
       unreachableProposedAt: c.status === "unreachable" ? null : (c.unreachableProposedAt ?? null),
       deceasedAt: c.deceasedAt,
       mayRescindOptOut: true,
+      mailingsAllowed: true,
       currentRiskTier: c.currentRiskTier as never,
       version: c.version,
     };

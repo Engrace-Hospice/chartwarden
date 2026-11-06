@@ -38,7 +38,19 @@ import type {
   LocalDate,
   M16OutreachStats,
 } from "@chartwarden/types";
-import { type AnyColumn, and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-orm";
+import {
+  type AnyColumn,
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  sql,
+} from "drizzle-orm";
 import { BereavementStateError } from "../lifecycle/index";
 import type { RiskFactorsJsonb } from "../risk/score";
 import {
@@ -540,11 +552,33 @@ export function createDrizzleBereavementSeamStore(db: DbClient): BereavementSeam
         const planIds = [...new Set(contacts.map((c) => c.planId))];
         const plans = await tx.select().from(PLAN).where(inArray(PLAN.id, planIds));
         const planById = new Map(plans.map((p) => [p.id, planFactsOf(p)]));
+        // ADR-0109 D10 — an open `no_mailings` row is a mailing preference, read by kind; it is not a departure.
+        const mailingsStopped = new Set(
+          (
+            await tx
+              .select({ contactId: schema.bereavementOptOut.bereavedContactId })
+              .from(schema.bereavementOptOut)
+              .where(
+                and(
+                  inArray(
+                    schema.bereavementOptOut.bereavedContactId,
+                    contacts.map((c) => c.id),
+                  ),
+                  eq(schema.bereavementOptOut.optOutKind, "no_mailings"),
+                  isNull(schema.bereavementOptOut.rescindedAt),
+                ),
+              )
+          ).map((r) => r.contactId),
+        );
         const rows: BereavedPortalRow[] = [];
         for (const contact of contacts) {
           const plan = planById.get(contact.planId);
           if (plan === undefined) continue;
-          rows.push({ contact: contactViewOf(contact), plan });
+          rows.push({
+            contact: contactViewOf(contact),
+            plan,
+            mailingsAllowed: !mailingsStopped.has(contact.id),
+          });
         }
         return rows;
       });
