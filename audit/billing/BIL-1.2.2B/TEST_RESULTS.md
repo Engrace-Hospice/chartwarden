@@ -15,7 +15,7 @@ Existing focused service, resolver, evidence, and response capture tests remain 
 
 Historical initial verification: **11 files, 80 tests passed**; the TypeScript project build, DDL, migration compatibility, numbering, manifest, tenancy, and whitespace checks passed. The initial `arch:tables` run failed with four findings in `candidate-provider.ts` (direct M1/M41 table references and the platform-context PHI heuristic).
 
-After hardening: **14 files, 108 tests passed**. The final `arch:tables` rerun passed with no violations. The affected TypeScript project build passed with `NODE_OPTIONS=--max-old-space-size=4096` after the Medicare-only unit case was added. Migration compatibility, numbering, manifest, tenancy, DDL and whitespace gates passed. Two attempts at the broader `typecheck:tests` command were interrupted before they yielded a result, so that separate test-program check is **not certified** by this report.
+After hardening: **14 files, 108 tests passed**. The final `arch:tables` rerun passed with no violations. The affected TypeScript project build passed with `NODE_OPTIONS=--max-old-space-size=4096` after the Medicare-only unit case was added. The full `bun run typecheck:tests` command passed on its final run; two earlier attempts had been interrupted before yielding a result. Migration compatibility, numbering, manifest, tenancy, DDL and whitespace gates passed.
 
 Commands executed:
 
@@ -32,6 +32,7 @@ bunx vitest run \
   apps/backend/src/modules/23-billing-medicare/jobs/clearinghouse-submission.test.ts \
   apps/backend/src/modules/41-billing-commercial/jobs/submission-worker.test.ts
 NODE_OPTIONS=--max-old-space-size=4096 bunx tsc -b ./apps/backend ./packages/x12-837-client ./packages/db ./packages/tenancy
+bun run typecheck:tests
 bun run arch:ddl
 bun run arch:migration-compat
 bun run arch:migration-numbering
@@ -41,6 +42,6 @@ bun run arch:tables
 git diff --check
 ```
 
-The initial table-ownership failure is retained above as history; the hardening run passed after cross-owner reads moved behind owner-owned readers. `bun run typecheck:tests` should be executed in CI or a sufficiently provisioned local session before merge.
+The initial table-ownership failure is retained above as history; the hardening run passed after cross-owner reads moved behind owner-owned readers. CI still needs to complete its independent checks before merge.
 
 Initial affected TypeScript check exited 134 after Node hit its default ~2 GB heap limit; it emitted no TypeScript diagnostics. The increased-heap rerun passed. A private disposable PostgreSQL/NOBYPASSRLS live run remains required before resolver activation. No live DB suite, migration application, broad suite, API request, or deployment was run.
