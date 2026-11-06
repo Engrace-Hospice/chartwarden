@@ -61013,7 +61013,7 @@ export interface operations {
                     aggregateId?: string;
                     title: string;
                     patientFacing?: boolean;
-                    mimeType: "application/pdf" | "image/jpeg" | "image/png" | "image/tiff" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                    mimeType: ("application/pdf" | "image/jpeg" | "image/png" | "image/tiff" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document") | "video/mp4";
                     byteSize: number;
                     sha256Hex: string;
                     sourceMetadata?: {

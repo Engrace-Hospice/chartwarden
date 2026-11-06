@@ -134629,30 +134629,38 @@
                   "mimeType": {
                     "anyOf": [
                       {
-                        "const": "application/pdf",
-                        "type": "string"
+                        "anyOf": [
+                          {
+                            "const": "application/pdf",
+                            "type": "string"
+                          },
+                          {
+                            "const": "image/jpeg",
+                            "type": "string"
+                          },
+                          {
+                            "const": "image/png",
+                            "type": "string"
+                          },
+                          {
+                            "const": "image/tiff",
+                            "type": "string"
+                          },
+                          {
+                            "const": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            "type": "string"
+                          }
+                        ]
                       },
                       {
-                        "const": "image/jpeg",
-                        "type": "string"
-                      },
-                      {
-                        "const": "image/png",
-                        "type": "string"
-                      },
-                      {
-                        "const": "image/tiff",
-                        "type": "string"
-                      },
-                      {
-                        "const": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "const": "video/mp4",
                         "type": "string"
                       }
                     ]
                   },
                   "byteSize": {
                     "minimum": 1,
-                    "maximum": 26214400,
+                    "maximum": 524288000,
                     "type": "integer"
                   },
                   "sha256Hex": {
