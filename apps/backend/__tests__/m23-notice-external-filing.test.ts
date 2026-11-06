@@ -125,7 +125,11 @@ const notrRow = (over: Row = {}): Row => ({
   ...over,
 });
 
-function harness(billsOutside?: (organizationId: string) => Promise<boolean>, at: Date = NOW) {
+function harness(
+  billsOutside?: (organizationId: string) => Promise<boolean>,
+  at: Date = NOW,
+  withOutbox = true,
+) {
   const enqueued: unknown[] = [];
   const published: {
     eventName: string;
@@ -143,9 +147,14 @@ function harness(billsOutside?: (organizationId: string) => Promise<boolean>, at
           return { jobId: "job-1" };
         },
       },
-      outbox: {
-        publish: async (_tx: unknown, e: (typeof published)[number]) => void published.push(e),
-      },
+      ...(withOutbox
+        ? {
+            outbox: {
+              publish: async (_tx: unknown, e: (typeof published)[number]) =>
+                void published.push(e),
+            },
+          }
+        : {}),
       ...(billsOutside ? { billsOutside } : {}),
     } as never,
   );
@@ -450,7 +459,7 @@ describe.each([
       expect(table.get(id)).toMatchObject({ windowBreachedAt: "2026-11-07" });
     });
 
-    it("clears a breach stamp the watchdog set before an ON-TIME filing was recorded (the notice was filed in time)", async () => {
+    it("keeps a breach stamp the watchdog set even when the filing is recorded ON TIME, and announces the contradiction with both dates", async () => {
       table.set(
         id,
         make({
@@ -462,11 +471,66 @@ describe.each([
       );
       const { service, published } = harness(outside);
       await record(service, actor, "2026-11-05");
+      // What ChartWarden observed stays on record; the tenant's date is recorded next to it, not over it.
       expect(table.get(id)).toMatchObject({
         externalFilingStatus: "filed",
-        windowBreachedAt: null,
+        filedExternallyOn: "2026-11-05",
+        windowBreachedAt: "2026-11-07",
       });
-      expect(published).toEqual([]); // on time: nothing to announce
+      // ...and compliance and ops hear of it: the existing late-filing event, told apart by `breachObservedAt`.
+      expect(published).toHaveLength(1);
+      const [event] = published;
+      expect(event?.eventName).toBe(eventName);
+      expect(event?.payload).toEqual({
+        [idKey]: id,
+        admissionId: "adm-1",
+        filedOn: "2026-11-05",
+        windowTargetAt: "2026-11-06",
+        breachObservedAt: "2026-11-07",
+      });
+      expect(event).toMatchObject({ aggregateKind, aggregateId: id });
+      const def = M23_OUTBOX_EVENTS.find((e) => e.eventName === eventName);
+      expect(Value.Check(def?.payloadSchema as never, event?.payload)).toBe(true);
+      // a replay of the same record announces nothing more
+      await record(service, actor, "2026-11-05");
+      expect(published).toHaveLength(1);
+    });
+
+    it("an on-time record with NO breach stamp announces nothing", async () => {
+      table.set(id, make({ state: "ready", version: 1, externalFilingStatus: "pending" }));
+      const { service, published } = harness(outside);
+      await record(service, actor, "2026-11-05");
+      expect(published).toEqual([]);
+    });
+
+    it("refuses with a typed 503 when an announcement is due and no outbox is bound; nothing is written", async () => {
+      const lateRow = make({ state: "ready", version: 1, externalFilingStatus: "pending" });
+      table.set(id, lateRow);
+      const { service } = harness(outside, NOW, false);
+      await expect(record(service, actor, "2026-11-08")).rejects.toMatchObject({
+        code: "SEAM_UNBOUND",
+        statusCode: 503,
+      });
+      expect(table.get(id)).toEqual(lateRow);
+
+      const contested = make({
+        state: "ready",
+        version: 1,
+        externalFilingStatus: "pending",
+        windowBreachedAt: "2026-11-07",
+      });
+      table.set(id, contested);
+      await expect(record(service, actor, "2026-11-05")).rejects.toMatchObject({
+        code: "SEAM_UNBOUND",
+      });
+      expect(table.get(id)).toEqual(contested);
+    });
+
+    it("an on-time record with no breach stamp needs no outbox", async () => {
+      table.set(id, make({ state: "ready", version: 1, externalFilingStatus: "pending" }));
+      const { service } = harness(outside, NOW, false);
+      await record(service, actor, "2026-11-05");
+      expect(table.get(id)).toMatchObject({ externalFilingStatus: "filed" });
     });
 
     it("announces a LATE filing with one catalogued event carrying ids and dates only, and a replay does not announce it again", async () => {

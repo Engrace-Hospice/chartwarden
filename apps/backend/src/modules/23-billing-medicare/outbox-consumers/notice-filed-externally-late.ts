@@ -3,7 +3,9 @@
 //
 // The deadline watchdog cannot see it: a notice recorded as filed leaves its scan, so no `window_breached` fires for it, and nobody else
 // would ever hear that the tenant filed late. The record route therefore publishes `m23.noe|notr.filed_externally_late` (catalogued,
-// ids and dates only) in its own transaction; this M23 consumer turns each delivery into
+// ids and dates only) in its own transaction. The same event also announces the opposite disagreement: an ON-TIME date the tenant
+// recorded over a breach the watchdog had already stamped (the stamp is kept); `breachObservedAt` carries that stamped date and tells
+// the two apart. This M23 consumer turns each delivery into
 //   - the M36 alert to the tenant (rule `m23.{noe,notr}.filed_externally_late`: billing manager, compliance officer, org admin), and
 //   - an org-less platform-ops notice (the ops sink: a log line and the optional webhook), so operations hears of it too.
 // A failed alert FAILS the delivery (the relay retries it; the emitter's correlation id keeps a retry from alerting twice). The ops
@@ -40,6 +42,10 @@ const requiredString = (payload: Record<string, unknown>, field: string): string
   return value;
 };
 
+/** An optional string field: absent is fine, present must be a non-empty string (a malformed one fails the delivery). */
+const optionalString = (payload: Record<string, unknown>, field: string): string | undefined =>
+  payload[field] === undefined ? undefined : requiredString(payload, field);
+
 export function buildM23NoticeFiledLateConsumer(
   deps: M23NoticeFiledLateDeps,
 ): OutboxConsumerBinding {
@@ -58,6 +64,7 @@ export function buildM23NoticeFiledLateConsumer(
       const admissionId = requiredString(fields, "admissionId");
       const filedOn = requiredString(fields, "filedOn");
       const windowTargetAt = requiredString(fields, "windowTargetAt");
+      const breachObservedAt = optionalString(fields, "breachObservedAt");
       await deps.alerts.dispatch({
         alertCode: event.eventType,
         severity: "critical",
@@ -67,17 +74,22 @@ export function buildM23NoticeFiledLateConsumer(
           admissionId,
           filedOn,
           windowTargetAt,
+          ...(breachObservedAt ? { breachObservedAt } : {}),
         },
       });
+      const kind = noticeKind.toUpperCase();
       deps.opsNotice?.({
-        kind: "m23.notice_filed_late",
-        summary: `a tenant recorded a ${noticeKind.toUpperCase()} it filed outside ChartWarden after the due date`,
+        kind: breachObservedAt ? "m23.notice_filing_contradicts_breach" : "m23.notice_filed_late",
+        summary: breachObservedAt
+          ? `a tenant recorded an in-window filing date for a ${kind} the deadline watchdog had already stamped as breached; the breach stamp was kept`
+          : `a tenant recorded a ${kind} it filed outside ChartWarden after the due date`,
         details: {
           organizationId: event.organizationId,
           noticeKind,
           noticeId,
           filedOn,
           windowTargetAt,
+          ...(breachObservedAt ? { breachObservedAt } : {}),
         },
         correlationId: event.id,
       });

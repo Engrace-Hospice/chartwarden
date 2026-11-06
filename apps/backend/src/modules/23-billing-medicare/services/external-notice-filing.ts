@@ -10,7 +10,9 @@
 // The mutation is one version-checked same-state patch through the notice repository, captured by the table's write-audit trigger
 // (the actor is the session user; the membership is on the row). A filing recorded AFTER the due date also publishes one catalogued
 // event in the same transaction (`m23.noe|notr.filed_externally_late`: ids and dates only), which M23's own outbox consumer turns
-// into the M36 alert to the tenant and the platform-ops notice. The decision rules are pure (`planExternalFilingRecord` in
+// into the M36 alert to the tenant and the platform-ops notice. A breach the watchdog already stamped is what ChartWarden OBSERVED
+// and is never cleared by a tenant's record: an on-time date recorded over one publishes the same event with `breachObservedAt`
+// (the observed breach date) next to the attested `filedOn`. The decision rules are pure (`planExternalFilingRecord` in
 // @chartwarden/billing); the date they judge "today" against is the Eastern (CMS) calendar day.
 import {
   type NoticeState,
@@ -184,7 +186,7 @@ interface KindOps<R extends RecordableRow> {
   repo(tx: BillingDb): ExternalFilingRepo<R>;
   /** The earliest a filing can carry: the NOE election effective date / the NOTR effective end date (the DDE-acceptance rule). */
   earliestDate(row: R): string;
-  /** The catalogued event a LATE filing publishes, and the payload key naming the notice. */
+  /** The catalogued event a LATE (or breach-contradicting) filing publishes, and the payload key naming the notice. */
   readonly lateEvent: "m23.noe.filed_externally_late" | "m23.notr.filed_externally_late";
   readonly idKey: "noeId" | "notrId";
   readonly aggregateKind: "noe_record" | "notr_record";
@@ -258,17 +260,25 @@ export function buildExternalNoticeFilingService(
           );
         }
         if (plan.kind === "replay") return notice;
+        const announce = plan.late || plan.contradictsBreach;
+        // A fact nobody is told of must not be written: no outbox bound = refuse before the patch (typed 503, never a silent skip).
+        if (announce && !ports.outbox) {
+          throw new ChartWardenError(
+            "SEAM_UNBOUND",
+            "the outbox is not bound: a filing that must be announced to compliance cannot be recorded",
+            503,
+          );
+        }
         const saved = await patchExternalFiling(ops.repo(tx), notice, {
           externalFilingStatus: "filed",
           filedExternallyOn: filedOn,
           filedExternallyRecordedAt: at,
           filedExternallyByMembershipId: actor.membershipId,
-          // The breach on record: the watchdog stops scanning a filed notice, so it would never stamp this one...
+          // The breach on record: the watchdog stops scanning a filed notice, so it would never stamp this one. A stamp the watchdog
+          // already set is NEVER touched (it is what ChartWarden observed; the tenant's date does not outrank it).
           ...(plan.stampBreach ? { windowBreachedAt: filedOn } : {}),
-          // ...and one it stamped BEFORE this on-time filing was recorded was wrong: clear it.
-          ...(plan.clearBreach ? { windowBreachedAt: null } : {}),
         });
-        if (plan.late && ports.outbox) {
+        if (announce && ports.outbox) {
           // Ids and dates only (no patient, no free text). Same transaction: the fact and its announcement commit together.
           await ports.outbox.publish(tx, {
             eventName: ops.lateEvent,
@@ -280,6 +290,9 @@ export function buildExternalNoticeFilingService(
               admissionId: saved.admissionId,
               filedOn,
               windowTargetAt: saved.windowTargetAt,
+              ...(plan.contradictsBreach && saved.windowBreachedAt
+                ? { breachObservedAt: saved.windowBreachedAt }
+                : {}),
             },
           });
         }

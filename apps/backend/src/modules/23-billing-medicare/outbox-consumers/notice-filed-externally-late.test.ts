@@ -93,6 +93,47 @@ describe("the late external filing consumer", () => {
     expect(JSON.stringify([alerts, notices])).not.toMatch(/patient|name|mbi/i);
   });
 
+  it("an in-window filing recorded over a watchdog breach stamp alerts with BOTH dates and a distinguishing ops notice", async () => {
+    const { consumer, alerts, notices } = setup();
+    const contested = { ...NOE, filedOn: "2026-11-05", breachObservedAt: "2026-11-07" };
+    await consumer.handle(event("m23.noe.filed_externally_late", contested));
+    expect(alerts).toEqual([
+      {
+        alertCode: "m23.noe.filed_externally_late",
+        severity: "critical",
+        organizationId: ORG,
+        payload: contested,
+      },
+    ]);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      kind: "m23.notice_filing_contradicts_breach",
+      correlationId: "evt-1",
+      details: {
+        organizationId: ORG,
+        noticeKind: "noe",
+        noticeId: "notice-1",
+        filedOn: "2026-11-05",
+        windowTargetAt: "2026-11-06",
+        breachObservedAt: "2026-11-07",
+      },
+    });
+    // a plain late filing carries no breachObservedAt (the field is what tells the two apart)
+    await consumer.handle(event("m23.noe.filed_externally_late", NOE));
+    expect(alerts[1]?.payload).not.toHaveProperty("breachObservedAt");
+    expect(notices[1]?.kind).toBe("m23.notice_filed_late");
+  });
+
+  it("fails the delivery on a present-but-malformed breachObservedAt", async () => {
+    const { consumer } = setup();
+    await expect(
+      consumer.handle(event("m23.noe.filed_externally_late", { ...NOE, breachObservedAt: "" })),
+    ).rejects.toThrow(/breachObservedAt/);
+    await expect(
+      consumer.handle(event("m23.noe.filed_externally_late", { ...NOE, breachObservedAt: 7 })),
+    ).rejects.toThrow(/breachObservedAt/);
+  });
+
   it("fails the delivery (so the relay retries) on a malformed payload or a failed alert", async () => {
     const { consumer } = setup();
     await expect(
@@ -138,6 +179,18 @@ describe("the late external filing events are catalogued and bound", () => {
       // dates are dates: a timestamp or free text is refused
       expect(
         Value.Check(entry?.payloadSchema as never, { ...payload, filedOn: "yesterday evening" }),
+      ).toBe(false);
+      // the optional observed-breach date is a date too
+      expect(
+        Value.Check(entry?.payloadSchema as never, { ...payload, breachObservedAt: "2026-11-07" }),
+        name,
+      ).toBe(true);
+      expect(
+        Value.Check(entry?.payloadSchema as never, {
+          ...payload,
+          breachObservedAt: "last Tuesday",
+        }),
+        name,
       ).toBe(false);
     }
   });
