@@ -181,6 +181,9 @@ export function planScheduleTopUp(
   fromIso: IsoInstant,
 ): ReadonlyArray<PlannedOutreach> {
   const held = new Set(existingMarks);
+  // `one_month` is the deprecated alias of the day-28 initial outreach: a plan that still holds the old
+  // day-30 call is not given a second call two days earlier.
+  if (held.has("one_month")) held.add("initial_outreach");
   return generateOutreachSchedule(deathDate, contact, { fromIso }).filter(
     (row) => !held.has(row.mark),
   );
