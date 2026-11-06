@@ -19,7 +19,7 @@ export interface OnboardingNoticeView {
   readonly noticeId: string;
   readonly state: string;
   readonly windowTargetAt: string;
-  /** What the deadline watchdog (or a late record) stamped: a withdrawal never touches it. */
+  /** What the deadline watchdog stamped (a withdrawal keeps it); null once the withdrawn LATE record's own stamp is cleared. */
   readonly windowBreachedAt: string | null;
   readonly externalFiling: null;
 }
@@ -28,7 +28,10 @@ export interface OnboardingNoticeWithdrawal {
   /** The notice id (the audit row's resource id). */
   readonly resourceId: string;
   readonly view: OnboardingNoticeView;
-  /** Non-sensitive facts for the platform audit row: the notice kind, the filed date and the record's `recordedAt` withdrawn. */
+  /**
+   * Non-sensitive facts for the platform audit row: the notice kind, the filed date and the record's `recordedAt` withdrawn, and
+   * what became of the breach stamp (`breachStamp`: cleared with its date / kept / none).
+   */
   readonly detail: Readonly<Record<string, string | number | boolean>>;
 }
 

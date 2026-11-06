@@ -414,8 +414,8 @@ export function registerOnboardingDataRoutes(
   );
 
   // POST {noe,notr}-records/:id/withdraw-external-filing — the operator withdraws the tenant's "filed outside ChartWarden" record of
-  // one notice: it returns to its pre-record state and can be recorded or submitted again; a breach stamp is never touched (a NOTR
-  // reopens the prior election its record closed). Not gated on the tenant's onboarding status. Pinned: `If-Match` is the record's
+  // one notice: it returns to its pre-record state and can be recorded or submitted again; a breach stamp the watchdog set stays and the
+  // one a withdrawn LATE record wrote itself goes with it (a NOTR reopens the prior election its record closed). Not gated on the tenant's onboarding status. Pinned: `If-Match` is the record's
   // `externalFiling.recordedAt` (see requiredRecordedAtPin); a record that changed since is a 409. The audit row names the operator,
   // the tenant, the reason and the filed date withdrawn.
   app.post(

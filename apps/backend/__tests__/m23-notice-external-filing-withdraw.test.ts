@@ -1,7 +1,7 @@
 // A platform operator withdraws a tenant's "filed outside ChartWarden" record (owner decision, round 2). The notice returns to its
 // pre-record state: the marker and the three filed columns are cleared together (the table's CHECK moves them as one), the notice
-// can be recorded again or submitted again, and a breach stamp the watchdog set is NEVER touched. No database: the notice
-// repositories are in-memory fakes. The SQL, the platform route and its audit row are proven in `test:m23:tenant-clearinghouse:live`.
+// can be recorded again or submitted again, and a breach stamp the watchdog set is NEVER touched (one the withdrawn LATE record wrote
+// itself is cleared with it). No database: the notice repositories are in-memory fakes. The SQL, the platform route and its audit row are proven in `test:m23:tenant-clearinghouse:live`.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Row = Record<string, unknown>;
@@ -110,10 +110,26 @@ describe.each([
     expect(table.get("n-1")).toMatchObject({ ...CLEARED, state: "ready", version: 4 });
   });
 
-  it("NEVER touches a breach stamp: what the watchdog (or a late record) stamped stays", async () => {
+  it("keeps a breach stamp the watchdog set: it is what ChartWarden observed, not what the withdrawn record wrote", async () => {
     table.set("n-1", filed({ windowBreachedAt: "2026-11-07" }));
-    await withdraw();
+    const res = await withdraw();
     expect(table.get("n-1")).toMatchObject({ ...CLEARED, windowBreachedAt: "2026-11-07" });
+    expect(res.clearedBreachStamp).toBeNull();
+  });
+
+  it("clears the breach stamp the withdrawn LATE record wrote itself (stamp = its filed date, after the due date): the notice was never filed late", async () => {
+    table.set("n-1", filed({ filedExternallyOn: "2026-11-08", windowBreachedAt: "2026-11-08" }));
+    const res = await withdraw();
+    expect(table.get("n-1")).toMatchObject({ ...CLEARED, windowBreachedAt: null });
+    expect(res.clearedBreachStamp).toBe("2026-11-08");
+    expect(res.notice.windowBreachedAt).toBeNull();
+  });
+
+  it("an on-time record over no stamp leaves the stamp column alone (null stays null)", async () => {
+    table.set("n-1", filed());
+    const res = await withdraw();
+    expect(table.get("n-1")?.windowBreachedAt).toBeNull();
+    expect(res.clearedBreachStamp).toBeNull();
   });
 
   it("refuses a notice that is not recorded as filed (unmarked or only parked): nothing to withdraw, nothing written", async () => {

@@ -128,7 +128,7 @@ export interface OnboardingDataService {
   ): Promise<unknown>;
   /**
    * The operator withdraws the tenant's "filed outside ChartWarden" record of one NOE / NOTR: the notice returns to its pre-record
-   * state (a breach stamp is never touched). NOT gated on the tenant's onboarding status. `expected` is the `externalFiling.recordedAt`
+   * state (a watchdog's breach stamp stays; the one a withdrawn LATE record wrote itself is cleared with it). NOT gated on the tenant's onboarding status. `expected` is the `externalFiling.recordedAt`
    * the operator read: a record that changed since is a 409.
    */
   withdrawNoticeExternalFiling(

@@ -71,6 +71,7 @@ import {
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
 import { parkNoticeForExternalFiling } from "../src/modules/23-billing-medicare/jobs/notice-external-filing";
 import { buildClaimValidationContextPort } from "../src/modules/23-billing-medicare/services/claim-validation-context-port";
+import { withdrawExternalNoticeFiling } from "../src/modules/23-billing-medicare/services/external-notice-filing";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
@@ -1368,6 +1369,62 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     const lateEvents = await eventRows("m23.noe.filed_externally_late", "noeId", late);
     expect(lateEvents).toHaveLength(1);
     expect(lateEvents[0]?.payload).not.toHaveProperty("breachObservedAt");
+  }, 60_000);
+
+  it("a withdrawn LATE record takes its own breach stamp with it: re-recording the true on-time date announces nothing, and the window watch scans the notice again", async () => {
+    const { service } = externalFilingService(true);
+    const effective = addDays(todayIso(), -12); // due 7 days ago
+    const id = await seedNoe(ORG_A, { effective, status: "pending" });
+    const lateOn = addDays(effective, 8); // three days late
+    await service.recordNoeExternalFiling(actorOf(ORG_A), id, { filedOn: lateOn });
+    expect(await noeRow(id)).toMatchObject({ external_filing_status: "filed", breached: lateOn });
+    expect(await eventRows("m23.noe.filed_externally_late", "noeId", id)).toHaveLength(1);
+    await dispatcher.tick(); // the late filing's own alert goes out now
+
+    const {
+      rows: [{ recorded_at: recordedAt }],
+    } = await admin.query(
+      "SELECT filed_externally_recorded_at AS recorded_at FROM noe_record WHERE id=$1",
+      [id],
+    );
+    const inOrgA = <T>(fn: (tx: never) => Promise<T>) =>
+      withOrgContext<never, T>(handle.db as never, { organizationId: ORG_A, userId: USER }, fn);
+    const withdrawn = await inOrgA((tx) =>
+      withdrawExternalNoticeFiling(tx, {
+        kind: "noe",
+        organizationId: ORG_A,
+        noticeId: id,
+        expectedRecordedAt: (recordedAt as Date).toISOString(),
+      }),
+    );
+    expect(await noeRow(id)).toMatchObject({
+      external_filing_status: null,
+      filed_on: null,
+      breached: null,
+    });
+    expect(withdrawn.clearedBreachStamp).toBe(lateOn);
+    // the notice is overdue and un-stamped, so the window watch (which re-stamps) scans it again
+    const candidates = await inOrgA((tx) =>
+      new repositories.NoeRepository(tx).listWindowWatchCandidates(ORG_A, todayIso()),
+    );
+    expect(candidates.map((c) => c.id)).toContain(id);
+
+    // the tenant records the TRUE date, which was on time: no stamp to contradict, so nothing is announced
+    lateAlerts.length = 0;
+    lateOpsNotices.length = 0;
+    const onTimeOn = addDays(effective, 3);
+    await service.recordNoeExternalFiling(actorOf(ORG_A), id, { filedOn: onTimeOn });
+    expect(await noeRow(id)).toMatchObject({
+      external_filing_status: "filed",
+      filed_on: onTimeOn,
+      breached: null,
+    });
+    expect(await eventRows("m23.noe.filed_externally_late", "noeId", id)).toHaveLength(1); // the first record's, no second
+    await dispatcher.tick();
+    expect(lateAlerts.filter((a) => (a.payload as { noeId?: string }).noeId === id)).toEqual([]);
+    expect(
+      lateOpsNotices.filter((n) => (n.details as { noticeId?: string }).noticeId === id),
+    ).toEqual([]);
   }, 60_000);
 
   it("refuses an organization ChartWarden files for; a parked NOE goes the normal way once the org transmits again, and the marker clears", async () => {

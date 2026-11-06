@@ -260937,7 +260937,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Withdraw the \"filed outside ChartWarden\" record of a tenant's NOE (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match). tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp is never cleared, and a NOTR's prior-election closure goes with the record",
+        "summary": "Withdraw the \"filed outside ChartWarden\" record of a tenant's NOE (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match). tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp the watchdog set is kept, the stamp a withdrawn LATE record wrote itself is cleared with it, and a NOTR's prior-election closure goes with the record",
         "parameters": [
           {
             "name": "orgSlug",
@@ -261018,7 +261018,7 @@
                       "anyOf": [
                         {
                           "format": "date",
-                          "description": "A breach stamp (the deadline watchdog's, or a late record's) is never cleared by a withdrawal.",
+                          "description": "The deadline watchdog's breach stamp is kept by a withdrawal; the stamp the withdrawn LATE record wrote itself is cleared with it (null here).",
                           "type": "string"
                         },
                         {
@@ -261071,7 +261071,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Withdraw the \"filed outside ChartWarden\" record of a tenant's NOTR, which reopens the prior election that record closed (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match). tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp is never cleared, and a NOTR's prior-election closure goes with the record",
+        "summary": "Withdraw the \"filed outside ChartWarden\" record of a tenant's NOTR, which reopens the prior election that record closed (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match). tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp the watchdog set is kept, the stamp a withdrawn LATE record wrote itself is cleared with it, and a NOTR's prior-election closure goes with the record",
         "parameters": [
           {
             "name": "orgSlug",
@@ -261152,7 +261152,7 @@
                       "anyOf": [
                         {
                           "format": "date",
-                          "description": "A breach stamp (the deadline watchdog's, or a late record's) is never cleared by a withdrawal.",
+                          "description": "The deadline watchdog's breach stamp is kept by a withdrawal; the stamp the withdrawn LATE record wrote itself is cleared with it (null here).",
                           "type": "string"
                         },
                         {

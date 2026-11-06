@@ -148,13 +148,38 @@ describe("planExternalFilingWithdrawal", () => {
     filedExternallyOn: "2026-11-04",
     filedExternallyRecordedAt: RECORDED,
     expectedRecordedAt: RECORDED,
+    windowTargetAt: "2026-11-06",
+    windowBreachedAt: null,
   };
 
   it("withdraws the record the operator read, and says which filed date it withdrew", () => {
     expect(planExternalFilingWithdrawal(filed)).toEqual({
       kind: "withdraw",
       withdrawnFiledOn: "2026-11-04",
+      clearBreach: false,
     });
+  });
+
+  // A LATE record stamps `window_breached_at = filedOn` itself. Withdrawing that record must take its own stamp back (the notice was
+  // never filed late: it was never filed), or re-recording the true on-time date reads as contradicting a breach nobody observed.
+  it("clears the breach stamp the withdrawn LATE record wrote itself (stamp = its filed date, after the due date)", () => {
+    expect(
+      planExternalFilingWithdrawal({
+        ...filed,
+        filedExternallyOn: "2026-11-08",
+        windowBreachedAt: "2026-11-08",
+      }),
+    ).toEqual({ kind: "withdraw", withdrawnFiledOn: "2026-11-08", clearBreach: true });
+  });
+
+  it.each([
+    ["a stamp the watchdog set on another day", "2026-11-08", "2026-11-09"],
+    ["an on-time record over a watchdog stamp", "2026-11-04", "2026-11-07"],
+    ["an on-time record whose date happens to equal the stamp", "2026-11-06", "2026-11-06"],
+  ] as const)("keeps %s", (_label, filedExternallyOn, windowBreachedAt) => {
+    expect(
+      planExternalFilingWithdrawal({ ...filed, filedExternallyOn, windowBreachedAt }),
+    ).toMatchObject({ kind: "withdraw", clearBreach: false });
   });
 
   it.each([null, "pending"] as const)(
