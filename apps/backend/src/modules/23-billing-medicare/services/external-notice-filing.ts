@@ -18,6 +18,7 @@ import {
   type NoticeState,
   medicareReceiptDay,
   planExternalFilingRecord,
+  planExternalFilingWithdrawal,
   repositories,
 } from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -241,6 +242,58 @@ const NOTR_OPS: KindOps<repositories.NotrRecord> = {
   idKey: "notrId",
   aggregateKind: "notr_record",
 };
+
+/** Clears the marker and the three filed columns together (the table's CHECK moves them as one). Never `windowBreachedAt`. */
+const WITHDRAW_PATCH: ExternalFilingPatch = {
+  externalFilingStatus: null,
+  filedExternallyOn: null,
+  filedExternallyRecordedAt: null,
+  filedExternallyByMembershipId: null,
+};
+
+/**
+ * A platform operator withdraws a tenant's "filed outside ChartWarden" record, on the caller's transaction (already scoped to the
+ * tenant's org and attributed to the operator: the table's write-audit trigger names them). The notice returns to its pre-record
+ * state (state unchanged), so it can be recorded again or submitted again, and for a NOTR the prior-election closure it provided
+ * is gone with the marker (that closure is derived from the marker, `prior-election-closure.ts`). A breach stamp is never touched.
+ * Pinned to the record the operator read (`expectedRecordedAt`); anything else is a 409.
+ */
+export async function withdrawExternalNoticeFiling(
+  tx: BillingDb,
+  input: {
+    readonly kind: ExternalNoticeKind;
+    readonly organizationId: string;
+    readonly noticeId: string;
+    readonly expectedRecordedAt: string;
+  },
+): Promise<{
+  readonly notice: repositories.NoeRecord | repositories.NotrRecord;
+  readonly withdrawnFiledOn: string;
+  /** The `recordedAt` of the record withdrawn (what the operator pinned). */
+  readonly withdrawnRecordedAt: string;
+}> {
+  const ops: KindOps<repositories.NoeRecord> | KindOps<repositories.NotrRecord> =
+    input.kind === "noe" ? NOE_OPS : NOTR_OPS;
+  const notice = await ops.find(tx, input.noticeId);
+  if (!notice || notice.organizationId !== input.organizationId) throw new NotFoundError("notice");
+  const plan = planExternalFilingWithdrawal({
+    externalFilingStatus: notice.externalFilingStatus,
+    filedExternallyOn: notice.filedExternallyOn,
+    filedExternallyRecordedAt: notice.filedExternallyRecordedAt?.toISOString() ?? null,
+    expectedRecordedAt: input.expectedRecordedAt,
+  });
+  if (plan.kind === "refuse") throw new ChartWardenError(plan.code, plan.message, plan.status);
+  const saved = await patchExternalFiling(
+    ops.repo(tx) as ExternalFilingRepo<typeof notice>,
+    notice,
+    WITHDRAW_PATCH,
+  );
+  return {
+    notice: saved,
+    withdrawnFiledOn: plan.withdrawnFiledOn,
+    withdrawnRecordedAt: input.expectedRecordedAt,
+  };
+}
 
 export function buildExternalNoticeFilingService(
   db: BillingDb,

@@ -3,7 +3,7 @@
 // the future and not before the notice's earliest date, a re-record of the same date is a no-op and a different date is
 // refused, and a date after the due date is stamped as a breach on record.
 import { describe, expect, it } from "vitest";
-import { planExternalFilingRecord } from "../src/notice";
+import { planExternalFilingRecord, planExternalFilingWithdrawal } from "../src/notice";
 
 const base = {
   state: "ready" as const,
@@ -136,5 +136,47 @@ describe("planExternalFilingRecord", () => {
     expect(
       planExternalFilingRecord({ ...base, windowBreachedAt: "2026-11-07", filedOn: "2026-11-09" }),
     ).toMatchObject({ contradictsBreach: false, late: true });
+  });
+});
+
+// A platform operator can withdraw a tenant's "filed outside ChartWarden" record (a mistaken or fraudulent one: the tenant itself
+// cannot, and cancel refuses). The withdrawal is pinned to the record the operator read (its recordedAt).
+describe("planExternalFilingWithdrawal", () => {
+  const RECORDED = "2026-11-10T15:00:00.000Z";
+  const filed = {
+    externalFilingStatus: "filed" as const,
+    filedExternallyOn: "2026-11-04",
+    filedExternallyRecordedAt: RECORDED,
+    expectedRecordedAt: RECORDED,
+  };
+
+  it("withdraws the record the operator read, and says which filed date it withdrew", () => {
+    expect(planExternalFilingWithdrawal(filed)).toEqual({
+      kind: "withdraw",
+      withdrawnFiledOn: "2026-11-04",
+    });
+  });
+
+  it.each([null, "pending"] as const)(
+    "refuses a notice that is not recorded as filed (marker %s): there is nothing to withdraw",
+    (externalFilingStatus) => {
+      expect(
+        planExternalFilingWithdrawal({
+          ...filed,
+          externalFilingStatus,
+          filedExternallyOn: null,
+          filedExternallyRecordedAt: null,
+        }),
+      ).toMatchObject({ kind: "refuse", code: "NOTICE_NOT_FILED_EXTERNALLY", status: 409 });
+    },
+  );
+
+  it("refuses when the record changed since the operator read it (re-recorded after a withdrawal)", () => {
+    expect(
+      planExternalFilingWithdrawal({
+        ...filed,
+        filedExternallyRecordedAt: "2026-11-11T09:00:00.000Z",
+      }),
+    ).toMatchObject({ kind: "refuse", code: "NOTICE_FILING_RECORD_CHANGED", status: 409 });
   });
 });

@@ -57,6 +57,9 @@ interface Call {
   readonly expectedVersion?: number | undefined;
   /** The BAA verification's pin: the `baa.recordedAt` the operator read (its If-Match). */
   readonly expected?: { readonly recordedAt: string };
+  /** `withdrawNoticeExternalFiling`: which notice (NOE / NOTR) and its id. */
+  readonly noticeKind?: "noe" | "notr";
+  readonly noticeId?: string;
 }
 
 function recordingService(calls: Call[]): OnboardingDataService {
@@ -127,6 +130,25 @@ function recordingService(calls: Call[]): OnboardingDataService {
       calls.push({ method: "verifyClearinghouseBaa", op, orgSlug, reason, expected });
       return { status: "verified", baa: { verified: { at: "2026-11-06T00:00:00.000Z" } } };
     },
+    withdrawNoticeExternalFiling: async (
+      op: OnboardingOperator,
+      orgSlug: string,
+      noticeKind: "noe" | "notr",
+      noticeId: string,
+      reason: string,
+      expected: { recordedAt: string },
+    ) => {
+      calls.push({
+        method: "withdrawNoticeExternalFiling",
+        op,
+        orgSlug,
+        noticeKind,
+        noticeId,
+        reason,
+        expected,
+      });
+      return { noticeKind, noticeId, externalFiling: null };
+    },
   } as unknown as OnboardingDataService;
 }
 
@@ -144,6 +166,7 @@ const GRANTS = {
         "tenant_clearinghouse.read_platform",
         "tenant_clearinghouse.write_platform",
         "tenant_clearinghouse.verify_baa_platform",
+        "tenant_notice_filing.withdraw_platform",
       ],
     },
   ],
@@ -293,6 +316,16 @@ describe("write guards (every write route)", () => {
     {
       method: "POST",
       url: `${URL_BASE}/clearinghouse/baa/verify`,
+      payload: { reason: "ticket CHG-1" },
+    },
+    {
+      method: "POST",
+      url: `${URL_BASE}/noe-records/${PE_ID}/withdraw-external-filing`,
+      payload: { reason: "ticket CHG-1" },
+    },
+    {
+      method: "POST",
+      url: `${URL_BASE}/notr-records/${PE_ID}/withdraw-external-filing`,
       payload: { reason: "ticket CHG-1" },
     },
   ];
@@ -596,6 +629,103 @@ describe("clearinghouse routes", () => {
       expect(ok.statusCode, header).toBe(200);
       expect(calls[0]).toMatchObject({ expected: { recordedAt: BAA_PIN } });
     }
+    await app.close();
+  });
+});
+
+describe.each([
+  ["noe", "noe-records"],
+  ["notr", "notr-records"],
+] as const)("withdraw-external-filing (%s): an operator-only action", (kind, segment) => {
+  const URL = `${URL_BASE}/${segment}/${PE_ID}/withdraw-external-filing`;
+  const RECORDED_AT = "2026-11-09T10:30:00.123Z";
+  const post = (
+    app: ReturnType<typeof makeServer>,
+    headers: Record<string, string>,
+    payload: object = { reason: "Filed in error, ticket CHG-77" },
+  ) =>
+    app.inject({
+      method: "POST",
+      url: URL,
+      headers: { "if-match": `"${RECORDED_AT}"`, ...headers },
+      payload,
+    });
+
+  it("is its own key: an operator who may verify a BAA may not withdraw a filing record; a tenant admin never may", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const noKey = await post(app, { ...fresh(), "x-test-user": "writer-only-user" });
+    expect(noKey.statusCode).toBe(403);
+    const tenant = await post(app, {
+      "x-test-user": "tenant-admin",
+      "x-test-org": TARGET_ORG,
+      "x-test-roles": "org_admin",
+      "x-step-up": "fresh",
+      "idempotency-key": key(),
+    });
+    expect(tenant.statusCode).toBe(403);
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("needs a reason (422), and carries the operator, the tenant, the notice, the reason and the pin to the service", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    expect((await post(app, fresh(), {})).statusCode).toBe(422);
+    expect((await post(app, fresh(), { reason: "    short  " })).statusCode).toBe(422);
+    expect(calls).toEqual([]);
+
+    const ok = await post(app, fresh());
+    expect(ok.statusCode).toBe(200);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      method: "withdrawNoticeExternalFiling",
+      orgSlug: "tenant-b",
+      noticeKind: kind,
+      noticeId: PE_ID,
+      reason: "Filed in error, ticket CHG-77",
+      expected: { recordedAt: RECORDED_AT },
+    });
+    expect(calls[0]?.op.userId).toBe(OPERATOR_USER);
+    await app.close();
+  });
+
+  it("is pinned to the record the operator read: If-Match (its recordedAt) is required (428) and must be a real timestamp (422)", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const bare = (headers: Record<string, string>) =>
+      app.inject({
+        method: "POST",
+        url: URL,
+        headers: { ...fresh(), ...headers },
+        payload: { reason: "Filed in error, ticket CHG-77" },
+      });
+    const missing = await bare({});
+    expect(missing.statusCode).toBe(428);
+    expect(missing.json().error?.code ?? missing.json().code).toBe("IF_MATCH_REQUIRED");
+    for (const badPin of ['"3"', '"yesterday"', '"2026-11-06"', '"2026-02-30T00:00:00.000Z"']) {
+      expect((await bare({ "if-match": badPin })).statusCode, badPin).toBe(422);
+    }
+    expect(calls).toEqual([]);
+    for (const header of [`"${RECORDED_AT}"`, `W/"${RECORDED_AT}"`, RECORDED_AT]) {
+      calls.length = 0;
+      expect((await bare({ "if-match": header })).statusCode, header).toBe(200);
+      expect(calls[0]).toMatchObject({ expected: { recordedAt: RECORDED_AT } });
+    }
+    await app.close();
+  });
+
+  it("refuses a notice id that is not a uuid (422) before it reaches the service", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const res = await app.inject({
+      method: "POST",
+      url: `${URL_BASE}/${segment}/not-a-uuid/withdraw-external-filing`,
+      headers: { "if-match": `"${RECORDED_AT}"`, ...fresh() },
+      payload: { reason: "Filed in error, ticket CHG-77" },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(calls).toEqual([]);
     await app.close();
   });
 });

@@ -1169,6 +1169,7 @@ import {
   toFacilitySpans,
 } from "./modules/23-billing-medicare/services/claim-cbsa";
 import { buildClearinghouseAttemptResolutionService } from "./modules/23-billing-medicare/services/clearinghouse-attempt-resolution-service";
+import { buildExternalNoticeOnboardingPort } from "./modules/23-billing-medicare/services/external-notice-onboarding-port";
 import { resolveInpatientCapDifferential } from "./modules/23-billing-medicare/services/inpatient-cap-differential";
 import { platformFallbackFromEnv } from "./modules/23-billing-medicare/tenant-clearinghouse/choice";
 import { buildTenantClearinghouseOnboardingPort } from "./modules/23-billing-medicare/tenant-clearinghouse/onboarding-port";
@@ -6191,6 +6192,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   db: dbHandle.db,
                   service: tenantClearinghouseService,
                 }),
+                // An operator withdraws a tenant's "filed outside ChartWarden" NOE / NOTR record (M23's own rule, on the caller's tx).
+                notices: buildExternalNoticeOnboardingPort(),
                 settleOnboarding: settleOnboardingForOrg,
                 macCredentials: buildMacOnboardingCredentialPort({
                   writeService: buildDrizzleM23WriteService(dbHandle.db, {

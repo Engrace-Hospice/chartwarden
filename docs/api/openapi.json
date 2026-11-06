@@ -260931,6 +260931,274 @@
         }
       }
     },
+    "/api/v1/platform/tenants/{orgSlug}/noe-records/{id}/withdraw-external-filing": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugNoerecordsByIdWithdrawexternalfiling",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Withdraw the \"filed outside ChartWarden\" record of a tenant's NOE (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match). tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp is never cleared, and a NOTR's prior-election closure goes with the record",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The `externalFiling.recordedAt` (UTC ISO timestamp) of the filing record the operator read from the notice; a record withdrawn and re-recorded since is refused with 409 NOTICE_FILING_RECORD_CHANGED.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "noticeKind",
+                    "noticeId",
+                    "state",
+                    "windowTargetAt",
+                    "windowBreachedAt",
+                    "externalFiling"
+                  ],
+                  "properties": {
+                    "noticeKind": {
+                      "anyOf": [
+                        {
+                          "const": "noe",
+                          "type": "string"
+                        },
+                        {
+                          "const": "notr",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "noticeId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "state": {
+                      "description": "The notice's own state, unchanged by the withdrawal.",
+                      "type": "string"
+                    },
+                    "windowTargetAt": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "windowBreachedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "description": "A breach stamp (the deadline watchdog's, or a late record's) is never cleared by a withdrawal.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalFiling": {
+                      "description": "The record is gone: the notice is back to its pre-record state.",
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/notr-records/{id}/withdraw-external-filing": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugNotrrecordsByIdWithdrawexternalfiling",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Withdraw the \"filed outside ChartWarden\" record of a tenant's NOTR, which reopens the prior election that record closed (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match). tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp is never cleared, and a NOTR's prior-election closure goes with the record",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The `externalFiling.recordedAt` (UTC ISO timestamp) of the filing record the operator read from the notice; a record withdrawn and re-recorded since is refused with 409 NOTICE_FILING_RECORD_CHANGED.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "noticeKind",
+                    "noticeId",
+                    "state",
+                    "windowTargetAt",
+                    "windowBreachedAt",
+                    "externalFiling"
+                  ],
+                  "properties": {
+                    "noticeKind": {
+                      "anyOf": [
+                        {
+                          "const": "noe",
+                          "type": "string"
+                        },
+                        {
+                          "const": "notr",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "noticeId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "state": {
+                      "description": "The notice's own state, unchanged by the withdrawal.",
+                      "type": "string"
+                    },
+                    "windowTargetAt": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "windowBreachedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "description": "A breach stamp (the deadline watchdog's, or a late record's) is never cleared by a withdrawal.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalFiling": {
+                      "description": "The record is gone: the notice is back to its pre-record state.",
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/platform/tenants/{orgSlug}/offboard": {
       "post": {
         "operationId": "postApiV1PlatformTenantsByOrgSlugOffboard",

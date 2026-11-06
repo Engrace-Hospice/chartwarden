@@ -33,6 +33,11 @@ import type {
   OnboardingCredentialPort,
   OnboardingWriteScope,
 } from "../../../../bootstrap/onboarding-credential-port";
+import type {
+  OnboardingNoticeKind,
+  OnboardingNoticePort,
+  OnboardingNoticeView,
+} from "../../../../bootstrap/onboarding-notice-port";
 import { createDrizzleSiteAdminRepository } from "../../../../bootstrap/site-admin-repository";
 import {
   type SiteWriteDeps,
@@ -121,6 +126,19 @@ export interface OnboardingDataService {
     reason: string,
     expected: { readonly recordedAt: string },
   ): Promise<unknown>;
+  /**
+   * The operator withdraws the tenant's "filed outside ChartWarden" record of one NOE / NOTR: the notice returns to its pre-record
+   * state (a breach stamp is never touched). NOT gated on the tenant's onboarding status. `expected` is the `externalFiling.recordedAt`
+   * the operator read: a record that changed since is a 409.
+   */
+  withdrawNoticeExternalFiling(
+    op: OnboardingOperator,
+    orgSlug: string,
+    kind: OnboardingNoticeKind,
+    noticeId: string,
+    reason: string,
+    expected: { readonly recordedAt: string },
+  ): Promise<OnboardingNoticeView>;
   listMedicaidCredentials(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
   upsertMedicaidCredential(
     op: OnboardingOperator,
@@ -155,6 +173,8 @@ export interface OnboardingDataDeps {
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
   /** M23's clearinghouse adapter (ADR-0053 amendment 2026-11-06); unbound -> the clearinghouse routes answer 503. */
   readonly clearinghouse?: OnboardingClearinghousePort;
+  /** M23's notice adapter (an operator withdraws a tenant's external-filing record); unbound -> that route answers 503. */
+  readonly notices?: OnboardingNoticePort;
   /**
    * Runs the onboarding advance pass for the tenant after a clearinghouse change COMMITS, so wizard step 7
    * (`clearinghouse_selected`) settles at once. Best effort: a failure is the caller's to log and never fails the write.
@@ -477,6 +497,17 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     return deps.clearinghouse;
   }
 
+  function noticePort(): OnboardingNoticePort {
+    if (!deps.notices) {
+      throw new ChartWardenError(
+        "ONBOARDING_NOTICES_UNBOUND",
+        "the notice adapter is not bound in this deployment",
+        503,
+      );
+    }
+    return deps.notices;
+  }
+
   /** Post-commit, best effort: the advance pass that settles wizard step 7. A failure is logged and never thrown. */
   async function settleStepAfter<T>(organizationId: string, result: T): Promise<T> {
     if (!deps.settleOnboarding) return result;
@@ -658,6 +689,30 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             resourceId: done.resourceId,
             ...(done.detail ? { detail: done.detail } : {}),
           };
+        },
+      ),
+
+    withdrawNoticeExternalFiling: (op, orgSlug, kind, noticeId, reason, expected) =>
+      write(
+        op,
+        orgSlug,
+        {
+          event: EVENTS.noticeExternalFilingWithdrawn,
+          resourceKind: kind === "noe" ? "noe_record" : "notr_record",
+          reason,
+          anyTenantStatus: true,
+        },
+        async (tx, t) => {
+          const done = await noticePort().withdrawExternalFiling(
+            tx,
+            scopeOf(op, t.organizationId),
+            {
+              kind,
+              noticeId,
+              expectedRecordedAt: expected.recordedAt,
+            },
+          );
+          return { value: done.view, resourceId: done.resourceId, detail: done.detail };
         },
       ),
 

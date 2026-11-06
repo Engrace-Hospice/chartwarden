@@ -15375,6 +15375,7 @@ import {
   OnboardingClearinghouseVerifyRequest as M34OnboardingClearinghouseVerifyRequest,
   OnboardingClearinghouseVerifyResponseSchema as M34OnboardingClearinghouseVerifyResponseSchema,
   OnboardingClearinghouseViewSchema as M34OnboardingClearinghouseViewSchema,
+  OnboardingNoticeWithdrawalViewSchema as M34OnboardingNoticeWithdrawalViewSchema,
   OnboardingReasonSchema as M34OnboardingReasonSchema,
 } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-typebox";
 
@@ -15390,6 +15391,16 @@ const M34_CLEARINGHOUSE_WRITE_NOTE =
   "tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused";
 const M34_CLEARINGHOUSE_BAA_NOTE =
   "tenant_clearinghouse.verify_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. NOT limited to an onboarding tenant (a live tenant that changed vendor needs it too); an AI actor is refused";
+const M34_NOTICE_WITHDRAW_NOTE =
+  "tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp is never cleared, and a NOTR's prior-election closure goes with the record";
+const M34_NOTICE_WITHDRAW_HEADERS = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  "If-Match": {
+    required: true,
+    description:
+      "The `externalFiling.recordedAt` (UTC ISO timestamp) of the filing record the operator read from the notice; a record withdrawn and re-recorded since is refused with 409 NOTICE_FILING_RECORD_CHANGED.",
+  },
+};
 const CLEARINGHOUSE_CHOICE_NOTE =
   "stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work";
 Object.assign(ROUTE_ENRICHMENTS, {
@@ -15454,6 +15465,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
       },
     },
     response: M34OnboardingClearinghouseViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/noe-records/:id/withdraw-external-filing": {
+    summary: `Withdraw the "filed outside ChartWarden" record of a tenant's NOE (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match). ${M34_NOTICE_WITHDRAW_NOTE}`,
+    body: M34OnboardingReasonSchema,
+    headers: M34_NOTICE_WITHDRAW_HEADERS,
+    response: M34OnboardingNoticeWithdrawalViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/notr-records/:id/withdraw-external-filing": {
+    summary: `Withdraw the "filed outside ChartWarden" record of a tenant's NOTR, which reopens the prior election that record closed (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match). ${M34_NOTICE_WITHDRAW_NOTE}`,
+    body: M34OnboardingReasonSchema,
+    headers: M34_NOTICE_WITHDRAW_HEADERS,
+    response: M34OnboardingNoticeWithdrawalViewSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/activate": {
     summary: `Activate a tenant's verified clearinghouse config; settles wizard step 7 once every earlier step allows it. ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
