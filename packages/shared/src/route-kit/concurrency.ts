@@ -66,6 +66,14 @@ export function ifMatchVersionOf(request: HeaderCarrier): number {
   return Number(cleaned);
 }
 
+/**
+ * The row version in an OPTIONAL `If-Match`: absent is `undefined` (the route accepts an unconditioned
+ * write); present but not an integer is 400, never silently "no precondition".
+ */
+export function optionalIfMatchVersionOf(request: HeaderCarrier): number | undefined {
+  return headerOf(request, "if-match")?.trim() ? ifMatchVersionOf(request) : undefined;
+}
+
 /** Pre-handler: refuse a request without a well-formed `If-Match` before the handler runs. */
 export function requireIfMatch() {
   return async (request: HeaderCarrier): Promise<void> => {

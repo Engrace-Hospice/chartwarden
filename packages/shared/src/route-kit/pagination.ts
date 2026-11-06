@@ -117,3 +117,58 @@ export function pageQuery(options: PageOptions = {}): {
     limit: pageLimit(options),
   };
 }
+
+/** A per-route page-size policy (server default + hard max) for a `?limit=` read as raw query input. */
+export interface PageSizePolicy {
+  readonly defaultSize: number;
+  readonly maxSize: number;
+}
+
+/** Clamp a raw `?limit=` into `[1, maxSize]`, defaulting to the route's page size when absent or non-numeric. */
+export function clampLimit(raw: unknown, policy: PageSizePolicy): number {
+  const n = typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : Number.NaN;
+  if (!Number.isFinite(n)) return policy.defaultSize;
+  return Math.min(policy.maxSize, Math.max(1, Math.floor(n)));
+}
+
+/**
+ * The snake_case keyset envelope the PHI list routes pin (`{ data, next_cursor, has_more }`). No
+ * `total_count`: a count on a PHI list is an enumeration oracle.
+ */
+export interface CursorPage<T> {
+  readonly data: T[];
+  readonly next_cursor: string | null;
+  readonly has_more: boolean;
+}
+
+/** Slice a `limit + 1` row set into a {@link CursorPage}, signing the last row's anchor for `orgId`. */
+export function toCursorPage<R, T>(
+  orgId: string,
+  rows: readonly R[],
+  limit: number,
+  anchorOf: (row: R) => KeysetCursor,
+  map: (row: R) => T,
+): CursorPage<T> {
+  const hasMore = rows.length > limit;
+  const slice = hasMore ? rows.slice(0, limit) : rows;
+  const last = slice[slice.length - 1];
+  return {
+    data: slice.map(map),
+    next_cursor: hasMore && last !== undefined ? encodeCursor(orgId, anchorOf(last)) : null,
+    has_more: hasMore,
+  };
+}
+
+/** Pre-handler: refuse `?offset=` on a keyset-paginated PHI list (400 OFFSET_PAGINATION_FORBIDDEN). */
+export function rejectOffsetPagination() {
+  return async (request: { readonly query?: unknown }): Promise<void> => {
+    const query = (request.query ?? {}) as Record<string, unknown>;
+    if (query.offset !== undefined) {
+      throw new ChartWardenError(
+        "OFFSET_PAGINATION_FORBIDDEN",
+        "offset pagination is not supported on this list; use ?cursor=",
+        400,
+      );
+    }
+  };
+}

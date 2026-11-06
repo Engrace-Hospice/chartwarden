@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   InvalidCursorError,
   actorOf,
+  clampLimit,
   configureCursorSigningKey,
   decodeCursor,
   encodeCursor,
@@ -13,10 +14,13 @@ import {
   isKeysetCursor,
   isUniqueViolation,
   membershipActorOf,
+  optionalIfMatchVersionOf,
   pageQuery,
+  rejectOffsetPagination,
   rejectAiActor,
   requireIdempotencyKey,
   requireIfMatch,
+  toCursorPage,
   uniqueViolationConstraint,
   writeActorOf,
 } from "../src/route-kit";
@@ -97,6 +101,60 @@ describe("route-kit actor", () => {
       statusCode: 403,
     });
     await expect(rejectAiActor()(ctx())).resolves.toBeUndefined();
+  });
+});
+
+describe("route-kit optional If-Match", () => {
+  it("is undefined when absent, the version when present, 400 when malformed", () => {
+    expect(optionalIfMatchVersionOf(headers({}))).toBeUndefined();
+    expect(optionalIfMatchVersionOf(headers({ "if-match": '"4"' }))).toBe(4);
+    expect(() => optionalIfMatchVersionOf(headers({ "if-match": "x" }))).toThrow(
+      expect.objectContaining({ statusCode: 400 }),
+    );
+  });
+});
+
+describe("route-kit keyset envelope", () => {
+  it("clamps a raw limit into the policy and defaults a missing one", () => {
+    const policy = { defaultSize: 25, maxSize: 100 };
+    expect(clampLimit(undefined, policy)).toBe(25);
+    expect(clampLimit("500", policy)).toBe(100);
+    expect(clampLimit(0, policy)).toBe(1);
+  });
+
+  it("slices limit + 1 rows into a page whose cursor decodes for the same org", () => {
+    configureCursorSigningKey("k".repeat(32));
+    const rows = [1, 2, 3].map((n) => ({ at: `2026-01-0${n}`, id: `r${n}` }));
+    const page = toCursorPage(
+      ORG_A,
+      rows,
+      2,
+      (r) => ({ a: r.at, id: r.id }),
+      (r) => r.id,
+    );
+    expect(page.data).toEqual(["r1", "r2"]);
+    expect(page.has_more).toBe(true);
+    expect(decodeCursor(ORG_A, page.next_cursor, isKeysetCursor)).toEqual({
+      a: "2026-01-02",
+      id: "r2",
+    });
+    expect(
+      toCursorPage(
+        ORG_A,
+        rows,
+        3,
+        (r) => ({ a: r.at, id: r.id }),
+        (r) => r.id,
+      ).next_cursor,
+    ).toBeNull();
+  });
+
+  it("refuses ?offset= with 400 OFFSET_PAGINATION_FORBIDDEN", async () => {
+    await expect(rejectOffsetPagination()({ query: { offset: "10" } })).rejects.toMatchObject({
+      statusCode: 400,
+      code: "OFFSET_PAGINATION_FORBIDDEN",
+    });
+    await expect(rejectOffsetPagination()({ query: {} })).resolves.toBeUndefined();
   });
 });
 
