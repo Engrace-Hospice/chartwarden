@@ -22,6 +22,7 @@ import {
   type M23TransportDeps,
   pullTransportAcks,
   transportUpload,
+  transportUploadPerOrg,
 } from "../src/modules/23-billing-medicare/jobs/clearinghouse-submission";
 import { buildDirectMacGateway } from "../src/modules/23-billing-medicare/jobs/direct-mac-gateway";
 
@@ -133,6 +134,79 @@ describe("Stedi credential rejected at runtime", () => {
       expect(captured.alerts).toHaveLength(2);
     });
   }
+});
+
+describe("per-organization binding (tenant clearinghouses): the rejection hold engages", () => {
+  // transportForOrg hands every call a FRESH deps object around the resolver's cached binding, so the hold must be keyed on
+  // the stable binding/transport, not on the deps object.
+  it("the second call for the same org never reaches the vendor and only one alert fires", async () => {
+    let calls = 0;
+    const stedi = new StediTransport({
+      apiKey: KEY,
+      attempts: new InMemoryAttemptStore(),
+      fetch: (async () => {
+        calls += 1;
+        return new Response("{}", { status: 401 });
+      }) as typeof fetch,
+    });
+    const orgA: ClearinghouseBinding = { vendor: "stedi", transport: stedi }; // what the resolver caches per (org, version)
+    const { d, captured } = deps({
+      vendor: null,
+      transport: stedi,
+      forOrg: async (org) => (org === ORG_A ? orgA : { vendor: null, transport: stedi }),
+    });
+    const send = transportUploadPerOrg({ transport: d });
+    const input = (controlNumber: string) => ({
+      organizationId: ORG_A,
+      providerEntityId: PE_A,
+      kind: "claim_837i" as const,
+      x12: withIsa13(CLAIM_X12, controlNumber),
+      controlNumber,
+    });
+
+    const first = await send(input("000000001")).catch((e: Error) => e.message);
+    const second = await send(input("000000002")).catch((e: Error) => e.message);
+
+    expect(String(first)).toContain(`(${CH.NOT_WIRED})`);
+    expect(String(second)).toContain(`(${CH.NOT_WIRED})`);
+    expect(calls).toBe(1); // the second call is held, not sent
+    expect(captured.alerts).toHaveLength(1);
+    expect(captured.alerts[0]).toMatchObject({ alertCode: CREDENTIAL_REJECTED_ALERT, organizationId: ORG_A });
+  });
+
+  it("a re-entered credential is a new binding, so the old hold does not apply to it", async () => {
+    let calls = 0;
+    const rejecting = new StediTransport({
+      apiKey: KEY,
+      attempts: new InMemoryAttemptStore(),
+      fetch: (async () => {
+        calls += 1;
+        return new Response("{}", { status: 401 });
+      }) as typeof fetch,
+    });
+    const fixed = new StediTransport({
+      apiKey: "stedi-key-FIXED-0002",
+      attempts: new InMemoryAttemptStore(),
+      fetch: (async () => {
+        calls += 1;
+        return new Response("{}", { status: 401 });
+      }) as typeof fetch,
+    });
+    let current: ClearinghouseBinding = { vendor: "stedi", transport: rejecting };
+    const { d } = deps({ vendor: null, transport: rejecting, forOrg: async () => current });
+    const send = transportUploadPerOrg({ transport: d });
+    const input = (controlNumber: string) => ({
+      organizationId: ORG_A,
+      providerEntityId: PE_A,
+      kind: "claim_837i" as const,
+      x12: withIsa13(CLAIM_X12, controlNumber),
+      controlNumber,
+    });
+    await send(input("000000001")).catch(() => undefined);
+    current = { vendor: "stedi", transport: fixed }; // the tenant rotated its key: the resolver rebuilt the binding
+    await send(input("000000002")).catch(() => undefined);
+    expect(calls).toBe(2); // the new credential was tried at once, not held for ten minutes
+  });
 });
 
 describe("a non-credential CH_NOT_WIRED does not look like a rejected credential", () => {
