@@ -3,9 +3,10 @@
 //
 //   TenantClearinghouseReader         the fact: the org's config row (or the platform-env fallback), read on the tenant pool
 //                                     under the org's own RLS scope. No cache.
-//   ClaimsBillingEntitlementReader    the decision the gate asks for: `stedi` / `claimmd` (or the fallback) in `active` status
-//                                     may start new claims work; `outside`, nothing chosen, and a draft / verified config may not.
-//                                     No fee, no add-on: only the choice.
+//   ClaimsBillingEntitlementReader    the decision the gate asks for: a suspended / paused / canceled subscription refuses first
+//                                     (owner decision D1, through the M35 seam); then `stedi` / `claimmd` (or the fallback) in
+//                                     `active` status may start new claims work, while `outside`, nothing chosen, and a draft /
+//                                     verified config may not. No fee, no add-on: the subscription and the choice.
 // `CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` names the organizations the platform's own env binding (CLEARINGHOUSE_VENDOR) keeps
 // serving when they have no row (the demo tenant); every other org with no row has chosen nothing.
 import { type DbClient, schema } from "@chartwarden/db";
@@ -14,6 +15,7 @@ import {
   type ClaimsBillingEntitlement,
   type ClaimsBillingEntitlementReader,
   NO_CLEARINGHOUSE_CHOICE,
+  type SubscriptionWorkBlockReader,
   type TenantClearinghouseChoice,
   type TenantClearinghouseMode,
   type TenantClearinghouseReader,
@@ -27,10 +29,9 @@ import { clearinghouseUsageFromEnv } from "../jobs/clearinghouse-context";
 import type { ConfigRow } from "./config-store";
 import type { PlatformFallback } from "./service";
 
-import { CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV } from "../../../bootstrap/env";
+import { CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV, isOrgIdList } from "../../../bootstrap/env";
 
 export { CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV };
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FALLBACK_VENDORS: ReadonlySet<string> = new Set([
   "stedi",
   "claimmd",
@@ -38,20 +39,19 @@ const FALLBACK_VENDORS: ReadonlySet<string> = new Set([
   "in_memory",
 ]);
 
-/** The organizations named in `CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` (comma-separated uuids). A malformed id refuses boot. */
+/** The organizations named in `CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` (comma-separated uuids). A malformed list refuses boot. */
 export function parseFallbackOrgIds(raw: string | undefined): ReadonlySet<string> {
-  const ids = (raw ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  for (const id of ids) {
-    if (!UUID.test(id)) {
-      throw new Error(
-        `${CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV} must be a comma-separated list of organization uuids`,
-      );
-    }
+  if (!isOrgIdList(raw ?? "")) {
+    throw new Error(
+      `${CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV} must be a comma-separated list of organization uuids`,
+    );
   }
-  return new Set(ids.map((id) => id.toLowerCase()));
+  return new Set(
+    (raw ?? "")
+      .split(",")
+      .map((id) => id.trim().toLowerCase())
+      .filter((id) => id.length > 0),
+  );
 }
 
 /**
@@ -141,12 +141,20 @@ export function createTenantClearinghouseReader(deps: {
   };
 }
 
-/** The gate's seam (`ClaimsBillingEntitlementReader`) over the choice reader. A failed read throws; new-work callers fail closed. */
+/**
+ * The gate's seam (`ClaimsBillingEntitlementReader`) over the choice reader AND the subscription (owner decision D1): a
+ * suspended, paused or canceled subscription refuses new claims work with its own reason whatever the clearinghouse says (it is
+ * asked first: it is the more basic fact), then the clearinghouse decides. A failed read of either throws; new-work callers
+ * fail closed.
+ */
 export function createClaimsBillingEntitlementReader(
   reader: TenantClearinghouseReader,
+  subscription: SubscriptionWorkBlockReader,
 ): ClaimsBillingEntitlementReader {
   return {
     async entitlementForOrg(organizationId) {
+      const block = await subscription.blockForOrg(organizationId);
+      if (block.blocked) return { entitled: false, reason: block.reason };
       return decideClaimsBilling(await reader.choiceForOrg(organizationId));
     },
   };

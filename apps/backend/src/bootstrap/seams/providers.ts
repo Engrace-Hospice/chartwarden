@@ -132,6 +132,7 @@ import type {
   SessionContextResolver,
   SignedEncountersReader,
   SubscriptionStateProvider,
+  SubscriptionWorkBlockReader,
   SupervisorReader,
   SupervisoryCadencePlanReader,
   SupervisoryCadenceReader,
@@ -1922,6 +1923,14 @@ export const patientCounterProviderDenyStub: PatientCounterProvider = {
 export const claimsBillingEntitlementReaderDenyStub: ClaimsBillingEntitlementReader = {
   async entitlementForOrg() {
     throw new NotImplementedError("ClaimsBillingEntitlementReader");
+  },
+};
+
+/** Owner decision D1 — whether a suspended / paused / canceled subscription blocks new claims work. Throws until M35 registers
+ *  the real reader: the claims-billing decision then throws, and the gate fails CLOSED (503 / hold). */
+export const subscriptionWorkBlockReaderDenyStub: SubscriptionWorkBlockReader = {
+  async blockForOrg() {
+    throw new NotImplementedError("SubscriptionWorkBlockReader");
   },
 };
 

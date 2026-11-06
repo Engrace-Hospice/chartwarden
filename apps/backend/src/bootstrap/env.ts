@@ -34,13 +34,13 @@ export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = [
 export const CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV = "CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS";
 const ORG_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** True when the value is a comma-separated list of organization uuids (blank entries ignored). */
+/**
+ * True when the value is a comma-separated list of organization uuids: a blank value names no organization, but a blank ENTRY
+ * (`,,`, a trailing comma) is a typo and is refused. The one definition: boot parsing (`parseFallbackOrgIds`) uses it too.
+ */
 export function isOrgIdList(raw: string): boolean {
-  return raw
-    .split(",")
-    .map((id) => id.trim())
-    .filter((id) => id.length > 0)
-    .every((id) => ORG_ID_SHAPE.test(id));
+  if (raw.trim().length === 0) return true;
+  return raw.split(",").every((id) => ORG_ID_SHAPE.test(id.trim()));
 }
 
 /** ADR-0108 D6 — the claims-billing add-on enforcement mode (the gate lives in ./claims-billing-gate.ts). */

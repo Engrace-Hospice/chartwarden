@@ -705,6 +705,29 @@ export interface ClaimsBillingEntitlementReader {
   entitlementForOrg(organizationId: OrgId): Promise<ClaimsBillingEntitlement>;
 }
 
+/**
+ * Owner decision D1 (2026-11-06) — a suspended, paused or canceled ChartWarden subscription still blocks NEW claims and
+ * eligibility work, whatever the tenant's clearinghouse says (the add-on is gone; the subscription is not). The reasons are the
+ * same strings the gate's 402 carries ({@link ClaimsBillingDenyReason}).
+ */
+export type SubscriptionWorkBlockReason =
+  | "subscription_suspended"
+  | "subscription_paused"
+  | "subscription_canceled";
+
+export type SubscriptionWorkBlock =
+  | { readonly blocked: false }
+  | { readonly blocked: true; readonly reason: SubscriptionWorkBlockReason };
+
+/**
+ * The seam (owner M35) through which M23's claims-billing decision reads the org's subscription: `blocked` for a suspended,
+ * paused or canceled one; not blocked for trialing / active / past_due / at_risk, and for an org with no subscription row
+ * (nothing suspended it). No cache. Throws when the read fails; the gate then fails CLOSED.
+ */
+export interface SubscriptionWorkBlockReader {
+  blockForOrg(organizationId: OrgId): Promise<SubscriptionWorkBlock>;
+}
+
 /** §4.5 platform-shared revenue metrics (consumed by M33 for the platform-ops revenue dashboard). */
 export interface RevenueMetricsProvider {
   currentMonthMrrCents(): Promise<number>;
