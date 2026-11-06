@@ -7,9 +7,20 @@
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m12:crons-transmit:live
  */
-import { DegradedError, NotEnabledError } from "@chartwarden/dosespot";
+import {
+  DegradedError,
+  type DoseSpotFetch,
+  NotEnabledError,
+  createEnvTenantConfigResolver,
+  createHttpDoseSpotClient,
+  createLayeredTenantConfigResolver,
+} from "@chartwarden/dosespot";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { enqueueTransmissionIfBound } from "../src/modules/12-dosespot/index";
+import {
+  type ClinicSecretCipher,
+  createDrizzleTenantConfigSource,
+  enqueueTransmissionIfBound,
+} from "../src/modules/12-dosespot/index";
 import { inOrg } from "../src/modules/12-dosespot/jobs/cron-common";
 import {
   type M12CronDeps,
@@ -268,6 +279,133 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
     const t = await txRow(transmissionId as string);
     expect(t.retry_count).toBe(0);
     expect(t.transmission_failed_at).toBeNull();
+  });
+
+  // ── the SAME deferral, produced by the real resolver and the real HTTP client (no hand-made error in a fake vendor) ────────────
+  describe("a registration that is not live defers through the real layered resolver (ADR-0110 D6)", () => {
+    const CLINIC_KEY = "clinic-key-plaintext-CRON-4d1b";
+    const platformEnv: Record<string, string | undefined> = {
+      DOSESPOT_SANDBOX_ENABLED: "true",
+      DOSESPOT_SUBSCRIPTION_KEY_SANDBOX: "platform-sandbox-sub-key",
+    };
+    let cipherOpens: "ok" | "corrupt" = "ok";
+    // The sealing itself is proved on the real key ring in m12-tenant-dosespot.live; here the cipher is a stub that either opens the
+    // bundle or refuses like a bad GCM tag (the row's text is opaque to the source).
+    const stubCipher: ClinicSecretCipher = {
+      encrypt: async () => ({ cipher: "sealed", dekRef: "dek-1" }),
+      decrypt: async () => {
+        if (cipherOpens === "corrupt")
+          throw new Error("Unsupported state or unable to authenticate data");
+        return { clinicKey: CLINIC_KEY };
+      },
+    };
+    let vendorRequests: string[] = [];
+    const fakeFetch: DoseSpotFetch = async (url) => {
+      vendorRequests.push(url);
+      if (url.endsWith("/connect/token"))
+        return {
+          status: 200,
+          text: async () => JSON.stringify({ access_token: "tok", expires_in: 3600 }),
+        };
+      if (url.endsWith("/prescriptions/send"))
+        return { status: 200, text: async () => JSON.stringify({ Items: [{ Id: 9001 }] }) };
+      return { status: 200, text: async () => JSON.stringify({ Id: 9001 }) };
+    };
+    const realClient = () =>
+      createHttpDoseSpotClient({
+        resolver: createLayeredTenantConfigResolver({
+          source: createDrizzleTenantConfigSource({
+            db: h.handle.db,
+            cipher: stubCipher,
+            platformEnv,
+          }),
+          fallback: createEnvTenantConfigResolver({}),
+        }),
+        fetch: fakeFetch,
+        sleep: async () => undefined,
+      });
+    const realDeps = (): M12CronDeps => ({
+      db: h.handle.db,
+      outbox: h.outbox,
+      client: realClient(),
+      now: () => T0,
+    });
+    const registration = async (
+      status: "registered" | "verified" | "active",
+      environment = "sandbox",
+    ) => {
+      const m = h.memberOf[ORG_A];
+      await h.admin.query("DELETE FROM dosespot_clinic_registration WHERE organization_id=$1", [
+        ORG_A,
+      ]);
+      await h.admin.query(
+        `INSERT INTO dosespot_clinic_registration (organization_id, environment, status, clinic_id, service_clinician_id,
+           secret_cipher, secret_dek_ref, registered_at, registered_by_membership_id, verified_at, verified_by_membership_id,
+           activated_at, activated_by_membership_id, set_by_membership_id)
+         VALUES ($1,$2,$3,'clinic-cron','900','sealed','dek-1', now(), $4,
+           CASE WHEN $3 IN ('verified','active') THEN now() END, CASE WHEN $3 IN ('verified','active') THEN $4::uuid END,
+           CASE WHEN $3 = 'active' THEN now() END, CASE WHEN $3 = 'active' THEN $4::uuid END, $4)`,
+        [ORG_A, environment, status, m],
+      );
+    };
+    beforeEach(() => {
+      cipherOpens = "ok";
+      vendorRequests = [];
+      platformEnv.DOSESPOT_SANDBOX_ENABLED = "true";
+    });
+    afterAll(async () => {
+      await h.admin.query("DELETE FROM dosespot_clinic_registration WHERE organization_id=$1", [
+        ORG_A,
+      ]);
+    });
+
+    const deferralCases: ReadonlyArray<readonly [string, () => Promise<void>]> = [
+      [
+        "a `registered` row (a rotation landed, not yet re-tested)",
+        () => registration("registered"),
+      ],
+      ["a `verified` row (deactivated)", () => registration("verified")],
+      [
+        "an `active` sandbox row while the platform's sandbox flag is off",
+        async () => {
+          await registration("active");
+          platformEnv.DOSESPOT_SANDBOX_ENABLED = "false";
+        },
+      ],
+      [
+        "an `active` row whose sealed key cannot be opened (a corrupt envelope: the typed 503)",
+        async () => {
+          await registration("active");
+          cipherOpens = "corrupt";
+        },
+      ],
+    ];
+    it.each(deferralCases)(
+      "%s: the order returns to queued, retry_count stays 0, and nothing is sent to the vendor",
+      async (_name, arrange) => {
+        const { orderId, transmissionId } = await queued();
+        await arrange();
+        const r = await runTransmitNewRxForOrg(realDeps(), ORG_A);
+        expect(r).toMatchObject({ claimed: 1, deferredByOutage: 1, failed: 0, requeued: 0 });
+        expect(await orderRow(orderId)).toMatchObject({
+          status: "queued_for_transmission",
+          s: "queued",
+        });
+        const t = await txRow(transmissionId as string);
+        expect(t.retry_count).toBe(0);
+        expect(t.transmission_failed_at).toBeNull();
+        expect(vendorRequests).toEqual([]);
+      },
+    );
+
+    it("control: the same order goes out once the registration is active and its key opens (so the deferrals above are the registration's doing)", async () => {
+      const { orderId } = await queued();
+      await registration("active");
+      const r = await runTransmitNewRxForOrg(realDeps(), ORG_A);
+      expect(r).toMatchObject({ claimed: 1, transmitted: 1, deferredByOutage: 0 });
+      expect((await orderRow(orderId)).rx).toBe("9001");
+      expect(vendorRequests.some((u) => u.includes("/prescriptions/send"))).toBe(true);
+    });
   });
 
   it("an open circuit defers WITHOUT burning the retry budget (the outage must not exhaust orders)", async () => {

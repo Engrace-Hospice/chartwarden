@@ -23,8 +23,15 @@
  *   - the operator lane: only while the tenant is provisioning / onboarding (409 TENANT_NOT_ONBOARDING otherwise, audited), a
  *     deactivation excepted; every success leaves an audit row naming operator, org and reason;
  *   - the wizard fact: the migration-seeded precondition of step 10 is `context.dosespotSettled == true`, true exactly while the
- *     registration is `active`.
+ *     registration is `active`;
+ *   - the enrolment claim on the real row lock and unique index (two concurrent enrolments: one vendor call, the loser a 409), the
+ *     own-marker release, a revoked or suspended member never enrolled or linked;
+ *   - migration 1383 over real org-admin / administrator / clinical / platform-level role rows;
+ *   - the operator port's `assertTxScopedToOrg` guard, and a slug never reaching another tenant's registration or roster;
+ *   - `DOSESPOT_SANDBOX_ENABLED`: an active sandbox row stops being live with the flag off, and activation is refused;
+ *   - every vendor request of the suite (token mint, clinician add) ran with no transaction open (per async call chain).
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -131,14 +138,46 @@ describe.skipIf(!DB_URL)(
       body?: string;
     }[] = [];
     let enrollBehaviour: "ok" | "rejected" = "ok";
+    let enrollDelayMs = 0;
+    // EVERY vendor request (token mint, clinician add, status read) that is made while a transaction on the tenant pool is open is
+    // counted here; the final case asserts it never happened. `tdb` is the tenant pool with its `transaction` counted.
+    // The flag follows the async call chain (AsyncLocalStorage), so a vendor call made by one concurrent request is not blamed on a
+    // transaction another request holds open.
     let vendorCallsInsideTx = 0;
     let txOpen = 0;
+    const inTransaction = new AsyncLocalStorage<boolean>();
+    const vendorTraffic = { tokenMints: 0, clinicianAdds: 0 };
+    let tdb: typeof tenantPool.db;
+    const countingDb = (db: typeof tenantPool.db): typeof tenantPool.db =>
+      new Proxy(db, {
+        get(target, prop) {
+          if (prop === "transaction") {
+            return (fn: (tx: unknown) => Promise<unknown>, ...rest: unknown[]) =>
+              (target as any).transaction(
+                async (tx: unknown) => {
+                  txOpen += 1;
+                  try {
+                    return await inTransaction.run(true, () => fn(tx));
+                  } finally {
+                    txOpen -= 1;
+                  }
+                },
+                ...rest,
+              );
+          }
+          const value = Reflect.get(target, prop, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
     let vendorSeq = 700;
 
     const q = async <T = Record<string, any>>(text: string, params: unknown[] = []) =>
       (await admin.query(text, params)).rows as T[];
 
     const fakeFetch: DoseSpotFetch = async (url, init) => {
+      if (inTransaction.getStore() === true) vendorCallsInsideTx += 1;
+      if (url.endsWith("/connect/token")) vendorTraffic.tokenMints += 1;
+      if (url.endsWith("/api/clinicians")) vendorTraffic.clinicianAdds += 1;
       fetchLog.push({
         url,
         method: init.method,
@@ -155,7 +194,7 @@ describe.skipIf(!DB_URL)(
         };
       }
       if (url.endsWith("/api/clinicians")) {
-        if (txOpen > 0) vendorCallsInsideTx += 1;
+        if (enrollDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, enrollDelayMs));
         return enrollBehaviour === "ok"
           ? { status: 200, text: async () => JSON.stringify({ Id: ++vendorSeq }) }
           : { status: 422, text: async () => "" };
@@ -205,6 +244,7 @@ describe.skipIf(!DB_URL)(
     let route: ReturnType<typeof buildDrizzleDoseSpotClinicRouteService>;
     let enrollment: ReturnType<typeof createPrescriberEnrollmentService>;
     let onboardingData: ReturnType<typeof buildDrizzleOnboardingDataService>;
+    let dosespotPort: ReturnType<typeof buildDoseSpotClinicOnboardingPort>;
     let outbox: DoseSpotWriteOutboxPort;
     let client: ReturnType<typeof createHttpDoseSpotClient>;
     let seq = 0;
@@ -302,6 +342,7 @@ describe.skipIf(!DB_URL)(
       tenantPool = createDbClient({
         connectionString: await appRoleConnectionString(admin, DB_URL as string),
       });
+      tdb = countingDb(tenantPool.db);
       const provisioned = spawnSync("bun", ["run", "scripts/db/provision-runtime-roles.ts"], {
         cwd: join(__dirname, "../../.."),
         env: {
@@ -324,7 +365,7 @@ describe.skipIf(!DB_URL)(
       const adapter = createPlatformKekAdapter(ring);
       __resetModule34SeamsForTest();
       registerLiveM34Seams({
-        db: tenantPool.db,
+        db: tdb,
         auditBypass: m34PlatformBypassAuditor,
         kekUnwrap: adapter,
         keyRingDb: platformPool.db,
@@ -392,7 +433,7 @@ describe.skipIf(!DB_URL)(
         });
       };
       route = buildDrizzleDoseSpotClinicRouteService({
-        db: tenantPool.db,
+        db: tdb,
         service,
         audit: buildClinicAuditPort(),
         outbox,
@@ -405,7 +446,7 @@ describe.skipIf(!DB_URL)(
       });
       client = createHttpDoseSpotClient({
         resolver: createLayeredTenantConfigResolver({
-          source: createDrizzleTenantConfigSource({ db: tenantPool.db, cipher, platformEnv }),
+          source: createDrizzleTenantConfigSource({ db: tdb, cipher, platformEnv }),
           fallback: envConfig,
         }),
         fetch: fakeFetch,
@@ -413,25 +454,24 @@ describe.skipIf(!DB_URL)(
       });
       enrollment = createPrescriberEnrollmentService({
         inTx: (organizationId, userId, fn) =>
-          withOrgContext(tenantPool.db, { organizationId, userId }, async (tx) => {
-            txOpen += 1;
-            try {
-              return await fn(
-                createDrizzleRosterStore(tx as unknown as DbClient),
-                tx as unknown as DbClient,
-              );
-            } finally {
-              txOpen -= 1;
-            }
-          }),
+          withOrgContext(tdb, { organizationId, userId }, (tx) =>
+            fn(createDrizzleRosterStore(tx as unknown as DbClient), tx as unknown as DbClient),
+          ),
         client,
         outbox,
         audit: buildClinicAuditPort(),
         afterWrite,
       });
       registerPlatformJob(JOB_ID);
+      dosespotPort = buildDoseSpotClinicOnboardingPort({
+        db: tdb,
+        service,
+        outbox,
+        enrollment,
+        alerts: alertPort,
+      });
       onboardingData = buildDrizzleOnboardingDataService({
-        db: tenantPool.db,
+        db: tdb,
         advance: async (tenant) => {
           advanced.push(tenant);
         },
@@ -441,13 +481,7 @@ describe.skipIf(!DB_URL)(
           auditBypass: m34PlatformBypassAuditor,
           platformJobId: JOB_ID,
         }),
-        dosespot: buildDoseSpotClinicOnboardingPort({
-          db: tenantPool.db,
-          service,
-          outbox,
-          enrollment,
-          alerts: alertPort,
-        }),
+        dosespot: dosespotPort,
         settleOnboarding: async (org) => {
           settled.push(org);
         },
@@ -793,7 +827,7 @@ describe.skipIf(!DB_URL)(
         envFallbackFor: async (org) => org === ORG_D,
       });
       const decide = (org: string, member: string) =>
-        withOrgContext(tenantPool.db, { organizationId: org, userId: "" }, (tx) =>
+        withOrgContext(tdb, { organizationId: org, userId: "" }, (tx) =>
           gate(tx as unknown as DbClient, org, member),
         );
       const PRESCRIBER_MEMBERSHIP = "99000000-0000-4000-8000-000000000001";
@@ -872,7 +906,6 @@ describe.skipIf(!DB_URL)(
       });
 
       it("creates the roster row, calls the vendor with NO transaction open, records the vendor id and publishes it", async () => {
-        vendorCallsInsideTx = 0;
         enrollBehaviour = "ok";
         const out = await enrollment.enroll(tenantActor(ORG_A), M1, body);
         expect(out).toEqual({ membershipId: M1, enrolledWithDoseSpot: true });
@@ -959,6 +992,183 @@ describe.skipIf(!DB_URL)(
         expect(row?.vendor_enrollment_requested_at).toBeNull();
         enrollBehaviour = "ok";
       });
+
+      // ── the claim, the release and the record, on the real row locks ──────────────────────────────
+      let memberSeq = 0;
+      /** A fresh ACTIVE member of ORG_A (one active membership per user per org), optionally already on the roster. */
+      const newMember = async (opts: { onRoster?: boolean; status?: string } = {}) => {
+        const n = ++memberSeq;
+        const suffix = n.toString(16).padStart(2, "0");
+        const userId = `99000000-0000-4000-8000-0000000001${suffix}`;
+        const membershipId = `99000000-0000-4000-8000-0000000002${suffix}`;
+        await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [
+          userId,
+          `claim${n}@ds.test`,
+        ]);
+        await admin.query(
+          "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,$2,$3,$4)",
+          [membershipId, userId, ORG_A, opts.status ?? "active"],
+        );
+        if (opts.onRoster) {
+          await admin.query(
+            "INSERT INTO dosespot_prescriber (organization_id, membership_id, enrolled_at) VALUES ($1,$2,now())",
+            [ORG_A, membershipId],
+          );
+        }
+        return membershipId;
+      };
+      /**
+       * Open several pooled connections BEFORE a race: a cold pool makes the second request wait for a new connection while the first
+       * runs to completion, which serialises the two and proves nothing about the row lock.
+       */
+      const warmPool = async (connections = 4) => {
+        await Promise.all(
+          Array.from({ length: connections }, () => tdb.execute(sql`SELECT pg_sleep(0.1)`)),
+        );
+      };
+      const clinicianCalls = () => fetchLog.filter((c) => c.url.endsWith("/api/clinicians")).length;
+      const inOrgA = <T>(fn: (store: ReturnType<typeof createDrizzleRosterStore>) => Promise<T>) =>
+        withOrgContext(tdb, { organizationId: ORG_A, userId: TENANT_ADMIN }, (tx) =>
+          fn(createDrizzleRosterStore(tx as unknown as DbClient)),
+        );
+
+      it("a suspended or revoked membership is not enrolled with the vendor (404): nothing is created and nothing is sent", async () => {
+        const calls = clinicianCalls();
+        for (const status of ["suspended", "revoked"]) {
+          const member = await newMember({ status });
+          expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), member, body))).toBe(
+            "NOT_FOUND",
+          );
+          expect(
+            await q("SELECT 1 FROM dosespot_prescriber WHERE membership_id=$1", [member]),
+          ).toHaveLength(0);
+        }
+        expect(clinicianCalls()).toBe(calls);
+      });
+
+      it("two concurrent enrolments of a rostered prescriber: the row lock lets one reach the vendor, the other is 409 IN_PROGRESS", async () => {
+        const member = await newMember({ onRoster: true });
+        const calls = clinicianCalls();
+        enrollDelayMs = 300; // the winner is still inside the vendor call when the loser claims
+        await warmPool();
+        let outcomes: PromiseSettledResult<unknown>[];
+        try {
+          outcomes = await Promise.allSettled([
+            enrollment.enroll(tenantActor(ORG_A), member, body),
+            enrollment.enroll(tenantActor(ORG_A), member, body),
+          ]);
+        } finally {
+          enrollDelayMs = 0;
+        }
+        const refused = outcomes.filter((o) => o.status === "rejected") as PromiseRejectedResult[];
+        expect(outcomes.filter((o) => o.status === "fulfilled")).toHaveLength(1);
+        expect(refused).toHaveLength(1);
+        expect((refused[0]?.reason as { code?: string }).code).toBe(
+          "DOSESPOT_ENROLLMENT_IN_PROGRESS",
+        );
+        expect(clinicianCalls() - calls).toBe(1); // ONE vendor clinician, not two
+        expect(
+          (
+            await q(
+              "SELECT dosespot_prescriber_id FROM dosespot_prescriber WHERE membership_id=$1",
+              [member],
+            )
+          )[0]?.dosespot_prescriber_id,
+        ).toMatch(/^70\d$/);
+      });
+
+      it("two concurrent FIRST enrolments (no roster row yet): the unique index makes the loser a 409, never a 500", async () => {
+        const member = await newMember();
+        const calls = clinicianCalls();
+        enrollDelayMs = 300;
+        await warmPool();
+        let outcomes: PromiseSettledResult<unknown>[];
+        try {
+          outcomes = await Promise.allSettled([
+            enrollment.enroll(tenantActor(ORG_A), member, body),
+            enrollment.enroll(tenantActor(ORG_A), member, body),
+          ]);
+        } finally {
+          enrollDelayMs = 0;
+        }
+        const refused = outcomes.filter((o) => o.status === "rejected") as PromiseRejectedResult[];
+        expect(outcomes.filter((o) => o.status === "fulfilled")).toHaveLength(1);
+        expect(refused).toHaveLength(1);
+        expect((refused[0]?.reason as { code?: string }).code).toBe(
+          "DOSESPOT_ENROLLMENT_IN_PROGRESS",
+        );
+        expect(clinicianCalls() - calls).toBe(1);
+        expect(
+          await q("SELECT 1 FROM dosespot_prescriber WHERE membership_id=$1", [member]),
+        ).toHaveLength(1);
+      });
+
+      it("the claim is released only by the attempt that made it: a vendor refusal never clears a newer claim", async () => {
+        const member = await newMember({ onRoster: true });
+        const marker = async () =>
+          (
+            await q(
+              "SELECT vendor_enrollment_requested_at AS at FROM dosespot_prescriber WHERE membership_id=$1",
+              [member],
+            )
+          )[0]?.at as Date | null;
+        // at the store: a release naming a DIFFERENT claim leaves the marker; the claim's own release clears it
+        const at = new Date(Date.now() - 1_000);
+        const claim = await inOrgA((store) => store.ensureRequested(ORG_A, member, at, 5 * 60_000));
+        expect(claim.inProgress).toBe(false);
+        await inOrgA((store) => store.releaseRequest(ORG_A, member, new Date(at.getTime() + 5)));
+        expect((await marker())?.getTime()).toBe(at.getTime());
+        await inOrgA((store) => store.releaseRequest(ORG_A, member, at));
+        expect(await marker()).toBeNull();
+        // through the real flow: attempt 1 claims, another administrator re-stamps the marker (the first claim aged out), then
+        // attempt 1's vendor call is REFUSED: its release is conditional on its own marker, so the newer claim stands
+        const plan = await enrollment.prepare(tenantActor(ORG_A), member, body);
+        expect(plan.claimedAt).not.toBeNull();
+        const restamped = new Date(Date.now() + 60_000);
+        await admin.query(
+          "UPDATE dosespot_prescriber SET vendor_enrollment_requested_at=$2 WHERE membership_id=$1",
+          [member, restamped],
+        );
+        enrollBehaviour = "rejected";
+        const refused = await errorCode(enrollment.callVendor(plan));
+        enrollBehaviour = "ok";
+        expect(refused).toBe("DOSESPOT_ENROLLMENT_REJECTED");
+        expect((await marker())?.getTime()).toBe(restamped.getTime());
+      });
+
+      it("a prescriber revoked while the vendor call was in flight is never linked (409), and nothing is published", async () => {
+        const member = await newMember({ onRoster: true });
+        const published = (await eventsOf("m12.prescriber_enrolled", ORG_A)).length;
+        const plan = await enrollment.prepare(tenantActor(ORG_A), member, body);
+        await admin.query(
+          "UPDATE dosespot_prescriber SET revoked_at=now() WHERE membership_id=$1",
+          [member],
+        );
+        const vendorId = await enrollment.callVendor(plan);
+        expect(vendorId).toMatch(/^70\d$/); // the vendor DID create the clinician...
+        const actor = tenantActor(ORG_A);
+        const code = await errorCode(
+          withOrgContext(tdb, { organizationId: ORG_A, userId: TENANT_ADMIN }, (tx) =>
+            enrollment.complete(
+              createDrizzleRosterStore(tx as unknown as DbClient),
+              tx as unknown as DbClient,
+              actor,
+              plan,
+              vendorId as string,
+            ),
+          ),
+        );
+        expect(code).toBe("DOSESPOT_PRESCRIBER_REVOKED"); // ...but the revoked roster row is not linked to it
+        const row = (
+          await q(
+            "SELECT dosespot_prescriber_id, revoked_at FROM dosespot_prescriber WHERE membership_id=$1",
+            [member],
+          )
+        )[0];
+        expect(row?.dosespot_prescriber_id).toBeNull();
+        expect(row?.revoked_at).not.toBeNull();
+        expect((await eventsOf("m12.prescriber_enrolled", ORG_A)).length).toBe(published);
+      });
     });
 
     // ── the operator lane ────────────────────────────────────────────────────────────────────────────
@@ -1023,6 +1233,44 @@ describe.skipIf(!DB_URL)(
         expect(roster.items.length).toBeGreaterThan(0);
       });
 
+      it("an operator's NO-OP save does not void a pending go-live attestation; a changing save does", async () => {
+        await admin.query(
+          `INSERT INTO tenant_go_live_attestation (organization_id, tenant_account_id, attested_by_membership_id, attested_by_user_id)
+           SELECT $1, id, 'e5000000-0000-4000-8000-0000000000f1', 'c3000000-0000-4000-8000-0000000000f2' FROM tenant_account WHERE organization_id=$1`,
+          [ORG_B],
+        );
+        const attestation = async () =>
+          (
+            await q("SELECT status FROM tenant_go_live_attestation WHERE organization_id=$1", [
+              ORG_B,
+            ])
+          )[0]?.status;
+        expect(await attestation()).toBe("pending");
+        const same = (await rowOf(ORG_B)) as Record<string, any>;
+        const noop = await onboardingData.putDoseSpot(
+          operator(),
+          "ds-b",
+          { ...BASE },
+          REASON,
+          same.version,
+        );
+        expect(noop).toMatchObject({ created: false });
+        expect((await rowOf(ORG_B))?.version).toBe(same.version); // nothing changed...
+        expect(await attestation()).toBe("pending"); // ...so the attestation stands
+        await onboardingData.putDoseSpot(
+          operator(),
+          "ds-b",
+          { ...BASE, serviceClinicianId: "902" },
+          REASON,
+          same.version,
+        );
+        expect(await attestation()).toBe("revoked"); // a real change makes it stale
+        expect((await rowOf(ORG_B))?.status).toBe("registered"); // a change clears what the old values earned
+        probeStatus = 200;
+        await onboardingData.verifyDoseSpot(operator(), "ds-b", REASON);
+        await onboardingData.activateDoseSpot(operator(), "ds-b", REASON);
+      });
+
       it("an operator enrols a prescriber on the tenant's behalf (the vendor call outside any transaction)", async () => {
         const M3 = "99000000-0000-4000-8000-0000000000b1";
         await admin.query(
@@ -1032,7 +1280,6 @@ describe.skipIf(!DB_URL)(
           "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,'99000000-0000-4000-8000-0000000000b9',$2,'active')",
           [M3, ORG_B],
         );
-        vendorCallsInsideTx = 0;
         const out = await onboardingData.enrollDoseSpotPrescriber(
           operator(),
           "ds-b",
@@ -1141,19 +1388,126 @@ describe.skipIf(!DB_URL)(
         expect(alerts.filter((a) => a.organizationId === ORG_C)).toHaveLength(1);
       });
 
-      it("an unknown slug is a 404 and an operator never reaches another tenant's registration through a slug", async () => {
+      it("an unknown slug is a 404", async () => {
         expect(await errorCode(onboardingData.getDoseSpot(operator(), "no-such-tenant"))).toBe(
           "NOT_FOUND",
         );
-        const a = await rowOf(ORG_A);
+        expect(
+          await errorCode(
+            onboardingData.putDoseSpot(
+              operator(),
+              "no-such-tenant",
+              { ...BASE },
+              REASON,
+              undefined,
+            ),
+          ),
+        ).toBe("NOT_FOUND");
+      });
+
+      it("an operator never reaches another tenant's registration or roster through a slug", async () => {
+        const a = (await rowOf(ORG_A)) as Record<string, any>;
+        const b = (await rowOf(ORG_B)) as Record<string, any>;
+        expect(b.status).toBe("active"); // ORG_B can take an enrolment, so a refusal below is the TENANT check and not "not ready"
+        // a membership of ORG_A named under slug `ds-b` is not found under ORG_B's scope: no roster row, no vendor call
+        const ROSTERED_IN_A = "99000000-0000-4000-8000-0000000000a1";
+        const rosterBefore = (await q("SELECT count(*)::int AS n FROM dosespot_prescriber"))[0]?.n;
+        const calls = fetchLog.length;
+        expect(
+          await errorCode(
+            onboardingData.enrollDoseSpotPrescriber(
+              operator(),
+              "ds-b",
+              ROSTERED_IN_A,
+              { npi: NPI, firstName: "Ada", lastName: "Lovelace" },
+              REASON,
+            ),
+          ),
+        ).toBe("NOT_FOUND");
+        expect((await q("SELECT count(*)::int AS n FROM dosespot_prescriber"))[0]?.n).toBe(
+          rosterBefore,
+        );
+        expect(fetchLog.slice(calls).filter((c) => c.url.endsWith("/api/clinicians"))).toHaveLength(
+          0,
+        );
+        // ORG_A's version, sent as If-Match through slug `ds-b`, is stale for ORG_B: 412, and neither registration moved
+        await admin.query(
+          "UPDATE dosespot_clinic_registration SET version=$2 WHERE organization_id=$1",
+          [ORG_A, b.version + 7],
+        );
+        const aVersion = b.version + 7;
+        expect(
+          await errorCode(
+            onboardingData.putDoseSpot(
+              operator(),
+              "ds-b",
+              { ...BASE, serviceClinicianId: "909" },
+              REASON,
+              aVersion,
+            ),
+          ),
+        ).toBe("VERSION_CONFLICT");
+        expect((await rowOf(ORG_B))?.version).toBe(b.version);
+        expect((await rowOf(ORG_B))?.service_clinician_id).toBe(b.service_clinician_id);
+        const aAfter = (await rowOf(ORG_A)) as Record<string, any>;
+        expect(aAfter.version).toBe(aVersion);
+        expect(aAfter.service_clinician_id).toBe(a.service_clinician_id);
+        // ORG_B's own version is accepted, through its own slug
         await onboardingData.putDoseSpot(
           operator(),
           "ds-b",
           { ...BASE, serviceClinicianId: "901" },
           REASON,
-          (await rowOf(ORG_B))?.version,
+          b.version,
         );
-        expect((await rowOf(ORG_A))?.version).toBe(a?.version);
+        expect((await rowOf(ORG_A))?.version).toBe(aVersion);
+      });
+
+      describe("the port refuses a transaction that is not scoped to the scope's organization", () => {
+        const scopeFor = (organizationId: string) => ({
+          organizationId,
+          operatorUserId: OPERATOR,
+          operatorMembershipId: OPS_MEMBERSHIP,
+          operatorRoles: ["platform_ops"],
+          stepUpRecent: true,
+          request: { correlationId: "live-scope", requestId: "req-scope" },
+        });
+        // a transaction scoped to ORG_B, a scope naming ORG_A: the shape of a wiring bug in the platform write wrapper
+        const underB = <T>(fn: (tx: DbClient) => Promise<T>) =>
+          withOrgContext(tdb, { organizationId: ORG_B, userId: OPERATOR }, (tx) =>
+            fn(tx as unknown as DbClient),
+          );
+
+        it.each([
+          ["put", (tx: DbClient) => dosespotPort.put(tx, scopeFor(ORG_A), { ...BASE }, undefined)],
+          [
+            "completeVerify",
+            (tx: DbClient) => dosespotPort.completeVerify(tx, scopeFor(ORG_A), {}, {}),
+          ],
+          ["activate", (tx: DbClient) => dosespotPort.activate(tx, scopeFor(ORG_A))],
+          ["deactivate", (tx: DbClient) => dosespotPort.deactivate(tx, scopeFor(ORG_A))],
+          [
+            "completeEnroll",
+            (tx: DbClient) => dosespotPort.completeEnroll(tx, scopeFor(ORG_A), {}, "799"),
+          ],
+        ] as const)("%s", async (_name, call) => {
+          const before = [await rowOf(ORG_A), await rowOf(ORG_B)];
+          expect(await errorCode(underB(call))).toBe("TENANT_SCOPE_MISMATCH");
+          expect([await rowOf(ORG_A), await rowOf(ORG_B)]).toEqual(before); // nothing was written to either org
+        });
+
+        it("the same call on a transaction scoped to its own organization is not refused", async () => {
+          const version = (await rowOf(ORG_B))?.version as number;
+          const out = await withOrgContext(tdb, { organizationId: ORG_B, userId: OPERATOR }, (tx) =>
+            dosespotPort.put(
+              tx as unknown as DbClient,
+              scopeFor(ORG_B),
+              { ...BASE, serviceClinicianId: "901" },
+              version,
+            ),
+          );
+          expect(out.created).toBe(false);
+        });
       });
 
       it("the permission keys migration 1383 binds are on the platform_ops role row, and on the tenant org-wide admin roles only", async () => {
@@ -1172,11 +1526,48 @@ describe.skipIf(!DB_URL)(
         expect(keys).toContain("tenant_dosespot.read_platform");
         expect(keys).toContain("tenant_dosespot.write_platform");
         expect(keys).not.toContain("prescribing.clinic.admin"); // the tenant keys are not an operator's
-        const tenantHolders = await q<{ key: string }>(
-          "SELECT DISTINCT r.key FROM role_permission rp JOIN role r ON r.id = rp.role_id WHERE rp.permission_key IN ('prescribing.clinic.read','prescribing.clinic.admin')",
+        // The tenant side, with rows that make it non-vacuous: org-wide admin roles in two orgs, a clinical role, a role that is
+        // only named like an admin, and a PLATFORM-level (no organization) `administrator`. The migration is re-run over them.
+        const seedRole = async (org: string | null, key: string, category: string) =>
+          (
+            await admin.query(
+              "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,$2,$2,$3,true) RETURNING id",
+              [org, key, category],
+            )
+          ).rows[0].id as string;
+        const orgAdminA = await seedRole(ORG_A, "org_admin", "admin_executive");
+        const administratorB = await seedRole(ORG_B, "administrator", "admin_executive");
+        const nurseA = await seedRole(ORG_A, "bind-nurse", "clinical_staff");
+        const lookalikeA = await seedRole(ORG_A, "org_admin_assistant", "admin_executive");
+        const platformAdministrator = await seedRole(null, "administrator", "platform_staff");
+        const migrationSql = readFileSync(
+          join(MIGRATIONS_DIR, "1383_m12_tenant_dosespot_permissions.sql"),
+          "utf8",
         );
-        for (const holder of tenantHolders)
+        await admin.query(migrationSql);
+        await admin.query(migrationSql); // idempotent over a live role table
+        const holders = async (roleId: string) =>
+          (
+            await q<{ permission_key: string }>(
+              "SELECT permission_key FROM role_permission WHERE role_id=$1 ORDER BY permission_key",
+              [roleId],
+            )
+          ).map((r) => r.permission_key);
+        const TENANT_KEYS = ["prescribing.clinic.admin", "prescribing.clinic.read"];
+        expect(await holders(orgAdminA)).toEqual(TENANT_KEYS);
+        expect(await holders(administratorB)).toEqual(TENANT_KEYS);
+        expect(await holders(nurseA)).toEqual([]);
+        expect(await holders(lookalikeA)).toEqual([]);
+        expect(await holders(platformAdministrator)).toEqual([]); // a platform-level role is not a tenant admin
+        // and across the whole table: only org-scoped org_admin / administrator rows hold a tenant key
+        const everyHolder = await q<{ key: string; organization_id: string | null }>(
+          "SELECT DISTINCT r.key, r.organization_id FROM role_permission rp JOIN role r ON r.id = rp.role_id WHERE rp.permission_key IN ('prescribing.clinic.read','prescribing.clinic.admin')",
+        );
+        expect(everyHolder.length).toBeGreaterThanOrEqual(2);
+        for (const holder of everyHolder) {
           expect(["org_admin", "administrator"]).toContain(holder.key);
+          expect(holder.organization_id).not.toBeNull();
+        }
         const catalog = await q<{ key: string }>(
           "SELECT key FROM permission WHERE key IN ('prescribing.clinic.read','prescribing.clinic.admin','tenant_dosespot.read_platform','tenant_dosespot.write_platform')",
         );
@@ -1187,7 +1578,7 @@ describe.skipIf(!DB_URL)(
     // ── the sandbox flag (H1) ───────────────────────────────────────────────────────────────────────
     describe("DOSESPOT_SANDBOX_ENABLED gates a sandbox registration going live and staying live", () => {
       const gate = createTransmissionGate({ platformEnv, envFallbackFor: async () => false });
-      const settledReader = () => buildDoseSpotSettledReader(tenantPool.db, platformEnv);
+      const settledReader = () => buildDoseSpotSettledReader(tdb, platformEnv);
       const SBX_MEMBER = "99000000-0000-4000-8000-0000000000e1";
 
       it("with the flag off an ACTIVE sandbox row stops transmitting: resolver, sign gate and wizard fact all say not live", async () => {
@@ -1203,7 +1594,7 @@ describe.skipIf(!DB_URL)(
           [ORG_A, SBX_MEMBER],
         );
         const decide = () =>
-          withOrgContext(tenantPool.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+          withOrgContext(tdb, { organizationId: ORG_A, userId: "" }, (tx) =>
             gate(tx as unknown as DbClient, ORG_A, SBX_MEMBER),
           );
         // flag ON (the suite default): live everywhere
@@ -1248,12 +1639,12 @@ describe.skipIf(!DB_URL)(
 
     // ── the wizard fact ──────────────────────────────────────────────────────────────────────────────
     describe("wizard step 10 settles from the registration", () => {
-      const readerFor = (db: typeof tenantPool.db) => buildDoseSpotSettledReader(db, platformEnv);
+      const readerFor = (db: typeof tdb) => buildDoseSpotSettledReader(db, platformEnv);
       const advancer = () =>
         createOnboardingAdvancer({
-          db: tenantPool.db,
+          db: tdb,
           outbox: { publish: async () => undefined } as never,
-          facts: { dosespotSettled: readerFor(tenantPool.db) },
+          facts: { dosespotSettled: readerFor(tdb) },
           alerts: { emit: async () => undefined } as never,
         });
       const taskStatus = async (org: string) =>
@@ -1296,13 +1687,13 @@ describe.skipIf(!DB_URL)(
         await advancer()({ tenantAccountId: accountOf[ORG_A] as string, orgId: ORG_A });
         expect(await taskStatus(ORG_A)).toBe("pending");
         await route.activate(tenantActor(ORG_A));
-        expect(await readerFor(tenantPool.db)(ORG_A)).toBe(true);
+        expect(await readerFor(tdb)(ORG_A)).toBe(true);
         await advancer()({ tenantAccountId: accountOf[ORG_A] as string, orgId: ORG_A });
         expect(await taskStatus(ORG_A)).toBe("done");
       });
 
       it("an org with no registration row never has the fact", async () => {
-        expect(await readerFor(tenantPool.db)(ORG_D)).toBe(false);
+        expect(await readerFor(tdb)(ORG_D)).toBe(false);
       });
 
       it("the prescriber count does not gate: the fact is true with no prescriber enrolled", async () => {
@@ -1315,7 +1706,31 @@ describe.skipIf(!DB_URL)(
         probeStatus = 200;
         await route.verify(tenantActor(ORG_C));
         await route.activate(tenantActor(ORG_C));
-        expect(await readerFor(tenantPool.db)(ORG_C)).toBe(true);
+        expect(await readerFor(tdb)(ORG_C)).toBe(true);
+      });
+    });
+
+    // ── the whole suite: no vendor request ever ran inside a transaction ──────────────────────────
+    describe("the vendor boundary, over every case above", () => {
+      it("no vendor request (token mint, clinician add, status read) ran while a tenant-pool transaction was open", () => {
+        // the suite made real vendor traffic of every kind, on both lanes, so a zero below is a measurement and not an absence
+        expect(vendorTraffic.tokenMints).toBeGreaterThan(5);
+        expect(vendorTraffic.clinicianAdds).toBeGreaterThan(5);
+        expect(txOpen).toBe(0);
+        expect(vendorCallsInsideTx).toBe(0);
+      });
+
+      it("the instrument itself works: a vendor request inside a counted transaction IS counted", async () => {
+        const before = vendorCallsInsideTx;
+        await tdb.transaction(async () => {
+          await fakeFetch("https://sandbox.dosespot.com/webapi/v2/connect/token", {
+            method: "POST",
+            headers: {},
+          });
+        });
+        expect(vendorCallsInsideTx).toBe(before + 1);
+        vendorCallsInsideTx = before; // un-count the deliberate probe
+        expect(txOpen).toBe(0);
       });
     });
   },
