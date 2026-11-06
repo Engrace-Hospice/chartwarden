@@ -1153,7 +1153,14 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     async function seedFiledNotice(
       kind: "noe" | "notr",
       org = ORG_A,
-      over: { admissionId?: string; patientId?: string; marker?: "filed" | "pending" | null } = {},
+      over: {
+        admissionId?: string;
+        patientId?: string;
+        marker?: "filed" | "pending" | null;
+        /** The date the record says it filed (default: on time) and the breach stamp on the row (default: the watchdog's). */
+        filedOn?: string;
+        stamp?: string | null;
+      } = {},
     ): Promise<string> {
       const marker = over.marker === undefined ? "filed" : over.marker;
       const filed = marker === "filed";
@@ -1165,10 +1172,10 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       ];
       const tail = [
         marker,
-        filed ? FILED_ON : null,
+        filed ? (over.filedOn ?? FILED_ON) : null,
         filed ? RECORDED_AT : null,
         filed ? MEMBERSHIP : null,
-        STAMP,
+        over.stamp === undefined ? STAMP : over.stamp,
         `WD-${randomUUID().slice(0, 12)}`,
       ];
       const [row] =
@@ -1245,7 +1252,9 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
           noticeKind: kind,
           withdrawnFiledOn: FILED_ON,
           withdrawnRecordedAt: RECORDED_AT.toISOString(),
+          breachStamp: "kept", // the watchdog's stamp (not the record's own) stays, and the audit row says so
         });
+        expect(audit[0]?.context).not.toHaveProperty("clearedBreachStamp");
         // the notice table's own trigger records the change under the OPERATOR (before 'filed', after cleared)
         const trigger = await q<{
           actor_user_id: string;
@@ -1266,6 +1275,45 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         const again = await withdraw(kind, id);
         expect(again.statusCode).toBe(409);
         expect(errorCode(again)).toBe("NOTICE_NOT_FILED_EXTERNALLY");
+      },
+    );
+
+    it.each(["noe", "notr"] as const)(
+      "%s: withdrawing a LATE record clears the breach stamp that record wrote itself (and says so on the audit row); the stamp is gone from the row and the response",
+      async (kind) => {
+        const LATE_ON = "2026-11-08"; // the window closed on 2026-11-06
+        const id = await seedFiledNotice(kind, ORG_A, { filedOn: LATE_ON, stamp: LATE_ON });
+
+        const res = await withdraw(kind, id);
+
+        expect(res.statusCode, res.body).toBe(200);
+        expect(res.json()).toMatchObject({ windowBreachedAt: null, externalFiling: null });
+        expect(await rowOf(kind, id)).toMatchObject({
+          external_filing_status: null,
+          filed_on: null,
+          breached: null,
+        });
+        const audit = await withdrawAuditRows(id);
+        expect(audit).toHaveLength(1);
+        expect(audit[0]?.context).toMatchObject({
+          withdrawnFiledOn: LATE_ON,
+          breachStamp: "cleared",
+          clearedBreachStamp: LATE_ON,
+        });
+        // the notice table's own trigger records the stamp going away, under the operator
+        const trigger = await q<{
+          before: Record<string, unknown>;
+          after: Record<string, unknown>;
+        }>(
+          `SELECT before, after FROM audit_event
+            WHERE resource_kind='${table(kind)}' AND resource_id=$1 AND event_type='${table(kind)}.update'`,
+          [id],
+        );
+        expect(trigger).toHaveLength(1);
+        expect(trigger[0]).toMatchObject({
+          before: { window_breached_at: LATE_ON },
+          after: { window_breached_at: null },
+        });
       },
     );
 

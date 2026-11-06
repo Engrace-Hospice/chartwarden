@@ -286,7 +286,7 @@ export const OnboardingNoticeWithdrawalViewSchema = Type.Object({
     Type.String({
       format: "date",
       description:
-        "A breach stamp (the deadline watchdog's, or a late record's) is never cleared by a withdrawal.",
+        "The deadline watchdog's breach stamp is kept by a withdrawal; the stamp the withdrawn LATE record wrote itself is cleared with it (null here).",
     }),
   ),
   externalFiling: Type.Null({

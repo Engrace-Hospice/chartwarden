@@ -14,15 +14,13 @@ export function buildExternalNoticeOnboardingPort(): OnboardingNoticePort {
   return {
     async withdrawExternalFiling(tx, scope, input) {
       await assertTxScopedToOrg(tx as DbClient, scope.organizationId);
-      const { notice, withdrawnFiledOn, withdrawnRecordedAt } = await withdrawExternalNoticeFiling(
-        tx as unknown as BillingDb,
-        {
+      const { notice, withdrawnFiledOn, withdrawnRecordedAt, clearedBreachStamp } =
+        await withdrawExternalNoticeFiling(tx as unknown as BillingDb, {
           kind: input.kind,
           organizationId: scope.organizationId,
           noticeId: input.noticeId,
           expectedRecordedAt: input.expectedRecordedAt,
-        },
-      );
+        });
       const view: OnboardingNoticeView = {
         noticeKind: input.kind,
         noticeId: notice.id,
@@ -38,6 +36,9 @@ export function buildExternalNoticeOnboardingPort(): OnboardingNoticePort {
           noticeKind: input.kind,
           withdrawnFiledOn,
           withdrawnRecordedAt,
+          // what became of the breach stamp: the withdrawn late record's own is cleared, a watchdog's is kept
+          breachStamp: clearedBreachStamp ? "cleared" : notice.windowBreachedAt ? "kept" : "none",
+          ...(clearedBreachStamp ? { clearedBreachStamp } : {}),
         },
       };
     },

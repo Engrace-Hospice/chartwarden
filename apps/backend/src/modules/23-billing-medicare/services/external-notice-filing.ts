@@ -12,8 +12,9 @@
 // event in the same transaction (`m23.noe|notr.filed_externally_late`: ids and dates only), which M23's own outbox consumer turns
 // into the M36 alert to the tenant and the platform-ops notice. A breach the watchdog already stamped is what ChartWarden OBSERVED
 // and is never cleared by a tenant's record: an on-time date recorded over one publishes the same event with `breachObservedAt`
-// (the observed breach date) next to the attested `filedOn`. The decision rules are pure (`planExternalFilingRecord` in
-// @chartwarden/billing); the date they judge "today" against is the Eastern (CMS) calendar day.
+// (the observed breach date) next to the attested `filedOn`. The stamp a LATE record wrote itself is that record's own fact: the
+// platform operator's withdrawal of the record takes it back. The decision rules are pure (`planExternalFilingRecord` /
+// `planExternalFilingWithdrawal` in @chartwarden/billing); the date they judge "today" against is the Eastern (CMS) calendar day.
 import {
   type NoticeState,
   medicareReceiptDay,
@@ -243,7 +244,7 @@ const NOTR_OPS: KindOps<repositories.NotrRecord> = {
   aggregateKind: "notr_record",
 };
 
-/** Clears the marker and the three filed columns together (the table's CHECK moves them as one). Never `windowBreachedAt`. */
+/** Clears the marker and the three filed columns together (the table's CHECK moves them as one). */
 const WITHDRAW_PATCH: ExternalFilingPatch = {
   externalFilingStatus: null,
   filedExternallyOn: null,
@@ -255,7 +256,9 @@ const WITHDRAW_PATCH: ExternalFilingPatch = {
  * A platform operator withdraws a tenant's "filed outside ChartWarden" record, on the caller's transaction (already scoped to the
  * tenant's org and attributed to the operator: the table's write-audit trigger names them). The notice returns to its pre-record
  * state (state unchanged), so it can be recorded again or submitted again, and for a NOTR the prior-election closure it provided
- * is gone with the marker (that closure is derived from the marker, `prior-election-closure.ts`). A breach stamp is never touched.
+ * is gone with the marker (that closure is derived from the marker, `prior-election-closure.ts`). A breach stamp the watchdog set
+ * stays; one the withdrawn LATE record wrote itself is cleared with it (`planExternalFilingWithdrawal`), and a notice that really is
+ * overdue is re-stamped by the window watch on its next tick (it scans every un-stamped, un-filed notice past its due day).
  * Pinned to the record the operator read (`expectedRecordedAt`); anything else is a 409.
  */
 export async function withdrawExternalNoticeFiling(
@@ -271,6 +274,8 @@ export async function withdrawExternalNoticeFiling(
   readonly withdrawnFiledOn: string;
   /** The `recordedAt` of the record withdrawn (what the operator pinned). */
   readonly withdrawnRecordedAt: string;
+  /** The breach stamp the withdrawn record wrote itself, now cleared (null: none was cleared; a stamp the watchdog set stays). */
+  readonly clearedBreachStamp: string | null;
 }> {
   const ops: KindOps<repositories.NoeRecord> | KindOps<repositories.NotrRecord> =
     input.kind === "noe" ? NOE_OPS : NOTR_OPS;
@@ -281,17 +286,20 @@ export async function withdrawExternalNoticeFiling(
     filedExternallyOn: notice.filedExternallyOn,
     filedExternallyRecordedAt: notice.filedExternallyRecordedAt?.toISOString() ?? null,
     expectedRecordedAt: input.expectedRecordedAt,
+    windowTargetAt: notice.windowTargetAt,
+    windowBreachedAt: notice.windowBreachedAt,
   });
   if (plan.kind === "refuse") throw new ChartWardenError(plan.code, plan.message, plan.status);
   const saved = await patchExternalFiling(
     ops.repo(tx) as ExternalFilingRepo<typeof notice>,
     notice,
-    WITHDRAW_PATCH,
+    plan.clearBreach ? { ...WITHDRAW_PATCH, windowBreachedAt: null } : WITHDRAW_PATCH,
   );
   return {
     notice: saved,
     withdrawnFiledOn: plan.withdrawnFiledOn,
     withdrawnRecordedAt: input.expectedRecordedAt,
+    clearedBreachStamp: plan.clearBreach ? notice.windowBreachedAt : null,
   };
 }
 

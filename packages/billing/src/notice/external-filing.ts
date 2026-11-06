@@ -117,6 +117,11 @@ export type ExternalFilingWithdrawalPlan =
       readonly kind: "withdraw";
       /** The filed date the withdrawn record carried (the platform audit row names it). */
       readonly withdrawnFiledOn: IsoDate;
+      /**
+       * The breach stamp on the notice was written by the withdrawn record itself (a LATE record stamps `windowBreachedAt = filedOn`):
+       * the caller clears it with the record. A stamp the watchdog wrote stays.
+       */
+      readonly clearBreach: boolean;
     }
   | {
       readonly kind: "refuse";
@@ -132,13 +137,18 @@ export interface ExternalFilingWithdrawalInput {
   readonly filedExternallyRecordedAt: string | null;
   /** The `recordedAt` the operator read (the route's `If-Match`). */
   readonly expectedRecordedAt: string;
+  readonly windowTargetAt: IsoDate;
+  readonly windowBreachedAt: IsoDate | null;
 }
 
 /**
  * A platform operator withdraws a tenant's "filed outside ChartWarden" record: the one way back from `filed` (the tenant cannot,
  * and a cancel refuses). It applies to the record the operator READ or to nothing: a record withdrawn and re-recorded since has a
- * new `recordedAt`, and withdrawing that one unseen is a 409. PURE: it never touches a breach stamp (what the watchdog observed
- * stays); the caller clears the marker and the three filed columns together (the table's CHECK moves them as one).
+ * new `recordedAt`, and withdrawing that one unseen is a 409. PURE: the caller clears the marker and the three filed columns
+ * together (the table's CHECK moves them as one). A breach stamp the watchdog wrote stays (what ChartWarden observed); one the
+ * withdrawn LATE record wrote itself (`stampBreach`: the stamp IS its filed date, and that date is after the due day) goes with
+ * it, or re-recording the true on-time date would read as contradicting a breach nobody observed, and the stamp would hide the
+ * notice from the window watch for good. A notice that really is overdue is re-stamped by that watch on its next tick.
  */
 export function planExternalFilingWithdrawal(
   input: ExternalFilingWithdrawalInput,
@@ -165,5 +175,12 @@ export function planExternalFilingWithdrawal(
         "the filing record changed since it was read; read the notice again and withdraw the record it now shows",
     };
   }
-  return { kind: "withdraw", withdrawnFiledOn: input.filedExternallyOn };
+  const wroteItsOwnBreach =
+    input.windowBreachedAt === input.filedExternallyOn &&
+    toEpochDay(input.filedExternallyOn) > toEpochDay(input.windowTargetAt);
+  return {
+    kind: "withdraw",
+    withdrawnFiledOn: input.filedExternallyOn,
+    clearBreach: wroteItsOwnBreach,
+  };
 }
