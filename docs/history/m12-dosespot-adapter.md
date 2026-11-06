@@ -109,6 +109,12 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
 - A claimed order whose registration stops being live, or whose resolver, key ring or credential faults (a corrupt envelope is a 503), goes
   back to `queued` with no retry spent. `addClinician` is never re-POSTed in-call (no idempotency key); the enrolment claim is released only
   after a definitive refusal and only by the attempt that made it, outlasts the worst-case vendor call, and a first-enrol race is a 409.
+- *The NPI and name of an enrolled prescriber were typed by whoever enrolled them* (the roster administrator or the operator), so the
+  identity DoseSpot was told, and the NPI the roster recorded, had no source. They are now derived from the physician record the roster
+  links the member to (M40's NPPES-sourced `external_physician`) and cross-checked against NPPES's public directory (`nppes_provider`, via
+  M29's reader seam): NPI-1, active, same surname. The enrolment body is empty; the member must already be on the roster with that link,
+  which is how the demo roster is seeded (`db:seed:prescriber-roster`). NPPES with no row refuses in production and proceeds flagged
+  (`nppesVerified: false` on the audit row) in sandbox, because the demo's synthetic NPIs are not in the real registry.
 - Open, not fixed here: `verify` lets a tenant administrator probe candidate clinic keys against the vendor (ADR-0110 open items); the
   request body, secret included, is hashed into the idempotency record's fingerprint by shared middleware that predates this slice
   (tracked separately).
