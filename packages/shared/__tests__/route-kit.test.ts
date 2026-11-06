@@ -1,4 +1,4 @@
-import { type HttpRequestContext, UnauthorizedError } from "@chartwarden/types";
+import { ForbiddenError, type HttpRequestContext, UnauthorizedError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
@@ -82,7 +82,7 @@ describe("route-kit actor", () => {
   });
 
   it("requires a membership for a write and maps it to userId for membership-attributed services", () => {
-    expect(() => writeActorOf(ctx({ attributes: {} }))).toThrow(UnauthorizedError);
+    expect(() => writeActorOf(ctx({ attributes: {} }))).toThrow(ForbiddenError);
     expect(membershipActorOf(ctx())).toEqual({
       organizationId: ORG_A,
       userId: "m-1",

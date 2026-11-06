@@ -66,7 +66,8 @@ export function actorOf(request: ContextCarrier): RouteActor {
 export function writeActorOf(request: ContextCarrier): WriteActor {
   const actor = actorOf(request);
   if (actor.membershipId === null) {
-    throw new UnauthorizedError("an active membership is required to author this record");
+    // 403, not 401: the web shell signs the user out on any 401, and this session is alive.
+    throw new ForbiddenError("an active membership is required to author this record");
   }
   return { ...actor, membershipId: actor.membershipId };
 }

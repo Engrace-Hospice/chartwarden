@@ -24,7 +24,7 @@ import {
   requireIdempotencyKey,
   requireIfMatch,
 } from "@chartwarden/shared/route-kit";
-import { UnauthorizedError } from "@chartwarden/types";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { InterventionDiscipline } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
@@ -135,7 +135,9 @@ const planIdOf = (request: FastifyRequest): string =>
 function signingActorOf(request: FastifyRequest): CarePlanSignActor {
   const ctx = request.context;
   const membershipId = membershipIdOf(ctx);
-  if (!ctx?.userId || !membershipId) throw new UnauthorizedError();
+  if (!ctx?.userId) throw new UnauthorizedError();
+  if (!membershipId)
+    throw new ForbiddenError("an active membership is required to sign a care plan");
   return { userId: ctx.userId, membershipId, roles: ctx.roles ?? [] };
 }
 
