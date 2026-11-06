@@ -23,10 +23,12 @@ import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
 import type { M35WriteActor } from "../routes/actor";
 import type { PlatformRunner, WriteTx } from "../routes/service-drizzle";
 import { type PlatformAuditPort, failClosedPlatformRunner, requireAuditPort } from "./ports";
-import { normalizeReason } from "./text";
+import { normalizeOptionalRef, normalizeReason, normalizeRequiredText } from "./text";
 
 const PL = schema.plan;
 const PCB = schema.planCensusBand;
+const NAME_MAX = 120;
+const DESCRIPTION_MAX = 1000;
 
 export interface PricingBandView extends CensusBand {
   /** The last whole patient of the band, or null for the open-ended top band. */
@@ -153,7 +155,7 @@ const failIssues = (issues: readonly PricingIssue[]): never => {
 };
 
 /** The plan's bands, ascending. */
-async function loadBands(tx: WriteTx, planId: string): Promise<CensusBand[]> {
+export async function loadBands(tx: WriteTx, planId: string): Promise<CensusBand[]> {
   return tx
     .select({ minAdc: PCB.minAdc, monthlyFeeCents: PCB.monthlyFeeCents })
     .from(PCB)
@@ -181,6 +183,14 @@ const asPricing = (
   contractTermMonths: input.contractTermMonths,
   implementationFeeCents: input.implementationFeeCents,
 });
+
+/** The operator-typed text of a plan, cleaned and screened (a plan name lands in the onboarding evidence note: no patient identifier). */
+function planText(input: PlanPricingInput): { name: string; description: string | null } {
+  return {
+    name: normalizeRequiredText("name", input.name, NAME_MAX),
+    description: normalizeOptionalRef("description", input.description, DESCRIPTION_MAX),
+  };
+}
 
 /** The cheapest band's fee: the plan's "from" price, kept in the legacy `base_price_cents` so the MRR snapshot and plan lists read a floor. */
 const floorPriceCents = (bands: readonly CensusBand[]): number =>
@@ -262,6 +272,7 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
 
     async create(actor, input, reasonRaw) {
       const reason = normalizeReason(reasonRaw);
+      const text = planText(input);
       const issues = validatePlanPricing(asPricing(input));
       if (issues.length > 0) failIssues(issues);
       return platformRunner(async (tx) => {
@@ -278,8 +289,8 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
             slug: `${input.familySlug}-v1`,
             familySlug: input.familySlug,
             version: 1,
-            name: input.name,
-            description: input.description ?? null,
+            name: text.name,
+            description: text.description,
             tier: "census_banded",
             cadence: "monthly",
             basePriceCents: floorPriceCents(input.bands),
@@ -304,6 +315,7 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
 
     async replaceDraft(actor, planId, input, reasonRaw) {
       const reason = normalizeReason(reasonRaw);
+      const text = planText(input);
       const issues = validatePlanPricing(asPricing(input));
       if (issues.length > 0) failIssues(issues);
       return platformRunner(async (tx) => {
@@ -311,8 +323,8 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
         const [plan] = await tx
           .update(PL)
           .set({
-            name: input.name,
-            description: input.description ?? null,
+            name: text.name,
+            description: text.description,
             currencyCode: input.currencyCode ?? draft.currencyCode,
             basePriceCents: floorPriceCents(input.bands),
             perUserPriceCents: input.perUserPriceCents,
