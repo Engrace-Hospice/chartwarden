@@ -196,6 +196,11 @@ function createFakeBackend() {
   const riskScores: BereavementRiskScoreView[] = [];
   const assessmentTasks: BereavementAssessmentTaskView[] = [];
   const recomputeInputs: RecomputeRiskInput[] = [];
+  const careGoalWrites: Array<{
+    contactId: string;
+    goals: readonly string[];
+    expectedVersion: number;
+  }> = [];
 
   function seedPlan(overrides: Partial<PlanRecord> = {}): PlanRecord {
     const planId = overrides.planId ?? fakeId();
@@ -733,6 +738,20 @@ function createFakeBackend() {
       };
       return view;
     },
+    async setCareGoals(_actor, contactId, input) {
+      const c = contacts.get(contactId);
+      if (!c) throw new NotFoundError("bereaved contact not found");
+      if (input.expectedVersion !== c.version) {
+        throw new BereavementStateError("STALE_VERSION", "the contact has moved on");
+      }
+      careGoalWrites.push({
+        contactId,
+        goals: input.goals,
+        expectedVersion: input.expectedVersion,
+      });
+      bump(c);
+      return { ...contactRow(c), careGoals: input.goals };
+    },
     async recomputeRisk(actor, planId, input) {
       const p = plans.get(planId);
       if (!p) throw new NotFoundError("bereavement plan not found");
@@ -899,6 +918,7 @@ function createFakeBackend() {
     seedOutreach,
     assessmentTasks,
     recomputeInputs,
+    careGoalWrites,
     lockedAdmissions,
     draftWrites,
   };
@@ -1756,6 +1776,163 @@ describe("M16 §4.1 routes 35 / 36 — pre-death risk-assessment draft", () => {
     expect(
       (await put(app, { ...NO_PERMS, "idempotency-key": "d-10", "if-match": '"0"' })).statusCode,
     ).toBe(403);
+    await app.close();
+  });
+});
+
+// ── route 41 — the contact's care goals (ADR-0109) ──────────────────────────────────────────────────────
+
+describe("M16 §4.1 route 41 — PUT /contacts/:contactId/care-plan", () => {
+  const url = (contactId: string) => `/api/v1/bereavement/contacts/${contactId}/care-plan`;
+  const setup = () => {
+    const made = makeServer();
+    const plan = made.backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const contact = made.backend.seedContact(plan.planId);
+    return { ...made, plan, contact };
+  };
+  const put = (
+    app: ReturnType<typeof buildServer>,
+    contactId: string,
+    headers: Record<string, string>,
+    payload: unknown,
+  ) => app.inject({ method: "PUT", url: url(contactId), headers, payload: payload as object });
+
+  it("the plan's counselor records up to three goals (If-Match = the version read) and gets the contact back", async () => {
+    const { app, backend, contact } = setup();
+    const goals = ["Sleep through the night", "Call my sister on Sundays"];
+    const read = contact.version;
+    const res = await put(
+      app,
+      contact.contactId,
+      { ...COUNSELOR, "idempotency-key": "cg-1", "if-match": `"${read}"` },
+      { goals },
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ contactId: contact.contactId, careGoals: goals });
+    expect(backend.careGoalWrites).toEqual([
+      { contactId: contact.contactId, goals, expectedVersion: read },
+    ]);
+    await app.close();
+  });
+
+  it("an empty list clears the goals", async () => {
+    const { app, backend, contact } = setup();
+    const res = await put(
+      app,
+      contact.contactId,
+      { ...COUNSELOR, "idempotency-key": "cg-2", "if-match": `"${contact.version}"` },
+      { goals: [] },
+    );
+    expect(res.statusCode).toBe(200);
+    expect(backend.careGoalWrites[0]?.goals).toEqual([]);
+    await app.close();
+  });
+
+  it.each([
+    ["four goals", { goals: ["a", "b", "c", "d"] }],
+    ["a blank goal", { goals: ["   "] }],
+    ["an empty goal", { goals: [""] }],
+    ["a goal over 280 characters", { goals: ["x".repeat(281)] }],
+    ["goals that are not strings", { goals: [1] }],
+    ["no goals field", {}],
+  ])("rejects %s with a TypeBox 422", async (_name, payload) => {
+    const { app, backend, contact } = setup();
+    const res = await put(
+      app,
+      contact.contactId,
+      { ...COUNSELOR, "idempotency-key": "cg-3", "if-match": `"${contact.version}"` },
+      payload,
+    );
+    expect(res.statusCode).toBe(422);
+    expect(backend.careGoalWrites).toHaveLength(0);
+    await app.close();
+  });
+
+  it("accepts exactly 280 characters and exactly three goals", async () => {
+    const { app, contact } = setup();
+    const res = await put(
+      app,
+      contact.contactId,
+      { ...COUNSELOR, "idempotency-key": "cg-4", "if-match": `"${contact.version}"` },
+      { goals: ["x".repeat(280), "b", "c"] },
+    );
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("requires If-Match (428), an Idempotency-Key (400), and refuses a stale version (412)", async () => {
+    const { app, contact } = setup();
+    expect(
+      (
+        await put(
+          app,
+          contact.contactId,
+          { ...COUNSELOR, "idempotency-key": "cg-5" },
+          { goals: ["a"] },
+        )
+      ).statusCode,
+    ).toBe(428);
+    expect(
+      (
+        await put(
+          app,
+          contact.contactId,
+          { ...COUNSELOR, "if-match": `"${contact.version}"` },
+          { goals: ["a"] },
+        )
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await put(
+          app,
+          contact.contactId,
+          { ...COUNSELOR, "idempotency-key": "cg-6", "if-match": `"${contact.version + 7}"` },
+          { goals: ["a"] },
+        )
+      ).statusCode,
+    ).toBe(412);
+    await app.close();
+  });
+
+  it("a counselor outside the plan window 404s; a caller without the key is 403; an unknown contact 404s", async () => {
+    const { app, backend } = setup();
+    const heldBySupervisor = backend.seedPlan({
+      status: "active",
+      assignedCounselorUserId: SUPERVISOR_ID,
+    });
+    const theirs = backend.seedContact(heldBySupervisor.planId);
+    expect(
+      (
+        await put(
+          app,
+          theirs.contactId,
+          { ...COUNSELOR, "idempotency-key": "cg-7", "if-match": `"${theirs.version}"` },
+          { goals: ["a"] },
+        )
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await put(
+          app,
+          theirs.contactId,
+          { ...NO_PERMS, "idempotency-key": "cg-8", "if-match": `"${theirs.version}"` },
+          { goals: ["a"] },
+        )
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await put(
+          app,
+          "00000000-0000-4000-8000-00000000dead",
+          { ...SUPERVISOR, "idempotency-key": "cg-9", "if-match": '"1"' },
+          { goals: ["a"] },
+        )
+      ).statusCode,
+    ).toBe(404);
+    expect(backend.careGoalWrites).toHaveLength(0);
     await app.close();
   });
 });

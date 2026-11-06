@@ -266,6 +266,7 @@ import {
   AssignCounselorBody as M16AssignCounselorBody,
   AssignVolunteerBody as M16AssignVolunteerBody,
   CancelOutreachBody as M16CancelOutreachBody,
+  CareGoalsBody as M16CareGoalsBody,
   CloseEarlyBody as M16CloseEarlyBody,
   CompleteOutreachBody as M16CompleteOutreachBody,
   ConfirmContactBody as M16ConfirmContactBody,
@@ -7851,6 +7852,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/bereavement/plans/:planId/contacts": {
     summary: "Add a bereaved contact to an open plan — lands `proposed` (§4.1 #11)",
     body: M16CreateContactBody,
+    response: M16ContactRowResponse,
+  },
+  "PUT /api/v1/bereavement/contacts/:contactId/care-plan": {
+    summary:
+      "Record the contact's care goals (ADR-0109, #41) — at most 3 goals of 1..280 characters, sealed with the tenant DEK; `If-Match` and `Idempotency-Key` required; an empty list clears them; a volunteer neither reads nor writes them",
+    body: M16CareGoalsBody,
     response: M16ContactRowResponse,
   },
   "PATCH /api/v1/bereavement/contacts/:contactId": {

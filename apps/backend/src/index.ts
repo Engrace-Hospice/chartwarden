@@ -6578,19 +6578,22 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // sympathy-letter render handshake (`m16.bereavement.outreach_artifact_requested`) reaches M22.
           // The write service takes the READ service so every plan-shaped mutation answers with the SAME
           // projection route 2 serves (one DTO, one disclosure gate, no drift).
-          const m16ReadService = buildDrizzleM16ReadService(dbHandle.db);
+          // GAP-129 / ADR-0109 — ONE tenant-DEK envelope (M34 key ring, resolved lazily like every other cipher below) for a
+          // contact's email / phone / mailing address / care goals and a counselor's notes: the write service seals with
+          // it and the read service opens the care goals with it.
+          const m16Cipher = createBereavementCipher({
+            dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+            dekForOrgVersion: (orgId, version) =>
+              getTenantKeyProvider().dekForOrgVersion(orgId, version),
+          });
+          const m16ReadService = buildDrizzleM16ReadService(dbHandle.db, { cipher: m16Cipher });
           const m16AlertPort = createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter);
           const m16WriteService = buildDrizzleM16WriteService(dbHandle.db, m16ReadService, {
             outbox: m16OutboxPublisher,
             // ADR-0109 D7 — M16 alerts ride the M36 AlertEmitter seam (routed kinds only; see alert-port.ts).
             alerts: m16AlertPort,
-            // GAP-129 — the tenant-DEK envelope (M34 key ring, resolved lazily like every other cipher below) for
-            // a contact's email / phone / mailing address and a counselor's notes.
-            cipher: createBereavementCipher({
-              dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
-              dekForOrgVersion: (orgId, version) =>
-                getTenantKeyProvider().dekForOrgVersion(orgId, version),
-            }),
+            // GAP-129 — the tenant-DEK envelope (shared with the read service above).
+            cipher: m16Cipher,
             // D6 — the confirm-contact consent gate. M39 answers over its published ConsentEvaluator seam
             // (the Drizzle store, read under withOrgContext for the caller's org): the contact's OWN
             // `bereavement_outreach_consent` record, pinned by id, and whether a survives-death

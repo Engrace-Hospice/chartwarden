@@ -142,6 +142,12 @@ export interface UpdateContactInput {
   readonly volunteerVisibleOnly?: boolean;
 }
 
+/** ADR-0109 / route 41 — replace the contact's care goals (`If-Match` required; an empty list clears them). */
+export interface SetCareGoalsInput {
+  readonly expectedVersion: number;
+  readonly goals: readonly string[];
+}
+
 /** Route 13 — proposed → active (the D6 consent verdict is resolved server-side, fail-CLOSED). */
 export interface ConfirmContactInput {
   readonly expectedVersion?: number;
@@ -346,6 +352,12 @@ export interface M16WriteService {
     actor: M16WriteActor,
     contactId: string,
     input: UpdateContactInput,
+  ): Promise<BereavedContactRowView>;
+  /** ADR-0109 — 403 for the D10 volunteer scope; the goals are sealed with the tenant DEK (503 while no cipher is bound). */
+  setCareGoals(
+    actor: M16WriteActor,
+    contactId: string,
+    input: SetCareGoalsInput,
   ): Promise<BereavedContactRowView>;
   confirmContact(
     actor: M16WriteActor,
