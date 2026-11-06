@@ -373,7 +373,7 @@ off-site S3-compatible target) and drops what has no host to run on (repo2 backu
 | Piece | File | Role |
 | --- | --- | --- |
 | Backup image | `deploy/production/backup/Dockerfile` | `pgvector/pgvector:pg18` (digest-pinned, the image compose.yml runs) + pgBackRest + `mc` |
-| Overlay | `deploy/production/compose.backup.yml` | `postgres` with `archive_mode=on`; the `backup` sidecar (`cw-backup.sh schedule`); the `minio-backup-provision` one-shot (read-only MinIO account) |
+| Overlay | `deploy/production/compose.backup.yml` | `postgres` with `archive_mode=on`; the `backup` sidecar (`cw-backup.sh schedule`); an `object-store-provision` overlay that adds the read-only backup reader to SeaweedFS's identities (reader-policy.json) |
 | Job | `deploy/production/backup/cw-backup.sh` | `snapshot`, `schedule`, `healthcheck`, `marker`, `restore-db`, `restore-objects` |
 | Restore | `deploy/production/backup/restore.sh` | restores a snapshot into NEW containers on a NEW network, ports on 127.0.0.1, `archive_mode=off` |
 | Verifier | `scripts/backup/verify-restore.ts` (`bun run backup:verify-restore`) | the §8.2 checks, including the restored-schema RLS smoke |
@@ -439,7 +439,7 @@ key ids and settings are environment variables. (`<NAME>` env values still work,
 | `BACKUP_OFFSITE_S3_URI_STYLE` | env | `path` (default) or `host` |
 | `secrets/backup_pg_local_cipher_pass`, `secrets/backup_pg_offsite_cipher_pass` | file | pgBackRest repo1 / repo2 AES-256 passphrases, >= 32 chars, different |
 | `secrets/backup_object_sse_c_key` | file | base64 of 32 random bytes: the SSE-C key for every off-site object, manifest and marker (sidecar only) |
-| `BACKUP_SOURCE_MINIO_ACCESS_KEY` + `secrets/backup_source_minio_secret_key` | env + file | the read-only MinIO account `minio-backup-provision` creates |
+| `BACKUP_SOURCE_MINIO_ACCESS_KEY` + `secrets/backup_source_minio_secret_key` | env + file | the read-only object-store reader `object-store-provision` renders into SeaweedFS's s3.json (with the overlay) |
 | `OPS_ALERT_WEBHOOK_URL` | env | **mandatory, https only** (the sidecar refuses to start without it; curl `--proto =https`): POSTs `backup.snapshot_failed` / `backup.snapshot_timeout` / `backup.stale` / `backup.wal_archive_failing` / `backup.pg_wal_large` |
 | `BACKUP_OFFSITE_MIN_LOCK_DAYS`, `BACKUP_PG_WAL_ALERT_BYTES` | env | 100 days / 8 GiB defaults (above) |
 | `BACKUP_HEARTBEAT_URL` | env | optional dead-man's switch pinged after each successful snapshot (alerts when the host itself is gone) |
@@ -520,7 +520,7 @@ verified restore by pointing a fresh stack at the restored volume and MinIO data
    lifecycle: noncurrent versions and delete markers after 120 days, incomplete multipart uploads after 7 days. Create
    its three scoped keys (§4.8.5); generate and escrow the encryption keys; write `./secrets/`; set the mandatory
    https `OPS_ALERT_WEBHOOK_URL`. Mirror the backup image's base and `mc` digests into a registry you control.
-2. Set the §4.8.4 variables, build the image, run `minio-backup-provision`, `up -d postgres backup`.
+2. Set the §4.8.4 variables, build the image, run `object-store-provision` with the overlay, recreate `seaweedfs`, `up -d postgres backup`.
 3. First witnessed restore of production data with `restore.sh` + the verifier; record it under `audit/restore-drill/`.
 4. Recurring cadence: monthly isolated restore + verify (§8.2), quarterly full off-site restore timed against the RTO
    target, and `bun run backup:coordinated-drill` on every change to `deploy/production/backup/`.

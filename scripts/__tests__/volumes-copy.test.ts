@@ -62,7 +62,15 @@ describe("volumes-copy.sh", () => {
   it("refuses when a required source volume is missing", () => {
     const r = run(["copy", "old", "new"], { STUB_VOLUMES: "old_postgres-data" });
     expect(r.code).toBe(1);
-    expect(r.out).toContain("old_minio-data does not exist");
+    expect(r.out).toContain("no object-store source volume");
+  });
+
+  it("accepts SeaweedFS's volume as the object store once MinIO's is gone (post-cutover)", () => {
+    const r = run(["verify", "old", "new"], {
+      STUB_VOLUMES: "old_postgres-data\nold_seaweedfs-data\nnew_postgres-data\nnew_seaweedfs-data",
+    });
+    expect(r.out).not.toContain("no object-store source volume");
+    expect(r.out).toContain("skip old_minio-data (absent)");
   });
 
   it("refuses when a container still uses a source volume, before copying anything", () => {

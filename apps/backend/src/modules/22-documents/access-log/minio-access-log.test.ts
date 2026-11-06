@@ -62,6 +62,72 @@ describe("parseConsumptions", () => {
   });
 });
 
+// Shapes captured from the real stores (SeaweedFS 4.52 via Fluent Bit 5.1.5, RustFS 1.0.4) for a presigned GET;
+// the keys there are NOT percent-encoded, so a literal `%` must survive.
+describe("parseConsumptions — SeaweedFS and RustFS records", () => {
+  const seaweed = (over: Record<string, unknown> = {}) => ({
+    date: 1793946248,
+    time: 1793946248,
+    bucket: `tenant-${ORG}`,
+    key: "documents/abc def/ü 100%.pdf",
+    operation: "REST.GET.OBJECT",
+    status: 200,
+    error_code: "",
+    request_id: "18E5609BB562AB4EC5343B42",
+    requester: "",
+    signature_version: "SigV4",
+    ...over,
+  });
+  const rustfs = (api: Record<string, unknown> = {}) => ({
+    EventName: "s3:ObjectAccessed:Get",
+    Key: `tenant-${ORG}/documents/abc def/ü 100%.pdf`,
+    Records: [
+      {
+        version: "1.0",
+        time: 1793946260577,
+        event: "s3:ObjectAccessed:Get",
+        api: {
+          name: "s3:GetObject",
+          bucket: `tenant-${ORG}`,
+          object: "documents/abc def/ü 100%.pdf",
+          status: "success",
+          status_code: 200,
+          ...api,
+        },
+        requestID: "cccaaf73-6763-4edc-9ad5-54ba2570f487",
+      },
+    ],
+  });
+
+  it("reads a SeaweedFS batch (Fluent Bit posts an array), raw key, epoch-second time", () => {
+    const [c] = parseConsumptions([seaweed(), seaweed({ operation: "REST.HEAD.OBJECT" })], NOW);
+    expect(c).toMatchObject({
+      organizationId: ORG,
+      objectKey: "documents/abc def/ü 100%.pdf",
+      requestId: "18E5609BB562AB4EC5343B42",
+    });
+    expect(c?.occurredAt.toISOString()).toBe(new Date(1793946248 * 1000).toISOString());
+  });
+
+  it("reads a RustFS Records envelope, raw key, epoch-millisecond time", () => {
+    const [c] = parseConsumptions(rustfs(), NOW);
+    expect(c).toMatchObject({
+      objectKey: "documents/abc def/ü 100%.pdf",
+      requestId: "cccaaf73-6763-4edc-9ad5-54ba2570f487",
+    });
+    expect(c?.occurredAt.toISOString()).toBe(new Date(1793946260577).toISOString());
+  });
+
+  it.each([
+    ["a refused SeaweedFS GET", seaweed({ status: 403, error_code: "SignatureDoesNotMatch" })],
+    ["a SeaweedFS GET with no status", seaweed({ status: undefined })],
+    ["a refused RustFS GET", rustfs({ status_code: 403, status: "failure" })],
+    ["a RustFS PUT", rustfs({ name: "s3:PutObject" })],
+  ])("ignores %s", (_label, record) => {
+    expect(parseConsumptions(record, NOW)).toEqual([]);
+  });
+});
+
 describe("bearerMatches", () => {
   it("matches only the exact token, and never throws on a length mismatch", () => {
     expect(bearerMatches("Bearer s3cret", "s3cret")).toBe(true);

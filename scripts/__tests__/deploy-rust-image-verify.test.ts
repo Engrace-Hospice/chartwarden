@@ -119,6 +119,9 @@ function run(r: Run): Outcome {
   writeFileSync(join(dir, "smoke.sh"), "#!/bin/sh\nexit 0\n");
   chmodSync(join(dir, "smoke.sh"), 0o755);
   writeFileSync(join(dir, "compose.yml"), "services: {}\n");
+  mkdirSync(join(dir, "object-store")); // deploy.sh refuses to run without the uploaded object-store configs
+  writeFileSync(join(dir, "object-store", "audit.json"), "{}\n");
+  writeFileSync(join(dir, "object-store", "fluent-bit.yaml"), "service: {}\n");
   writeFileSync(join(dir, ".env.production"), [...OLD_ENV, ...(r.envFile ?? []), ""].join("\n"));
   const t = r.trust ?? {};
   const lines = [

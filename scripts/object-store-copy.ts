@@ -14,15 +14,25 @@
 // it for the named buckets only (e.g. a tenant whose last document was erased).
 // A restore (`--restore`) never deletes: objects written to the primary since the last copy run survive it.
 // The source's stored checksum is the reference: bytes that do not match it are never written to the target.
+// `--adopt-unchecksummed` (the one-time MinIO -> SeaweedFS migration only): a source object stored WITHOUT a
+// checksum is copied with the SHA-256 of the bytes read, instead of failing; the target then verifies it.
 // Not handled: a bucket dropped on the source keeps its objects on the copy; a created bucket gets no
 // versioning or expiry rule (run the provisioner / backfill after a restore).
 //
 //   SOURCE_S3_ENDPOINT / _ACCESS_KEY / _SECRET_KEY / _REGION   the store read from
 //   TARGET_S3_ENDPOINT / _ACCESS_KEY / _SECRET_KEY / _REGION   the store written to
-//   bun run scripts/object-store-copy.ts [--restore]  # prints a JSON summary; exit 1 if anything failed
+//   bun run scripts/object-store-copy.ts [--restore] [--adopt-unchecksummed]
+//                                       # one run: prints a JSON summary; exit 1 if anything failed
+//   bun run scripts/object-store-copy.ts --every <seconds>
+//                                       # the scheduled second copy (compose.object-copy.yml): runs forever; each
+//                                       # failed run posts to OPS_ALERT_WEBHOOK_URL (https), each clean run touches
+//                                       # OBJECT_COPY_HEARTBEAT_FILE (the container healthcheck reads its age). The
+//                                       # target must be https (the copy crosses hosts carrying PHI) unless
+//                                       # OBJECT_COPY_ALLOW_PLAINTEXT_TARGET=1.
 //
 // ponytail: whole objects are buffered in memory (MAX_OBJECT_BYTES); stream them if documents outgrow that.
 import { createHash } from "node:crypto";
+import { writeFile } from "node:fs/promises";
 import {
   type S3ObjectStoreConfig,
   createS3ObjectStore,
@@ -44,6 +54,8 @@ export interface CopyOptions {
   readonly deleteMissing?: boolean;
   /** Buckets the mass-delete guard does not apply to (deliberate, named one by one). */
   readonly allowMassDeleteBuckets?: ReadonlySet<string>;
+  /** Copy a source object stored without a checksum with the SHA-256 of its bytes (migration only). */
+  readonly adoptUnchecksummed?: boolean;
 }
 
 export interface CopyFailure {
@@ -63,6 +75,15 @@ export interface CopySummary {
 type SignedFetch = ReturnType<typeof createS3SignedFetch>;
 type Store = ReturnType<typeof createS3ObjectStore>;
 type Deadline = () => AbortSignal;
+
+interface CopyContext {
+  readonly source: Store;
+  readonly target: Store;
+  readonly sourceFetch: SignedFetch;
+  readonly targetFetch: SignedFetch;
+  readonly signal: Deadline;
+  readonly options: CopyOptions;
+}
 
 const xmlText = (block: string, tag: string): string[] =>
   [...block.matchAll(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "g"))].map((m) => m[1] ?? "");
@@ -162,25 +183,63 @@ async function ensureBucket(fetchS3: SignedFetch, bucket: string, signal: Deadli
     throw new Error(`CreateBucket ${bucket} answered HTTP ${put.status}`);
 }
 
+const INCOMPLETE_METADATA = /incomplete verified metadata/;
+
+/**
+ * The source object's reference: its stored checksum, size and type. With `adoptUnchecksummed`, an object stored
+ * without a checksum yields `sha256Hex: null` (size and type from a plain HEAD) instead of failing.
+ */
+async function sourceReference(
+  ctx: CopyContext,
+  bucket: string,
+  key: string,
+): Promise<{ sha256Hex: string | null; byteSize: number; mimeType: string }> {
+  try {
+    const stored = await ctx.source.inspectObject({ bucket, objectKey: key, signal: ctx.signal() });
+    if (!stored) throw new Error("vanished from the source during the copy");
+    return stored;
+  } catch (error) {
+    if (!ctx.options.adoptUnchecksummed || !INCOMPLETE_METADATA.test(reasonOf(error))) throw error;
+  }
+  const head = await ctx.sourceFetch({
+    method: "HEAD",
+    bucket,
+    objectKey: key,
+    query: [],
+    payload: null,
+    signal: ctx.signal(),
+  });
+  if (!head.ok) throw new Error(`HEAD answered HTTP ${head.status}`);
+  return {
+    sha256Hex: null,
+    byteSize: Number(head.headers.get("content-length") ?? 0),
+    mimeType:
+      head.headers.get("content-type")?.split(";", 1)[0]?.trim() || "application/octet-stream",
+  };
+}
+
 /**
  * Copy one object unless the target already holds it (same stored SHA-256 and size; no download then). The
  * source's stored checksum is the reference: an object without one, or whose bytes do not match it, fails and
  * the target keeps whatever it had.
  */
 async function copyObject(
-  source: Store,
-  target: Store,
+  ctx: CopyContext,
   bucket: string,
   key: string,
-  signal: Deadline,
 ): Promise<"copied" | "unchanged"> {
-  const stored = await source.inspectObject({ bucket, objectKey: key, signal: signal() });
-  if (!stored) throw new Error("vanished from the source during the copy");
-  const { sha256Hex, byteSize, mimeType } = stored;
+  const { source, target, signal } = ctx;
+  const stored = await sourceReference(ctx, bucket, key);
+  const { byteSize, mimeType } = stored;
   const existing = await target
     .inspectObject({ bucket, objectKey: key, signal: signal() })
     .catch(() => null);
-  if (existing?.sha256Hex === sha256Hex && existing.byteSize === byteSize) return "unchanged";
+  if (
+    stored.sha256Hex &&
+    existing?.sha256Hex === stored.sha256Hex &&
+    existing.byteSize === byteSize
+  )
+    return "unchanged";
   const bytes = await source.getObject({
     bucket,
     objectKey: key,
@@ -188,10 +247,15 @@ async function copyObject(
     signal: signal(),
   });
   if (!bytes) throw new Error("vanished from the source during the copy");
-  if (createHash("sha256").update(bytes).digest("hex") !== sha256Hex)
+  const actual = createHash("sha256").update(bytes).digest("hex");
+  // adopting: the bytes read ARE the reference (the target's read-back still verifies the write)
+  const sha256Hex = stored.sha256Hex ?? actual;
+  if (actual !== sha256Hex)
     throw new Error(
       "source bytes do not match the source's stored checksum; target left untouched",
     );
+  // adopted object already copied (no source checksum to compare without the download): skip the rewrite
+  if (existing?.sha256Hex === sha256Hex && existing.byteSize === byteSize) return "unchanged";
   await target.putObject({ bucket, objectKey: key, bytes, mimeType, signal: signal() });
   const written = await target.inspectObject({ bucket, objectKey: key, signal: signal() });
   if (written?.sha256Hex !== sha256Hex || written.byteSize !== byteSize)
@@ -222,17 +286,10 @@ interface BucketTally {
 
 async function syncBucket(
   bucket: string,
-  ctx: {
-    readonly source: Store;
-    readonly target: Store;
-    readonly sourceFetch: SignedFetch;
-    readonly targetFetch: SignedFetch;
-    readonly signal: Deadline;
-    readonly options: CopyOptions;
-  },
+  ctx: CopyContext,
   failed: CopyFailure[],
 ): Promise<BucketTally> {
-  const { source, target, sourceFetch, targetFetch, signal, options } = ctx;
+  const { target, sourceFetch, targetFetch, signal, options } = ctx;
   const tally: BucketTally = { copied: 0, unchanged: 0, deleted: 0 };
   // listed a moment ago but gone now: skip it, deleting on the strength of a 404 is not safe
   const sourceKeys = await listKeys(sourceFetch, bucket, signal);
@@ -240,7 +297,7 @@ async function syncBucket(
   await ensureBucket(targetFetch, bucket, signal);
   for (const key of sourceKeys) {
     try {
-      tally[await copyObject(source, target, bucket, key, signal)]++;
+      tally[await copyObject(ctx, bucket, key)]++;
     } catch (error) {
       failed.push({ bucket, key, reason: reasonOf(error) });
     }
@@ -283,7 +340,7 @@ export async function copyObjectStore(
 ): Promise<CopySummary> {
   const timeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   const signal: Deadline = () => AbortSignal.timeout(timeoutMs);
-  const ctx = {
+  const ctx: CopyContext = {
     source: createS3ObjectStore(sourceConfig),
     target: createS3ObjectStore(targetConfig),
     sourceFetch: createS3SignedFetch(sourceConfig, {}, "object-store-copy:source"),
@@ -326,20 +383,90 @@ export function storeConfigFromEnv(
   };
 }
 
+const DEFAULT_HEARTBEAT_FILE = "/tmp/object-copy-last-success";
+/** Failures listed in an alert: enough to start triage, bounded so one bad run cannot flood the pager. */
+const ALERT_FAILURE_SAMPLE = 20;
+const ALERT_TIMEOUT_MS = 10_000;
+const MIN_INTERVAL_SECONDS = 60;
+
+type Env = Record<string, string | undefined>;
+
+/** The scheduled copy's preconditions: it never runs silently, and never ships PHI across hosts in plaintext. */
+export function assertScheduleEnv(env: Env): void {
+  if (!env.OPS_ALERT_WEBHOOK_URL?.startsWith("https://"))
+    throw new Error(
+      "OPS_ALERT_WEBHOOK_URL must be an https:// URL (a failing second copy must page someone)",
+    );
+  const target = env.TARGET_S3_ENDPOINT?.trim() ?? "";
+  if (!target.startsWith("https://") && env.OBJECT_COPY_ALLOW_PLAINTEXT_TARGET !== "1")
+    throw new Error(
+      "TARGET_S3_ENDPOINT must be https:// (the copy crosses hosts); OBJECT_COPY_ALLOW_PLAINTEXT_TARGET=1 overrides",
+    );
+}
+
+/** The alert body (cw-backup.sh's shape): counts and bucket/key ids only, never object content. */
+export function alertBody(summary: CopySummary | null, error: unknown, now: Date): string {
+  return JSON.stringify({
+    kind: "object_copy.failed",
+    summary: summary
+      ? `second copy: ${summary.failed.length} failure(s) over ${summary.buckets} bucket(s)`
+      : `second copy run aborted: ${reasonOf(error)}`,
+    details: summary
+      ? { ...summary, failed: summary.failed.slice(0, ALERT_FAILURE_SAMPLE) }
+      : { error: reasonOf(error) },
+    occurredAt: now.toISOString(),
+  });
+}
+
+function runOnce(env: Env, argv: readonly string[]): Promise<CopySummary> {
+  return copyObjectStore(storeConfigFromEnv("SOURCE", env), storeConfigFromEnv("TARGET", env), {
+    deleteMissing: !argv.includes("--restore"),
+    adoptUnchecksummed: argv.includes("--adopt-unchecksummed"),
+    allowMassDeleteBuckets: new Set(
+      (env.ALLOW_MASS_DELETE ?? "")
+        .split(",")
+        .map((b) => b.trim())
+        .filter(Boolean),
+    ),
+  });
+}
+
+/** The second copy: one forward sync every `intervalSeconds`, forever; a failed run pages, a clean run beats. */
+async function schedule(env: Env, intervalSeconds: number): Promise<never> {
+  assertScheduleEnv(env);
+  const heartbeat = env.OBJECT_COPY_HEARTBEAT_FILE?.trim() || DEFAULT_HEARTBEAT_FILE;
+  for (;;) {
+    let summary: CopySummary | null = null;
+    let error: unknown = null;
+    try {
+      summary = await runOnce(env, []);
+    } catch (e) {
+      error = e;
+    }
+    process.stdout.write(`${JSON.stringify(summary ?? { error: reasonOf(error) })}\n`);
+    if (summary !== null && summary.failed.length === 0) {
+      await writeFile(heartbeat, new Date().toISOString());
+    } else {
+      await fetch(env.OPS_ALERT_WEBHOOK_URL ?? "", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: alertBody(summary, error, new Date()),
+        signal: AbortSignal.timeout(ALERT_TIMEOUT_MS),
+      }).catch((e) => process.stderr.write(`alert webhook delivery failed: ${reasonOf(e)}\n`));
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalSeconds * 1000));
+  }
+}
+
 if (import.meta.main) {
-  const summary = await copyObjectStore(
-    storeConfigFromEnv("SOURCE", process.env),
-    storeConfigFromEnv("TARGET", process.env),
-    {
-      deleteMissing: !process.argv.includes("--restore"),
-      allowMassDeleteBuckets: new Set(
-        (process.env.ALLOW_MASS_DELETE ?? "")
-          .split(",")
-          .map((b) => b.trim())
-          .filter(Boolean),
-      ),
-    },
-  );
+  const everyAt = process.argv.indexOf("--every");
+  if (everyAt >= 0) {
+    const seconds = Number(process.argv[everyAt + 1]);
+    if (!Number.isInteger(seconds) || seconds < MIN_INTERVAL_SECONDS)
+      throw new Error(`--every needs whole seconds >= ${MIN_INTERVAL_SECONDS}`);
+    await schedule(process.env, seconds);
+  }
+  const summary = await runOnce(process.env, process.argv);
   // Keys are PHI-free by construction (D11 opaque ids); the summary carries no object content.
   process.stdout.write(`${JSON.stringify(summary)}\n`);
   process.exit(summary.failed.length === 0 ? 0 : 1);

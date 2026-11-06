@@ -34,6 +34,7 @@ export OBJECT_STORE_ADMIN_SECRET_KEY=$ROOT_PASSWORD
 export OBJECT_STORE_APP_ACCESS_KEY=$APP_USER
 export OBJECT_STORE_APP_SECRET_KEY=$APP_PASSWORD
 export OBJECT_STORE_AUDIT_SINK_PORT=$SINK_PORT
+export OBJECT_STORE_AUDIT_TOKEN=conformance-audit-token-not-real
 EOF
   exit 0
 fi
@@ -48,11 +49,10 @@ EOF
   exit 0
 fi
 
-# The production app policy, verbatim: the heredoc between <<'POLICY' and POLICY in compose.yml.
+# The production app policy, verbatim (deploy/production/object-store/app-policy.json).
 POLICY_FILE="$(mktemp)"
 trap 'rm -f "$POLICY_FILE"' EXIT
-awk "/<<'POLICY'/{on=1;next} /^ *POLICY\$/{on=0} on" "$REPO/deploy/production/compose.yml" > "$POLICY_FILE"
-[ -s "$POLICY_FILE" ] || { echo "app policy not found in deploy/production/compose.yml" >&2; exit 1; }
+cp "$REPO/deploy/production/object-store/app-policy.json" "$POLICY_FILE"
 # RustFS names the lifecycle actions s3:Get/PutBucketLifecycle; AWS and MinIO use s3:Get/PutLifecycleConfiguration,
 # and RustFS rejects a policy carrying the AWS names. Translate only those two.
 sed -i.orig -e 's/s3:GetLifecycleConfiguration/s3:GetBucketLifecycle/' -e 's/s3:PutLifecycleConfiguration/s3:PutBucketLifecycle/' \
@@ -66,7 +66,7 @@ docker run -d --name cw-osc-rustfs -p "127.0.0.1:$S3_PORT:9000" --add-host=host.
   -e RUSTFS_ACCESS_KEY="$ROOT_USER" -e RUSTFS_SECRET_KEY="$ROOT_PASSWORD" -e RUSTFS_VOLUMES=/data \
   -e RUSTFS_CONSOLE_ENABLE=false -e RUSTFS_AUDIT_ENABLE=true \
   -e RUSTFS_AUDIT_WEBHOOK_ENABLE_PRIMARY=on -e RUSTFS_AUDIT_WEBHOOK_ENDPOINT_PRIMARY="$SINK/audit" \
-  -e RUSTFS_OUTBOUND_ALLOW_ORIGINS="$SINK" \
+  -e RUSTFS_AUDIT_WEBHOOK_AUTH_TOKEN_PRIMARY=conformance-audit-token-not-real -e RUSTFS_OUTBOUND_ALLOW_ORIGINS="$SINK" \
   "$RUSTFS_IMAGE" >/dev/null
 
 for _ in $(seq "$READY_ATTEMPTS"); do
@@ -82,4 +82,4 @@ docker run --rm --network host -v "$POLICY_FILE:/tmp/app-policy.json:ro" --entry
     rc admin policy create local/ conformance-app /tmp/app-policy.json >/dev/null
     rc admin user add local/ $APP_USER $APP_PASSWORD >/dev/null
     rc admin policy attach local/ conformance-app --user $APP_USER >/dev/null"
-echo "RustFS S3 ready on 127.0.0.1:$S3_PORT (app key from the compose policy); audit -> host:$SINK_PORT"
+echo "RustFS S3 ready on 127.0.0.1:$S3_PORT (app key from app-policy.json); audit -> host:$SINK_PORT"

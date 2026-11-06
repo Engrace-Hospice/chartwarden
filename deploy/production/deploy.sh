@@ -115,6 +115,8 @@ deploy_alert() {
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+# A dropped ssh session turns the next write to stdout into SIGPIPE, which would kill sh without any trap.
+trap 'exit 141' PIPE
 trap 'deploy_alert "$?"' EXIT
 
 # The Postgres database name (compose.yml: ${CHARTWARDEN_DB_NAME:-chartwarden}). It is interpolated into
@@ -146,11 +148,12 @@ ensure_secret() {
 }
 # The docling-worker bearer (backend -> worker); it holds no object-store credentials.
 ensure_secret DOCLING_WORKER_TOKEN "$(openssl rand -hex 32)"
-# The scoped MinIO service account the api/worker use instead of the MinIO ROOT account (the
-# `minio-provision` one-shot creates it with a bucket-scoped policy; see compose.yml).
+# The scoped object-store key the api/worker use instead of the store's admin key (the `object-store-provision`
+# one-shot binds it to deploy/production/object-store/app-policy.json; see compose.yml). The MINIO_* names are the
+# adapter's env contract and outlived MinIO.
 ensure_secret MINIO_APP_ACCESS_KEY "chartwarden-app"
 ensure_secret MINIO_APP_SECRET_KEY "$(openssl rand -hex 24)"
-# The bearer MinIO's audit webhook presents to the api's access-log receiver (GAP-141).
+# The bearer Fluent Bit presents to the api's access-log receiver with SeaweedFS's audit stream (GAP-141).
 ensure_secret MINIO_ACCESS_LOG_WEBHOOK_TOKEN "$(openssl rand -hex 32)"
 # The least-privilege destruction login (tenant erase, attachment reaper). compose.yml requires it and the
 # `migrate` one-shot provisions the role with it, so a server whose env file predates it gets one generated.
@@ -165,8 +168,10 @@ cleanup() {
   rm -f "$next_file" "$backup_file"
   [ -z "${ledger_before:-}" ] || rm -f "$ledger_before" "$ledger_before.after"
 }
+# A deploy killed (cancelled run, dropped ssh) inside the object-store cutover window, before the copy completed,
+# would leave the api stopped and MinIO without its host port: undo the cutover first (cutover_undo, below).
 # shellcheck disable=SC2154 # alert_exit is assigned inside the trap string itself
-trap 'alert_exit=$?; cleanup || :; deploy_alert "$alert_exit"; exit "$alert_exit"' EXIT
+trap 'alert_exit=$?; trap "" PIPE HUP INT TERM; if [ "$alert_exit" -ne 0 ] && [ "${cutover_window:-0}" -eq 1 ]; then if [ ! -f .object-store-cutover ]; then cutover_undo || :; elif [ "$alert_exit" -gt 128 ] && [ "${migrate_ok:-0}" -eq 0 ]; then cutover_killed_after_copy || :; fi; fi; cleanup || :; deploy_alert "$alert_exit"; exit "$alert_exit"' EXIT
 
 awk -v backend="$backend_image" -v web="$web_image" -v docling="$docling_image" '
   BEGIN { saw_backend = 0; saw_web = 0; saw_docling = 0 }
@@ -197,6 +202,7 @@ schema_applied=""
 # healthy ones running. Recreating them then would start them from the NEW compose.yml (which names the
 # chartwarden_* database roles, migration 1139) against a schema that may not have been renamed yet.
 migrate_ok=0
+cutover_window=0
 psql_admin() {
   docker compose --env-file .env.production -f compose.yml exec -T postgres \
     psql -U postgres -d "$db_name" -v ON_ERROR_STOP=1 -At "$@" </dev/null
@@ -262,6 +268,13 @@ hold_for_operator() {
     echo "!! was running is still running: the previous api/worker/web if the failure came at or before 'provision',"
     echo "!! the new ones if it came at 'up' or smoke. .env.production names the NEW release; the previous one is"
     echo "!! saved as $deploy_dir/.env.production.previous-release."
+    if [ "${cutover_window:-0}" -eq 1 ]; then
+      echo "!! EXCEPTION: this deploy ran the one-time SeaweedFS cutover, so api and worker are STOPPED: THE APP IS DOWN."
+      echo "!! Never 'docker compose start' them: those containers still point at the retired MinIO. SeaweedFS holds every"
+      echo "!! object, so recreate them, with the new release (roll forward, the code written for this schema):"
+      echo "!!     docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate api worker web"
+      echo "!!   or with the previous one (roll back, below) once it is confirmed safe on this schema."
+    fi
     echo "!! Decide, then act (deploy/production/README.md, 'When a deploy halts for an operator decision'):"
     echo "!!   roll forward: fix the cause and re-run deploy.sh with the new (or a fixed) release; migrate is idempotent"
     echo "!!   roll back:    ONLY after confirming the previous code works on this schema:"
@@ -278,7 +291,9 @@ restore_previous_release() {
   fi
   echo "deploy failed; restoring the previous image references" >&2
   cp "$backup_file" .env.production
-  if [ "$migrate_ok" -eq 1 ]; then
+  # cutover_window: the object-store cutover stopped the old api/worker and moved the data to SeaweedFS, so they must
+  # come back (as the previous release, on SeaweedFS) even though no migration ran.
+  if [ "$migrate_ok" -eq 1 ] || [ "$cutover_window" -eq 1 ]; then
     docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate api worker web || true
   else
     echo "migrations did not complete; leaving the running containers untouched" >&2
@@ -449,14 +464,128 @@ if ! docker compose --env-file .env.production -f compose.yml run --rm --no-deps
   exit 1
 fi
 
-# `up --no-deps` below never starts dependency services. Create/refresh the scoped MinIO
-# service account before the new api/worker credentials are used (including secret rotations).
-deploy_step=minio-provision
-docker compose --env-file .env.production -f compose.yml run --rm minio-provision || {
-  echo "MinIO application account provisioning failed; no migrations were applied" >&2
+# ── object store (SeaweedFS) ─────────────────────────────────────────────────────────────────────────
+#
+# `up --no-deps` below never starts dependency services. Render SeaweedFS's identities (s3.json) before the new
+# api/worker credentials are used (including secret rotations), and recreate seaweedfs when they changed: it reads
+# the file at start only. The backup overlay's read-only key is included when the overlay is configured, or the
+# next deploy would drop the backup sidecar's access.
+#
+# ONE-TIME CUTOVER (ADR-0050 D6 amendment): a host that still has a MinIO volume and no `.object-store-cutover`
+# marker moves every object into SeaweedFS in a short maintenance window, before any schema change:
+#   1. the old api/worker STOP (`stop` keeps their containers and their MinIO settings), so neither store is written;
+#   2. MinIO is recreated without its host port (127.0.0.1:9000 becomes SeaweedFS's) and SeaweedFS starts;
+#   3. one delete-aware mirror pass copies every object with its SHA-256 (`object-store-migrate`); with no writer it is
+#      complete, and a retry removes whatever a failed attempt left in SeaweedFS (the app never wrote there yet);
+#   4. only then the marker is written and MinIO stops. The api/worker return on SeaweedFS at `up` below, or as the
+#      previous release on SeaweedFS if a later step fails (restore_previous_release, cutover_window=1).
+# A failure in 1-3 puts the old world back (MinIO on its host port, the stopped api/worker started unchanged) and
+# fails the deploy with no migration applied; the next deploy retries. MinIO's volume stays for an operator (README).
+deploy_step=object-store
+object_store_files="-f compose.yml"
+if [ -f compose.backup.yml ] && grep -q '^BACKUP_SOURCE_MINIO_ACCESS_KEY=.' .env.production; then
+  object_store_files="$object_store_files -f compose.backup.yml"
+fi
+for f in object-store/audit.json object-store/fluent-bit.yaml; do
+  [ -f "$f" ] || { echo "missing $deploy_dir/$f (deploy.yml uploads it); nothing was changed" >&2; restore_previous_release; exit 1; }
+done
+# "Cutover done" is recorded twice: the marker file here, and cutover-done in the seaweedfs-config volume, which
+# travels with the data. Losing the marker alone must never re-mirror a stale MinIO over the live SeaweedFS.
+object_store_one_shot() {
+  entrypoint=$1
+  shift
+  docker compose --env-file .env.production -f compose.yml run --rm --no-deps --entrypoint "$entrypoint" object-store-provision "$@"
+}
+legacy_minio=0
+if [ ! -f .object-store-cutover ]; then
+  minio_volumes=$(docker volume ls -q --filter 'name=_minio-data$' </dev/null) || {
+    echo "docker volume ls failed; cannot tell whether the SeaweedFS cutover is due; nothing was changed" >&2
+    restore_previous_release
+    exit 1
+  }
+  if [ -n "$minio_volumes" ]; then
+    cutover_record=$(object_store_one_shot sh -c 'if [ -f /config/cutover-done ]; then echo recorded; else echo absent; fi' 2>/dev/null) || cutover_record=""
+    case "$cutover_record" in
+      recorded)
+        echo "the SeaweedFS cutover is recorded in the seaweedfs-config volume; restoring the missing marker file" >&2
+        touch .object-store-cutover ;;
+      absent) legacy_minio=1 ;;
+      *)
+        echo "could not read the cutover record in the seaweedfs-config volume; nothing was changed" >&2
+        restore_previous_release
+        exit 1 ;;
+    esac
+  fi
+fi
+if ! provision_out=$(docker compose --env-file .env.production $object_store_files run --rm object-store-provision); then
+  echo "object-store identity provisioning failed; no migrations were applied" >&2
   restore_previous_release
   exit 1
+fi
+echo "$provision_out"
+# audit.json and fluent-bit.yaml are bind mounts, and s3.json is read at start: `up` alone applies none of them, so
+# recreate both containers when any changed (same pattern as clamd.conf below).
+object_store_conf_hash=$( { cat object-store/audit.json object-store/fluent-bit.yaml | { sha256sum 2>/dev/null || shasum -a 256; }; } | awk '{print $1}')
+object_store_recreate=""
+case "$provision_out" in *"s3.json changed"*) object_store_recreate="--force-recreate" ;; esac
+[ "$object_store_conf_hash" = "$(cat .object-store-conf.sha256 2>/dev/null || true)" ] || object_store_recreate="--force-recreate"
+
+cutover_undo() {
+  echo "restoring MinIO on 127.0.0.1:9000 and the stopped api/worker; no migrations were applied" >&2
+  docker compose --env-file .env.production -f compose.yml stop seaweedfs || true
+  printf 'services:\n  minio:\n    ports: ["127.0.0.1:9000:9000"]\n    restart: unless-stopped\n' \
+    | docker compose --env-file .env.production -f compose.yml -f - --profile legacy-minio up -d --force-recreate --wait minio \
+    || echo "!! MinIO did not come back on 127.0.0.1:9000; presigned URLs fail until it does (README, cutover)" >&2
+  # Plain `docker start` on the stopped containers: they keep their MinIO settings, and unlike `compose start` it
+  # never walks depends_on (which would start seaweedfs again, on the port MinIO just took back).
+  stopped_writers=$(docker compose --env-file .env.production -f compose.yml ps -aq api worker) || stopped_writers=""
+  # shellcheck disable=SC2086 # container ids, one word each
+  if [ -z "$stopped_writers" ] || ! docker start $stopped_writers >/dev/null; then
+    echo "!! the stopped api/worker did not start again: THE APP IS DOWN. docker start them by hand (README, cutover)" >&2
+  fi
+  cutover_window=0 # last: a signal mid-undo leaves it 1, so the EXIT trap runs the (idempotent) undo again
 }
+
+# Killed after the copy completed but before migrations: SeaweedFS holds everything and the schema is unchanged, so
+# bring the previous release back on it rather than leave the api stopped.
+cutover_killed_after_copy() {
+  echo "deploy killed after the SeaweedFS cutover; recreating the previous release on SeaweedFS" >&2
+  cp "$backup_file" .env.production
+  docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate api worker web \
+    || echo "!! api/worker/web did not come back: THE APP IS DOWN. Recreate them (README, cutover)" >&2
+}
+
+if [ "$legacy_minio" -eq 1 ]; then
+  deploy_step=object-store-migrate
+  echo "SeaweedFS cutover: stopping api/worker for the one-time MinIO -> SeaweedFS copy (maintenance window starts)" >&2
+  cutover_window=1
+  if ! { docker compose --env-file .env.production -f compose.yml stop api worker \
+    && docker compose --env-file .env.production -f compose.yml --profile legacy-minio up -d --force-recreate --wait minio \
+    && docker compose --env-file .env.production -f compose.yml up -d --no-deps $object_store_recreate --wait seaweedfs \
+    && docker compose --env-file .env.production -f compose.yml --profile legacy-minio run --rm --no-deps object-store-migrate; }; then
+    echo "MinIO -> SeaweedFS cutover failed (summary above)" >&2
+    cutover_undo
+    restore_previous_release
+    exit 1
+  fi
+  touch .object-store-cutover
+  object_store_one_shot touch /config/cutover-done \
+    || echo "WARNING: could not record the cutover in the seaweedfs-config volume; keep $deploy_dir/.object-store-cutover" >&2
+  docker compose --env-file .env.production -f compose.yml --profile legacy-minio stop minio \
+    || echo "WARNING: the legacy MinIO did not stop; nothing uses it any more (stop it by hand)" >&2
+else
+  docker compose --env-file .env.production -f compose.yml up -d --no-deps $object_store_recreate --wait seaweedfs || {
+    echo "SeaweedFS did not become healthy; no migrations were applied" >&2
+    restore_previous_release
+    exit 1
+  }
+fi
+# Best-effort (download confirmation only, GAP-141): a Fluent Bit that will not start must not fail the release.
+if docker compose --env-file .env.production -f compose.yml up -d --no-deps $object_store_recreate fluent-bit; then
+  echo "$object_store_conf_hash" > .object-store-conf.sha256
+else
+  echo "WARNING: fluent-bit did not start; signed-URL downloads are not confirmed until it does" >&2
+fi
 
 # Production migrations are forward-only and commit one file at a time. A code rollback can restore the prior
 # image but cannot reverse a migration, so the ledger is read before and after, and the difference decides what
@@ -511,6 +640,7 @@ docker compose --env-file .env.production -f compose.yml up -d --no-deps --force
   restore_previous_release
   exit 1
 }
+cutover_window=0 # the api/worker run again (on SeaweedFS): a later hold must not report them stopped
 
 # Post-deploy verification (F-038/#98). This used to be a single loop against
 # `http://127.0.0.1:3000/ready` — one process answering its own readiness endpoint on loopback, which

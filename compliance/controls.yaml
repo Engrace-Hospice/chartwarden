@@ -29,6 +29,12 @@ controls:
       - script: test:rls:live
       - ci: "cross-tenant isolation proof"
       - file: apps/backend/__tests__/_live-app-role.ts
+      # ADR-0050 D6 (2026-11-05) — the object store's tenant isolation: the api/worker key is bound to app-policy.json
+      # (tenant-* / chartwarden-* only, no bucket delete or versioning change, proven against SeaweedFS and RustFS), and
+      # a presigned URL rewritten to another tenant's bucket or key is refused.
+      - script: test:object-store:conformance:live
+      - script: test:object-store:resilience:live
+      - file: deploy/production/object-store/app-policy.json
 
   - id: CW-AC-02
     title: Unique user identification and authorization at the route (RBAC + ABAC predicates)
@@ -80,12 +86,16 @@ controls:
     title: Encryption at rest with per-tenant keys
     hipaa: ["164.312(a)(2)(iv)"]
     soc2: ["CC6.1", "C1.1"]
-    status: implemented
+    status: partial
     evidence:
       - script: test:m34:tenant-key-provider:live
       - script: test:crypto-labels:backfill:live
       - script: test:m36:body-key-ring:live
       - file: docs/architecture/CHARTWARDEN_SECURITY_HARDENING_v0_2.md
+    gap:
+      reason: Document objects (M22) are stored as plaintext in the object store (SeaweedFS; previously MinIO, which had no SSE configured either) and in the planned RustFS second copy; at-rest protection rests on host disk encryption, which no gate checks on either host. Require LUKS or provider volume encryption on both hosts and assert it (preflight), or add server-side encryption.
+      owner: platform
+      review_by: 2027-01-31
 
   - id: CW-AC-07
     title: Bun-to-Rust trust boundary (CW-RUST-M02), as enforced in THIS repo — Bun signs an Ed25519 actor assertion only for a request that has already passed authentication and requireSession, or (class parity-sweep) for the daily parity sweep's audited comparison; a client-supplied assertion header is stripped in Bun and nginx; the Rust service is topology-limited to one instance on an internal network with postgres, reachable from api only through a shared socket; the bridge config and key fail closed
@@ -166,6 +176,11 @@ controls:
       - script: test:m11:lab-result-review:live
       - script: test:audit:nested-redaction:live
       - script: arch:audit-denylist-sync
+      # GAP-141 download confirmation: the store's audit log reaches the api only over the internal `audit` network
+      # with the webhook bearer (asserted by the conformance suite). Known limit: any successful GET on a document's
+      # key within 15 min of a signed-URL issue is attributed to it, including the backup/copy readers'.
+      - script: test:object-store:conformance:live
+      - file: deploy/production/compose.yml
 
   - id: CW-AU-02
     title: External auditor access is staged behind BAA acceptance and a second factor
@@ -196,8 +211,10 @@ controls:
     evidence:
       - file: deploy/production/web-security-headers.conf
       - file: apps/backend/src/modules/29-external-interfaces/__tests__/m29-cert-pin-and-destination-policy.test.ts
+      # the object-store second copy refuses a plain http:// target
+      - file: scripts/__tests__/object-store-copy.test.ts
     gap:
-      reason: TLS configuration of the Pangolin edge and internal service-to-service hops is documented but not asserted by any gate; add a TLS scan (e.g. testssl.sh) against staging to CI.
+      reason: TLS configuration of the Pangolin edge and internal service-to-service hops is documented but not asserted by any gate; add a TLS scan (e.g. testssl.sh) against staging to CI. The object-store replica's Nginx TLS and firewall (deploy/production/README.md, second copy) are manual operator steps with no repo evidence.
       owner: platform
       review_by: 2027-01-31
 
@@ -251,6 +268,11 @@ controls:
       - script: m36:restore-drill
       - file: audit/restore-drill/m36-restore-drill.md
       - file: ops/pgbackrest/pgbackrest.conf.template
+      # ADR-0050 D6 (2026-11-05) — a second copy of every object on another host (RustFS), synced with each object's
+      # SHA-256 and a mass-delete guard; restore from it is proven by the resilience suite (primary loss, guarded
+      # forward run, restore, verified reads). The backup's object restore now keeps the checksum too.
+      - file: deploy/production/compose.object-copy.yml
+      - file: scripts/object-store-copy.ts
     gap:
       reason: DR_BCP records that no streaming replica or WAL archiving is running yet; restore drills exist for M36 but not as a scheduled whole-database drill with recorded RTO/RPO.
       owner: platform
@@ -343,7 +365,7 @@ controls:
       - file: docs/audits/clearinghouse-integration/CLAIMMD_TRANSPORT_CONTRACT_20261104.md
       - script: arch:ai-governance
     gap:
-      reason: BAA status is prose in the integration and AI-governance docs (Anthropic BAA "in progress"; Claim.MD BAA received 2026-11-04 per its portal, recorded in the Claim.MD transport contract); there is no machine-checked vendor register with BAA date and scope per vendor (OVH, Hostinger, Postmark, DoseSpot, Stedi, Claim.MD, Anthropic, GitHub).
+      reason: BAA status is prose in the integration and AI-governance docs (Anthropic BAA "in progress"; Claim.MD BAA received 2026-11-04 per its portal, recorded in the Claim.MD transport contract); there is no machine-checked vendor register with BAA date and scope per vendor (OVH, Hostinger, Postmark, DoseSpot, Stedi, Claim.MD, Anthropic, GitHub). The object-store second copy's host (deploy/production/replica/, a new PHI destination) is covered by a BAA per the owner (2026-11-06); its provider name and BAA date are not yet in a repo record, and the OPS_ALERT_WEBHOOK_URL receiver gets object keys (opaque patient/document ids) in copy alerts.
       owner: privacy-officer
       review_by: 2027-01-31
 
@@ -351,13 +373,17 @@ controls:
     title: Retention and disposal — legal holds honoured, destruction is governed
     hipaa: ["164.310(d)(2)(i)", "164.316(b)(2)(i)"]
     soc2: ["C1.2"]
-    status: implemented
+    status: partial
     evidence:
       - script: test:m10:retention:live
       - script: test:m11:lab-result-review:live
       - script: test:m36:retention-destruction:live
       - script: test:m36:retention-governance:live
       - file: docs/runbooks/m36-retention-destruction.md
+    gap:
+      reason: The object-store second copy (compose.object-copy.yml, a RustFS replica; NOT enabled in production) would receive a D12 shred only on its next hourly run, a large erasure is held by its mass-delete guard until an operator names the bucket, a bucket dropped on the primary is never removed there, and a --restore after a shred brings destroyed objects back (objects are plaintext, so crypto-erasure does not cover them). Before enabling it, propagate D12 shreds to the copy target and add a replica step to the destruction runbook. The legacy MinIO volume kept after the SeaweedFS cutover is also a full copy until an operator removes it (README, cutover).
+      owner: platform
+      review_by: 2027-01-31
 
   - id: CW-CS-01
     title: Critical lab results are never silently dropped — paged (RN, drafter, attending, medical director on an unsigned order, tenant-admin fallback), quarantined with a clock when no order matches, escalated once, supersession recorded; the ledger is audited and destruction-reachable

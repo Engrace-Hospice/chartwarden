@@ -234,24 +234,36 @@ OS with no SSH and no shell.
 > - **Production primary: SeaweedFS** (Apache-2.0; pinned `chrislusf/seaweedfs:4.52` in tests). Its S3 audit
 >   log speaks the Fluent forward protocol, so Fluent Bit ships it as JSON. In the audit config, `timeout` and
 >   `write_timeout` are Go durations in **nanoseconds**: the wiki's `"timeout": 3000` (3 µs) silently drops
->   every record. Bucket creation and lifecycle need `Admin:tenant-*` there, which also lets the app key delete
->   tenant buckets and change versioning (MinIO's policy does not). Decide before cutover whether to move bucket
->   creation to a privileged provisioning identity.
+>   every record. The app key gets no SeaweedFS `Admin`: SeaweedFS 4.52 accepts IAM policy documents
+>   (`policies` + `policyNames` in `s3.json`), and the production MinIO policy works there verbatim
+>   (`deploy/production/object-store/app-policy.json`): bucket creation and lifecycle are allowed, bucket deletion and
+>   versioning changes are refused (asserted by the conformance suite). The legacy `Admin:tenant-*` grant is gone.
+>   Only the S3 gateway listens on the compose network; master, volume and filer bind to loopback (the filer's API
+>   is unauthenticated and would bypass S3 auth). One volume per bucket (`WEED_MASTER_VOLUME_GROWTH_COPY_1=1`).
 > - **Local development, CI and the second copy: RustFS** (Apache-2.0; `rustfs/rustfs:1.0.4`). The dev
 >   `docker-compose.yml` and the CI e2e job run it. It speaks MinIO's admin API (`rc` CLI) but names the
->   lifecycle IAM actions `s3:Get/PutBucketLifecycle` and wraps audit records in a `Records` envelope, so the
->   app's MinIO access-log parser does not read it as-is.
+>   lifecycle IAM actions `s3:Get/PutBucketLifecycle` and wraps audit records in a `Records` envelope. The app's
+>   access-log parser reads MinIO, RustFS and SeaweedFS records; the conformance suite runs that parser on each
+>   store's real deliveries.
 > - **Second copy:** `scripts/object-store-copy.ts` syncs every `tenant-*` / `chartwarden-*` bucket from the
 >   primary to RustFS on another host, and back again for a restore. It re-puts each object with its SHA-256:
 >   `rclone` and `mc mirror` drop `x-amz-checksum-sha256`, and the app's verified reads then refuse the restored
->   objects. A primary-side erase reaches the copy on the next run. The off-site Object Lock backup stays the
->   archive; the copy does not replace it.
+>   objects. A primary-side erase reaches the copy on the next run; deletions are guarded (an empty source bucket
+>   or more than max(10, 10%) of a bucket is refused and paged). Scheduled by `compose.object-copy.yml`
+>   (`--every`, https-only target, alerts through `OPS_ALERT_WEBHOOK_URL`); the replica host is
+>   `deploy/production/replica/`. The off-site Object Lock backup stays the archive; the copy does not replace it.
 > - **Proof:** `test:object-store:conformance:live` (each store) and `test:object-store:resilience:live`
 >   (fault injection, tenant isolation, backup → loss → restore), both in the `object-store-conformance-live`
 >   CI job. Finding from fault injection: a write that times out on the client may still land once a hung
 >   store resumes, so callers treat a timed-out write as unknown and verify it.
-> - **Status:** production still runs MinIO. The SeaweedFS production service, provisioning, audit forwarding
->   and the migration runbook are not built yet.
+> - **Status:** the production cutover is built (`deploy/production/compose.yml`, `deploy.sh`): `seaweedfs`,
+>   `object-store-provision` (identities rendered by `scripts/storage/seaweedfs-identities.ts`, the code the CI
+>   store also runs), `fluent-bit` (on its own `audit` network with seaweedfs and api), and a one-time
+>   `object-store-migrate` mirror from MinIO with checksums, run with the api/worker stopped; the marker is written
+>   only after it succeeds, and a failure restores MinIO on its port (README, "Object store: the SeaweedFS cutover").
+>   It takes effect on the first deploy after merge.
+>   Not yet moved: the coordinated backup drill and `restore.sh` still stand up MinIO for their isolated
+>   environments (they read MinIO's on-disk layout); the backup's object restore keeps the SHA-256 on any store.
 
 - **Databases:** CloudNativePG and Valkey use node-local persistent volumes (OpenEBS LocalPV or Talos
   local-path). The database replicates at the application layer, so network block storage under it

@@ -259,9 +259,13 @@ sed -i \
 sed -i \
   "s|^CHARTWARDEN_WEB_IMAGE=.*|CHARTWARDEN_WEB_IMAGE=chartwarden-web:manual-${COMMIT_SHA}|" \
   /opt/chartwarden/.env.production
-Vérifiez que MinIO reste configuré :
-grep -E 'CHARTWARDEN_IMAGE|CHARTWARDEN_WEB_IMAGE|STORAGE_PUBLIC_ORIGIN|MINIO_ROOT' \
-  /opt/chartwarden/.env.production
+Vérifiez que le stockage objet (SeaweedFS) reste configuré (les noms MINIO_* sont le contrat d'env de l'adaptateur) :
+grep -cE '^(CHARTWARDEN_IMAGE|CHARTWARDEN_WEB_IMAGE|STORAGE_PUBLIC_ORIGIN|MINIO_ROOT_USER|MINIO_ROOT_PASSWORD)=' \
+  /opt/chartwarden/.env.production   # attendu : 5 (compte les clés, n'affiche aucune valeur)
+Rendez les identités SeaweedFS et démarrez le stockage (recréez seaweedfs si s3.json a changé) :
+cd /opt/chartwarden
+docker compose --env-file .env.production run --rm object-store-provision
+docker compose --env-file .env.production up -d --no-deps --force-recreate --wait seaweedfs fluent-bit
 Puis lancez les migrations, le provisioning et le redémarrage :
 cd /opt/chartwarden
 
@@ -274,6 +278,6 @@ docker compose --env-file .env.production up -d \
   --no-deps --force-recreate api worker web
 Vérifiez l’état :
 docker compose --env-file .env.production ps
-curl -I https://storage.wardenx.chartwarden.cloud/minio/health/ready
+curl -I https://storage.chartwarden.cloud/healthz
 curl -f http://127.0.0.1:3000/ready
 ```

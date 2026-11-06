@@ -10,11 +10,16 @@
 //   OBJECT_STORE_ADMIN_ACCESS_KEY / _SECRET_KEY   store admin: bucket versioning + the out-of-scope bucket
 //   OBJECT_STORE_APP_ACCESS_KEY / _SECRET_KEY     the app's scoped key (tenant-* / chartwarden-*), as in prod
 //   OBJECT_STORE_AUDIT_SINK_PORT                  the suite listens here for the per-request audit records
+//   OBJECT_STORE_AUDIT_TOKEN                      optional: the bearer the store's audit delivery must present
 //                                                 the store (or its log shipper) POSTs as JSON
 import { randomUUID } from "node:crypto";
 import { type Server, createServer } from "node:http";
 import type { OrgId, SignedUrlDescriptor } from "@chartwarden/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  type ObjectConsumption,
+  parseConsumptions,
+} from "../src/modules/22-documents/access-log/minio-access-log";
 import { deriveTenantBucket } from "../src/modules/22-documents/lifecycle/storage";
 import {
   type S3ObjectStoreConfig,
@@ -35,6 +40,8 @@ const env = process.env;
 const ENDPOINT = env.OBJECT_STORE_ENDPOINT?.trim();
 const REGION = env.OBJECT_STORE_REGION?.trim() || "us-east-1";
 const AUDIT_SINK_PORT = Number(env.OBJECT_STORE_AUDIT_SINK_PORT);
+/** When set, every audit delivery must present `Bearer <token>` (the production webhook auth). */
+const AUDIT_TOKEN = env.OBJECT_STORE_AUDIT_TOKEN?.trim();
 const AUDIT_WAIT_MS = 20_000;
 const AUDIT_POLL_MS = 250;
 const EXPIRY_DAYS = 3;
@@ -126,36 +133,10 @@ async function rawS3(
   });
 }
 
-/** One audited S3 call, normalised from the MinIO/RustFS (`api.bucket`) or SeaweedFS (`bucket`/`key`) shape. */
-interface AuditHit {
-  readonly bucket: string;
-  readonly key: string;
-  readonly operation: string;
-}
-
-/** A POST body's records: a bare record (MinIO), an array (Fluent Bit) or a `{ Records: [...] }` envelope (RustFS). */
-function auditRecordsOf(body: unknown): readonly unknown[] {
-  const list = Array.isArray(body) ? body : [body];
-  return list.flatMap((item) => {
-    const records = (item as { Records?: unknown } | null)?.Records;
-    return Array.isArray(records) ? records : [item];
-  });
-}
-
-function normaliseAudit(record: unknown): AuditHit | null {
-  if (typeof record !== "object" || record === null) return null;
-  const r = record as Record<string, unknown>;
-  const api = (typeof r.api === "object" && r.api !== null ? r.api : {}) as Record<string, unknown>;
-  const bucket = r.bucket ?? api.bucket;
-  const key = r.key ?? api.object;
-  if (typeof bucket !== "string" || typeof key !== "string") return null;
-  let decoded = key.replace(/^\//, "");
-  try {
-    decoded = decodeURIComponent(decoded);
-  } catch {
-    // keep the raw key; it simply will not match
-  }
-  return { bucket, key: decoded, operation: String(r.operation ?? api.name ?? "") };
+/** One delivery to the sink: the bearer it presented and what the APP's own parser reads from its body. */
+interface AuditDelivery {
+  readonly authorization: string | undefined;
+  readonly consumptions: readonly ObjectConsumption[];
 }
 
 describe.skipIf(!ENDPOINT)("object-store conformance — LIVE (ADR-0050 D6)", () => {
@@ -167,7 +148,7 @@ describe.skipIf(!ENDPOINT)("object-store conformance — LIVE (ADR-0050 D6)", ()
   const organizationId = randomUUID() as OrgId;
   const bucket = deriveTenantBucket(organizationId);
   const outOfScopeBucket = `cw-conformance-outside-${randomUUID().slice(0, 8)}`;
-  const audit: AuditHit[] = [];
+  const audit: AuditDelivery[] = [];
   let sink: Server | null = null;
 
   beforeAll(async () => {
@@ -186,10 +167,11 @@ describe.skipIf(!ENDPOINT)("object-store conformance — LIVE (ADR-0050 D6)", ()
       req.on("end", () => {
         try {
           const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-          for (const record of auditRecordsOf(parsed)) {
-            const hit = normaliseAudit(record);
-            if (hit) audit.push(hit);
-          }
+          // the production ingestor's parser, not a test-local one: proves it reads this store's records
+          audit.push({
+            authorization: req.headers.authorization,
+            consumptions: parseConsumptions(parsed, new Date()),
+          });
         } catch {
           // not a JSON batch: the audit test reports the missing record
         }
@@ -367,7 +349,7 @@ describe.skipIf(!ENDPOINT)("object-store conformance — LIVE (ADR-0050 D6)", ()
 
   describe("audit (GAP-141 download confirmation)", () => {
     it(
-      "a presigned GET produces an audit record naming the bucket and key",
+      "a presigned GET produces an audit record the app's access-log ingestor reads, with the webhook bearer",
       async () => {
         const key = `conformance/audit-${randomUUID()}`;
         await store.putObject({
@@ -381,8 +363,8 @@ describe.skipIf(!ENDPOINT)("object-store conformance — LIVE (ADR-0050 D6)", ()
           organizationId,
         });
         expect((await fetch(url)).status).toBe(200);
-        const isOurGet = (h: AuditHit): boolean =>
-          h.bucket === bucket && h.key === key && /GET/i.test(h.operation);
+        const isOurGet = (d: AuditDelivery): boolean =>
+          d.consumptions.some((c) => c.bucket === bucket && c.objectKey === key);
 
         const deadline = Date.now() + AUDIT_WAIT_MS;
         while (!audit.some(isOurGet) && Date.now() < deadline) {
@@ -392,6 +374,12 @@ describe.skipIf(!ENDPOINT)("object-store conformance — LIVE (ADR-0050 D6)", ()
         expect(audit.some(isOurGet), `no GET audit record for ${key} in ${AUDIT_WAIT_MS}ms`).toBe(
           true,
         );
+        if (AUDIT_TOKEN) {
+          const delivery = audit.find(isOurGet);
+          expect(delivery?.authorization, "the delivery carries the webhook bearer").toBe(
+            `Bearer ${AUDIT_TOKEN}`,
+          );
+        }
       },
       AUDIT_WAIT_MS + 5_000,
     );
@@ -419,6 +407,19 @@ describe.skipIf(!ENDPOINT)("object-store conformance — LIVE (ADR-0050 D6)", ()
       await refused(await rawS3(app, { method: "PUT", bucket: rogue }));
 
       expect((await rawS3(admin, { method: "HEAD", bucket: rogue })).status).toBe(404);
+    });
+
+    it("cannot delete its own tenant bucket or change its versioning (nothing administrative)", async () => {
+      const suspend = bytesOf(
+        "<VersioningConfiguration><Status>Suspended</Status></VersioningConfiguration>",
+      );
+
+      await refused(await rawS3(app, { method: "DELETE", bucket }));
+      await refused(
+        await rawS3(app, { method: "PUT", bucket, query: [["versioning", ""]], body: suspend }),
+      );
+
+      expect((await rawS3(admin, { method: "HEAD", bucket })).status).toBe(200);
     });
   });
 });

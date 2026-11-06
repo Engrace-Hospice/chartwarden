@@ -4,7 +4,7 @@
 # Run from the repository root after copying the repo or the deploy/production folder to the VPS:
 #   sudo DEPLOY_DIR=/opt/chartwarden ./deploy/production/bootstrap-vps.sh
 #
-# The script is idempotent: it creates missing files, refreshes compose/nginx config, starts MinIO,
+# The script is idempotent: it creates missing files, refreshes compose/nginx/object-store config,
 # and leaves an existing .env.production untouched.
 set -eu
 
@@ -125,19 +125,11 @@ else
   echo "nginx is not installed; skipped nginx config install"
 fi
 
-cd "$DEPLOY_DIR"
-docker compose --env-file .env.production -f compose.yml up -d minio
+# The object store (SeaweedFS) starts with the first release, not here: its identities are rendered by the release
+# image (object-store-provision), which this host does not have until deploy.sh pulls it.
+install -d -m 0755 "$DEPLOY_DIR/object-store"
+install -m 0644 "$SOURCE_DIR/object-store/audit.json" "$SOURCE_DIR/object-store/fluent-bit.yaml" "$DEPLOY_DIR/object-store/"
 
-attempt=0
-until curl --fail --silent --show-error http://127.0.0.1:9000/minio/health/ready >/dev/null; do
-  attempt=$((attempt + 1))
-  if [ "$attempt" -ge 30 ]; then
-    echo "MinIO did not become ready on 127.0.0.1:9000" >&2
-    exit 1
-  fi
-  sleep 2
-done
-
-echo "MinIO is ready locally."
+echo "Object store config installed; the first deploy.sh starts SeaweedFS on 127.0.0.1:9000."
 echo "Public S3 endpoint expected by ChartWarden: https://$STORAGE_DOMAIN"
 echo "Next: make DNS point $STORAGE_DOMAIN to this VPS, then issue TLS with certbot or your reverse-proxy TLS automation."
