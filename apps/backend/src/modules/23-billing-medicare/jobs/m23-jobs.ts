@@ -2153,6 +2153,22 @@ async function queueDdeWork(
 }
 
 /**
+ * True when the org's clearinghouse choice is `outside`. A binding that cannot be resolved is NOT "outside": the item is filed
+ * as before (a silent skip would hide an at-risk notice from the queue behind a broken credential read).
+ */
+async function billsOutsideChartWarden(
+  deps: Pick<M23WorkerDeps, "transport">,
+  organizationId: string,
+): Promise<boolean> {
+  try {
+    const state = await clearinghouseStateFor(deps, organizationId);
+    return state.state === "unbound" && state.reason === "outside";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Run {@link queueDdeWork} for one org in its OWN transaction, AFTER the window warnings / breach stamps committed, so
  * a failure here can never roll back a window alert. Returns every failure (a whole-transaction error, or one per poison
  * notice) instead of throwing, so the other orgs still get their warnings and items; the cron throws one
@@ -2165,6 +2181,10 @@ async function queueDdeWorkIsolated(
   now: Date,
 ): Promise<unknown[]> {
   if (!deps.ddeWatchdog) return [];
+  // An org that bills outside ChartWarden files its notices through its own biller: the DDE queue is ChartWarden-side work
+  // (its routes are gated for that org), so an item would be a dead end. Decided HERE, before the transaction opens (the
+  // binding read is its own connection). The deadline watch above is untouched.
+  if (await billsOutsideChartWarden(deps, organizationId)) return [];
   try {
     return await withOrgContext(
       deps.db,

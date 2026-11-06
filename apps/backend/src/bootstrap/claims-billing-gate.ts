@@ -68,6 +68,18 @@ export function assertClaimsBillingSeamBound(current: ClaimsBillingEnforcementMo
   }
 }
 
+/**
+ * Owner decision (round 2, Q2): `shadow` stays the default, but a production deployment running anything other than `enforce`
+ * should say so at boot (a refusal there is only logged), once, loudly. Null when there is nothing to say.
+ */
+export function claimsBillingEnforcementBootWarning(
+  current: ClaimsBillingEnforcementMode,
+  nodeEnv: string | undefined,
+): string | null {
+  if (nodeEnv !== "production" || current === "enforce") return null;
+  return `${CLAIMS_BILLING_ENFORCEMENT_ENV}=${current} on a production deployment: a tenant whose clearinghouse is not live (or whose subscription is suspended) is NOT refused new claims work, only logged; set it to 'enforce' to refuse`;
+}
+
 /** Where the decision was asked from — logged on a shadow would-deny (never a patient or claim id). */
 export interface GateSite {
   readonly route?: string;
