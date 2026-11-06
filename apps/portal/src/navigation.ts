@@ -10,7 +10,7 @@ export interface PortalNavItem {
   label: string;
   icon: GlyphName;
   section: PortalNavSection;
-  mobile?: "home" | "visits" | "messages";
+  mobile?: "home" | "visits" | "messages" | "care-plan";
 }
 
 /**
@@ -45,6 +45,7 @@ export const PORTAL_NAVIGATION: readonly PortalNavItem[] = [
     label: "Care plan",
     icon: "clipboard-check",
     section: "primary",
+    mobile: "care-plan",
   },
   {
     id: "portal.medications",

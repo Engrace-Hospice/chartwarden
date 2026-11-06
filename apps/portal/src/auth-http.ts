@@ -67,6 +67,19 @@ export async function verifyTotp(
   return res.ok ? "ok" : "failed";
 }
 
+/** The signed-in user's display name from the Better Auth session, or null (best-effort: it only personalises copy). */
+export async function fetchSignedInName(fetchImpl: FetchLike = fetch): Promise<string | null> {
+  try {
+    const res = await fetchImpl("/api/auth/get-session", { credentials: "include" });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { user?: { name?: unknown } } | null;
+    const name = body?.user?.name;
+    return typeof name === "string" && name.trim() ? name : null;
+  } catch {
+    return null;
+  }
+}
+
 /** End the browser session (Better Auth clears the cookie and the server row). Best-effort: the UI moves on regardless. */
 export async function signOut(fetchImpl: FetchLike = fetch): Promise<void> {
   await post(fetchImpl, "/api/auth/sign-out", {}).catch(() => undefined);

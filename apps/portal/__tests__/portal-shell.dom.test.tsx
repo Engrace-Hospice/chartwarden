@@ -54,7 +54,7 @@ describe("portal authenticated shell", () => {
     expect(within(nav).getByRole("link", { name: "Messages" }).getAttribute("aria-current")).toBe(
       "page",
     );
-    expect(screen.getByRole("link", { name: "Switch patient" }).getAttribute("href")).toBe(
+    expect(screen.getByRole("link", { name: /Switch patient/ }).getAttribute("href")).toBe(
       "/portal/patient-picker",
     );
     expect(within(nav).getByRole("link", { name: "Care plan" })).toBeTruthy();
@@ -137,14 +137,16 @@ describe("portal authenticated shell", () => {
 
 describe("PR5 mobile navigation regression", () => {
   it("labels icon-only links and dismisses More after navigation", async () => {
-    window.history.pushState({}, "", `/portal/p/${PATIENT_ID}/care-plan`);
+    window.history.pushState({}, "", `/portal/p/${PATIENT_ID}/medications`);
     render(<PortalApp client={stubClient()} />);
     const sidebar = screen.getByRole("navigation", {
       name: "Portal navigation",
     });
     expect(
-      within(sidebar).getByRole("link", { name: "Care plan" }).getAttribute("aria-label"),
-    ).toBe("Care plan");
+      within(sidebar).getByRole("link", { name: "Medications" }).getAttribute("aria-label"),
+    ).toBe("Medications");
+    const tabs = screen.getByRole("navigation", { name: "Mobile portal navigation" });
+    expect(within(tabs).getByRole("link", { name: "Care plan" })).toBeTruthy();
     const more = screen.getByRole("button", { name: "More" });
     expect(more.className).toContain("is-active");
     fireEvent.click(more);

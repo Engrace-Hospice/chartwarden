@@ -1,0 +1,717 @@
+/* apps/portal — Family Care theme (ChartWarden Family Portal mockups, 2026-11-05).
+ *
+ * The shared `:root` token contract stays equal to apps/web (arch:design-tokens). The family portal re-points the
+ * primary ramp to a calm hospice green INSIDE the shell scope only (`.wx-family-theme`), so every portal screen picks
+ * up the palette without forking the canonical tokens. Loaded after index.css and unlayered, so it wins over the
+ * `@layer components` portal rules it refines.
+ */
+
+.wx-family-theme {
+  --color-primary: #17624d;
+  --color-primary-strong: #0f4a3a;
+  --color-primary-tint: #e4f2ea;
+  --color-primary-dim: #a9d4bd;
+  --color-brand: var(--color-primary);
+  --color-focus-ring: #2f8f6a;
+
+  --family-ink: #10231c;
+  --family-deep: #0f4a3a;
+  --family-deeper: #0b3a2e;
+  --family-accent: #0f4a3a;
+  --family-mint: #eef7f1;
+  --family-mint-strong: #dceee3;
+  --family-check: #2f9a52;
+  --family-badge: #1a56eb;
+  --family-card-border: #e2ebe5;
+  --family-card-shadow: 0 1px 2px rgba(16, 35, 28, 0.04), 0 8px 24px rgba(16, 35, 28, 0.05);
+  --family-leaves: url("/family-leaves.svg");
+}
+
+.dark .wx-family-theme {
+  --color-primary: #6fcf9f;
+  --color-primary-strong: #94dfb8;
+  --color-primary-tint: #12301f;
+  --color-primary-dim: #1f5a3f;
+  --color-focus-ring: #6fcf9f;
+
+  --family-ink: #e5efe9;
+  --family-deep: #0f3d30;
+  --family-deeper: #0a2c22;
+  --family-accent: #94dfb8;
+  --family-mint: #12261d;
+  --family-mint-strong: #183326;
+  --family-check: #6fcf9f;
+  --family-badge: #1a56eb;
+  --family-card-border: #22362c;
+  --family-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Shell chrome ─────────────────────────────────────────────────────────────────────────────── */
+
+.wx-family-theme .wx-portal-sidebar {
+  background: var(--color-surface-lowest);
+}
+.wx-family-theme .wx-portal-nav-group__label,
+.wx-family-theme .wx-portal-patient-identity small,
+.wx-family-theme .wx-portal-help__trigger span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.wx-family-theme .wx-portal-nav-group + .wx-portal-nav-group {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-outline-variant);
+}
+.wx-family-theme .wx-portal-nav-link {
+  font-size: 0.9375rem;
+  color: var(--family-ink);
+}
+.wx-family-theme .wx-portal-nav-link.is-active {
+  border-color: transparent;
+  background: var(--family-mint-strong);
+  color: var(--family-accent);
+  box-shadow: none;
+  font-weight: 750;
+}
+.wx-family-theme .wx-portal-nav-link:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.wx-family-nav-badge {
+  min-width: 1.4rem;
+  height: 1.4rem;
+  margin-left: auto;
+  padding: 0 0.35rem;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--family-badge);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 750;
+  line-height: 1;
+}
+.wx-family-support {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-xl);
+  background: var(--family-mint);
+  color: var(--family-accent);
+}
+.wx-family-support strong,
+.wx-family-support small {
+  display: block;
+}
+.wx-family-support strong {
+  font-size: 0.875rem;
+}
+.wx-family-support small {
+  margin-top: 0.15rem;
+  color: var(--color-on-surface-variant);
+  line-height: 1.4;
+}
+
+.wx-family-theme:not(.wx-portal-shell--unbound) .wx-portal-topbar__title {
+  display: none;
+}
+.wx-family-theme .wx-portal-patient-identity {
+  min-height: 3rem;
+  padding: 0.3rem var(--space-3) 0.3rem 0.3rem;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: 999px;
+  background: var(--color-surface-lowest);
+  color: var(--family-ink);
+  text-decoration: none;
+}
+.wx-family-theme .wx-portal-patient-identity:hover {
+  border-color: var(--color-primary-dim);
+}
+.wx-family-theme .wx-portal-patient-identity:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.wx-family-theme .wx-portal-patient-identity__avatar {
+  background: #e3ecfd;
+  color: #1443c6;
+  font-size: 0.875rem;
+  font-weight: 750;
+}
+.dark .wx-family-theme .wx-portal-patient-identity__avatar {
+  background: #16264d;
+  color: #9bb8ff;
+}
+.wx-family-theme .wx-portal-patient-identity strong {
+  font-size: 1rem;
+  font-weight: 700;
+}
+.wx-portal-icon-button,
+.wx-family-theme .wx-portal-account-button,
+.wx-family-theme .wx-portal-help__trigger {
+  width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: 50%;
+  background: var(--color-surface-lowest);
+  color: var(--family-ink);
+}
+.wx-portal-icon-button:hover,
+.wx-family-theme .wx-portal-help__trigger:hover {
+  border-color: var(--color-primary-dim);
+  background: var(--color-primary-tint);
+}
+.wx-portal-icon-button:focus-visible,
+.wx-family-theme .wx-portal-help__trigger:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── Dashboard ────────────────────────────────────────────────────────────────────────────────── */
+
+.wx-family-dashboard {
+  max-width: 84rem;
+  padding: 0 clamp(var(--space-4), 3vw, var(--space-7)) var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  color: var(--family-ink);
+}
+.wx-portal-main:has(.wx-family-dashboard) .wx-route-breadcrumbs {
+  display: none;
+}
+
+.wx-family-hero {
+  position: relative;
+  margin: 0 calc(-1 * clamp(var(--space-4), 3vw, var(--space-7)));
+  padding: var(--space-8) clamp(var(--space-4), 3vw, var(--space-7)) var(--space-4);
+  overflow: hidden;
+  background: var(--family-leaves) right -1rem top -1.5rem / min(26rem, 42vw) auto no-repeat,
+    radial-gradient(60rem 18rem at 100% 0%, var(--family-mint) 0%, transparent 70%);
+}
+.wx-family-hero h1 {
+  margin: 0;
+  max-width: 34rem;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 1.4rem + 2vw, 2.9rem);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+.wx-family-hero__greeting {
+  display: block;
+  font-weight: 500;
+}
+.wx-family-hero__name {
+  display: block;
+  font-weight: 800;
+}
+.wx-family-hero p {
+  margin: var(--space-3) 0 0;
+  max-width: 44rem;
+  color: var(--color-on-surface-variant);
+  font-size: 1.0625rem;
+  line-height: 1.5;
+}
+
+.wx-family-icon {
+  width: 3rem;
+  height: 3rem;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: var(--radius-lg);
+  background: var(--family-mint);
+  color: var(--family-accent);
+}
+
+.wx-family-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.wx-family-action {
+  min-height: 5.25rem;
+  padding: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  border: 1px solid var(--family-card-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-lowest);
+  box-shadow: var(--family-card-shadow);
+  color: var(--family-ink);
+  text-decoration: none;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+.wx-family-action__label {
+  flex: 1;
+  min-width: 0;
+}
+.wx-family-action__short {
+  display: none;
+}
+.wx-family-action small,
+.wx-family-action strong {
+  display: block;
+  font-size: 1.0625rem;
+  line-height: 1.25;
+}
+.wx-family-action small {
+  font-weight: 700;
+}
+.wx-family-action strong {
+  font-weight: 500;
+}
+.wx-family-action:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-primary-dim);
+  box-shadow: 0 12px 28px rgba(16, 35, 28, 0.1);
+}
+.wx-family-action:focus-visible,
+.wx-family-card a:focus-visible,
+.wx-family-help a:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 3px;
+}
+.wx-family-action.is-primary {
+  border-color: transparent;
+  background: var(--family-deep);
+  color: #ffffff;
+}
+.wx-family-action.is-primary .wx-family-icon {
+  background: transparent;
+  color: #ffffff;
+}
+.wx-family-action.is-primary small,
+.wx-family-action.is-primary strong {
+  font-weight: 700;
+}
+
+.wx-family-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-items: stretch;
+}
+.wx-family-visit {
+  grid-column: span 2;
+}
+
+.wx-family-card {
+  position: relative;
+  min-width: 0;
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow: hidden;
+  border: 1px solid var(--family-card-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-lowest);
+  box-shadow: var(--family-card-shadow);
+}
+.wx-family-card--leafy::after {
+  content: "";
+  position: absolute;
+  right: -2.5rem;
+  bottom: -2rem;
+  width: 13rem;
+  height: 9rem;
+  background: var(--family-leaves) center / contain no-repeat;
+  opacity: 0.35;
+  transform: rotate(160deg);
+  pointer-events: none;
+}
+.wx-family-visit.wx-family-card--leafy::after {
+  top: -1rem;
+  bottom: auto;
+  right: -4rem;
+  width: 17rem;
+  height: 12rem;
+  opacity: 0.32;
+  transform: none;
+}
+.wx-family-card > * {
+  position: relative;
+  z-index: 1;
+}
+.wx-family-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.wx-family-card__header > div {
+  flex: 1;
+  min-width: 0;
+}
+.wx-family-card__header h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+.wx-family-card__header p {
+  margin: 0.15rem 0 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.875rem;
+}
+.wx-family-card__body {
+  flex: 1;
+}
+.wx-family-card__lead {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.wx-family-card__footer-link {
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+  color: var(--family-accent);
+  font-weight: 700;
+  text-decoration: none;
+}
+.wx-family-card__footer-link:hover {
+  border-color: var(--color-primary-dim);
+  background: var(--family-mint);
+}
+.wx-family-badge {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--family-badge);
+  color: #ffffff;
+  font-size: 0.8125rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.wx-family-visit__details {
+  padding-left: calc(3rem + var(--space-3));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.wx-family-visit__details > p {
+  margin: 0;
+}
+.wx-family-visit__when {
+  font-family: var(--font-display);
+  font-size: clamp(1.25rem, 1rem + 0.8vw, 1.6rem);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.wx-family-visit__what {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-on-surface-variant);
+}
+.wx-family-button {
+  min-height: 2.75rem;
+  margin-top: var(--space-2);
+  padding: 0 var(--space-5);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-lg);
+  background: var(--family-deep);
+  color: #ffffff;
+  font-weight: 700;
+  text-decoration: none;
+}
+.wx-family-button:hover {
+  background: var(--family-deeper);
+}
+
+.wx-family-list,
+.wx-family-messages {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wx-family-list li + li,
+.wx-family-messages li + li {
+  border-top: 1px solid var(--color-outline-variant);
+}
+.wx-family-list__row {
+  min-height: 3.5rem;
+  padding: var(--space-2) 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--family-ink);
+  text-decoration: none;
+}
+.wx-family-list__row:hover strong {
+  color: var(--family-accent);
+  text-decoration: underline;
+}
+.wx-family-check {
+  width: 1.75rem;
+  height: 1.75rem;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--family-mint-strong);
+  color: var(--family-check);
+}
+.wx-family-list__copy {
+  flex: 1;
+  min-width: 0;
+}
+.wx-family-list__copy strong,
+.wx-family-list__copy small {
+  display: block;
+}
+.wx-family-list__copy small {
+  color: var(--color-on-surface-variant);
+  font-size: 0.875rem;
+}
+.wx-family-messages li {
+  padding: var(--space-3) 0;
+  position: relative;
+}
+.wx-family-messages strong,
+.wx-family-messages time {
+  display: block;
+}
+.wx-family-messages p {
+  margin: 0.1rem 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--color-on-surface-variant);
+}
+.wx-family-messages time {
+  color: var(--color-on-surface-variant);
+  font-size: 0.875rem;
+}
+.wx-family-highlight {
+  min-height: 2.75rem;
+  margin-bottom: var(--space-4);
+  padding: 0 var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-lg);
+  background: #e6edfd;
+  color: #1443c6;
+  font-weight: 700;
+  text-decoration: none;
+}
+.dark .wx-family-highlight {
+  background: #16264d;
+  color: #9bb8ff;
+}
+.wx-family-highlight span {
+  flex: 1;
+}
+
+.wx-family-help {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  border-radius: var(--radius-xl);
+  background: var(--family-deep);
+  box-shadow: var(--family-card-shadow);
+  color: #ffffff;
+}
+.wx-family-help__intro {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.wx-family-help__intro > svg {
+  flex: 0 0 auto;
+  margin-top: 0.2rem;
+}
+.wx-family-help h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 750;
+}
+.wx-family-help p {
+  margin: 0.3rem 0 0;
+  color: rgba(255, 255, 255, 0.86);
+  line-height: 1.45;
+}
+.wx-family-help__action {
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-lg);
+  background: #ffffff;
+  color: var(--family-deeper);
+  font-weight: 750;
+  text-decoration: none;
+}
+.wx-family-help__action:hover {
+  background: #e4f2ea;
+}
+.wx-family-help .wx-family-help__emergency {
+  margin: 0;
+  padding-top: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  font-weight: 600;
+}
+.wx-family-help .wx-family-help__note {
+  margin: 0;
+  font-size: 0.875rem;
+}
+.wx-family-help__emergency svg {
+  color: #ffb4b4;
+}
+
+/* ── Tablet ───────────────────────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 79.99rem) {
+  .wx-family-actions,
+  .wx-family-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ── Phone (matches the iOS / Android mockups) ────────────────────────────────────────────────── */
+
+@media (max-width: 47.99rem) {
+  .wx-family-theme:not(.wx-portal-shell--unbound) .wx-portal-mobile-nav {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .wx-family-theme .wx-portal-mobile-nav a,
+  .wx-family-theme .wx-portal-mobile-nav button {
+    position: relative;
+  }
+  .wx-family-theme .wx-portal-mobile-nav .wx-family-nav-badge {
+    position: absolute;
+    top: 0.2rem;
+    left: calc(50% + 0.35rem);
+    min-width: 1.15rem;
+    height: 1.15rem;
+    margin: 0;
+    background: #dc2626;
+    font-size: 0.6875rem;
+  }
+  .wx-family-theme .wx-portal-account-button {
+    display: inline-grid;
+  }
+  .wx-family-theme:not(.wx-portal-shell--unbound) .wx-portal-help {
+    display: none;
+  }
+  .wx-family-theme .wx-portal-patient-identity {
+    min-height: 2.5rem;
+  }
+  .wx-family-theme .wx-portal-patient-identity__avatar {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    font-size: 0.75rem;
+  }
+  .wx-family-theme .wx-portal-patient-identity strong {
+    font-size: 0.875rem;
+  }
+
+  .wx-family-dashboard {
+    gap: var(--space-4);
+  }
+  .wx-family-hero {
+    padding-top: var(--space-6);
+    background-size: 11rem auto, auto;
+    background-position: right -1.5rem top -1.25rem, 0 0;
+  }
+  .wx-family-hero h1 {
+    padding-right: 5rem;
+    font-size: 1.85rem;
+  }
+  .wx-family-hero__greeting {
+    font-size: 1.35rem;
+  }
+  .wx-family-hero p {
+    font-size: 0.9375rem;
+  }
+
+  .wx-family-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+  .wx-family-action {
+    min-height: 5.75rem;
+    padding: var(--space-3) var(--space-1);
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--space-2);
+    text-align: center;
+  }
+  .wx-family-action__label,
+  .wx-family-action__arrow {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .wx-family-action__short {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 650;
+    line-height: 1.2;
+  }
+  .wx-family-action .wx-family-icon {
+    width: 2rem;
+    height: 2rem;
+    background: transparent;
+  }
+
+  .wx-family-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+  .wx-family-visit {
+    grid-column: auto;
+  }
+  .wx-family-help {
+    order: -1;
+  }
+  .wx-family-card {
+    padding: var(--space-4);
+  }
+  .wx-family-visit__details {
+    padding-left: 0;
+  }
+  .wx-family-card__header h2 {
+    font-size: 1.125rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wx-family-action {
+    transition: none;
+  }
+  .wx-family-action:hover {
+    transform: none;
+  }
+}

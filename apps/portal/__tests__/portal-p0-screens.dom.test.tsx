@@ -90,12 +90,10 @@ describe("portal P0 screens", () => {
     window.history.pushState({}, "", `/portal/p/${PATIENT_ID}`);
     render(<PortalApp client={fixtureClient()} />);
 
-    expect(await screen.findByRole("heading", { name: "Welcome back", level: 1 })).toBeTruthy();
-    expect(await screen.findByText("Sam")).toBeTruthy();
-    expect(screen.getByText("4")).toBeTruthy();
-    expect(screen.getByText("unread messages")).toBeTruthy();
-    expect(screen.getByText("Nurse visit")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: /Welcome back$/, level: 1 })).toBeTruthy();
+    expect(await screen.findByText("4 new")).toBeTruthy();
+    expect(await screen.findByText("Nurse visit")).toBeTruthy();
     expect(screen.getByText("3 active medications")).toBeTruthy();
-    expect(screen.getByText("5 new document shares")).toBeTruthy();
+    expect(screen.getByText("5 new documents")).toBeTruthy();
   });
 });
