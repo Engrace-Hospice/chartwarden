@@ -231,11 +231,17 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
   }
 
   async function goLiveApprove(
-    ctx: Loaded,
+    loaded: Loaded,
     actor: PlatformActor,
     reasonInput: string,
   ): Promise<WizardView> {
     const reason = normalizeReason(reasonInput);
+    // The exclusive lock is the FIRST thing the approval does, before it reads or row-locks anything. Data writers take the shared
+    // lock and then update the attestation row; locking that row first and asking for the exclusive lock later (as the activation
+    // does) would deadlock against them. Everything below is judged on what is true UNDER the lock, so the tenant and its
+    // attestations are read again: a write that committed while this waited has already voided what it made stale.
+    await loaded.store.lockOnboardingExclusive(loaded.tenant.organizationId);
+    const ctx = await load(loaded.store, { organizationId: loaded.tenant.organizationId });
     const attestations = await ctx.store.listGoLive(ctx.tenant);
     // A repeat of an approval that already committed: the tenant is live and only the organization's activation (a separate
     // M2 transaction, after the approval commits) may be missing. Nothing is judged again; the caller re-runs the activation.
@@ -405,7 +411,6 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
     operator: PlatformActor,
     reason: string,
   ): Promise<void> {
-    if (!deps.activateOrganization) return;
     try {
       await deps.activateOrganization({
         organizationId: approved.organizationId,

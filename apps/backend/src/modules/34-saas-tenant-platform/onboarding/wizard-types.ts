@@ -38,9 +38,11 @@ export interface OnboardingWizardDeps {
   /**
    * Go-live approval activates the tenant's M2 organization, which stays `created` through onboarding (its first admin signs
    * in under the onboarding allowlist, bootstrap/onboarding-org-gate.ts). Runs AFTER the approval commits; the production
-   * binding activates a `created` organization and leaves any other status alone. Unbound: the organization is not touched.
+   * binding activates a `created` organization and leaves any other status alone. REQUIRED: unbound, an approved tenant's
+   * organization would stay on the onboarding allowlist with nothing to say so, so a caller (a test that does not exercise
+   * activation passes an explicit no-op) names it.
    */
-  readonly activateOrganization?: (input: {
+  readonly activateOrganization: (input: {
     readonly organizationId: string;
     readonly operator: PlatformActor;
     readonly reason: string;

@@ -320,12 +320,14 @@ export {
 // §11 D19 (#205 hard half) — the real org activate/suspend/close capability + its one ABAC predicate.
 export {
   type OrganizationActivationGuard,
+  type OrganizationLifecycleDeps,
   type OrganizationLifecycleEvent,
   type OrganizationLifecycleOutboxPort,
   type OrganizationLifecycleStatus,
   type OrganizationLifecycleWriter,
   type OrganizationTransitionResult,
   createDrizzleOrganizationLifecycleWriter,
+  createDrizzleOrganizationStatusReader,
 } from "./organization-lifecycle";
 export {
   M2_ABAC_PREDICATES,
@@ -378,12 +380,13 @@ import {
   type OrganizationLifecycleOutboxPort,
   activateCreatedOrganization as _activateCreatedOrganization,
   createDrizzleOrganizationLifecycleWriter as _organizationLifecycleWriter,
+  createDrizzleOrganizationStatusReader as _organizationStatusReader,
 } from "./organization-lifecycle";
 import { registerCredentialRoutes as _registerCredentialRoutes } from "./routes/credential-routes";
 import { registerDeviceAttestationRoutes as _registerDeviceAttestationRoutes } from "./routes/device-attestation";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
 import {
-  type SiteWriteScope,
+  type OrgDataWriteScope,
   type TaxIdCipherPort,
   registerOrgAdminRoutes as _registerOrgAdminRoutes,
 } from "./routes/org-admin-routes";
@@ -547,7 +550,7 @@ export function mountIdentityRoutes(
     ...(invite?.outbox ? { outbox: _orgScopedIdentityOutbox(db, invite.outbox) } : {}),
     // §11 D19 — real auth-time enforcement: `select-organization` refuses to bind a fresh session to a
     // non-active org. The reader needs no outbox (it never writes); see organization-lifecycle.ts.
-    organizations: { getStatus: _organizationLifecycleWriter(db).getStatus },
+    organizations: { getStatus: _organizationStatusReader(db) },
   };
   _registerIdentityRoutes(app, deps);
   if (
@@ -596,9 +599,9 @@ export function mountOrgAdminRoutes(
   opts: {
     outbox?: M2RawOutboxPublisher;
     taxIdCipher?: TaxIdCipherPort;
-    /** The unit of work for a provider-entity / location write (the composition root adds to its transaction). */
-    siteWriteScope?: SiteWriteScope;
-  } = {},
+    /** The unit of work for a write to the organization's data (the composition root adds to its transaction). Required. */
+    orgWriteScope: OrgDataWriteScope;
+  },
 ): void {
   _registerM2AbacPredicates(); // `organization_lifecycle_platform_ops` gates POST /orgs
   const audit = _orgScopedAuditExecutor(db);
@@ -608,7 +611,7 @@ export function mountOrgAdminRoutes(
     audit,
     store: _drizzleOrgAdminStore(db),
     ...(opts.taxIdCipher ? { taxIdCipher: opts.taxIdCipher } : {}),
-    ...(opts.siteWriteScope ? { siteWriteScope: opts.siteWriteScope } : {}),
+    orgWriteScope: opts.orgWriteScope,
   });
   _registerStepUpOverrideRoutes(app, {
     actors: _ctxActor(),
@@ -620,7 +623,7 @@ export function mountOrgAdminRoutes(
 
 /** The `organization.status` reader (M2's own table) the composition root hands the authenticate hook's pre-activation gate. */
 export function createOrganizationStatusReader(db: DbClient) {
-  return _organizationLifecycleWriter(db).getStatus;
+  return _organizationStatusReader(db);
 }
 
 /**
@@ -634,7 +637,11 @@ export function createOrganizationActivator(
   outbox?: OrganizationLifecycleOutboxPort,
   onTransitioned?: (organizationId: string) => void,
 ) {
-  const writer = _organizationLifecycleWriter(db, outbox, onTransitioned, activationGuard);
+  const writer = _organizationLifecycleWriter(db, {
+    activationGuard,
+    ...(outbox ? { outbox } : {}),
+    ...(onTransitioned ? { onTransitioned } : {}),
+  });
   return (
     organizationId: string,
     ctx: { reason: string; actorUserId: string; actorMembershipId: string },
@@ -663,7 +670,11 @@ export function mountOrganizationLifecycleRoutes(
   _registerM2AbacPredicates();
   _registerOrganizationLifecycleRoutes(
     app,
-    _organizationLifecycleWriter(db, outbox, onTransitioned, activationGuard),
+    _organizationLifecycleWriter(db, {
+      activationGuard,
+      ...(outbox ? { outbox } : {}),
+      ...(onTransitioned ? { onTransitioned } : {}),
+    }),
   );
 }
 // M2-T10 — the `identity` data eraser (two_factor/passkey + pending invitations) + its ports.
@@ -688,7 +699,8 @@ export {
 export { createPortalInviteeUserPort } from "./portal-invitee-user";
 
 // GAP-115 — the org-admin surface's published types (the cipher port the composition root binds).
-export type { SiteWriteScope, TaxIdCipherPort } from "./routes/org-admin-routes";
+export type { OrgDataWriteScope, TaxIdCipherPort } from "./routes/org-admin-routes";
+export { type OrgDataWritten, createOrgDataWriteScope } from "./org-data-write-scope";
 export { createTaxIdCipher } from "./tax-id-cipher";
 export type { TaxIdCipher, TaxIdKeyProvider } from "./tax-id-cipher";
 export { validateOverrideInput } from "./step-up-override-admin";

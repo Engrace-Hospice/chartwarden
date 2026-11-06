@@ -103,17 +103,14 @@ function makeServer(opts: { cipher?: boolean | "throws"; siteScope?: SiteScopeCa
     actors: createContextActorResolver(),
     audit: auditSink.executor,
     store,
-    // The composition root's unit of work for a site write: hands the routes a store bound to its transaction.
-    ...(opts.siteScope
-      ? {
-          siteWriteScope: async (scope, run) => {
-            const scoped = { ...store };
-            const out = await run(scoped);
-            opts.siteScope?.push({ ...scope, usedScopedStore: scoped !== store });
-            return out;
-          },
-        }
-      : {}),
+    // The composition root's unit of work for a write to the organization's data: hands the routes a store bound to its
+    // transaction. Required; a test that does not exercise it passes this explicit pass-through.
+    orgWriteScope: async (scope, run) => {
+      const scoped = { ...store };
+      const out = await run(scoped);
+      opts.siteScope?.push({ ...scope, usedScopedStore: scoped !== store });
+      return out;
+    },
     ...(opts.cipher === false
       ? {}
       : {
@@ -593,6 +590,44 @@ describe("site writes run inside the composition root's unit of work", () => {
         usedScopedStore: true,
       });
     }
+    await app.close();
+  });
+
+  it("PATCH /orgs/:id (review fix: the organization's names are onboarding data too) goes through the scope, for the tenant admin and for a platform operator, naming the TARGET organization", async () => {
+    const scopeCalls: SiteScopeCall[] = [];
+    const { app } = makeServer({ siteScope: scopeCalls });
+    const own = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/orgs/org_a",
+      headers: TENANT,
+      payload: { displayName: "Alpha East" },
+    });
+    expect(own.statusCode).toBe(200);
+    const operator = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/orgs/org_b",
+      headers: PLATFORM,
+      payload: { legalName: "Beta Hospice Holdings LLC" },
+    });
+    expect(operator.statusCode).toBe(200);
+    expect(scopeCalls).toEqual([
+      {
+        organizationId: "org_a",
+        userId: "admin_a",
+        membershipId: "m_admin_a",
+        usedScopedStore: true,
+      },
+      { organizationId: "org_b", userId: "ops_1", membershipId: "m_ops_1", usedScopedStore: true },
+    ]);
+    // a refused edit (a tenant admin may not change the legal name) never reaches the scope
+    const refused = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/orgs/org_a",
+      headers: TENANT,
+      payload: { legalName: "Not Allowed LLC" },
+    });
+    expect(refused.statusCode).toBe(403);
+    expect(scopeCalls).toHaveLength(2);
     await app.close();
   });
 

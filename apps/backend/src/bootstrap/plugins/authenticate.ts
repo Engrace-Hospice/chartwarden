@@ -137,10 +137,11 @@ export interface SessionAuthenticateDeps {
   /**
    * A new tenant's first admin signs in while the organization is still `created` (go-live not yet approved). For an org-bound
    * session on any organization that is not `active` ONLY the exact METHOD + route-template pairs of onboarding-org-gate.ts may be
-   * called; every other route answers 403 ORGANIZATION_ONBOARDING. A read that throws fails the request (closed). Absent in unit
-   * tests that do not exercise it: no gate.
+   * called; every other route answers 403 ORGANIZATION_ONBOARDING. A read that throws fails the request (closed). REQUIRED: a
+   * hook built without it would silently skip the gate, so a caller that does not exercise the gate says so explicitly (tests
+   * pass `liveOrganizationStage` from `__tests__/_live-organization-stage.ts`).
    */
-  organizationStage?: OrganizationStageReader;
+  organizationStage: OrganizationStageReader;
 }
 
 /** Constant-time header/secret comparison (mirrors the M12/M19/M20/M13 witness-token precedent). */
@@ -282,7 +283,6 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
       }
     }
     if (
-      deps.organizationStage &&
       (await deps.organizationStage.isConfined(actor.organizationId)) &&
       !preActivationMayCall({
         method: request.method,

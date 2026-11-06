@@ -15,6 +15,7 @@
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:transactional-email:live
  */
+import { liveOrganizationStage } from "./_live-organization-stage";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from "node:http";
@@ -229,6 +230,7 @@ describe.skipIf(!DB_URL)("M36 transactional email provider, LIVE Postgres + fake
       db: handle.db as never,
       security: { rateLimitEnabled: false },
       authenticate: createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => resolver,
       }),

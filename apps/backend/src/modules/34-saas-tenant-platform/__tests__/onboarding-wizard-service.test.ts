@@ -238,6 +238,7 @@ describe("attestation", () => {
   it("a stale write loses cleanly (compare-and-set)", async () => {
     const base = createMemoryWizardRunner(state);
     const racing = createOnboardingWizard({
+      activateOrganization,
       runner: {
         ...base,
         // Another actor starts the step after this call has read it but before it writes.
@@ -475,6 +476,7 @@ describe("compliance officer and org profile", () => {
     }
     // With no role binder wired, the platform route is as strict as the tenant's.
     const unbound = createOnboardingWizard({
+      activateOrganization,
       runner: createMemoryWizardRunner(state),
       orgProfile: createMemoryOrgProfile(state),
       now: () => NOW,
@@ -971,12 +973,12 @@ describe("a pending attestation does not survive a change to the data it atteste
     expect(tenant().status).toBe("onboarding");
   });
 
-  it("the same edit by a platform operator voids it, attributed to the operator", async () => {
+  it("the same edit by a platform operator voids it, attributed to the operator's USER (their membership is in their home organisation, so none is recorded)", async () => {
     await wizard().setOrgProfilePlatform("acme", OPS, { orgTimezone: "America/Chicago" });
     expect(state.goLive[0]).toMatchObject({
       status: "revoked",
       revokedByUserId: "ops-u",
-      revokedByMembershipId: "ops-m",
+      revokedByMembershipId: null,
     });
   });
 
@@ -1062,6 +1064,7 @@ describe("a failed officer assignment leaves no stray role grant", () => {
   const unbind = vi.fn(async () => undefined);
   const wizardWithUnbind = () =>
     createOnboardingWizard({
+      activateOrganization,
       runner: createMemoryWizardRunner(state),
       orgProfile: createMemoryOrgProfile(state),
       bindComplianceOfficerRole: bindOfficerRole,
@@ -1074,6 +1077,7 @@ describe("a failed officer assignment leaves no stray role grant", () => {
   it("expires the grant the assignment just bound when a later step fails, and the original error reaches the caller", async () => {
     const runner = createMemoryWizardRunner(state);
     const failingAudit = createOnboardingWizard({
+      activateOrganization,
       runner: {
         inTenant: runner.inTenant,
         inPlatform: (reason, fn, actor) =>
@@ -1116,6 +1120,7 @@ describe("a failed officer assignment leaves no stray role grant", () => {
     unbind.mockRejectedValueOnce(new Error("tenant database unavailable"));
     const runner = createMemoryWizardRunner(state);
     const w = createOnboardingWizard({
+      activateOrganization,
       runner: {
         inTenant: runner.inTenant,
         inPlatform: (reason, fn, actor) =>
@@ -1141,6 +1146,98 @@ describe("a failed officer assignment leaves no stray role grant", () => {
       w.setComplianceOfficerPlatform("acme", OPS, "admin-m", OPS_REASON),
     ).rejects.toThrow("audit write unavailable");
     expect(warnings.some((m) => /undoing the compliance officer role bind/.test(m))).toBe(true);
+  });
+});
+
+describe("go-live approval takes the exclusive onboarding lock before it reads or writes anything", () => {
+  // Data writers hold the SHARED onboarding lock and then update the attestation row; an approval that row-locked the attestation
+  // first and asked for the exclusive lock afterwards would deadlock against them. So the lock is the first thing it does.
+  beforeEach(() => settle("organisation", "billing", "locations", "baa_auto"));
+
+  it("locks exclusively first, then re-reads the tenant and its attestations under the lock", async () => {
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    const calls: string[] = [];
+    const runner = createMemoryWizardRunner(state);
+    const spying = createOnboardingWizard({
+      runner: {
+        inTenant: runner.inTenant,
+        inPlatform: (reason, fn, actor) =>
+          runner.inPlatform(
+            reason,
+            (store) =>
+              fn({
+                ...store,
+                lockOnboardingExclusive: async (organizationId) => {
+                  calls.push(`lock:${organizationId}`);
+                },
+                listGoLive: async (scope) => {
+                  calls.push("listGoLive");
+                  return store.listGoLive(scope);
+                },
+                settleGoLive: async (organizationId, id, patch) => {
+                  calls.push("settleGoLive");
+                  return store.settleGoLive(organizationId, id, patch);
+                },
+              }),
+            actor,
+          ),
+      },
+      orgProfile: createMemoryOrgProfile(state),
+      activateOrganization,
+      now: () => NOW,
+    });
+
+    await spying.approveGoLive("acme", OPS, "reviewed the evidence and the BAA");
+
+    expect(calls[0]).toBe(`lock:${ORG}`);
+    expect(calls.indexOf("settleGoLive")).toBeGreaterThan(calls.indexOf("listGoLive"));
+    expect(calls.indexOf("listGoLive")).toBeGreaterThan(0);
+  });
+
+  it("judges the attestation as it is under the lock: one a writer voided while the approval waited is refused", async () => {
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    const runner = createMemoryWizardRunner(state);
+    const racing = createOnboardingWizard({
+      runner: {
+        inTenant: runner.inTenant,
+        inPlatform: (reason, fn, actor) =>
+          runner.inPlatform(
+            reason,
+            (store) =>
+              fn({
+                ...store,
+                // while this approval waits for the exclusive lock, a data write commits and voids the attestation
+                lockOnboardingExclusive: async () => {
+                  await store.voidPendingGoLiveForDataChange({
+                    organizationId: ORG,
+                    revokedByUserId: "admin-u",
+                    revokedByMembershipId: "admin-m",
+                  });
+                },
+              }),
+            actor,
+          ),
+      },
+      orgProfile: createMemoryOrgProfile(state),
+      activateOrganization,
+      now: () => NOW,
+    });
+    expect(await code(racing.approveGoLive("acme", OPS, "reviewed the evidence and the BAA"))).toBe(
+      "GO_LIVE_NOT_ATTESTED",
+    );
+    expect(tenant().status).toBe("onboarding");
+    expect(activateOrganization).not.toHaveBeenCalled();
+  });
+
+  it("hands the M2 activation the NORMALIZED reason the approval recorded (control characters stripped), not a bare trim", async () => {
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    await wizard().approveGoLive("acme", OPS, "  reviewed the\u0007 evidence and the BAA  ");
+    expect(activateOrganization).toHaveBeenCalledWith({
+      organizationId: ORG,
+      operator: OPS,
+      reason: "reviewed the evidence and the BAA",
+    });
+    expect(state.goLive[0]?.approvalReason).toBe("reviewed the evidence and the BAA");
   });
 });
 
@@ -1326,6 +1423,7 @@ describe("go-live: two people, a live attester, a fresh attestation", () => {
       const warn = vi.fn();
       const base = createMemoryWizardRunner(state);
       const flaky = createOnboardingWizard({
+        activateOrganization,
         runner: {
           inTenant: base.inTenant,
           inPlatform: (reason, fn, actorUserId) =>

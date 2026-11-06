@@ -9,7 +9,7 @@
 // full and returned as a generic INTERNAL_ERROR — internal details are NEVER leaked. The
 // correlationId is read off request.context (applyRequestContext) so a client can quote it
 // to support and ops can stitch the request across logs/audit/outbox.
-import { classifyDatabaseError } from "@chartwarden/db";
+import { classifyDatabaseError, classifyRetryableDatabaseError } from "@chartwarden/db";
 import { ChartWardenError, ConflictError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
@@ -128,6 +128,26 @@ export function applyErrorHandler(app: FastifyInstance): void {
             : {}),
           correlationId,
           documentationUrl: `${DOCS_BASE}/${conflict.code}`,
+        },
+      });
+    }
+
+    // A deadlock or serialization failure: the database aborted this transaction because a concurrent one got in its way, so
+    // nothing it did was kept and running it again is the remedy. A retryable 409, not a 500 beside the genuine faults. As above, the
+    // raw error is not logged (its message embeds the query and its bound parameters).
+    const retryable = classifyRetryableDatabaseError(err);
+    if (retryable) {
+      request.log.info(
+        { errCode: "CONCURRENT_UPDATE", statusCode: 409, sqlstate: retryable.sqlstate },
+        "handled error",
+      );
+      return reply.code(409).send({
+        error: {
+          code: "CONCURRENT_UPDATE",
+          message:
+            "the request conflicted with another change in progress and nothing was saved; retry it",
+          correlationId,
+          documentationUrl: `${DOCS_BASE}/CONCURRENT_UPDATE`,
         },
       });
     }

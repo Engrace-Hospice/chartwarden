@@ -31,6 +31,13 @@ change what the existing routes refuse.
   (`422 BAA_DOCUMENT_REQUIRED`). A duplicate attestation or duplicate (tenant, addendum) BAA record is `409`, not `500`.
 - The platform operator's `reason` on onboarding-data writes is screened for patient identifiers like every wizard free text
   (`422 EVIDENCE_LOOKS_LIKE_PHI`), and a write now runs the onboarding advance after it commits.
+- `PATCH /api/v1/orgs/{id}` (the organization's display and legal name) and `POST .../admin/billing/npi-verifications/{id}/verify`
+  and `/revoke` (the `ccn_registered` step's data) also revoke a pending go-live attestation in the same transaction, like every
+  other write to the onboarding data. An operator's void records their user (a membership is recorded only when it is the
+  user's own active membership of that organization).
+- A deadlock or serialization failure (`40P01`, `40001`) is `409 CONCURRENT_UPDATE` ("retry it"; nothing was saved), not a 500.
+- Go-live approval takes the exclusive onboarding lock before it reads anything and judges the attestation as it is under that
+  lock; activation re-checks that the attester is still the assigned officer (`409 GO_LIVE_ATTESTATION_STALE`).
 - A session on an organization that is not `active` (created, suspended, closed or unknown) is confined to an exact list of
   onboarding routes; every other route answers `403 ORGANIZATION_ONBOARDING`, including the tenant DSAR / export downloads,
   support-consent grants, the care-team staff list, member credentials and direct user provisioning.

@@ -24,6 +24,7 @@
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m2:link-redemption:live
  */
+import { liveOrganizationStage } from "./_live-organization-stage";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -342,6 +343,7 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
         db: handle.db as never,
         security: { rateLimitEnabled: false },
         authenticate: createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
           getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
           getResolver: () => resolver,
         }),
@@ -844,6 +846,7 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
       db: handle.db as never,
       security: { rateLimitEnabled: false },
       authenticate: createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => resolver,
       }),

@@ -290,6 +290,7 @@ function makeServer(
     ],
   });
   const wizard = createOnboardingWizard({
+    activateOrganization: async () => undefined,
     runner: createMemoryWizardRunner(wizardState),
     orgProfile: createMemoryOrgProfile(wizardState),
   });

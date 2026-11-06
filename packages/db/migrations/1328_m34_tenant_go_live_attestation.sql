@@ -20,7 +20,8 @@
 -- data (a provider entity, a location, a MAC credential, the org profile; by the tenant's own admin or by an operator
 -- entering it for them) voids a pending attestation IN THE SAME TRANSACTION as the write, so approval can only ever rest
 -- on data nobody has touched since the officer looked. Those writes run on the tenant pool, so the tenant role needs this
--- one narrow UPDATE. The policy pins the revoker to the session's own user (app.user_id).
+-- one narrow UPDATE. The policy pins the revoker to the session's own user (app.user_id), a named revoking membership to that
+-- user's active membership of this organisation, and a non-empty reason.
 --
 -- TWO PEOPLE, NOT TWO MEMBERSHIPS. A user has a different membership in every organisation they belong to, so a platform
 -- operator invited into the tenant as its compliance officer holds two memberships and is one person. Each party is
@@ -89,7 +90,9 @@ CREATE TABLE IF NOT EXISTS "tenant_go_live_attestation" (
 -- At most one open attestation per tenant.
 CREATE UNIQUE INDEX IF NOT EXISTS "tenant_go_live_attestation_pending_uq" ON "tenant_go_live_attestation" ("tenant_account_id")
   WHERE "status" = 'pending';--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "tenant_go_live_attestation_tenant_ix" ON "tenant_go_live_attestation" ("tenant_account_id", "attested_at");--> statement-breakpoint
+-- Leads with the composite FK's own columns (tenant_account_id, organization_id) so a parent tenant_account delete or key update
+-- does not scan this table (fk-index-coverage), and its attested_at tail serves the wizard's "attestations, newest first" read.
+CREATE INDEX IF NOT EXISTS "tenant_go_live_attestation_tenant_ix" ON "tenant_go_live_attestation" ("tenant_account_id", "organization_id", "attested_at");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "tenant_go_live_attestation_org_ix" ON "tenant_go_live_attestation" ("organization_id");--> statement-breakpoint
 
 ALTER TABLE "tenant_go_live_attestation" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
@@ -129,10 +132,28 @@ CREATE POLICY "tenant_go_live_attestation_org_void" ON "tenant_go_live_attestati
     organization_id = nullif(current_setting('app.org_id', true), '')::uuid
     AND status = 'revoked'
     AND revoked_by_user_id = nullif(current_setting('app.user_id', true), '')::uuid
-    AND revoked_at IS NOT NULL AND revoke_reason IS NOT NULL
+    AND revoked_at IS NOT NULL
+    AND revoke_reason IS NOT NULL AND length(btrim(revoke_reason)) >= 8
+    -- a membership may be named only if it is the session user's own ACTIVE membership of THIS organisation (an operator's own
+    -- membership is in their home organisation, so an operator's void names the user alone)
+    AND (
+      revoked_by_membership_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM membership m
+         WHERE m.id = tenant_go_live_attestation.revoked_by_membership_id
+           AND m.organization_id = tenant_go_live_attestation.organization_id
+           AND m.user_id = tenant_go_live_attestation.revoked_by_user_id
+           AND m.status = 'active'
+      )
+    )
     AND approved_by_membership_id IS NULL AND approved_by_user_id IS NULL AND approved_at IS NULL AND approval_reason IS NULL
   );--> statement-breakpoint
-GRANT SELECT, INSERT ON "tenant_go_live_attestation" TO chartwarden_app;--> statement-breakpoint
+-- INSERT is a column list: the attester's identity and note. Everything else (status, attested_at, the approve and revoke columns)
+-- takes its default, so a tenant session can neither back-date an attestation (attested_at stays now()) nor set a state it must
+-- not. The repository inserts through a narrow table object because Drizzle lists every column with DEFAULT, which needs
+-- privilege on each.
+GRANT SELECT ON "tenant_go_live_attestation" TO chartwarden_app;--> statement-breakpoint
+GRANT INSERT ("organization_id", "tenant_account_id", "attested_by_membership_id", "attested_by_user_id", "attestation_note") ON "tenant_go_live_attestation" TO chartwarden_app;--> statement-breakpoint
 GRANT UPDATE ("status", "revoked_by_membership_id", "revoked_by_user_id", "revoked_at", "revoke_reason", "updated_at") ON "tenant_go_live_attestation" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "tenant_go_live_attestation" TO chartwarden_admin;--> statement-breakpoint
 -- The platform carrier exists only where provision-runtime-roles.ts has run; that script re-grants on every run.

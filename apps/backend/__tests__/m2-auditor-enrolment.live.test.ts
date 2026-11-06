@@ -20,6 +20,7 @@
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m2:auditor-enrolment:live
  */
+import { liveOrganizationStage } from "./_live-organization-stage";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -171,6 +172,7 @@ describe.skipIf(!DB_URL)("M2 §7.7 auditor enrolment — LIVE Postgres", () => {
     registerAbacRegistry();
 
     const authenticate = createSessionAuthenticate({
+ organizationStage: liveOrganizationStage,
       getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
       getResolver: () => getSeam("SessionContextResolver"),
       sessionTimeout: createDbSessionTimeoutEnforcer(handle.db),

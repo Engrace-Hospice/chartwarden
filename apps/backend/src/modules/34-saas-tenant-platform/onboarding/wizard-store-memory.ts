@@ -230,6 +230,9 @@ export function createMemoryWizardStore(
     async lockOnboardingShared() {
       // One in-process "database": nothing runs concurrently with a memory transaction.
     },
+    async lockOnboardingExclusive() {
+      // One in-process "database": nothing runs concurrently with a memory transaction.
+    },
     async updateOrgProfile(organizationId, patch) {
       const current = state.profiles.get(organizationId);
       const next: OrgProfile = {
@@ -248,7 +251,17 @@ export function createMemoryWizardStore(
         ...(state.goLive[index] as MemoryGoLive),
         status: "revoked",
         revokedByUserId: input.revokedByUserId,
-        revokedByMembershipId: input.revokedByMembershipId,
+        // As the real helper: the membership is recorded only when it is the revoking user's active membership of THIS organisation.
+        revokedByMembershipId: (() => {
+          const member = input.revokedByMembershipId
+            ? state.members.get(input.revokedByMembershipId)
+            : undefined;
+          return member?.organizationId === input.organizationId &&
+            member.userId === input.revokedByUserId &&
+            member.active
+            ? member.membershipId
+            : null;
+        })(),
         revokedAt: new Date(),
         revokeReason: GO_LIVE_DATA_CHANGED_REVOKE_REASON,
       };

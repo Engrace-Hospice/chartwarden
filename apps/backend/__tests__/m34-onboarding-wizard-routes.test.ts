@@ -112,6 +112,7 @@ function makeServer() {
     profiles: new Map([[TENANT_ORG, { displayName: "Acme", orgTimezone: "America/New_York" }]]),
   });
   const wizard = createOnboardingWizard({
+    activateOrganization: async () => undefined,
     runner: createMemoryWizardRunner(state),
     orgProfile: createMemoryOrgProfile(state),
   });

@@ -30,7 +30,6 @@
 import { PLATFORM_OPS_ROLE_KEYS, requireAbac, requirePermission } from "@chartwarden/auth";
 import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { SiteAdminRepository } from "../../../bootstrap/site-admin-repository";
 import {
   auditLocationCreated,
   auditLocationUpdated,
@@ -63,26 +62,26 @@ import {
 export type { TaxIdCipherPort } from "../org-admin-site-service";
 
 /**
- * Runs one provider-entity or location write in a unit of work the composition root owns: `run` gets a store bound to the
- * transaction, and the root may add to that same transaction (M34 voids a pending go-live attestation the write makes stale)
- * before it commits. M2 does not know what is added; it only promises the write and the addition commit or roll back together.
- * Unbound, the write runs on the plain store, as it always did.
+ * Runs one write to the organization's own data (a provider entity, a location, the organization's names) in a unit of work the
+ * composition root owns: `run` gets a store bound to the transaction, and the root adds to that same transaction (M34 revokes a
+ * pending go-live attestation the write makes stale) before it commits. M2 does not know what is added; it only promises the
+ * write and the addition commit or roll back together. REQUIRED: unbound, a write would leave a stale attestation approvable.
  */
-export type SiteWriteScope = <T>(
+export type OrgDataWriteScope = <T>(
   scope: {
     readonly organizationId: string;
     readonly userId: string;
     readonly membershipId: string | null;
   },
-  run: (store: SiteAdminRepository) => Promise<T>,
+  run: (store: OrgAdminStore) => Promise<T>,
 ) => Promise<T>;
 
 export interface OrgAdminRouteDeps extends AdminRouteDeps {
   readonly store: OrgAdminStore;
   /** Unbound -> POST /provider-entities answers 503 TAX_ID_CIPHER_UNBOUND. */
   readonly taxIdCipher?: TaxIdCipherPort;
-  /** The unit of work for a site write (see {@link SiteWriteScope}). */
-  readonly siteWriteScope?: SiteWriteScope;
+  /** The unit of work for a write to the organization's data (see {@link OrgDataWriteScope}). Required. */
+  readonly orgWriteScope: OrgDataWriteScope;
 }
 
 const DEFAULT_LIMIT = 25;
@@ -99,23 +98,21 @@ function requireAnyChange(changed: readonly string[]): void {
 export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRouteDeps): void {
   const { store } = deps;
 
-  /** A site write inside the composition root's unit of work when one is bound, else on the plain store. */
-  const siteWrite = <T>(
+  /** A write to the organization's data inside the composition root's unit of work (see {@link OrgDataWriteScope}). */
+  const orgWrite = <T>(
     request: FastifyRequest,
     organizationId: string,
-    run: (sites: SiteAdminRepository) => Promise<T>,
+    run: (stores: OrgAdminStore) => Promise<T>,
   ): Promise<T> => {
     const membershipId = request.context.attributes?.membershipId;
-    return deps.siteWriteScope
-      ? deps.siteWriteScope(
-          {
-            organizationId,
-            userId: request.context.userId,
-            membershipId: typeof membershipId === "string" ? membershipId : null,
-          },
-          run,
-        )
-      : run(store);
+    return deps.orgWriteScope(
+      {
+        organizationId,
+        userId: request.context.userId,
+        membershipId: typeof membershipId === "string" ? membershipId : null,
+      },
+      run,
+    );
   };
 
   // ── organizations ─────────────────────────────────────────────────────────────────────────────
@@ -195,7 +192,7 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
       patch.legalName = legalName;
     }
     requireAnyChange(Object.keys(patch));
-    const updated = await store.updateOrganization(id, patch);
+    const updated = await orgWrite(request, id, (stores) => stores.updateOrganization(id, patch));
     if (!updated) throw notFound("organization");
     await auditOrganizationUpdated(
       deps.audit,
@@ -225,10 +222,10 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
     await requirePermission("org.manage")(request);
     const orgId = orgOf(request);
     const actor = await resolveActor(deps, request);
-    const created = await siteWrite(request, orgId, (sites) =>
+    const created = await orgWrite(request, orgId, (stores) =>
       createProviderEntityForOrg(
         {
-          store: sites,
+          store: stores,
           ...(deps.taxIdCipher ? { taxIdCipher: deps.taxIdCipher } : {}),
           logError: (err, context) =>
             request.log.error({ err, ...context }, "tax-id encryption failed"),
@@ -249,8 +246,8 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
     const orgId = orgOf(request);
     const { id } = request.params as { id: string };
     const actor = await resolveActor(deps, request);
-    const { updated, changedFields } = await siteWrite(request, orgId, (sites) =>
-      updateProviderEntityForOrg({ store: sites }, orgId, id, request.body),
+    const { updated, changedFields } = await orgWrite(request, orgId, (stores) =>
+      updateProviderEntityForOrg({ store: stores }, orgId, id, request.body),
     );
     await auditProviderEntityUpdated(deps.audit, auditContextFor(request, actor), {
       organizationId: orgId,
@@ -273,8 +270,8 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
     await requirePermission("org.manage")(request);
     const orgId = orgOf(request);
     const actor = await resolveActor(deps, request);
-    const created = await siteWrite(request, orgId, (sites) =>
-      createLocationForOrg({ store: sites }, orgId, request.body),
+    const created = await orgWrite(request, orgId, (stores) =>
+      createLocationForOrg({ store: stores }, orgId, request.body),
     );
     await auditLocationCreated(deps.audit, auditContextFor(request, actor), {
       organizationId: orgId,
@@ -289,8 +286,8 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
     const orgId = orgOf(request);
     const { id } = request.params as { id: string };
     const actor = await resolveActor(deps, request);
-    const { updated, changedFields } = await siteWrite(request, orgId, (sites) =>
-      updateLocationForOrg({ store: sites }, orgId, id, request.body),
+    const { updated, changedFields } = await orgWrite(request, orgId, (stores) =>
+      updateLocationForOrg({ store: stores }, orgId, id, request.body),
     );
     await auditLocationUpdated(deps.audit, auditContextFor(request, actor), {
       organizationId: orgId,

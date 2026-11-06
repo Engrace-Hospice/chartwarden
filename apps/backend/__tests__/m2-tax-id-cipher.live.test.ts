@@ -28,7 +28,7 @@ import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
-import { mountOrgAdminRoutes } from "../src/modules/02-identity/index";
+import { createOrgDataWriteScope, mountOrgAdminRoutes } from "../src/modules/02-identity/index";
 import { type TaxIdKeyProvider, createTaxIdCipher } from "../src/modules/02-identity/tax-id-cipher";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
@@ -137,7 +137,11 @@ describe.skipIf(!DB_URL)("M2 tax-id cipher — LIVE Postgres, real chartwarden_a
     );
     registerAbacRegistry(createPredicateRegistry({}));
     app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-    mountOrgAdminRoutes(app, handle.db, { taxIdCipher: cipher });
+    mountOrgAdminRoutes(app, handle.db, {
+      taxIdCipher: cipher,
+      // This suite is about the EIN seal; M34's attestation void has its own cases. An explicit no-op after-write step.
+      orgWriteScope: createOrgDataWriteScope(handle.db, async () => undefined),
+    });
     await app.ready();
   }, 240_000);
 

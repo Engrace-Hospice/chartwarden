@@ -99,6 +99,13 @@ export interface WizardStore {
    * write that follows: go-live approval takes the same lock EXCLUSIVE. Call it before reading the status you act on.
    */
   lockOnboardingShared(organizationId: string): Promise<void>;
+  /**
+   * Takes the EXCLUSIVE onboarding lock (held until this transaction ends): waits for every in-flight data write (they hold the
+   * shared lock) and keeps new ones out. Go-live approval takes it as its FIRST statement, before it reads or locks any row:
+   * data writers take the shared lock and then update the attestation row, so any other order can deadlock against them.
+   * Re-entrant within the transaction (the activation takes it again).
+   */
+  lockOnboardingExclusive(organizationId: string): Promise<void>;
   /** Writes the validated org profile patch inside THIS transaction (through the M1/M2 port) and returns the stored profile. */
   updateOrgProfile(
     organizationId: string,
