@@ -24,6 +24,7 @@ import {
   type NoticeLink,
   correctedNoticeDates,
   deriveControlNumber,
+  medicareReceiptDay,
   minIso,
   planNoticeCorrection,
   repositories,
@@ -167,7 +168,8 @@ export function buildNoticeCorrectionService(
   ports: NoticeCorrectionPorts,
 ): NoticeCorrectionService {
   const now = ports.now ?? (() => new Date());
-  const today = () => now().toISOString().slice(0, 10);
+  // The Eastern (CMS) calendar day, not the UTC day: in the Eastern evening UTC is already tomorrow.
+  const today = () => medicareReceiptDay(now());
   const inOrg = <T>(actor: BillingWriteActor, fn: (tx: BillingDb) => Promise<T>) =>
     withOrgContext<BillingDb, T>(
       db,
