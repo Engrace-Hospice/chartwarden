@@ -57,8 +57,10 @@ Shows:
   go-live when the compliance officer has attested and it waits for this operator's approval)
 - Contract and billing, read on request (each read of a tenant's pricing is audited)
 - Clearinghouse, read on request (audited like the contract): the vendor, mode, status, whether a credential is on file and
-  the vendor BAA, the banner when a vendor is chosen but the contract's billing mode is still None, and a button for the
-  notices filed outside ChartWarden
+  the vendor BAA, the banner when a vendor is chosen but the contract's billing mode is still None, a "Verify the vendor BAA"
+  action for a live tenant whose recorded BAA is not verified yet (the same pinned verification as step 7: `If-Match` is
+  the BAA's `recordedAt`, a changed record is shown anew and needs a second confirm), and a button for the notices filed
+  outside ChartWarden
 - Notices filed outside ChartWarden (a drawer under the cards, an audited read): every NOE and NOTR the tenant recorded as
   filed outside ChartWarden, newest record first, with the filed date, when it was recorded, the notice's state, its due
   date and breach stamp (and whether the record wrote that stamp itself). Ids, states and dates only; nothing names a

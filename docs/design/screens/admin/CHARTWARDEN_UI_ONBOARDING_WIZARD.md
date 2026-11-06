@@ -80,8 +80,13 @@ step is settled by evidence or by its own facts.
 The operator chooses Stedi, Claim.MD or billing outside ChartWarden for the tenant (a change of vendor or mode starts the
 new configuration at draft and voids the vendor BAA when the vendor changes; the dialog says so before it is confirmed).
 The vendor credential is write-only: sealed under the tenant's key, never returned or shown, never carried through a
-Re-verify. Billing outside takes no mode and no credential, and its dialog says what it does: ChartWarden transmits
-nothing for the tenant, its billing service mode is set to none, and steps 8 and 9 are skipped for it.
+Re-verify. A change resumed after a Re-verify is still pinned to the version the operator first read (never re-read), so a
+change made meanwhile is a 412 that reloads the record. A server refusal of the credential or the evidence note sits under
+that input, with the prompt out of the way and what was typed kept. Billing outside takes no mode and no credential, and its
+dialog says only what is true of this tenant: ChartWarden transmits nothing; during onboarding steps 8 and 9 are skipped;
+and where a contract is signed its billing service mode is set to none now (onboarding) or from the 1st of next month
+(a live tenant); with no contract it says nothing about the mode. The system sets the mode and attributes it, in the platform
+audit row, to whoever set it off (the tenant, an operator, or the hourly sweep that applies it again).
 
 A vendor is then walked to active, each fact shown as met or not yet:
 
