@@ -18,8 +18,8 @@
 // (the tenant's own RLS lets the app role read its own row). Any other status answers 409 `TENANT_NOT_ONBOARDING`
 // and the refusal itself is audited. The app role holds no UPDATE on `tenant_account`, so `FOR SHARE` is unavailable;
 // instead every write takes the SHARED advisory lock `tenant-onboarding:<org id>` BEFORE it reads the status
-// (`tenant-onboarding-lock.ts`), and the activation sweep and `transitionStatus` take it EXCLUSIVE: an activation
-// waits for in-flight writes to commit, and a write that starts after it sees `active` (409).
+// (`tenant-onboarding-lock.ts`), and the go-live approval (`activateApprovedTenant`) and `transitionStatus` take it
+// EXCLUSIVE: an activation waits for in-flight writes to commit, and a write that starts after it sees `active` (409).
 import { type DbClient, schema } from "@chartwarden/db";
 import {
   type PlatformBypassAuditor,

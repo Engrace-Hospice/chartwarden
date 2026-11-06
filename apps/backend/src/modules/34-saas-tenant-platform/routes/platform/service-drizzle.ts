@@ -90,6 +90,10 @@ import type {
   UpdateBaaRecordArgs,
   UpsertFeatureFlagArgs,
 } from "./service";
+import {
+  ONBOARDING_WRITABLE_STATUSES,
+  lockTenantOnboardingExclusive,
+} from "./tenant-onboarding-lock";
 
 // ── injected ports the composition root binds (Phase-2D wiring; kept off the request thread) ──────────
 
@@ -696,6 +700,10 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             "a tenant goes live through the compliance officer's attestation and a platform approval (POST /api/v1/platform/tenants/:orgSlug/go-live/approve), not a status change",
             409,
           );
+        }
+        // Leaving provisioning/onboarding waits for in-flight operator onboarding-data writes (see tenant-onboarding-lock.ts).
+        if (ONBOARDING_WRITABLE_STATUSES.has(account.status)) {
+          await lockTenantOnboardingExclusive(tx, account.organizationId);
         }
         const event =
           account.status === "retained" && args.toStatus === "destruction_pending"

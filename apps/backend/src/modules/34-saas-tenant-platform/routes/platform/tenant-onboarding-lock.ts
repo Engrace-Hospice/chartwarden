@@ -3,8 +3,8 @@
 //
 // A write reads `tenant_account.status` and then writes rows; the app role holds no UPDATE on `tenant_account`, so it
 // cannot `FOR SHARE` the row. Instead every such write takes the SHARED lock below before it reads the status, and
-// anything that moves a tenant OUT of provisioning/onboarding (the activation sweep, `transitionStatus`) takes the
-// EXCLUSIVE lock on the same key. Writers do not block each other; an activation waits for in-flight writes to commit,
+// anything that moves a tenant OUT of provisioning/onboarding (the go-live approval's `activateApprovedTenant`,
+// `transitionStatus`) takes the EXCLUSIVE lock on the same key. Writers do not block each other; an activation waits for in-flight writes to commit,
 // and a write that starts after it sees `active` and answers 409. Both are transaction-scoped: nothing to release.
 import { type SQL, sql } from "drizzle-orm";
 

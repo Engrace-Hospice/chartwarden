@@ -346,6 +346,7 @@ import { buildActivePermissionHolderIds } from "./bootstrap/active-permission-ho
 import {
   assertClaimsBillingSeamBound,
   configureClaimsBillingGate,
+  isClaimsBillingEntitled,
   parseClaimsBillingEnforcement,
   withClaimsBillingGate,
 } from "./bootstrap/claims-billing-gate";
@@ -363,6 +364,7 @@ import {
   EMERGENCY_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
   MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
+  TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
 } from "./bootstrap/plugins/route-rate-limit";
 import { buildUrgentRateLimit } from "./bootstrap/plugins/urgent-rate-limit";
@@ -1076,6 +1078,7 @@ import {
 import {
   type M23BootAssemblyPorts,
   type M23HetsConfig,
+  M23_CLAIMMD_WEBHOOK_JOB_ID,
   M23_NPI_VERIFICATION_JOB_ID,
   M23_OUTBOX_EVENTS,
   M23_PLATFORM_JOB_ID,
@@ -1097,6 +1100,7 @@ import {
   buildDrizzleEdiProfileService,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
+  buildDrizzleNpiVerificationService,
   buildDrizzleOrgMacJurisdictionReader,
   buildDrizzlePlatformAdminService,
   buildDrizzleRateTableService,
@@ -4388,6 +4392,24 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           fn,
         )
     : undefined;
+  // ADR-0053 amendment D7 - the Claim.MD webhook ingress (M23). Bound only when CLAIMMD_WEBHOOK_ENABLED=true AND the
+  // account key + usage, the payload key and the platform pool are all present; otherwise the route answers 503 and
+  // stores nothing. The receipt table is platform-only, so every touch is one allowlisted, audited platform tx.
+  const m23ClaimMdRunner: ClaimMdPlatformRunner | undefined = platformDbHandle
+    ? (fn) =>
+        withPlatformContext(
+          platformDbHandle.db,
+          {
+            jobId: M23_CLAIMMD_WEBHOOK_JOB_ID,
+            reason:
+              "M23 Claim.MD webhook receipts (platform-only table, one vendor account for every tenant)",
+            crossTenant: true,
+          },
+          m34PlatformBypassAuditor,
+          fn,
+        )
+    : undefined;
+  const m23ClaimMdWebhook = claimMdWebhookConfigFromEnv(process.env, m23ClaimMdRunner);
   const m37OutboxPublisher = bindCallerModule(txOutboxPublisher, "m37");
   const m39OutboxPublisher = bindCallerModule(txOutboxPublisher, "m39");
   // GAP-101 — M36's first publisher: the out-of-band dispatcher + vendor-webhook reconcile emit
@@ -6223,6 +6245,27 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               outbox: m27OutboxPublisher,
               recompute: m27Recompute.enqueue,
             }),
+          });
+          // ADR-0053 amendment D7 - the Claim.MD webhook ingress (M23); 503 until every prerequisite is bound.
+          if (m23ClaimMdWebhook.missing.length > 0) {
+            app.log.warn(
+              { missing: m23ClaimMdWebhook.missing },
+              "CLAIMMD_WEBHOOK_ENABLED=true but the Claim.MD webhook is not bound; it answers 503 until these are set",
+            );
+          }
+          registerClaimMdWebhookRoutes(app, {
+            usage: m23ClaimMdWebhook.usage,
+            binding: m23ClaimMdWebhook.bound
+              ? {
+                  usage: m23ClaimMdWebhook.bound.usage,
+                  accountKey: m23ClaimMdWebhook.bound.accountKey,
+                  receive: buildClaimMdReceiptStore({
+                    runner: m23ClaimMdWebhook.bound.runner,
+                    cipher: m23ClaimMdWebhook.bound.cipher,
+                    log: (event, detail) => app.log.info({ claimmd: detail }, event),
+                  }),
+                }
+              : null,
           });
           // M35 (Subscription Billing) — mount the §4.1 tenant + §4.2 platform-ops + §4.3 webhook route
           // plugins over the single Drizzle route service. Tenant mutations open their own withOrgContext
@@ -8153,9 +8196,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       const claimMdSweepWorker = registerClaimMdWebhookSweepWorker(queueConnection, {
         runner: claimMdBound.runner,
         cipher: claimMdBound.cipher,
-        // TODO(claims-billing-addon): bind M35 entitlement. The Billing add-on capability (`isEntitled(orgId)`) lands on a
-        // parallel branch; until it is merged every resolved tenant counts as entitled, so reports flow as before it.
-        entitlement: { isEntitled: async () => true },
+        // ADR-0108 — the claims-billing add-on. Follows CLAIMS_BILLING_ENFORCEMENT (off/shadow: entitled; enforce: the
+        // M35 read, which throws on a failed read so the sweep retries without spending an attempt).
+        entitlement: {
+          isEntitled: (organizationId) =>
+            isClaimsBillingEntitled(organizationId, { queue: "claimmd-webhook-sweep" }),
+        },
         outbox: m23OutboxPublisher,
         log: (event, detail) => app.log.info({ claimmd: detail }, event),
         // A receipt that went terminal `failed` is lost (Claim.MD already got 200): the ops alert sink, error level.
