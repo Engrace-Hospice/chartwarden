@@ -6634,6 +6634,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             mailingService: buildDrizzleM16MailingService(dbHandle.db, {
               outbox: m16OutboxPublisher,
               enqueue: m16MailingEnqueue.port,
+              log: (message, context) => app.log.warn(context, message),
             }),
           });
           // M21 (Supplies, DME & Comfort Kits) — mount the §4.1 route plugins over the Drizzle READ +

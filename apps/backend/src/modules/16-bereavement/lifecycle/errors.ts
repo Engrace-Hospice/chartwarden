@@ -104,8 +104,10 @@ export const M16_ERROR_STATUS = {
   MAILING_RUN_NOT_EDITABLE: 409,
   /** `generate` runs from a draft, retries a failed run, or regenerates a ready (stale) batch. */
   MAILING_RUN_NOT_GENERATABLE: 409,
-  /** `download` needs a rendered batch (ready or mailed); `confirm-mailed` needs a ready one. */
+  /** `download` and `confirm-mailed` need a ready (rendered, not yet mailed) run. */
   MAILING_RUN_NOT_READY: 409,
+  /** `download` of a run already confirmed mailed: the batch went out and there is no reprint workflow, so it is never handed out again. */
+  MAILING_RUN_ALREADY_MAILED: 409,
   MAILING_RUN_NOT_CANCELLABLE: 409,
   /** `download` of a ready batch that names someone no longer eligible: regenerate it first (the message carries a count only). */
   MAILING_RUN_STALE: 409,

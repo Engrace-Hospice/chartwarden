@@ -6,8 +6,9 @@
 //   generate        draft | failed | ready -> generating in one CAS, then the batch is SELECTED SET-BASED in the same transaction: every contact of every active
 //                   plan goes through the pure `decideMailingEligibility` and is upserted as an item (included / excluded + reason) in chunks. Only after the commit
 //                   is the render handed to the `m16-mailing-generate` worker (a lost enqueue is re-sent by the sweep). Empty wording is refused: no default ships.
-//                   From `ready` it is the REGENERATE path: a batch that went stale (below) is re-selected and re-rendered; the old PDF is detached from the run.
-//   download        on a `ready` run re-checks the SAME rule over the included items first: if anyone is no longer eligible (an opt-out, a closure, a death since
+//                   From `ready` it is the REGENERATE path: a batch that went stale (below) is re-selected and re-rendered; the old PDF is detached from the run
+//                   (every render attempt files its own document, so the run only ever names the PDF of the attempt that won its compare-and-set).
+//   download        refuses a `mailed` run (409 `MAILING_RUN_ALREADY_MAILED`: no reprint workflow). On a `ready` run it re-checks the SAME rule over the included items first: if anyone is no longer eligible (an opt-out, a closure, a death since
 //                   the render) the batch is STALE and is refused (409 `MAILING_RUN_STALE`, a count only) until it is regenerated, so a PDF naming an ineligible
 //                   recipient never leaves the system. Otherwise it mints the short-lived URL through the M22 `OrgDocumentAccessProvider` seam (access ledger first).
 //   confirm-mailed  BOOKKEEPING: re-checks the same rule once more; whoever dropped out since the download is flagged `excluded_after_render` and is never logged
@@ -72,6 +73,8 @@ export interface M16MailingDeps {
   /** Is an email channel bound for this tenant? Defaults to false: the email channel is not built (see mailings/eligibility.ts). */
   readonly emailChannelAvailable?: boolean;
   readonly now?: () => Date;
+  /** Operational warnings (ids and an error class only, never a name or an address); index.ts binds the Fastify logger. */
+  readonly log?: (message: string, context: Record<string, unknown>) => void;
 }
 
 const iso = (d: Date): string => d.toISOString();
@@ -167,8 +170,13 @@ export function buildDrizzleM16MailingService(
   });
   const asTx = (scoped: unknown): DbClient => scoped as DbClient;
 
-  async function runOr404(tx: DbClient, runId: string): Promise<RunRow> {
-    const [row] = await tx.select().from(RUN).where(eq(RUN.id, runId)).limit(1);
+  async function runOr404(
+    tx: DbClient,
+    runId: string,
+    opts: { readonly lock?: boolean } = {},
+  ): Promise<RunRow> {
+    const query = tx.select().from(RUN).where(eq(RUN.id, runId)).limit(1);
+    const [row] = await (opts.lock === true ? query.for("update") : query);
     if (!row) throw new BereavementStateError("MAILING_RUN_NOT_FOUND", "mailing run not found");
     return row;
   }
@@ -509,8 +517,8 @@ export function buildDrizzleM16MailingService(
             version: claimed.row.version,
           });
         } catch (error) {
-          // eslint-disable-next-line no-console -- ids only; the sweep owns recovery
-          console.warn(
+          // ids only; the sweep owns recovery
+          deps.log?.(
             "m16.mailing-generate: enqueue failed after the claim; the sweep re-sends it",
             {
               organizationId: actor.organizationId,
@@ -527,25 +535,26 @@ export function buildDrizzleM16MailingService(
       const run = await withOrgContext(db, scope(actor), async (scoped) => {
         const tx = asTx(scoped);
         const row = await runOr404(tx, runId);
-        if (
-          (row.status !== "ready" && row.status !== "mailed") ||
-          row.renderedDocumentId === null
-        ) {
+        // A mailed batch went out and there is no reprint workflow: it is never handed out again (nothing would re-check it against today's facts).
+        if (row.status === "mailed") {
+          throw new BereavementStateError(
+            "MAILING_RUN_ALREADY_MAILED",
+            "this batch was confirmed mailed and can no longer be downloaded",
+          );
+        }
+        if (row.status !== "ready" || row.renderedDocumentId === null) {
           throw new BereavementStateError(
             "MAILING_RUN_NOT_READY",
             `a ${row.status} run has no batch to download`,
           );
         }
-        // A ready batch that names anyone no longer eligible never leaves the system: regenerate it first. (A `mailed` run's items are already
-        // logged; its batch is the record of what was sent.)
-        if (row.status === "ready") {
-          const stale = (await ineligibleIncludedItems(tx, row, emailChannelAvailable)).size;
-          if (stale > 0) {
-            throw new BereavementStateError(
-              "MAILING_RUN_STALE",
-              `${stale} recipient(s) in this batch are no longer eligible; regenerate the batch before downloading it`,
-            );
-          }
+        // A ready batch that names anyone no longer eligible never leaves the system: regenerate it first.
+        const stale = (await ineligibleIncludedItems(tx, row, emailChannelAvailable)).size;
+        if (stale > 0) {
+          throw new BereavementStateError(
+            "MAILING_RUN_STALE",
+            `${stale} recipient(s) in this batch are no longer eligible; regenerate the batch before downloading it`,
+          );
         }
         return row;
       });
@@ -578,7 +587,8 @@ export function buildDrizzleM16MailingService(
     async confirmMailed(actor, runId, input) {
       return withOrgContext(db, scope(actor), async (scoped) => {
         const tx = asTx(scoped);
-        const run = await runOr404(tx, runId);
+        // The RUN row first, then its items: the order regenerate takes them in (its CAS, then the item upserts), so the two never deadlock.
+        const run = await runOr404(tx, runId, { lock: true });
         checkVersion(input.expectedVersion, run.version);
         if (run.status !== "ready") {
           throw new BereavementStateError(

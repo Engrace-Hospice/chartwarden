@@ -140,7 +140,7 @@ export function registerBereavementMailingRoutes(
 
   // 49 — a short-lived attachment URL for the rendered batch PDF through the M22 org-level seam. The batch is every recipient's name and address across
   // the tenant, so it needs a FRESH step-up (as M22's export-phi-bundle does). A ready batch naming anyone no longer eligible is refused (409
-  // `MAILING_RUN_STALE`) until regenerated. The response is never cached.
+  // `MAILING_RUN_STALE`) until regenerated; a mailed run is refused (409 `MAILING_RUN_ALREADY_MAILED`: no reprint). The response is never cached.
   app.get(
     "/api/v1/bereavement/mailings/runs/:runId/download",
     {

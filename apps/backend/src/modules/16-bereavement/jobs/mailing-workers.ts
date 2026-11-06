@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 // apps/backend/src/modules/16-bereavement/jobs/mailing-workers.ts — ADR-0109 D10: the two mailing workers.
@@ -12,7 +13,8 @@ import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 //     closure since `generate` drops that item as `excluded` with its reason; nobody left fails the run `NO_RECIPIENTS`) and touches the run's `updated_at` so
 //     the sweep's stale re-send does not fire on a slow decrypt, and hands name, address lines and greeting to
 //     `getSeam("DocumentRenderer").render(...)` in memory: the addresses are never on the outbox, in a queue payload, in a log line or in a run column. It numbers the
-//     letters (ordinal = the letter's position, 1-based; a long letter spans several pages), moves the run to `ready` in one compare-and-set, and on the FINAL failed attempt moves it to `failed` (the retry budget exhausted
+//     letters (ordinal = the letter's position, 1-based; a long letter spans several pages), moves the run to `ready` in one compare-and-set (each attempt renders under its OWN document id, so the run names exactly the
+//     winner's PDF; the claim is abandoned if a rendered recipient was excluded meanwhile), and on the FINAL failed attempt moves it to `failed` (the retry budget exhausted
 //     is the DLQ: `removeOnFail: false` keeps the failed set, and the platform's DLQ promotion alert watches it).
 //
 // WORKERS ARE NOT REQUESTS: each step opens its own org-explicit `withOrgContext` (the cron-workers convention); a render is never held inside a transaction.
@@ -320,6 +322,14 @@ async function failRun(
   );
 }
 
+/** Thrown inside the ready compare-and-set to roll it back: the rendered PDF names someone excluded since this attempt's re-check. */
+class AbandonedRenderError extends Error {
+  constructor() {
+    super("ABANDONED_RENDER");
+    this.name = "AbandonedRenderError";
+  }
+}
+
 /** Thrown for a failure that retrying cannot fix (the run is failed at once, not after the retry budget). */
 class TerminalMailingError extends Error {
   constructor(readonly code: string) {
@@ -420,8 +430,11 @@ export async function runMailingGenerateJob(
     const unaddressed = dropped.filter((itemId) => !recheck.has(itemId));
     if (kept.length === 0) throw new TerminalMailingError("NO_RECIPIENTS");
 
+    // Every ATTEMPT files its OWN document (never the run id): a late or duplicate job (a sweep re-send, a stalled redelivery) that loses the
+    // compare-and-set below leaves an unreferenced document behind, instead of appending a version that would become the active PDF of the
+    // document the winner's `rendered_document_id` names.
     const { documentId } = await (deps.render ?? defaultRender)(organizationId, {
-      aggregateId: runId,
+      aggregateId: randomUUID(),
       heading: wording.title,
       paragraphs: wording.paragraphs,
       // no default wording ships: an empty sign-off is simply not printed
@@ -430,7 +443,8 @@ export async function runMailingGenerateJob(
     });
 
     const at = (deps.now ?? (() => new Date()))();
-    await inOrg(deps, organizationId, async (tx) => {
+    const won = await inOrg(deps, organizationId, async (tx) => {
+      // The RUN row first (the compare-and-set takes its lock), then the items: the order every other mailing writer takes them in.
       const [ready] = await tx
         .update(RUN)
         .set({
@@ -438,13 +452,12 @@ export async function runMailingGenerateJob(
           renderedDocumentId: documentId,
           generatedAt: at,
           recipientCount: kept.length,
-          excludedCount: claim.run.excludedCount + unaddressed.length + recheck.size,
           version: version + 1,
           updatedAt: at,
         })
         .where(and(eq(RUN.id, runId), eq(RUN.status, "generating"), eq(RUN.version, version)))
         .returning({ id: RUN.id });
-      if (!ready) return; // moved on while rendering: the document stays as an extra version, the run is not touched
+      if (!ready) return false; // moved on while rendering: this attempt's document is an unreferenced orphan, the run is not touched
       if (unaddressed.length > 0) {
         await tx
           .update(ITEM)
@@ -456,6 +469,13 @@ export async function runMailingGenerateJob(
           })
           .where(inArray(ITEM.id, unaddressed));
       }
+      // The PDF holds exactly `kept`. An overlapping attempt's re-check may have excluded one of them since OUR re-check (an opt-out in
+      // between): then this PDF names someone it must not, so the whole claim rolls back and the newer attempt (or the sweep) renders it.
+      const [{ n: included } = { n: -1 }] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(ITEM)
+        .where(and(eq(ITEM.runId, runId), eq(ITEM.status, "included")));
+      if (included !== kept.length) throw new AbandonedRenderError();
       // ordinal = the letter's position in the batch (a letter longer than a page spans several pages)
       const keptIds = kept.map((k) => k.itemId);
       for (let i = 0; i < keptIds.length; i += M16_MAILING_LOG_CHUNK) {
@@ -468,7 +488,25 @@ export async function runMailingGenerateJob(
           sql`UPDATE bereavement_mailing_item AS t SET ordinal = v.ord, updated_at = now() FROM (VALUES ${values}) AS v(id, ord) WHERE t.id = v.id`,
         );
       }
+      // The excluded count is the items', not a sum carried from the claim (an overlapping attempt may already have flagged some).
+      const [{ n: excluded } = { n: 0 }] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(ITEM)
+        .where(and(eq(ITEM.runId, runId), eq(ITEM.status, "excluded")));
+      await tx.update(RUN).set({ excludedCount: excluded }).where(eq(RUN.id, runId));
+      return true;
     });
+    if (!won) {
+      log(
+        "m16.mailing-generate: run moved on while rendering — this attempt's document is unreferenced",
+        {
+          organizationId,
+          runId,
+          version,
+        },
+      );
+      return;
+    }
     log("m16.mailing-generate: rendered", {
       organizationId,
       runId,
@@ -477,6 +515,15 @@ export async function runMailingGenerateJob(
       noLongerEligible: recheck.size,
     });
   } catch (error) {
+    if (error instanceof AbandonedRenderError) {
+      // Not a failure: the run stays `generating` and a newer attempt (or the sweep's stale re-send) renders the current batch.
+      log("m16.mailing-generate: a rendered recipient was excluded meanwhile — claim abandoned", {
+        organizationId,
+        runId,
+        version,
+      });
+      return;
+    }
     const terminal = error instanceof TerminalMailingError;
     const code = terminal ? error.code : "RENDER_FAILED";
     // NEVER the message: a renderer error can echo its payload (names and addresses). The class name and the ids are enough to find it.

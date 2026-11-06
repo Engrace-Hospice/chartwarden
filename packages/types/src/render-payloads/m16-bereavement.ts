@@ -255,7 +255,7 @@ export const BereavementMailingBatchLetter = Type.Object({
 export type BereavementMailingBatchLetter = Static<typeof BereavementMailingBatchLetter>;
 
 export const BereavementMailingBatchRenderPayload = Type.Object({
-  /** The run id: the aggregate the document is filed against and the back-reference names. */
+  /** A fresh id PER RENDER ATTEMPT (not the run id): each attempt files its own document, and the run's `rendered_document_id` names the winner's. */
   aggregateId: text,
   /** The letter's heading (the agency's own wording). Deliberately NOT named `title`: the renderer reads `title` as the document row's title, which stays the generic default. */
   heading: text,

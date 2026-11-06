@@ -20,7 +20,9 @@
  *   download        a ready run's URL comes through M22's org-level seam (aggregate-type allowlist, ledger row), is never cached, and carries a read audit
  *                   that names the run; the real seam over the real tables refuses a patient's document and another tenant's;
  *   confirm-mailed  re-checks eligibility over the rendered contacts, flags `excluded_after_render`, moves ready -> mailed, emits ids and counts only; a stale
- *                   version is 412, a second confirm 409;
+ *                   version is 412, a second confirm 409; a mailed batch is never downloaded again (409 MAILING_RUN_ALREADY_MAILED);
+ *   race            two overlapping generate jobs render through the REAL DocumentRenderer: each attempt files its own document, the download serves the
+ *                   compare-and-set winner's PDF, and an attempt whose PDF names a family excluded since its re-check is abandoned, never made ready;
  *   log pass        the sweep writes the activity rows in chunks of 500, set-based and idempotent, for the mailed items only;
  *   eraser          the bereavement eraser deletes a decedent's mailing items as the DESTRUCTION role (migration 1376); the app role cannot.
  *
@@ -39,7 +41,10 @@ import {
 } from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
 import { runWithRequestContext } from "@chartwarden/tenancy";
-import type { BereavementMailingBatchRenderPayload } from "@chartwarden/types";
+import {
+  BEREAVEMENT_MAILING_BATCH_TEMPLATE_KEY,
+  type BereavementMailingBatchRenderPayload,
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -73,8 +78,11 @@ import {
 } from "../src/modules/16-bereavement/routes/index";
 import { registerBereavementMailingRoutes } from "../src/modules/16-bereavement/routes/mailing.routes";
 import {
+  createDocumentRenderer,
+  createDrizzleDocumentSeamStore,
   createDrizzleOrgDocumentAccessPort,
   createDrizzleStaffMintAccessLog,
+  createInMemoryObjectStore,
   createOrgDocumentAccessProvider,
 } from "../src/modules/22-documents/seams/index";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
@@ -1088,7 +1096,9 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
       const out = rendered.at(-1);
       expect(out?.organizationId).toBe(ORG_A);
       const payload = out?.payload as BereavementMailingBatchRenderPayload;
-      expect(payload.aggregateId).toBe(run);
+      // each render attempt files its own document: the aggregate is a fresh id, never the run's
+      expect(payload.aggregateId).not.toBe(run);
+      expect(payload.aggregateId).toMatch(/^[0-9a-f-]{36}$/);
       expect(payload.heading).toBe(WORDING.en.title);
       expect(payload.paragraphs).toEqual(["We are thinking of you."]);
       // contacts are numbered in roster order (created_at): ada, ben, callsOnly
@@ -1513,8 +1523,12 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
         (await call("POST", `${runs}/${run}/cancel`, "don", undefined, { "if-match": '"4"' }))
           .statusCode,
       ).toBe(409);
-      // the batch of a mailed run can still be downloaded again (a reprint)
-      expect((await call("GET", `${runs}/${run}/download`, "don")).statusCode).toBe(200);
+      // the batch of a mailed run went out: there is no reprint, so it is never handed out again (and nothing is minted)
+      orgDocCalls.length = 0;
+      const again = await call("GET", `${runs}/${run}/download`, "don");
+      expect(again.statusCode).toBe(409);
+      expect(code(again)).toBe("MAILING_RUN_ALREADY_MAILED");
+      expect(orgDocCalls).toEqual([]);
     });
 
     it("the sweep writes the activity rows for the mailed items only, once, and they satisfy no cadence item", async () => {
@@ -1757,6 +1771,158 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
       const ok = await call("GET", `${runs}/${stale}/download`, "donB");
       expect(ok.statusCode).toBe(200);
       expect(orgDocCalls).toHaveLength(1);
+    });
+
+    it("overlapping generate jobs through the REAL DocumentRenderer: the download serves the CAS winner's PDF, never a late or abandoned attempt naming an opted-out family", async () => {
+      // The real M22 renderer over the real document tables (as the app role) and an in-memory object store the real org-level seam presigns from.
+      const objects = createInMemoryObjectStore();
+      const renderer = createDocumentRenderer({
+        store: createDrizzleDocumentSeamStore(handle.db),
+        objects: objects.store,
+      });
+      const presignedKeys: string[] = [];
+      const realMailing = buildDrizzleM16MailingService(handle.db, {
+        outbox: outbox as never,
+        enqueue: { enqueue: async (job) => void enqueued.push(job) },
+        orgDocuments: () =>
+          createOrgDocumentAccessProvider({
+            port: createDrizzleOrgDocumentAccessPort(handle.db),
+            objects: {
+              presign: async (a) => {
+                presignedKeys.push(a.descriptor.objectKey);
+                return {
+                  url: "https://objects.example.test/race",
+                  expiresAt: "2099-01-01T00:05:00.000Z" as never,
+                };
+              },
+            },
+            accessLog: createDrizzleStaffMintAccessLog(handle.db),
+          }),
+      });
+      /** A job whose render waits at a gate: `reached` resolves once it has claimed AND re-checked (the render is called after both). */
+      const gatedJob = (job: MailingGenerateJob) => {
+        let release: () => void = () => undefined;
+        let reached: () => void = () => undefined;
+        const gate = new Promise<void>((r) => {
+          release = r;
+        });
+        const atRender = new Promise<void>((r) => {
+          reached = r;
+        });
+        const documents: string[] = [];
+        const done = runMailingGenerateJob(
+          {
+            ...workerDeps,
+            render: async (organizationId, payload) => {
+              reached();
+              await gate;
+              const out = await renderer.render(
+                { orgId: organizationId as never },
+                BEREAVEMENT_MAILING_BATCH_TEMPLATE_KEY,
+                payload,
+              );
+              documents.push(out.documentId);
+              return out;
+            },
+          },
+          job,
+        );
+        return { release, atRender, done, documents };
+      };
+      const downloadedText = async (runId: string): Promise<string> => {
+        presignedKeys.length = 0;
+        const p = people.donB as Person;
+        await runWithRequestContext({ organizationId: p.org, userId: p.user }, () =>
+          realMailing.downloadRun(writeActorOf("donB"), runId),
+        );
+        const key = presignedKeys[0] as string;
+        const bytes = [...objects.objects].find(([k]) => k.endsWith(`/${key}`))?.[1];
+        expect(bytes, "the presigned object exists").toBeDefined();
+        return Buffer.from(bytes as Uint8Array).toString("latin1");
+      };
+      const generate = async (runId: string): Promise<MailingGenerateJob> => {
+        enqueued.length = 0;
+        const res = await call("POST", `${runs}/${runId}/generate`, "donB", undefined, {
+          "if-match": '"0"',
+        });
+        expect(res.statusCode).toBe(200);
+        return enqueued.at(-1) as MailingGenerateJob;
+      };
+      const plan = await seedPlan(ORG_B, { status: "active" });
+      await seedContact(ORG_B, plan, { name: "Racer Stays", address: ADDRESS.ada });
+
+      // 1. A LATE loser: it re-checked before the opt-out, the winner after; the loser finishes last and loses the compare-and-set.
+      const lateOut = await seedContact(ORG_B, plan, {
+        name: "Racer Lateout",
+        address: ADDRESS.ben,
+      });
+      const run1 = await seedRun(ORG_B, { content: WORDING });
+      const job1 = await generate(run1);
+      const late = gatedJob(job1);
+      await late.atRender;
+      await seedOptOut(ORG_B, plan, lateOut, "no_mailings");
+      const winner = gatedJob(job1);
+      await winner.atRender;
+      winner.release();
+      await winner.done;
+      late.release();
+      await late.done;
+      const state1 = await runRow(run1);
+      expect(state1.status).toBe("ready");
+      expect(state1.rendered_document_id).toBe(winner.documents[0]);
+      expect(late.documents).toHaveLength(1);
+      expect(late.documents[0]).not.toBe(winner.documents[0]); // its own document, referenced by nothing
+      // the winner's document carries exactly its own version: the loser appended nothing to it
+      expect(
+        (
+          await one<{ n: number }>(
+            "SELECT count(*)::int n FROM document_version WHERE document_id=$1",
+            [state1.rendered_document_id],
+          )
+        ).n,
+      ).toBe(1);
+      const pdf1 = await downloadedText(run1);
+      expect(pdf1).toContain("Racer Stays");
+      expect(pdf1).not.toContain("Racer Lateout");
+
+      // 2. An ABANDONED claim: the stale attempt reaches the compare-and-set FIRST, after the newer one excluded a family it printed.
+      const abandonOut = await seedContact(ORG_B, plan, {
+        name: "Racer Abandoned",
+        address: ADDRESS.ben,
+      });
+      const run2 = await seedRun(ORG_B, { content: WORDING });
+      const job2 = await generate(run2);
+      const stale = gatedJob(job2);
+      await stale.atRender;
+      await seedOptOut(ORG_B, plan, abandonOut, "full");
+      const fresh = gatedJob(job2);
+      await fresh.atRender; // has re-checked: the family is excluded on the items
+      stale.release();
+      await stale.done; // rolled back, not failed
+      let state2 = await runRow(run2);
+      expect(state2).toMatchObject({
+        status: "generating",
+        rendered_document_id: null,
+        failure_code: null,
+      });
+      fresh.release();
+      await fresh.done;
+      state2 = await runRow(run2);
+      expect(state2.status).toBe("ready");
+      expect(state2.rendered_document_id).toBe(fresh.documents[0]);
+      // the counts are the items': the opted-out family is counted excluded once
+      const items2 = await itemsOf(run2);
+      expect(state2.excluded_count).toBe(
+        Object.values(items2).filter((i) => i.status === "excluded").length,
+      );
+      expect(items2[abandonOut]).toMatchObject({
+        status: "excluded",
+        reason: "opted_out",
+        ordinal: null,
+      });
+      const pdf2 = await downloadedText(run2);
+      expect(pdf2).toContain("Racer Stays");
+      expect(pdf2).not.toContain("Racer Abandoned");
     });
 
     it("an enqueue that fails after the claim committed answers the claimed run (not a 500); the sweep's stale pass owns recovery", async () => {

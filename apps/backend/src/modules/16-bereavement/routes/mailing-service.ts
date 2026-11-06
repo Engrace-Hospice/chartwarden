@@ -142,7 +142,7 @@ export interface M16MailingService {
     runId: string,
     input: { readonly expectedVersion: number },
   ): Promise<MailingRunView>;
-  /** Route 49 — a short-lived URL for the rendered batch (ready or mailed). Writes the M22 access ledger row. */
+  /** Route 49 — a short-lived URL for a READY run's rendered batch (a mailed run is refused: no reprint). Writes the M22 access ledger row. */
   downloadRun(actor: M16WriteActor, runId: string): Promise<MailingDownloadView>;
   /** Route 50 — ready -> mailed: re-check eligibility, flag `excluded_after_render`, emit `mailing_run_mailed`. */
   confirmMailed(
