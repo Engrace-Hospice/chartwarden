@@ -158,11 +158,53 @@ export function idemKey(): string {
     : `m16-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
 }
 
-/** §2.5 — the mutation headers: an idempotency key always, `If-Match` whenever a row version was read. */
-export function writeHeaders(version?: number | null): Record<string, string> {
-  const header: Record<string, string> = { "Idempotency-Key": idemKey() };
+/**
+ * §2.5 — the mutation headers: an idempotency key always, `If-Match` whenever a row version was read. A screen that may
+ * RETRY a write (a modal whose response was lost) passes the key of that attempt so the retry dedupes server-side.
+ */
+export function writeHeaders(
+  version?: number | null,
+  idempotencyKey?: string,
+): Record<string, string> {
+  const header: Record<string, string> = { "Idempotency-Key": idempotencyKey ?? idemKey() };
   if (version != null) header["If-Match"] = String(version);
   return header;
+}
+
+/** The error a write reports when its fetch rejected: the connection dropped and the answer, if any, never arrived. */
+const LOST_RESPONSE = { lost: true } as const;
+const LOST_RESPONSE_MESSAGE =
+  "The connection dropped before the server answered, so we can't tell whether it went through. Check your connection and try again.";
+
+/** HTTP status of a write whose response never arrived (see {@link LOST_RESPONSE}). */
+export const NO_RESPONSE = 0;
+
+/**
+ * Run one request and report `{ data, error, status }` without ever rejecting: a rejected fetch becomes
+ * `{ error: LOST_RESPONSE, status: NO_RESPONSE }`, so a screen can never be left on "busy" forever and can retry
+ * with the SAME idempotency key.
+ */
+async function send<T>(
+  call: () => Promise<{ data?: T; error?: unknown; response: Response }>,
+): Promise<{ data: T | null; error: unknown; status: number }> {
+  try {
+    const res = await call();
+    return res.error
+      ? { data: null, error: res.error, status: res.response.status }
+      : { data: res.data ?? null, error: null, status: res.response.status };
+  } catch {
+    return { data: null, error: LOST_RESPONSE, status: NO_RESPONSE };
+  }
+}
+
+/** 412 (the row moved), 409 (it was decided / locked elsewhere) or 404 (it is gone): what the screen read is stale. */
+export const isStaleWrite = (status: number): boolean =>
+  status === 412 || status === 409 || status === 404;
+
+/** The server's machine code of a failed response (`{ error: { code } }`), or null. */
+export function errorCode(error: unknown): string | null {
+  const code = (error as { error?: { code?: unknown } } | null | undefined)?.error?.code;
+  return typeof code === "string" ? code : null;
 }
 
 /**
@@ -176,6 +218,7 @@ export const EARLY_CLOSE_SELF_COSIGN_MESSAGE =
   "You requested this early close, so you cannot cosign it. A different clinical supervisor must cosign.";
 
 export function errorMessage(error: unknown, fallback: string): string {
+  if (error === LOST_RESPONSE) return LOST_RESPONSE_MESSAGE;
   const body = error as { title?: string; detail?: string; code?: string; status?: number } | null;
   if (body?.code === EARLY_CLOSE_SELF_COSIGN_CODE) return EARLY_CLOSE_SELF_COSIGN_MESSAGE;
   const serverMessage = envelopeErrorMessage(error);
@@ -208,11 +251,10 @@ export async function getPlan(
   client: ApiClient,
   planId: string,
 ): Promise<{ plan: PlanDetail | null; error: unknown }> {
-  const res = await client.GET("/api/v1/bereavement/plans/{planId}", {
-    params: { path: { planId } },
-  });
-  if (res.error) return { plan: null, error: res.error };
-  return { plan: res.data, error: null };
+  const { data, error } = await send(() =>
+    client.GET("/api/v1/bereavement/plans/{planId}", { params: { path: { planId } } }),
+  );
+  return { plan: data, error };
 }
 
 /** Route 10 — the closure record. A plan still open answers 404, which is an ordinary state, not an error. */
@@ -220,11 +262,10 @@ export async function getClosure(
   client: ApiClient,
   planId: string,
 ): Promise<{ closure: ClosureView | null; error: unknown }> {
-  const res = await client.GET("/api/v1/bereavement/plans/{planId}/closure", {
-    params: { path: { planId } },
-  });
-  if (res.error) return { closure: null, error: res.error };
-  return { closure: res.data, error: null };
+  const { data, error } = await send(() =>
+    client.GET("/api/v1/bereavement/plans/{planId}/closure", { params: { path: { planId } } }),
+  );
+  return { closure: data, error };
 }
 
 /** Route 19 — the plan's touchpoints (scheduled + historical), cursor-paginated. */
@@ -232,12 +273,13 @@ export async function listOutreach(
   client: ApiClient,
   planId: string,
   query: ReqQuery<operations["getApiV1BereavementPlansByPlanIdOutreach"]> = {},
-): Promise<{ page: CursorPage<OutreachRow> | null; error: unknown }> {
-  const res = await client.GET("/api/v1/bereavement/plans/{planId}/outreach", {
-    params: { path: { planId }, query },
-  });
-  if (res.error) return { page: null, error: res.error };
-  return { page: res.data, error: null };
+): Promise<{ page: CursorPage<OutreachRow> | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/plans/{planId}/outreach", {
+      params: { path: { planId }, query },
+    }),
+  );
+  return { page: data, error, status };
 }
 
 /** Route 29 — the append-only score ledger, newest first. */
@@ -246,11 +288,12 @@ export async function listRiskScores(
   planId: string,
   query: ReqQuery<operations["getApiV1BereavementPlansByPlanIdRiskscores"]> = {},
 ): Promise<{ page: CursorPage<RiskScoreRow> | null; error: unknown }> {
-  const res = await client.GET("/api/v1/bereavement/plans/{planId}/risk-scores", {
-    params: { path: { planId }, query },
-  });
-  if (res.error) return { page: null, error: res.error };
-  return { page: res.data, error: null };
+  const { data, error } = await send(() =>
+    client.GET("/api/v1/bereavement/plans/{planId}/risk-scores", {
+      params: { path: { planId }, query },
+    }),
+  );
+  return { page: data, error };
 }
 
 /** Route 37 — the plan's assessment checkpoints. Empty when the reader's scope holds no clinical content. */
@@ -258,11 +301,12 @@ export async function listAssessmentTasks(
   client: ApiClient,
   planId: string,
 ): Promise<{ list: AssessmentTaskList | null; error: unknown }> {
-  const res = await client.GET("/api/v1/bereavement/plans/{planId}/assessment-tasks", {
-    params: { path: { planId } },
-  });
-  if (res.error) return { list: null, error: res.error };
-  return { list: res.data, error: null };
+  const { data, error } = await send(() =>
+    client.GET("/api/v1/bereavement/plans/{planId}/assessment-tasks", {
+      params: { path: { planId } },
+    }),
+  );
+  return { list: data, error };
 }
 
 /** Route 35 — the pre-death draft (an empty all-unknown draft at version 0 when nothing is recorded). A 404 is
@@ -270,12 +314,13 @@ export async function listAssessmentTasks(
 export async function getPreDeathDraft(
   client: ApiClient,
   admissionId: string,
-): Promise<{ draft: PreDeathDraft | null; error: unknown }> {
-  const res = await client.GET("/api/v1/bereavement/pre-death-assessments/{admissionId}", {
-    params: { path: { admissionId } },
-  });
-  if (res.error) return { draft: null, error: res.error };
-  return { draft: res.data, error: null };
+): Promise<{ draft: PreDeathDraft | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/pre-death-assessments/{admissionId}", {
+      params: { path: { admissionId } },
+    }),
+  );
+  return { draft: data, error, status };
 }
 
 /** Route 30 — the caller's OWN caseload. The counselor id comes from the session, never from a param. */
@@ -513,14 +558,16 @@ export async function setCareGoals(
   contactId: string,
   version: number,
   goals: string[],
-): Promise<{ contact: ContactRow | null; error: unknown }> {
-  const res = await client.PUT("/api/v1/bereavement/contacts/{contactId}/care-plan", {
-    params: { path: { contactId } },
-    headers: writeHeaders(version),
-    body: { goals },
-  });
-  if (res.error) return { contact: null, error: res.error };
-  return { contact: res.data, error: null };
+  idempotencyKey?: string,
+): Promise<{ contact: ContactRow | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.PUT("/api/v1/bereavement/contacts/{contactId}/care-plan", {
+      params: { path: { contactId } },
+      headers: writeHeaders(version, idempotencyKey),
+      body: { goals },
+    }),
+  );
+  return { contact: data, error, status };
 }
 
 /**
@@ -531,9 +578,10 @@ export async function listPhysicianLetters(
   client: ApiClient,
   query: ReqQuery<operations["getApiV1BereavementPhysicianletters"]>,
 ): Promise<{ page: PhysicianLetterPage | null; error: unknown; status: number }> {
-  const res = await client.GET("/api/v1/bereavement/physician-letters", { params: { query } });
-  if (res.error) return { page: null, error: res.error, status: res.response.status };
-  return { page: res.data, error: null, status: res.response.status };
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/physician-letters", { params: { query } }),
+  );
+  return { page: data, error, status };
 }
 
 /** Route 39 — approve a pending letter. `version` is the one the caller READ; a 412 means it moved. */
@@ -542,14 +590,16 @@ export async function approvePhysicianLetter(
   letterId: string,
   version: number,
   body: ReqBody<operations["postApiV1BereavementPhysicianlettersByLetterIdApprove"]>,
-): Promise<{ letter: PhysicianLetter | null; error: unknown }> {
-  const res = await client.POST("/api/v1/bereavement/physician-letters/{letterId}/approve", {
-    params: { path: { letterId } },
-    headers: writeHeaders(version),
-    body,
-  });
-  if (res.error) return { letter: null, error: res.error };
-  return { letter: res.data, error: null };
+  idempotencyKey?: string,
+): Promise<{ letter: PhysicianLetter | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.POST("/api/v1/bereavement/physician-letters/{letterId}/approve", {
+      params: { path: { letterId } },
+      headers: writeHeaders(version, idempotencyKey),
+      body,
+    }),
+  );
+  return { letter: data, error, status };
 }
 
 /** Route 40 — decline a pending letter with a documented reason (at least 20 characters). */
@@ -558,14 +608,16 @@ export async function declinePhysicianLetter(
   letterId: string,
   version: number,
   reason: string,
-): Promise<{ letter: PhysicianLetter | null; error: unknown }> {
-  const res = await client.POST("/api/v1/bereavement/physician-letters/{letterId}/decline", {
-    params: { path: { letterId } },
-    headers: writeHeaders(version),
-    body: { reason },
-  });
-  if (res.error) return { letter: null, error: res.error };
-  return { letter: res.data, error: null };
+  idempotencyKey?: string,
+): Promise<{ letter: PhysicianLetter | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.POST("/api/v1/bereavement/physician-letters/{letterId}/decline", {
+      params: { path: { letterId } },
+      headers: writeHeaders(version, idempotencyKey),
+      body: { reason },
+    }),
+  );
+  return { letter: data, error, status };
 }
 
 /** Route 36 — record the pre-death draft. `version` is the one the caller READ (0 for the first write); the server
@@ -575,14 +627,16 @@ export async function putPreDeathDraft(
   admissionId: string,
   version: number,
   body: ReqBody<operations["putApiV1BereavementPredeathassessmentsByAdmissionId"]>,
-): Promise<{ draft: PreDeathDraft | null; error: unknown }> {
-  const res = await client.PUT("/api/v1/bereavement/pre-death-assessments/{admissionId}", {
-    params: { path: { admissionId } },
-    headers: writeHeaders(version),
-    body,
-  });
-  if (res.error) return { draft: null, error: res.error };
-  return { draft: res.data, error: null };
+  idempotencyKey?: string,
+): Promise<{ draft: PreDeathDraft | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.PUT("/api/v1/bereavement/pre-death-assessments/{admissionId}", {
+      params: { path: { admissionId } },
+      headers: writeHeaders(version, idempotencyKey),
+      body,
+    }),
+  );
+  return { draft: data, error, status };
 }
 
 /** Route 13 — proposed → active. The D6 consent verdict is resolved through M39 server-side, fail-CLOSED. */
@@ -623,14 +677,16 @@ export async function rescindOptOut(
   contactId: string,
   version: number,
   body: ReqBody<operations["postApiV1BereavementContactsByContactIdRescindoptout"]>,
-): Promise<{ contact: ContactRow | null; error: unknown }> {
-  const res = await client.POST("/api/v1/bereavement/contacts/{contactId}/rescind-opt-out", {
-    params: { path: { contactId } },
-    headers: writeHeaders(version),
-    body,
-  });
-  if (res.error) return { contact: null, error: res.error };
-  return { contact: res.data, error: null };
+  idempotencyKey?: string,
+): Promise<{ contact: ContactRow | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.POST("/api/v1/bereavement/contacts/{contactId}/rescind-opt-out", {
+      params: { path: { contactId } },
+      headers: writeHeaders(version, idempotencyKey),
+      body,
+    }),
+  );
+  return { contact: data, error, status };
 }
 
 /** Route 16 — the survivor themselves died. §2.3's only terminal state, so the verification is mandatory. */
@@ -670,13 +726,16 @@ export async function dismissUnreachableProposal(
   client: ApiClient,
   contactId: string,
   version: number,
-): Promise<{ contact: ContactRow | null; error: unknown }> {
-  const res = await client.POST(
-    "/api/v1/bereavement/contacts/{contactId}/dismiss-unreachable-proposal",
-    { params: { path: { contactId } }, headers: writeHeaders(version), body: {} },
+  idempotencyKey?: string,
+): Promise<{ contact: ContactRow | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.POST("/api/v1/bereavement/contacts/{contactId}/dismiss-unreachable-proposal", {
+      params: { path: { contactId } },
+      headers: writeHeaders(version, idempotencyKey),
+      body: {},
+    }),
   );
-  if (res.error) return { contact: null, error: res.error };
-  return { contact: res.data, error: null };
+  return { contact: data, error, status };
 }
 
 /** Route 18 — §7.7 complicated grief. ENDS the M16 program for this survivor; the M40 resource is required. */

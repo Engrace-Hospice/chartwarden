@@ -138,6 +138,10 @@ const DRAFT = {
 interface Opts {
   tasks?: unknown;
   draft?: "ok" | "404";
+  /** The ledger rows for a scope filter (null = every score on the plan). */
+  scoresFor?: (contactId: string | null) => unknown[];
+  /** The ledger request for this contact filter is held until the promise settles. */
+  hold?: { contactId: string; until: Promise<void> };
 }
 
 function mount(opts: Opts = {}): { posts: { path: string; body: Record<string, unknown> }[] } {
@@ -163,8 +167,10 @@ function mount(opts: Opts = {}): { posts: { path: string; body: Record<string, u
       return opts.draft === "404" ? reply({ message: "not found" }, 404) : reply(DRAFT);
     }
     if (url.pathname.endsWith("/risk-scores")) {
+      const wanted = url.searchParams.get("contactId");
+      if (opts.hold && wanted === opts.hold.contactId) await opts.hold.until;
       return reply({
-        data: [score(CARRIED_SCORE, null), score(OTHER_SCORE, SAM)],
+        data: opts.scoresFor?.(wanted) ?? [score(CARRIED_SCORE, null), score(OTHER_SCORE, SAM)],
         next_cursor: null,
         has_more: false,
       });
@@ -200,17 +206,61 @@ describe("risk view — assessment checkpoints", () => {
     expect(within(panel).getByText("Missed")).toBeTruthy();
     expect(within(panel).getByText("Completed")).toBeTruthy();
     // scheduled + missed are completable; the completed one is not
-    expect(within(panel).getAllByRole("button", { name: "Complete assessment" })).toHaveLength(2);
+    expect(within(panel).getAllByRole("button", { name: /^Complete assessment: / })).toHaveLength(
+      2,
+    );
   });
 
-  it("says so when the scope holds no clinical content", async () => {
+  it("says so when the scope holds no clinical content, without claiming there are none ('(0)')", async () => {
     mount({ tasks: { items: [], redactedCategories: ["clinical_risk"] } });
     expect(await screen.findByText(/not shown in your scope/i)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Assessment checkpoints" })).toBeTruthy();
+  });
+
+  it("names each Complete button for its checkpoint and survivor", async () => {
+    mount();
+    const buttons = await screen.findAllByRole("button", { name: /^Complete assessment: / });
+    const labels = buttons.map((b) => b.getAttribute("aria-label"));
+    expect(labels).toContain("Complete assessment: Initial assessment (day 28) for Robin Vale");
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it("after completing, the page reloads in place (nothing unmounts) and focus lands on the status line", async () => {
+    mount();
+    const heading = await screen.findByRole("heading", { name: /Assessment checkpoints/ });
+    const buttons = await screen.findAllByRole("button", { name: /^Complete assessment: / });
+    fireEvent.click(buttons[0]!);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Complete assessment" }));
+    const status = await screen.findByText(
+      "The assessment was recorded and the checkpoint is complete.",
+    );
+    await waitFor(() => expect(document.activeElement).toBe(status));
+    expect(screen.getByRole("heading", { name: /Assessment checkpoints/ })).toBe(heading);
+  });
+
+  it("a slow ledger response for a previous scope never overwrites the scope now selected", async () => {
+    let release: () => void = () => {};
+    const until = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const rows = (contactId: string | null) => [
+      { ...score(crypto.randomUUID(), contactId), ruleScore: contactId === ROBIN ? 41 : 77 },
+    ];
+    mount({ scoresFor: rows, hold: { contactId: ROBIN, until } });
+    const scope = await screen.findByLabelText("Scope");
+    fireEvent.change(scope, { target: { value: ROBIN } }); // held
+    fireEvent.change(scope, { target: { value: SAM } }); // answers at once
+    await waitFor(() => expect(screen.queryAllByText("77").length).toBeGreaterThan(0));
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryAllByText("41")).toHaveLength(0);
+    expect(screen.queryAllByText("77").length).toBeGreaterThan(0);
   });
 
   it("completing the INITIAL assessment posts the task, its contact and all eight factors, prefilled from the draft", async () => {
     const { posts } = mount();
-    const buttons = await screen.findAllByRole("button", { name: "Complete assessment" });
+    const buttons = await screen.findAllByRole("button", { name: /^Complete assessment: / });
     fireEvent.click(buttons[0]!);
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Complete initial assessment")).toBeTruthy();
@@ -258,7 +308,7 @@ describe("risk view — assessment checkpoints", () => {
 
   it("without a draft (404) nothing is prefilled and no provenance is claimed", async () => {
     mount({ draft: "404" });
-    const buttons = await screen.findAllByRole("button", { name: "Complete assessment" });
+    const buttons = await screen.findAllByRole("button", { name: /^Complete assessment: / });
     fireEvent.click(buttons[0]!);
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).queryByText(/from pre-death draft/i)).toBeNull();
@@ -273,7 +323,7 @@ describe("risk view — assessment checkpoints", () => {
 
   it("the MIDPOINT asks about delayed-grief signs; 'yes' makes the PG-13 total required", async () => {
     const { posts } = mount();
-    const buttons = await screen.findAllByRole("button", { name: "Complete assessment" });
+    const buttons = await screen.findAllByRole("button", { name: /^Complete assessment: / });
     fireEvent.click(buttons[1]!);
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Complete midpoint reassessment")).toBeTruthy();
@@ -301,7 +351,7 @@ describe("risk view — assessment checkpoints", () => {
 
   it("answering 'no' to the delayed-grief prompt lets the midpoint be completed without a total", async () => {
     const { posts } = mount();
-    const buttons = await screen.findAllByRole("button", { name: "Complete assessment" });
+    const buttons = await screen.findAllByRole("button", { name: /^Complete assessment: / });
     fireEvent.click(buttons[1]!);
     const dialog = await screen.findByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Any signs of delayed or prolonged grief?"), {

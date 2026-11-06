@@ -1,6 +1,7 @@
 // apps/web/src/modules/16-bereavement — ADR-0109 D6: the physician condolence letter review section embedded in the intake queue.
 // Pending letters with an age badge; approve with an optional personal note (and an internal clinician picker when the care team
-// resolved nobody); decline with a documented reason; a reader without the key sees nothing at all.
+// resolved nobody); decline with a documented reason; a reader without the key sees nothing at all. Refused, raced and lost
+// writes: the list reloads, the dialog cannot be dismissed mid-request, and a retry reuses the attempt's Idempotency-Key.
 import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -37,13 +38,33 @@ interface Recorded {
   readonly body: unknown;
 }
 
+/** The permissions a letter reviewer holds: the letter key, and the member list the clinician picker reads. */
+const REVIEWER = ["bereavement.letter.read", "member.manage"];
+
 function mount(opts: {
   letters?: unknown[];
   listStatus?: number;
+  /** The first list request fails like a dropped connection (the fetch rejects); later ones succeed. */
+  listRejectsOnce?: boolean;
+  /** The list is held until `release()` is called. */
+  holdList?: boolean;
+  hasMore?: boolean;
   members?: unknown[] | "forbidden";
   actionResponse?: { status: number; body: unknown };
-}): { calls: Recorded[] } {
+  /** The first write fails like a dropped connection (the fetch rejects); later ones answer normally. */
+  actionRejectsOnce?: boolean;
+  /** The first write is held until `release()` is called. */
+  holdAction?: boolean;
+  permissions?: string[];
+}): { calls: Recorded[]; gets: string[]; release: () => void } {
   const calls: Recorded[] = [];
+  const gets: string[] = [];
+  let release = (): void => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let rejected = false;
+  let listRejected = false;
   let pending = [...(opts.letters ?? [])];
   const stub = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const req = input instanceof Request ? input : null;
@@ -64,14 +85,27 @@ function mount(opts: {
         idempotencyKey: req?.headers.get("idempotency-key") ?? null,
         body,
       });
+      if (opts.actionRejectsOnce && !rejected) {
+        rejected = true;
+        throw new TypeError("network down");
+      }
+      if (opts.holdAction && calls.length === 1) await held;
       const r = opts.actionResponse ?? { status: 200, body: letter({ status: "approved" }) };
-      if (r.status === 200) pending = [];
+      // a decided letter (by us, or by someone else: 409/412/404) is no longer pending
+      if (r.status === 200 || r.status === 409 || r.status === 412 || r.status === 404)
+        pending = [];
       return json(r.status, r.body);
     }
+    gets.push(path);
     if (path === "/api/v1/bereavement/physician-letters") {
+      if (opts.listRejectsOnce && !listRejected) {
+        listRejected = true;
+        throw new TypeError("network down");
+      }
+      if (opts.holdList) await held;
       const status = opts.listStatus ?? 200;
       return status === 200
-        ? json(200, { data: pending, next_cursor: null, has_more: false })
+        ? json(200, { data: pending, next_cursor: null, has_more: opts.hasMore ?? false })
         : json(status, { error: { code: "FORBIDDEN", message: "forbidden" } });
     }
     if (path.endsWith("/members")) {
@@ -83,15 +117,24 @@ function mount(opts: {
   };
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stub })}>
-      <SessionProvider session={{ userId: "reviewer-1", organizationId: "org-1" }}>
+      <SessionProvider
+        session={{
+          userId: "reviewer-1",
+          organizationId: "org-1",
+          permissions: opts.permissions ?? REVIEWER,
+        }}
+      >
         <MemoryRouter>
           <BereavementIntakeQueue />
         </MemoryRouter>
       </SessionProvider>
     </ApiClientProvider>,
   );
-  return { calls };
+  return { calls, gets, release };
 }
+
+const letterListCalls = (gets: string[]): number =>
+  gets.filter((p) => p === "/api/v1/bereavement/physician-letters").length;
 
 const member = (userId: string, displayName: string, status = "active") => ({
   membershipId: `m-${userId}`,
@@ -271,5 +314,196 @@ describe("ADR-0109 D6 — physician letter review in the intake queue", () => {
       ifMatch: "3",
       body: { reason: "The attending left the practice in March." },
     });
+  });
+});
+
+describe("physician letter review — who sees it, and how it fails", () => {
+  it("is not mounted at all for a reader without bereavement.letter.read: no request, no section", async () => {
+    const { gets } = mount({ letters: [letter()], permissions: ["member.manage"] });
+    await screen.findByText("Bereavement intake");
+    expect(screen.queryByText(/Physician condolence letters/)).toBeNull();
+    expect(letterListCalls(gets)).toBe(0);
+  });
+
+  it("is not refetched when the status filter changes (the section stays mounted outside the plan list's loading)", async () => {
+    const { gets } = mount({ letters: [letter()] });
+    await screen.findByText(/Physician condolence letters awaiting review \(1\)/);
+    fireEvent.change(screen.getByLabelText("Filter by intake status"), {
+      target: { value: "active" },
+    });
+    await waitFor(() =>
+      expect(gets.filter((p) => p === "/api/v1/bereavement/plans").length).toBeGreaterThan(1),
+    );
+    expect(screen.getByText(/Physician condolence letters awaiting review \(1\)/)).toBeTruthy();
+    expect(letterListCalls(gets)).toBe(1);
+  });
+
+  it("shows a loading placeholder, not nothing, while the first list is on its way", async () => {
+    const { release } = mount({ letters: [letter()], holdList: true });
+    expect(await screen.findByLabelText("Loading physician letters")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Physician condolence letters" })).toBeTruthy();
+    release();
+    expect(await screen.findByText(/awaiting review \(1\)/)).toBeTruthy();
+  });
+
+  it("a rejected list request is an error card with Try again, not a spinner or silence", async () => {
+    const { gets } = mount({ letters: [letter()], listRejectsOnce: true });
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText(/could not be loaded|connection dropped/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText(/awaiting review \(1\)/)).toBeTruthy();
+    expect(letterListCalls(gets)).toBe(2);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("says a capped list is capped: 100+ when the server has more", async () => {
+    mount({ letters: [letter()], hasMore: true });
+    expect(await screen.findByText(/awaiting review \(1\+\)/)).toBeTruthy();
+  });
+
+  it("skips the member list for a reviewer without member.manage and asks for the user id straight away", async () => {
+    const { gets } = mount({
+      letters: [letter({ attendingUserId: null })],
+      members: [member(CLINICIAN, "Dr Bell")],
+      permissions: ["bereavement.letter.read"],
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /Approve the letter for plan/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("Internal clinician user id")).toBeTruthy();
+    expect(within(dialog).queryByText(/Loading the agency's clinicians/)).toBeNull();
+    expect(gets.some((p) => p.endsWith("/members"))).toBe(false);
+  });
+
+  it("after an approval the list reloads without unmounting, and focus lands on the status line", async () => {
+    mount({ letters: [letter()] });
+    const heading = await screen.findByRole("heading", {
+      name: /Physician condolence letters awaiting review/,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /Approve the letter for plan/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Approve letter" }));
+    const status = await screen.findByText("The letter was approved and sent to be rendered.");
+    await waitFor(() => expect(document.activeElement).toBe(status));
+    expect(await screen.findByText("No letters are waiting for review.")).toBeTruthy();
+    // the card was never torn down: the same heading element is still in the page
+    expect(screen.getByRole("heading", { name: /awaiting review \(0\)/ })).toBe(heading);
+  });
+});
+
+describe("physician letter review — stale, held and lost writes", () => {
+  const openApprove = async () => {
+    fireEvent.click(await screen.findByRole("button", { name: /Approve the letter for plan/ }));
+    return screen.findByRole("dialog");
+  };
+
+  it.each([
+    [409, "PHYSICIAN_LETTER_NOT_PENDING"],
+    [412, "STALE_VERSION"],
+    [404, "PHYSICIAN_LETTER_NOT_FOUND"],
+  ])(
+    "a %i on approve says someone else decided it, closes the dialog and reloads the list",
+    async (status, code) => {
+      const { gets } = mount({
+        letters: [letter()],
+        actionResponse: { status, body: { error: { code, message: "refused" } } },
+      });
+      const dialog = await openApprove();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Approve letter" }));
+      expect(await screen.findByText(/Someone else already decided that letter/)).toBeTruthy();
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(await screen.findByText("No letters are waiting for review.")).toBeTruthy();
+      expect(letterListCalls(gets)).toBe(2);
+    },
+  );
+
+  it("a 409 on decline says the same", async () => {
+    mount({
+      letters: [letter()],
+      actionResponse: {
+        status: 409,
+        body: { error: { code: "PHYSICIAN_LETTER_NOT_PENDING", message: "not pending" } },
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /Decline the letter for plan/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Reason"), {
+      target: { value: "The attending left the practice in March." },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Decline letter" }));
+    expect(await screen.findByText(/Someone else already decided that letter/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("cannot be dismissed while the request is in flight: not by Cancel, Escape or the scrim", async () => {
+    const { calls, release } = mount({ letters: [letter()], holdAction: true });
+    const dialog = await openApprove();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Approve letter" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
+    expect(cancel.disabled).toBe(true);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Close", hidden: true }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    release();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("a scrim click does not throw away typed text, but still closes an untouched dialog", async () => {
+    mount({ letters: [letter()] });
+    const dialog = await openApprove();
+    fireEvent.change(within(dialog).getByLabelText("Personal note (optional)"), {
+      target: { value: "Thank you." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Close", hidden: true }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText("Personal note (optional)"), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Close", hidden: true }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("a lost response is not 'busy' forever: it says so and the retry reuses the same Idempotency-Key", async () => {
+    const { calls } = mount({ letters: [letter()], actionRejectsOnce: true });
+    const dialog = await openApprove();
+    const approve = within(dialog).getByRole("button", { name: "Approve letter" });
+    fireEvent.click(approve);
+    expect(await within(dialog).findByText(/connection dropped/i)).toBeTruthy();
+    expect((approve as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(approve);
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[0]?.idempotencyKey).toBeTruthy();
+    expect(calls[1]?.idempotencyKey).toBe(calls[0]?.idempotencyKey);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("an edited request after a lost response is a new write with a new key", async () => {
+    const { calls } = mount({ letters: [letter()], actionRejectsOnce: true });
+    const dialog = await openApprove();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Approve letter" }));
+    expect(await within(dialog).findByText(/connection dropped/i)).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText("Personal note (optional)"), {
+      target: { value: "Added after the first try." },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Approve letter" }));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1]?.idempotencyKey).not.toBe(calls[0]?.idempotencyKey);
+  });
+
+  it("a refusal the server answered (422) is a definitive no: the next attempt is a new write", async () => {
+    const { calls } = mount({
+      letters: [letter()],
+      actionResponse: {
+        status: 422,
+        body: { error: { code: "PHYSICIAN_LETTER_NOTE_TOO_LONG", message: "note too long" } },
+      },
+    });
+    const dialog = await openApprove();
+    const approve = within(dialog).getByRole("button", { name: "Approve letter" });
+    fireEvent.click(approve);
+    expect(await within(dialog).findByText("note too long")).toBeTruthy();
+    fireEvent.click(approve);
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1]?.idempotencyKey).not.toBe(calls[0]?.idempotencyKey);
   });
 });

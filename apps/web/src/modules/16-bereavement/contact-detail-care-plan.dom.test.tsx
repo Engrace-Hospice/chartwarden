@@ -242,7 +242,9 @@ describe("contact opt-out — no mailings", () => {
     const dialog = await openModal();
     fireEvent.change(within(dialog).getByLabelText("Scope"), { target: { value: "no_mailings" } });
     expect(within(dialog).getByText(/calls and visits continue/i)).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Record opt-out" }));
+    // a mailings-only scope is not a departure: the ceremony is titled and labelled for what it does
+    expect(within(dialog).getByRole("heading", { name: "Stop mailings" })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stop mailings" }));
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0]?.path).toBe(`/api/v1/bereavement/contacts/${CONTACT_ID}/opt-out`);
     expect(sent[0]?.body).toEqual({ optOutKind: "no_mailings", sourceKind: "counselor_recorded" });
