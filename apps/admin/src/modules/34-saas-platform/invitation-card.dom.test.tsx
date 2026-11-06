@@ -107,22 +107,14 @@ describe("InvitationCard", () => {
     expect((await screen.findByRole("alert")).textContent).toMatch(/try again/i);
   });
 
-  it("finds this tenant's invitation on a later page of the global list", async () => {
-    const GET = vi
-      .fn()
-      .mockResolvedValueOnce({
-        data: {
-          items: [invite({ id: "other", tenantAccountId: "t-2" })],
-          nextCursor: "c2",
-          hasMore: true,
-        },
-      })
-      .mockResolvedValueOnce(page(invite({ id: "inv-1", status: "expired" })));
+  it("asks the server for this tenant's invitations only, in one call", async () => {
+    const GET = vi.fn(async () => page(invite({ id: "inv-1", status: "expired" })));
     mount({ GET, POST: vi.fn(), DELETE: vi.fn() });
 
     expect(await screen.findByRole("button", { name: /resend invitation/i })).toBeTruthy();
-    expect(GET).toHaveBeenLastCalledWith("/api/v1/platform/tenant-invitations", {
-      params: { query: { cursor: "c2" } },
+    expect(GET).toHaveBeenCalledTimes(1);
+    expect(GET).toHaveBeenCalledWith("/api/v1/platform/tenant-invitations", {
+      params: { query: { tenantAccountId: "t-1" } },
     });
   });
 

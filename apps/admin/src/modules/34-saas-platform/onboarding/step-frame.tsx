@@ -18,6 +18,7 @@ import { statusLabel } from "../saas-status";
 import { AttestCard, attestDraftKey } from "./attest-card";
 import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
+import { RecordSaveDialog } from "./record-save-dialog";
 import { useOpsWrite } from "./use-ops-write";
 import { OWNER_LABEL, isSystemSkip } from "./wizard-model";
 
@@ -190,25 +191,25 @@ export function StepFrame({
         ) : null}
       </div>
 
-      <ReasonDialog
+      <RecordSaveDialog
         open={dialog === "skip"}
         title={`Skip ${step.title}`}
         description="Use this only where the step does not apply to this tenant."
         rule={REASON_RULES.skip}
         confirmLabel="Skip step"
-        busy={write.busy}
-        error={failure ? <FailureNotice failure={failure} orgSlug={orgSlug} /> : undefined}
+        write={write}
+        orgSlug={orgSlug}
         onConfirm={(reason) => void decide("skip", reason)}
         onCancel={() => setDialog(null)}
       />
-      <ReasonDialog
+      <RecordSaveDialog
         open={dialog === "reopen"}
         title={`Re-open ${step.title}`}
         description="Re-opening discards the attestation the audit trail relied on. Later steps keep their state."
         rule={REASON_RULES.decision}
         confirmLabel="Re-open step"
-        busy={write.busy}
-        error={failure ? <FailureNotice failure={failure} orgSlug={orgSlug} /> : undefined}
+        write={write}
+        orgSlug={orgSlug}
         onConfirm={(reason) => void decide("reopen", reason)}
         onCancel={() => setDialog(null)}
       />

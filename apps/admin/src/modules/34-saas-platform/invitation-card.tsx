@@ -23,9 +23,6 @@ interface InvitationRow {
   expiresAt: string | null;
 }
 
-/** Safety cap on following the global invitation list's cursor. */
-const MAX_PAGES = 50;
-
 const TONE: Record<string, StatusTone> = {
   pending: "progress",
   accepted: "success",
@@ -52,28 +49,19 @@ export function InvitationCard({
   const load = useCallback(async () => {
     const isCurrent = guard();
     try {
-      // The list is global (every tenant, newest first, cursor-paginated), so keep paging until the end: an older
-      // tenant's invitations are not on the first page.
-      const mine: InvitationRow[] = [];
-      let cursor: string | undefined;
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const { data, error } = await client.GET(
-          "/api/v1/platform/tenant-invitations",
-          cursor ? { params: { query: { cursor } } } : {},
-        );
-        if (!isCurrent()) return;
-        if (error || !data) {
-          setLoadError(true);
-          return;
-        }
-        mine.push(
-          ...(data.items as unknown as InvitationRow[]).filter(
-            (i) => i.tenantAccountId === tenantAccountId,
-          ),
-        );
-        if (!data.nextCursor) break;
-        cursor = data.nextCursor as string;
+      // The server narrows the list to this tenant (it used to be global, and this paged every tenant's invitations to find one).
+      // The filter below stays as a belt: an invitation of another tenant is never shown here.
+      const { data, error } = await client.GET("/api/v1/platform/tenant-invitations", {
+        params: { query: { tenantAccountId } },
+      });
+      if (!isCurrent()) return;
+      if (error || !data) {
+        setLoadError(true);
+        return;
       }
+      const mine = (data.items as unknown as InvitationRow[]).filter(
+        (i) => i.tenantAccountId === tenantAccountId,
+      );
       setLoadError(false);
       setRows(mine.sort((a, b) => b.issuedAt.localeCompare(a.issuedAt)));
     } catch {

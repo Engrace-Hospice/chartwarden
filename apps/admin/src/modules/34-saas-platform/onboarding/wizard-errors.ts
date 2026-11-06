@@ -38,4 +38,6 @@ export const WIZARD_ERROR_COPY: OpsErrorCopy = {
   BAA_DOCUMENT_REQUIRED: "An executed BAA needs the document id of the signed agreement.",
   INVALID_ORG_TIMEZONE: "That is not a valid time zone. Use an IANA name such as America/Denver.",
   INVALID_DISPLAY_NAME: "That display name is not valid.",
+  VERSION_CONFLICT:
+    "This record changed since you opened it. It has been reloaded. Review what it says now and enter your change again.",
 };

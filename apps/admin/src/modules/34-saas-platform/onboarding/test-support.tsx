@@ -147,3 +147,16 @@ export function renderAt(
     </MemoryRouter>,
   );
 }
+
+import type { PanelContext } from "./panel-types";
+import { stepActionsOf } from "./wizard-model";
+
+/** A panel context for `stepKey` in `view`, with `refresh` recorded. */
+export function panelCtx(
+  view: WizardView,
+  stepKey: string,
+  refresh = vi.fn(async () => undefined),
+): PanelContext {
+  const step = view.steps.find((s) => s.key === stepKey) as WizardStep;
+  return { orgSlug: ORG_SLUG, view, step, actions: stepActionsOf(step, view), refresh };
+}
