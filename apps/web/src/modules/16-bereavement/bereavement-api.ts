@@ -84,6 +84,12 @@ export type AssessmentTaskRow = AssessmentTaskList["items"][number];
 /** Routes 35 / 36 — the pre-death risk-assessment draft for an admission (ADR-0109 D5). */
 export type PreDeathDraft = Ok<operations["getApiV1BereavementPredeathassessmentsByAdmissionId"]>;
 
+/** Routes 38 / 39 / 40 — one physician condolence letter (ADR-0109 D6); the sealed note is never on the wire. */
+export type PhysicianLetter = Ok<
+  operations["postApiV1BereavementPhysicianlettersByLetterIdApprove"]
+>;
+export type PhysicianLetterPage = Ok<operations["getApiV1BereavementPhysicianletters"]>;
+
 /** Route 30 — the counselor's own caseload plus what is coming due. */
 export type CounselorDashboard = Ok<operations["getApiV1BereavementDashboardCounselor"]>;
 
@@ -515,6 +521,51 @@ export async function setCareGoals(
   });
   if (res.error) return { contact: null, error: res.error };
   return { contact: res.data, error: null };
+}
+
+/**
+ * Route 38 — the physician-letter review queue (oversight only). `status` is the HTTP status so the screen can tell "you may not
+ * review letters" (403: show nothing) from a failure (anything else: say so).
+ */
+export async function listPhysicianLetters(
+  client: ApiClient,
+  query: ReqQuery<operations["getApiV1BereavementPhysicianletters"]>,
+): Promise<{ page: PhysicianLetterPage | null; error: unknown; status: number }> {
+  const res = await client.GET("/api/v1/bereavement/physician-letters", { params: { query } });
+  if (res.error) return { page: null, error: res.error, status: res.response.status };
+  return { page: res.data, error: null, status: res.response.status };
+}
+
+/** Route 39 — approve a pending letter. `version` is the one the caller READ; a 412 means it moved. */
+export async function approvePhysicianLetter(
+  client: ApiClient,
+  letterId: string,
+  version: number,
+  body: ReqBody<operations["postApiV1BereavementPhysicianlettersByLetterIdApprove"]>,
+): Promise<{ letter: PhysicianLetter | null; error: unknown }> {
+  const res = await client.POST("/api/v1/bereavement/physician-letters/{letterId}/approve", {
+    params: { path: { letterId } },
+    headers: writeHeaders(version),
+    body,
+  });
+  if (res.error) return { letter: null, error: res.error };
+  return { letter: res.data, error: null };
+}
+
+/** Route 40 — decline a pending letter with a documented reason (at least 20 characters). */
+export async function declinePhysicianLetter(
+  client: ApiClient,
+  letterId: string,
+  version: number,
+  reason: string,
+): Promise<{ letter: PhysicianLetter | null; error: unknown }> {
+  const res = await client.POST("/api/v1/bereavement/physician-letters/{letterId}/decline", {
+    params: { path: { letterId } },
+    headers: writeHeaders(version),
+    body: { reason },
+  });
+  if (res.error) return { letter: null, error: res.error };
+  return { letter: res.data, error: null };
 }
 
 /** Route 36 — record the pre-death draft. `version` is the one the caller READ (0 for the first write); the server

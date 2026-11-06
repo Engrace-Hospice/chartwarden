@@ -52,6 +52,7 @@ import {
   mutedStyle,
   primaryButtonStyle,
 } from "./bereavement-ui";
+import { PhysicianLetterReview } from "./physician-letter-review";
 
 const STATUSES = [
   { value: "eligible", label: "Eligible — awaiting counselor" },
@@ -274,47 +275,53 @@ export function BereavementIntakeQueue(): JSX.Element {
           </div>
         }
         table={
-          rows.length === 0 ? (
-            <div style={{ padding: "2rem 1.5rem" }}>
-              <EmptyState
-                title="No plans in this state"
-                description="Choose another status or return to program rollups."
-              />
+          <>
+            {rows.length === 0 ? (
+              <div style={{ padding: "2rem 1.5rem" }}>
+                <EmptyState
+                  title="No plans in this state"
+                  description="Choose another status or return to program rollups."
+                />
+              </div>
+            ) : filteredRows.length === 0 ? (
+              <div style={{ padding: "2rem 1.5rem" }}>
+                <EmptyState
+                  title="No matching plans"
+                  description="Try adjusting your search criteria or clearing active filters."
+                  action={
+                    <Button tone="secondary" size="sm" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  }
+                />
+              </div>
+            ) : (
+              <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem" }}>
+                <IntakeTable
+                  rows={pagedRows}
+                  selectedPlanId={selectedPlanId}
+                  onSelectPlan={setSelectedPlanId}
+                  onAssign={(plan, kind) => setCeremony({ plan, kind })}
+                />
+                <OffsetPagination
+                  page={activePage}
+                  pageSize={pageSize}
+                  totalItems={filteredRows.length}
+                  onPageChange={setPage}
+                  onPageSizeChange={(nextPageSize) => {
+                    setPageSize(nextPageSize);
+                    setPage(1);
+                  }}
+                  pageSizeOptions={INTAKE_PAGE_SIZES}
+                  noun="plans"
+                />
+              </div>
+            )}
+            {/* ADR-0109 D6 — the physician condolence letters awaiting review (oversight only; a reader without the key sees none). */}
+            <div style={{ padding: "0 1.5rem 1.5rem" }}>
+              <PhysicianLetterReview />
             </div>
-          ) : filteredRows.length === 0 ? (
-            <div style={{ padding: "2rem 1.5rem" }}>
-              <EmptyState
-                title="No matching plans"
-                description="Try adjusting your search criteria or clearing active filters."
-                action={
-                  <Button tone="secondary" size="sm" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                }
-              />
-            </div>
-          ) : (
-            <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem" }}>
-              <IntakeTable
-                rows={pagedRows}
-                selectedPlanId={selectedPlanId}
-                onSelectPlan={setSelectedPlanId}
-                onAssign={(plan, kind) => setCeremony({ plan, kind })}
-              />
-              <OffsetPagination
-                page={activePage}
-                pageSize={pageSize}
-                totalItems={filteredRows.length}
-                onPageChange={setPage}
-                onPageSizeChange={(nextPageSize) => {
-                  setPageSize(nextPageSize);
-                  setPage(1);
-                }}
-                pageSizeOptions={INTAKE_PAGE_SIZES}
-                noun="plans"
-              />
-            </div>
-          )
+          </>
         }
         detail={
           selectedPlan ? (
