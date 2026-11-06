@@ -119,7 +119,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
 
   /**
    * An `eligible` plan (what M6's intake consumer opens), or an already-`active` one for another org. The death is
-   * YESTERDAY: since ADR-0110 D2 the condolence letter is due on day 2, so an older death would materialize it
+   * YESTERDAY: since ADR-0109 D2 the condolence letter is due on day 2, so an older death would materialize it
    * already past due, and the cancel-future assertions below (opt-out, pause) are about rows still ahead of `now`.
    * (Not today: the late-attempt case backdates a `due_at` by a day, which the ceiling CHECK keeps >= the anchor.)
    */
@@ -432,7 +432,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect(String(spouse.phone_cipher)).not.toContain("5550111");
     expect(await events("m16.bereavement.plan_opened")).toBe(1);
     expect(await events("m16.bereavement.outreach_scheduled")).toBe(body.outreachScheduledCount);
-    // ADR-0110 D4 — every generated row persists the cadence-floor mark it was made for.
+    // ADR-0109 D4 — every generated row persists the cadence-floor mark it was made for.
     const unmarked = await admin.query(
       "SELECT count(*)::int AS n FROM bereavement_outreach WHERE plan_id=$1 AND cadence_mark IS NULL",
       [planId],
@@ -947,7 +947,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect(await events("m16.bereavement.risk_score_computed")).toBeGreaterThanOrEqual(2);
   });
 
-  it("a tier change tops the schedule up forward-only and never cancels; regenerate adds no duplicate mark (ADR-0110 D4)", async () => {
+  it("a tier change tops the schedule up forward-only and never cancels; regenerate adds no duplicate mark (ADR-0109 D4)", async () => {
     const pat = contacts.Pat as string;
     const rowsOf = async () =>
       (

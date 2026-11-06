@@ -1,4 +1,4 @@
-// apps/backend/src/modules/16-bereavement/outbox-consumers/death-intake-alert.ts — ADR-0110 D7.
+// apps/backend/src/modules/16-bereavement/outbox-consumers/death-intake-alert.ts — ADR-0109 D7.
 //
 // A death opened an `eligible` bereavement plan and nobody is assigned yet (counselor auto-assignment does not
 // exist), so the bereavement oversight roles are told. Shared by the two intake paths that can open the plan

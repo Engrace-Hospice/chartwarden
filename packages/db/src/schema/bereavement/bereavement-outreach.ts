@@ -57,7 +57,7 @@ export const bereavementOutreach = pgTable(
     status: bereavementOutreachStatus("status").notNull().default("scheduled"),
     version: integer("version").notNull().default(0), // §2.5 If-Match (GAP-194, migration 0493)
     anniversaryMark: bereavementAnniversaryMark("anniversary_mark"), // NULL for ad-hoc touchpoints
-    // ADR-0110 D4 (migration 1341) — the cadence-floor mark this row was generated for; NULL on rows from before the
+    // ADR-0109 D4 (migration 1341) — the cadence-floor mark this row was generated for; NULL on rows from before the
     // column and on ad-hoc touchpoints. The tier-change top-up reads it; `inferLegacyMark` classifies the NULL ones.
     cadenceMark: text("cadence_mark"),
 

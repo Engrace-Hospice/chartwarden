@@ -1,4 +1,4 @@
-// apps/backend/src/modules/16-bereavement/alert-port.ts — ADR-0110 D7: the real M16 `AlertPort`.
+// apps/backend/src/modules/16-bereavement/alert-port.ts — ADR-0109 D7: the real M16 `AlertPort`.
 //
 // M16 declares an alert as an EFFECT (`{kind:'alert', alert:<discriminator>}`) and hands the effect runner /
 // the cron workers an `AlertPort.emit({organizationId, kind, payload})`. M36's published seam is a different

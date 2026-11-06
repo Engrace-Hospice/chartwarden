@@ -281,7 +281,7 @@ describe.skipIf(!DB_URL)("F-105 — M16 opens the bereavement plan, LIVE Postgre
         buildM16BereavementIntakeConsumer({
           db: handle.db,
           outbox: bind("m16") as never,
-          // ADR-0110 D7 — records the `death_intake` alert the intake emits when (and only when) it opens a plan.
+          // ADR-0109 D7 — records the `death_intake` alert the intake emits when (and only when) it opens a plan.
           alerts: {
             emit: async (alert) => {
               deathIntakeAlerts.push(alert);
@@ -329,7 +329,7 @@ describe.skipIf(!DB_URL)("F-105 — M16 opens the bereavement plan, LIVE Postgre
     // D1 — created `eligible`, NOT `active`: a counselor has not been assigned and no roster exists.
     expect(plans[0].status).toBe("eligible");
     expect(plans[0].opened_at).toBeNull();
-    // ADR-0110 D7 — opening the plan tells the oversight roles (ids and the death date only).
+    // ADR-0109 D7 — opening the plan tells the oversight roles (ids and the death date only).
     expect(alertsForPlan(plans[0].id)).toEqual([
       {
         organizationId: ORG_A,

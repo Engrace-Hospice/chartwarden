@@ -609,7 +609,7 @@ export function buildDrizzleM16WriteService(
    * D4 — materialize the schedule for one contact and emit one `outreach_scheduled` per row. `fromIso`
    * makes it forward-only (a resume / rescind / regenerate / tier-change fill), which is what stops a paused
    * plan from manufacturing backdated obligations it would then report as missed. A forward fill is also
-   * BY MARK (ADR-0110 D4): it adds only the floor contacts the contact does not already hold, so a completed
+   * BY MARK (ADR-0109 D4): it adds only the floor contacts the contact does not already hold, so a completed
    * early call, an in-progress one or a row from a previous fill is never duplicated. The initial seed
    * (`fromIso` undefined) has nothing to hold and generates the whole book.
    */
@@ -644,7 +644,7 @@ export function buildDrizzleM16WriteService(
           kind: p.kind,
           status: "scheduled" as const,
           anniversaryMark: p.anniversaryMark,
-          // ADR-0110 D4 — persist the floor mark so a tier change can top the schedule up idempotently.
+          // ADR-0109 D4 — persist the floor mark so a tier change can top the schedule up idempotently.
           cadenceMark: p.mark,
           deathAnchorAt: new Date(p.deathAnchorAt),
           dueAt: new Date(p.dueAt),
@@ -672,7 +672,7 @@ export function buildDrizzleM16WriteService(
   }
 
   /**
-   * ADR-0110 D4 — a risk-tier change on an ACTIVE plan tops the schedule up with the new tier's floor
+   * ADR-0109 D4 — a risk-tier change on an ACTIVE plan tops the schedule up with the new tier's floor
    * contacts. Forward-only and add-only (`materializeSchedule` fills by mark from `at`): nothing is cancelled,
    * moved or re-modalized, and the same tier twice adds nothing. A contact-level score moves that contact; a
    * plan-level score moves the contacts that have no tier of their own (they inherit the plan's).
@@ -887,7 +887,7 @@ export function buildDrizzleM16WriteService(
         .set({ currentRiskTier: row.ruleTier, currentRiskScoreId: row.id })
         .where(eq(CONTACT.id, contact.id));
     }
-    // ADR-0110 D4 — a tier change tops the live schedule up (forward-only, never cancels).
+    // ADR-0109 D4 — a tier change tops the live schedule up (forward-only, never cancels).
     await topUpScheduleOnTierChange(
       tx,
       plan,

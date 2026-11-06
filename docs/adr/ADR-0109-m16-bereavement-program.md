@@ -1,4 +1,4 @@
-# ADR-0110 — M16 bereavement program: a universal 13-month floor for every risk tier, assessment tasks outside the outreach ledger, an internal-only physician letter, and program activities (mailings, groups, memorials, library) inside M16
+# ADR-0109 — M16 bereavement program: a universal 13-month floor for every risk tier, assessment tasks outside the outreach ledger, an internal-only physician letter, and program activities (mailings, groups, memorials, library) inside M16
 
 - **Status:** **Proposed** (2026-11-05). The product decisions below were approved by the product owner on 2026-11-05 and are final; this ADR stays Proposed until the first PR of the work is reviewed.
 - **Date:** 2026-11-05

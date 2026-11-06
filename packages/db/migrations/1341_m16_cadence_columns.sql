@@ -1,5 +1,5 @@
 -- compat: expand
--- ADR-0110 D4 / D9 - three nullable columns on existing M16 tables; no row is rewritten and old code ignores them.
+-- ADR-0109 D4 / D9 - three nullable columns on existing M16 tables; no row is rewritten and old code ignores them.
 --   * bereavement_outreach.cadence_mark: the cadence-floor mark ('three_month', 'closeout_letter', ...) a row was generated for, so a tier
 --     change can top the schedule up idempotently. NULL on rows written before this column; `inferLegacyMark` classifies those.
 --   * bereaved_contact.care_goals_cipher: the contact's 1-3 care goals, sealed with the tenant DEK like the other *_cipher columns (the eraser

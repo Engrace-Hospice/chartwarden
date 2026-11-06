@@ -1,4 +1,4 @@
-// @chartwarden/bereavement — ADR-0110 D2/D3/D4: the universal cadence floor, the assessment checkpoints and the
+// @chartwarden/bereavement — ADR-0109 D2/D3/D4: the universal cadence floor, the assessment checkpoints and the
 // legacy-mark inference. Pure data and pure functions: no IO.
 import { describe, expect, it } from "vitest";
 
@@ -18,7 +18,7 @@ const TIERS: readonly Tier[] = ["low", "moderate", "high", "complicated"];
 const triples = (tier: Tier) =>
   BEREAVEMENT_CADENCE_FLOOR[tier].map((i) => [i.mark, i.offsetDays, i.kind] as const);
 
-describe("ADR-0110 D2 — the universal floor, exactly", () => {
+describe("ADR-0109 D2 — the universal floor, exactly", () => {
   it("low is the eight-item Medicare-aligned timeline", () => {
     expect(triples("low")).toEqual([
       ["condolence_letter", 2, "sympathy_letter"],
@@ -94,7 +94,7 @@ describe("ADR-0110 D2 — the universal floor, exactly", () => {
   });
 });
 
-describe("ADR-0110 D3 — assessment checkpoints are not outreach rows", () => {
+describe("ADR-0109 D3 — assessment checkpoints are not outreach rows", () => {
   it("names the two checkpoints at day 28 and day 180", () => {
     expect(BEREAVEMENT_ASSESSMENT_FLOOR.map((i) => [i.taskKind, i.offsetDays])).toEqual([
       ["initial_assessment", 28],
@@ -122,7 +122,7 @@ describe("ADR-0110 D3 — assessment checkpoints are not outreach rows", () => {
   });
 });
 
-describe("ADR-0110 D4 — inferLegacyMark classifies rows written before cadence_mark existed", () => {
+describe("ADR-0109 D4 — inferLegacyMark classifies rows written before cadence_mark existed", () => {
   const ANCHOR = "2026-03-01T00:00:00.000Z";
   const row = (
     kind: Parameters<typeof inferLegacyMark>[0]["kind"],

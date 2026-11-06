@@ -1,4 +1,4 @@
-// ADR-0110 D5 — the 8-factor risk instrument is M16's own. No source, label, string or migration in the
+// ADR-0109 D5 — the 8-factor risk instrument is M16's own. No source, label, string or migration in the
 // bereavement surfaces may name a licensed third-party bereavement-risk instrument. The word is assembled at
 // runtime so this file does not trip its own scan.
 import { readFileSync, readdirSync, statSync } from "node:fs";

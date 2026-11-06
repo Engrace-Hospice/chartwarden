@@ -55,7 +55,7 @@ export interface DischargeDeathSecondaryDeps {
   readonly db: DbClient;
   /** The bound publisher — `Value.Check`s `m16.*` against the boot catalog. */
   readonly outbox: WriteOutboxPort;
-  /** ADR-0110 D7 — the M36-backed alert port; unbound => the `death_intake` alert is skipped. */
+  /** ADR-0109 D7 — the M36-backed alert port; unbound => the `death_intake` alert is skipped. */
   readonly alerts?: AlertPort;
   /** Same org-explicit admission-siting port the primary intake consumer uses — see
    *  ../consumers/death-discharge.ts for why the request-scoped §4.7 seam cannot be used here. */

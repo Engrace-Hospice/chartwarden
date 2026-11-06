@@ -75,7 +75,7 @@ export interface BereavementIntakeDeps {
   /** The bound publisher — it `Value.Check`s `m16.*` against the boot catalog and rolls the tx back on a
    *  mismatch, so a skip cannot be recorded without its announcement. */
   readonly outbox: WriteOutboxPort;
-  /** ADR-0110 D7 — the M36-backed alert port; unbound => the `death_intake` alert is skipped. */
+  /** ADR-0109 D7 — the M36-backed alert port; unbound => the `death_intake` alert is skipped. */
   readonly alerts?: AlertPort;
   /** M6's org-explicit admission siting/anchor read. See ../consumers/death-discharge.ts for why the §4.7
    *  seam cannot be used from a relay tick. */

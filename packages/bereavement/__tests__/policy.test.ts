@@ -78,7 +78,7 @@ describe("D4 — the per-tier cadence floor is cumulative and tighten-only", () 
     ] as const) {
       for (const mark of marks(lower)) expect(marks(higher).has(mark)).toBe(true);
     }
-    // the 9-month milestone is in every tier's floor now (ADR-0110 D2) and so survives every step up.
+    // the 9-month milestone is in every tier's floor now (ADR-0109 D2) and so survives every step up.
     expect(marks("high").has("nine_month")).toBe(true);
   });
 
