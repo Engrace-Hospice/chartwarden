@@ -17,11 +17,14 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import type { OnboardingClearinghousePort } from "../src/bootstrap/onboarding-clearinghouse-port";
+import { createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
+import { createRouteRateLimit } from "../src/bootstrap/plugins/route-rate-limit";
 import {
   type OnboardingDataService,
   type OnboardingOperator,
   buildDrizzleOnboardingDataService,
   mountTenantPlatformRoutes,
+  targetTenantScopeOf,
 } from "../src/modules/34-saas-tenant-platform/index";
 import { ONBOARDING_DATA_AUDIT_EVENTS } from "../src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-audit";
 
@@ -157,7 +160,10 @@ const WRITER_ONLY = {
   ],
 };
 
-function makeServer(calls: Call[]) {
+function makeServer(
+  calls: Call[],
+  clearinghouseVerifyRateLimit?: (request: never, reply: never) => Promise<void>,
+) {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
       GRANTS,
@@ -174,7 +180,10 @@ function makeServer(calls: Call[]) {
   registerAbacRegistry(reg);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   mountTenantPlatformRoutes(app, {} as DbClient, {
-    onboardingData: { service: recordingService(calls) },
+    onboardingData: {
+      service: recordingService(calls),
+      ...(clearinghouseVerifyRateLimit ? { clearinghouseVerifyRateLimit } : {}),
+    },
   });
   return app;
 }
@@ -585,6 +594,48 @@ describe("clearinghouse routes", () => {
       expect(ok.statusCode, header).toBe(200);
       expect(calls[0]).toMatchObject({ expected: { recordedAt: BAA_PIN } });
     }
+    await app.close();
+  });
+});
+
+describe("the verify limiter counts per TARGET tenant (re-review L7)", () => {
+  const limiter = () =>
+    createRouteRateLimit({
+      store: createInMemoryRateLimitStore(),
+      limit: { perUser: 2, perOrg: 3, windowMs: 60_000, failMode: "closed" },
+      keyPrefix: "t-verify",
+      scopeOf: targetTenantScopeOf,
+    }) as unknown as (request: never, reply: never) => Promise<void>;
+  const verifyOf = (app: ReturnType<typeof makeServer>, slug: string, user = OPERATOR_USER) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/platform/tenants/${slug}/clearinghouse/verify`,
+      headers: { ...fresh(), "x-test-user": user },
+      payload: { reason: "ticket CHG-1" },
+    });
+
+  it("an operator who exhausts one tenant's budget still verifies another tenant, and the cap is per tenant", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls, limiter());
+    expect((await verifyOf(app, "tenant-b")).statusCode).toBe(200);
+    expect((await verifyOf(app, "tenant-b")).statusCode).toBe(200);
+    expect((await verifyOf(app, "tenant-b")).statusCode).toBe(429); // this operator's cap for tenant-b
+    expect((await verifyOf(app, "tenant-c")).statusCode).toBe(200); // not tenant-c's
+    expect(calls.filter((c) => c.method === "verifyClearinghouse")).toHaveLength(3);
+    await app.close();
+  });
+
+  it("the per-tenant (org) bucket is the tenant's own: it is not the operator's platform org, shared by every tenant", async () => {
+    const roomy = createRouteRateLimit({
+      store: createInMemoryRateLimitStore(),
+      limit: { perUser: 50, perOrg: 3, windowMs: 60_000, failMode: "closed" },
+      keyPrefix: "t-verify-org",
+      scopeOf: targetTenantScopeOf,
+    }) as unknown as (request: never, reply: never) => Promise<void>;
+    const app = makeServer([], roomy);
+    for (let i = 0; i < 3; i++) expect((await verifyOf(app, "tenant-b")).statusCode).toBe(200);
+    expect((await verifyOf(app, "tenant-b")).statusCode).toBe(429); // tenant-b's own cap, 3/3
+    for (let i = 0; i < 3; i++) expect((await verifyOf(app, "tenant-c")).statusCode).toBe(200);
     await app.close();
   });
 });
