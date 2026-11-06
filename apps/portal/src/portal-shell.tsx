@@ -126,8 +126,10 @@ function PortalSidebar({
         <div className="wx-portal-sidebar__footer wx-family-support">
           <Glyph name="phone" size={22} />
           <span>
-            <strong>24/7 hospice support</strong>
-            <small>Call your care team anytime. In an emergency, call 911.</small>
+            <strong>Hospice support</strong>
+            <small>
+              Call your care team using the number they gave you. In an emergency, call 911.
+            </small>
           </span>
         </div>
       ) : (

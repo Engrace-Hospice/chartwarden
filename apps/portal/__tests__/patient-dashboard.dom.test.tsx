@@ -194,7 +194,10 @@ describe("patient dashboard redesign", () => {
     renderDashboard();
     const help = await screen.findByRole("region", { name: "Need help now?" });
     expect(help.textContent).toContain("In an emergency, call 911.");
-    expect(help.textContent).toContain("Portal messages are not for emergencies.");
+    expect(help.textContent).toContain(
+      "Call your hospice care team using the number they gave you. Messages are not for emergencies.",
+    );
+    expect(help.textContent).not.toContain("24/7");
     expect(help.querySelector('a[href^="tel:"]')).toBeNull();
     expect(screen.queryByRole("complementary", { name: "Urgent care information" })).toBeNull();
   });
