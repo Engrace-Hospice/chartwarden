@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/06-admission/routes/discharge-details-routes.ts — record a claim-relevant discharge
 // detail AFTER the fact. Death discharges and transfer-outs recorded before migration 0370 carry no place of death
 // / receiving care setting, so M23 cannot derive the final claim's patient discharge status (40/41/42, 50/51) and
@@ -14,7 +15,7 @@
 // route's convention). A first-time value needs no reason; replacing a recorded value needs `correctionReason`
 // (409 DISCHARGE_DETAIL_CORRECTION_REASON_REQUIRED otherwise). Every change emits `m6.discharge.details_recorded`,
 // which M23 consumes to re-validate the admission's open claims.
-import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { DegradedError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { admissionScopeAccessOf } from "../abac-predicates";
@@ -25,8 +26,6 @@ import {
   ReceivingCareSettingRecordSchema,
 } from "./discharge-details-typebox";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface DischargeDetailsRouteDeps {
   readonly service: DischargeDetailsService | undefined;
 }
@@ -35,12 +34,6 @@ const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 const ADMISSION_READ = P("admission.read");
 const DISCHARGE_DEATH = P("discharge.death");
 const TRANSFER_OUT = P("transfer.out");
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
-}
 
 const idOf = (request: FastifyRequest): string => parse(IdParamsSchema, request.params).id;
 

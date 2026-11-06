@@ -26,6 +26,13 @@ import {
 // predicate instead (`ASSESSMENT_SCOPE_FOR` — see abac-predicates.ts header for why). The 2 internal batch
 // routes and the 4 admin license/policy routes are unchanged (spec ABAC column is "caller asserts" / "—").
 import { type AbacTarget, requireAbac, requirePermission } from "@chartwarden/auth";
+import {
+  type PreHandler,
+  ifMatchVersionOf,
+  membershipActorOf,
+  orgOf,
+  requireIfMatch,
+} from "@chartwarden/shared/route-kit";
 import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { ScaleType } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -51,35 +58,11 @@ import {
   UpdateScalePolicySchema,
   parse,
 } from "./assessments-typebox";
-import { ifMatchVersionOf, requireIfMatch } from "./concurrency";
-import type { AssessmentRouteService } from "./service";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+import type { AssessmentRouteService } from "./service";
 
 export interface AssessmentRouteDeps {
   service: AssessmentRouteService;
-}
-
-/** The org a service principal acts in (#680). It has no membership, so the user `actorOf` would 401 it. */
-function systemOrgOf(request: FastifyRequest): string {
-  const organizationId = request.context?.organizationId;
-  if (!organizationId) throw new UnauthorizedError();
-  return organizationId;
-}
-
-function actorOf(request: FastifyRequest): {
-  organizationId: string;
-  userId: string;
-  roles: readonly string[];
-} {
-  const ctx = request.context;
-  // `userId` here is the codebase-wide convention of "the acting MEMBERSHIP id" — same bug/fix as
-  // M8 (encounters-routes.ts) and M10 (hope-routes.ts): this used to read `ctx.userId` (the raw
-  // Better Auth user id, a DIFFERENT id from the org membership).
-  const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: membershipId, roles: ctx.roles };
 }
 
 /** The actor's disciplines (role tokens intersected with the matrix's discipline vocabulary). */
@@ -152,7 +135,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
     "/api/v1/patients/:patientId/assessments",
     { preHandler: [AUTHOR, SCOPE_FOR("assessment.author"), ABAC_DISCIPLINE] },
     async (request, reply) => {
-      const { organizationId, userId, roles } = actorOf(request);
+      const { organizationId, userId, roles } = membershipActorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
       const body = parse(RecordAssessmentSchema, request.body);
       const res = await service.recordAssessment(organizationId, userId, patientId, {
@@ -175,7 +158,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
     "/api/v1/patients/:patientId/assessments/:id/corrections",
     { preHandler: [AMEND, SCOPE_FOR("assessment.amend"), ABAC_DISCIPLINE, IF_MATCH] },
     async (request, reply) => {
-      const { organizationId, userId, roles } = actorOf(request);
+      const { organizationId, userId, roles } = membershipActorOf(request);
       const { patientId, id } = parse(PatientAssessmentParamsSchema, request.params);
       const body = parse(CorrectAssessmentSchema, request.body);
       const res = await service.correctAssessment(
@@ -209,7 +192,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
       config: { auditRead: { resourceKind: "assessment", patientIdParam: "patientId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
       parse(AssessmentListQuerySchema, request.query);
       return service.listAssessments(organizationId, patientId);
@@ -227,7 +210,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
       config: { auditRead: { resourceKind: "assessment", patientIdParam: "patientId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
       return service.summary(organizationId, patientId);
     },
@@ -244,7 +227,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
       config: { auditRead: { resourceKind: "assessment", patientIdParam: "patientId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
       return service.requestSummaryDocument(organizationId, patientId);
     },
@@ -258,7 +241,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
       config: { auditRead: { resourceKind: "assessment", patientIdParam: "patientId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { patientId, id } = parse(PatientAssessmentParamsSchema, request.params);
       return service.getAssessment(organizationId, patientId, id);
     },
@@ -272,7 +255,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
       config: { auditRead: { resourceKind: "assessment_scale", patientIdParam: "patientId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { patientId, scaleType } = parse(PatientScaleParamsSchema, request.params);
       return service.latestScale(organizationId, patientId, scaleType);
     },
@@ -286,7 +269,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
       config: { auditRead: { resourceKind: "assessment_scale", patientIdParam: "patientId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { patientId, scaleType } = parse(PatientScaleParamsSchema, request.params);
       const q = parse(SeriesQuerySchema, request.query);
       return service.seriesScale(organizationId, patientId, scaleType, q.from, q.to);
@@ -301,7 +284,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
       config: { auditRead: { resourceKind: "assessment_scale", patientIdParam: "patientId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { patientId, scaleType } = parse(PatientScaleParamsSchema, request.params);
       const q = parse(DeltaQuerySchema, request.query);
       return service.deltaScale(organizationId, patientId, scaleType, q.from, q.to);
@@ -313,7 +296,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
     "/api/v1/assessments/:id/cosignatures",
     { preHandler: [COSIGN, ASSESSMENT_SCOPE_FOR("assessment.cosign"), ABAC_COSIGN] },
     async (request, reply) => {
-      const { organizationId, userId, roles } = actorOf(request);
+      const { organizationId, userId, roles } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       // §7.4 — the cosigner's attestation is a legal clinical act (CoP 418.104(c)), not decoration. The
       // contract has always demanded `attestationConfirmed` and the handler never looked, so the UI could
@@ -338,7 +321,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
       config: { auditRead: { resourceKind: "assessment", patientIdParam: "patientId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
       return service.listSignificantChanges(organizationId, patientId);
     },
@@ -350,7 +333,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
     "/api/v1/significant-changes/:eventId/acknowledge",
     { preHandler: [ACK_CHANGE, ASSESSMENT_SCOPE_FOR("assessment.acknowledge_change")] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { eventId } = parse(ChangeEventParamsSchema, request.params);
       const body = parse(AcknowledgeChangeSchema, request.body);
       return service.acknowledgeChange(organizationId, eventId, {
@@ -368,7 +351,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
       config: { auditRead: { resourceKind: "assessment", list: true } },
     },
     async (request) => {
-      const organizationId = systemOrgOf(request);
+      const organizationId = orgOf(request);
       const q = parse(LatestBatchQuerySchema, request.query);
       return service.latestBatch(organizationId, q.patientId, q.scaleTypes);
     },
@@ -382,7 +365,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
       config: { auditRead: { resourceKind: "assessment", list: true } },
     },
     async (request) => {
-      const organizationId = systemOrgOf(request);
+      const organizationId = orgOf(request);
       const q = parse(SeriesBatchQuerySchema, request.query);
       return service.seriesScale(organizationId, q.patientId, q.scaleType, q.from, q.to);
     },
@@ -398,7 +381,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.listLicenses(organizationId);
     },
   );
@@ -408,7 +391,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
     "/api/v1/admin/scales/licenses",
     { preHandler: [LICENSE_ADMIN] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const body = parse(CreateLicenseSchema, request.body);
       const res = await service.createLicense(organizationId, body);
       return reply.code(201).send(res);
@@ -420,7 +403,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
     "/api/v1/admin/scales/licenses/:id",
     { preHandler: [LICENSE_ADMIN] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(LicenseParamsSchema, request.params);
       const body = parse(UpdateLicenseSchema, request.body);
       return service.updateLicense(organizationId, id, body);
@@ -460,7 +443,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.listPolicies(organizationId);
     },
   );
@@ -470,7 +453,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
     "/api/v1/admin/scales/policies/:scaleType",
     { preHandler: [POLICY_ADMIN] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { scaleType } = parse(ScalePolicyParamsSchema, request.params);
       const body = parse(UpdateScalePolicySchema, request.body);
       return service.updatePolicy(organizationId, scaleType, body.enabled);

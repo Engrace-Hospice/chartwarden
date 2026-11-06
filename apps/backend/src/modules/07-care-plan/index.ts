@@ -136,15 +136,6 @@ export {
   CarePlanAlreadyExistsError,
   createInMemoryCarePlanBackend,
 } from "./routes/service";
-export {
-  type PreHandler,
-  type WithIfMatch,
-  IdempotencyKeyRequiredError,
-  IfMatchRequiredError,
-  ifMatchVersionOf,
-  requireIdempotencyKey,
-  requireIfMatch,
-} from "./routes/concurrency";
 
 // M7-T06 — §7.3–7.6 authoring: the pure discipline/redaction/goal-attribution helpers + the five §6
 // ABAC predicate resolvers (caseload_or_scope / dpoa_active / sud_disclosure_allowed / signer_role_match

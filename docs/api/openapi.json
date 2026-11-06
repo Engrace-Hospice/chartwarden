@@ -19205,7 +19205,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -49034,6 +49034,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -49871,6 +49872,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -50039,6 +50041,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -73352,7 +73355,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -73775,7 +73778,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -74305,7 +74308,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -74403,7 +74406,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -85618,7 +85621,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -88856,7 +88859,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -89050,7 +89053,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -99397,7 +99400,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -99642,7 +99645,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -100441,7 +100444,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -104273,7 +104276,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -122378,6 +122381,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -123555,7 +123559,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -132139,7 +132143,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -133459,7 +133463,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -135121,7 +135125,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -135435,7 +135439,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -136752,7 +136756,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -151790,7 +151794,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -151857,7 +151861,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -152090,7 +152094,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -152136,7 +152140,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -152319,7 +152323,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -152386,7 +152390,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -152554,7 +152558,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -154032,7 +154036,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -159685,7 +159689,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -172150,6 +172154,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -237191,6 +237196,15 @@
         "summary": "Held lab-order worklist — orders that failed AFTER their HL7 message was built (dlq_exhausted / application_reject / recovery_blocked:*) and wait for an operator to verify with the lab; oldest first, cursor-paginated, with age + escalation stage (orders.amend)",
         "parameters": [
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -237199,16 +237213,6 @@
               "maximum": 100,
               "default": 50,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "minLength": 1,
-              "maxLength": 300,
-              "type": "string"
             }
           }
         ],
@@ -240644,7 +240648,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -245492,7 +245496,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -246240,7 +246244,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -263880,7 +263884,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 16,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -276215,7 +276219,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 64,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -322855,7 +322859,7 @@
             "name": "If-Match",
             "in": "header",
             "required": true,
-            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }

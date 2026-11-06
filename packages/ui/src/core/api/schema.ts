@@ -45642,7 +45642,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -45773,7 +45773,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -45887,7 +45887,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -45943,7 +45943,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -48373,7 +48373,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -49265,7 +49265,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -49292,7 +49292,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -52009,7 +52009,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -52081,7 +52081,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -52344,7 +52344,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -60376,7 +60376,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -61034,7 +61034,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -61115,7 +61115,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -61341,7 +61341,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -65139,7 +65139,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -65173,7 +65173,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -65227,7 +65227,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -65254,7 +65254,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -65311,7 +65311,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -65345,7 +65345,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -65394,7 +65394,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -65666,7 +65666,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -67143,7 +67143,7 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -86427,8 +86427,8 @@ export interface operations {
     getApiV1OrdersHeldtransmissions: {
         parameters: {
             query?: {
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -89051,7 +89051,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {
@@ -108154,7 +108154,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                /** @description The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2). */
                 "If-Match": string;
             };
             path: {

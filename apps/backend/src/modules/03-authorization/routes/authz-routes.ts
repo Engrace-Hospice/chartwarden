@@ -1,3 +1,13 @@
+import type { AuditContext } from "@chartwarden/audit";
+import {
+  ORG_WIDE_SCOPE_ROLES,
+  allPermissionMirrorRows,
+  isSystemLocked,
+  isTenantRoleReserved,
+  requirePermission,
+  requireSession,
+  validateRoleGrant,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/03-authorization/routes/authz-routes.ts — M3-T08 the Module 3
 // route inventory (M3 spec §4.3–4.4; the §6 meta-permission matrix; the §7.4–7.6 workflows).
 //
@@ -20,16 +30,7 @@
 // Validation is deliberately ordered AFTER the §6 meta-permission preHandler and after each
 // route's existing existence lookup, so the §9.3 IDOR semantics are unchanged: an unauthorized
 // actor still sees 403 (never 422) and an authorized actor still sees 404 for an absent object.
-import type { AuditContext } from "@chartwarden/audit";
-import {
-  ORG_WIDE_SCOPE_ROLES,
-  allPermissionMirrorRows,
-  isSystemLocked,
-  isTenantRoleReserved,
-  requirePermission,
-  requireSession,
-  validateRoleGrant,
-} from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import {
   ChartWardenError,
   ForbiddenError,
@@ -77,9 +78,6 @@ import {
 } from "./authz-typebox";
 
 const DEFAULT_BREAK_GLASS_TTL_SEC = 4 * 3600; // §3.5 D1 — default +4h time-box.
-
-/** A guard wrapper so a @chartwarden/auth GuardHandler is a Fastify preHandler. */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** Build the audit context for an M3 event from the request + scope. */
 function auditContextFor(request: FastifyRequest): AuditContext {

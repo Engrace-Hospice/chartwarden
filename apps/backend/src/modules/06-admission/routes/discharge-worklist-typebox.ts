@@ -4,6 +4,7 @@
 // resolves names for the rows it shows) — EXCEPT the `recently_discharged` rows, which carry the name and MRN read
 // through M5's org-scoped PatientIntakeResolver seam: a readmission candidate's caseload assignment has ended, so the
 // caller usually cannot open the chart, yet must know WHOM they are readmitting.
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { type Static, Type } from "@sinclair/typebox";
 
 export const DISCHARGE_WORKLIST_BUCKETS = [
@@ -35,8 +36,7 @@ export const DischargeWorklistQuerySchema = Type.Object({
         '"nomnc_no_deadline": active NOMNC records with no appeal-request deadline typed yet (requires nomnc.read).',
     },
   ),
-  cursor: Type.Optional(Type.String({ maxLength: 64 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 export type DischargeWorklistQuery = Static<typeof DischargeWorklistQuerySchema>;
 

@@ -3032,7 +3032,7 @@ const IF_MATCH_HEADER: RouteEnrichment["headers"] = {
   "If-Match": {
     required: true,
     description:
-      "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+      "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
   },
 };
 const IDEMPOTENCY_AND_IF_MATCH_HEADERS: RouteEnrichment["headers"] = {

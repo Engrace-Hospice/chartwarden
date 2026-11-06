@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/06-admission/outbox-consumers/m11-level-of-care-change-signed.ts — the live
 // `m11.order.level_of_care_change_signed` → §2.3.5 LCP transition binding (F-155/F-159, #248).
 //
@@ -51,7 +52,7 @@
 // The event name is a STRING literal and no M11 schema is imported — M6 reads M11 solely through the
 // foundation outbox (the `m22-document-rendered.ts` / `m29-proposal-accepted.ts` precedent one file
 // over), so this adds no `dependsOn` edge.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { LevelOfCare } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
@@ -120,10 +121,6 @@ function payloadOf(payload: unknown): Payload {
   }
   return { orderId, toLevel, effectiveAt, admissionId };
 }
-
-/** The dispatcher's own system-attribution convention (F-102) for a consumer-driven write with no human
- *  actor. */
-const CONSUMER_USER_ID = "";
 
 /** Build the live `m11.order.level_of_care_change_signed` consumer the composition root registers with
  *  the outbox dispatcher. */

@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/11-orders/outbox-consumers/lab-cancellation-required.ts — F-187 (#248): when a lab order
 // is SUPERSEDED (discontinued, or replaced by a corrected order) after its ORM may already be at the laboratory,
 // tell a human, because nothing else will.
@@ -42,14 +43,11 @@
 // dedupes on `(eventId, consumerName)` and the alert carries a per-order correlation id.
 //
 // NO PHI: ids, enum tokens and reasons only — never a name, DOB, MRN or result value.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const OR = schema.orderRecords;
-
-/** §3.3 — a consumer-driven read names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M11_LAB_CANCELLATION_CONSUMER = {
   eventNames: ["m11.order.discontinued", "m11.order.corrected"] as const,

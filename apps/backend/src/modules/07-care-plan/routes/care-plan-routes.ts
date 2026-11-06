@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/07-care-plan/routes/care-plan-routes.ts — M7-T05 the §4.1 route inventory
 // behind the REAL Authorization Contract (`requirePermission` from @chartwarden/auth, M3) on the §4.5 keys
 // M7 contributes to M3's catalog (M7_CONTRIBUTED_PERMISSIONS). Org binding is server-side
@@ -16,7 +17,13 @@
 // discipline being authored). `dpoa_active`/`sud_disclosure_allowed` stay as the existing
 // `dpoaConsentActive`/`sudDisclosureAllowed` closures below (per-element data-shaping, not a route
 // gate; wiring their real seam-backed implementations at boot is GAP-013, a separate finding).
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import {
+  type PreHandler,
+  actorOf,
+  ifMatchVersionOf,
+  requireIdempotencyKey,
+  requireIfMatch,
+} from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { InterventionDiscipline } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -43,12 +50,6 @@ import {
   SignVersionSchema,
   parse,
 } from "./care-plan-typebox";
-import {
-  type PreHandler,
-  ifMatchVersionOf,
-  requireIdempotencyKey,
-  requireIfMatch,
-} from "./concurrency";
 import type { CarePlanRouteService, CarePlanSignActor } from "./service";
 
 export interface CarePlanRouteDeps {
@@ -73,12 +74,6 @@ export interface CarePlanRouteDeps {
      *  recipients), and an unnamed actor against a restricted release is redacted. */
     membershipId: string | null;
   }) => Promise<boolean>;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 // Static permission guards (§4.5).
