@@ -1215,7 +1215,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Register a roster prescriber with DoseSpot and record the vendor's id (the link transmission sends under). Needs a verified or active registration (409 DOSESPOT_NOT_READY) and a membership of this organization (404). The body is empty: the NPI and legal name are NEVER taken from the caller (a typed npi, firstName or lastName is a 422) but derived from the physician record the prescriber roster links the member to (409 DOSESPOT_PRACTITIONER_NOT_LINKED / _NOT_ACTIVE / _NPI_MISSING / _NAME_MISSING, 422 DOSESPOT_NPI_INVALID by its check digit), and cross-checked against NPPES (409 DOSESPOT_NPPES_MISMATCH when NPPES lists an organization, a deactivated provider or another surname; a production registration also needs NPPES to list the NPI, 409 DOSESPOT_NPPES_UNVERIFIED); idempotent for a prescriber already linked; never reinstates a revoked prescriber (409 DOSESPOT_PRESCRIBER_REVOKED); a second enrolment in flight is 409 DOSESPOT_ENROLLMENT_IN_PROGRESS; the vendor call runs with no transaction open. Never starts EPCS or IAL2. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        /** Register a roster prescriber with DoseSpot and record the vendor's id (the link transmission sends under). Needs a verified or active registration (409 DOSESPOT_NOT_READY) and a membership of this organization (404). The body is empty: the NPI and legal name are NEVER taken from the caller (a typed npi, firstName or lastName is a 422) but derived from the physician record the prescriber roster links the member to (409 DOSESPOT_PRACTITIONER_NOT_LINKED / _NOT_ACTIVE / _NPI_MISSING / _NAME_MISSING, 422 DOSESPOT_NPI_INVALID by its check digit), and cross-checked against NPPES (409 DOSESPOT_NPPES_MISMATCH when NPPES lists an organization, a deactivated provider or another surname; a production registration also needs NPPES to list the NPI, 409 DOSESPOT_NPPES_UNVERIFIED); idempotent for a prescriber already linked; never reinstates a revoked prescriber (409 DOSESPOT_PRESCRIBER_REVOKED); a second enrolment in flight is 409 DOSESPOT_ENROLLMENT_IN_PROGRESS; a roster re-link while it ran is 409 DOSESPOT_ROSTER_CHANGED; a 2xx DoseSpot accepted but did not confirm is 502 DOSESPOT_ENROLLMENT_UNCONFIRMED (the claim is kept: the clinician may exist); the vendor call runs with no transaction open. Never starts EPCS or IAL2. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused */
         post: operations["postApiV1AdminDosespotprescribersByMembershipIdDosespotenrollment"];
         delete?: never;
         options?: never;
@@ -92829,6 +92829,8 @@ export interface operations {
                         clinicId: string | null;
                         serviceClinicianId: string | null;
                         hasSecret: boolean;
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
                         registeredAt: string | null;
                         verifiedAt: string | null;
                         activatedAt: string | null;
@@ -92892,6 +92894,8 @@ export interface operations {
                         clinicId: string | null;
                         serviceClinicianId: string | null;
                         hasSecret: boolean;
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
                         registeredAt: string | null;
                         verifiedAt: string | null;
                         activatedAt: string | null;
@@ -92945,6 +92949,8 @@ export interface operations {
                         clinicId: string | null;
                         serviceClinicianId: string | null;
                         hasSecret: boolean;
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
                         registeredAt: string | null;
                         verifiedAt: string | null;
                         activatedAt: string | null;
@@ -92998,6 +93004,8 @@ export interface operations {
                         clinicId: string | null;
                         serviceClinicianId: string | null;
                         hasSecret: boolean;
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
                         registeredAt: string | null;
                         verifiedAt: string | null;
                         activatedAt: string | null;
@@ -93122,6 +93130,8 @@ export interface operations {
                             clinicId: string | null;
                             serviceClinicianId: string | null;
                             hasSecret: boolean;
+                            live: boolean;
+                            notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
                             registeredAt: string | null;
                             verifiedAt: string | null;
                             activatedAt: string | null;
@@ -110750,6 +110760,9 @@ export interface operations {
                         clinicId: string | null;
                         serviceClinicianId: string | null;
                         hasSecret: boolean;
+                        /** @description Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in. */
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
                         registeredAt: string | null;
                         verifiedAt: string | null;
                         activatedAt: string | null;
@@ -110813,6 +110826,9 @@ export interface operations {
                         clinicId: string | null;
                         serviceClinicianId: string | null;
                         hasSecret: boolean;
+                        /** @description Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in. */
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
                         registeredAt: string | null;
                         verifiedAt: string | null;
                         activatedAt: string | null;
@@ -110859,6 +110875,9 @@ export interface operations {
                         clinicId: string | null;
                         serviceClinicianId: string | null;
                         hasSecret: boolean;
+                        /** @description Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in. */
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
                         registeredAt: string | null;
                         verifiedAt: string | null;
                         activatedAt: string | null;
@@ -110905,6 +110924,9 @@ export interface operations {
                         clinicId: string | null;
                         serviceClinicianId: string | null;
                         hasSecret: boolean;
+                        /** @description Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in. */
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
                         registeredAt: string | null;
                         verifiedAt: string | null;
                         activatedAt: string | null;
@@ -110952,6 +110974,9 @@ export interface operations {
                             clinicId: string | null;
                             serviceClinicianId: string | null;
                             hasSecret: boolean;
+                            /** @description Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in. */
+                            live: boolean;
+                            notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
                             registeredAt: string | null;
                             verifiedAt: string | null;
                             activatedAt: string | null;

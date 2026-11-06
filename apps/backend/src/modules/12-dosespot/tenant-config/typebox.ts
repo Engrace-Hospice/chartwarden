@@ -74,6 +74,16 @@ export const ClinicConfigViewSchema = Type.Object({
   clinicId: Nullable(Type.String()),
   serviceClinicianId: Nullable(Type.String()),
   hasSecret: Type.Boolean(),
+  live: Type.Boolean({
+    description:
+      "Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in.",
+  }),
+  notLiveReason: Nullable(
+    Type.Union([Type.Literal("sandbox_not_enabled"), Type.Literal("environment_unavailable")], {
+      description:
+        "Why an `active` row is not live: the platform has not enabled sandbox, or the environment has no usable host or flag here. Null when live, or never activated.",
+    }),
+  ),
   registeredAt: Nullable(Iso),
   verifiedAt: Nullable(Iso),
   activatedAt: Nullable(Iso),

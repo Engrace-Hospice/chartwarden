@@ -328,7 +328,14 @@ describe("an unopenable stored envelope refuses a PARTIAL rotation (it would sil
           { ...BASE, clinicKey: "a-new-clinic-key-cccc3333" },
           before?.version,
         ),
-      ).rejects.toMatchObject({ statusCode: 503, code: "DOSESPOT_CREDENTIAL_UNREADABLE" });
+      ).rejects.toMatchObject({
+        statusCode: 503,
+        code: "DOSESPOT_CREDENTIAL_UNREADABLE",
+        // the message names the way out: platform support, the platform route, both keys together
+        message: expect.stringMatching(
+          /platform support.*platform route.*AND the Subscription-Key/s,
+        ),
+      });
       expect(h.store.rows()[0]).toEqual(before);
     }
   });
@@ -647,6 +654,46 @@ describe("sandbox activation is gated by DOSESPOT_SANDBOX_ENABLED", () => {
       env: SUBSCRIPTION_KEY_ONLY,
     });
     expect((await off.deactivate(h.store, TENANT)).view.status).toBe("verified");
+  });
+});
+
+describe("the view says whether the registration is LIVE on this deployment, not just what status it was left in", () => {
+  it("an active sandbox row on a deployment that does not enable sandbox is NOT live, with a reason code", async () => {
+    const h = build({ env: withPlatformKey });
+    await putFull(h);
+    await verifyFully(h);
+    await h.service.activate(h.store, TENANT);
+    expect(await h.service.view(h.store, ORG)).toMatchObject({
+      status: "active",
+      live: true,
+      notLiveReason: null,
+    });
+    // the flag is later unset: the stored status is still `active`, but nothing is served
+    const off = createDoseSpotClinicService({
+      cipher: buildClinicSecretCipher({
+        dekForOrg: async () => ({ version: "v1", key: randomBytes(32) }),
+      }),
+      probe: { probe: async () => "ok" },
+      env: SUBSCRIPTION_KEY_ONLY,
+    });
+    expect(await off.view(h.store, ORG)).toMatchObject({
+      status: "active",
+      live: false,
+      notLiveReason: "sandbox_not_enabled",
+    });
+  });
+
+  it("a row that was never activated is not live, and an env-served org is", async () => {
+    const h = build({ env: withPlatformKey });
+    await putFull(h);
+    expect(await h.service.view(h.store, ORG)).toMatchObject({ live: false, notLiveReason: null });
+    const served = build({ envFallbackOrgs: [ORG] });
+    expect(await served.service.view(served.store, ORG)).toMatchObject({
+      source: "platform_env",
+      live: true,
+    });
+    const none = build();
+    expect(await none.service.view(none.store, ORG)).toMatchObject({ live: false });
   });
 });
 

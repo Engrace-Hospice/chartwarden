@@ -73,6 +73,10 @@ export const OnboardingDoseSpotViewSchema = Type.Object({
   clinicId: Nullable(Type.String()),
   serviceClinicianId: Nullable(Type.String()),
   hasSecret: Type.Boolean(),
+  live: Type.Boolean(),
+  notLiveReason: Nullable(
+    Type.Union([Type.Literal("sandbox_not_enabled"), Type.Literal("environment_unavailable")]),
+  ),
   registeredAt: Nullable(Iso),
   verifiedAt: Nullable(Iso),
   activatedAt: Nullable(Iso),

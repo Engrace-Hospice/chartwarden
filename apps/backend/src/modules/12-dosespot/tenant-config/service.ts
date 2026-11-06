@@ -29,6 +29,7 @@ import {
 import { ChartWardenError, ValidationError } from "@chartwarden/types";
 import type { ConfigPatch, ConfigRow, ConfigStore } from "./config-store";
 import { isUniqueViolation } from "./config-store";
+import { registrationIsLive } from "./liveness";
 import type { ClinicSecretBundle, ClinicSecretCipher } from "./secret-cipher";
 
 export type DoseSpotClinicStatus = "draft" | "registered" | "verified" | "active";
@@ -62,6 +63,13 @@ export interface ClinicConfigView {
   readonly clinicId: string | null;
   readonly serviceClinicianId: string | null;
   readonly hasSecret: boolean;
+  /**
+   * Is this registration actually SERVED on this deployment (`active`, and its environment allowed)? `status` alone says what the row
+   * was left in: an `active` sandbox row on a deployment that does not enable sandbox is not live, and shows `live: false`.
+   */
+  readonly live: boolean;
+  /** Why an `active` row is not live (null when it is live, or was never activated). */
+  readonly notLiveReason: "sandbox_not_enabled" | "environment_unavailable" | null;
   readonly registeredAt: string | null;
   readonly verifiedAt: string | null;
   readonly activatedAt: string | null;
@@ -209,6 +217,16 @@ export function createDoseSpotClinicService(
   const now = deps.now ?? (() => new Date());
   const env = (): Readonly<Record<string, string | undefined>> => deps.env ?? {};
 
+  function liveFacts(row: ConfigRow): Pick<ClinicConfigView, "live" | "notLiveReason"> {
+    const live = registrationIsLive(row, env());
+    if (live || row.status !== "active") return { live, notLiveReason: null };
+    return {
+      live,
+      notLiveReason:
+        row.environment === "sandbox" ? "sandbox_not_enabled" : "environment_unavailable",
+    };
+  }
+
   async function viewOf(
     store: ConfigStore,
     row: ConfigRow | null,
@@ -227,6 +245,8 @@ export function createDoseSpotClinicService(
         clinicId: null,
         serviceClinicianId: null,
         hasSecret: false,
+        live: fallback, // the platform binding is served as it is configured
+        notLiveReason: null,
         registeredAt: null,
         verifiedAt: null,
         activatedAt: null,
@@ -244,6 +264,7 @@ export function createDoseSpotClinicService(
       clinicId: row.clinicId,
       serviceClinicianId: row.serviceClinicianId,
       hasSecret: row.secretCipher !== null,
+      ...liveFacts(row),
       registeredAt: iso(row.registeredAt),
       verifiedAt: iso(row.verifiedAt),
       activatedAt: iso(row.activatedAt),
@@ -352,7 +373,7 @@ export function createDoseSpotClinicService(
       if (input.clinicKey === undefined || input.subscriptionKey === undefined) {
         throw new ChartWardenError(
           "DOSESPOT_CREDENTIAL_UNREADABLE",
-          "the stored DoseSpot credential cannot be opened, so it cannot be partly changed; platform support must re-enter the clinic key and the Subscription-Key together",
+          "the stored DoseSpot credential cannot be opened, so it cannot be partly changed. To recover, platform support re-enters it on the platform route (PUT /api/v1/platform/tenants/{slug}/dosespot) with the clinic key AND the Subscription-Key together (for a clinic on the platform's own Subscription-Key, that key's value); a tenant administrator cannot repair it",
           503,
         );
       }
