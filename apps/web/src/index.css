@@ -432,12 +432,14 @@
     flex-shrink: 0;
   }
   .wx-patient-rail {
-    width: 18rem;
+    width: 19.25rem; /* 18rem of card + the 1.25rem left gutter */
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    padding: 1.125rem 1.25rem 1.5rem 0;
+    /* Left gutter keeps the cards off the white banner + tab strip edge (they read as overlapping);
+       no top padding so the first card's top edge lines up with the banner's. */
+    padding: 0 1.25rem 1.5rem;
     overflow-y: auto;
   }
   .wx-patient-card {
