@@ -135,7 +135,6 @@ import type {
 } from "./scheduling";
 import type {
   AITokenMeterProvider,
-  BillingServiceModeReader,
   BillingStatusProvider,
   ClaimsBillingEntitlementReader,
   ExternalInterfaceMetricsProvider,
@@ -492,7 +491,6 @@ export type SeamName =
   | "UsageMeteringIngest" // M35 — PHI-free usage-event ingest (M23/M24/M28/M29/M32; redactor-enforced)
   | "PatientCounterProvider" // M35 — pseudonymized active-patient count for a period (reconciles vs M5)
   | "ClaimsBillingEntitlementReader" // M23 — ADR-0110 (repurposed): may this org start NEW claims-billing work (its clearinghouse choice)
-  | "BillingServiceModeReader" // M35 — slice 2: the subscription's billing service mode (a read seam; no module consumes it yet)
   | "NetCollectionsReader" // M25 — slice 2: an org's net collections for a period (the M35 billing-service meter)
   | "SubscriptionWorkBlockReader" // M35 — owner decision D1: a suspended / paused / canceled subscription still blocks new claims work (read by M23's claims-billing decision)
   | "TenantClearinghouseReader" // M23 — ADR-0053 amendment 2026-11-06: the clearinghouse the org chose (stedi | claimmd | outside)
@@ -1447,7 +1445,6 @@ export interface SeamContracts {
   PatientCounterProvider: PatientCounterProvider;
   // ADR-0110 — leaf-typed; the route gate + worker hold in apps/backend/src/bootstrap resolve it (fail closed).
   ClaimsBillingEntitlementReader: ClaimsBillingEntitlementReader;
-  BillingServiceModeReader: BillingServiceModeReader;
   NetCollectionsReader: NetCollectionsReader;
   // M23 — the tenant's clearinghouse choice (leaf-typed in ./tenant-clearinghouse); aggregate org config, no PHI.
   TenantClearinghouseReader: TenantClearinghouseReader;

@@ -117,7 +117,6 @@ export {
   type TenantPricingView,
   buildContractService,
   orgHasLiveContract,
-  readBillingServiceMode,
 } from "./pricing/contract-service";
 export { type PricingRouteDeps, registerPricingRoutes } from "./pricing/pricing.routes";
 export {

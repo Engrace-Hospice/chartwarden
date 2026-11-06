@@ -31,7 +31,6 @@ import type {
   BereavementRiskFactorsProvider,
   BereavementRiskTierProvider,
   BillableEncounterReader,
-  BillingServiceModeReader,
   BillingStatusProvider,
   CarePlanReader,
   CareTeamProvider,
@@ -1925,14 +1924,6 @@ export const patientCounterProviderDenyStub: PatientCounterProvider = {
 export const claimsBillingEntitlementReaderDenyStub: ClaimsBillingEntitlementReader = {
   async entitlementForOrg() {
     throw new NotImplementedError("ClaimsBillingEntitlementReader");
-  },
-};
-
-/** Slice 2 — the subscription's billing service mode. Throws: an unread mode must never read as `none` (a tenant that
- *  bills in ChartWarden would look like one that bills outside it). */
-export const billingServiceModeReaderDenyStub: BillingServiceModeReader = {
-  async billingServiceModeForOrg() {
-    throw new NotImplementedError("BillingServiceModeReader");
   },
 };
 

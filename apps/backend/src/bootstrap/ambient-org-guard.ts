@@ -1,5 +1,4 @@
-// apps/backend/src/bootstrap/ambient-org-guard.ts — the guard an org-explicit seam body runs first (slice 2: NetCollectionsReader of M25,
-// BillingServiceModeReader of M35, which may not import each other).
+// apps/backend/src/bootstrap/ambient-org-guard.ts — the guard an org-explicit seam body runs first (slice 2: NetCollectionsReader of M25).
 //
 // A seam body takes an `organizationId` argument because workers call it with no request around them. But a REQUEST can reach the same
 // body, and then the argument is only as trustworthy as the caller: a handler of tenant A that passes tenant B's id would read B's

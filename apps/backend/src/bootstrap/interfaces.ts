@@ -13,7 +13,6 @@ export type {
   AuditorSessionMinter,
   PortalSessionBinder,
   VendorSessionBinder,
-  BillingServiceModeReader,
   BillingStatusProvider,
   ClaimsBillingEntitlementReader,
   SubscriptionWorkBlockReader,

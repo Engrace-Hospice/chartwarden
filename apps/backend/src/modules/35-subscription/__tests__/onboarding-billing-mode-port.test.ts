@@ -74,12 +74,12 @@ describe("buildOnboardingBillingModePort", () => {
   });
 
   it("resolves the contract service when it is USED, not when the port is built (it is built after the port)", async () => {
-    let bound: ReturnType<typeof fakeContracts>["contracts"] | undefined;
+    const holder: { current?: ReturnType<typeof fakeContracts>["contracts"] } = {};
     const port = buildOnboardingBillingModePort(() => {
-      if (!bound) throw new Error("not bound yet");
-      return bound;
+      if (!holder.current) throw new Error("not bound yet");
+      return holder.current;
     });
-    bound = fakeContracts().contracts;
+    holder.current = fakeContracts().contracts;
     expect(await port.hasContract("contracted")).toBe(true);
   });
 });

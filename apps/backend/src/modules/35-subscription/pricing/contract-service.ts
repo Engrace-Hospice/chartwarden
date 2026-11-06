@@ -22,7 +22,6 @@ import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import type { BillingServiceMode } from "@chartwarden/types";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 import { desc, eq } from "drizzle-orm";
-import { refuseForeignAmbientOrg } from "../../../bootstrap/ambient-org-guard";
 import type { M35WriteActor } from "../routes/actor";
 import type { PlatformRunner, WriteOutboxPort, WriteTx } from "../routes/service-drizzle";
 import { utcDateOf } from "./census-daily";
@@ -163,8 +162,6 @@ export interface ContractService {
   /** A platform operator's read of a tenant's contract and statements; it writes a structured read-audit row naming the operator. */
   platformView(actor: M35WriteActor, orgSlug: string): Promise<PlatformPricingView>;
   tenantView(organizationId: string, userId: string): Promise<TenantPricingView>;
-  /** The tenant's billing service mode in force today (null without a live contract), on the tenant pool. The `BillingServiceModeReader` seam body (the seam has no consumer yet). */
-  billingServiceModeForOrg(organizationId: string): Promise<BillingServiceMode | null>;
 }
 
 export interface ContractServiceDeps {
@@ -333,24 +330,6 @@ export async function orgHasLiveContract(
   at: Date = new Date(),
 ): Promise<boolean> {
   return (await selectNewestContract(tx, "live", at, organizationId)) !== null;
-}
-
-/**
- * The billing service mode in force TODAY of the org's live contracted subscription (newest live contract), or null when it has none.
- * Reads on the TENANT pool under `withOrgContext` (the contract tables are SELECT-only to the app role); no cache; a failed read throws
- * and the caller decides (a caller that must not guess fails closed: an unread mode must never read as `none`). Refuses when it is called inside ANOTHER
- * organisation's request. This is the body of the `BillingServiceModeReader` seam.
- */
-export async function readBillingServiceMode(
-  db: DbClient,
-  organizationId: string,
-  at: Date = new Date(),
-): Promise<BillingServiceMode | null> {
-  refuseForeignAmbientOrg(organizationId, "BillingServiceModeReader");
-  return withOrgContext(db, { organizationId, userId: "" }, async (scoped) => {
-    const loaded = await loadContract(scoped as unknown as WriteTx, "live", at, organizationId);
-    return loaded ? modeInForceOn(loaded.history, utcDateOf(at)) : null;
-  });
 }
 
 async function requirePlan(tx: WriteTx, planSlug: string): Promise<PlanRow> {
@@ -825,9 +804,6 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         };
       });
     },
-
-    billingServiceModeForOrg: (organizationId) =>
-      readBillingServiceMode(deps.db, organizationId, now()),
   };
 }
 

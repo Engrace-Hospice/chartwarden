@@ -33,16 +33,18 @@ describe("createOutsideModeReconciler", () => {
   });
 
   it("resolves the contract service when USED, not when built", async () => {
-    let bound: { setModeNoneForOutsideBilling: () => Promise<{ changed: boolean }> } | undefined;
+    const holder: {
+      current?: { setModeNoneForOutsideBilling: () => Promise<{ changed: boolean }> };
+    } = {};
     const reconcile = createOutsideModeReconciler({
       billsOutside: async () => true,
       contracts: () => {
-        if (!bound) throw new Error("the pricing contract service is not bound");
-        return bound;
+        if (!holder.current) throw new Error("the pricing contract service is not bound");
+        return holder.current;
       },
     });
     await expect(reconcile("org-out")).rejects.toThrow(/not bound/); // loud, never a silent skip
-    bound = { setModeNoneForOutsideBilling: async () => ({ changed: false }) };
+    holder.current = { setModeNoneForOutsideBilling: async () => ({ changed: false }) };
     await expect(reconcile("org-out")).resolves.toBeUndefined();
   });
 

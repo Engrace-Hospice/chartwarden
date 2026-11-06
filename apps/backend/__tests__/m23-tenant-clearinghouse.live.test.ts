@@ -98,7 +98,6 @@ import {
   type ContractService,
   buildContractService,
   orgHasLiveContract,
-  readBillingServiceMode,
 } from "../src/modules/35-subscription/pricing/contract-service";
 import { SYSTEM_TRIGGER, modeTriggerOf } from "../src/modules/35-subscription/pricing/mode-trigger";
 import { buildOnboardingBillingModePort } from "../src/modules/35-subscription/pricing/onboarding-billing-mode-port";
@@ -112,6 +111,7 @@ import {
   countQueuedCommercialSubmissions,
   countQueuedCommercialSubmissionsOn,
 } from "../src/modules/41-billing-commercial/index";
+import { modeInForce } from "./_billing-mode";
 import {
   appRoleConnectionString,
   appRoleUrl,
@@ -1818,7 +1818,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         [org],
       );
     const VENDOR_KEY = "fake-claimmd-key-J#live-1";
-    const inForce = (org: string) => readBillingServiceMode(tenantPool.db, org);
+    const inForce = (org: string) => modeInForce(tenantPool.db, org);
 
     it("refuses a LIVE tenant's own switch out of outside while it has a contract (409), and changes nothing", async () => {
       const before = await tenantCall("GET", ORG_I, "");

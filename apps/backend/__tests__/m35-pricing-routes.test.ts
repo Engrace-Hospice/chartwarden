@@ -159,7 +159,6 @@ function makeServices(calls: Calls): { plans: PricingPlanService; contracts: Con
       } = contract;
       return { contract: tenantSafe, latestStatement: null };
     },
-    billingServiceModeForOrg: async () => "billing_software",
   };
   return { plans, contracts };
 }

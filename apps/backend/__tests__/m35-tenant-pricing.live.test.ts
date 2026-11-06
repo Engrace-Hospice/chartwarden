@@ -43,7 +43,6 @@ import {
 import {
   type ContractService,
   buildContractService,
-  readBillingServiceMode,
 } from "../src/modules/35-subscription/pricing/contract-service";
 import {
   type CreatePricingPlanInput,
@@ -60,6 +59,7 @@ import {
 import type { M35WriteActor } from "../src/modules/35-subscription/routes/actor";
 import type { PlatformRunner, WriteOutboxPort } from "../src/modules/35-subscription/routes/index";
 import { buildDrizzleM35RouteService } from "../src/modules/35-subscription/routes/service-drizzle";
+import { modeInForce } from "./_billing-mode";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -1237,13 +1237,6 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       );
     });
 
-    it("exposes the mode to another module: the BillingServiceModeReader body reads the tenant's own contract", async () => {
-      const onNov5 = new Date("2026-11-05T12:00:00Z");
-      expect(await readBillingServiceMode(app.db, ORG_A, onNov5)).toBe("billing_software");
-      expect(await readBillingServiceMode(app.db, ORG_B, onNov5)).toBe("none");
-      expect(await readBillingServiceMode(app.db, ORG_C, onNov5)).toBeNull(); // no contract: never read as `none`
-    });
-
     it("a tenant that is still onboarding with NO statement yet changes mode immediately (D6): nothing was billed, so there is no month to protect", async () => {
       const day = "2026-10-21T09:00:00Z";
       const changed = await contractsAt(day).setBillingServiceMode(
@@ -1257,7 +1250,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         billingBps: 100,
         pendingBillingServiceMode: null,
       });
-      expect(await readBillingServiceMode(app.db, ORG_B, new Date(day))).toBe("billing_software");
+      expect(await modeInForce(app.db, ORG_B, new Date(day))).toBe("billing_software");
       // back to `none`, also immediate: later stories read B as a tenant that bills outside
       await contractsAt(day).setBillingServiceMode(
         operator,
@@ -1265,7 +1258,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         "none",
         "the tenant keeps its own billing after all",
       );
-      expect(await readBillingServiceMode(app.db, ORG_B, new Date(day))).toBe("none");
+      expect(await modeInForce(app.db, ORG_B, new Date(day))).toBe("none");
     });
 
     it("a tenant cannot cancel a contracted subscription (403 PLAN_ASSIGNED_BY_OPERATIONS); the subscription is untouched", async () => {
@@ -2310,10 +2303,10 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         effectiveOn: "2026-12-01",
       });
       // the seam answers by date
-      expect(await readBillingServiceMode(app.db, ORG_H, new Date("2026-11-30T23:59:59Z"))).toBe(
+      expect(await modeInForce(app.db, ORG_H, new Date("2026-11-30T23:59:59Z"))).toBe(
         "billing_software",
       );
-      expect(await readBillingServiceMode(app.db, ORG_H, new Date("2026-12-01T00:00:00Z"))).toBe(
+      expect(await modeInForce(app.db, ORG_H, new Date("2026-12-01T00:00:00Z"))).toBe(
         "managed_billing",
       );
 
@@ -2531,7 +2524,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       // the ONE selector: the newest LIVE contract is the second; the canceled first is not "the contract"
       const newest = await platformRunner((tx) => selectNewestContract(tx, "live", nov20, ORG_N));
       expect(newest?.sub.status).toBe("active");
-      expect(await readBillingServiceMode(app.db, ORG_N, nov20)).toBe("billing_software");
+      expect(await modeInForce(app.db, ORG_N, nov20)).toBe("billing_software");
       // and the views show the NEWEST contract, not whichever row the table returns first
       const [activeSub] = await q<{ id: string }>(
         "SELECT id FROM subscription WHERE organization_id=$1 AND status='active'",
@@ -3197,11 +3190,11 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
     it("an onboarding tenant with nothing billed is set to none AT ONCE, audited as the system, and a repeat changes nothing", async () => {
       const day = "2026-11-10T12:00:00Z";
       await sign(ORG_O, "pricing-o", day);
-      expect(await readBillingServiceMode(app.db, ORG_O, new Date(day))).toBe("billing_software");
+      expect(await modeInForce(app.db, ORG_O, new Date(day))).toBe("billing_software");
 
       const first = await contractsAt(day).setModeNoneForOutsideBilling(ORG_O);
       expect(first).toEqual({ changed: true });
-      expect(await readBillingServiceMode(app.db, ORG_O, new Date(day))).toBe("none");
+      expect(await modeInForce(app.db, ORG_O, new Date(day))).toBe("none");
       const audits = await changedAudits(ORG_O);
       expect(audits).toHaveLength(1);
       expect(audits[0]?.context).toMatchObject({
@@ -3232,7 +3225,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         [ORG_P],
       );
       expect(await contractsAt(day).setModeNoneForOutsideBilling(ORG_P)).toEqual({ changed: true });
-      expect(await readBillingServiceMode(app.db, ORG_P, new Date(day))).toBe("billing_software");
+      expect(await modeInForce(app.db, ORG_P, new Date(day))).toBe("billing_software");
       const view = await contractsAt(day).platformView(operator, "pricing-p");
       expect(view.contract?.pendingBillingServiceMode).toEqual({
         billingServiceMode: "none",
