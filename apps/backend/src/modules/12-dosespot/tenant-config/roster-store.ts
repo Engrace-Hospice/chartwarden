@@ -2,12 +2,21 @@
 // enrolment, over ONE open org-scoped transaction (RLS scopes every statement to the tenant). Only the registration's status is
 // read from `dosespot_clinic_registration`; the roster row is `dosespot_prescriber` (M12-owned, both).
 import { type DbClient, schema } from "@chartwarden/db";
-import { and, eq } from "drizzle-orm";
+import { ChartWardenError } from "@chartwarden/types";
+import { and, eq, isNull } from "drizzle-orm";
+import { isUniqueViolation } from "./config-store";
 import type { RosterRow, RosterStore } from "./prescriber-enrollment";
 
 const R = schema.dosespotClinicRegistrations;
 const P = schema.dosespotPrescribers;
 const M = schema.memberships;
+
+const enrollmentInFlight = (): ChartWardenError =>
+  new ChartWardenError(
+    "DOSESPOT_ENROLLMENT_IN_PROGRESS",
+    "an enrollment for this prescriber is already in flight; try again in a couple of minutes",
+    409,
+  );
 
 const toRow = (r: typeof P.$inferSelect): RosterRow => ({
   id: r.id,
@@ -33,7 +42,13 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
       const [row] = await tx
         .select({ id: M.id })
         .from(M)
-        .where(and(eq(M.id, membershipId), eq(M.organizationId, organizationId)))
+        .where(
+          and(
+            eq(M.id, membershipId),
+            eq(M.organizationId, organizationId),
+            eq(M.status, "active"), // a suspended or revoked member is not enrolled with the vendor
+          ),
+        )
         .limit(1);
       return row !== undefined;
     },
@@ -45,16 +60,23 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
         .where(and(eq(P.organizationId, organizationId), eq(P.membershipId, membershipId)))
         .for("update");
       if (!existing) {
-        const [created] = await tx
-          .insert(P)
-          .values({
-            organizationId,
-            membershipId,
-            deaAuthorizedSchedules: [],
-            enrolledAt: at,
-            vendorEnrollmentRequestedAt: at,
-          })
-          .returning();
+        let created: typeof P.$inferSelect | undefined;
+        try {
+          [created] = await tx
+            .insert(P)
+            .values({
+              organizationId,
+              membershipId,
+              deaAuthorizedSchedules: [],
+              enrolledAt: at,
+              vendorEnrollmentRequestedAt: at,
+            })
+            .returning();
+        } catch (err) {
+          // two FIRST enrolments for one membership race on the unique index: the loser is "in flight", never a 500
+          if (isUniqueViolation(err)) throw enrollmentInFlight();
+          throw err;
+        }
         if (!created) throw new Error("dosespot_prescriber insert returned no row");
         return { row: toRow(created), inProgress: false };
       }
@@ -75,11 +97,18 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
       return { row: toRow(stamped), inProgress: false };
     },
 
-    async releaseRequest(organizationId, membershipId) {
+    async releaseRequest(organizationId, membershipId, claimedAt) {
       await tx
         .update(P)
         .set({ vendorEnrollmentRequestedAt: null })
-        .where(and(eq(P.organizationId, organizationId), eq(P.membershipId, membershipId)));
+        .where(
+          and(
+            eq(P.organizationId, organizationId),
+            eq(P.membershipId, membershipId),
+            // only THIS attempt's own marker: a newer claim by someone else is left standing
+            eq(P.vendorEnrollmentRequestedAt, claimedAt),
+          ),
+        );
     },
 
     async recordVendorId(organizationId, membershipId, input) {
@@ -90,9 +119,21 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
           npi: input.npi,
           updatedAt: input.at,
         })
-        .where(and(eq(P.organizationId, organizationId), eq(P.membershipId, membershipId)))
+        .where(
+          and(
+            eq(P.organizationId, organizationId),
+            eq(P.membershipId, membershipId),
+            isNull(P.revokedAt), // revoked while the vendor call was in flight: never link a revoked prescriber
+          ),
+        )
         .returning();
-      if (!row) throw new Error("the roster row vanished before its vendor id was recorded");
+      if (!row) {
+        throw new ChartWardenError(
+          "DOSESPOT_PRESCRIBER_REVOKED",
+          "this prescriber was revoked from the roster while the enrollment was in flight; nothing was linked",
+          409,
+        );
+      }
       return toRow(row);
     },
   };

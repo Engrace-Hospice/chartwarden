@@ -2,9 +2,17 @@ import type { DbClient } from "@chartwarden/db";
 // Slice 4 — a prescriber's DoseSpot (vendor) enrolment: create-then-record. The roster row and the committed
 // `vendor_enrollment_requested_at` come first, the vendor call runs with NO transaction open, and only the vendor's id is
 // recorded as the link `transmit-newrx` sends under. Pure: a fake roster store, a fake vendor client, recording ports.
-import { DegradedError, type DoseSpotClient } from "@chartwarden/dosespot";
+import {
+  ConfigUnavailableError,
+  DOSESPOT_REQUEST_TIMEOUT_MS,
+  DegradedError,
+  type DoseSpotClient,
+  NotEnabledError,
+} from "@chartwarden/dosespot";
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
+  ENROLL_CLAIM_WINDOW_MS,
   type RosterRow,
   type RosterStore,
   createPrescriberEnrollmentService,
@@ -34,6 +42,7 @@ function build(
   } = {},
 ) {
   const log: string[] = [];
+  const releasedWith: Date[] = [];
   let txDepth = 0;
   let calledInsideTx = false;
   let roster: RosterRow | null =
@@ -70,12 +79,23 @@ function build(
       };
       return { row: roster, inProgress: false };
     },
-    async releaseRequest() {
+    async releaseRequest(_org, _membershipId, claimedAt) {
       log.push("releaseRequest");
-      if (roster) roster = { ...roster, vendorEnrollmentRequestedAt: null };
+      releasedWith.push(claimedAt);
+      // only the claimant's OWN marker is cleared: a newer claim by someone else is left standing
+      if (roster?.vendorEnrollmentRequestedAt?.getTime() === claimedAt.getTime()) {
+        roster = { ...roster, vendorEnrollmentRequestedAt: null };
+      }
     },
     async recordVendorId(_org, membershipId, input) {
       log.push("recordVendorId");
+      if (roster?.revokedAt) {
+        throw new ChartWardenError(
+          "DOSESPOT_PRESCRIBER_REVOKED",
+          "revoked while it was being enrolled",
+          409,
+        );
+      }
       roster = {
         ...(roster as RosterRow),
         membershipId,
@@ -135,6 +155,10 @@ function build(
     audits,
     voids,
     calls: () => vendorCalls,
+    releasedWith,
+    setRoster: (r: RosterRow | null) => {
+      roster = r;
+    },
     insideTx: () => calledInsideTx,
     roster: () => roster,
   };
@@ -240,7 +264,7 @@ describe("prescriber vendor enrolment", () => {
     expect(h.voids).toEqual([]);
   });
 
-  it("a transient vendor failure is a retryable 503, and a retry then succeeds", async () => {
+  it("a transient (ambiguous) vendor failure is a retryable 503 that KEEPS the claim: the clinician may have been created", async () => {
     const h = build({
       vendor: async (n) => {
         if (n === 1) {
@@ -259,8 +283,87 @@ describe("prescriber vendor enrolment", () => {
       statusCode: 503,
       code: "DOSESPOT_UNAVAILABLE",
     });
+    expect(h.log).not.toContain("releaseRequest");
+    expect(h.roster()?.vendorEnrollmentRequestedAt).not.toBeNull();
+    // an immediate retry is refused (the first attempt may still be in flight at the vendor)...
+    await expect(h.service.enroll(ACTOR, MEMBER, BODY)).rejects.toMatchObject({
+      code: "DOSESPOT_ENROLLMENT_IN_PROGRESS",
+    });
+    expect(h.calls()).toBe(1);
+    // ...and once the window has passed the retry goes through
+    clock.at = new Date(clock.at.getTime() + ENROLL_CLAIM_WINDOW_MS + 1000);
     expect((await h.service.enroll(ACTOR, MEMBER, BODY)).enrolledWithDoseSpot).toBe(true);
     expect(h.roster()?.dosespotPrescriberId).toBe("701");
+    clock.at = new Date("2026-11-06T12:00:00.000Z");
+  });
+
+  it("releases the claim when nothing could have reached the vendor (no live registration, an unreadable credential)", async () => {
+    for (const err of [
+      new NotEnabledError(
+        "dosespot",
+        "enrollPrescriber",
+        "E-prescribe is not enabled for this organization.",
+        "c5",
+      ),
+      new ConfigUnavailableError(
+        "dosespot",
+        "enrollPrescriber",
+        "temporarily unavailable",
+        "c6",
+        new Error("kek"),
+      ),
+    ]) {
+      const h = build({
+        vendor: async () => {
+          throw err;
+        },
+      });
+      await expect(h.service.enroll(ACTOR, MEMBER, BODY)).rejects.toBeDefined();
+      expect(h.log).toContain("releaseRequest");
+      expect(h.roster()?.vendorEnrollmentRequestedAt).toBeNull();
+    }
+  });
+
+  it("the release names the marker THIS attempt stamped, so it can never clear a newer claim", async () => {
+    const h = build({
+      vendor: async () => {
+        // while this attempt was calling out, its claim aged out and another admin's attempt stamped a newer marker
+        h.setRoster({
+          ...(h.roster() as RosterRow),
+          vendorEnrollmentRequestedAt: new Date("2026-11-06T12:09:00.000Z"),
+        });
+        throw new DegradedError(
+          "dosespot",
+          "enrollPrescriber",
+          false,
+          "DoseSpot rejected the request (HTTP 422).",
+          "c1",
+        );
+      },
+    });
+    await expect(h.service.enroll(ACTOR, MEMBER, BODY)).rejects.toMatchObject({ statusCode: 422 });
+    expect(h.releasedWith).toEqual([new Date("2026-11-06T12:00:00.000Z")]);
+    expect(h.roster()?.vendorEnrollmentRequestedAt).toEqual(new Date("2026-11-06T12:09:00.000Z")); // theirs, untouched
+  });
+
+  it("the claim window outlasts the worst-case vendor call (a token mint and the call, twice for a forced re-mint)", () => {
+    expect(ENROLL_CLAIM_WINDOW_MS).toBeGreaterThan(4 * DOSESPOT_REQUEST_TIMEOUT_MS);
+  });
+
+  it("a prescriber revoked while the vendor call was in flight is not linked: the record refuses (409)", async () => {
+    const h = build({
+      vendor: async () => {
+        h.setRoster({
+          ...(h.roster() as RosterRow),
+          revokedAt: new Date("2026-11-06T12:00:30.000Z"),
+        });
+        return { dosespotPrescriberId: "702", epcsEnrollmentStarted: false };
+      },
+    });
+    await expect(h.service.enroll(ACTOR, MEMBER, BODY)).rejects.toMatchObject({
+      code: "DOSESPOT_PRESCRIBER_REVOKED",
+    });
+    expect(h.published).toEqual([]);
   });
 
   it("a second enrolment while one is in flight is a 409 and makes no second vendor call (the claim)", async () => {

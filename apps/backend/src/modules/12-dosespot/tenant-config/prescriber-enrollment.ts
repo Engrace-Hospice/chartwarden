@@ -12,7 +12,12 @@
 // A crash between 2 and 3 leaves the request marker set with no vendor id and an orphan clinician at DoseSpot; a retry may meet a
 // vendor duplicate (DoseSpot's dedupe by NPI is unverified: it needs a sandbox run). Enrolment never starts EPCS or IAL2.
 import type { DbClient } from "@chartwarden/db";
-import { type DoseSpotClient, isDegradedError } from "@chartwarden/dosespot";
+import {
+  type DoseSpotClient,
+  isConfigUnavailableError,
+  isDegradedError,
+  isNotEnabledError,
+} from "@chartwarden/dosespot";
 import { ChartWardenError, NotFoundError, ValidationError } from "@chartwarden/types";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 import { CLINIC_AUDIT_EVENTS, type ClinicAuditPort } from "./audit-port";
@@ -43,8 +48,11 @@ export interface RosterStore {
     at: Date,
     claimWindowMs: number,
   ): Promise<{ readonly row: RosterRow; readonly inProgress: boolean }>;
-  /** Release the claim after a vendor failure, so a corrected retry need not wait out the window. */
-  releaseRequest(organizationId: string, membershipId: string): Promise<void>;
+  /**
+   * Release the claim after a DEFINITIVE refusal, so a corrected retry need not wait out the window. Conditional on THIS attempt's own
+   * marker (`claimedAt`): a claim that aged out and was re-stamped by another administrator must not be cleared by the first attempt.
+   */
+  releaseRequest(organizationId: string, membershipId: string, claimedAt: Date): Promise<void>;
   /** Record the vendor link and the NPI the enrolment was made under. */
   recordVendorId(
     organizationId: string,
@@ -71,8 +79,13 @@ export interface EnrollInput {
   readonly lastName: string;
 }
 
-/** How long a committed request marker with no vendor id means "another enrolment is in flight" (or crashed): then a retry may go. */
-export const ENROLL_CLAIM_WINDOW_MS = 120_000;
+/**
+ * How long a committed request marker with no vendor id means "another enrolment is in flight (or crashed)": then a retry may go. It
+ * must outlast the WORST-CASE vendor call, or a slow first attempt would be raced by a second one that creates a duplicate clinician:
+ * one DoseSpot request times out at `DOSESPOT_REQUEST_TIMEOUT_MS`, and the call is a token mint plus the add (and the same again for a
+ * forced re-mint on a 401), so four timeouts; the window is five minutes, well past that.
+ */
+export const ENROLL_CLAIM_WINDOW_MS = 5 * 60_000;
 
 /** What step 1 read and validated: everything the vendor call and the record need, so no store call is open while DoseSpot is called. */
 export interface EnrollPlan {
@@ -80,6 +93,8 @@ export interface EnrollPlan {
   readonly userId: string;
   readonly membershipId: string;
   readonly input: EnrollInput;
+  /** The marker THIS attempt stamped (null when the prescriber was already linked and nothing was claimed). */
+  readonly claimedAt: Date | null;
   /** The prescriber is already linked to DoseSpot: there is nothing to call or record. */
   readonly alreadyLinked: boolean;
 }
@@ -157,6 +172,12 @@ function validate(input: EnrollInput): EnrollInput {
   return { npi: input.npi, firstName, lastName };
 }
 
+/** Did the call definitely NOT create a clinician? A refusal (non-retryable), or a failure before anything was sent. */
+function isDefinitive(err: unknown): boolean {
+  if (isNotEnabledError(err) || isConfigUnavailableError(err)) return true;
+  return isDegradedError(err) && !err.retryable;
+}
+
 /** A vendor failure as a typed error: retryable => 503, a refusal => 422. No vendor text beyond the PHI-free message. */
 function vendorError(err: unknown): never {
   if (isDegradedError(err)) {
@@ -179,7 +200,7 @@ export function createPrescriberEnrollmentService(
   ): Promise<EnrollPlan> {
     const input = validate(rawInput);
     const { organizationId } = actor;
-    const alreadyLinked = await deps.inTx(organizationId, actor.userId, async (store) => {
+    const claim = await deps.inTx(organizationId, actor.userId, async (store) => {
       const status = await store.configStatus(organizationId);
       if (status !== "verified" && status !== "active") {
         throw new ChartWardenError(
@@ -212,9 +233,13 @@ export function createPrescriberEnrollmentService(
           409,
         );
       }
-      return row.dosespotPrescriberId !== null;
+      return {
+        alreadyLinked: row.dosespotPrescriberId !== null,
+        claimedAt: row.dosespotPrescriberId === null ? row.vendorEnrollmentRequestedAt : null,
+      };
     });
-    return { organizationId, userId: actor.userId, membershipId, input, alreadyLinked };
+    const { alreadyLinked, claimedAt } = claim;
+    return { organizationId, userId: actor.userId, membershipId, input, claimedAt, alreadyLinked };
   }
 
   async function callVendor(plan: EnrollPlan): Promise<string | null> {
@@ -229,12 +254,17 @@ export function createPrescriberEnrollmentService(
       });
       return out.dosespotPrescriberId;
     } catch (err) {
-      // release the claim so a corrected retry need not wait out the window (best effort: the window expires on its own)
-      await deps
-        .inTx(plan.organizationId, plan.userId, (store) =>
-          store.releaseRequest(plan.organizationId, plan.membershipId),
-        )
-        .catch(() => undefined);
+      // Release the claim ONLY when the outcome is definitive: DoseSpot refused (a non-retryable refusal), or nothing could have reached
+      // it (no live registration, an unreadable credential). A retryable or ambiguous outcome (a 5xx, a timeout) may well mean the
+      // clinician WAS created, so the marker stays for the window and a second attempt waits for it.
+      if (plan.claimedAt !== null && isDefinitive(err)) {
+        const claimedAt = plan.claimedAt;
+        await deps
+          .inTx(plan.organizationId, plan.userId, (store) =>
+            store.releaseRequest(plan.organizationId, plan.membershipId, claimedAt),
+          )
+          .catch(() => undefined);
+      }
       return vendorError(err);
     }
   }
