@@ -509,13 +509,16 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     return deps.notices;
   }
 
-  /** Post-commit, best effort: the advance pass that settles wizard step 7. A failure is logged and never thrown. */
+  /** Post-commit, best effort: the advance pass that settles wizard step 7. A failure is warned (like `settleAfterWrite`) and never thrown. */
   async function settleStepAfter<T>(organizationId: string, result: T): Promise<T> {
     if (!deps.settleOnboarding) return result;
     try {
       await deps.settleOnboarding(organizationId);
     } catch (cause) {
-      deps.logError?.(cause, { organizationId });
+      deps.warn?.("m34.onboarding data: onboarding settle after a clearinghouse change failed", {
+        organizationId,
+        err: cause,
+      });
     }
     return result;
   }
