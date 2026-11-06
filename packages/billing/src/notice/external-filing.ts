@@ -107,3 +107,63 @@ export function planExternalFilingRecord(input: ExternalFilingRecordInput): Exte
     late,
   };
 }
+
+export type ExternalFilingWithdrawalRefusalCode =
+  | "NOTICE_NOT_FILED_EXTERNALLY"
+  | "NOTICE_FILING_RECORD_CHANGED";
+
+export type ExternalFilingWithdrawalPlan =
+  | {
+      readonly kind: "withdraw";
+      /** The filed date the withdrawn record carried (the platform audit row names it). */
+      readonly withdrawnFiledOn: IsoDate;
+    }
+  | {
+      readonly kind: "refuse";
+      readonly code: ExternalFilingWithdrawalRefusalCode;
+      readonly status: 409;
+      readonly message: string;
+    };
+
+export interface ExternalFilingWithdrawalInput {
+  readonly externalFilingStatus: ExternalFilingStatus | null;
+  readonly filedExternallyOn: IsoDate | null;
+  /** When the tenant recorded the filing (UTC ISO instant), the identity of the record the operator read. */
+  readonly filedExternallyRecordedAt: string | null;
+  /** The `recordedAt` the operator read (the route's `If-Match`). */
+  readonly expectedRecordedAt: string;
+}
+
+/**
+ * A platform operator withdraws a tenant's "filed outside ChartWarden" record: the one way back from `filed` (the tenant cannot,
+ * and a cancel refuses). It applies to the record the operator READ or to nothing: a record withdrawn and re-recorded since has a
+ * new `recordedAt`, and withdrawing that one unseen is a 409. PURE: it never touches a breach stamp (what the watchdog observed
+ * stays); the caller clears the marker and the three filed columns together (the table's CHECK moves them as one).
+ */
+export function planExternalFilingWithdrawal(
+  input: ExternalFilingWithdrawalInput,
+): ExternalFilingWithdrawalPlan {
+  if (
+    input.externalFilingStatus !== "filed" ||
+    input.filedExternallyOn === null ||
+    input.filedExternallyRecordedAt === null
+  ) {
+    return {
+      kind: "refuse",
+      code: "NOTICE_NOT_FILED_EXTERNALLY",
+      status: 409,
+      message:
+        "this notice is not recorded as filed outside ChartWarden: there is nothing to withdraw",
+    };
+  }
+  if (input.filedExternallyRecordedAt !== input.expectedRecordedAt) {
+    return {
+      kind: "refuse",
+      code: "NOTICE_FILING_RECORD_CHANGED",
+      status: 409,
+      message:
+        "the filing record changed since it was read; read the notice again and withdraw the record it now shows",
+    };
+  }
+  return { kind: "withdraw", withdrawnFiledOn: input.filedExternallyOn };
+}

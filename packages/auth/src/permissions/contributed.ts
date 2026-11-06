@@ -3031,6 +3031,13 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // A platform operator withdraws a tenant's "filed outside ChartWarden" NOE / NOTR record (see the M34 module's permission-keys.ts).
+  "tenant_notice_filing.withdraw_platform": {
+    resource: "tenant_notice_filing",
+    action: "withdraw_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M34 contributed permission keys. */

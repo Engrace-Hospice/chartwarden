@@ -23,6 +23,7 @@
  *   - a suspended subscription still refuses new claims work through the real seams (D1); a claim job for a draft config is held.
  */
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -55,11 +56,14 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import { getSeam, registerSeam } from "../src/bootstrap/seams/registry";
 import { m34PlatformBypassAuditor } from "../src/index";
 import { buildClearinghouseAuditPort } from "../src/m23-clearinghouse-audit";
+import { buildDrizzleM23WriteService } from "../src/modules/23-billing-medicare/index";
 import { holdBeforeRun } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
 import {
   buildDrizzleOrgMacJurisdictionReader,
   buildMacFeedConfiguredReader,
 } from "../src/modules/23-billing-medicare/jobs/mac-jurisdictions";
+import { buildExternalNoticeOnboardingPort } from "../src/modules/23-billing-medicare/services/external-notice-onboarding-port";
+import { priorElectionClosureForOrg } from "../src/modules/23-billing-medicare/services/prior-election-closure";
 import { createDrizzleConfigStore } from "../src/modules/23-billing-medicare/tenant-clearinghouse/config-store";
 import { buildTenantClearinghouseOnboardingPort } from "../src/modules/23-billing-medicare/tenant-clearinghouse/onboarding-port";
 import { registerM23TenantClearinghouseSeams } from "../src/modules/23-billing-medicare/tenant-clearinghouse/register";
@@ -371,6 +375,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         platformJobId: JOB_ID,
       }),
       clearinghouse: buildTenantClearinghouseOnboardingPort({ db: tenantPool.db, service }),
+      notices: buildExternalNoticeOnboardingPort(),
       settleOnboarding,
     });
 
@@ -391,6 +396,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
                 "tenant_clearinghouse.read_platform",
                 "tenant_clearinghouse.write_platform",
                 "tenant_clearinghouse.verify_baa_platform",
+                "tenant_notice_filing.withdraw_platform",
               ],
             },
           ],
@@ -1108,5 +1114,285 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     );
     expect(triggerRows.length).toBeGreaterThan(0);
     for (const row of triggerRows) expect(row.after.secret_cipher).toBe("<changed>");
+  });
+
+  // ── an operator withdraws a tenant's "filed outside ChartWarden" NOE / NOTR record ───────────────────────────────────────────
+  // The tenant cannot undo the record and a cancel refuses, so a mistaken or false one would be permanent. The platform operator's
+  // route runs on the tenant pool under the target org's RLS (the real NOBYPASSRLS role); the slug lookup is the real platform login.
+  describe("an operator withdraws a tenant's external-filing record", () => {
+    const WITHDRAW_REASON = "Tenant filed this in error; they confirmed by phone, ticket CHG-7001";
+    const RECORDED_AT = new Date("2026-11-09T10:30:00.123Z");
+    const FILED_ON = "2026-11-04";
+    const STAMP = "2026-11-07";
+    const withdrawUrl = (kind: "noe" | "notr", slug: string, id: string) =>
+      `/api/v1/platform/tenants/${slug}/${kind}-records/${id}/withdraw-external-filing`;
+    const withdraw = (
+      kind: "noe" | "notr",
+      id: string,
+      over: {
+        slug?: string;
+        payload?: object;
+        headers?: Record<string, string>;
+        pin?: string | null;
+      } = {},
+    ) =>
+      server.inject({
+        method: "POST",
+        url: withdrawUrl(kind, over.slug ?? "ch-a", id),
+        headers: {
+          ...opsWrite(),
+          ...(over.pin === null
+            ? {}
+            : { "if-match": `"${over.pin ?? RECORDED_AT.toISOString()}"` }),
+          ...(over.headers ?? {}),
+        },
+        payload: over.payload ?? { reason: WITHDRAW_REASON },
+      });
+
+    /** A notice the tenant recorded as filed outside ChartWarden (state READY, a breach stamp set, a pinned record time). */
+    async function seedFiledNotice(
+      kind: "noe" | "notr",
+      org = ORG_A,
+      over: { admissionId?: string; patientId?: string; marker?: "filed" | "pending" | null } = {},
+    ): Promise<string> {
+      const marker = over.marker === undefined ? "filed" : over.marker;
+      const filed = marker === "filed";
+      const common = [
+        org,
+        randomUUID(), // provider entity: a logical FK (no row needed)
+        over.patientId ?? randomUUID(),
+        over.admissionId ?? randomUUID(),
+      ];
+      const tail = [
+        marker,
+        filed ? FILED_ON : null,
+        filed ? RECORDED_AT : null,
+        filed ? MEMBERSHIP : null,
+        STAMP,
+        `WD-${randomUUID().slice(0, 12)}`,
+      ];
+      const [row] =
+        kind === "noe"
+          ? await q<{ id: string }>(
+              `INSERT INTO noe_record (organization_id, provider_entity_id, patient_id, admission_id, election_period_id, state,
+                      election_effective_date, window_target_at, external_filing_status, filed_externally_on,
+                      filed_externally_recorded_at, filed_externally_by_membership_id, window_breached_at, noe_control_number)
+               VALUES ($1,$2,$3,$4,$5,'READY','2026-11-01','2026-11-06',$6,$7,$8,$9,$10,$11) RETURNING id`,
+              [...common, randomUUID(), ...tail],
+            )
+          : await q<{ id: string }>(
+              `INSERT INTO notr_record (organization_id, provider_entity_id, patient_id, admission_id, trigger_kind, discharge_event_id,
+                      effective_end_date, window_target_at, state, external_filing_status, filed_externally_on,
+                      filed_externally_recorded_at, filed_externally_by_membership_id, window_breached_at, notr_control_number)
+               VALUES ($1,$2,$3,$4,'discharge',$5,'2026-11-01','2026-11-06','READY',$6,$7,$8,$9,$10,$11) RETURNING id`,
+              [...common, randomUUID(), ...tail],
+            );
+      return (row as { id: string }).id;
+    }
+    const table = (kind: "noe" | "notr") => (kind === "noe" ? "noe_record" : "notr_record");
+    const rowOf = async (kind: "noe" | "notr", id: string) =>
+      (
+        await q<Record<string, unknown>>(
+          `SELECT state, version, external_filing_status, filed_externally_on::text AS filed_on,
+                  filed_externally_recorded_at AS recorded_at, filed_externally_by_membership_id AS by,
+                  window_breached_at::text AS breached
+             FROM ${table(kind)} WHERE id=$1`,
+          [id],
+        )
+      )[0] as Record<string, unknown>;
+    const withdrawAuditRows = (id: string) =>
+      q<{ actor_user_id: string; outcome: string; context: Record<string, unknown> }>(
+        `SELECT actor_user_id, outcome, context FROM audit_event
+          WHERE event_type='m34.tenant_onboarding.notice_external_filing_withdrawn' AND resource_id=$1`,
+        [id],
+      );
+
+    it.each(["noe", "notr"] as const)(
+      "%s: the operator withdraws the record the tenant filed: the notice is back to its pre-record state, a breach stamp stays, and the audit names the operator, the reason and the date",
+      async (kind) => {
+        const id = await seedFiledNotice(kind);
+        const before = await rowOf(kind, id);
+
+        const res = await withdraw(kind, id);
+
+        expect(res.statusCode, res.body).toBe(200);
+        expect(res.json()).toEqual({
+          noticeKind: kind,
+          noticeId: id,
+          state: "ready",
+          windowTargetAt: "2026-11-06",
+          windowBreachedAt: STAMP,
+          externalFiling: null,
+        });
+        expect(await rowOf(kind, id)).toMatchObject({
+          state: "READY",
+          external_filing_status: null,
+          filed_on: null,
+          recorded_at: null,
+          by: null,
+          breached: STAMP, // the watchdog's stamp is never cleared
+          version: (before.version as number) + 1,
+        });
+        // the platform audit row: the operator, the tenant, the reason, the filed date withdrawn, the record's recordedAt
+        const audit = await withdrawAuditRows(id);
+        expect(audit).toHaveLength(1);
+        expect(audit[0]).toMatchObject({ actor_user_id: OPERATOR, outcome: "success" });
+        expect(audit[0]?.context).toMatchObject({
+          targetOrganizationId: ORG_A,
+          targetOrgSlug: "ch-a",
+          operatorUserId: OPERATOR,
+          reason: WITHDRAW_REASON,
+          noticeKind: kind,
+          withdrawnFiledOn: FILED_ON,
+          withdrawnRecordedAt: RECORDED_AT.toISOString(),
+        });
+        // the notice table's own trigger records the change under the OPERATOR (before 'filed', after cleared)
+        const trigger = await q<{
+          actor_user_id: string;
+          before: Record<string, unknown>;
+          after: Record<string, unknown>;
+        }>(
+          `SELECT actor_user_id, before, after FROM audit_event
+            WHERE resource_kind='${table(kind)}' AND resource_id=$1 AND event_type='${table(kind)}.update'`,
+          [id],
+        );
+        expect(trigger).toHaveLength(1);
+        expect(trigger[0]).toMatchObject({
+          actor_user_id: OPERATOR,
+          before: { external_filing_status: "filed" },
+          after: { external_filing_status: null, filed_externally_on: null },
+        });
+        // a second withdrawal of the same record has nothing left to withdraw
+        const again = await withdraw(kind, id);
+        expect(again.statusCode).toBe(409);
+        expect(errorCode(again)).toBe("NOTICE_NOT_FILED_EXTERNALLY");
+      },
+    );
+
+    it("a tenant credential is refused (a tenant cannot withdraw its own record), and so is a request without the platform key; nothing changes", async () => {
+      const id = await seedFiledNotice("noe");
+      const asTenantAdmin = await server.inject({
+        method: "POST",
+        url: withdrawUrl("noe", "ch-a", id),
+        headers: { ...tenantWrite(ORG_A), "if-match": `"${RECORDED_AT.toISOString()}"` },
+        payload: { reason: WITHDRAW_REASON },
+      });
+      expect(asTenantAdmin.statusCode).toBe(403);
+      // a platform operator WITHOUT a fresh step-up
+      const noStepUp = await server.inject({
+        method: "POST",
+        url: withdrawUrl("noe", "ch-a", id),
+        headers: {
+          ...OPS,
+          "idempotency-key": `live-${++seq}`,
+          "if-match": `"${RECORDED_AT.toISOString()}"`,
+        },
+        payload: { reason: WITHDRAW_REASON },
+      });
+      expect(noStepUp.statusCode).toBe(403);
+      expect(await rowOf("noe", id)).toMatchObject({ external_filing_status: "filed", version: 0 });
+      expect(await withdrawAuditRows(id)).toEqual([]);
+    });
+
+    it("a missing or blank reason is a 422, a missing If-Match is a 428, a stale If-Match is a 409 (audited as a failed attempt), a notice not recorded as filed is a 409: nothing is written", async () => {
+      const id = await seedFiledNotice("noe");
+      expect((await withdraw("noe", id, { payload: {} })).statusCode).toBe(422);
+      expect((await withdraw("noe", id, { payload: { reason: "          " } })).statusCode).toBe(
+        422,
+      );
+      const noPin = await withdraw("noe", id, { pin: null });
+      expect(noPin.statusCode).toBe(428);
+
+      const stale = await withdraw("noe", id, { pin: "2026-11-08T08:00:00.000Z" });
+      expect(stale.statusCode).toBe(409);
+      expect(errorCode(stale)).toBe("NOTICE_FILING_RECORD_CHANGED");
+      expect(await rowOf("noe", id)).toMatchObject({ external_filing_status: "filed", version: 0 });
+      // the failed attempt leaves its own denied row (the operator, the reason, the error code; never a body value)
+      const failed = await q<{ actor_user_id: string; context: Record<string, unknown> }>(
+        `SELECT actor_user_id, context FROM audit_event
+          WHERE event_type='m34.tenant_onboarding.write_failed' AND resource_kind='noe_record'
+            AND context->>'errorCode'='NOTICE_FILING_RECORD_CHANGED' AND context->>'reason'=$1`,
+        [WITHDRAW_REASON],
+      );
+      expect(failed.length).toBeGreaterThanOrEqual(1);
+      expect(failed[0]?.actor_user_id).toBe(OPERATOR);
+
+      const pending = await seedFiledNotice("noe", ORG_A, { marker: "pending" });
+      const notFiled = await withdraw("noe", pending);
+      expect(notFiled.statusCode).toBe(409);
+      expect(errorCode(notFiled)).toBe("NOTICE_NOT_FILED_EXTERNALLY");
+      expect(await rowOf("noe", pending)).toMatchObject({ external_filing_status: "pending" });
+    });
+
+    it("cross-tenant: org B's notice cannot be withdrawn through org A's slug (a non-leaking 404), and an unknown slug is a 404", async () => {
+      const bs = await seedFiledNotice("notr", ORG_B);
+      const res = await withdraw("notr", bs, { slug: "ch-a" });
+      expect(res.statusCode).toBe(404);
+      expect((await withdraw("notr", bs, { slug: "no-such-tenant" })).statusCode).toBe(404);
+      expect(await rowOf("notr", bs)).toMatchObject({
+        external_filing_status: "filed",
+        version: 0,
+      });
+    });
+
+    it("a NOTR withdrawal reopens the prior election its record closed: the closure read and a readmission's NOE submit both follow the marker", async () => {
+      const priorAdmission = randomUUID();
+      const patientId = randomUUID();
+      const notrId = await seedFiledNotice("notr", ORG_A, {
+        admissionId: priorAdmission,
+        patientId,
+      });
+      // the readmission's NOE (a DRAFT of the same patient), and an M23 write service that reports the prior stay as live-ended
+      const [noe] = await q<{ id: string }>(
+        `INSERT INTO noe_record (organization_id, provider_entity_id, patient_id, admission_id, election_period_id, state,
+                election_effective_date, window_target_at, noe_control_number)
+         VALUES ($1,$2,$3,$4,$5,'DRAFT','2026-11-01','2026-11-06',$6) RETURNING id`,
+        [
+          ORG_A,
+          randomUUID(),
+          patientId,
+          randomUUID(),
+          randomUUID(),
+          `WD-${randomUUID().slice(0, 12)}`,
+        ],
+      );
+      const writeService = buildDrizzleM23WriteService(tenantPool.db as never, {
+        jobs: { enqueue: async () => ({ jobId: randomUUID() }) },
+        billsOutside: async () => true,
+        priorLiveEndedStay: {
+          latestPriorLiveEndedAdmission: async () => ({ admissionId: priorAdmission }),
+        },
+      });
+      const actor = {
+        organizationId: ORG_A,
+        userId: TENANT_ADMIN,
+        membershipId: MEMBERSHIP,
+        roles: ["billing_specialist"],
+        actorKind: "user",
+        stepUpRecent: true,
+      } as never;
+      const closure = () =>
+        priorElectionClosureForOrg(tenantPool.db as never, ORG_A, {
+          admissionId: priorAdmission,
+          patientId,
+        });
+
+      expect((await closure()).notrFiled).toBe(true);
+      // the election is closed: the readmission's NOE is accepted (parked: this org files outside ChartWarden)
+      await expect(
+        writeService.submitNoe(actor, (noe as { id: string }).id),
+      ).resolves.toMatchObject({ externalFiling: "pending" });
+
+      const res = await withdraw("notr", notrId);
+      expect(res.statusCode, res.body).toBe(200);
+
+      expect((await closure()).notrFiled).toBe(false);
+      await expect(writeService.submitNoe(actor, (noe as { id: string }).id)).rejects.toMatchObject(
+        {
+          code: "PRIOR_ELECTION_NOT_CLOSED",
+          statusCode: 409,
+        },
+      );
+    });
   });
 });

@@ -275,3 +275,21 @@ export const OnboardingClearinghouseVerifyResponseSchema = Type.Object({
   config: OnboardingClearinghouseViewSchema,
   test: Nullable(Type.Object({ outcome: ClearinghouseOutcome })),
 });
+
+/** The notice after an operator withdrew its external-filing record: ids, a state and dates only (no patient, no admission). */
+export const OnboardingNoticeWithdrawalViewSchema = Type.Object({
+  noticeKind: Type.Union([Type.Literal("noe"), Type.Literal("notr")]),
+  noticeId: Type.String({ format: "uuid" }),
+  state: Type.String({ description: "The notice's own state, unchanged by the withdrawal." }),
+  windowTargetAt: Type.String({ format: "date" }),
+  windowBreachedAt: Nullable(
+    Type.String({
+      format: "date",
+      description:
+        "A breach stamp (the deadline watchdog's, or a late record's) is never cleared by a withdrawal.",
+    }),
+  ),
+  externalFiling: Type.Null({
+    description: "The record is gone: the notice is back to its pre-record state.",
+  }),
+});

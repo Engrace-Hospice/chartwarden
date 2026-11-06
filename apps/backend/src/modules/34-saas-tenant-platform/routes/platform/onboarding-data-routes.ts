@@ -48,6 +48,8 @@ const CLEARINGHOUSE_READ_KEY = "tenant_clearinghouse.read_platform";
 const CLEARINGHOUSE_WRITE_KEY = "tenant_clearinghouse.write_platform";
 /** Owner decision D2: verifying the BAA a tenant recorded for its own vendor account is its own key (a separable duty). */
 const CLEARINGHOUSE_VERIFY_BAA_KEY = "tenant_clearinghouse.verify_baa_platform";
+/** An operator withdrawing a tenant's "filed outside ChartWarden" NOE / NOTR record is its own key (a separable duty). */
+const NOTICE_WITHDRAW_KEY = "tenant_notice_filing.withdraw_platform";
 const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -91,6 +93,14 @@ const CLEARINGHOUSE_VERIFY_BAA: readonly PreHandler[] = [
   P(CLEARINGHOUSE_VERIFY_BAA_KEY),
   OPS(CLEARINGHOUSE_VERIFY_BAA_KEY),
   requireStepUp(CLEARINGHOUSE_VERIFY_BAA_KEY) as PreHandler,
+  rejectAiActor(),
+  requireIdempotencyKey,
+];
+
+const NOTICE_WITHDRAW: readonly PreHandler[] = [
+  P(NOTICE_WITHDRAW_KEY),
+  OPS(NOTICE_WITHDRAW_KEY),
+  requireStepUp(NOTICE_WITHDRAW_KEY) as PreHandler,
   rejectAiActor(),
   requireIdempotencyKey,
 ];
@@ -171,20 +181,24 @@ export const targetTenantScopeOf = (request: FastifyRequest): string | undefined
   return typeof slug === "string" && slug.length > 0 ? slug : undefined;
 };
 
-const BAA_PIN_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const RECORDED_AT_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 /**
- * The REQUIRED `If-Match` of the BAA verification: the `baa.recordedAt` the operator read, a UTC ISO timestamp (quoted, weak-prefixed
- * or bare). The verification applies to that record or to nothing, so a tenant that swaps its BAA between the operator's read and click
- * cannot get the new document verified unseen (re-review M1).
+ * The REQUIRED `If-Match` of an action pinned to a record the operator read: that record's `recordedAt`, a UTC ISO timestamp
+ * (quoted, weak-prefixed or bare). The action applies to that record or to nothing, so a tenant that swaps its BAA (or re-records a
+ * filing) between the operator's read and click cannot get the new one acted on unseen (re-review M1). `subject` names the record
+ * in the refusal messages.
  */
-function requiredBaaPin(request: FastifyRequest): { readonly recordedAt: string } {
+function requiredRecordedAtPin(
+  request: FastifyRequest,
+  subject: string,
+): { readonly recordedAt: string } {
   const raw = request.headers["if-match"];
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (typeof value !== "string" || value.length === 0) {
     throw new ChartWardenError(
       "IF_MATCH_REQUIRED",
-      "an If-Match header naming the BAA record's recordedAt is required on this route",
+      `an If-Match header naming the ${subject}'s recordedAt is required on this route`,
       428,
     );
   }
@@ -192,14 +206,14 @@ function requiredBaaPin(request: FastifyRequest): { readonly recordedAt: string 
     .trim()
     .replace(/^W\//, "")
     .replace(/^"(.*)"$/, "$1");
-  const real = BAA_PIN_ISO.test(recordedAt) && new Date(recordedAt).toISOString() === recordedAt;
+  const real =
+    RECORDED_AT_ISO.test(recordedAt) && new Date(recordedAt).toISOString() === recordedAt;
   if (!real) {
     throw new ValidationError("request validation failed", [
       {
         field: "If-Match",
         code: "INVALID",
-        message:
-          "If-Match must be the BAA record's recordedAt, a UTC timestamp such as 2026-11-05T21:30:00.123Z",
+        message: `If-Match must be the ${subject}'s recordedAt, a UTC timestamp such as 2026-11-05T21:30:00.123Z`,
       },
     ]);
   }
@@ -390,7 +404,41 @@ export function registerOnboardingDataRoutes(
     async (request) => {
       const op = operatorOf(request);
       const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
-      return service.verifyClearinghouseBaa(op, slugOf(request), reason, requiredBaaPin(request));
+      return service.verifyClearinghouseBaa(
+        op,
+        slugOf(request),
+        reason,
+        requiredRecordedAtPin(request, "BAA record"),
+      );
     },
+  );
+
+  // POST {noe,notr}-records/:id/withdraw-external-filing — the operator withdraws the tenant's "filed outside ChartWarden" record of
+  // one notice: it returns to its pre-record state and can be recorded or submitted again; a breach stamp is never touched (a NOTR
+  // reopens the prior election its record closed). Not gated on the tenant's onboarding status. Pinned: `If-Match` is the record's
+  // `externalFiling.recordedAt` (see requiredRecordedAtPin); a record that changed since is a 409. The audit row names the operator,
+  // the tenant, the reason and the filed date withdrawn.
+  const withdrawExternalFiling = (kind: "noe" | "notr") => async (request: FastifyRequest) => {
+    const op = operatorOf(request);
+    const { orgSlug, id } = idParamsOf(request);
+    const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+    return service.withdrawNoticeExternalFiling(
+      op,
+      orgSlug,
+      kind,
+      id,
+      reason,
+      requiredRecordedAtPin(request, "filing record"),
+    );
+  };
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/noe-records/:id/withdraw-external-filing",
+    { preHandler: [...NOTICE_WITHDRAW] },
+    withdrawExternalFiling("noe"),
+  );
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/notr-records/:id/withdraw-external-filing",
+    { preHandler: [...NOTICE_WITHDRAW] },
+    withdrawExternalFiling("notr"),
   );
 }
