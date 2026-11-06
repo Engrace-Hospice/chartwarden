@@ -475,4 +475,5 @@ export {
 export {
   type OnboardingDataRouteDeps,
   registerOnboardingDataRoutes,
+  targetTenantScopeOf,
 } from "./routes/platform/onboarding-data-routes";

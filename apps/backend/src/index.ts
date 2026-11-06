@@ -1603,6 +1603,7 @@ import {
   registerTenantPlatformAbacPredicates,
   scheduleM34BundleExpiryJob,
   scheduleM34PlatformSweepJobs,
+  targetTenantScopeOf,
   validateModule34Seams,
   voidPendingGoLiveForDataChange,
   wireM34AlertRuleSeed,
@@ -6164,6 +6165,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 store: rateLimitStore ?? createInMemoryRateLimitStore(),
                 limit: CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
                 keyPrefix: "m34-clearinghouse-verify",
+                // The vendor account being probed is the TENANT's, not the operator's org (the platform org, shared by every
+                // operator): count per target tenant, so one tenant's probing neither starves another's nor escapes its own cap.
+                scopeOf: targetTenantScopeOf,
               }),
               service: buildDrizzleOnboardingDataService({
                 db: dbHandle.db,

@@ -162,6 +162,15 @@ function optionalIfMatch(request: FastifyRequest): number | undefined {
   return parsed;
 }
 
+/**
+ * The tenant a platform route acts on, the scope its rate limiter counts under: every operator belongs to the one platform org, so
+ * counting under the caller's own org would pool every tenant's (and every operator's) budget into a single bucket (re-review L7).
+ */
+export const targetTenantScopeOf = (request: FastifyRequest): string | undefined => {
+  const slug = (request.params as { orgSlug?: unknown } | undefined)?.orgSlug;
+  return typeof slug === "string" && slug.length > 0 ? slug : undefined;
+};
+
 const BAA_PIN_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 /**
