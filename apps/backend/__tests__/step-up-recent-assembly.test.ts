@@ -1,23 +1,3 @@
-// apps/backend/__tests__/step-up-recent-assembly.test.ts — F-029.
-//
-// THE DEFECT. Fifteen modules lift `context.attributes.stepUpRecent` off the request context into
-// their route actor, and their doc comments assert the authenticate hook sets it. Nothing did: the
-// only assignments in the repo were in test files, each in a suite's OWN fake authenticate hook. So
-// in production every one of those modules read `false`, for every request, forever.
-//
-// It failed CLOSED, so it was never exposure — but four write paths were worse than inert. M37's IRC
-// cap override and restraint apply, M23's claim submit/replace/void and M27's cost-report submit all
-// mount `requireStepUp(...)`, which PASSES (that path goes through M3's predicate and the M2 seam and
-// is correct), and then hand the always-false flag to a service or a pure machine that refuses. The
-// guard allowed and the domain refused, for every caller, always.
-//
-// WHY NOTHING SAW IT. Every test that exercised those modules supplied the fact itself — the live
-// suites build the actor struct directly with `stepUpRecent: true`, and every `*-inject.test.ts`
-// stubs the attribute in its own header-auth shim. The PRODUCTION assembly — the real hook writing a
-// fact a real module's `writeActorOf` reads — was the one path nothing ran. That is what this file
-// tests, and it is deliberately the seam rather than a whole route: the defect was never in the
-// domain logic (which is well covered), it was that the fact never arrived.
-import { liveOrganizationStage } from "./_live-organization-stage";
 import {
   PORTAL_SESSION_CLASSES,
   VENDOR_SESSION_CLASSES,
@@ -39,6 +19,26 @@ import { writeActorOf as m23WriteActorOf } from "../src/modules/23-billing-medic
 import { writeActorOf as m27WriteActorOf } from "../src/modules/27-cost-report/routes/actor";
 import { PORTAL_SESSION_CLASSES as M31_PORTAL_CLASSES } from "../src/modules/31-portal/abac-predicates";
 import { writeActorOf as m37WriteActorOf } from "../src/modules/37-ipu/routes/actor";
+// apps/backend/__tests__/step-up-recent-assembly.test.ts — F-029.
+//
+// THE DEFECT. Fifteen modules lift `context.attributes.stepUpRecent` off the request context into
+// their route actor, and their doc comments assert the authenticate hook sets it. Nothing did: the
+// only assignments in the repo were in test files, each in a suite's OWN fake authenticate hook. So
+// in production every one of those modules read `false`, for every request, forever.
+//
+// It failed CLOSED, so it was never exposure — but four write paths were worse than inert. M37's IRC
+// cap override and restraint apply, M23's claim submit/replace/void and M27's cost-report submit all
+// mount `requireStepUp(...)`, which PASSES (that path goes through M3's predicate and the M2 seam and
+// is correct), and then hand the always-false flag to a service or a pure machine that refuses. The
+// guard allowed and the domain refused, for every caller, always.
+//
+// WHY NOTHING SAW IT. Every test that exercised those modules supplied the fact itself — the live
+// suites build the actor struct directly with `stepUpRecent: true`, and every `*-inject.test.ts`
+// stubs the attribute in its own header-auth shim. The PRODUCTION assembly — the real hook writing a
+// fact a real module's `writeActorOf` reads — was the one path nothing ran. That is what this file
+// tests, and it is deliberately the seam rather than a whole route: the defect was never in the
+// domain logic (which is well covered), it was that the fact never arrived.
+import { liveOrganizationStage } from "./_live-organization-stage";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const MEMBERSHIP = "22222222-2222-4222-8222-222222222222";
@@ -85,7 +85,7 @@ async function authenticated(agoSec: number | null): Promise<FastifyRequest> {
     },
   } as unknown as FastifyRequest;
   const hook = createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+    organizationStage: liveOrganizationStage,
     getSnapshot: async () => ({ sessionId: SESSION, userId: "u1", activeOrganizationId: ORG }),
     getResolver: () => resolver(agoSec),
   });
@@ -131,7 +131,7 @@ describe("F-029 — the step-up fact reaches the modules that read it", () => {
       },
     } as unknown as FastifyRequest;
     const hook = createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+      organizationStage: liveOrganizationStage,
       getSnapshot: async () => null,
       getResolver: () => resolver(30),
     });
@@ -154,7 +154,7 @@ describe("F-029 — the step-up fact reaches the modules that read it", () => {
       },
     } as unknown as FastifyRequest;
     const hook = createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+      organizationStage: liveOrganizationStage,
       getSnapshot: async () => ({
         sessionId: SESSION,
         userId: "u1",
@@ -190,7 +190,7 @@ describe("F-030 — the session class and portal scope reach the predicates that
       },
     } as unknown as FastifyRequest;
     const hook = createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+      organizationStage: liveOrganizationStage,
       getSnapshot: async () => ({ sessionId: SESSION, userId: "u1", activeOrganizationId: ORG }),
       getResolver: () => ({
         resolveActor: async () => ({ ...ACTOR, ...actor }),

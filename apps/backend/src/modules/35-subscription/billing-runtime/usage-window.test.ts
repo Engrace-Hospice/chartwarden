@@ -59,18 +59,27 @@ describe("previousUsageWindow", () => {
   it("steps a mirrored window back one month on the same anchor day", () => {
     const sub = { currentPeriodStart: utc(2026, 3, 15), currentPeriodEnd: utc(2026, 4, 15) };
     const current = usageWindowFor(sub, utc(2026, 3, 20));
-    expect(previousUsageWindow(current)).toEqual({ start: utc(2026, 2, 15), end: utc(2026, 3, 15) });
+    expect(previousUsageWindow(current)).toEqual({
+      start: utc(2026, 2, 15),
+      end: utc(2026, 3, 15),
+    });
   });
 
   it("steps an annual window back a whole year", () => {
     const sub = { currentPeriodStart: utc(2026, 3, 15), currentPeriodEnd: utc(2027, 3, 15) };
     const current = usageWindowFor(sub, utc(2026, 6, 1));
-    expect(previousUsageWindow(current)).toEqual({ start: utc(2025, 3, 15), end: utc(2026, 3, 15) });
+    expect(previousUsageWindow(current)).toEqual({
+      start: utc(2025, 3, 15),
+      end: utc(2026, 3, 15),
+    });
   });
 
   it("clamps a month-end anchor to the shorter month's last day", () => {
     const sub = { currentPeriodStart: utc(2026, 3, 31), currentPeriodEnd: utc(2026, 4, 30) };
     const current = usageWindowFor(sub, utc(2026, 4, 1));
-    expect(previousUsageWindow(current)).toEqual({ start: utc(2026, 2, 28), end: utc(2026, 3, 31) });
+    expect(previousUsageWindow(current)).toEqual({
+      start: utc(2026, 2, 28),
+      end: utc(2026, 3, 31),
+    });
   });
 });

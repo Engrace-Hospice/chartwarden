@@ -1,28 +1,3 @@
-/**
- * #589 / #600 - the idle screen-lock "Unlock" resumes the SAME session, end to end over HTTP, LIVE Postgres, as the
- * RLS-enforced `chartwarden_app` role. Nothing here is mocked: REAL Better Auth behind the REAL Fastify bridge, the
- * REAL `mountIdentityRoutes` (select-organization + unlock), the REAL authenticate hook / DB session resolver, the
- * REAL org-scoped audit executor and the REAL catalog-validating outbox publisher.
- *
- * The bug it pins: the lock overlay used to call Better Auth sign-in, which mints a NEW session with no active
- * organization (the org binds only in select-organization). The next org-scoped request then 401'd and the web shell
- * sent the user to /expired and wiped their drafts. The old web tests mocked `authClient` entirely, so nothing ever
- * exercised that second session.
- *
- * What it proves:
- *   - sign in -> select-organization -> unlock keeps the SAME session id, writes no new `session` row, and an
- *     org-scoped request is still 200 afterwards;
- *   - the unlock lands an org-scoped `m2.session.unlocked` audit row and a `m2.session.unlocked` outbox row, and
- *     never a second `m2.session.created` (it is not a new billing seat);
- *   - a wrong password is 401 INVALID_CREDENTIALS, audited as `m2.session.unlock_failed`, and the session survives;
- *   - the 5th wrong password ENDS the session (423, cookie dead), a correct password refunds the budget, and a
- *     parallel burst cannot overdraw it; the POST needs the CSRF header;
- *   - a fresh sign-in (what the old unlock did) is org-less, and its org-scoped 401 carries ORGANIZATION_NOT_SELECTED
- *     so the web shell can tell it from a dead session.
- *
- *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m2:screen-unlock:live
- */
-import { liveOrganizationStage } from "./_live-organization-stage";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -55,6 +30,31 @@ import {
   mountIdentityRoutes,
 } from "../src/modules/02-identity/index";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
+/**
+ * #589 / #600 - the idle screen-lock "Unlock" resumes the SAME session, end to end over HTTP, LIVE Postgres, as the
+ * RLS-enforced `chartwarden_app` role. Nothing here is mocked: REAL Better Auth behind the REAL Fastify bridge, the
+ * REAL `mountIdentityRoutes` (select-organization + unlock), the REAL authenticate hook / DB session resolver, the
+ * REAL org-scoped audit executor and the REAL catalog-validating outbox publisher.
+ *
+ * The bug it pins: the lock overlay used to call Better Auth sign-in, which mints a NEW session with no active
+ * organization (the org binds only in select-organization). The next org-scoped request then 401'd and the web shell
+ * sent the user to /expired and wiped their drafts. The old web tests mocked `authClient` entirely, so nothing ever
+ * exercised that second session.
+ *
+ * What it proves:
+ *   - sign in -> select-organization -> unlock keeps the SAME session id, writes no new `session` row, and an
+ *     org-scoped request is still 200 afterwards;
+ *   - the unlock lands an org-scoped `m2.session.unlocked` audit row and a `m2.session.unlocked` outbox row, and
+ *     never a second `m2.session.created` (it is not a new billing seat);
+ *   - a wrong password is 401 INVALID_CREDENTIALS, audited as `m2.session.unlock_failed`, and the session survives;
+ *   - the 5th wrong password ENDS the session (423, cookie dead), a correct password refunds the budget, and a
+ *     parallel burst cannot overdraw it; the POST needs the CSRF header;
+ *   - a fresh sign-in (what the old unlock did) is org-less, and its org-scoped 401 carries ORGANIZATION_NOT_SELECTED
+ *     so the web shell can tell it from a dead session.
+ *
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m2:screen-unlock:live
+ */
+import { liveOrganizationStage } from "./_live-organization-stage";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -216,7 +216,7 @@ describe.skipIf(!DB_URL)("#589 screen-lock unlock keeps the session, LIVE Postgr
       db: handle.db as never,
       security: { rateLimitEnabled: false },
       authenticate: createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+        organizationStage: liveOrganizationStage,
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => resolver,
       }),

@@ -1,26 +1,3 @@
-/**
- * M2/M3 auditor magic-link REDEMPTION (the batch-11 GAP-011 deferral) — LIVE Postgres as the real
- * NOBYPASSRLS `chartwarden_app` role, through a real Better Auth instance and the real authenticate hook.
- * Proves, end to end:
- *   1. a link is redeemed once into a signed `auditor`-class ENROLMENT session scoped to ONE engagement and
- *      bounded by the engagement window; it holds NO role and cannot read until the BAA is accepted and a
- *      second factor enrolled (the full ceremony is proven in m2-auditor-enrolment.live.test.ts), after
- *      which it carries exactly one least-privilege role (the cookie is resolved by the ordinary Better Auth
- *      path, the session store and `requirePermission`);
- *   2. the token is stored only as a sha-256 digest and never reaches the audit log;
- *   3. replay, expiry, revocation, a not-yet-open window and a cancelled engagement are REFUSED, the refusal
- *      of a real link is audited, and an unknown token is not (no audit flooding);
- *   4. org isolation — another tenant's id cannot redeem (or even reveal) a link;
- *   5. concurrent redemptions yield exactly one session; a second engagement replaces the first session
- *      (no concurrent auditor sessions);
- *   6. the session is read-only (a write is AUDITOR_READ_ONLY 403), holds only the one read permission, the
- *      use of the session is audited, and the session dies with its engagement window;
- *   7. an existing staff member's email is refused (an auditor must not inherit staff permissions);
- *   8. the attempt budget answers 429.
- *
- *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m2:auditor-redemption:live
- */
-import { liveOrganizationStage } from "./_live-organization-stage";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -57,6 +34,29 @@ import {
 } from "../src/modules/03-authorization/index";
 import { enrolFirstTime } from "./_auditor-enrol-helper";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
+/**
+ * M2/M3 auditor magic-link REDEMPTION (the batch-11 GAP-011 deferral) — LIVE Postgres as the real
+ * NOBYPASSRLS `chartwarden_app` role, through a real Better Auth instance and the real authenticate hook.
+ * Proves, end to end:
+ *   1. a link is redeemed once into a signed `auditor`-class ENROLMENT session scoped to ONE engagement and
+ *      bounded by the engagement window; it holds NO role and cannot read until the BAA is accepted and a
+ *      second factor enrolled (the full ceremony is proven in m2-auditor-enrolment.live.test.ts), after
+ *      which it carries exactly one least-privilege role (the cookie is resolved by the ordinary Better Auth
+ *      path, the session store and `requirePermission`);
+ *   2. the token is stored only as a sha-256 digest and never reaches the audit log;
+ *   3. replay, expiry, revocation, a not-yet-open window and a cancelled engagement are REFUSED, the refusal
+ *      of a real link is audited, and an unknown token is not (no audit flooding);
+ *   4. org isolation — another tenant's id cannot redeem (or even reveal) a link;
+ *   5. concurrent redemptions yield exactly one session; a second engagement replaces the first session
+ *      (no concurrent auditor sessions);
+ *   6. the session is read-only (a write is AUDITOR_READ_ONLY 403), holds only the one read permission, the
+ *      use of the session is audited, and the session dies with its engagement window;
+ *   7. an existing staff member's email is refused (an auditor must not inherit staff permissions);
+ *   8. the attempt budget answers 429.
+ *
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m2:auditor-redemption:live
+ */
+import { liveOrganizationStage } from "./_live-organization-stage";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -206,7 +206,7 @@ describe.skipIf(!DB_URL)("M2/M3 auditor magic-link redemption — LIVE Postgres"
     registerAbacRegistry(); // the shared registry: `auditor_enrolment_session` registers on route mount
 
     const authenticate = createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+      organizationStage: liveOrganizationStage,
       getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
       getResolver: () => getSeam("SessionContextResolver"),
       sessionTimeout: createDbSessionTimeoutEnforcer(handle.db),

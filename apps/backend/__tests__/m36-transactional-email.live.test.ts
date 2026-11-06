@@ -1,21 +1,3 @@
-/**
- * M36 transactional email provider (Postmark adapter), end to end, LIVE Postgres, as the RLS-enforced `chartwarden_app`.
- *
- * The REAL composition (`bindTransactionalEmail`, the same function `index.ts` boots with) binds the REAL Postmark
- * adapter to a LOCAL FAKE HTTP SERVER standing in for api.postmarkapp.com (no network). What it proves:
- *   - a REAL Better Auth magic-link sign-in request reaches the provider (POST /email, server-token header, PHI-free
- *     body, link in the text), and following the delivered link establishes a session;
- *   - the funeral-home invite route, with the REAL link delivery over the bound adapter, mints a link, emails it
- *     (token only in the URL FRAGMENT), and the emailed token redeems exactly once;
- *   - a transient provider 503 is retried and still delivers exactly one usable link; a permanent 4xx revokes the
- *     link and answers 503 LINK_DELIVERY_FAILED (nothing live and unreachable);
- *   - UNBOUND in production (no credentials): the invite route answers 503 LINK_DELIVERY_UNAVAILABLE and mints and
- *     sends nothing, the auditor delivery throws, and the boot line names every missing variable;
- *   - no log line (boot notice or adapter) ever contains the server token, the recipient, or the link token.
- *
- *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:transactional-email:live
- */
-import { liveOrganizationStage } from "./_live-organization-stage";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from "node:http";
@@ -56,6 +38,24 @@ import {
 import { createLinkDelivery } from "../src/modules/02-identity/link-delivery";
 import { bindTransactionalEmail } from "../src/modules/36-messaging/transactional-email-binding";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
+/**
+ * M36 transactional email provider (Postmark adapter), end to end, LIVE Postgres, as the RLS-enforced `chartwarden_app`.
+ *
+ * The REAL composition (`bindTransactionalEmail`, the same function `index.ts` boots with) binds the REAL Postmark
+ * adapter to a LOCAL FAKE HTTP SERVER standing in for api.postmarkapp.com (no network). What it proves:
+ *   - a REAL Better Auth magic-link sign-in request reaches the provider (POST /email, server-token header, PHI-free
+ *     body, link in the text), and following the delivered link establishes a session;
+ *   - the funeral-home invite route, with the REAL link delivery over the bound adapter, mints a link, emails it
+ *     (token only in the URL FRAGMENT), and the emailed token redeems exactly once;
+ *   - a transient provider 503 is retried and still delivers exactly one usable link; a permanent 4xx revokes the
+ *     link and answers 503 LINK_DELIVERY_FAILED (nothing live and unreachable);
+ *   - UNBOUND in production (no credentials): the invite route answers 503 LINK_DELIVERY_UNAVAILABLE and mints and
+ *     sends nothing, the auditor delivery throws, and the boot line names every missing variable;
+ *   - no log line (boot notice or adapter) ever contains the server token, the recipient, or the link token.
+ *
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m36:transactional-email:live
+ */
+import { liveOrganizationStage } from "./_live-organization-stage";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -230,7 +230,7 @@ describe.skipIf(!DB_URL)("M36 transactional email provider, LIVE Postgres + fake
       db: handle.db as never,
       security: { rateLimitEnabled: false },
       authenticate: createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+        organizationStage: liveOrganizationStage,
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => resolver,
       }),

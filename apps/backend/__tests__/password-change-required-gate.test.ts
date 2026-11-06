@@ -1,4 +1,3 @@
-import { liveOrganizationStage } from "./_live-organization-stage";
 import {
   type ResolvedActor,
   STEP_UP_POLICY,
@@ -7,6 +6,7 @@ import {
 import type { FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";
+import { liveOrganizationStage } from "./_live-organization-stage";
 
 const actor: ResolvedActor = {
   userId: "11111111-1111-4111-8111-111111111111",
@@ -49,7 +49,7 @@ function request(method: string, url: string): FastifyRequest {
 
 function hook(passwordChangeRequired: boolean, activeOrganizationId: string | null) {
   return createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+    organizationStage: liveOrganizationStage,
     getSnapshot: async () => ({
       sessionId: "session-1",
       userId: actor.userId,

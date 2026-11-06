@@ -81,6 +81,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   const canReadBillingStatus = session?.permissions?.includes("subscription.read") === true;
   const orgKey = session?.organizationId ?? "";
   const { pathname, key: locationKey } = useLocation();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pathname re-primes on navigation (TTL-gated no-op otherwise).
   useEffect(() => {
     if (canReadBillingStatus) primeClaimsBilling(client, { orgKey });
   }, [client, canReadBillingStatus, orgKey, pathname]);

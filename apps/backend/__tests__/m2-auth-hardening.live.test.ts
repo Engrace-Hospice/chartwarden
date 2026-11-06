@@ -1,25 +1,3 @@
-/**
- * M2 authentication hardening, end to end over HTTP, LIVE Postgres, as the RLS-enforced `chartwarden_app` role
- * (GAP-002 / GAP-004 auth audit trail; GAP-003 / GAP-005 MFA matrix).
- *
- * The production composition, not a shim: REAL Better Auth behind the REAL Fastify bridge; the REAL audit sink
- * (`auditPlatformEvent` through the SECURITY DEFINER writer for pre-org events, `audit()` under `withOrgContext`
- * for org-bound ones); the REAL authenticate hook / DB session resolver; the REAL MFA gate over the REAL
- * `two_factor` / `passkey` readers and M3's `membershipRoleKeysForOrg`.
- *
- * What it proves (assertions on `audit_event` rows and HTTP answers):
- *   - a wrong then right password writes `m2.auth.login_failed` (emailHash, no address) then `m2.auth.login_succeeded`;
- *   - the 6th failure inside the window is refused 429 and writes `m2.auth.account_locked`;
- *   - sign-out from an org-bound session writes an ORG-scoped `m2.auth.logout` row attributed to the user;
- *   - no audit payload contains the password or the email address;
- *   - a password-only clinician's org-bound session is refused 403 MFA_ENROLMENT_REQUIRED on a clinical route while
- *     /api/auth/* stays reachable; a verified TOTP row lifts the hold; an org_admin with a TOTP but no passkey is
- *     still held until a passkey exists;
- *   - `two-factor/disable` is refused 403 for a clinician whose only factor is the TOTP.
- *
- *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m2:auth-hardening:live
- */
-import { liveOrganizationStage } from "./_live-organization-stage";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -54,6 +32,28 @@ import {
 } from "../src/modules/02-identity/step-up-adapters-db";
 import { membershipRoleKeysForOrg } from "../src/modules/03-authorization/membership-role-keys-for-org";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
+/**
+ * M2 authentication hardening, end to end over HTTP, LIVE Postgres, as the RLS-enforced `chartwarden_app` role
+ * (GAP-002 / GAP-004 auth audit trail; GAP-003 / GAP-005 MFA matrix).
+ *
+ * The production composition, not a shim: REAL Better Auth behind the REAL Fastify bridge; the REAL audit sink
+ * (`auditPlatformEvent` through the SECURITY DEFINER writer for pre-org events, `audit()` under `withOrgContext`
+ * for org-bound ones); the REAL authenticate hook / DB session resolver; the REAL MFA gate over the REAL
+ * `two_factor` / `passkey` readers and M3's `membershipRoleKeysForOrg`.
+ *
+ * What it proves (assertions on `audit_event` rows and HTTP answers):
+ *   - a wrong then right password writes `m2.auth.login_failed` (emailHash, no address) then `m2.auth.login_succeeded`;
+ *   - the 6th failure inside the window is refused 429 and writes `m2.auth.account_locked`;
+ *   - sign-out from an org-bound session writes an ORG-scoped `m2.auth.logout` row attributed to the user;
+ *   - no audit payload contains the password or the email address;
+ *   - a password-only clinician's org-bound session is refused 403 MFA_ENROLMENT_REQUIRED on a clinical route while
+ *     /api/auth/* stays reachable; a verified TOTP row lifts the hold; an org_admin with a TOTP but no passkey is
+ *     still held until a passkey exists;
+ *   - `two-factor/disable` is refused 403 for a clinician whose only factor is the TOTP.
+ *
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m2:auth-hardening:live
+ */
+import { liveOrganizationStage } from "./_live-organization-stage";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -190,7 +190,7 @@ describe.skipIf(!DB_URL)("M2 auth audit trail + MFA matrix, LIVE Postgres", () =
       db: handle.db as never,
       security: { rateLimitEnabled: false },
       authenticate: createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+        organizationStage: liveOrganizationStage,
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => resolver,
         mfaEnrolment: {

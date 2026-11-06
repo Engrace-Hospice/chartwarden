@@ -294,9 +294,9 @@ import {
   createMemoryWizardRunner,
   createMemoryWizardState,
 } from "./onboarding/wizard-store-memory";
-import { registerOnboardingWizardRoutes } from "./routes/platform/onboarding-wizard-routes";
 import { registerOnboardingDataRoutes } from "./routes/platform/onboarding-data-routes";
 import type { OnboardingDataService } from "./routes/platform/onboarding-data-service";
+import { registerOnboardingWizardRoutes } from "./routes/platform/onboarding-wizard-routes";
 import { registerPlatformOpsRoutes } from "./routes/platform/ops-routes";
 import {
   type PlatformOpsService,

@@ -1,30 +1,3 @@
-/**
- * M2 funeral-home / external-collaborator LINK REDEMPTION, end to end over HTTP, LIVE Postgres, as the RLS-enforced
- * `chartwarden_app` role (GAP-115 follow-up; migration 0521 `collaborator_link`).
- *
- * The production composition, not a shim: REAL Better Auth mints the session cookie through the server-only link-session
- * plugin; the REAL durable store claims the use in one conditional UPDATE; the REAL authenticate hook / resolver /
- * effective-permission resolver (session-class permission set) / ABAC predicate answer the funeral read; the REAL
- * catalog-validating outbox publisher carries `m2.funeral.invited` and `m2.collaborator.session_started`.
- *
- * What it proves (assertions on database rows and HTTP answers):
- *   - invite -> email -> redeem -> scoped session -> the ONE read. The raw token appears in no table (not the link row,
- *     not an audit row, not an outbox row); only its sha256 is stored. The invite response never carries the token.
- *   - replay is refused (409), expiry and revocation are refused (410); a malformed token never 500s and writes nothing;
- *   - cross-tenant: the same secret under another tenant's prefix finds nothing; staff of tenant B cannot mint for tenant
- *     A's patient; a tenant-B funeral session reads tenant B's decedent only;
- *   - exactly one of N concurrent redeemers wins (use_count = 1, one session);
- *   - eligibility is re-proved at redemption (patient no longer deceased => refused, the use handed back);
- *   - a failing session mint hands the use back (the link is NOT burned) and a retry succeeds;
- *   - one active session per link (bounded multi-use link): the earlier session ends when the next is minted;
- *   - fail closed on delivery: no delivery port / a failing send => no live link (503), a living patient => 409, no
- *     recipient => 422;
- *   - a funeral session holds exactly `funeral.case_read`: it cannot mint links, and the synthetic principal cannot sign in;
- *   - RLS is intact: a bare chartwarden_app read of collaborator_link with no tenant returns nothing.
- *
- *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m2:link-redemption:live
- */
-import { liveOrganizationStage } from "./_live-organization-stage";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -76,6 +49,33 @@ import { funeralCaseForOrg } from "../src/modules/05-patient/seams/funeral-case-
 import { patientIsDeceasedForOrg } from "../src/modules/05-patient/seams/patient-deceased-for-org";
 import { patientSiteForOrg } from "../src/modules/06-admission/seams/patient-site-for-org";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
+/**
+ * M2 funeral-home / external-collaborator LINK REDEMPTION, end to end over HTTP, LIVE Postgres, as the RLS-enforced
+ * `chartwarden_app` role (GAP-115 follow-up; migration 0521 `collaborator_link`).
+ *
+ * The production composition, not a shim: REAL Better Auth mints the session cookie through the server-only link-session
+ * plugin; the REAL durable store claims the use in one conditional UPDATE; the REAL authenticate hook / resolver /
+ * effective-permission resolver (session-class permission set) / ABAC predicate answer the funeral read; the REAL
+ * catalog-validating outbox publisher carries `m2.funeral.invited` and `m2.collaborator.session_started`.
+ *
+ * What it proves (assertions on database rows and HTTP answers):
+ *   - invite -> email -> redeem -> scoped session -> the ONE read. The raw token appears in no table (not the link row,
+ *     not an audit row, not an outbox row); only its sha256 is stored. The invite response never carries the token.
+ *   - replay is refused (409), expiry and revocation are refused (410); a malformed token never 500s and writes nothing;
+ *   - cross-tenant: the same secret under another tenant's prefix finds nothing; staff of tenant B cannot mint for tenant
+ *     A's patient; a tenant-B funeral session reads tenant B's decedent only;
+ *   - exactly one of N concurrent redeemers wins (use_count = 1, one session);
+ *   - eligibility is re-proved at redemption (patient no longer deceased => refused, the use handed back);
+ *   - a failing session mint hands the use back (the link is NOT burned) and a retry succeeds;
+ *   - one active session per link (bounded multi-use link): the earlier session ends when the next is minted;
+ *   - fail closed on delivery: no delivery port / a failing send => no live link (503), a living patient => 409, no
+ *     recipient => 422;
+ *   - a funeral session holds exactly `funeral.case_read`: it cannot mint links, and the synthetic principal cannot sign in;
+ *   - RLS is intact: a bare chartwarden_app read of collaborator_link with no tenant returns nothing.
+ *
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m2:link-redemption:live
+ */
+import { liveOrganizationStage } from "./_live-organization-stage";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -343,7 +343,7 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
         db: handle.db as never,
         security: { rateLimitEnabled: false },
         authenticate: createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+          organizationStage: liveOrganizationStage,
           getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
           getResolver: () => resolver,
         }),
@@ -846,7 +846,7 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
       db: handle.db as never,
       security: { rateLimitEnabled: false },
       authenticate: createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+        organizationStage: liveOrganizationStage,
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => resolver,
       }),

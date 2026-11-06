@@ -1,3 +1,38 @@
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import {
+  createAuditorSessionIssuer,
+  createDbActorEnrichmentReader,
+  createDbAdminMembershipReader,
+  createDbSessionContextStore,
+  createDbSessionTimeoutEnforcer,
+  createIdentityAuth,
+  getIdentitySession,
+} from "@chartwarden/auth";
+import { createDbClient } from "@chartwarden/db";
+import type { FastifyInstance, LightMyRequestResponse } from "fastify";
+import { Client } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildServer, createSessionAuthenticate, getSeam } from "../src/bootstrap/index";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { wireModuleSeams } from "../src/index";
+import { createAuditorEnrolment } from "../src/modules/02-identity/auditor-enrolment";
+import { createDbAuditorMagicLinkIssuer } from "../src/modules/02-identity/auditor-magic-link-store";
+import { mountIdentityRoutes } from "../src/modules/02-identity/index";
+import { registerAuditorEnrolmentRoutes } from "../src/modules/02-identity/routes/auditor-enrolment";
+import { registerAuditorRedeemRoutes } from "../src/modules/02-identity/routes/auditor-redeem";
+import { M3_OUTBOX_EVENTS, mountAuthorizationRoutes } from "../src/modules/03-authorization/index";
+import { createDbAuditorAccessGrantor } from "../src/modules/03-authorization/index";
+import { M5_OUTBOX_EVENTS, mountPatientRoutes } from "../src/modules/05-patient/index";
+import { M6_OUTBOX_EVENTS, mountAdmissionRoutes } from "../src/modules/06-admission/index";
+import { M8_OUTBOX_EVENTS, mountEncounterRoutes } from "../src/modules/08-encounters/index";
+import { M10_OUTBOX_EVENTS, mountHopeRoutes } from "../src/modules/10-hope/index";
+import { M11_OUTBOX_EVENTS, mountOrderRoutes } from "../src/modules/11-orders/index";
+import { M13_OUTBOX_EVENTS, mountEmarRoutes } from "../src/modules/13-emar/index";
+import { M14_OUTBOX_EVENTS, mountIdgRoutes } from "../src/modules/14-idg/index";
+import { enrolFirstTime } from "./_auditor-enrol-helper";
+import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 /**
  * Over the 800-line soft ceiling on purpose: one table-driven matrix (8 stages x the adversarial cases) shares a single seeded fixture, so it stays together.
  *
@@ -34,41 +69,6 @@
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
 import { liveOrganizationStage } from "./_live-organization-stage";
-import { createHash, randomUUID } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import {
-  createAuditorSessionIssuer,
-  createDbActorEnrichmentReader,
-  createDbAdminMembershipReader,
-  createDbSessionContextStore,
-  createDbSessionTimeoutEnforcer,
-  createIdentityAuth,
-  getIdentitySession,
-} from "@chartwarden/auth";
-import { createDbClient } from "@chartwarden/db";
-import type { FastifyInstance, LightMyRequestResponse } from "fastify";
-import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildServer, createSessionAuthenticate, getSeam } from "../src/bootstrap/index";
-import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { wireModuleSeams } from "../src/index";
-import { createAuditorEnrolment } from "../src/modules/02-identity/auditor-enrolment";
-import { createDbAuditorMagicLinkIssuer } from "../src/modules/02-identity/auditor-magic-link-store";
-import { mountIdentityRoutes } from "../src/modules/02-identity/index";
-import { registerAuditorEnrolmentRoutes } from "../src/modules/02-identity/routes/auditor-enrolment";
-import { registerAuditorRedeemRoutes } from "../src/modules/02-identity/routes/auditor-redeem";
-import { M3_OUTBOX_EVENTS, mountAuthorizationRoutes } from "../src/modules/03-authorization/index";
-import { createDbAuditorAccessGrantor } from "../src/modules/03-authorization/index";
-import { M5_OUTBOX_EVENTS, mountPatientRoutes } from "../src/modules/05-patient/index";
-import { M6_OUTBOX_EVENTS, mountAdmissionRoutes } from "../src/modules/06-admission/index";
-import { M8_OUTBOX_EVENTS, mountEncounterRoutes } from "../src/modules/08-encounters/index";
-import { M10_OUTBOX_EVENTS, mountHopeRoutes } from "../src/modules/10-hope/index";
-import { M11_OUTBOX_EVENTS, mountOrderRoutes } from "../src/modules/11-orders/index";
-import { M13_OUTBOX_EVENTS, mountEmarRoutes } from "../src/modules/13-emar/index";
-import { M14_OUTBOX_EVENTS, mountIdgRoutes } from "../src/modules/14-idg/index";
-import { enrolFirstTime } from "./_auditor-enrol-helper";
-import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -571,7 +571,7 @@ describe.skipIf(!DB_URL)("S11 adversarial cases across clinical stages — LIVE 
       createDbActorEnrichmentReader(handle.db),
     );
     const authenticate = createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+      organizationStage: liveOrganizationStage,
       getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
       getResolver: () => getSeam("SessionContextResolver"),
       sessionTimeout: createDbSessionTimeoutEnforcer(handle.db),

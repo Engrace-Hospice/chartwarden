@@ -133,7 +133,13 @@ describe("parseClaimMdDelivery", () => {
       ]),
     );
     if (d.kind !== "events") throw new Error("expected events");
-    expect(d.events.map((e) => e.eventTime)).toEqual(["2026-11-05 12:00:00", null, null, null, null]);
+    expect(d.events.map((e) => e.eventTime)).toEqual([
+      "2026-11-05 12:00:00",
+      null,
+      null,
+      null,
+      null,
+    ]);
     expect(JSON.parse(d.events[1]?.element ?? "{}").event_time).toBe("2026-11-05\u000012:00");
   });
 

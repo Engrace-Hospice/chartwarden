@@ -141,7 +141,8 @@ export function handleObservedResponse(
     });
   } else if (signal?.kind === "service-unavailable") {
     void errorCodeOf(response).then((code) => {
-      if (code === undefined || !NOT_AN_OUTAGE_ON_503.includes(code)) setGlobalResponseSignal(signal);
+      if (code === undefined || !NOT_AN_OUTAGE_ON_503.includes(code))
+        setGlobalResponseSignal(signal);
     });
   } else if (signal) {
     setGlobalResponseSignal(signal); // only 401/503 notify - don't re-render on every 2xx

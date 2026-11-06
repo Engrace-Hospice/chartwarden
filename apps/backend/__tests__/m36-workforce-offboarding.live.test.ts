@@ -1,25 +1,3 @@
-/**
- * M36 WP 5.9 (ADR-0084, PROPOSED) - workforce offboarding (Workflow F), LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role and a LIVE Valkey.
- *
- * The production composition, not a shim: REAL Better Auth sessions behind the REAL authenticate hook and DB permission resolver, the REAL
- * offboarding routes (permission, supervisor-reassign keys, fresh step-up), the REAL session revoke (ADR-0083), the REAL ack service and its
- * ADR-0078 supervisor reassign, the REAL task and handoff sweeps, the REAL alert emitter, the REAL catalog-validating outbox publisher.
- *
- *   1. PREVIEW     counts per item, nothing changes, one audit row; refused 403 without the key; a user who has not left is a 409.
- *   2. EXECUTE     Workflow F end to end for a departed user with an open ack request (reassigned, history names who/why), an open urgent
- *                  message (surfaced), a task and a handoff (moved), two sessions + push endpoints (revoked / expired, next REST call 401),
- *                  channel memberships ended, a scheduled send / reminder / snooze (removed, nothing sent as them), a draft (kept),
- *                  past messages (attribution kept), an on-call seat (advisory; M19 untouched).
- *   3. NO ELIGIBLE a request nobody can take stays assigned and visible in the supervisors' queue, one supervisor alert, needs_person.
- *   4. RE-RUN      a repeat changes nothing and notifies nobody again.
- *   5. RESUME      a step that fails once is `failed`, the others finish, and the next run finishes the remainder.
- *   6. ACCESS      no step-up, no key, no review key: refused and nothing changes; another tenant's officer gets the same 404 as an unknown id.
- *   7. AUDIT       the rows carry ids, fixed keys and counts only.
- *
- *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... CHARTWARDEN_TEST_REDIS_URL=redis://... bun run test:m36:workforce-offboarding:live
- * Use a PRIVATE pgvector/pgvector:pg18 container and a PRIVATE valkey/valkey:8: the suite resets the public schema and the chartwarden_* roles.
- */
-import { liveOrganizationStage } from "./_live-organization-stage";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import type { AddressInfo } from "node:net";
@@ -63,6 +41,28 @@ import { endChannelMembershipsForUser } from "../src/modules/36-messaging/messag
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 import { buildTaskDeps } from "../src/modules/36-messaging/tasks/deps";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
+/**
+ * M36 WP 5.9 (ADR-0084, PROPOSED) - workforce offboarding (Workflow F), LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role and a LIVE Valkey.
+ *
+ * The production composition, not a shim: REAL Better Auth sessions behind the REAL authenticate hook and DB permission resolver, the REAL
+ * offboarding routes (permission, supervisor-reassign keys, fresh step-up), the REAL session revoke (ADR-0083), the REAL ack service and its
+ * ADR-0078 supervisor reassign, the REAL task and handoff sweeps, the REAL alert emitter, the REAL catalog-validating outbox publisher.
+ *
+ *   1. PREVIEW     counts per item, nothing changes, one audit row; refused 403 without the key; a user who has not left is a 409.
+ *   2. EXECUTE     Workflow F end to end for a departed user with an open ack request (reassigned, history names who/why), an open urgent
+ *                  message (surfaced), a task and a handoff (moved), two sessions + push endpoints (revoked / expired, next REST call 401),
+ *                  channel memberships ended, a scheduled send / reminder / snooze (removed, nothing sent as them), a draft (kept),
+ *                  past messages (attribution kept), an on-call seat (advisory; M19 untouched).
+ *   3. NO ELIGIBLE a request nobody can take stays assigned and visible in the supervisors' queue, one supervisor alert, needs_person.
+ *   4. RE-RUN      a repeat changes nothing and notifies nobody again.
+ *   5. RESUME      a step that fails once is `failed`, the others finish, and the next run finishes the remainder.
+ *   6. ACCESS      no step-up, no key, no review key: refused and nothing changes; another tenant's officer gets the same 404 as an unknown id.
+ *   7. AUDIT       the rows carry ids, fixed keys and counts only.
+ *
+ *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... CHARTWARDEN_TEST_REDIS_URL=redis://... bun run test:m36:workforce-offboarding:live
+ * Use a PRIVATE pgvector/pgvector:pg18 container and a PRIVATE valkey/valkey:8: the suite resets the public schema and the chartwarden_* roles.
+ */
+import { liveOrganizationStage } from "./_live-organization-stage";
 import { catalogOutbox } from "./_m36-handoff-live-kit";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -336,7 +336,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         db: handle.db as never,
         security: { rateLimitEnabled: false },
         authenticate: createSessionAuthenticate({
- organizationStage: liveOrganizationStage,
+          organizationStage: liveOrganizationStage,
           getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
           getResolver: () => resolver,
         }),
