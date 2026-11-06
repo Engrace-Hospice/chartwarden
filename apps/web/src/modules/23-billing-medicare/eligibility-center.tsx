@@ -286,7 +286,7 @@ function RefreshPanel({
   const [asOf, setAsOf] = useState(todayIso());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
-  // ADR-0108 — a new eligibility check is new claims-billing work: paused without the add-on (when enforced).
+  // ADR-0110 — a new eligibility check is new claims-billing work: paused without the add-on (when enforced).
   const claimsBilling = useClaimsBilling();
 
   const run = useCallback(async () => {
