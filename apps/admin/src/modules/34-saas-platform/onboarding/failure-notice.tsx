@@ -29,6 +29,13 @@ export function FailureNotice({
         {fieldsShown ? "Some details need attention." : failure.message}
         {quoteReference ? ` Reference: ${failure.correlationId}.` : ""}
       </InlineAlert>
+      {failure.kind === "conflict" && failure.details.length > 0 ? (
+        <ul>
+          {failure.details.map((d) => (
+            <li key={`${d.field}:${d.message}`}>{d.message}</li>
+          ))}
+        </ul>
+      ) : null}
       {failure.kind === "step-up" ? (
         <div>
           <ReverifyLink {...(onReverify ? { onNavigate: onReverify } : {})}>Re-verify</ReverifyLink>
