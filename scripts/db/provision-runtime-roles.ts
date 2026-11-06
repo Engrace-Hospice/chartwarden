@@ -231,7 +231,7 @@ const PLATFORM_PROVISION_INSERT_TABLES = [
   // GAP-164: `FeatureFlagAdmin.upsert` runs on the platform pool (a NULL-org global flag is unwritable from a tenant
   // connection by design); without these two grants every platform / tenant flag write was a 42501.
   "feature_flag",
-  // Slice 2 — onboarding step 2 creates the tenant's subscription (INSERT only: nothing in slice 2 edits one) and its signed contract.
+  // Slice 2 — onboarding step 2 creates the tenant's subscription (INSERT; its UPDATE is by column only, see SUBSCRIPTION_PLATFORM_UPDATE_COLUMNS) and its signed contract.
   "subscription",
   "subscription_state_history",
   "subscription_contract",
@@ -248,6 +248,21 @@ const PLATFORM_PROVISION_UPDATE_TABLES = [
   "onboarding_task",
   "support_session",
   "feature_flag",
+] as const;
+
+/**
+ * The `subscription` columns the platform carrier may UPDATE: exactly what the admin pause / resume / cancel write
+ * (`adminPauseSubscription`, `adminResumeSubscription`, `adminCancelSubscription`, which run on this carrier through
+ * `m35PlatformRunner`). Deliberately NOT here: `organization_id`, `plan_id` (a carrier that could re-point a subscription would move a
+ * tenant's contract onto another plan or organisation), the billing period, trial, dunning and Stripe columns.
+ */
+const SUBSCRIPTION_PLATFORM_UPDATE_COLUMNS = [
+  "status",
+  "paused_at",
+  "paused_until",
+  "canceled_at",
+  "cancel_at_period_end",
+  "updated_at",
 ] as const;
 
 /**
@@ -383,6 +398,12 @@ async function main(): Promise<void> {
       // history is append-only). REVOKE so a re-provision takes back any older table-wide or column grant.
       await run('REVOKE UPDATE ON "subscription_contract" FROM chartwarden_platform;');
       await run('REVOKE UPDATE ON "subscription_contract_mode" FROM chartwarden_platform;');
+      // subscription: INSERT above (onboarding step 2), UPDATE by COLUMN only (the admin pause / resume / cancel). REVOKE first so a
+      // re-provision takes back any older table-wide grant.
+      await run('REVOKE UPDATE ON "subscription" FROM chartwarden_platform;');
+      await run(
+        `GRANT UPDATE (${SUBSCRIPTION_PLATFORM_UPDATE_COLUMNS.map((c) => `"${c}"`).join(", ")}) ON "subscription" TO chartwarden_platform;`,
+      );
       // plan (slice 2): the editor INSERTs a draft and UPDATEs by COLUMN (never tier, slug, family, version, cadence, lineage,
       // created_at); the bands of a draft are only ever inserted and deleted, never updated in place. REVOKE first so a
       // re-provision takes back an older table-wide grant.

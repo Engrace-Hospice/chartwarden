@@ -658,7 +658,28 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       await carrier.connect();
       try {
         for (const [sqlText, why] of [
-          ["UPDATE subscription SET status = 'canceled'", "subscription: INSERT only"],
+          // subscription: UPDATE by column (the admin pause / resume / cancel columns), never the plan, the organisation, the period or Stripe
+          ...[
+            "organization_id",
+            "plan_id",
+            "stripe_customer_id",
+            "stripe_subscription_id",
+            "trial_ends_at",
+            "current_period_start",
+            "current_period_end",
+            "billing_anchor_day",
+            "dunning_started_at",
+            "default_payment_method_id",
+            "started_at",
+            "created_at",
+          ].map(
+            (column) =>
+              [
+                `UPDATE subscription SET ${column} = ${column} WHERE false`,
+                `subscription.${column}: not a column the carrier may write`,
+              ] as const,
+          ),
+          ["DELETE FROM subscription", "subscription: never deleted"],
           [
             "UPDATE subscription_contract SET plan_id = plan_id",
             "contract: only the billing service mode may be updated",
@@ -678,6 +699,11 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         ] as const) {
           await expect(carrier.query(sqlText), why).rejects.toMatchObject({ code: "42501" });
         }
+        // and the six columns the admin routes write ARE granted (a no-row update is a pure privilege check)
+        await carrier.query(
+          `UPDATE subscription SET status = status, paused_at = paused_at, paused_until = paused_until,
+             canceled_at = canceled_at, cancel_at_period_end = cancel_at_period_end, updated_at = updated_at WHERE false`,
+        );
       } finally {
         await carrier.end();
       }
@@ -2664,17 +2690,9 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
 
     it("MEDIUM: a platform operator's pause, resume and cancel name the operator in the PLATFORM audit row and NOT in the tenant-readable history or its audit copy", async () => {
       const audit = buildPlatformAuditPort((tx, row) => auditPlatformEvent(tx as never, row));
-      // The legacy admin pause / resume / cancel UPDATE `subscription`, which the provisioned platform carrier is deliberately NOT
-      // granted (slice 2 gives it INSERT only), so this behaviour is proven on a superuser runner: what is under test is WHAT the
-      // action writes (no operator in the tenant-readable rows, the operator in the platform row), not the carrier's grants.
-      const superDb = createDbClient({ connectionString: DB_URL as string });
-      const superRunner: PlatformRunner = (fn) =>
-        superDb.db.transaction((tx) => fn(tx as unknown as DbClient));
-      const route = buildDrizzleM35RouteService(app.db, {
-        platformRunner: superRunner,
-        outbox,
-        audit,
-      });
+      // The admin pause / resume / cancel run on the REAL platform carrier (`platformRunner` is `chartwarden_platform_login`, the pool
+      // index.ts binds to DATABASE_PLATFORM_URL), so the carrier's column-level UPDATE on `subscription` is exercised, not bypassed.
+      const route = buildDrizzleM35RouteService(app.db, { platformRunner, outbox, audit });
       const [sub] = await q<{ id: string }>(
         "SELECT id FROM subscription WHERE organization_id=$1",
         [ORG_I],
@@ -2722,7 +2740,6 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
           operatorMembershipId: OPERATOR_MEMBERSHIP,
         });
       }
-      await superDb.close();
     });
 
     it("SETTLEMENT (HIGH): a settlement statement FINALIZES after its grace, and its money is never carried twice, in a draft or a final", async () => {
