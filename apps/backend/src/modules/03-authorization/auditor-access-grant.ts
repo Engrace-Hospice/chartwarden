@@ -17,12 +17,14 @@
 //     staff member's access;
 //   • if the org's `external_auditor` role has been widened beyond the auditor minimum, redemption is refused
 //     (an administrator must correct it) rather than silently trimmed or silently honoured.
+import { EXTERNAL_AUDITOR_ROLE_KEY } from "@chartwarden/auth";
 import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { isEngagementLive } from "./engagement-scope";
 
-export const EXTERNAL_AUDITOR_ROLE_KEY = "external_auditor";
+// The key is shared with the auth package (the tenant role-create refusal and the M35 staff meter read the same constant).
+export { EXTERNAL_AUDITOR_ROLE_KEY };
 /** The auditor minimum. `portal.engagement.read_auditor` is the engagement-scoped, read-only view (M31). */
 export const EXTERNAL_AUDITOR_PERMISSIONS = ["portal.engagement.read_auditor"] as const;
 
@@ -57,10 +59,14 @@ export interface AuditorAccessGrantor {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function createDbAuditorAccessGrantor(): AuditorAccessGrantor {
-  /** This org's `external_auditor` role id, with the permission keys it currently holds; null when absent. */
+  /** This org's `external_auditor` role id, whether it is the SYSTEM row, and the permission keys it holds; null when absent. */
   async function findRole(tx: DbClient, organizationId: string) {
     const [role] = await tx
-      .select({ id: schema.roles.id })
+      .select({
+        id: schema.roles.id,
+        systemDefault: schema.roles.systemDefault,
+        category: schema.roles.category,
+      })
       .from(schema.roles)
       .where(
         and(
@@ -74,7 +80,13 @@ export function createDbAuditorAccessGrantor(): AuditorAccessGrantor {
       .select({ key: schema.rolePermissions.permissionKey })
       .from(schema.rolePermissions)
       .where(eq(schema.rolePermissions.roleId, role.id));
-    return { id: role.id, permissions: perms.map((p) => p.key) };
+    return {
+      id: role.id,
+      // The system row: what `grant` itself creates. A row of that key written by anyone else (a tenant, before the role-create
+      // refusal existed) is not the auditor role, and an auditor must never be attached to it.
+      isSystemRole: role.systemDefault && role.category === "external_auditor",
+      permissions: perms.map((p) => p.key),
+    };
   }
 
   const isMinimum = (permissions: readonly string[]): boolean =>
@@ -118,7 +130,8 @@ export function createDbAuditorAccessGrantor(): AuditorAccessGrantor {
       }
 
       const role = await findRole(tx, input.organizationId);
-      if (role && !isMinimum(role.permissions)) return "role_over_privileged";
+      if (role && (!role.isSystemRole || !isMinimum(role.permissions)))
+        return "role_over_privileged";
       return null;
     },
 
@@ -143,6 +156,11 @@ export function createDbAuditorAccessGrantor(): AuditorAccessGrantor {
         role = await findRole(tx, input.organizationId);
       }
       if (!role) throw new Error("external_auditor role could not be resolved");
+      if (!role.isSystemRole) {
+        throw new Error(
+          "the org's external_auditor role is not the system role; an administrator must correct it",
+        );
+      }
       if (!isMinimum(role.permissions)) {
         throw new Error("external_auditor role holds more than the auditor minimum");
       }

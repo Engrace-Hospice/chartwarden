@@ -231,6 +231,63 @@ describe.skipIf(!DB_URL)("F-093 M3 role catalog floor — LIVE Postgres", () => 
     });
   });
 
+  // Slice 2 - `external_auditor` is the role M3's auditor grant creates in a tenant org (system_default, category external_auditor), and a
+  // real auditor must always land on THAT row. The route refuses a tenant role under the key (unit-tested); the database refuses it for
+  // every writer (migration 1345), which is what this proves as the NOBYPASSRLS app role through the store production mounts.
+  it("a tenant cannot create a role under the system-managed key external_auditor through the store (the database backstop), whatever the category; an ordinary role still creates", async () => {
+    for (const category of ["external_auditor", "clinical_staff", "admin_executive"]) {
+      await expect(
+        store.createCustom({
+          organizationId: ORG_A,
+          key: "external_auditor",
+          name: "Auditor",
+          category,
+          scopeLevel: "organization",
+          permissionKeys: [],
+        }),
+        category,
+      ).rejects.toMatchObject({
+        cause: expect.objectContaining({
+          code: "23514",
+          message: expect.stringMatching(/system auditor role/),
+        }),
+      });
+    }
+    expect(await admin.query("SELECT 1 FROM role WHERE key='external_auditor'")).toMatchObject({
+      rowCount: 0,
+    });
+    const ordinary = await store.createCustom({
+      organizationId: ORG_A,
+      key: "external_auditor_liaison",
+      name: "Liaison",
+      category: "operations",
+      scopeLevel: "organization",
+      permissionKeys: [],
+    });
+    expect(ordinary.key).toBe("external_auditor_liaison");
+  });
+
+  it("the SYSTEM row, as M3's auditor grant writes it (org-owned, system_default, category external_auditor), is accepted; renaming a role's key or flipping it toward the reserved key is refused", async () => {
+    await expect(
+      admin.query(
+        `INSERT INTO role (organization_id, key, name, category, scope_level, system_default, enabled)
+         VALUES ($1,'external_auditor','External Auditor','external_auditor','organization',true,true)`,
+        [ORG_A],
+      ),
+    ).resolves.toBeDefined();
+    const ordinary = await seedRole("liaison", []);
+    await expect(
+      admin.query("UPDATE role SET key='external_auditor' WHERE id=$1", [ordinary]),
+    ).rejects.toThrow(/system auditor role/);
+    // a system row cannot be turned into a look-alike either
+    await expect(
+      admin.query(
+        "UPDATE role SET system_default=false WHERE organization_id=$1 AND key='external_auditor'",
+        [ORG_A],
+      ),
+    ).rejects.toThrow(/system auditor role/);
+  });
+
   it("a delete of a role that does not exist is refused, not silently reported as done", async () => {
     await expect(
       asActor(() => store.delete("99999999-9999-4999-8999-999999999999")),
