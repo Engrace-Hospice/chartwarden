@@ -197,26 +197,20 @@ describe.each([
       expect(published).toEqual([]);
     });
 
-    it("closes the QUEUED attempt a vendor-era submit left behind (a stable failed_worker reason), and leaves a settled one alone", async () => {
+    it("never touches the transmission attempt log from the request path: a QUEUED attempt a vendor-era submit left behind is closed by the job that owns it", async () => {
+      // A worker may be uploading that very attempt inside its own transaction; closing it from here would make that worker's
+      // version check fail after the upload and file the notice twice.
       const row = make();
       table.set(id, row);
       const key = `pe-1:${(row.noeControlNumber ?? row.notrControlNumber) as string}`;
-      fakes.attempts.set(key, { id: "att-1", outcome: "queued" });
+      fakes.attempts.set(key, { id: "att-1", attemptIndex: 0, outcome: "queued" });
       const { service } = harness(outside);
       await (service as unknown as Record<string, (a: never, i: string) => Promise<unknown>>)[
         method
       ](actor, id);
-      expect(fakes.attempts.get(key)).toMatchObject({
-        outcome: "failed_worker",
-        outcomeReason: "PARKED_FOR_EXTERNAL_FILING",
-      });
-
-      table.set(id, make());
-      fakes.attempts.set(key, { id: "att-2", outcome: "submitted" });
-      await (service as unknown as Record<string, (a: never, i: string) => Promise<unknown>>)[
-        method
-      ](actor, id);
-      expect(fakes.attempts.get(key)).toEqual({ id: "att-2", outcome: "submitted" });
+      expect(fakes.attempts.get(key)).toEqual({ id: "att-1", attemptIndex: 0, outcome: "queued" });
+      expect(table.get(id)).toMatchObject({ externalFilingStatus: "pending" });
+      expect(fakes.submissions).toEqual([]);
     });
 
     it("parks a notice that is already ready, and a second submit changes nothing", async () => {
@@ -291,6 +285,41 @@ describe.each([
       expect(enqueued[0]).toMatchObject({ queue });
       expect(published.map((e) => e.eventName)).toEqual([event]);
       expect(table.get(id)).toMatchObject({ state: "ready", externalFilingStatus: null });
+    });
+
+    it("records the transmission on attempt 0 the first time", async () => {
+      table.set(id, make());
+      const { service } = harness(transmits);
+      await submit(service)(actor, id);
+      expect(fakes.submissions).toMatchObject([{ attemptIndex: 0, outcome: "queued" }]);
+    });
+
+    it("a resubmit after a park (the earlier attempt ended failed_worker) takes the NEXT attempt index, not the closed row", async () => {
+      const row = make({ state: "ready", version: 1, externalFilingStatus: "pending" });
+      table.set(id, row);
+      const key = `pe-1:${(row.noeControlNumber ?? row.notrControlNumber) as string}`;
+      fakes.attempts.set(key, {
+        id: "att-closed",
+        attemptIndex: 0,
+        outcome: "failed_worker",
+        outcomeReason: "PARKED_FOR_EXTERNAL_FILING",
+      });
+      const { service, enqueued } = harness(transmits);
+      const res = await submit(service)(actor, id);
+      expect(fakes.submissions).toMatchObject([{ attemptIndex: 1, outcome: "queued" }]);
+      expect(res.submissionId).toBe("sub-1");
+      expect(res.submissionId).not.toBe("att-closed");
+      expect(enqueued[0]).toMatchObject({ payload: { submissionId: "sub-1" } });
+    });
+
+    it("a repeat submit while an attempt is still QUEUED keeps that attempt's index (idempotent)", async () => {
+      const row = make({ state: "ready", version: 1 });
+      table.set(id, row);
+      const key = `pe-1:${(row.noeControlNumber ?? row.notrControlNumber) as string}`;
+      fakes.attempts.set(key, { id: "att-live", attemptIndex: 2, outcome: "queued" });
+      const { service } = harness(transmits);
+      await submit(service)(actor, id);
+      expect(fakes.submissions).toMatchObject([{ attemptIndex: 2, outcome: "queued" }]);
     });
 
     it("is unchanged when no clearinghouse-choice port is bound (a deployment where nobody bills outside)", async () => {

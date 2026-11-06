@@ -13,6 +13,40 @@ const eventBase = {
   createdAt: new Date(),
 };
 
+describe("M23 submission outbox bridge: NOE / NOTR jobs carry the attempt they own", () => {
+  it.each([
+    ["m23.noe.submit_requested", "noe.submit", "noeId", "noe_record"],
+    ["m23.notr.submit_requested", "notr.submit", "notrId", "notr_record"],
+  ] as const)(
+    "%s enqueues %s with the noticeId AND the submissionId (the worker closes or terminalizes its own attempt, never 'the latest')",
+    async (eventType, queue, idKey, aggregateKind) => {
+      const calls: unknown[] = [];
+      const consumer = buildM23SubmissionRequestConsumer({
+        async enqueue(...args) {
+          calls.push(args);
+        },
+      });
+      await consumer.handle({
+        id: "event-1",
+        organizationId: "org-1",
+        eventType,
+        aggregateKind,
+        aggregateId: "n-1",
+        payload: { [idKey]: "n-1", submissionId: "submission-7", controlNumber: "ctl" },
+        attemptCount: 1,
+        createdAt: new Date(),
+      });
+      expect(calls).toEqual([
+        [
+          queue,
+          "submission-7",
+          { organizationId: "org-1", [idKey]: "n-1", submissionId: "submission-7" },
+        ],
+      ]);
+    },
+  );
+});
+
 describe("M23 submission outbox bridge", () => {
   it("enriches a claim job with its trusted outbox organization and deduplicates by submission", async () => {
     const calls: unknown[] = [];

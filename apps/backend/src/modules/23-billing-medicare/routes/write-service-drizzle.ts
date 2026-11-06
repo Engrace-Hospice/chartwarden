@@ -46,7 +46,7 @@ import { M23_QUEUES } from "../jobs/queues";
 import {
   UNPARK_PATCH,
   buildExternalNoticeFilingService,
-  closeQueuedAttempt,
+  nextNoticeAttemptIndex,
   noticeFiledExternally,
   orgBillsOutside,
   parkNotice,
@@ -1163,21 +1163,28 @@ export function buildDrizzleM23WriteService(
           throw new ConflictError(`a NOE in state '${noe.state}' cannot be submitted`);
         }
         if (outside) {
+          // The attempt log is not touched from here: a leftover queued attempt belongs to the job that owns it, which closes it
+          // when it runs (a worker may be uploading it right now; closing it from the request path would file the notice twice).
           await parkNotice(repo, noe);
-          await closeQueuedAttempt(tx, noe.providerEntityId, noe.noeControlNumber);
           return { submissionId: null, jobId: null, kind: "noe", externalFiling: "pending" };
         }
         // ChartWarden transmits for this org (again): a notice parked earlier goes the normal way and its marker clears.
         if (noe.externalFilingStatus === "pending") {
           noe = await patchExternalFiling(repo, noe, UNPARK_PATCH);
         }
-        const submission = await new repositories.ClaimSubmissionRepository(tx).append({
+        const submissions = new repositories.ClaimSubmissionRepository(tx);
+        const submission = await submissions.append({
           organizationId: actor.organizationId,
           providerEntityId: noe.providerEntityId,
           kind: "noe",
           noeId: noe.id,
           claimControlNumber: noe.noeControlNumber,
-          attemptIndex: 0,
+          // the NEXT index after a closed attempt (a park, then a switch back): index 0 would hand back the closed row
+          attemptIndex: await nextNoticeAttemptIndex(
+            submissions,
+            noe.providerEntityId,
+            noe.noeControlNumber,
+          ),
           outcome: "queued",
         });
         const { jobId } = await jobs.enqueue("noe.submit", `${actor.organizationId}:${noe.id}`, {
@@ -1237,19 +1244,23 @@ export function buildDrizzleM23WriteService(
         }
         if (outside) {
           await parkNotice(repo, notr);
-          await closeQueuedAttempt(tx, notr.providerEntityId, notr.notrControlNumber);
           return { submissionId: null, jobId: null, kind: "notr", externalFiling: "pending" };
         }
         if (notr.externalFilingStatus === "pending") {
           notr = await patchExternalFiling(repo, notr, UNPARK_PATCH);
         }
-        const submission = await new repositories.ClaimSubmissionRepository(tx).append({
+        const submissions = new repositories.ClaimSubmissionRepository(tx);
+        const submission = await submissions.append({
           organizationId: actor.organizationId,
           providerEntityId: notr.providerEntityId,
           kind: "notr",
           notrId: notr.id,
           claimControlNumber: notr.notrControlNumber,
-          attemptIndex: 0,
+          attemptIndex: await nextNoticeAttemptIndex(
+            submissions,
+            notr.providerEntityId,
+            notr.notrControlNumber,
+          ),
           outcome: "queued",
         });
         const { jobId } = await jobs.enqueue("notr.submit", `${actor.organizationId}:${notr.id}`, {
