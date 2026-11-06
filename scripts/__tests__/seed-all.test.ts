@@ -29,7 +29,14 @@ describe("seed-all — db:seed:all without a shell (distroless release image)", 
   });
 
   it("refuses a step that would need a shell", () => {
-    expect(() => expandSeedChain({ a: "bun run x.ts | tee log" }, "a")).toThrow(/needs a shell/);
+    for (const cmd of [
+      "bun run x.ts | tee log",
+      "bun run x.ts &",
+      "bun run *.ts",
+      "bun run ~/x.ts",
+    ]) {
+      expect(() => expandSeedChain({ a: cmd }, "a")).toThrow(/needs a shell/);
+    }
     expect(() => expandSeedChain({}, "missing")).toThrow(/no script/);
   });
 });

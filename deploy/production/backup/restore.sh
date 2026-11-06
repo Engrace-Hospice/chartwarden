@@ -162,7 +162,7 @@ main() {
   } >"$out/restore.env"
   trap - ERR
   log "snapshot $snapshot_id restored in $(((t_end - t0) / 1000)) s (restore id $id)"
-  log "verify:   RESTORE_ENV_FILE=$out/restore.env bun run backup:verify-restore"
+  log "verify:   RESTORE_ENV_FILE=$out/restore.env bun run backup:verify-restore   (a host with bun; on the production host run scripts/backup/verify-restore.ts from \$CHARTWARDEN_IMAGE, see DR/BCP)"
   log "clean up: restore.sh destroy $id"
 }
 
