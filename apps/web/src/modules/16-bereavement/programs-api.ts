@@ -5,16 +5,17 @@
 // `Idempotency-Key`, and every state change on a row the caller READ carries `If-Match: <version>` (the header decides; no body field does).
 // Every helper answers `{ data, error, status }` and never rejects, so a screen can tell 403 (show nothing) from a failure (say so) and
 // retry a lost response with the SAME key.
-import type { ApiClient, operations } from "@chartwarden/ui";
 import {
+  type ApiClient,
   type InitiateUploadBody,
   type UploadMimeType,
   abortUpload,
   completeUpload,
   initiateUpload,
+  type operations,
   putUploadBytes,
   sha256Hex,
-} from "../22-documents/documents-api";
+} from "@chartwarden/ui";
 import { send, writeHeaders } from "./bereavement-api";
 import type { Fetched } from "./mailing-load";
 

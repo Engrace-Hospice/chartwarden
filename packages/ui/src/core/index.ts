@@ -21,6 +21,22 @@ export type {
   operations,
   paths,
 } from "./api";
+// The M22 verified-upload ceremony (hash, reserve, PUT, commit, abort), shared by every module that files a document.
+export {
+  abortUpload,
+  completeUpload,
+  initiateUpload,
+  putUploadBytes,
+  sha256Hex,
+  writeFailure,
+} from "./api";
+export type {
+  CompleteUploadResult,
+  InitiateUploadBody,
+  InitiateUploadResult,
+  UploadMimeType,
+  WriteResult,
+} from "./api";
 
 // Providers (transport-agnostic React context — no DOM)
 export { FeatureFlagProvider, useFeatureFlagContext } from "./providers/feature-flag-provider";
