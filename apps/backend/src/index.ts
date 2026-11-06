@@ -742,12 +742,15 @@ import {
   createDrizzleRosterStore,
   createDrizzleTenantConfigSource,
   createEnvWebhookSecretResolver,
+  createPractitionerProfileSource,
   createPrescriberEnrollmentService,
   createTransmissionGate,
   createWebhookBodyCipher,
   describeM12AdapterPosture,
   describeM12EnvFallbackWarning,
+  getDoseSpotNppesDirectory,
   getDoseSpotPhysicianDirectory,
+  getDoseSpotPractitionerDirectory,
   idgMedicationHistoryForOrg,
   medicationOrderPatientAndDrugForOrg,
   medicationOrderScheduleContextForOrg,
@@ -6202,6 +6205,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 fn(createDrizzleRosterStore(tx as unknown as DbClient), tx as unknown as DbClient),
               ),
             client: m12DoseSpotClient,
+            // WHO the clinician is: the NPI and name of the M40 physician record the roster links the member to, cross-checked against
+            // NPPES's public directory. Both seams resolve lazily (a not-yet-registered one fails closed through its deny-stub).
+            profiles: createPractitionerProfileSource({
+              directory: {
+                resolvePhysician: (organizationId, mdmId) =>
+                  getDoseSpotPractitionerDirectory().resolvePhysician(organizationId, mdmId),
+              },
+              nppes: { getByNpi: (input) => getDoseSpotNppesDirectory().getByNpi(input) },
+            }),
             outbox: m12OutboxPublisher,
             audit: buildClinicAuditPort(),
             afterWrite: m12ClinicAfterWrite,

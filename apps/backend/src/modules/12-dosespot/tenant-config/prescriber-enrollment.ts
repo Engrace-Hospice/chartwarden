@@ -3,9 +3,14 @@
 // (the id `transmit-newrx` sends under) was never set by any production path and an API-enrolled prescriber's orders failed
 // permanently as `prescriber_not_enrolled`. This is the missing step: register the clinician at DoseSpot and record its id.
 //
+// WHO the clinician is is never typed: the NPI and legal name come from the practitioner record the roster links the membership to
+// (practitioner-profile.ts: an NPPES-sourced M40 record, cross-checked against NPPES's public directory).
+//
 // CREATE-THEN-RECORD, never a transaction across the vendor call:
-//   1. tx   the registration must be `verified` or `active` (a tenant may enrol before it activates); ensure the roster row and
-//           COMMIT `vendor_enrollment_requested_at`. A prescriber already linked to DoseSpot returns here (idempotent).
+//   1. tx   the registration must be `verified` or `active` (a tenant may enrol before it activates); read the roster row (it must
+//           exist, so its linked practitioner record can be read); then, with no transaction open, derive the profile; then tx: CLAIM
+//           the roster row (`FOR UPDATE`, refused if the roster moved meanwhile) and COMMIT `vendor_enrollment_requested_at`. A
+//           prescriber already linked to DoseSpot returns early (idempotent).
 //   2. --   the vendor call (`DoseSpotClient.enrollPrescriber`, resolved under the `setup` purpose), nothing open.
 //   3. tx   record the vendor's id and the NPI, publish `m12.prescriber_enrolled` with the REAL vendor id, write the field-level
 //           audit row (names, never values) and void a pending go-live (the data it attested just changed).
@@ -18,9 +23,10 @@ import {
   isDegradedError,
   isNotEnabledError,
 } from "@chartwarden/dosespot";
-import { ChartWardenError, NotFoundError, ValidationError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 import { CLINIC_AUDIT_EVENTS, type ClinicAuditPort } from "./audit-port";
+import type { PractitionerProfile, PractitionerProfileSource } from "./practitioner-profile";
 
 export interface RosterRow {
   readonly id: string;
@@ -29,24 +35,32 @@ export interface RosterRow {
   readonly revokedAt: Date | null;
   readonly vendorEnrollmentRequestedAt: Date | null;
   readonly npi: string | null;
+  /** The M40 physician record the roster links this membership to (the source of the NPI and the legal name). */
+  readonly externalPhysicianMdmId: string | null;
 }
 
 /** The two tables an enrolment touches, over ONE open org-scoped transaction. */
 export interface RosterStore {
-  /** The registration's status, or null when the org has none. */
-  configStatus(organizationId: string): Promise<string | null>;
+  /** The registration's status and environment, or null when the org has none. */
+  registration(
+    organizationId: string,
+  ): Promise<{ readonly status: string; readonly environment: string } | null>;
   /** Is this membership a member of THIS organization (read under the org's own RLS scope)? */
   membershipExists(organizationId: string, membershipId: string): Promise<boolean>;
+  /** The membership's roster row, or null when it is not on the roster. */
+  rosterRow(organizationId: string, membershipId: string): Promise<RosterRow | null>;
   /**
-   * The step-1 CLAIM on a roster prescriber, atomic on the row. A missing row is created on the roster (no DEA schedules); a row that
-   * is REVOKED or already LINKED is returned untouched (nothing is stamped, nothing is reinstated); a row whose request marker is
-   * younger than `claimWindowMs` with no vendor id is another attempt IN FLIGHT (`inProgress`); otherwise the marker is stamped.
+   * The step-1 CLAIM on a roster prescriber, atomic on the row (`FOR UPDATE`). The row must exist and still link the physician record
+   * the profile was derived from (`expectedPhysicianMdmId`), else 409 `DOSESPOT_ROSTER_CHANGED`. A row that is REVOKED or already
+   * LINKED is returned untouched (nothing is stamped, nothing is reinstated); a row whose request marker is younger than
+   * `claimWindowMs` with no vendor id is another attempt IN FLIGHT (`inProgress`); otherwise the marker is stamped.
    */
   ensureRequested(
     organizationId: string,
     membershipId: string,
     at: Date,
     claimWindowMs: number,
+    expectedPhysicianMdmId: string | null,
   ): Promise<{ readonly row: RosterRow; readonly inProgress: boolean }>;
   /**
    * Release the claim after a DEFINITIVE refusal, so a corrected retry need not wait out the window. Conditional on THIS attempt's own
@@ -73,12 +87,6 @@ export interface EnrollActor {
   };
 }
 
-export interface EnrollInput {
-  readonly npi: string;
-  readonly firstName: string;
-  readonly lastName: string;
-}
-
 /**
  * How long a committed request marker with no vendor id means "another enrolment is in flight (or crashed)": then a retry may go. It
  * must outlast the WORST-CASE vendor call, or a slow first attempt would be raced by a second one that creates a duplicate clinician:
@@ -92,7 +100,8 @@ export interface EnrollPlan {
   readonly organizationId: string;
   readonly userId: string;
   readonly membershipId: string;
-  readonly input: EnrollInput;
+  /** Who DoseSpot is told the clinician is (derived, never typed); null when the prescriber is already linked. */
+  readonly profile: PractitionerProfile | null;
   /** The marker THIS attempt stamped (null when the prescriber was already linked and nothing was claimed). */
   readonly claimedAt: Date | null;
   /** The prescriber is already linked to DoseSpot: there is nothing to call or record. */
@@ -104,10 +113,9 @@ export interface PrescriberEnrollmentService {
   enroll(
     actor: EnrollActor,
     membershipId: string,
-    input: EnrollInput,
   ): Promise<{ readonly membershipId: string; readonly enrolledWithDoseSpot: true }>;
-  /** Step 1 (own transaction, committed): validate, check the registration is ready, ensure the roster row and the request marker. */
-  prepare(actor: EnrollActor, membershipId: string, input: EnrollInput): Promise<EnrollPlan>;
+  /** Step 1: check the registration is ready, derive the practitioner profile, claim the roster row and commit the request marker. */
+  prepare(actor: EnrollActor, membershipId: string): Promise<EnrollPlan>;
   /** Step 2 (NO transaction): the vendor call. Returns the vendor's id, or null when the prescriber was already linked. */
   callVendor(plan: EnrollPlan): Promise<string | null>;
   /** Step 3 (the caller's transaction): record the vendor id, publish, audit, void a pending go-live. */
@@ -127,6 +135,8 @@ export interface PrescriberEnrollmentDeps {
     fn: (store: RosterStore, tx: DbClient) => Promise<T>,
   ) => Promise<T>;
   readonly client: Pick<DoseSpotClient, "enrollPrescriber">;
+  /** Who the prescriber is: the NPI and legal name come from the roster-linked practitioner record, never from the request. */
+  readonly profiles: PractitionerProfileSource;
   readonly outbox: DoseSpotWriteOutboxPort;
   readonly audit: ClinicAuditPort;
   readonly afterWrite?: (
@@ -134,42 +144,6 @@ export interface PrescriberEnrollmentDeps {
     scope: { organizationId: string; userId: string; membershipId: string | null },
   ) => Promise<void>;
   readonly now?: () => Date;
-}
-
-/**
- * The NPI check: ten digits whose Luhn check digit holds with the 80840 prefix.
- * ponytail: a local copy; M2 and M29 each carry theirs and modules may not import each other. Extract to a shared package when
- * a fourth consumer appears.
- */
-export function isValidNpi(npi: string): boolean {
-  if (!/^\d{10}$/.test(npi)) return false;
-  const digits = `80840${npi}`.split("").map(Number).reverse();
-  const sum = digits.reduce((acc, d, i) => {
-    if (i % 2 === 0) return acc + d;
-    const doubled = d * 2;
-    return acc + (doubled > 9 ? doubled - 9 : doubled);
-  }, 0);
-  return sum % 10 === 0;
-}
-
-const invalid = (field: string, code: string, message: string): ValidationError =>
-  new ValidationError("request validation failed", [{ field, code, message }]);
-
-function validate(input: EnrollInput): EnrollInput {
-  if (!isValidNpi(input.npi)) {
-    throw invalid(
-      "npi",
-      "DOSESPOT_NPI_INVALID",
-      "the NPI must be 10 digits with a valid check digit",
-    );
-  }
-  const firstName = input.firstName.trim();
-  const lastName = input.lastName.trim();
-  if (firstName === "")
-    throw invalid("firstName", "DOSESPOT_NAME_REQUIRED", "the prescriber's first name is required");
-  if (lastName === "")
-    throw invalid("lastName", "DOSESPOT_NAME_REQUIRED", "the prescriber's last name is required");
-  return { npi: input.npi, firstName, lastName };
 }
 
 /** Did the call definitely NOT create a clinician? A refusal (non-retryable), or a failure before anything was sent. */
@@ -193,39 +167,63 @@ export function createPrescriberEnrollmentService(
 ): PrescriberEnrollmentService {
   const now = deps.now ?? (() => new Date());
 
-  async function prepare(
-    actor: EnrollActor,
-    membershipId: string,
-    rawInput: EnrollInput,
-  ): Promise<EnrollPlan> {
-    const input = validate(rawInput);
-    const { organizationId } = actor;
-    const claim = await deps.inTx(organizationId, actor.userId, async (store) => {
-      const status = await store.configStatus(organizationId);
-      if (status !== "verified" && status !== "active") {
-        throw new ChartWardenError(
-          "DOSESPOT_NOT_READY",
-          "register and test the DoseSpot connection before enrolling prescribers",
-          409,
-        );
+  const notReady = (): ChartWardenError =>
+    new ChartWardenError(
+      "DOSESPOT_NOT_READY",
+      "register and test the DoseSpot connection before enrolling prescribers",
+      409,
+    );
+  const revoked = (): ChartWardenError =>
+    new ChartWardenError(
+      "DOSESPOT_PRESCRIBER_REVOKED",
+      "this prescriber was revoked from the roster; re-enroll them on the roster first",
+      409,
+    );
+
+  async function prepare(actor: EnrollActor, membershipId: string): Promise<EnrollPlan> {
+    const { organizationId, userId } = actor;
+    // Read first, on its own short transaction: is the registration ready, is the member ours, what does the roster link them to?
+    const seen = await deps.inTx(organizationId, userId, async (store) => {
+      const registration = await store.registration(organizationId);
+      if (registration?.status !== "verified" && registration?.status !== "active") {
+        throw notReady();
       }
       // the roster key must not reach a membership of another organization (the FK alone is not tenant-scoped)
       if (!(await store.membershipExists(organizationId, membershipId))) {
         throw new NotFoundError("prescriber membership");
       }
+      return {
+        environment: registration.environment,
+        row: await store.rosterRow(organizationId, membershipId),
+      };
+    });
+    if (seen.row?.revokedAt) throw revoked();
+    if (seen.row?.dosespotPrescriberId) {
+      return {
+        organizationId,
+        userId,
+        membershipId,
+        profile: null,
+        claimedAt: null,
+        alreadyLinked: true,
+      };
+    }
+    // Who the clinician is: derived from the roster-linked practitioner record (no transaction open: it reads M40 and NPPES).
+    const physicianMdmId = seen.row?.externalPhysicianMdmId ?? null;
+    const profile = await deps.profiles.profileFor({
+      organizationId,
+      physicianMdmId,
+      environment: seen.environment,
+    });
+    const claim = await deps.inTx(organizationId, userId, async (store) => {
       const { row, inProgress } = await store.ensureRequested(
         organizationId,
         membershipId,
         now(),
         ENROLL_CLAIM_WINDOW_MS,
+        physicianMdmId,
       );
-      if (row.revokedAt !== null) {
-        throw new ChartWardenError(
-          "DOSESPOT_PRESCRIBER_REVOKED",
-          "this prescriber was revoked from the roster; re-enroll them on the roster first",
-          409,
-        );
-      }
+      if (row.revokedAt !== null) throw revoked();
       if (inProgress) {
         throw new ChartWardenError(
           "DOSESPOT_ENROLLMENT_IN_PROGRESS",
@@ -238,18 +236,25 @@ export function createPrescriberEnrollmentService(
         claimedAt: row.dosespotPrescriberId === null ? row.vendorEnrollmentRequestedAt : null,
       };
     });
-    const { alreadyLinked, claimedAt } = claim;
-    return { organizationId, userId: actor.userId, membershipId, input, claimedAt, alreadyLinked };
+    return {
+      organizationId,
+      userId,
+      membershipId,
+      profile: claim.alreadyLinked ? null : profile,
+      claimedAt: claim.claimedAt,
+      alreadyLinked: claim.alreadyLinked,
+    };
   }
 
   async function callVendor(plan: EnrollPlan): Promise<string | null> {
-    if (plan.alreadyLinked) return null;
+    if (plan.alreadyLinked || plan.profile === null) return null;
+    const { profile } = plan;
     try {
       const out = await deps.client.enrollPrescriber(plan.organizationId, {
         membershipId: plan.membershipId,
-        firstName: plan.input.firstName,
-        lastName: plan.input.lastName,
-        npi: plan.input.npi,
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        npi: profile.npi,
         epcsRequested: false,
       });
       return out.dosespotPrescriberId;
@@ -276,10 +281,12 @@ export function createPrescriberEnrollmentService(
     plan: EnrollPlan,
     vendorId: string,
   ): Promise<{ readonly rosterId: string }> {
-    const { organizationId, membershipId } = plan;
+    const { organizationId, membershipId, profile } = plan;
+    if (profile === null)
+      throw new Error("an enrolment plan with no profile has nothing to record");
     const row = await store.recordVendorId(organizationId, membershipId, {
       dosespotPrescriberId: vendorId,
-      npi: plan.input.npi,
+      npi: profile.npi,
       at: now(),
     });
     await deps.outbox.publish(tx, {
@@ -297,6 +304,7 @@ export function createPrescriberEnrollmentService(
       resourceKind: "dosespot_prescriber",
       resourceId: row.id,
       changedFields: ["dosespotPrescriberId", "npi"],
+      detail: { nppesVerified: profile.nppesVerified },
       ...(actor.request ? { request: actor.request } : {}),
     });
     await deps.afterWrite?.(tx, {
@@ -311,8 +319,8 @@ export function createPrescriberEnrollmentService(
     prepare,
     callVendor,
     complete,
-    async enroll(actor, membershipId, input) {
-      const plan = await prepare(actor, membershipId, input);
+    async enroll(actor, membershipId) {
+      const plan = await prepare(actor, membershipId);
       const vendorId = await callVendor(plan);
       if (vendorId !== null) {
         await deps.inTx(plan.organizationId, actor.userId, (store, tx) =>

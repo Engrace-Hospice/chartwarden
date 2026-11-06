@@ -95,17 +95,11 @@ export const VerifyClinicResponseSchema = Type.Object({
   test: Type.Object({ outcome: ProbeOutcomeSchema }),
 });
 
-export const EnrollPrescriberVendorBodySchema = Type.Object(
-  {
-    npi: Type.String({
-      pattern: "^[0-9]{10}$",
-      description: "The prescriber's 10-digit NPI (validated by its check digit).",
-    }),
-    firstName: Type.String({ minLength: 1, maxLength: 100 }),
-    lastName: Type.String({ minLength: 1, maxLength: 100 }),
-  },
-  { additionalProperties: false },
-);
+/**
+ * Enrolment takes NO identity from the caller: the NPI and the legal name come from the physician record the roster links the member to
+ * (practitioner-profile.ts). The body is empty, and `additionalProperties: false` makes a typed `npi`, `firstName` or `lastName` a 422.
+ */
+export const EnrollPrescriberVendorBodySchema = Type.Object({}, { additionalProperties: false });
 export type EnrollPrescriberVendorBody = Static<typeof EnrollPrescriberVendorBodySchema>;
 
 export const PrescriberVendorEnrollmentViewSchema = Type.Object({

@@ -88,7 +88,8 @@ export function registerTenantDoseSpotRoutes(
 
   // POST dosespot-enrollment — register a roster prescriber with DoseSpot and record the vendor's id (the link `transmit-newrx`
   // sends under). Needs the roster key (a prescriber, not the clinic, is being enrolled), a fresh step-up and an Idempotency-Key.
-  // 409 DOSESPOT_NOT_READY until the registration is verified or active. Never starts EPCS.
+  // 409 DOSESPOT_NOT_READY until the registration is verified or active. The NPI and name are NOT in the body: they come from the
+  // physician record the roster links the member to (409 DOSESPOT_PRACTITIONER_* / DOSESPOT_NPPES_* when it cannot vouch). Never starts EPCS.
   if (deps.enrollmentService) {
     const enrollment = deps.enrollmentService;
     app.post(
@@ -97,8 +98,8 @@ export function registerTenantDoseSpotRoutes(
       async (request) => {
         const actor = clinicActorOf(request);
         const { membershipId } = parse(MembershipParamsSchema, request.params);
-        const body = parse(EnrollPrescriberVendorBodySchema, request.body);
-        return enrollment.enroll(actor, membershipId, body);
+        parse(EnrollPrescriberVendorBodySchema, request.body ?? {}); // nothing identifying is accepted: a typed NPI or name is a 422
+        return enrollment.enroll(actor, membershipId);
       },
     );
   }

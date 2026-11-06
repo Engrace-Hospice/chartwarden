@@ -1,20 +1,19 @@
 // apps/backend/src/modules/12-dosespot/tenant-config/roster-store.ts — the Drizzle `RosterStore` for a prescriber's vendor
-// enrolment, over ONE open org-scoped transaction (RLS scopes every statement to the tenant). Only the registration's status is
-// read from `dosespot_clinic_registration`; the roster row is `dosespot_prescriber` (M12-owned, both).
+// enrolment, over ONE open org-scoped transaction (RLS scopes every statement to the tenant). Only the registration's status and
+// environment are read from `dosespot_clinic_registration`; the roster row is `dosespot_prescriber` (M12-owned, both).
 import { type DbClient, schema } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
 import { and, eq, isNull } from "drizzle-orm";
-import { isUniqueViolation } from "./config-store";
 import type { RosterRow, RosterStore } from "./prescriber-enrollment";
 
 const R = schema.dosespotClinicRegistrations;
 const P = schema.dosespotPrescribers;
 const M = schema.memberships;
 
-const enrollmentInFlight = (): ChartWardenError =>
+const rosterChanged = (): ChartWardenError =>
   new ChartWardenError(
-    "DOSESPOT_ENROLLMENT_IN_PROGRESS",
-    "an enrollment for this prescriber is already in flight; try again in a couple of minutes",
+    "DOSESPOT_ROSTER_CHANGED",
+    "the prescriber roster changed while the enrollment was being prepared; try again",
     409,
   );
 
@@ -25,17 +24,18 @@ const toRow = (r: typeof P.$inferSelect): RosterRow => ({
   revokedAt: r.revokedAt,
   vendorEnrollmentRequestedAt: r.vendorEnrollmentRequestedAt,
   npi: r.npi,
+  externalPhysicianMdmId: r.externalPhysicianMdmId,
 });
 
 export function createDrizzleRosterStore(tx: DbClient): RosterStore {
   return {
-    async configStatus(organizationId) {
+    async registration(organizationId) {
       const [row] = await tx
-        .select({ status: R.status })
+        .select({ status: R.status, environment: R.environment })
         .from(R)
         .where(eq(R.organizationId, organizationId))
         .limit(1);
-      return row?.status ?? null;
+      return row ?? null;
     },
 
     async membershipExists(organizationId, membershipId) {
@@ -53,32 +53,24 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
       return row !== undefined;
     },
 
-    async ensureRequested(organizationId, membershipId, at, claimWindowMs) {
+    async rosterRow(organizationId, membershipId) {
+      const [row] = await tx
+        .select()
+        .from(P)
+        .where(and(eq(P.organizationId, organizationId), eq(P.membershipId, membershipId)))
+        .limit(1);
+      return row ? toRow(row) : null;
+    },
+
+    async ensureRequested(organizationId, membershipId, at, claimWindowMs, expectedPhysicianMdmId) {
       const [existing] = await tx
         .select()
         .from(P)
         .where(and(eq(P.organizationId, organizationId), eq(P.membershipId, membershipId)))
         .for("update");
-      if (!existing) {
-        let created: typeof P.$inferSelect | undefined;
-        try {
-          [created] = await tx
-            .insert(P)
-            .values({
-              organizationId,
-              membershipId,
-              deaAuthorizedSchedules: [],
-              enrolledAt: at,
-              vendorEnrollmentRequestedAt: at,
-            })
-            .returning();
-        } catch (err) {
-          // two FIRST enrolments for one membership race on the unique index: the loser is "in flight", never a 500
-          if (isUniqueViolation(err)) throw enrollmentInFlight();
-          throw err;
-        }
-        if (!created) throw new Error("dosespot_prescriber insert returned no row");
-        return { row: toRow(created), inProgress: false };
+      // the profile was derived from the physician record this row linked a moment ago: a roster edit since then voids it
+      if (!existing || existing.externalPhysicianMdmId !== expectedPhysicianMdmId) {
+        throw rosterChanged();
       }
       // a revoked or already-linked prescriber is returned untouched: nothing is stamped and nothing is reinstated
       if (existing.revokedAt !== null || existing.dosespotPrescriberId !== null) {

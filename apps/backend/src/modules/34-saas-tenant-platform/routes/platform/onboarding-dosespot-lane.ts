@@ -52,7 +52,6 @@ export interface DoseSpotLaneMethods {
     op: OnboardingOperator,
     orgSlug: string,
     membershipId: string,
-    fields: Fields,
     reason: string,
   ): Promise<unknown>;
 }
@@ -235,7 +234,7 @@ export function buildDoseSpotLane(h: DoseSpotLaneHelpers): DoseSpotLaneMethods {
       }));
     },
 
-    async enrollDoseSpotPrescriber(op, orgSlug, membershipId, fields, reason) {
+    async enrollDoseSpotPrescriber(op, orgSlug, membershipId, reason) {
       // refuse a live tenant BEFORE the roster claim and the vendor call (write re-checks below, authoritatively)
       await h.precheck(op, orgSlug, {
         event: EVENTS.dosespotPrescriberEnrolled,
@@ -245,7 +244,7 @@ export function buildDoseSpotLane(h: DoseSpotLaneHelpers): DoseSpotLaneMethods {
       const target = await h.targetOf(orgSlug);
       const scope = h.scopeOf(op, target.organizationId);
       const dosespot = port();
-      const plan = await dosespot.prepareEnroll(scope, membershipId, fields);
+      const plan = await dosespot.prepareEnroll(scope, membershipId);
       const vendorId = await dosespot.callVendor(plan);
       return h.write(
         op,
@@ -257,6 +256,7 @@ export function buildDoseSpotLane(h: DoseSpotLaneHelpers): DoseSpotLaneMethods {
             value: done.view,
             resourceId: done.resourceId,
             changedFields: ["dosespotPrescriberId", "npi"],
+            ...(done.detail ? { detail: done.detail } : {}),
           };
         },
       );

@@ -21,6 +21,10 @@ import type {
   DoseSpotMdmValidator,
   DoseSpotTerminologyValidator,
 } from "../routes/service";
+import type {
+  NppesDirectoryPort,
+  PractitionerDirectoryPort,
+} from "../tenant-config/practitioner-profile";
 import { createNonCoveredMedicationsReader } from "./non-covered-medications";
 import { createMedicationOrderProvider, createRefillInboxProvider } from "./providers";
 import { type DoseSpotSeamStore, createInMemoryDoseSpotSeamStore } from "./store";
@@ -118,6 +122,16 @@ export function getDoseSpotMdmValidator(): DoseSpotMdmValidator {
 /** Resolve the M40 `MdmEntityProvider` seam narrowed to the ordering-physician directory check (CW-CLIN-008). */
 export function getDoseSpotPhysicianDirectory(): PhysicianDirectoryPort {
   return getSeam("MdmEntityProvider") as PhysicianDirectoryPort;
+}
+
+/** Resolve the M40 `MdmEntityProvider` seam narrowed to the practitioner record a DoseSpot enrolment derives the NPI and name from. */
+export function getDoseSpotPractitionerDirectory(): PractitionerDirectoryPort {
+  return getSeam("MdmEntityProvider") as PractitionerDirectoryPort;
+}
+
+/** Resolve M29's published `NppesProviderReader` seam narrowed to the public-directory cross-check (M12 has no edge to M29). */
+export function getDoseSpotNppesDirectory(): NppesDirectoryPort {
+  return getSeam("NppesProviderReader") as NppesDirectoryPort;
 }
 
 /** Resolve the M39 `ConsentEvaluator` seam narrowed to the order service's SUD-medication consent gate. */

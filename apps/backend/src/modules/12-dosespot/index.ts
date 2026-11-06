@@ -48,7 +48,9 @@ export {
   createRefillInboxProvider,
   getDoseSpotConsentValidator,
   getDoseSpotMdmValidator,
+  getDoseSpotNppesDirectory,
   getDoseSpotPhysicianDirectory,
+  getDoseSpotPractitionerDirectory,
   getDoseSpotTerminologyValidator,
   getMedicationOrderProvider,
   getRefillInboxProvider,
@@ -304,6 +306,13 @@ export {
   type PrescriberEnrollmentService,
   createPrescriberEnrollmentService,
 } from "./tenant-config/prescriber-enrollment";
+export {
+  type NppesDirectoryPort,
+  type PractitionerDirectoryPort,
+  type PractitionerProfile,
+  type PractitionerProfileSource,
+  createPractitionerProfileSource,
+} from "./tenant-config/practitioner-profile";
 export { createDrizzleRosterStore } from "./tenant-config/roster-store";
 export {
   type TenantDoseSpotRouteDeps,

@@ -133,8 +133,9 @@ export function registerOnboardingDoseSpotRoutes(
         OnboardingDoseSpotMembershipParamsSchema,
         request.params,
       );
-      const { reason, fields } = splitReason(parse(OnboardingDoseSpotEnrollRequest, request.body));
-      return service.enrollDoseSpotPrescriber(op, orgSlug, membershipId, fields, reason);
+      // The body is the operator's reason alone: who the prescriber is comes from the roster-linked physician record, never the request.
+      const { reason } = splitReason(parse(OnboardingDoseSpotEnrollRequest, request.body));
+      return service.enrollDoseSpotPrescriber(op, orgSlug, membershipId, reason);
     },
   );
 }

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-dosespot-typebox.ts — request contracts of the
 // platform copy of the DoseSpot registration routes (`/api/v1/platform/tenants/:orgSlug/dosespot…`, tenant onboarding slice 4).
-// The bodies are M12's own (`PutClinicBodySchema`, `EnrollPrescriberVendorBodySchema`, which M34 may not import); M12 re-validates
+// The bodies are M12's own (`PutClinicBodySchema`; the enrolment body is just the reason, M12's `EnrollPrescriberVendorBodySchema` being empty); M12 re-validates
 // each with its schema, so these are the published copies plus the operator's `reason`. Credentials are write-only. Each is ONE
 // flat object with `additionalProperties: false` (a Composite drops that flag, so an extra field would slip through).
 import { type TSchema, Type } from "@sinclair/typebox";
@@ -38,13 +38,9 @@ export const OnboardingDoseSpotPutRequest = Type.Object(
   { additionalProperties: false },
 );
 
+/** Enrolment takes no identity: the NPI and legal name come from the roster-linked physician record, so only the reason is sent. */
 export const OnboardingDoseSpotEnrollRequest = Type.Object(
-  {
-    npi: Type.String({ pattern: "^[0-9]{10}$" }),
-    firstName: Type.String({ minLength: 1, maxLength: 100 }),
-    lastName: Type.String({ minLength: 1, maxLength: 100 }),
-    reason,
-  },
+  { reason },
   { additionalProperties: false },
 );
 

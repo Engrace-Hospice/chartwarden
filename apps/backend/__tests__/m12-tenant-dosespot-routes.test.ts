@@ -119,12 +119,11 @@ function makeServer(opts: { verifyLimit?: number } = {}) {
   registerAbacRegistry(reg);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   const enrollmentService: Pick<PrescriberEnrollmentService, "enroll"> = {
-    async enroll(actor, membershipId, input) {
+    async enroll(actor, membershipId) {
       calls.push({
         method: "enroll",
         organizationId: actor.organizationId,
         membershipId,
-        body: input,
       });
       return { membershipId, enrolledWithDoseSpot: true };
     },
@@ -318,13 +317,14 @@ describe("tenant DoseSpot routes", () => {
 describe("prescriber DoseSpot enrolment route", () => {
   const MEMBER = "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd";
   const ENROLL = `/api/v1/admin/dosespot-prescribers/${MEMBER}/dosespot-enrollment`;
-  const ENROLL_BODY = { npi: "1234567893", firstName: "Ada", lastName: "Lovelace" };
+  // enrolment takes NO identity: the NPI and legal name come from the physician record the roster links the member to
+  const TYPED_IDENTITY = { npi: "1234567893", firstName: "Ada", lastName: "Lovelace" };
   const ROSTER_ADMIN = { "x-test-user": "roster_1", "x-test-step-up": "1" };
 
   it("needs the roster key (the clinic admin key does not open it), a fresh step-up, no AI actor and an Idempotency-Key", async () => {
     const { app, calls } = makeServer();
     const send = (headers: Record<string, string>) =>
-      app.inject({ method: "POST", url: ENROLL, headers, payload: ENROLL_BODY });
+      app.inject({ method: "POST", url: ENROLL, headers, payload: {} });
     expect((await send({ ...idem() })).statusCode).toBe(401);
     expect((await send({ ...ADMIN, ...idem() })).statusCode).toBe(403); // clinic admin, not roster admin
     expect((await send({ "x-test-user": "roster_1", ...idem() })).statusCode).toBe(403); // stale step-up
@@ -336,27 +336,39 @@ describe("prescriber DoseSpot enrolment route", () => {
     await app.close();
   });
 
-  it("enrols with the session's org and membership, and refuses a bad NPI shape, an extra field or a non-uuid id before the service", async () => {
+  it("enrols with the session's org and membership, from an empty body or none at all", async () => {
+    const { app, calls } = makeServer();
+    const headers = { ...ROSTER_ADMIN, ...idem() };
+    const ok = await app.inject({ method: "POST", url: ENROLL, headers, payload: {} });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toEqual({ membershipId: MEMBER, enrolledWithDoseSpot: true });
+    const bare = await app.inject({
+      method: "POST",
+      url: ENROLL,
+      headers: { ...ROSTER_ADMIN, ...idem() },
+    });
+    expect(bare.statusCode).toBe(200);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toMatchObject({ method: "enroll", organizationId: ORG, membershipId: MEMBER });
+    await app.close();
+  });
+
+  it("refuses a typed NPI, first name or last name (422) before the service: identity is never taken from the caller", async () => {
     const { app, calls } = makeServer();
     const post = (url: string, payload: object) =>
       app.inject({ method: "POST", url, headers: { ...ROSTER_ADMIN, ...idem() }, payload });
-    const ok = await post(ENROLL, ENROLL_BODY);
-    expect(ok.statusCode).toBe(200);
-    expect(ok.json()).toEqual({ membershipId: MEMBER, enrolledWithDoseSpot: true });
-    expect(calls[0]).toMatchObject({
-      method: "enroll",
-      organizationId: ORG,
-      membershipId: MEMBER,
-      body: ENROLL_BODY,
-    });
-    expect((await post(ENROLL, { ...ENROLL_BODY, npi: "12345" })).statusCode).toBe(422);
-    expect((await post(ENROLL, { ...ENROLL_BODY, epcsRequested: true })).statusCode).toBe(422);
-    expect((await post(ENROLL, { ...ENROLL_BODY, organizationId: "x" })).statusCode).toBe(422);
+    expect((await post(ENROLL, TYPED_IDENTITY)).statusCode).toBe(422);
+    for (const field of Object.keys(TYPED_IDENTITY)) {
+      const only = { [field]: TYPED_IDENTITY[field as keyof typeof TYPED_IDENTITY] };
+      expect((await post(ENROLL, only)).statusCode, field).toBe(422);
+    }
+    expect((await post(ENROLL, { epcsRequested: true })).statusCode).toBe(422);
+    expect((await post(ENROLL, { organizationId: "x" })).statusCode).toBe(422);
     expect(
-      (await post("/api/v1/admin/dosespot-prescribers/not-a-uuid/dosespot-enrollment", ENROLL_BODY))
+      (await post("/api/v1/admin/dosespot-prescribers/not-a-uuid/dosespot-enrollment", {}))
         .statusCode,
     ).toBe(422);
-    expect(calls).toHaveLength(1);
+    expect(calls).toEqual([]);
     await app.close();
   });
 });

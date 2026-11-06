@@ -92,10 +92,9 @@ function recordingService(calls: Call[]): OnboardingDataService {
       op: OnboardingOperator,
       orgSlug: string,
       membershipId: string,
-      fields: Record<string, unknown>,
       reason: string,
     ) => {
-      calls.push({ method: "enrollDoseSpotPrescriber", op, orgSlug, membershipId, fields, reason });
+      calls.push({ method: "enrollDoseSpotPrescriber", op, orgSlug, membershipId, reason });
       return { membershipId, enrolledWithDoseSpot: true };
     },
   } as unknown as OnboardingDataService;
@@ -171,7 +170,8 @@ const PUT_BODY = {
   reason: REASON,
 };
 const ENROLL = `${BASE}/prescribers/${PRESCRIBER}/enroll`;
-const ENROLL_BODY = { npi: "1234567893", firstName: "Ada", lastName: "Lovelace", reason: REASON };
+// enrolment takes no identity (the NPI and name come from the roster-linked physician record): the body is the reason alone
+const ENROLL_BODY = { reason: REASON };
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -370,18 +370,22 @@ describe("platform DoseSpot plumbing", () => {
     const enrol = await post(ENROLL, ENROLL_BODY);
     expect(enrol.json()).toEqual({ membershipId: PRESCRIBER, enrolledWithDoseSpot: true });
     expect((await post(`${BASE}/prescribers/not-a-uuid/enroll`, ENROLL_BODY)).statusCode).toBe(422);
-    expect((await post(ENROLL, { ...ENROLL_BODY, npi: "123" })).statusCode).toBe(422);
-    expect((await post(ENROLL, { ...ENROLL_BODY, epcsRequested: true })).statusCode).toBe(422);
+    for (const typed of [
+      { npi: "1234567893" },
+      { firstName: "Ada" },
+      { lastName: "Lovelace" },
+      { epcsRequested: true },
+    ]) {
+      expect((await post(ENROLL, { ...ENROLL_BODY, ...typed })).statusCode).toBe(422);
+    }
     expect(calls.map((c) => c.method)).toEqual([
       "verifyDoseSpot",
       "activateDoseSpot",
       "deactivateDoseSpot",
       "enrollDoseSpotPrescriber",
     ]);
-    expect(calls[3]).toMatchObject({
-      membershipId: PRESCRIBER,
-      fields: { npi: "1234567893", firstName: "Ada", lastName: "Lovelace" },
-    });
+    expect(calls[3]).toMatchObject({ membershipId: PRESCRIBER, reason: REASON });
+    expect(calls[3]).not.toHaveProperty("fields");
     await app.close();
   });
 

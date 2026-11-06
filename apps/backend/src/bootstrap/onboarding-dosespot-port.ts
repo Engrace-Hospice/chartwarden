@@ -63,12 +63,11 @@ export interface OnboardingDoseSpotPort {
   deactivate(tx: DbClient, scope: OnboardingWriteScope): Promise<OnboardingDoseSpotResult>;
   /** The tenant's roster prescribers and whether each is linked to DoseSpot (no NPI, no DEA), on the adapter's own read. */
   listPrescribers(scope: OnboardingWriteScope): Promise<readonly object[]>;
-  /** Enrol, step 1: validate, check the registration is ready, ensure the roster row, commit the request marker. */
-  prepareEnroll(
-    scope: OnboardingWriteScope,
-    membershipId: string,
-    body: unknown,
-  ): Promise<OnboardingPlan>;
+  /**
+   * Enrol, step 1: check the registration is ready, derive who the prescriber is (the roster-linked practitioner record: nothing is
+   * typed), claim the roster row, commit the request marker.
+   */
+  prepareEnroll(scope: OnboardingWriteScope, membershipId: string): Promise<OnboardingPlan>;
   /** Enrol, step 2: the vendor call with NO transaction open; the vendor's id, or null when already linked. */
   callVendor(plan: OnboardingPlan): Promise<string | null>;
   /** Enrol, step 3: on the caller's write transaction, record the vendor id, publish, audit. */

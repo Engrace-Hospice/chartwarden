@@ -31,7 +31,7 @@ import {
 import type { EnrollPlan, PrescriberEnrollmentService } from "./prescriber-enrollment";
 import { createDrizzleRosterStore } from "./roster-store";
 import type { ClinicActor, ClinicConfigView, DoseSpotClinicService, VerifyPlan } from "./service";
-import { EnrollPrescriberVendorBodySchema, PutClinicBodySchema } from "./typebox";
+import { PutClinicBodySchema } from "./typebox";
 
 const P = schema.dosespotPrescribers;
 
@@ -181,9 +181,8 @@ export function buildDoseSpotClinicOnboardingPort(deps: {
       );
     },
 
-    prepareEnroll(scope, membershipId, body) {
-      const input = parse(EnrollPrescriberVendorBodySchema, body);
-      return deps.enrollment.prepare(asEnrollActor(scope), membershipId, input);
+    prepareEnroll(scope, membershipId) {
+      return deps.enrollment.prepare(asEnrollActor(scope), membershipId);
     },
 
     callVendor: (plan) => deps.enrollment.callVendor(plan as EnrollPlan),
@@ -215,7 +214,10 @@ export function buildDoseSpotClinicOnboardingPort(deps: {
       return {
         resourceId: rosterId,
         view: { membershipId: enrollPlan.membershipId, enrolledWithDoseSpot: true },
-        detail: { event: CLINIC_AUDIT_EVENTS.prescriberEnrolled },
+        detail: {
+          event: CLINIC_AUDIT_EVENTS.prescriberEnrolled,
+          nppesVerified: enrollPlan.profile?.nppesVerified ?? false,
+        },
       };
     },
   };
