@@ -41,7 +41,9 @@ const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = LIVE_DROP_ROLES;
 
 const ORG_A = "11111111-1111-4111-8111-1111f2050201";
+const ORG_B = "11111111-1111-4111-8111-1111f2050202";
 const TENANT_ACCOUNT_A = "55555555-5555-4555-8555-5555f2050205";
+const TENANT_ACCOUNT_B = "55555555-5555-4555-8555-5555f2050206";
 const ACTOR_MEMBERSHIP = "44444444-4444-4444-8444-4444f2050204";
 const SESSION_USER = "66666666-6666-4666-8666-6666f2050206";
 const PLATFORM_JOB_ID = "test-m34-lifecycle-outbox";
@@ -331,5 +333,93 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
     expect(
       await resolver.loadConsentGrant(platformOrg, "88888888-8888-4888-8888-8888f2098999"),
     ).toBeNull();
+  });
+
+  // An operator's onboarding-data write holds the SHARED `tenant-onboarding:<org>` advisory lock from before it reads the
+  // tenant status until it commits (routes/platform/tenant-onboarding-lock.ts). Whatever moves the tenant out of
+  // provisioning/onboarding takes it EXCLUSIVE, so it waits for that write instead of changing the tenant underneath it.
+  // Going live is the go-live APPROVAL (m34-onboarding-wizard.live.test.ts proves the lock there); this suite proves it on
+  // the status route, which can no longer activate an onboarding tenant at all.
+  describe("onboarding tenant: the status route and in-flight onboarding-data writes", () => {
+    async function seedOnboardingTenant() {
+      await admin.query(
+        `INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,'f103-b','Bravo Hospice LLC','Bravo Hospice','active')`,
+        [ORG_B],
+      );
+      await admin.query(
+        `INSERT INTO tenant_account (id,organization_id,status,legal_business_name,billing_contact_email,breach_notification_email)
+         VALUES ($1,$2,'onboarding','Bravo Hospice LLC','billing@bravo.test','breach@bravo.test')`,
+        [TENANT_ACCOUNT_B, ORG_B],
+      );
+    }
+
+    async function holdSharedOnboardingLock(orgId: string) {
+      const writer = new Client({ connectionString: DB_URL });
+      await writer.connect();
+      await writer.query("BEGIN");
+      await writer.query(
+        "SELECT pg_advisory_xact_lock_shared(hashtextextended('tenant-onboarding:' || $1::text, 0))",
+        [orgId],
+      );
+      let released = false;
+      return {
+        async release() {
+          if (released) return;
+          released = true;
+          await writer.query("COMMIT");
+          await writer.end();
+        },
+      };
+    }
+    /** True when `work` has finished (resolved or rejected) within `ms`; false when it is still waiting. */
+    const settlesWithin = (work: Promise<unknown>, ms: number) =>
+      Promise.race([
+        work.then(
+          () => true,
+          () => true,
+        ),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), ms)),
+      ]);
+
+    it("refuses to activate it by hand, immediately and without waiting for an in-flight write", async () => {
+      await seedOnboardingTenant();
+      const writer = await holdSharedOnboardingLock(ORG_B);
+      try {
+        const attempt = service().transitionStatus("f103-b", ACTOR_MEMBERSHIP, {
+          toStatus: "active",
+          transitionReason: "operator activates the tenant",
+        });
+        expect(await settlesWithin(attempt, 750), "the 409 needs no lock").toBe(true);
+        await expect(attempt).rejects.toMatchObject({
+          code: "GO_LIVE_TWO_PARTY_REQUIRED",
+          statusCode: 409,
+        });
+      } finally {
+        await writer.release();
+      }
+      const row = await admin.query("SELECT status FROM tenant_account WHERE id = $1", [
+        TENANT_ACCOUNT_B,
+      ]);
+      expect(row.rows[0].status).toBe("onboarding");
+    });
+
+    it("transitionStatus out of onboarding waits for an onboarding-data write in flight", async () => {
+      const writer = await holdSharedOnboardingLock(ORG_B);
+      try {
+        const attempt = service().transitionStatus("f103-b", ACTOR_MEMBERSHIP, {
+          toStatus: "suspended",
+          transitionReason: "operator suspends the tenant",
+        });
+        expect(
+          await settlesWithin(attempt, 750),
+          "the transition must wait for the in-flight write",
+        ).toBe(false);
+        await writer.release();
+        // The machine has no onboarding -> suspended edge, so it refuses: it got that far only after the write committed.
+        await expect(attempt).rejects.toMatchObject({ code: "ILLEGAL_TENANT_TRANSITION" });
+      } finally {
+        await writer.release();
+      }
+    });
   });
 });
