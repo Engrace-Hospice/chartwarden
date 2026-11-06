@@ -79,6 +79,7 @@ import {
   transportUpload,
   transportUploadPerOrg,
 } from "./clearinghouse-submission";
+import { clearinghouseStateFor, holdJobWhileUnbound } from "./clearinghouse-unbound-hold";
 import { type AckPayerDates, applyNoticeAck, sanitizeAckReasonCodes } from "./notice-ack-jobs";
 import {
   type M23CronQueueName,
@@ -2544,6 +2545,42 @@ async function holdNewClaimsWork(
 }
 
 /**
+ * The queues whose jobs send a claim through the org's own clearinghouse. Such a job for an org whose clearinghouse is not live
+ * (nothing chosen yet, a draft / verified config, or `outside`) is HELD, not failed: the tenant has not finished setup, and the
+ * work is fine. (`eligibility.refresh` is HETS, not the clearinghouse, so it is not here.)
+ */
+export const M23_CLAIM_TRANSPORT_QUEUES: ReadonlySet<string> = new Set([
+  M23_QUEUES.claimSubmit,
+  M23_QUEUES.claimSubmitRetry,
+]);
+
+/**
+ * Everything a worker asks BEFORE it opens the job's transaction: the claims-billing gate (ADR-0108 D7), then, for the claim
+ * queues, whether the org's clearinghouse is live. Either answer holds the job (moved back to delayed, no attempt spent, no
+ * DLQ) by throwing BullMQ's DelayedError. Returns normally when the job may run.
+ */
+export async function holdBeforeRun(
+  deps: Pick<M23WorkerDeps, "db" | "transport" | "alerts" | "logger">,
+  job: HoldableJob,
+  token: string | undefined,
+  queue: string,
+  data: { readonly organizationId: string; readonly claimId?: unknown },
+): Promise<void> {
+  await holdNewClaimsWork(deps, job, token, queue, data);
+  if (!M23_CLAIM_TRANSPORT_QUEUES.has(queue)) return;
+  const state = await clearinghouseStateFor(deps, data.organizationId);
+  if (state.state === "bound") return;
+  await holdJobWhileUnbound({
+    deps,
+    job,
+    token,
+    queue,
+    organizationId: data.organizationId,
+    reason: state.reason,
+  });
+}
+
+/**
  * Construct one BullMQ `Worker` per §4.8 WORK queue, each opening the per-job `withOrgContext(orgId)` RLS
  * envelope (every §4.8 work queue is ORG-scoped, F09) on the org from the job payload and running the matching
  * processor inside it over a tx-scoped repo set. Returns the workers so the composition root can `close()` them
@@ -2566,7 +2603,7 @@ export function registerM23Workers(deps: M23WorkerDeps): Worker[] {
             `M23 worker ${queue}: job.data.organizationId missing (the JobEnqueuePort must enrich it)`,
           );
         }
-        await holdNewClaimsWork(deps, job, token, queue, data);
+        await holdBeforeRun(deps, job, token, queue, data);
         return withOrgContext(
           deps.db,
           {
@@ -2641,7 +2678,7 @@ export function registerM23DomainWorkers(deps: M23WorkerDeps): Worker[] {
       async (job, token) => {
         const data = job.data as D;
         if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
-        await holdNewClaimsWork(deps, job, token, queue, data);
+        await holdBeforeRun(deps, job, token, queue, data);
         await withOrgContext(
           deps.db,
           { organizationId: data.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
@@ -2769,7 +2806,7 @@ export function registerM23LaunchWorkers(
       async (job, token) => {
         const data = job.data as D;
         if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
-        await holdNewClaimsWork(deps, job, token, queue, data);
+        await holdBeforeRun(deps, job, token, queue, data);
         await withOrgContext(
           deps.db,
           {
