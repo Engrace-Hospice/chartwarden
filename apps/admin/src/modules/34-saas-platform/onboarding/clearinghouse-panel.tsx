@@ -16,6 +16,7 @@ import {
 } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
+import { VerifyBaa } from "./clearinghouse-baa-verify";
 import {
   BLANK_CHOICE,
   type ChoiceErrors,
@@ -47,7 +48,7 @@ const EVIDENCE_NOTE_MIN = 8;
 const EVIDENCE_NOTE_MAX = 500;
 const draftKey = (orgSlug: string): string => `wizard:${orgSlug}:clearinghouse_selected:choice`;
 
-type Dialog = "choose" | "verify" | "activate" | "baa" | null;
+type Dialog = "choose" | "verify" | "activate" | null;
 type TestOutcome = "ok" | "credential_rejected" | "unreachable";
 const TEST_PROBLEM: Record<Exclude<TestOutcome, "ok">, string> = {
   credential_rejected:
@@ -143,26 +144,16 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
   const [note, setNote] = useState("");
   const [noteError, setNoteError] = useState<string | null>(null);
   const [notePhiFree, setNotePhiFree] = useState(false);
-  const [staleBaa, setStaleBaa] = useState(false);
   const [testProblem, setTestProblem] = useState<string | null>(null);
   const write = useOpsWrite();
 
   const current = load.data;
   const available = current ? clearinghouseActions(current) : null;
-  const baaToVerify = current?.baa && !current.baa.verified ? current.baa : null;
 
   function closeDialog(): void {
     write.clear();
     setDialog(null);
-    setStaleBaa(false);
   }
-
-  // The BAA being verified was verified (by someone else) or withdrawn while the prompt was open: the prompt closes rather than waiting
-  // to pop open again for whatever BAA is recorded next.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: only the BAA record's presence is the trigger.
-  useEffect(() => {
-    if (dialog === "baa" && baaToVerify === null) closeDialog();
-  }, [dialog, baaToVerify === null]);
 
   function openChoice(): void {
     if (!current) return;
@@ -271,25 +262,6 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
     if (outcome.ok) await settled();
   }
 
-  /** Pinned to the BAA record as read NOW; a BAA the tenant changed since is a 409 that re-reads it and asks again. */
-  async function verifyBaa(reason: string): Promise<void> {
-    const baa = current?.baa;
-    if (!baa || baa.verified) return;
-    const pin = baa.recordedAt;
-    const outcome = await write.run(`baa:${pin}:${reason}`, (key) =>
-      client.POST("/api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/verify", {
-        params: { path: { orgSlug }, header: { "Idempotency-Key": key, "If-Match": pin } },
-        body: { reason },
-      }),
-    );
-    if (outcome.ok) {
-      await settled();
-    } else if (outcome.failure.kind === "conflict" || outcome.failure.kind === "precondition") {
-      setStaleBaa(true);
-      await load.reload(true);
-    }
-  }
-
   function askToAttest(): void {
     const trimmed = note.trim();
     if (trimmed.length < EVIDENCE_NOTE_MIN || trimmed.length > EVIDENCE_NOTE_MAX) {
@@ -338,17 +310,15 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
         {testProblem ? <InlineAlert tone="warning">{testProblem}</InlineAlert> : null}
         {canWrite && available && !editing ? (
           <div className="wx-drawer-actions">
-            {available.canVerifyBaa ? (
-              <Button
-                tone="secondary"
-                onClick={() => {
-                  write.clear();
-                  setStaleBaa(false);
-                  setDialog("baa");
-                }}
-              >
-                Verify the vendor BAA
-              </Button>
+            {current ? (
+              <VerifyBaa
+                orgSlug={orgSlug}
+                view={current}
+                reload={() => load.reload(true)}
+                onVerified={() =>
+                  Promise.all([load.reload(true), ctx.refresh()]).then(() => undefined)
+                }
+              />
             ) : null}
             {available.canVerifyConnection ? (
               <Button
@@ -496,30 +466,6 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
         write={write}
         orgSlug={orgSlug}
         onConfirm={(reason) => void activate(reason)}
-        onCancel={closeDialog}
-      />
-      <RecordSaveDialog
-        open={dialog === "baa" && baaToVerify !== null}
-        title="Verify the vendor BAA"
-        description="Confirm you have seen the signed agreement this record points to."
-        confirmLabel="Verify BAA"
-        stale={staleBaa}
-        record={
-          baaToVerify
-            ? [
-                { label: "Vendor", value: VENDOR_LABEL[current?.vendor ?? ""] ?? "The vendor" },
-                { label: "Document", value: baaToVerify.documentRef },
-                { label: "Effective", value: baaToVerify.effectiveDate },
-                {
-                  label: "Recorded by the tenant",
-                  value: new Date(baaToVerify.recordedAt).toLocaleString(),
-                },
-              ]
-            : undefined
-        }
-        write={write}
-        orgSlug={orgSlug}
-        onConfirm={(reason) => void verifyBaa(reason)}
         onCancel={closeDialog}
       />
     </StepFrame>

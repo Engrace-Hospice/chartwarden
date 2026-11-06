@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The tenant hub's clearinghouse card: which clearinghouse the tenant uses and how far it got, and the way into the notices the tenant
 // recorded as filed outside ChartWarden. Read on request, like the contract: each read of a tenant's billing setup is audited.
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ok, refused, renderAt, stubClient } from "./onboarding/test-support";
 import { TenantClearinghouseCard } from "./tenant-clearinghouse-card";
@@ -109,6 +109,113 @@ describe("TenantClearinghouseCard", () => {
     expect(
       screen.getByRole("link", { name: /Open the clearinghouse step/ }).getAttribute("href"),
     ).toBe("/tenants/cedar-ridge/onboarding/clearinghouse_selected");
+  });
+
+  describe("verifying the vendor BAA (a live tenant that changed vendor needs it too)", () => {
+    const BAA_VERIFY = "/api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/verify";
+    const RECORDED = "2026-11-02T10:00:00.123Z";
+    const RECORDED_AGAIN = "2026-11-05T09:30:00.456Z";
+    const withBaa = (over = {}) => ({
+      ...CLAIMMD,
+      status: "active",
+      baa: { ...CLAIMMD.baa, recordedAt: RECORDED, verified: null, ...over },
+    });
+    const POST = [BAA_VERIFY];
+
+    it("offers it only for a recorded BAA that is not verified yet, and pins the call to the record that was read", async () => {
+      const client = stubClient({
+        GET: { [CH]: () => ok(withBaa()), [SUBSCRIPTION]: () => ok({ contract: null }) },
+        POST: { [BAA_VERIFY]: () => ok(withBaa({ verified: { at: "2026-11-06T09:00:00.000Z" } })) },
+      });
+      renderAt(
+        "/x",
+        [{ path: "/x", element: <TenantClearinghouseCard orgSlug="cedar-ridge" /> }],
+        client,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Verify the vendor BAA" }));
+      const dialog = within(screen.getByRole("dialog"));
+      expect(dialog.getByText("Claim.MD BAA, contract folder 7")).toBeTruthy();
+      fireEvent.change(screen.getByLabelText(/^Reason/), {
+        target: { value: "Read the signed agreement, ticket CHG-8101" },
+      });
+      fireEvent.click(dialog.getByRole("button", { name: "Verify BAA" }));
+      await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+      const [path, init] = client.POST.mock.calls[0] as [
+        string,
+        { params: { header: Record<string, string> }; body: unknown },
+      ];
+      expect(path).toBe(POST[0]);
+      expect(init.params.header["If-Match"]).toBe(RECORDED);
+      expect(init.body).toEqual({ reason: "Read the signed agreement, ticket CHG-8101" });
+      // the card reads the record again
+      await waitFor(() => expect(reads(client, CH)).toBeGreaterThan(1));
+    });
+
+    it("shows a BAA the tenant re-recorded meanwhile under a notice, and the second confirm pins the NEW record", async () => {
+      let attempts = 0;
+      const client = stubClient({
+        GET: {
+          [CH]: () => {
+            attempts += 1;
+            return ok(
+              attempts === 1
+                ? withBaa()
+                : withBaa({ documentRef: "Claim.MD BAA v2", recordedAt: RECORDED_AGAIN }),
+            );
+          },
+          [SUBSCRIPTION]: () => ok({ contract: null }),
+        },
+        POST: {
+          [BAA_VERIFY]: (init) =>
+            (init as { params?: { header?: Record<string, string> } }).params?.header?.[
+              "If-Match"
+            ] === RECORDED
+              ? refused(409, "CLEARINGHOUSE_BAA_CHANGED", "changed")
+              : ok(withBaa()),
+        },
+      });
+      renderAt(
+        "/x",
+        [{ path: "/x", element: <TenantClearinghouseCard orgSlug="cedar-ridge" /> }],
+        client,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Verify the vendor BAA" }));
+      fireEvent.change(screen.getByLabelText(/^Reason/), {
+        target: { value: "Read the signed agreement, ticket CHG-8101" },
+      });
+      fireEvent.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Verify BAA" }),
+      );
+
+      expect(await screen.findByText(/This record changed since you opened it/)).toBeTruthy();
+      const dialog = within(screen.getByRole("dialog"));
+      await waitFor(() => expect(dialog.getByText("Claim.MD BAA v2")).toBeTruthy());
+      expect(client.POST).toHaveBeenCalledTimes(1);
+      fireEvent.click(dialog.getByRole("button", { name: /Confirm the updated record/ }));
+      await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(2));
+      const second = client.POST.mock.calls[1] as [
+        string,
+        { params: { header: Record<string, string> } },
+      ];
+      expect(second[1].params.header["If-Match"]).toBe(RECORDED_AGAIN);
+    });
+
+    it("offers nothing when no BAA is recorded, when it is already verified, and for a tenant billing outside", async () => {
+      for (const choice of [
+        { ...CLAIMMD, status: "active", baa: null },
+        withBaa({ verified: { at: "2026-11-06T09:00:00.000Z" } }),
+        OUTSIDE,
+      ]) {
+        const client = mount(choice);
+        fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+        await screen.findByRole("button", { name: "Notices filed outside ChartWarden" });
+        expect(screen.queryByRole("button", { name: "Verify the vendor BAA" })).toBeNull();
+        expect(client.POST).not.toHaveBeenCalled();
+        cleanup();
+      }
+    });
   });
 
   it("opens the drawer of notices filed outside ChartWarden, and closes it", async () => {

@@ -14,6 +14,7 @@ import { useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { NoticeFilingsDrawer } from "./notice-filings-drawer";
+import { VerifyBaa } from "./onboarding/clearinghouse-baa-verify";
 import { MODE_LABEL, VENDOR_LABEL, isTransmitting } from "./onboarding/clearinghouse-model";
 import type { ClearinghouseView } from "./onboarding/clearinghouse-model";
 import { ContractModeBanner } from "./onboarding/contract-mode-banner";
@@ -95,6 +96,14 @@ function Body({
         </p>
       ) : null}
       <div className="wx-drawer-actions">
+        {chosen ? (
+          <VerifyBaa
+            orgSlug={orgSlug}
+            view={view}
+            reload={() => load.reload(true)}
+            onVerified={() => load.reload(true)}
+          />
+        ) : null}
         <Button tone="secondary" size="sm" onClick={onOpenFilings}>
           Notices filed outside ChartWarden
         </Button>
