@@ -166,14 +166,6 @@ interface ConsentEvaluatorShape {
     callerModule: string;
   }): Promise<{ allowed: boolean }>;
 }
-interface BereavedPortalScopeShape {
-  isWindowOpen(args: {
-    organizationId: string;
-    portalAccountId: string;
-    patientId: string;
-    asOf: string;
-  }): Promise<boolean>;
-}
 /** The production ports — every seam resolved LAZILY at call time through the M1 registry, so registration
  *  order is irrelevant and an unregistered seam denies at its own deny-stub rather than at boot. */
 export const seamPortalAbacPorts: PortalAbacPorts = {
@@ -194,10 +186,8 @@ export const seamPortalAbacPorts: PortalAbacPorts = {
   },
   async bereavedWindowOpen(input) {
     try {
-      const provider = getSeam(
-        "BereavedPortalScopeProvider",
-      ) as unknown as BereavedPortalScopeShape;
-      return await provider.isWindowOpen(input);
+      // The registry's own seam type: a method M16 lacks is a compile error, not a swallowed TypeError.
+      return await getSeam("BereavedPortalScopeProvider").isWindowOpen(input);
     } catch {
       return false;
     }
