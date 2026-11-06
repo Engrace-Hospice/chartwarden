@@ -92,6 +92,8 @@ import {
   useActionStatus,
   useIdempotencyKey,
 } from "./bereavement-ui";
+import { ContactMemorialInvitationsCard } from "./contact-memorial-invitations-card";
+import { ContactSupportGroupsCard } from "./contact-support-groups-card";
 import { ProgramActivityCard } from "./program-activity-card";
 
 /** What a refused write on this page means: the contact moved (or was decided) under the reader, so the page reloads. */
@@ -401,6 +403,9 @@ function ContactForPlan({
 
       {/* ADR-0109 D10 — touchpoints and program activities (mailings, sessions); renders nothing for a reader the server refuses. */}
       <ProgramActivityCard contactId={contactId} refreshKey={timelineTick} />
+      {/* ADR-0109 D10 PR 3 — groups and memorial invitations; each renders nothing without its permission. */}
+      <ContactSupportGroupsCard contactId={contactId} />
+      <ContactMemorialInvitationsCard contactId={contactId} />
 
       <Card title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>

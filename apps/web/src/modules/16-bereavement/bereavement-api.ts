@@ -206,7 +206,7 @@ export const NO_RESPONSE = 0;
  * `{ error: LOST_RESPONSE, status: NO_RESPONSE }`, so a screen can never be left on "busy" forever and can retry
  * with the SAME idempotency key.
  */
-async function send<T>(
+export async function send<T>(
   call: () => Promise<{ data?: T; error?: unknown; response: Response }>,
 ): Promise<{ data: T | null; error: unknown; status: number }> {
   try {
