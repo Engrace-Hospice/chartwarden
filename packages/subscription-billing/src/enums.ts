@@ -11,6 +11,7 @@ import type {
   BillingAggregation,
   BillingCadence,
   BillingInactivityReason,
+  BillingServiceMode,
   DunningStage,
   InvoiceLineKind,
   InvoiceStatus,
@@ -29,7 +30,14 @@ export const PLAN_TIERS = [
   "starter",
   "professional",
   "enterprise",
+  "census_banded",
 ] as const satisfies readonly PlanTier[];
+
+export const BILLING_SERVICE_MODES = [
+  "none",
+  "billing_software",
+  "managed_billing",
+] as const satisfies readonly BillingServiceMode[];
 
 export const BILLING_CADENCES = ["monthly", "annual"] as const satisfies readonly BillingCadence[];
 

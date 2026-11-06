@@ -61,6 +61,7 @@ const PlanTierLit = Type.Union([
   Type.Literal("starter"),
   Type.Literal("professional"),
   Type.Literal("enterprise"),
+  Type.Literal("census_banded"),
 ]);
 const CadenceLit = Type.Union([Type.Literal("monthly"), Type.Literal("annual")]);
 const ProrationLit = Type.Union([

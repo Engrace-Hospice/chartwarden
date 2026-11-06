@@ -3598,7 +3598,13 @@ export const telehealthVendor = pgEnum("telehealth_vendor", [
 // emit the matching `CREATE TYPE`s; RLS/grants + the M4 write-audit triggers land in 0143.
 
 /** `plan_tier` — the pricing tier a plan belongs to (§2.1). */
-export const planTier = pgEnum("plan_tier", ["starter", "professional", "enterprise"]);
+export const planTier = pgEnum("plan_tier", [
+  "starter",
+  "professional",
+  "enterprise",
+  // Slice 2 pricing (migration 1340): the contracted census-banded model; the three above are retired.
+  "census_banded",
+]);
 
 /** `billing_cadence` — monthly vs annual billing period. */
 export const billingCadence = pgEnum("billing_cadence", ["monthly", "annual"]);

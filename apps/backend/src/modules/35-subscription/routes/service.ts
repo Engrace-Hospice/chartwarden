@@ -41,7 +41,7 @@ export type RefundStatus =
   | "executed_success"
   | "executed_failed";
 export type RefundKind = "full" | "partial" | "credit_only";
-export type PlanTier = "starter" | "professional" | "enterprise";
+export type PlanTier = "starter" | "professional" | "enterprise" | "census_banded";
 export type BillingCadence = "monthly" | "annual";
 export type ProrationBehavior = "create_prorations" | "always_invoice" | "none";
 export type MeterThresholdState = "ok" | "warning" | "breached";

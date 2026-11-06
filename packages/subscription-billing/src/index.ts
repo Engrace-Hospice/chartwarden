@@ -41,6 +41,8 @@ export * from "./domain";
 export * from "./pseudonym/hasher";
 // §3.3/D6/D15 `patient_pseudonym_key` platform-singleton KEK envelope (F-172, #248).
 export * from "./pseudonym/key-envelope";
+// Slice 2 — the contracted census-banded pricing math (pure).
+export * from "./pricing";
 // §2 pure lifecycle SERVICES over injected ports (M35-T03).
 export * from "./service";
 // §4.13/§4.14/§8.7 outbox-only Stripe adapter — SDK-free client, redactor, idempotency, HMAC webhook
