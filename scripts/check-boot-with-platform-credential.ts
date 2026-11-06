@@ -41,7 +41,10 @@ const WATCHER_REQUESTED = process.env.M29_LISTENER_WATCH_ENABLED === "true";
 // #717 - a bound vendor with a queue connection must have constructed the M25 835 pull worker (bound is not computing).
 const PULL_LOG = "M25 remittance pull worker constructed";
 const M41_DRAIN_LOG = "M41 commercial submission drain constructed";
-const PULL_REQUESTED = Boolean(process.env.CLEARINGHOUSE_VENDOR) && Boolean(process.env.REDIS_URL);
+// ADR-0053 amendment 2026-11-06 - tenants choose their own clearinghouse, so a database boot with a queue connection ALWAYS
+// constructs the pull (it resolves each org's vendor per tick and skips an org with none); no platform vendor is needed.
+const TENANT_LOG = "Tenant clearinghouses: per organization";
+const PULL_REQUESTED = Boolean(process.env.REDIS_URL);
 
 for (const key of ["DATABASE_URL", "DATABASE_PLATFORM_URL"]) {
   if (!process.env[key]) {
@@ -126,9 +129,14 @@ if (!output.includes(CLEARINGHOUSE_LOG)) {
   );
 }
 
+if (!output.includes(TENANT_LOG)) {
+  fail(
+    `the backend booted with a database but never logged "${TENANT_LOG}" - the per-organization clearinghouse binding was skipped, so every tenant would answer CH_NOT_WIRED`,
+  );
+}
 if (PULL_REQUESTED && !output.includes(PULL_LOG)) {
   fail(
-    `CLEARINGHOUSE_VENDOR is set but the backend never constructed the M25 remittance pull worker (no "${PULL_LOG}" line) - the 835 feed is bound but not computing`,
+    `REDIS_URL is set but the backend never constructed the M25 remittance pull worker (no "${PULL_LOG}" line) - the 835 feed is bound but not computing`,
   );
 }
 // ADR-0053 D10 - the M41 commercial submission drain is constructed whenever a queue connection exists, bound or not (an unbound tick
