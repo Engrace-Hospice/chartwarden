@@ -22,7 +22,6 @@ export type QueuePage = Ok<operations["getApiV1IntakeUploads"]>;
 export type QueueItem = QueuePage["items"][number];
 export type Workspace = Ok<operations["getApiV1IntakeUploadsByIdWorkspace"]>;
 export type WorkspacePage = Workspace["pages"][number];
-export type WorkspaceJob = Workspace["jobs"][number];
 export type Candidate = Workspace["candidates"][number];
 export type SudStatus = Workspace["sud"]["status"];
 export type SudIndicator = Workspace["sud"]["indicators"][number];
@@ -154,7 +153,6 @@ export async function resolveSud(
   return { ok: true, value: data.sudStatus };
 }
 
-export type WorkspaceDocument = Workspace["documents"][number];
 export type IdentityResolution = "same_patient" | "other_patient";
 
 /** F-238 — a reviewer's answer for one document whose identity check flagged it. */

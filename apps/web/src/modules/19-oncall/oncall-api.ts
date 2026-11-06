@@ -231,16 +231,12 @@ export type TriageCallerKind = TriageCallListItem["callerKind"];
 export type TriageInboundChannel = TriageCallListItem["inboundChannel"];
 export type TriageCallSource = TriageCallListItem["source"];
 export type EscalationTier = TriageEscalationView["tier"];
-export type EscalationTriggerKind = TriageEscalationView["triggerKind"];
-export type EscalationState = TriageEscalationView["state"];
 export type ShiftDiscipline = OnCallShiftView["discipline"];
-export type ShiftStatus = OnCallShiftView["status"];
 export type TriageAnswerType = TriageAnswerView["answerType"];
 export type OncallModel = OncallPolicyView["model"];
 export type MinimizationProfile = ReqBody<
   operations["postApiV1OncallExternalvendors"]
 >["defaultMinimizationPolicy"]["profile"];
-export type AiConfidenceBand = NonNullable<TriageCallDetail["suggestedProtocolConfidence"]>;
 /** The D5 `redFlagMatch` closed predicate union (§4.2's `addProtocolQuestion`/`patchProtocolQuestion`). */
 export type TriageRedFlagMatch = NonNullable<
   ReqBody<operations["postApiV1TriageprotocolsByProtocolIdQuestions"]>["redFlagMatch"]

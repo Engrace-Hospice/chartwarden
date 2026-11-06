@@ -202,22 +202,6 @@ export async function createAuditRequest(
   });
 }
 
-export async function patchAuditRequest(
-  client: ApiClient,
-  id: string,
-  version: number,
-  body: AuditRequestPatch,
-): Promise<WriteResult<Versioned>> {
-  return guarded(async () => {
-    const { data, error, response } = await client.PATCH("/api/v1/audit-requests/{id}", {
-      params: { path: { id } },
-      headers: ifMatch(version),
-      body,
-    });
-    return error || !data ? failure(response?.status, error) : ok(data);
-  });
-}
-
 export async function linkAuditClaim(
   client: ApiClient,
   id: string,

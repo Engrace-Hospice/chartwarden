@@ -47,7 +47,6 @@ type ReqBody<Op> = Op extends { requestBody?: infer RB } ? Json<RB> : never;
 
 export type ScaleCatalog = Ok<operations["getApiV1Scales"]>;
 export type ScaleDefinition = ScaleCatalog["scales"][number];
-export type ScaleItem = NonNullable<ScaleDefinition["items"]>[number];
 export type AssessmentDetailView = Ok<operations["getApiV1PatientsByPatientIdAssessmentsById"]>;
 export type AssessmentView = Omit<AssessmentDetailView, "items" | "notes">;
 export type RecordAssessmentBody = ReqBody<operations["postApiV1PatientsByPatientIdAssessments"]>;
@@ -60,8 +59,6 @@ export type AcknowledgeBody = ReqBody<
 
 /** The 14 scale types the route accepts. Derived, so a vocabulary change is a compile error. */
 export type ScaleType = RecordAssessmentBody["scaleType"];
-/** Who the capture is recorded on behalf of (§7.x consent). */
-export type ActingAs = NonNullable<RecordAssessmentBody["actingAs"]>;
 
 /** The outcome of one write — discriminated, because every caller renders the failure in place. */
 export type WriteResult<T> =
@@ -169,19 +166,6 @@ export async function correctAssessment(
   );
   if (error || !data) return failure(response?.status, error);
   return ok(data as AssessmentView);
-}
-
-/** Attach the required cosignature to a capture that needs one. */
-export async function cosignAssessment(
-  client: ApiClient,
-  id: string,
-): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST("/api/v1/assessments/{id}/cosignatures", {
-    params: { path: { id } },
-    body: { attestationConfirmed: true },
-  });
-  if (error || !data) return failure(response?.status, error);
-  return ok(data);
 }
 
 /**

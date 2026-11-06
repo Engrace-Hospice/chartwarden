@@ -9,7 +9,7 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 // Authoring: `encounter-compose.tsx` is the §2.6 tap-to-document surface (template sections, per-section
 // vocabulary, `${slot}` params, verbatim free text, vitals, save with §7.7 `If-Match`, finalize); its menu is
 // served by `GET .../template` so the client holds no second copy of the `assembleSelections` rules.
-// `new-encounter-modal.tsx` starts an encounter from the patient encounters list. Care-plan links are
+// Care-plan links are
 // persisted (`POST/GET/DELETE .../care-plan-links`; DELETE is a soft invalidate) and edited from
 // `encounter-read.tsx`. Addenda are authored in `addendum-panel.tsx`.
 //

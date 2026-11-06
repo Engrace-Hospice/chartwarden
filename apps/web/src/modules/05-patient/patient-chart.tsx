@@ -40,8 +40,6 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import type { FormEvent, JSX, ReactNode } from "react";
 
-import { STATUS_TONE, statusLabel } from "./patient-status";
-
 import { ClinicalRail, ClinicalTab, ReadNotice, useClinicalData } from "./patient-clinical";
 import {
   Avatar,

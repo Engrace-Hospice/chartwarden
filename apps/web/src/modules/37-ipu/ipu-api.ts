@@ -123,8 +123,6 @@ export const GIP_REASSESS_RATIONALE_MIN = 50;
 export const GIP_RATIONALE_MIN = 100;
 /** §2.4 — the imminent-death arm's home-environment assessment floor. */
 export const GIP_HOME_ASSESSMENT_MIN = 50;
-/** §2.7 — a visitor restriction's rationale floor (a non-empty string on the wire). */
-export const RESTRICTION_RATIONALE_MIN = 1;
 
 // ── which action to OFFER on a row (an affordance, never a gate) ───────────────────────────────────────
 //

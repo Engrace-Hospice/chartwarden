@@ -45,21 +45,17 @@ type ReqBody<Op> = Op extends { requestBody?: infer RB } ? Json<RB> : never;
 
 export type VisitView = Ok<operations["getApiV1VisitsByVisitId"]>;
 export type CreateVisitBody = ReqBody<operations["postApiV1Visits"]>;
-export type PatchVisitBody = ReqBody<operations["patchApiV1VisitsByVisitId"]>;
 export type RescheduleBody = ReqBody<operations["postApiV1VisitsByVisitIdReschedule"]>;
 export type ReassignBody = ReqBody<operations["postApiV1VisitsByVisitIdReassign"]>;
 export type CancelVisitBody = ReqBody<operations["postApiV1VisitsByVisitIdCancel"]>;
 export type NoShowBody = ReqBody<operations["postApiV1VisitsByVisitIdNoshow"]>;
 export type CreateRecurringBody = ReqBody<operations["postApiV1Recurringvisits"]>;
 export type CreateTimeOffBody = ReqBody<operations["postApiV1Timeoff"]>;
-export type AvailabilityBody = ReqBody<operations["putApiV1AvailabilityByMembershipId"]>;
 
 /** The §2.1 visit purposes the server accepts. Derived, so a vocabulary change is a compile error. */
 export type VisitPurpose = CreateVisitBody["visitPurpose"];
 /** The §2.1 settings a visit can occur in. */
 export type VisitSetting = CreateVisitBody["visitSetting"];
-/** The §7.x cancellation reason codes. */
-export type CancelReasonCode = CancelVisitBody["reasonCode"];
 /** The time-off kinds the server accepts. */
 export type TimeOffKind = CreateTimeOffBody["kind"];
 
@@ -211,24 +207,6 @@ export async function cancelVisit(
   body: CancelVisitBody,
 ): Promise<WriteResult<VisitView>> {
   const { data, error, response } = await client.POST("/api/v1/visits/{visitId}/cancel", {
-    params: { path: { visitId } },
-    body,
-  });
-  if (error || !data) return failure(response?.status, error);
-  return ok(data as VisitView);
-}
-
-/**
- * Record a no-show. Distinct from a cancellation on purpose: a cancelled visit was called off, a
- * no-show is a visit the clinician attended and the patient did not receive — the §5.1 metrics count
- * them separately and only one of them reflects on scheduling.
- */
-export async function markNoShow(
-  client: ApiClient,
-  visitId: string,
-  body: NoShowBody,
-): Promise<WriteResult<VisitView>> {
-  const { data, error, response } = await client.POST("/api/v1/visits/{visitId}/no-show", {
     params: { path: { visitId } },
     body,
   });

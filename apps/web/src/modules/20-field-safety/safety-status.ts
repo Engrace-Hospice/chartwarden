@@ -372,7 +372,6 @@ export const DEFAULT_HIGH_RISK_AREA_POLICY = "advisory_only";
 export const DEFAULT_SUBSCRIPTION_SCOPE_KIND = "explicit";
 export const DEFAULT_SOS_OUTCOME = "clinician_safe_continued";
 export const DEFAULT_ACK_OUTCOME = "reached_clinician_by_phone";
-export const DEFAULT_CONSENT_PURPOSE = "sos_coordinates";
 
 // ── the server-side minimums each form mirrors ─────────────────────────────────────────────────────────
 //

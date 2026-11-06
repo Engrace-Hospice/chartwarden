@@ -117,20 +117,6 @@ export const DEFINITION_STATUS_TONE: Record<string, StatusTone> = {
   superseded: "neutral",
 };
 
-/** §3.3 saved-view status → tone. */
-export const VIEW_STATUS_TONE: Record<string, StatusTone> = {
-  active: "success",
-  archived: "neutral",
-};
-
-/** §3.3 report-base / metric catalog status → tone. */
-export const CATALOG_STATUS_TONE: Record<string, StatusTone> = {
-  seeded: "neutral",
-  active: "success",
-  deprecated: "warning",
-  retired: "neutral",
-};
-
 // ── label helpers (mirror saas-status.ts) ─────────────────────────────────────────────────────────────
 
 /** Title-case an underscore enum value, e.g. `rendered_complete` → `Rendered Complete`. */
@@ -155,9 +141,4 @@ export function scheduleTone(status: string): StatusTone {
 export function mvTone(status: string, refreshFailureCount = 0): StatusTone {
   if (refreshFailureCount > 0) return "error";
   return MV_STATUS_TONE[status] ?? "neutral";
-}
-
-/** Resolve a report-definition status to its tone, defaulting to neutral. */
-export function definitionTone(status: string): StatusTone {
-  return DEFINITION_STATUS_TONE[status] ?? "neutral";
 }

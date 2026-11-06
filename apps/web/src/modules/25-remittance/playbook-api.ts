@@ -15,7 +15,6 @@ export type PlaybookListItem = PlaybookList["items"][number];
 export type PlaybookDetail = Ok<operations["getApiV1PlaybooksById"]>;
 export type PlaybookVersion = PlaybookDetail["versions"][number];
 export type DenialPlaybook = Ok<operations["getApiV1DenialsByIdPlaybook"]>;
-export type DenialPlaybookBody = NonNullable<DenialPlaybook["playbook"]>;
 export type PlaybookCreateInput = ReqBody<operations["postApiV1Playbooks"]>;
 export type PlaybookContentInput = ReqBody<operations["patchApiV1PlaybookversionsById"]>;
 export type PlaybookStepStatus = ReqBody<
