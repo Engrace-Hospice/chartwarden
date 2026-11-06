@@ -353,7 +353,12 @@ describe("assertAttesterStillValid", () => {
     active: true,
     roleKeys: ["compliance_officer"],
   };
-  const base = { pending: att(), attester: officer, assignedOfficer: "m-co" as string | null };
+  const base = {
+    pending: att(),
+    attester: officer,
+    assignedOfficer: "m-co" as string | null,
+    attesterIsPlatformStaff: false,
+  };
 
   it("passes while the attester is an active member, still a compliance officer, and still the assigned one", () => {
     expect(() => assertAttesterStillValid(base)).not.toThrow();
@@ -377,6 +382,11 @@ describe("assertAttesterStillValid", () => {
       "is no longer the assigned officer",
       { ...base, assignedOfficer: "m-someone-else" },
       "attester_not_assigned_officer",
+    ],
+    [
+      "is ChartWarden platform staff",
+      { ...base, attesterIsPlatformStaff: true },
+      "attester_platform_staff",
     ],
   ])("refuses when the attester %s", (_label, input, detail) => {
     const r = code(() => assertAttesterStillValid(input));

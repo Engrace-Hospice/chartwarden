@@ -797,6 +797,94 @@ describe("two-party go-live", () => {
   });
 });
 
+describe("platform staff are never the compliance officer or the attester (one operator must not hold both hats)", () => {
+  // Every platform_ops operator holds an active membership in every tenant (bootstrap/bind-platform-staff.ts), so without
+  // this rule an operator could be bound compliance_officer, attest go-live themselves, and let a colleague approve.
+  const COLLEAGUE: TenantActor = {
+    kind: "tenant",
+    membershipId: "colleague-m",
+    userId: "colleague-u",
+    roles: ["compliance_officer", "platform_alert_audience"],
+  };
+  const PLATFORM_REFUSAL = "COMPLIANCE_OFFICER_PLATFORM_STAFF";
+  beforeEach(() => {
+    state.members.set(
+      ...memoryMember(ORG, "colleague-m", "colleague-u", [
+        "compliance_officer",
+        "platform_alert_audience",
+      ]),
+    );
+    state.members.set(...memoryMember(ORG, "ops-own-m", "ops-u", ["org_admin"]));
+    state.members.set(...memoryMember(ORG, "ops-home-m", "colleague2-u", ["org_admin"]));
+    state.platformStaffUserIds = new Set(["colleague2-u"]);
+  });
+
+  it("refuses to bind or assign the operator's own membership in the tenant (422), and binds nothing", async () => {
+    try {
+      await wizard().setComplianceOfficerPlatform("acme", OPS, "ops-own-m", OPS_REASON);
+      expect.unreachable("an operator cannot name themselves the compliance officer");
+    } catch (e) {
+      expect((e as ChartWardenError).code).toBe(PLATFORM_REFUSAL);
+      expect((e as ChartWardenError).statusCode).toBe(422);
+    }
+    expect(bindOfficerRole).not.toHaveBeenCalled();
+    expect(tenant().complianceOfficerMembershipId).toBeNull();
+  });
+
+  it("refuses a colleague operator's tenant membership: audience-bound, and a platform role holder without the binding", async () => {
+    for (const membership of ["colleague-m", "ops-home-m"]) {
+      expect(
+        await code(wizard().setComplianceOfficerPlatform("acme", OPS, membership, OPS_REASON)),
+        membership,
+      ).toBe(PLATFORM_REFUSAL);
+    }
+    expect(bindOfficerRole).not.toHaveBeenCalled();
+    expect(tenant().complianceOfficerMembershipId).toBeNull();
+  });
+
+  it("the tenant route refuses a platform operator too, even one that already holds the role", async () => {
+    expect(await code(wizard().setComplianceOfficer(ADMIN, ORG, "colleague-m"))).toBe(
+      PLATFORM_REFUSAL,
+    );
+    expect(tenant().complianceOfficerMembershipId).toBeNull();
+  });
+
+  it("a platform operator who is already the assigned officer cannot attest go-live (colleague scenario)", async () => {
+    settle("organisation", "billing", "locations", "baa_auto");
+    state.tenants = [{ ...tenant(), complianceOfficerMembershipId: "colleague-m" }];
+    expect(await code(wizard().attestGoLive(COLLEAGUE, ORG, undefined))).toBe(PLATFORM_REFUSAL);
+    expect(state.goLive).toHaveLength(0);
+  });
+
+  it("refuses an attester who is a platform role holder through the tenant session's roles alone", async () => {
+    settle("organisation", "billing", "locations", "baa_auto");
+    state.members.set(...memoryMember(ORG, "co-m", "co-u", ["compliance_officer"]));
+    state.platformStaffUserIds = new Set(["co-u"]);
+    expect(await code(wizard().attestGoLive(OFFICER, ORG, undefined))).toBe(PLATFORM_REFUSAL);
+  });
+
+  it("an attestation filed before the attester became platform staff is stale at approval, with its own detail", async () => {
+    settle("organisation", "billing", "locations", "baa_auto");
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    state.platformStaffUserIds = new Set(["co-u"]);
+    try {
+      await wizard().approveGoLive("acme", OPS, "reviewed the evidence and the BAA");
+      expect.unreachable("approval should have been refused");
+    } catch (e) {
+      const err = e as ChartWardenError;
+      expect(err.code).toBe("GO_LIVE_ATTESTATION_STALE");
+      expect(err.details?.map((d) => d.code)).toEqual(["attester_platform_staff"]);
+    }
+    expect(tenant().status).toBe("onboarding");
+  });
+
+  it("an ordinary tenant member is still assignable and can still attest", async () => {
+    settle("organisation", "billing", "locations", "baa_auto");
+    await wizard().setComplianceOfficerPlatform("acme", OPS, "co-m", OPS_REASON);
+    await expect(wizard().attestGoLive(OFFICER, ORG, undefined)).resolves.toBeDefined();
+  });
+});
+
 describe("go-live: two people, a live attester, a fresh attestation", () => {
   beforeEach(() => settle("organisation", "billing", "locations", "baa_auto"));
   const DAY_MS = 24 * 3600 * 1000;

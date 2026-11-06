@@ -178,6 +178,10 @@ const PLATFORM_WRITER_FUNCTIONS = [
   "audit_archive_candidates(int)",
   "audit_archive_read_batch(text, uuid, int)",
   "audit_archive_detach(text, bigint, boolean)",
+  // M34 onboarding wizard: is this user ChartWarden platform staff? The compliance officer and the go-live attester must not
+  // be (migration 1097's SECURITY DEFINER holder reader; user ids only, platform-owned roles only). The platform pool reads it
+  // when approval re-checks the attester, the tenant pool already holds EXECUTE from the migration.
+  "m34_platform_role_holders(text[])",
 ] as const;
 
 /** The M35 platform-only tables (migration 0143 — RLS with no chartwarden_app grant): full write. */

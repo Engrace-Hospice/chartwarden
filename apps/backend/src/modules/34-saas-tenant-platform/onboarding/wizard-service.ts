@@ -218,7 +218,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
         async (ctx) => {
           const previous = ctx.tenant.complianceOfficerMembershipId;
           const roleBound = await ensureOfficerRole(ctx, actor, membershipId, reason);
-          const assigned = await assignOfficer(ctx, membershipId);
+          const assigned = await assignOfficer(ctx, membershipId, actor);
           if (assigned.superseded) {
             await revokePending(
               ctx,
