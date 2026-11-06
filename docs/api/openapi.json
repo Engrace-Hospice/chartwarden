@@ -219371,6 +219371,7 @@
                           "correctsNoticeId",
                           "correctionReason",
                           "correctedBy",
+                          "externalFiling",
                           "noeId",
                           "organizationId",
                           "providerEntityId",
@@ -219534,6 +219535,55 @@
                                       {
                                         "const": "cancelled",
                                         "type": "string"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalFiling": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "filedOn",
+                                  "recordedAt"
+                                ],
+                                "properties": {
+                                  "status": {
+                                    "anyOf": [
+                                      {
+                                        "const": "filed_externally_pending",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "filed_externally",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "filedOn": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "recordedAt": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
                                       }
                                     ]
                                   }
@@ -219726,6 +219776,7 @@
                     "correctsNoticeId",
                     "correctionReason",
                     "correctedBy",
+                    "externalFiling",
                     "noeId",
                     "organizationId",
                     "providerEntityId",
@@ -219889,6 +219940,55 @@
                                 {
                                   "const": "cancelled",
                                   "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalFiling": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "status",
+                            "filedOn",
+                            "recordedAt"
+                          ],
+                          "properties": {
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "filed_externally_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "filed_externally",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "filedOn": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "recordedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
                                 }
                               ]
                             }
@@ -220132,6 +220232,7 @@
                         "correctsNoticeId",
                         "correctionReason",
                         "correctedBy",
+                        "externalFiling",
                         "noeId",
                         "organizationId",
                         "providerEntityId",
@@ -220305,6 +220406,55 @@
                             }
                           ]
                         },
+                        "externalFiling": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "status",
+                                "filedOn",
+                                "recordedAt"
+                              ],
+                              "properties": {
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "const": "filed_externally_pending",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "filed_externally",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "filedOn": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "recordedAt": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "noeId": {
                           "type": "string"
                         },
@@ -220462,6 +220612,424 @@
                         "type": "null"
                       }
                     ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/noe-records/{id}/record-external-filing": {
+      "post": {
+        "operationId": "postApiV1NoerecordsByIdRecordexternalfiling",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Record the date an organization that bills outside ChartWarden filed the NOE itself (step-up; 200, idempotent for the same date, 409 for another). Nothing is transmitted; the notice leaves the deadline tracker",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "acceptedAt",
+                    "rejectedAt",
+                    "rejectionStage",
+                    "rejectionCodes",
+                    "payerStatusDate",
+                    "payerStatusDateSource",
+                    "correctsNoticeId",
+                    "correctionReason",
+                    "correctedBy",
+                    "externalFiling",
+                    "noeId",
+                    "organizationId",
+                    "providerEntityId",
+                    "patientId",
+                    "admissionId",
+                    "electionPeriodId",
+                    "state",
+                    "electionEffectiveDate",
+                    "windowTargetAt",
+                    "windowBreachedAt",
+                    "noeControlNumber",
+                    "payerNoeControlNumber",
+                    "latestSubmissionId",
+                    "latestAcknowledgmentId",
+                    "confirmationDocumentId",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "acceptedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rejectedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rejectionStage": {
+                      "anyOf": [
+                        {
+                          "const": "999",
+                          "type": "string"
+                        },
+                        {
+                          "const": "277ca",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rejectionCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "payerStatusDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "payerStatusDateSource": {
+                      "anyOf": [
+                        {
+                          "const": "277ca_stc02",
+                          "type": "string"
+                        },
+                        {
+                          "const": "999_gs04",
+                          "type": "string"
+                        },
+                        {
+                          "const": "999_isa09",
+                          "type": "string"
+                        },
+                        {
+                          "const": "receipt",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dde_manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dde_provider",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "correctsNoticeId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "correctionReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "correctedBy": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "noticeId",
+                            "state"
+                          ],
+                          "properties": {
+                            "noticeId": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "submitted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_accepted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancelled",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalFiling": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "status",
+                            "filedOn",
+                            "recordedAt"
+                          ],
+                          "properties": {
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "filed_externally_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "filed_externally",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "filedOn": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "recordedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "noeId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "electionPeriodId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "submitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_rejected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "electionEffectiveDate": {
+                      "type": "string"
+                    },
+                    "windowTargetAt": {
+                      "type": "string"
+                    },
+                    "windowBreachedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "noeControlNumber": {
+                      "type": "string"
+                    },
+                    "payerNoeControlNumber": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestAcknowledgmentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "confirmationDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "filedOn"
+                ],
+                "properties": {
+                  "filedOn": {
+                    "format": "date",
+                    "type": "string"
                   }
                 }
               }
@@ -221405,6 +221973,7 @@
                           "correctsNoticeId",
                           "correctionReason",
                           "correctedBy",
+                          "externalFiling",
                           "notrId",
                           "organizationId",
                           "providerEntityId",
@@ -221571,6 +222140,55 @@
                                       {
                                         "const": "cancelled",
                                         "type": "string"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalFiling": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "filedOn",
+                                  "recordedAt"
+                                ],
+                                "properties": {
+                                  "status": {
+                                    "anyOf": [
+                                      {
+                                        "const": "filed_externally_pending",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "filed_externally",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "filedOn": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "recordedAt": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
                                       }
                                     ]
                                   }
@@ -221806,6 +222424,7 @@
                     "correctsNoticeId",
                     "correctionReason",
                     "correctedBy",
+                    "externalFiling",
                     "notrId",
                     "organizationId",
                     "providerEntityId",
@@ -221972,6 +222591,55 @@
                                 {
                                   "const": "cancelled",
                                   "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalFiling": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "status",
+                            "filedOn",
+                            "recordedAt"
+                          ],
+                          "properties": {
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "filed_externally_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "filed_externally",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "filedOn": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "recordedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
                                 }
                               ]
                             }
@@ -222258,6 +222926,7 @@
                         "correctsNoticeId",
                         "correctionReason",
                         "correctedBy",
+                        "externalFiling",
                         "notrId",
                         "organizationId",
                         "providerEntityId",
@@ -222424,6 +223093,55 @@
                                     {
                                       "const": "cancelled",
                                       "type": "string"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "externalFiling": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "status",
+                                "filedOn",
+                                "recordedAt"
+                              ],
+                              "properties": {
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "const": "filed_externally_pending",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "filed_externally",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "filedOn": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "recordedAt": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
                                     }
                                   ]
                                 }
@@ -222634,6 +223352,470 @@
                         "type": "null"
                       }
                     ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notr-records/{id}/record-external-filing": {
+      "post": {
+        "operationId": "postApiV1NotrrecordsByIdRecordexternalfiling",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Record the date an organization that bills outside ChartWarden filed the NOTR itself (step-up; 200, idempotent for the same date, 409 for another). Nothing is transmitted; the notice leaves the deadline tracker",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "acceptedAt",
+                    "rejectedAt",
+                    "rejectionStage",
+                    "rejectionCodes",
+                    "payerStatusDate",
+                    "payerStatusDateSource",
+                    "correctsNoticeId",
+                    "correctionReason",
+                    "correctedBy",
+                    "externalFiling",
+                    "notrId",
+                    "organizationId",
+                    "providerEntityId",
+                    "patientId",
+                    "admissionId",
+                    "triggerKind",
+                    "revocationEventId",
+                    "transferEventId",
+                    "dischargeEventId",
+                    "effectiveEndDate",
+                    "windowTargetAt",
+                    "windowBreachedAt",
+                    "state",
+                    "notrControlNumber",
+                    "payerNotrControlNumber",
+                    "latestSubmissionId",
+                    "latestAcknowledgmentId",
+                    "confirmationDocumentId",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "acceptedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rejectedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rejectionStage": {
+                      "anyOf": [
+                        {
+                          "const": "999",
+                          "type": "string"
+                        },
+                        {
+                          "const": "277ca",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rejectionCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "payerStatusDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "payerStatusDateSource": {
+                      "anyOf": [
+                        {
+                          "const": "277ca_stc02",
+                          "type": "string"
+                        },
+                        {
+                          "const": "999_gs04",
+                          "type": "string"
+                        },
+                        {
+                          "const": "999_isa09",
+                          "type": "string"
+                        },
+                        {
+                          "const": "receipt",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dde_manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dde_provider",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "correctsNoticeId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "correctionReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "correctedBy": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "noticeId",
+                            "state"
+                          ],
+                          "properties": {
+                            "noticeId": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "submitted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_accepted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ack_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancelled",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalFiling": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "status",
+                            "filedOn",
+                            "recordedAt"
+                          ],
+                          "properties": {
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "filed_externally_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "filed_externally",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "filedOn": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "recordedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "notrId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "triggerKind": {
+                      "anyOf": [
+                        {
+                          "const": "revocation",
+                          "type": "string"
+                        },
+                        {
+                          "const": "transfer_out",
+                          "type": "string"
+                        },
+                        {
+                          "const": "discharge",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "revocationEventId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "transferEventId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dischargeEventId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "effectiveEndDate": {
+                      "type": "string"
+                    },
+                    "windowTargetAt": {
+                      "type": "string"
+                    },
+                    "windowBreachedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "submitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_rejected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "notrControlNumber": {
+                      "type": "string"
+                    },
+                    "payerNotrControlNumber": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestAcknowledgmentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "confirmationDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "filedOn"
+                ],
+                "properties": {
+                  "filedOn": {
+                    "format": "date",
+                    "type": "string"
                   }
                 }
               }
@@ -255534,6 +256716,8 @@
                     "verifiableBy",
                     "verification",
                     "lastTest",
+                    "baaRequired",
+                    "baa",
                     "activatedAt",
                     "version",
                     "updatedAt"
@@ -255722,6 +256906,63 @@
                             "at": {
                               "format": "date-time",
                               "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "baaRequired": {
+                      "description": "True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active.",
+                      "type": "boolean"
+                    },
+                    "baa": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "heldBy",
+                            "effectiveDate",
+                            "documentRef",
+                            "recordedAt",
+                            "verified"
+                          ],
+                          "properties": {
+                            "heldBy": {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            "effectiveDate": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "documentRef": {
+                              "type": "string"
+                            },
+                            "recordedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "verified": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "at"
+                                  ],
+                                  "properties": {
+                                    "at": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           }
                         },
@@ -255825,6 +257066,8 @@
                     "verifiableBy",
                     "verification",
                     "lastTest",
+                    "baaRequired",
+                    "baa",
                     "activatedAt",
                     "version",
                     "updatedAt"
@@ -256013,6 +257256,63 @@
                             "at": {
                               "format": "date-time",
                               "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "baaRequired": {
+                      "description": "True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active.",
+                      "type": "boolean"
+                    },
+                    "baa": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "heldBy",
+                            "effectiveDate",
+                            "documentRef",
+                            "recordedAt",
+                            "verified"
+                          ],
+                          "properties": {
+                            "heldBy": {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            "effectiveDate": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "documentRef": {
+                              "type": "string"
+                            },
+                            "recordedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "verified": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "at"
+                                  ],
+                                  "properties": {
+                                    "at": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           }
                         },
@@ -256165,6 +257465,8 @@
                     "verifiableBy",
                     "verification",
                     "lastTest",
+                    "baaRequired",
+                    "baa",
                     "activatedAt",
                     "version",
                     "updatedAt"
@@ -256361,6 +257663,427 @@
                         }
                       ]
                     },
+                    "baaRequired": {
+                      "description": "True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active.",
+                      "type": "boolean"
+                    },
+                    "baa": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "heldBy",
+                            "effectiveDate",
+                            "documentRef",
+                            "recordedAt",
+                            "verified"
+                          ],
+                          "properties": {
+                            "heldBy": {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            "effectiveDate": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "documentRef": {
+                              "type": "string"
+                            },
+                            "recordedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "verified": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "at"
+                                  ],
+                                  "properties": {
+                                    "at": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/verify": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugClearinghouseBaaVerify",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Verify the vendor BAA the tenant recorded for its own clearinghouse account (409 CLEARINGHOUSE_BAA_NOT_RECORDED if it has not; idempotent). tenant_clearinghouse.verify_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. NOT limited to an onboarding tenant (a live tenant that changed vendor needs it too); an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "vendor",
+                    "mode",
+                    "status",
+                    "source",
+                    "hasSecret",
+                    "verifiableBy",
+                    "verification",
+                    "lastTest",
+                    "baaRequired",
+                    "baa",
+                    "activatedAt",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "vendor": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "stedi",
+                              "type": "string"
+                            },
+                            {
+                              "const": "claimmd",
+                              "type": "string"
+                            },
+                            {
+                              "const": "outside",
+                              "type": "string"
+                            },
+                            {
+                              "const": "direct_mac",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_memory",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "description": "The credential itself is never projected.",
+                      "type": "boolean"
+                    },
+                    "verifiableBy": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "connection_test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "attestation",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verification": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "kind",
+                            "evidence",
+                            "verifiedAt"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "const": "connection_test",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "attested",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "evidence": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "verifiedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "baaRequired": {
+                      "description": "True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active.",
+                      "type": "boolean"
+                    },
+                    "baa": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "heldBy",
+                            "effectiveDate",
+                            "documentRef",
+                            "recordedAt",
+                            "verified"
+                          ],
+                          "properties": {
+                            "heldBy": {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            "effectiveDate": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "documentRef": {
+                              "type": "string"
+                            },
+                            "recordedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "verified": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "at"
+                                  ],
+                                  "properties": {
+                                    "at": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "activatedAt": {
                       "anyOf": [
                         {
@@ -256477,6 +258200,8 @@
                         "verifiableBy",
                         "verification",
                         "lastTest",
+                        "baaRequired",
+                        "baa",
                         "activatedAt",
                         "version",
                         "updatedAt"
@@ -256673,6 +258398,63 @@
                             }
                           ]
                         },
+                        "baaRequired": {
+                          "description": "True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active.",
+                          "type": "boolean"
+                        },
+                        "baa": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "heldBy",
+                                "effectiveDate",
+                                "documentRef",
+                                "recordedAt",
+                                "verified"
+                              ],
+                              "properties": {
+                                "heldBy": {
+                                  "const": "tenant",
+                                  "type": "string"
+                                },
+                                "effectiveDate": {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                "documentRef": {
+                                  "type": "string"
+                                },
+                                "recordedAt": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "verified": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "required": [
+                                        "at"
+                                      ],
+                                      "properties": {
+                                        "at": {
+                                          "format": "date-time",
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "activatedAt": {
                           "anyOf": [
                             {
@@ -256764,6 +258546,10 @@
                     "maxLength": 2000,
                     "description": "Required where the vendor has no safe connection test (Stedi): what was checked and by whom (8-500 characters; no patient information).",
                     "type": "string"
+                  },
+                  "confirmNoPatientInformation": {
+                    "description": "Required, and must be true, with an evidence note: the operator confirms the note names no patient information.",
+                    "type": "boolean"
                   },
                   "reason": {
                     "minLength": 8,
@@ -326380,7 +328166,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "The organization's clearinghouse choice, masked (hasSecret; the credential is never returned) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.mac_credential.read",
+        "summary": "The organization's clearinghouse choice, masked (hasSecret; the credential is never returned; baa shows the tenant-held vendor BAA and whether an operator verified it) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.read (org-level)",
         "parameters": [],
         "responses": {
           "200": {
@@ -326398,6 +328184,8 @@
                     "verifiableBy",
                     "verification",
                     "lastTest",
+                    "baaRequired",
+                    "baa",
                     "activatedAt",
                     "version",
                     "updatedAt"
@@ -326581,6 +328369,63 @@
                             "at": {
                               "format": "date-time",
                               "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "baaRequired": {
+                      "description": "True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active.",
+                      "type": "boolean"
+                    },
+                    "baa": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "heldBy",
+                            "effectiveDate",
+                            "documentRef",
+                            "recordedAt",
+                            "verified"
+                          ],
+                          "properties": {
+                            "heldBy": {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            "effectiveDate": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "documentRef": {
+                              "type": "string"
+                            },
+                            "recordedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "verified": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "at"
+                                  ],
+                                  "properties": {
+                                    "at": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           }
                         },
@@ -326639,7 +328484,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; a vendor or mode change needs its own credential and restarts at draft, a credential rotation keeps the status; vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) once a production submission exists — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.mac_credential.admin + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+        "summary": "Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) once a production submission exists, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); test mode is refused on a production deployment (422) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -326676,6 +328521,8 @@
                     "verifiableBy",
                     "verification",
                     "lastTest",
+                    "baaRequired",
+                    "baa",
                     "activatedAt",
                     "version",
                     "updatedAt"
@@ -326859,6 +328706,63 @@
                             "at": {
                               "format": "date-time",
                               "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "baaRequired": {
+                      "description": "True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active.",
+                      "type": "boolean"
+                    },
+                    "baa": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "heldBy",
+                            "effectiveDate",
+                            "documentRef",
+                            "recordedAt",
+                            "verified"
+                          ],
+                          "properties": {
+                            "heldBy": {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            "effectiveDate": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "documentRef": {
+                              "type": "string"
+                            },
+                            "recordedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "verified": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "at"
+                                  ],
+                                  "properties": {
+                                    "at": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           }
                         },
@@ -326969,7 +328873,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification; idempotent once active). billing.mac_credential.admin + a fresh step-up; Idempotency-Key required",
+        "summary": "Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification, 409 CLEARINGHOUSE_BAA_NOT_VERIFIED until an operator verified the vendor BAA; idempotent once active). billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -326997,6 +328901,8 @@
                     "verifiableBy",
                     "verification",
                     "lastTest",
+                    "baaRequired",
+                    "baa",
                     "activatedAt",
                     "version",
                     "updatedAt"
@@ -327188,6 +329094,63 @@
                         }
                       ]
                     },
+                    "baaRequired": {
+                      "description": "True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active.",
+                      "type": "boolean"
+                    },
+                    "baa": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "heldBy",
+                            "effectiveDate",
+                            "documentRef",
+                            "recordedAt",
+                            "verified"
+                          ],
+                          "properties": {
+                            "heldBy": {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            "effectiveDate": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "documentRef": {
+                              "type": "string"
+                            },
+                            "recordedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "verified": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "at"
+                                  ],
+                                  "properties": {
+                                    "at": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "activatedAt": {
                       "anyOf": [
                         {
@@ -327234,13 +329197,377 @@
         }
       }
     },
+    "/api/v1/tenant/clearinghouse/baa": {
+      "post": {
+        "operationId": "postApiV1TenantClearinghouseBaa",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "vendor",
+                    "mode",
+                    "status",
+                    "source",
+                    "hasSecret",
+                    "verifiableBy",
+                    "verification",
+                    "lastTest",
+                    "baaRequired",
+                    "baa",
+                    "activatedAt",
+                    "version",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "vendor": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "stedi",
+                              "type": "string"
+                            },
+                            {
+                              "const": "claimmd",
+                              "type": "string"
+                            },
+                            {
+                              "const": "outside",
+                              "type": "string"
+                            },
+                            {
+                              "const": "direct_mac",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_memory",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "production",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "tenant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "platform_env",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "hasSecret": {
+                      "type": "boolean"
+                    },
+                    "verifiableBy": {
+                      "anyOf": [
+                        {
+                          "const": "connection_test",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attestation",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verification": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "kind",
+                            "evidence",
+                            "verifiedAt"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "const": "connection_test",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "attested",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "evidence": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "verifiedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastTest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "at"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "credential_rejected",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unreachable",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "baaRequired": {
+                      "description": "True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active.",
+                      "type": "boolean"
+                    },
+                    "baa": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "heldBy",
+                            "effectiveDate",
+                            "documentRef",
+                            "recordedAt",
+                            "verified"
+                          ],
+                          "properties": {
+                            "heldBy": {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            "effectiveDate": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "documentRef": {
+                              "type": "string"
+                            },
+                            "recordedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "verified": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "at"
+                                  ],
+                                  "properties": {
+                                    "at": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "heldBy",
+                  "effectiveDate",
+                  "documentRef"
+                ],
+                "properties": {
+                  "heldBy": {
+                    "description": "Who holds the vendor BAA: the tenant itself (the account is the tenant's own).",
+                    "const": "tenant",
+                    "type": "string"
+                  },
+                  "effectiveDate": {
+                    "format": "date",
+                    "description": "The BAA's effective date (YYYY-MM-DD), not in the future.",
+                    "type": "string"
+                  },
+                  "documentRef": {
+                    "minLength": 3,
+                    "maxLength": 400,
+                    "description": "Where the signed BAA is kept (3-200 characters after whitespace is collapsed): a title, contract folder or document id. Never patient information.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/tenant/clearinghouse/verify": {
       "post": {
         "operationId": "postApiV1TenantClearinghouseVerify",
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Verify the vendor connection: a no-PHI connection test where the vendor has a safe probe (Claim.MD), an attestation with an evidence note where it has none (Stedi; evidenceNote required). A failed test is a 200 with the outcome and leaves the config at draft. billing.mac_credential.admin + a fresh step-up; Idempotency-Key required",
+        "summary": "Verify the vendor connection: a no-PHI connection test where the vendor has a safe probe (Claim.MD), an attestation with an evidence note and the confirmation that it names no patient information where it has none (Stedi). The vendor probe runs with no transaction open (409 CLEARINGHOUSE_CHANGED_DURING_VERIFY if the config moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome and leaves the config at draft. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -327275,6 +329602,8 @@
                         "verifiableBy",
                         "verification",
                         "lastTest",
+                        "baaRequired",
+                        "baa",
                         "activatedAt",
                         "version",
                         "updatedAt"
@@ -327466,6 +329795,63 @@
                             }
                           ]
                         },
+                        "baaRequired": {
+                          "description": "True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active.",
+                          "type": "boolean"
+                        },
+                        "baa": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "heldBy",
+                                "effectiveDate",
+                                "documentRef",
+                                "recordedAt",
+                                "verified"
+                              ],
+                              "properties": {
+                                "heldBy": {
+                                  "const": "tenant",
+                                  "type": "string"
+                                },
+                                "effectiveDate": {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                "documentRef": {
+                                  "type": "string"
+                                },
+                                "recordedAt": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "verified": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "required": [
+                                        "at"
+                                      ],
+                                      "properties": {
+                                        "at": {
+                                          "format": "date-time",
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "activatedAt": {
                           "anyOf": [
                             {
@@ -327555,6 +329941,10 @@
                     "maxLength": 2000,
                     "description": "Required where the vendor has no safe connection test (Stedi): what was checked and by whom (8-500 characters after whitespace is collapsed; no patient information). Ignored where a connection test runs (Claim.MD).",
                     "type": "string"
+                  },
+                  "confirmNoPatientInformation": {
+                    "description": "Required, and must be true, with an evidence note: the person confirms the note names no patient information. Ignored where a connection test runs (Claim.MD).",
+                    "type": "boolean"
                   }
                 }
               }
