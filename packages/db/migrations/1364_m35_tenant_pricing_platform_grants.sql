@@ -6,8 +6,12 @@
 --                                     tier, cadence, family_slug, version, supersedes_plan_id or created_at), so the carrier cannot un-freeze a
 --                                     published version by changing its tier; the guard triggers refuse that even to a superuser
 --   plan_census_band                  INSERT, DELETE (the bands of a draft are replaced wholesale); never UPDATE, so a band cannot be re-pointed
---   subscription,
---   subscription_state_history        INSERT only: onboarding step 2 creates the tenant's subscription. No UPDATE: slice 2 never edits one.
+--   subscription_state_history        INSERT only: onboarding step 2 and the admin pause / resume / cancel append a transition
+--   subscription                      INSERT (onboarding step 2 creates the tenant's subscription) and UPDATE by COLUMN only: the six columns the
+--                                     admin pause / resume / cancel write ("status", "paused_at", "paused_until", "canceled_at",
+--                                     "cancel_at_period_end", "updated_at"), so the carrier cannot re-point a subscription at another plan or
+--                                     organisation, nor rewrite its period, trial, dunning or Stripe columns. Without it those three routes were a
+--                                     42501 on the platform pool they run on (apps/backend/src/index.ts binds them to DATABASE_PLATFORM_URL).
 --   subscription_contract             INSERT only: a signed contract never changes (the guard trigger refuses an UPDATE even to a superuser)
 --   subscription_contract_mode        INSERT only: the billing service mode history is append-only (a change is a new row, effective-dated)
 --   patient_census_daily              the daily census snapshot (INSERT, UPDATE: the latest observation of a day wins)
@@ -23,6 +27,7 @@ DO $$ BEGIN
       ON "plan" TO chartwarden_platform;
     GRANT INSERT, DELETE ON "plan_census_band" TO chartwarden_platform;
     GRANT INSERT ON "subscription", "subscription_state_history", "subscription_contract", "subscription_contract_mode" TO chartwarden_platform;
+    GRANT UPDATE ("status", "paused_at", "paused_until", "canceled_at", "cancel_at_period_end", "updated_at") ON "subscription" TO chartwarden_platform;
     GRANT INSERT, UPDATE ON "patient_census_daily", "subscription_statement" TO chartwarden_platform;
     GRANT SELECT, INSERT ON "subscription_statement_review" TO chartwarden_platform;
   END IF;
