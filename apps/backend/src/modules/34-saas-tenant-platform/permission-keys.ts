@@ -380,6 +380,14 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // Owner decision D2: verifying the vendor BAA a tenant recorded for its own account is a separable duty (and, unlike the
+  // writes above, not limited to a tenant that is still onboarding: a live tenant that changes vendor needs it too).
+  "tenant_clearinghouse.verify_baa_platform": {
+    resource: "tenant_clearinghouse",
+    action: "verify_baa_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M34 contributed permission keys (forty-six). */

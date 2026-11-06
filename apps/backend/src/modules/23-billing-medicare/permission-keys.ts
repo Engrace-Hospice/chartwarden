@@ -205,6 +205,22 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_billing_scope",
   },
+  // --- clearinghouse choice surface (ADR-0053 amendment 2026-11-06; owner decision D3) ---
+  // ORG-LEVEL on purpose, unlike the provider-entity-scoped `billing.mac_credential.*` above: choosing the clearinghouse
+  // re-routes EVERY provider entity's claims (PHI) to another vendor, so a billing manager scoped to one entity must not hold
+  // it. Granted to the org-wide admin roles only (`org_admin`, `administrator`; migration 1354 + the full-catalog template).
+  "billing.clearinghouse.read": {
+    resource: "billing_clearinghouse",
+    action: "read",
+    category: "billing",
+    abac: "none",
+  },
+  "billing.clearinghouse.admin": {
+    resource: "billing_clearinghouse",
+    action: "admin",
+    category: "billing",
+    abac: "none",
+  },
   // --- hospice rate-table surface (F-210: tenant-entered CMS per-diem rates) ---
   "billing.rate_table.read": {
     resource: "billing_rate_table",
@@ -315,6 +331,8 @@ export const M23_PERMISSION_KEY_LIST: readonly M23PermissionKey[] = [
   "billing.sequestration_policy.edit",
   "billing.mac_credential.read",
   "billing.mac_credential.admin",
+  "billing.clearinghouse.read",
+  "billing.clearinghouse.admin",
   "billing.rate_table.read",
   "billing.rate_table.admin",
   "billing.visit_charge.read",
