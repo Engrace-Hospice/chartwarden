@@ -18,6 +18,9 @@ import type { OnboardingDataService, OnboardingOperator } from "./onboarding-dat
 import {
   ONBOARDING_REASON_MAX,
   ONBOARDING_REASON_MIN,
+  OnboardingReasonSchema,
+  OnboardingClearinghousePutRequest,
+  OnboardingClearinghouseVerifyRequest,
   OnboardingLocationCreateRequest,
   OnboardingLocationPatchRequest,
   OnboardingMacCredentialUpsertRequest,
@@ -38,6 +41,9 @@ export interface OnboardingDataRouteDeps {
 const READ_KEY = "tenant_onboarding_data.read_platform";
 const WRITE_KEY = "tenant_onboarding_data.write_platform";
 const PLATFORM_OPS = "tenant_lifecycle_platform_ops";
+/** ADR-0053 amendment 2026-11-06: the tenant's clearinghouse choice has its own pair of keys (platform_ops only). */
+const CLEARINGHOUSE_READ_KEY = "tenant_clearinghouse.read_platform";
+const CLEARINGHOUSE_WRITE_KEY = "tenant_clearinghouse.write_platform";
 const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -61,6 +67,18 @@ const WRITE: readonly PreHandler[] = [
   P(WRITE_KEY),
   OPS(WRITE_KEY),
   requireStepUp(WRITE_KEY) as PreHandler,
+  rejectAiActor(),
+  requireIdempotencyKey,
+];
+
+const CLEARINGHOUSE_READ: readonly PreHandler[] = [
+  P(CLEARINGHOUSE_READ_KEY),
+  OPS(CLEARINGHOUSE_READ_KEY),
+];
+const CLEARINGHOUSE_WRITE: readonly PreHandler[] = [
+  P(CLEARINGHOUSE_WRITE_KEY),
+  OPS(CLEARINGHOUSE_WRITE_KEY),
+  requireStepUp(CLEARINGHOUSE_WRITE_KEY) as PreHandler,
   rejectAiActor(),
   requireIdempotencyKey,
 ];
@@ -252,6 +270,53 @@ export function registerOnboardingDataRoutes(
       return reply
         .code(201)
         .send(await service.upsertMedicaidCredential(op, slugOf(request), fields, reason));
+    },
+  );
+
+  // ── the tenant's clearinghouse choice (credential write-only, never returned) ──
+  app.get(
+    "/api/v1/platform/tenants/:orgSlug/clearinghouse",
+    { preHandler: [...CLEARINGHOUSE_READ] },
+    async (request) => service.getClearinghouse(operatorOf(request), slugOf(request)),
+  );
+
+  app.put(
+    "/api/v1/platform/tenants/:orgSlug/clearinghouse",
+    { preHandler: [...CLEARINGHOUSE_WRITE] },
+    async (request, reply) => {
+      const op = operatorOf(request);
+      const { reason, fields } = splitReason(parse(OnboardingClearinghousePutRequest, request.body));
+      const { created, view } = await service.putClearinghouse(
+        op,
+        slugOf(request),
+        fields,
+        reason,
+        optionalIfMatch(request),
+      );
+      // A first choice answers 201, a version-checked change 200.
+      return reply.code(created ? 201 : 200).send(view);
+    },
+  );
+
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/clearinghouse/verify",
+    { preHandler: [...CLEARINGHOUSE_WRITE] },
+    async (request) => {
+      const op = operatorOf(request);
+      const { reason, fields } = splitReason(
+        parse(OnboardingClearinghouseVerifyRequest, request.body),
+      );
+      return service.verifyClearinghouse(op, slugOf(request), fields, reason);
+    },
+  );
+
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/clearinghouse/activate",
+    { preHandler: [...CLEARINGHOUSE_WRITE] },
+    async (request) => {
+      const op = operatorOf(request);
+      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+      return service.activateClearinghouse(op, slugOf(request), reason);
     },
   );
 }

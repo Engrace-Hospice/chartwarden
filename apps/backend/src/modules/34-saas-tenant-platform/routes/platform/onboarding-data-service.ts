@@ -28,6 +28,7 @@ import {
 } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
+import type { OnboardingClearinghousePort } from "../../../../bootstrap/onboarding-clearinghouse-port";
 import type {
   OnboardingCredentialPort,
   OnboardingWriteScope,
@@ -93,6 +94,22 @@ export interface OnboardingDataService {
     reason: string,
     expectedVersion: number | undefined,
   ): Promise<unknown>;
+  /** The tenant's clearinghouse choice, masked (`hasSecret`, never the credential). One audited read. */
+  getClearinghouse(op: OnboardingOperator, orgSlug: string): Promise<unknown>;
+  putClearinghouse(
+    op: OnboardingOperator,
+    orgSlug: string,
+    fields: OnboardingFields,
+    reason: string,
+    expectedVersion: number | undefined,
+  ): Promise<{ readonly created: boolean; readonly view: unknown }>;
+  verifyClearinghouse(
+    op: OnboardingOperator,
+    orgSlug: string,
+    fields: OnboardingFields,
+    reason: string,
+  ): Promise<{ readonly config: unknown; readonly test: unknown }>;
+  activateClearinghouse(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
   listMedicaidCredentials(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
   upsertMedicaidCredential(
     op: OnboardingOperator,
@@ -125,6 +142,13 @@ export interface OnboardingDataDeps {
   readonly advance?: (tenant: { tenantAccountId: string; organizationId: string }) => Promise<void>;
   /** `err` carries the raw error for the redacting logger (a database error holds bound values). */
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
+  /** M23's clearinghouse adapter (ADR-0053 amendment 2026-11-06); unbound -> the clearinghouse routes answer 503. */
+  readonly clearinghouse?: OnboardingClearinghousePort;
+  /**
+   * Runs the onboarding advance pass for the tenant after a clearinghouse change COMMITS, so wizard step 7
+   * (`clearinghouse_selected`) settles at once. Best effort: a failure is the caller's to log and never fails the write.
+   */
+  readonly settleOnboarding?: (organizationId: string) => Promise<void>;
   readonly logError?: (cause: unknown, context: { organizationId: string }) => void;
   /** Cause logging for a failed-attempt audit row that could not be written (the original error still reaches the caller). */
   readonly logAuditError?: (cause: unknown, context: { organizationId: string }) => void;
@@ -187,6 +211,8 @@ interface WriteResult<T> {
   readonly value: T;
   readonly resourceId: string;
   readonly changedFields?: readonly string[];
+  /** Non-sensitive facts for the audit row (counts, codes, kinds). */
+  readonly detail?: Readonly<Record<string, string | number | boolean>>;
 }
 
 type WriteOutcome<T> = { readonly refusedStatus: string } | { readonly value: T };
@@ -314,6 +340,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             outcome: "success",
             reason: spec.reason,
             ...(done.changedFields ? { changedFields: done.changedFields } : {}),
+            ...(done.detail ? { detail: done.detail } : {}),
           });
           return { value: done.value };
         },
@@ -425,6 +452,31 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       },
     );
 
+  /** The bound clearinghouse adapter, or a typed 503 (the credential lanes' posture). */
+  function clearinghousePort(): OnboardingClearinghousePort {
+    if (!deps.clearinghouse) {
+      throw new ChartWardenError(
+        "ONBOARDING_CLEARINGHOUSE_UNBOUND",
+        "the clearinghouse adapter is not bound in this deployment",
+        503,
+      );
+    }
+    return deps.clearinghouse;
+  }
+
+  /** Post-commit, best effort: the advance pass that settles wizard step 7. A failure is logged and never thrown. */
+  async function settleStepAfter<T>(organizationId: string, result: T): Promise<T> {
+    if (!deps.settleOnboarding) return result;
+    try {
+      await deps.settleOnboarding(organizationId);
+    } catch (cause) {
+      deps.logError?.(cause, { organizationId });
+    }
+    return result;
+  }
+
+  const CLEARINGHOUSE_KIND = "tenant_clearinghouse_config";
+
   return {
     listProviderEntities: (op, orgSlug) =>
       read(op, orgSlug, "provider_entity", async (t) => ({
@@ -497,6 +549,71 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     listMacCredentials: (op, orgSlug) => listCredentials(op, orgSlug, MAC_LANE),
     upsertMacCredential: (op, orgSlug, fields, reason, expectedVersion) =>
       upsertCredential(op, orgSlug, MAC_LANE, fields, reason, expectedVersion),
+    getClearinghouse: async (op, orgSlug) => {
+      const { items } = await read(op, orgSlug, CLEARINGHOUSE_KIND, async (t) => ({
+        items: [await clearinghousePort().get(scopeOf(op, t.organizationId))],
+      }));
+      return items[0];
+    },
+
+    putClearinghouse: async (op, orgSlug, fields, reason, expectedVersion) => {
+      let organizationId = "";
+      const result = await write(
+        op,
+        orgSlug,
+        { event: EVENTS.clearinghouseSet, resourceKind: CLEARINGHOUSE_KIND, reason },
+        async (tx, t) => {
+          organizationId = t.organizationId;
+          const done = await clearinghousePort().put(
+            tx,
+            scopeOf(op, t.organizationId),
+            fields,
+            expectedVersion,
+          );
+          return {
+            value: { created: done.created === true, view: done.view },
+            resourceId: done.resourceId,
+            ...(done.changedFields ? { changedFields: done.changedFields } : {}),
+          };
+        },
+      );
+      return settleStepAfter(organizationId, result);
+    },
+
+    verifyClearinghouse: async (op, orgSlug, fields, reason) => {
+      let organizationId = "";
+      const result = await write(
+        op,
+        orgSlug,
+        { event: EVENTS.clearinghouseVerified, resourceKind: CLEARINGHOUSE_KIND, reason },
+        async (tx, t) => {
+          organizationId = t.organizationId;
+          const done = await clearinghousePort().verify(tx, scopeOf(op, t.organizationId), fields);
+          return {
+            value: { config: done.view, test: done.test ?? null },
+            resourceId: done.resourceId,
+            ...(done.detail ? { detail: done.detail } : {}),
+          };
+        },
+      );
+      return settleStepAfter(organizationId, result);
+    },
+
+    activateClearinghouse: async (op, orgSlug, reason) => {
+      let organizationId = "";
+      const view = await write(
+        op,
+        orgSlug,
+        { event: EVENTS.clearinghouseActivated, resourceKind: CLEARINGHOUSE_KIND, reason },
+        async (tx, t) => {
+          organizationId = t.organizationId;
+          const done = await clearinghousePort().activate(tx, scopeOf(op, t.organizationId));
+          return { value: done.view, resourceId: done.resourceId };
+        },
+      );
+      return settleStepAfter(organizationId, view);
+    },
+
     listMedicaidCredentials: (op, orgSlug) => listCredentials(op, orgSlug, MEDICAID_LANE),
     upsertMedicaidCredential: (op, orgSlug, fields, reason) =>
       upsertCredential(op, orgSlug, MEDICAID_LANE, fields, reason),

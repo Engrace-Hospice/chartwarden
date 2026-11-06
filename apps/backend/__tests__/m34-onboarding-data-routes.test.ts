@@ -15,6 +15,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import type { OnboardingClearinghousePort } from "../src/bootstrap/onboarding-clearinghouse-port";
 import {
   type OnboardingDataService,
   type OnboardingOperator,
@@ -83,7 +84,35 @@ function recordingService(calls: Call[]): OnboardingDataService {
     updateLocation: write("updateLocation", true),
     upsertMacCredential: write("upsertMacCredential", false),
     upsertMedicaidCredential: write("upsertMedicaidCredential", false),
-  } as OnboardingDataService;
+    // ADR-0053 amendment 2026-11-06: the clearinghouse routes answer the shapes the real service returns.
+    getClearinghouse: async (op: OnboardingOperator, orgSlug: string) => {
+      calls.push({ method: "getClearinghouse", op, orgSlug });
+      return { vendor: null };
+    },
+    putClearinghouse: async (
+      op: OnboardingOperator,
+      orgSlug: string,
+      fields: Record<string, unknown>,
+      reason: string,
+      expectedVersion: number | undefined,
+    ) => {
+      calls.push({ method: "putClearinghouse", op, orgSlug, fields, reason, expectedVersion });
+      return { created: expectedVersion === undefined, view: { vendor: fields.vendor } };
+    },
+    verifyClearinghouse: async (
+      op: OnboardingOperator,
+      orgSlug: string,
+      fields: Record<string, unknown>,
+      reason: string,
+    ) => {
+      calls.push({ method: "verifyClearinghouse", op, orgSlug, fields, reason });
+      return { config: { vendor: "claimmd" }, test: { outcome: "ok" } };
+    },
+    activateClearinghouse: async (op: OnboardingOperator, orgSlug: string, reason: string) => {
+      calls.push({ method: "activateClearinghouse", op, orgSlug, reason });
+      return { status: "active" };
+    },
+  } as unknown as OnboardingDataService;
 }
 
 const GRANTS = {
@@ -97,6 +126,8 @@ const GRANTS = {
       permissionKeys: [
         "tenant_onboarding_data.read_platform",
         "tenant_onboarding_data.write_platform",
+        "tenant_clearinghouse.read_platform",
+        "tenant_clearinghouse.write_platform",
       ],
     },
   ],
@@ -160,7 +191,7 @@ afterEach(() => {
 
 describe("write guards (every write route)", () => {
   const WRITES: readonly {
-    method: "POST" | "PATCH";
+    method: "POST" | "PATCH" | "PUT";
     url: string;
     payload: Record<string, unknown>;
   }[] = [
@@ -204,6 +235,21 @@ describe("write guards (every write route)", () => {
         clientSecret: "s",
         reason: "ticket CHG-1",
       },
+    },
+    {
+      method: "PUT",
+      url: `${URL_BASE}/clearinghouse`,
+      payload: { vendor: "outside", reason: "ticket CHG-1" },
+    },
+    {
+      method: "POST",
+      url: `${URL_BASE}/clearinghouse/verify`,
+      payload: { reason: "ticket CHG-1" },
+    },
+    {
+      method: "POST",
+      url: `${URL_BASE}/clearinghouse/activate`,
+      payload: { reason: "ticket CHG-1" },
     },
   ];
 
@@ -357,6 +403,99 @@ describe("mac credential version header", () => {
     expect((await post({ ...fresh(), "if-match": '"3"' })).statusCode).toBe(200);
     expect(calls.map((c) => c.expectedVersion)).toEqual([undefined, 3]);
     expect((await post({ ...fresh(), "if-match": "three" })).statusCode).toBe(422);
+    await app.close();
+  });
+});
+
+describe("clearinghouse routes", () => {
+  const put = (
+    app: ReturnType<typeof makeServer>,
+    headers: Record<string, string>,
+    payload: object,
+  ) => app.inject({ method: "PUT", url: `${URL_BASE}/clearinghouse`, headers, payload });
+  const BODY = {
+    vendor: "claimmd",
+    mode: "test",
+    secret: "fake-key-not-a-secret#1",
+    reason: "ticket CHG-1",
+  };
+
+  it("answers 201 on a first choice and 200 on a version-checked change, and hands the service the body without its reason", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    expect((await put(app, fresh(), BODY)).statusCode).toBe(201);
+    expect((await put(app, { ...fresh(), "if-match": '"2"' }, BODY)).statusCode).toBe(200);
+    expect((await put(app, { ...fresh(), "if-match": "two" }, BODY)).statusCode).toBe(422);
+    expect(calls.map((c) => c.expectedVersion)).toEqual([undefined, 2]);
+    expect(calls[0]?.fields).toEqual({
+      vendor: "claimmd",
+      mode: "test",
+      secret: "fake-key-not-a-secret#1",
+    });
+    expect(calls[0]?.reason).toBe("ticket CHG-1");
+    await app.close();
+  });
+
+  it("never echoes the credential back", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const res = await put(app, fresh(), BODY);
+    expect(res.body).not.toContain("fake-key-not-a-secret");
+    await app.close();
+  });
+
+  it("refuses an unknown vendor, a missing reason and a short credential before the service runs", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    expect((await put(app, fresh(), { ...BODY, vendor: "acme" })).statusCode).toBe(422);
+    const { reason: _drop, ...noReason } = BODY;
+    expect((await put(app, fresh(), noReason)).statusCode).toBe(422);
+    expect((await put(app, fresh(), { ...BODY, secret: "short" })).statusCode).toBe(422);
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("verify and activate carry the operator, the reason and the verify body; GET is read-guarded", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const verify = await app.inject({
+      method: "POST",
+      url: `${URL_BASE}/clearinghouse/verify`,
+      headers: fresh(),
+      payload: { evidenceNote: "Sandbox claim accepted, ticket OPS-9", reason: "ticket CHG-1" },
+    });
+    expect(verify.statusCode).toBe(200);
+    expect(verify.json()).toEqual({ config: { vendor: "claimmd" }, test: { outcome: "ok" } });
+    const activate = await app.inject({
+      method: "POST",
+      url: `${URL_BASE}/clearinghouse/activate`,
+      headers: fresh(),
+      payload: { reason: "ticket CHG-1" },
+    });
+    expect(activate.statusCode).toBe(200);
+    const read = await app.inject({
+      method: "GET",
+      url: `${URL_BASE}/clearinghouse`,
+      headers: OPS,
+    });
+    expect(read.statusCode).toBe(200);
+    const tenant = await app.inject({
+      method: "GET",
+      url: `${URL_BASE}/clearinghouse`,
+      headers: {
+        "x-test-user": "tenant-admin",
+        "x-test-org": TARGET_ORG,
+        "x-test-roles": "org_admin",
+      },
+    });
+    expect(tenant.statusCode).toBe(403);
+    expect(calls.map((c) => c.method)).toEqual([
+      "verifyClearinghouse",
+      "activateClearinghouse",
+      "getClearinghouse",
+    ]);
+    expect(calls[0]?.fields).toEqual({ evidenceNote: "Sandbox claim accepted, ticket OPS-9" });
+    expect(calls[0]?.op.userId).toBe(OPERATOR_USER);
     await app.close();
   });
 });
@@ -599,6 +738,180 @@ describe("service: the status lock and the audit row", () => {
     ).rejects.toMatchObject({ statusCode: 503, code: "ONBOARDING_CREDENTIALS_UNBOUND" });
     await expect(service.listMacCredentials(OPERATOR, "tenant-b")).rejects.toMatchObject({
       statusCode: 503,
+    });
+  });
+});
+
+// ── the clearinghouse writes: the same lock, the same audit row, and the wizard step settles after commit ───────────
+
+describe("service: the clearinghouse choice", () => {
+  const CONFIG_ID = "50000000-0000-4000-8000-000000000001";
+  const SECRET = "fake-key-not-a-secret#1";
+
+  function fakePort(over: Partial<OnboardingClearinghousePort> = {}) {
+    const seen: { method: string; body?: unknown; expectedVersion?: number | undefined }[] = [];
+    const port: OnboardingClearinghousePort = {
+      get: async () => ({ vendor: null }),
+      put: async (_tx, _scope, body, expectedVersion) => {
+        seen.push({ method: "put", body, expectedVersion });
+        return {
+          resourceId: CONFIG_ID,
+          created: expectedVersion === undefined,
+          view: { vendor: "claimmd", hasSecret: true },
+          changedFields: Object.keys(body as object),
+        };
+      },
+      verify: async (_tx, _scope, body) => {
+        seen.push({ method: "verify", body });
+        return {
+          resourceId: CONFIG_ID,
+          view: { status: "verified" },
+          test: { outcome: "ok" },
+          detail: { verificationKind: "connection_test", testOutcome: "ok" },
+        };
+      },
+      activate: async () => {
+        seen.push({ method: "activate" });
+        return { resourceId: CONFIG_ID, view: { status: "active" } };
+      },
+      ...over,
+    };
+    return { port, seen };
+  }
+
+  it("a put lands in the tenant's own scope with an audit row naming operator, tenant, reason and the FIELD names only", async () => {
+    const { db, inserts } = stubDb("onboarding");
+    const { port, seen } = fakePort();
+    const settled: string[] = [];
+    const service = buildDrizzleOnboardingDataService({
+      db,
+      resolveTenant,
+      clearinghouse: port,
+      settleOnboarding: async (org) => void settled.push(org),
+    });
+    const out = await service.putClearinghouse(
+      OPERATOR,
+      "tenant-b",
+      { vendor: "claimmd", mode: "test", secret: SECRET },
+      "ticket CHG-1",
+      undefined,
+    );
+    expect(out).toMatchObject({ created: true });
+    expect(seen[0]?.body).toEqual({ vendor: "claimmd", mode: "test", secret: SECRET });
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]?.values).toMatchObject({
+      eventType: ONBOARDING_DATA_AUDIT_EVENTS.clearinghouseSet,
+      resourceId: CONFIG_ID,
+      outcome: "success",
+      organizationId: TARGET_ORG,
+      actorUserId: OPERATOR.userId,
+      context: expect.objectContaining({
+        reason: "ticket CHG-1",
+        targetOrganizationId: TARGET_ORG,
+        changedFields: ["vendor", "mode", "secret"],
+      }),
+    });
+    expect(JSON.stringify(inserts[0]?.values)).not.toContain(SECRET);
+    expect(settled).toEqual([TARGET_ORG]);
+  });
+
+  it("verify audits how it was verified and the test outcome; activate audits the activation; each settles the wizard step", async () => {
+    const { db, inserts } = stubDb("provisioning");
+    const { port } = fakePort();
+    const settled: string[] = [];
+    const service = buildDrizzleOnboardingDataService({
+      db,
+      resolveTenant,
+      clearinghouse: port,
+      settleOnboarding: async (org) => void settled.push(org),
+    });
+    const verified = await service.verifyClearinghouse(OPERATOR, "tenant-b", {}, "ticket CHG-1");
+    expect(verified).toEqual({ config: { status: "verified" }, test: { outcome: "ok" } });
+    await service.activateClearinghouse(OPERATOR, "tenant-b", "ticket CHG-1");
+    expect(inserts.map((i) => i.values.eventType)).toEqual([
+      ONBOARDING_DATA_AUDIT_EVENTS.clearinghouseVerified,
+      ONBOARDING_DATA_AUDIT_EVENTS.clearinghouseActivated,
+    ]);
+    expect(inserts[0]?.values.context).toMatchObject({
+      verificationKind: "connection_test",
+      testOutcome: "ok",
+    });
+    expect(settled).toEqual([TARGET_ORG, TARGET_ORG]);
+  });
+
+  it("is refused once the tenant is active (409 TENANT_NOT_ONBOARDING), audited, and nothing is settled", async () => {
+    const { db, inserts } = stubDb("active");
+    const { port, seen } = fakePort();
+    const settled: string[] = [];
+    const service = buildDrizzleOnboardingDataService({
+      db,
+      resolveTenant,
+      clearinghouse: port,
+      settleOnboarding: async (org) => void settled.push(org),
+    });
+    await expect(
+      service.putClearinghouse(
+        OPERATOR,
+        "tenant-b",
+        { vendor: "outside" },
+        "ticket CHG-1",
+        undefined,
+      ),
+    ).rejects.toMatchObject({ statusCode: 409, code: "TENANT_NOT_ONBOARDING" });
+    expect(seen).toEqual([]);
+    expect(inserts[0]?.values).toMatchObject({
+      eventType: ONBOARDING_DATA_AUDIT_EVENTS.writeRefused,
+      context: expect.objectContaining({
+        attemptedEvent: ONBOARDING_DATA_AUDIT_EVENTS.clearinghouseSet,
+      }),
+    });
+    expect(settled).toEqual([]);
+  });
+
+  it("a failing settle is logged and never fails the committed write", async () => {
+    const { db } = stubDb("onboarding");
+    const { port } = fakePort();
+    const logged: unknown[] = [];
+    const service = buildDrizzleOnboardingDataService({
+      db,
+      resolveTenant,
+      clearinghouse: port,
+      settleOnboarding: async () => {
+        throw new Error("advance failed");
+      },
+      logError: (cause) => logged.push(cause),
+    });
+    await expect(
+      service.activateClearinghouse(OPERATOR, "tenant-b", "ticket CHG-1"),
+    ).resolves.toEqual({ status: "active" });
+    expect(logged).toHaveLength(1);
+  });
+
+  it("answers 503 when the clearinghouse adapter is not bound, and audits the failed attempt", async () => {
+    const { db, inserts } = stubDb("onboarding");
+    const service = buildDrizzleOnboardingDataService({ db, resolveTenant });
+    await expect(
+      service.putClearinghouse(
+        OPERATOR,
+        "tenant-b",
+        { vendor: "outside" },
+        "ticket CHG-1",
+        undefined,
+      ),
+    ).rejects.toMatchObject({ statusCode: 503, code: "ONBOARDING_CLEARINGHOUSE_UNBOUND" });
+    expect(inserts[0]?.values).toMatchObject({
+      eventType: ONBOARDING_DATA_AUDIT_EVENTS.writeFailed,
+    });
+  });
+
+  it("a read is audited, with a count and no data", async () => {
+    const { db, inserts } = stubDb("onboarding");
+    const { port } = fakePort();
+    const service = buildDrizzleOnboardingDataService({ db, resolveTenant, clearinghouse: port });
+    await expect(service.getClearinghouse(OPERATOR, "tenant-b")).resolves.toEqual({ vendor: null });
+    expect(inserts[0]?.values).toMatchObject({
+      eventType: ONBOARDING_DATA_AUDIT_EVENTS.dataRead,
+      resourceKind: "tenant_clearinghouse_config",
     });
   });
 });

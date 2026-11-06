@@ -32,6 +32,10 @@ export const ONBOARDING_DATA_AUDIT_EVENTS = {
   locationUpdated: "m34.tenant_onboarding.location_updated",
   macCredentialUpserted: "m34.tenant_onboarding.mac_credential_upserted",
   medicaidCredentialUpserted: "m34.tenant_onboarding.medicaid_credential_upserted",
+  /** ADR-0053 amendment 2026-11-06: the tenant's clearinghouse choice (vendor, mode, sealed credential). */
+  clearinghouseSet: "m34.tenant_onboarding.clearinghouse_set",
+  clearinghouseVerified: "m34.tenant_onboarding.clearinghouse_verified",
+  clearinghouseActivated: "m34.tenant_onboarding.clearinghouse_activated",
   dataRead: "m34.tenant_onboarding.data_read",
   /** The tenant is not provisioning/onboarding: the write was refused before it ran. */
   writeRefused: "m34.tenant_onboarding.write_refused",

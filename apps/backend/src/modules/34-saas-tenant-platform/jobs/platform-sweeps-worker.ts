@@ -157,6 +157,8 @@ export interface OnboardingFactReaders {
   readonly orgAdminCount?: (orgId: string) => Promise<number>;
   /** M29/M27/M12 attestation facts with no M34-reachable table; absent ⇒ false (the step stays blocked, honestly). */
   readonly macFeedConfigured?: (orgId: string) => Promise<boolean>;
+  /** M23 (ADR-0053 amendment 2026-11-06): the org's clearinghouse choice is settled (`outside`, or a vendor in `active` status). */
+  readonly clearinghouseSettled?: (orgId: string) => Promise<boolean>;
   readonly dosespotKickoffRecorded?: (orgId: string) => Promise<boolean>;
   readonly xeroConnected?: (orgId: string) => Promise<boolean>;
   readonly gustoConnected?: (orgId: string) => Promise<boolean>;
@@ -198,6 +200,7 @@ export async function gatherOnboardingContext(
     primaryLocationExists: seed.locationCount > 0,
     orgAdminAcceptedMembershipCount: adminCount,
     macFeedConfigured: await read(readers.macFeedConfigured),
+    clearinghouseSettled: await read(readers.clearinghouseSettled),
     dosespotKickoffRecorded: await read(readers.dosespotKickoffRecorded),
     xeroConnected: await read(readers.xeroConnected),
     gustoConnected: await read(readers.gustoConnected),
