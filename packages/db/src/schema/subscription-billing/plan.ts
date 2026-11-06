@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 // `USING (true)` TO chartwarden_app and writes only via chartwarden_admin (0143; the M38 code_system / M28
 // fhir_capability_snapshot precedent). Listed in check-tenancy's NON_ORG_SCOPED set.
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   index,
@@ -32,6 +33,21 @@ export const plan = pgTable(
     deprecatedAt: timestamp("deprecated_at", { withTimezone: true }),
     stripeProductId: text("stripe_product_id"),
     stripePriceId: text("stripe_price_id"),
+    // Slice 2 (migration 1341) — the contracted census_banded model. All null on the retired flat tiers. A row is one
+    // VERSION: slug = `<family_slug>-v<version>`; once `published_at` is set the prices are frozen (guard trigger), so a
+    // subscription keeps the price it signed and a price change is a new row that supersedes this one.
+    familySlug: text("family_slug"),
+    version: integer("version").notNull().default(1),
+    supersedesPlanId: uuid("supersedes_plan_id").references((): AnyPgColumn => plan.id, {
+      onDelete: "restrict",
+    }),
+    perUserPriceCents: bigint("per_user_price_cents", { mode: "number" }),
+    billingSoftwareBps: integer("billing_software_bps"),
+    managedBillingBps: integer("managed_billing_bps"),
+    contractTermMonths: integer("contract_term_months"),
+    implementationFeeCents: bigint("implementation_fee_cents", { mode: "number" }),
+    minimumMonthlyCents: bigint("minimum_monthly_cents", { mode: "number" }),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
     validFrom: timestamp("valid_from", { withTimezone: true }).notNull().defaultNow(),
     validTo: timestamp("valid_to", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
