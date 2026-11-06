@@ -55,6 +55,8 @@ interface Call {
   readonly reason?: string;
   readonly id?: string;
   readonly expectedVersion?: number | undefined;
+  /** The BAA verification's pin: the `baa.recordedAt` the operator read (its If-Match). */
+  readonly expected?: { readonly recordedAt: string };
 }
 
 function recordingService(calls: Call[]): OnboardingDataService {
