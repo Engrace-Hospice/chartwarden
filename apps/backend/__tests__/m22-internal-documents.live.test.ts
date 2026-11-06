@@ -268,15 +268,16 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
       expect(seen).not.toContain(doc.batch.document);
     }
     for (const who of [SUPERVISOR, COMPLIANCE, COORDINATOR]) {
-      expect(await listed(who)).toEqual(
-        expect.arrayContaining([doc.letter.document, doc.summary.document, doc.batch.document]),
-      );
+      const seen = await listed(who);
+      expect(seen).toEqual(expect.arrayContaining([doc.letter.document, doc.summary.document]));
+      // the mailing batch holds every family's name and address: seam-only, listed to NO role
+      expect(seen).not.toContain(doc.batch.document);
     }
   });
 
-  it("oversight, compliance and the bereavement coordinator read an internal document by id without sitting on the chart", async () => {
+  it("oversight, compliance and the bereavement coordinator read an internal document by id without sitting on the chart, but NOT the seam-only mailing batch", async () => {
     for (const who of [SUPERVISOR, COMPLIANCE, COORDINATOR]) {
-      for (const key of ["letter", "summary", "batch"] as const) {
+      for (const key of ["letter", "summary"] as const) {
         const res = await app.inject({
           method: "GET",
           url: `/api/v1/documents/${doc[key].document}`,
@@ -284,6 +285,13 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
         });
         expect(res.statusCode, key).toBe(200);
       }
+      // the batch has ONE door (OrgDocumentAccessProvider, behind bereavement.mailing.dispatch): the generic read answers as if it did not exist
+      const batch = await app.inject({
+        method: "GET",
+        url: `/api/v1/documents/${doc.batch.document}`,
+        headers: who,
+      });
+      expect(batch.statusCode).toBe(404);
     }
   });
 
@@ -301,6 +309,10 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
     for (const who of [SUPERVISOR, COMPLIANCE, COORDINATOR]) {
       const res = await app.inject({ method: "GET", url: url("summary"), headers: who });
       expect(res.statusCode).toBeLessThan(300);
+      // the generic mint of the seam-only mailing batch is a 404 for every role: the only door is the org-level seam
+      expect(
+        (await app.inject({ method: "GET", url: url("batch"), headers: who })).statusCode,
+      ).toBe(404);
     }
   });
 

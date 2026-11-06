@@ -40,22 +40,17 @@ import type {
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { emitAlertBestEffort } from "../alert-port";
+import type { BereavementCipher } from "../bereavement-crypto";
 import {
   isAssessmentTaskOverdue,
   transitionBereavementOutreach,
   transitionBereavementPlan,
 } from "../lifecycle/index";
+import type { MailingGenerateEnqueuePort } from "../mailings/enqueue-port";
 import { requestDischargeSummary } from "../render-payloads/index";
 import { settleOutstandingForClosure } from "../routes/closure-settlement";
 import { runEffects } from "../routes/effects-runner";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
-import type { BereavementCipher } from "../bereavement-crypto";
-import type { MailingGenerateEnqueuePort } from "../mailings/enqueue-port";
-import {
-  type MailingBatchRenderer,
-  registerM16MailingGenerateWorker,
-  runMailingSweepCron,
-} from "./mailing-workers";
 import {
   M16_ANNIVERSARY_LOOKAHEAD_DAYS,
   M16_CRON_BATCH_LIMIT,
@@ -64,6 +59,11 @@ import {
   M16_QUEUES,
   M16_QUEUE_PARAMS,
 } from "./index";
+import {
+  type MailingBatchRenderer,
+  registerM16MailingGenerateWorker,
+  runMailingSweepCron,
+} from "./mailing-workers";
 
 const PLAN = schema.bereavementPlan;
 const OUTREACH = schema.bereavementOutreach;
@@ -632,13 +632,15 @@ async function latestOutcomes(
   contactId: string,
   limit: number,
 ): Promise<{ outcome: string; contactAt: Date }[]> {
-  return tx
-    .select({ outcome: LOG.outcome, contactAt: LOG.contactAt })
-    .from(LOG)
-    // ADR-0109 D10 — a program-activity row (a mailing, a session) is not a touchpoint attempt: it neither extends nor breaks a streak.
-    .where(and(eq(LOG.bereavedContactId, contactId), isNull(LOG.activityKind)))
-    .orderBy(desc(LOG.contactAt))
-    .limit(limit);
+  return (
+    tx
+      .select({ outcome: LOG.outcome, contactAt: LOG.contactAt })
+      .from(LOG)
+      // ADR-0109 D10 — a program-activity row (a mailing, a session) is not a touchpoint attempt: it neither extends nor breaks a streak.
+      .where(and(eq(LOG.bereavedContactId, contactId), isNull(LOG.activityKind)))
+      .orderBy(desc(LOG.contactAt))
+      .limit(limit)
+  );
 }
 
 /** Consecutive newest `no_response` rows (the route-17 guard's count, so proposal and acceptance agree). */

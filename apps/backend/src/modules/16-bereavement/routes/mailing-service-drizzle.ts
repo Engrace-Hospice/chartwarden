@@ -31,7 +31,7 @@ import { decideMailingEligibility } from "../mailings/eligibility";
 import type { MailingGenerateEnqueuePort } from "../mailings/enqueue-port";
 import { type MailingFactsContext, loadMailingCandidates } from "../mailings/facts-drizzle";
 import type { M16ReadActor, M16WriteActor } from "./actor";
-import { type Cursor, clampLimit, decodeCursor, toCursorPage } from "./concurrency";
+import { type Cursor, clampLimit, decodeCheckedCursor, toCursorPage } from "./concurrency";
 import type {
   M16MailingService,
   MailingConfigView,
@@ -71,7 +71,12 @@ const dateOnly = (d: string | Date): string =>
 const staleVersion = (): BereavementStateError =>
   new BereavementStateError("STALE_VERSION", "the mailing run has moved on; re-read it and retry");
 
-const EMPTY_COUNTS: MailingItemCounts = { included: 0, excluded: 0, logged: 0, excludedAfterRender: 0 };
+const EMPTY_COUNTS: MailingItemCounts = {
+  included: 0,
+  excluded: 0,
+  logged: 0,
+  excludedAfterRender: 0,
+};
 
 function scheduleOf(raw: unknown): MailingScheduleView {
   const r = (raw ?? {}) as { monthDays?: unknown; monthDay?: unknown };
@@ -136,7 +141,10 @@ function runView(row: RunRow, counts: MailingItemCounts): MailingRunView {
   };
 }
 
-export function buildDrizzleM16MailingService(db: DbClient, deps: M16MailingDeps): M16MailingService {
+export function buildDrizzleM16MailingService(
+  db: DbClient,
+  deps: M16MailingDeps,
+): M16MailingService {
   const CONFIG = schema.bereavementMailingConfig;
   const RUN = schema.bereavementMailingRun;
   const ITEM = schema.bereavementMailingItem;
@@ -173,7 +181,8 @@ export function buildDrizzleM16MailingService(db: DbClient, deps: M16MailingDeps
         included: c.included + (r.status === "included" ? r.n : 0),
         excluded: c.excluded + (r.status === "excluded" ? r.n : 0),
         logged: c.logged + (r.status === "logged" ? r.n : 0),
-        excludedAfterRender: c.excludedAfterRender + (r.status === "excluded_after_render" ? r.n : 0),
+        excludedAfterRender:
+          c.excludedAfterRender + (r.status === "excluded_after_render" ? r.n : 0),
       });
     }
     return out;
@@ -203,10 +212,19 @@ export function buildDrizzleM16MailingService(db: DbClient, deps: M16MailingDeps
    * candidate set cannot stay in the batch) and ordinals are cleared; the upsert then rewrites each candidate. The worker numbers the letters it renders.
    */
   async function selectBatch(tx: DbClient, run: RunRow): Promise<MailingItemCounts> {
-    const candidates = await loadMailingCandidates(tx, { kind: "active_plans" }, await factsContext(tx, run));
+    const candidates = await loadMailingCandidates(
+      tx,
+      { kind: "active_plans" },
+      await factsContext(tx, run),
+    );
     await tx
       .update(ITEM)
-      .set({ status: "excluded", exclusionReason: "plan_not_active", ordinal: null, updatedAt: sql`now()` })
+      .set({
+        status: "excluded",
+        exclusionReason: "plan_not_active",
+        ordinal: null,
+        updatedAt: sql`now()`,
+      })
       .where(and(eq(ITEM.runId, run.id), eq(ITEM.status, "included")));
     await tx
       .update(ITEM)
@@ -224,8 +242,20 @@ export function buildDrizzleM16MailingService(db: DbClient, deps: M16MailingDeps
         bereavedContactId: c.contactId,
       };
       return decision.eligible
-        ? { ...base, channel: decision.channel, status: "included" as const, exclusionReason: null, ordinal: null }
-        : { ...base, channel: "postal" as const, status: "excluded" as const, exclusionReason: decision.reason, ordinal: null };
+        ? {
+            ...base,
+            channel: decision.channel,
+            status: "included" as const,
+            exclusionReason: null,
+            ordinal: null,
+          }
+        : {
+            ...base,
+            channel: "postal" as const,
+            status: "excluded" as const,
+            exclusionReason: decision.reason,
+            ordinal: null,
+          };
     });
     for (let i = 0; i < rows.length; i += ITEM_UPSERT_CHUNK) {
       await tx
@@ -264,14 +294,19 @@ export function buildDrizzleM16MailingService(db: DbClient, deps: M16MailingDeps
       const content = normalizeMailingContent(input.content);
       return withOrgContext(db, scope(actor), async (scoped) => {
         const tx = asTx(scoped);
-        const [existing] = await tx.select().from(CONFIG).where(eq(CONFIG.mailingKey, mailingKey)).limit(1);
+        const [existing] = await tx
+          .select()
+          .from(CONFIG)
+          .where(eq(CONFIG.mailingKey, mailingKey))
+          .limit(1);
         checkVersion(input.expectedVersion, existing?.version ?? 0);
         const at = now();
         const values = {
           enabled: input.enabled,
           leadDays: input.leadDays,
           scheduleJsonb: input.schedule ?? {},
-          audienceRelationships: input.audienceRelationships === null ? null : [...input.audienceRelationships],
+          audienceRelationships:
+            input.audienceRelationships === null ? null : [...input.audienceRelationships],
           contentJsonb: content,
           configuredByMembershipId: actor.membershipId,
           updatedAt: at,
@@ -298,7 +333,7 @@ export function buildDrizzleM16MailingService(db: DbClient, deps: M16MailingDeps
 
     async listRuns(actor, input) {
       const limit = clampLimit(input.limit, RUN_PAGE);
-      const after: Cursor | null = decodeCursor(input.cursor);
+      const after: Cursor | null = decodeCheckedCursor(input.cursor, "date");
       return withOrgContext(db, scope(actor), async (scoped) => {
         const tx = asTx(scoped);
         const rows = await tx
@@ -317,7 +352,10 @@ export function buildDrizzleM16MailingService(db: DbClient, deps: M16MailingDeps
           )
           .orderBy(desc(RUN.scheduledFor), desc(RUN.id))
           .limit(limit + 1);
-        const counts = await countsFor(tx, rows.slice(0, limit).map((r) => r.id));
+        const counts = await countsFor(
+          tx,
+          rows.slice(0, limit).map((r) => r.id),
+        );
         return toCursorPage(
           rows,
           limit,
@@ -337,7 +375,8 @@ export function buildDrizzleM16MailingService(db: DbClient, deps: M16MailingDeps
 
     async listItems(actor, runId, input) {
       const limit = clampLimit(input.limit, ITEM_PAGE);
-      const afterOrdinal = Number(decodeCursor(input.cursor)?.a ?? Number.NaN);
+      const afterCursor = decodeCheckedCursor(input.cursor, "integer");
+      const afterOrdinal = Number(afterCursor?.a ?? Number.NaN);
       return withOrgContext(db, scope(actor), async (scoped) => {
         const tx = asTx(scoped);
         const [run] = await tx.select({ id: RUN.id }).from(RUN).where(eq(RUN.id, runId)).limit(1);
@@ -365,7 +404,10 @@ export function buildDrizzleM16MailingService(db: DbClient, deps: M16MailingDeps
               Number.isFinite(afterOrdinal)
                 ? or(
                     sql`${position} > ${afterOrdinal}`,
-                    and(sql`${position} = ${afterOrdinal}`, sql`${ITEM.id} > ${decodeCursor(input.cursor)?.id ?? ""}::uuid`),
+                    and(
+                      sql`${position} = ${afterOrdinal}`,
+                      sql`${ITEM.id} > ${afterCursor?.id ?? ""}::uuid`,
+                    ),
                   )
                 : undefined,
             ),
@@ -383,7 +425,8 @@ export function buildDrizzleM16MailingService(db: DbClient, deps: M16MailingDeps
             relationshipCode: row.relationshipCode as BereavedContactRelationship,
             channel: row.channel,
             status: row.status as BereavementMailingItemStatus,
-            exclusionReason: (row.exclusionReason ?? null) as BereavementMailingExclusionReason | null,
+            exclusionReason: (row.exclusionReason ??
+              null) as BereavementMailingExclusionReason | null,
             ordinal: row.ordinal ?? null,
           }),
         );
@@ -472,7 +515,9 @@ export function buildDrizzleM16MailingService(db: DbClient, deps: M16MailingDeps
     },
 
     async downloadRun(actor, runId) {
-      const run = await withOrgContext(db, scope(actor), async (scoped) => runOr404(asTx(scoped), runId));
+      const run = await withOrgContext(db, scope(actor), async (scoped) =>
+        runOr404(asTx(scoped), runId),
+      );
       if ((run.status !== "ready" && run.status !== "mailed") || run.renderedDocumentId === null) {
         throw new BereavementStateError(
           "MAILING_RUN_NOT_READY",
@@ -547,7 +592,11 @@ export function buildDrizzleM16MailingService(db: DbClient, deps: M16MailingDeps
             const chunk = ids.slice(i, i + ITEM_UPSERT_CHUNK);
             await tx
               .update(ITEM)
-              .set({ status: "excluded_after_render", exclusionReason: reason, updatedAt: sql`now()` })
+              .set({
+                status: "excluded_after_render",
+                exclusionReason: reason,
+                updatedAt: sql`now()`,
+              })
               .where(and(inArray(ITEM.id, chunk), eq(ITEM.status, "included")));
             flaggedCount += chunk.length;
           }

@@ -37,7 +37,11 @@ export const BEREAVEMENT_MAILING_KEYS = [
   "fathers_day",
   "decedent_birthday",
 ] as const;
-export const BEREAVEMENT_MAILING_RUN_KINDS = ["newsletter", "holiday", "memorial_invitation"] as const;
+export const BEREAVEMENT_MAILING_RUN_KINDS = [
+  "newsletter",
+  "holiday",
+  "memorial_invitation",
+] as const;
 export const BEREAVEMENT_MAILING_RUN_STATUSES = [
   "draft",
   "generating",

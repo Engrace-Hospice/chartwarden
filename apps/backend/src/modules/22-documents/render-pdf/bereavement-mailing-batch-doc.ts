@@ -27,8 +27,15 @@ export function buildBereavementMailingBatchDoc(payload: unknown): DocModel {
     blocks.push({ kind: "heading", level: 1, text: p.heading });
     blocks.push({ kind: "paragraph", text: letter.greeting });
     for (const paragraph of p.paragraphs) blocks.push({ kind: "paragraph", text: paragraph });
-    blocks.push({ kind: "spacer", height: SECTION_GAP });
-    blocks.push({ kind: "paragraph", text: p.signoff });
+    if (p.signoff !== undefined) {
+      blocks.push({ kind: "spacer", height: SECTION_GAP });
+      blocks.push({ kind: "paragraph", text: p.signoff });
+    }
   });
-  return { title: BEREAVEMENT_MAILING_BATCH_TITLE, createdAtIso: FALLBACK_CREATED_AT, blocks, discloseDegradedGlyphs: true };
+  return {
+    title: BEREAVEMENT_MAILING_BATCH_TITLE,
+    createdAtIso: FALLBACK_CREATED_AT,
+    blocks,
+    discloseDegradedGlyphs: true,
+  };
 }

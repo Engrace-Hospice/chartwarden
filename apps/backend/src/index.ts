@@ -9975,7 +9975,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       // hands it to the registry's DocumentRenderer in memory; the sweep re-sends a lost render hand-off through the same enqueue port.
       cipher: createBereavementCipher({
         dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
-        dekForOrgVersion: (orgId, version) => getTenantKeyProvider().dekForOrgVersion(orgId, version),
+        dekForOrgVersion: (orgId, version) =>
+          getTenantKeyProvider().dekForOrgVersion(orgId, version),
       }),
       mailingEnqueue: m16MailingEnqueue.port,
     });

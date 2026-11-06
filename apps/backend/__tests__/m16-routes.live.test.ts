@@ -58,6 +58,7 @@ import { M16_PERMISSION_KEY_LIST } from "../src/modules/16-bereavement/permissio
 import {
   buildDrizzleM16DraftService,
   buildDrizzleM16LetterService,
+  buildDrizzleM16MailingService,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
 } from "../src/modules/16-bereavement/routes/index";
@@ -328,6 +329,11 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
       }),
       // ADR-0109 D6 — the physician letter queue over the same publisher and envelope the write service uses.
       letterService: buildDrizzleM16LetterService(handle.db, { outbox: outbox as never, cipher }),
+      // ADR-0109 D10 — the mailing program is proven end to end in m16-mailings.live.test.ts; here it is mounted so the full route inventory is.
+      mailingService: buildDrizzleM16MailingService(handle.db, {
+        outbox: outbox as never,
+        enqueue: { enqueue: async () => undefined },
+      }),
       writeService: buildDrizzleM16WriteService(handle.db, readService, {
         outbox: outbox as never,
         cipher,

@@ -32,7 +32,13 @@ describe("decideMailingEligibility: who is written to", () => {
   });
 
   it("the plan must be active (a paused or closed plan sends nothing)", () => {
-    for (const planStatus of ["eligible", "initiating", "paused", "closed_completed", "closed_early"] as const) {
+    for (const planStatus of [
+      "eligible",
+      "initiating",
+      "paused",
+      "closed_completed",
+      "closed_early",
+    ] as const) {
       expect(reason({ planStatus })).toBe("plan_not_active");
     }
   });
@@ -54,15 +60,27 @@ describe("decideMailingEligibility: who is written to", () => {
 
 describe("decideMailingEligibility: opt-out ROWS decide, not the contact status", () => {
   it("a full opt-out blocks", () => {
-    expect(reason({ contactStatus: "opted_out", openOptOuts: [{ optOutKind: "full", channelKinds: null }] })).toBe("opted_out");
+    expect(
+      reason({
+        contactStatus: "opted_out",
+        openOptOuts: [{ optOutKind: "full", channelKinds: null }],
+      }),
+    ).toBe("opted_out");
   });
 
   it("a temporary pause blocks", () => {
-    expect(reason({ openOptOuts: [{ optOutKind: "pause_temporarily", channelKinds: null }] })).toBe("opted_out");
+    expect(reason({ openOptOuts: [{ optOutKind: "pause_temporarily", channelKinds: null }] })).toBe(
+      "opted_out",
+    );
   });
 
   it("no_mailings blocks while the contact stays active (calls continue)", () => {
-    expect(reason({ contactStatus: "active", openOptOuts: [{ optOutKind: "no_mailings", channelKinds: null }] })).toBe("no_mailings");
+    expect(
+      reason({
+        contactStatus: "active",
+        openOptOuts: [{ optOutKind: "no_mailings", channelKinds: null }],
+      }),
+    ).toBe("no_mailings");
   });
 
   it("no_mailings wins over a channel-specific row (the broader refusal is the one reported)", () => {
@@ -90,7 +108,12 @@ describe("decideMailingEligibility: opt-out ROWS decide, not the contact status"
     expect(reason({ contactStatus: "opted_out", openOptOuts: [row] })).toBe("channel_opted_out");
     // naming a mailed kind does not touch email: an email-preferring contact is judged on the email channel
     expect(
-      reason({ openOptOuts: [row], allowedKinds: ["email"], hasEmailAddress: true, emailChannelAvailable: true }),
+      reason({
+        openOptOuts: [row],
+        allowedKinds: ["email"],
+        hasEmailAddress: true,
+        emailChannelAvailable: true,
+      }),
     ).toBe("eligible");
   });
 
@@ -130,11 +153,25 @@ describe("decideMailingEligibility: which channel, and is it stored", () => {
 
   it("an email-preferring contact is mailed by email only when the tenant has the channel AND an address is stored", () => {
     const email = { allowedKinds: ["email" as const] };
-    expect(decide({ ...email, hasEmailAddress: true, emailChannelAvailable: true })).toEqual({ eligible: true, channel: "email" });
-    expect(reason({ ...email, hasEmailAddress: true, emailChannelAvailable: false })).toBe("email_channel_unavailable");
-    expect(reason({ ...email, hasEmailAddress: false, emailChannelAvailable: true })).toBe("no_email_address");
+    expect(decide({ ...email, hasEmailAddress: true, emailChannelAvailable: true })).toEqual({
+      eligible: true,
+      channel: "email",
+    });
+    expect(reason({ ...email, hasEmailAddress: true, emailChannelAvailable: false })).toBe(
+      "email_channel_unavailable",
+    );
+    expect(reason({ ...email, hasEmailAddress: false, emailChannelAvailable: true })).toBe(
+      "no_email_address",
+    );
     // a stored postal address does NOT make an email-preferring contact a postal recipient (that would mail on paper against their preference)
-    expect(reason({ ...email, hasMailingAddress: true, hasEmailAddress: false, emailChannelAvailable: true })).toBe("no_email_address");
+    expect(
+      reason({
+        ...email,
+        hasMailingAddress: true,
+        hasEmailAddress: false,
+        emailChannelAvailable: true,
+      }),
+    ).toBe("no_email_address");
   });
 
   it("every reason the rule can return is one the item CHECK admits", () => {
@@ -152,7 +189,8 @@ describe("decideMailingEligibility: which channel, and is it stored", () => {
       { allowedKinds: ["email"], emailChannelAvailable: true },
     ];
     for (const c of cases) seen.add(reason(c));
-    for (const r of seen) expect(BEREAVEMENT_MAILING_EXCLUSION_REASONS as readonly string[]).toContain(r);
+    for (const r of seen)
+      expect(BEREAVEMENT_MAILING_EXCLUSION_REASONS as readonly string[]).toContain(r);
     expect(seen.size).toBe(cases.length);
   });
 });

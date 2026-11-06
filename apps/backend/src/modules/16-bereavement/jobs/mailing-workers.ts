@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 // apps/backend/src/modules/16-bereavement/jobs/mailing-workers.ts — ADR-0109 D10: the two mailing workers.
 //
 //   · `m16-mailing-sweep` (*/5) — for every active org, three idempotent passes:
@@ -8,22 +10,20 @@
 //          idempotent on the activity unique index. Activity rows satisfy no cadence item and never count in M30.
 //   · `m16-mailing-generate` — one job per claimed run. Decrypts every addressee's mailing address IN-PROCESS and hands name, address lines and greeting to
 //     `getSeam("DocumentRenderer").render(...)` in memory: the addresses are never on the outbox, in a queue payload, in a log line or in a run column. It numbers the
-//     letters (ordinal = page), moves the run to `ready` in one compare-and-set, and on the FINAL failed attempt moves it to `failed` (the retry budget exhausted
+//     letters (ordinal = the letter's position, 1-based; a long letter spans several pages), moves the run to `ready` in one compare-and-set, and on the FINAL failed attempt moves it to `failed` (the retry budget exhausted
 //     is the DLQ: `removeOnFail: false` keeps the failed set, and the platform's DLQ promotion alert watches it).
 //
 // WORKERS ARE NOT REQUESTS: each step opens its own org-explicit `withOrgContext` (the cron-workers convention); a render is never held inside a transaction.
 import {
   BEREAVEMENT_MAILING_BATCH_TEMPLATE_KEY,
-  type BereavementMailingContent,
   type BereavementMailingBatchRenderPayload,
+  type BereavementMailingContent,
   type DocumentRenderer,
 } from "@chartwarden/types";
-import { type DbClient, schema } from "@chartwarden/db";
-import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, eq, inArray, lt, sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
-import type { BereavementCipher } from "../bereavement-crypto";
+import { type BereavementCipher, BereavementCipherBlobError } from "../bereavement-crypto";
 import { assertMailingContentComplete, personalizeGreeting } from "../mailings/content";
 import {
   type MailingGenerateEnqueuePort,
@@ -49,7 +49,9 @@ export type MailingBatchRenderer = (
 export interface MailingWorkerDeps {
   readonly db: DbClient;
   readonly connection: ConnectionOptions;
-  readonly activeOrgs?: { listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]> };
+  readonly activeOrgs?: {
+    listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
+  };
   /** The tenant-DEK envelope the mailing addresses are opened with. Unbound => a generate job fails closed. */
   readonly cipher?: BereavementCipher;
   /** Re-sends a stale `generating` run. Unbound => the sweep skips that pass (the next boot with a queue catches up). */
@@ -73,9 +75,15 @@ const log = (msg: string, meta: Record<string, unknown>): void => {
 };
 
 /** One org-scoped transaction, org-explicit (a worker has no request). */
-function inOrg<T>(deps: MailingWorkerDeps, organizationId: string, fn: (tx: DbClient) => Promise<T>): Promise<T> {
+function inOrg<T>(
+  deps: MailingWorkerDeps,
+  organizationId: string,
+  fn: (tx: DbClient) => Promise<T>,
+): Promise<T> {
   return runWithRequestContext({ organizationId, userId: SYSTEM_USER_ID }, () =>
-    withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (handle) => fn(handle as DbClient)),
+    withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (handle) =>
+      fn(handle as DbClient),
+    ),
   );
 }
 
@@ -145,8 +153,16 @@ export async function requeueStaleGeneratingRuns(
       .orderBy(asc(RUN.updatedAt))
       .limit(50),
   );
+  // The re-send carries a time bucket in its job id: the original job (or its failed record, retained as the DLQ) holds the plain id, so a
+  // re-send under the same id would be a no-op and a run whose worker died would stay `generating` for ever.
+  const resendEpoch = Math.floor(now.getTime() / M16_MAILING_STALE_GENERATING_MS);
   for (const run of stale) {
-    await deps.mailingEnqueue.enqueue({ organizationId, runId: run.id, version: run.version });
+    await deps.mailingEnqueue.enqueue({
+      organizationId,
+      runId: run.id,
+      version: run.version,
+      resendEpoch,
+    });
   }
   return stale.length;
 }
@@ -154,7 +170,12 @@ export async function requeueStaleGeneratingRuns(
 /** One chunk of activity rows for one mailed run, set-based. Returns how many items it moved to `logged`. */
 async function logOneChunk(
   tx: DbClient,
-  run: { readonly id: string; readonly activityKind: string; readonly mailedAt: Date; readonly mailedBy: string },
+  run: {
+    readonly id: string;
+    readonly activityKind: string;
+    readonly mailedAt: Date;
+    readonly mailedBy: string;
+  },
 ): Promise<number> {
   // `log.id = item.id`: the item names its activity row without a lookup, and a replayed chunk conflicts on the activity unique index instead of double-logging.
   const rows = await tx.execute(sql`
@@ -185,7 +206,10 @@ async function logOneChunk(
 }
 
 /** Write the activity rows of every mailed run that still owes some. Returns the items logged. */
-export async function logMailedRuns(deps: MailingWorkerDeps, organizationId: string): Promise<number> {
+export async function logMailedRuns(
+  deps: MailingWorkerDeps,
+  organizationId: string,
+): Promise<number> {
   const owing = await inOrg(deps, organizationId, (tx) =>
     tx
       .select({
@@ -229,17 +253,31 @@ export async function runMailingSweepCron(
   const now = (deps.now ?? (() => new Date()))();
   const orgs = deps.activeOrgs;
   if (orgs === undefined) {
-    throw new Error("M16_WORKER_PORT_UNBOUND: activeOrgs.listActiveOrgs — bind the M2 active-org enumerator");
+    throw new Error(
+      "M16_WORKER_PORT_UNBOUND: activeOrgs.listActiveOrgs — bind the M2 active-org enumerator",
+    );
   }
   let drafted = 0;
   let requeued = 0;
   let logged = 0;
+  let failedOrgs = 0;
   for (const { organizationId } of await orgs.listActiveOrgs()) {
-    drafted += await draftDueMailingRuns(deps, organizationId, now);
-    requeued += await requeueStaleGeneratingRuns(deps, organizationId, now);
-    logged += await logMailedRuns(deps, organizationId);
+    // One tenant's failure must not starve every later tenant on every tick: isolate per org, finish the fan-out, then fail the tick.
+    try {
+      drafted += await draftDueMailingRuns(deps, organizationId, now);
+      requeued += await requeueStaleGeneratingRuns(deps, organizationId, now);
+      logged += await logMailedRuns(deps, organizationId);
+    } catch (error) {
+      failedOrgs += 1;
+      log("m16.mailing-sweep: an org failed", {
+        organizationId,
+        error: error instanceof Error ? error.name : "unknown",
+      });
+    }
   }
   if (drafted + requeued + logged > 0) log("m16.mailing-sweep", { drafted, requeued, logged });
+  // BullMQ retries the tick; every pass is idempotent, so the orgs that succeeded are not redone.
+  if (failedOrgs > 0) throw new Error(`m16-mailing-sweep: ${failedOrgs} org(s) failed`);
   return { drafted, requeued, logged };
 }
 
@@ -311,13 +349,19 @@ export async function runMailingGenerateJob(
     return { run, items };
   });
   if (claim === null) {
-    log("m16.mailing-generate: run is not generating at this version — skipped", { organizationId, runId, version });
+    log("m16.mailing-generate: run is not generating at this version — skipped", {
+      organizationId,
+      runId,
+      version,
+    });
     return;
   }
 
   try {
     if (deps.cipher === undefined) throw new TerminalMailingError("CIPHER_UNBOUND");
-    const wording = assertMailingContentComplete(claim.run.contentJsonb as BereavementMailingContent);
+    const wording = assertMailingContentComplete(
+      claim.run.contentJsonb as BereavementMailingContent,
+    );
 
     // Decrypt OUTSIDE any transaction (the key provider takes its own connection), in-process, and keep the plaintext in this frame only.
     const letters: BereavementMailingBatchRenderPayload["letters"][number][] = [];
@@ -343,7 +387,8 @@ export async function runMailingGenerateJob(
       aggregateId: runId,
       heading: wording.title,
       paragraphs: wording.paragraphs,
-      signoff: wording.signoff.length > 0 ? wording.signoff : "With care",
+      // no default wording ships: an empty sign-off is simply not printed
+      ...(wording.signoff.length > 0 ? { signoff: wording.signoff } : {}),
       letters,
     });
 
@@ -366,10 +411,15 @@ export async function runMailingGenerateJob(
       if (dropped.length > 0) {
         await tx
           .update(ITEM)
-          .set({ status: "excluded", exclusionReason: "no_mailing_address", ordinal: null, updatedAt: at })
+          .set({
+            status: "excluded",
+            exclusionReason: "no_mailing_address",
+            ordinal: null,
+            updatedAt: at,
+          })
           .where(inArray(ITEM.id, dropped));
       }
-      // ordinal = the letter's page in the PDF
+      // ordinal = the letter's position in the batch (a letter longer than a page spans several pages)
       for (let i = 0; i < letterItemIds.length; i += M16_MAILING_LOG_CHUNK) {
         const slice = letterItemIds.slice(i, i + M16_MAILING_LOG_CHUNK);
         const values = sql.join(
@@ -381,7 +431,12 @@ export async function runMailingGenerateJob(
         );
       }
     });
-    log("m16.mailing-generate: rendered", { organizationId, runId, letters: letters.length, dropped: dropped.length });
+    log("m16.mailing-generate: rendered", {
+      organizationId,
+      runId,
+      letters: letters.length,
+      dropped: dropped.length,
+    });
   } catch (error) {
     const terminal = error instanceof TerminalMailingError;
     const code = terminal ? error.code : "RENDER_FAILED";
@@ -395,7 +450,9 @@ export async function runMailingGenerateJob(
     });
     if (terminal || opts.finalAttempt) await failRun(deps, organizationId, runId, version, code);
     // A terminal failure (nothing to render, no cipher) is recorded on the run and is not worth a retry; anything else is retried by BullMQ.
-    if (!terminal) throw error;
+    // The thrown error is SANITIZED: BullMQ keeps `failedReason` and the stack in Valkey for good (`removeOnFail: false`), and a renderer
+    // error can echo its payload (names and addresses). A code and the error class are enough to find the cause.
+    if (!terminal) throw new Error(`${code}:${error instanceof Error ? error.name : "unknown"}`);
   }
 }
 
@@ -407,8 +464,11 @@ async function openAddress(
   if (blob === null) return null;
   try {
     return await cipher.decrypt(organizationId, "bereaved_contact.mailing_address", blob);
-  } catch {
-    return null; // a blob that cannot be opened reads as an ABSENT address, never a guessed one
+  } catch (error) {
+    // A blob that cannot be opened reads as an ABSENT address, never a guessed one. A key-provider failure is NOT that: it propagates so
+    // BullMQ retries the job instead of silently dropping a family from the mailing for good.
+    if (error instanceof BereavementCipherBlobError) return null;
+    throw error;
   }
 }
 
@@ -426,7 +486,9 @@ export function registerM16MailingGenerateWorker(deps: MailingWorkerDeps): Worke
         typeof data.runId !== "string" ||
         typeof data.version !== "number"
       ) {
-        throw new Error("m16-mailing-generate: malformed job (ids only: organizationId, runId, version)");
+        throw new Error(
+          "m16-mailing-generate: malformed job (ids only: organizationId, runId, version)",
+        );
       }
       await runMailingGenerateJob(deps, data as MailingGenerateJob, {
         finalAttempt: job.attemptsMade + 1 >= (job.opts.attempts ?? params.attempts),
@@ -445,7 +507,9 @@ export function buildM16MailingEnqueuePort(connection: ConnectionOptions | undef
     return {
       port: {
         async enqueue() {
-          throw new Error("M16_WORKER_PORT_UNBOUND: no Valkey connection configured — cannot enqueue 'm16-mailing-generate'");
+          throw new Error(
+            "M16_WORKER_PORT_UNBOUND: no Valkey connection configured — cannot enqueue 'm16-mailing-generate'",
+          );
         },
       },
       queues: [],

@@ -8,6 +8,8 @@ export interface MailingGenerateJob {
   readonly runId: string;
   /** The run's version at the draft/failed -> generating claim; a retry after a failure claims a NEW version, so the job ids never collide. */
   readonly version: number;
+  /** Set only by the sweep's stale-`generating` re-send: a time bucket that gives the re-send its own job id. */
+  readonly resendEpoch?: number;
 }
 
 export interface MailingGenerateEnqueuePort {
@@ -16,4 +18,4 @@ export interface MailingGenerateEnqueuePort {
 
 /** The BullMQ job id of a generate request (also what makes a re-enqueue by the sweep idempotent). */
 export const mailingGenerateJobId = (job: MailingGenerateJob): string =>
-  `m16-mailing-generate:${job.runId}:${job.version}`;
+  `m16-mailing-generate-${job.runId}-${job.version}${job.resendEpoch === undefined ? "" : `-r${job.resendEpoch}`}`;

@@ -7,14 +7,20 @@ import {
   assertBereavementMailingBatchRenderPayload,
 } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
-import { buildBereavementMailingBatchDoc } from "../src/modules/22-documents/render-pdf/bereavement-mailing-batch-doc";
 import { renderPdfForTemplate } from "../src/modules/22-documents/render-pdf";
+import { buildBereavementMailingBatchDoc } from "../src/modules/22-documents/render-pdf/bereavement-mailing-batch-doc";
 import {
   type OrgDocumentFacts,
   createOrgDocumentAccessProvider,
 } from "../src/modules/22-documents/seams/org-document-access";
-import { createDocumentRenderer, PLATFORM_TEMPLATE_TABLE } from "../src/modules/22-documents/seams/renderer";
-import { createInMemoryDocumentSeamStore, createInMemoryObjectStore } from "../src/modules/22-documents/seams/store";
+import {
+  PLATFORM_TEMPLATE_TABLE,
+  createDocumentRenderer,
+} from "../src/modules/22-documents/seams/renderer";
+import {
+  createInMemoryDocumentSeamStore,
+  createInMemoryObjectStore,
+} from "../src/modules/22-documents/seams/store";
 
 const RUN = "00000000-0000-4000-8000-0000000000a1";
 const ORG = "00000000-0000-4000-8000-0000000000b1";
@@ -27,19 +33,39 @@ const PAYLOAD: BereavementMailingBatchRenderPayload = {
   paragraphs: ["We are thinking of you this season.", "Our office is open on weekdays."],
   signoff: "With care, the program team",
   letters: [
-    { recipientName: "Ada Example", addressLines: ["10 Sample Street", "Testville, ZZ 00000"], greeting: "Dear Ada Example," },
-    { recipientName: "Ben Sample", addressLines: ["22 Fixture Road", "Mockton, ZZ 00001"], greeting: "Dear Ben Sample," },
-    { recipientName: "Cy Placeholder", addressLines: ["3 Demo Lane", "Stubville, ZZ 00002"], greeting: "Dear Cy Placeholder," },
+    {
+      recipientName: "Ada Example",
+      addressLines: ["10 Sample Street", "Testville, ZZ 00000"],
+      greeting: "Dear Ada Example,",
+    },
+    {
+      recipientName: "Ben Sample",
+      addressLines: ["22 Fixture Road", "Mockton, ZZ 00001"],
+      greeting: "Dear Ben Sample,",
+    },
+    {
+      recipientName: "Cy Placeholder",
+      addressLines: ["3 Demo Lane", "Stubville, ZZ 00002"],
+      greeting: "Dear Cy Placeholder,",
+    },
   ],
 };
 
 const textOf = (bytes: Uint8Array): string =>
-  [...Buffer.from(bytes).toString("latin1").matchAll(/\(((?:\\.|[^\\)])*)\) Tj/g)]
+  [
+    ...Buffer.from(bytes)
+      .toString("latin1")
+      .matchAll(/\(((?:\\.|[^\\)])*)\) Tj/g),
+  ]
     .map((m) => (m[1] ?? "").replace(/\\([()\\])/g, "$1"))
     .join("\n");
 
 const pageCount = (bytes: Uint8Array): number =>
-  [...Buffer.from(bytes).toString("latin1").matchAll(/\/Type\s*\/Page[^s]/g)].length;
+  [
+    ...Buffer.from(bytes)
+      .toString("latin1")
+      .matchAll(/\/Type\s*\/Page[^s]/g),
+  ].length;
 
 describe("bereavement_mailing_batch template", () => {
   it("is an internal-only descriptor filed under the bereavement retention class", () => {
@@ -59,7 +85,11 @@ describe("bereavement_mailing_batch template", () => {
   });
 
   it("draws every addressee, address line, greeting, paragraph and sign-off, and renders one page per letter", () => {
-    const bytes = renderPdfForTemplate(BEREAVEMENT_MAILING_BATCH_TEMPLATE_KEY, PAYLOAD, "Bereavement Mailing Batch (Internal)");
+    const bytes = renderPdfForTemplate(
+      BEREAVEMENT_MAILING_BATCH_TEMPLATE_KEY,
+      PAYLOAD,
+      "Bereavement Mailing Batch (Internal)",
+    );
     const text = textOf(bytes);
     for (const letter of PAYLOAD.letters) {
       expect(text).toContain(letter.recipientName);
@@ -104,7 +134,11 @@ describe("bereavement_mailing_batch template", () => {
       },
       objects: objects.store,
     });
-    const { documentId } = await renderer.render({ orgId: ORG as never }, BEREAVEMENT_MAILING_BATCH_TEMPLATE_KEY, PAYLOAD);
+    const { documentId } = await renderer.render(
+      { orgId: ORG as never },
+      BEREAVEMENT_MAILING_BATCH_TEMPLATE_KEY,
+      PAYLOAD,
+    );
     expect(documentId).toBeTruthy();
     expect(upserts).toHaveLength(1);
     expect(upserts[0]).toMatchObject({
@@ -137,7 +171,10 @@ describe("OrgDocumentAccessProvider", () => {
       objects: {
         presign: async (args) => {
           presigned.push(args);
-          return { url: "https://objects.example.test/signed", expiresAt: "2026-11-05T12:05:00.000Z" };
+          return {
+            url: "https://objects.example.test/signed",
+            expiresAt: "2026-11-05T12:05:00.000Z",
+          };
         },
       },
       accessLog: {
@@ -149,7 +186,10 @@ describe("OrgDocumentAccessProvider", () => {
     });
     return { provider, logged, presigned };
   }
-  const ask = (provider: ReturnType<typeof build>["provider"], over: Partial<{ allowed: string[]; member: string }> = {}) =>
+  const ask = (
+    provider: ReturnType<typeof build>["provider"],
+    over: Partial<{ allowed: string[]; member: string }> = {},
+  ) =>
     provider.mintOrgDownloadUrl({
       organizationId: ORG as never,
       documentId: DOC_ID as never,
@@ -160,7 +200,10 @@ describe("OrgDocumentAccessProvider", () => {
   it("mints a URL for an active org-level document of an allowed type, and writes the access ledger row first", async () => {
     const { provider, logged } = build(FACTS);
     const out = await ask(provider);
-    expect(out).toMatchObject({ url: "https://objects.example.test/signed", documentVersionId: VERSION });
+    expect(out).toMatchObject({
+      url: "https://objects.example.test/signed",
+      documentVersionId: VERSION,
+    });
     expect(logged).toEqual([
       expect.objectContaining({
         organizationId: ORG,
@@ -192,7 +235,10 @@ describe("OrgDocumentAccessProvider", () => {
 
   it("is not a general document door: the caller's allowed types decide", async () => {
     const { provider } = build(FACTS);
-    expect(await ask(provider, { allowed: ["bereavement_letter"] })).toEqual({ denied: true, reason: "wrong_type" });
+    expect(await ask(provider, { allowed: ["bereavement_letter"] })).toEqual({
+      denied: true,
+      reason: "wrong_type",
+    });
   });
 
   it("releases no URL when the access ledger cannot be written, and none for a member it cannot record", async () => {

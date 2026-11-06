@@ -430,6 +430,15 @@ export const INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES: ReadonlySet<DocumentAggrega
     "bereavement_mailing_batch",
   ]);
 
+/**
+ * ADR-0109 D10 — the internal types that are SEAM-ONLY: no generic M22 read admits them, not even the scope-bypass or oversight roles
+ * (the by-id read, the list, the content mint and the ABAC predicate all answer as if the document did not exist). M16's mailing batch holds
+ * EVERY family's name and mailing address, so it is handed out by exactly one door, `OrgDocumentAccessProvider`, which the oversight-only
+ * `bereavement.mailing.dispatch` route calls. Always a subset of {@link INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES} (a test pins it).
+ */
+export const SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES: ReadonlySet<DocumentAggregateType> =
+  new Set<DocumentAggregateType>(["bereavement_mailing_batch"]);
+
 /** §4.3 — the portal-safe digest (internal-only tags stripped; SUD content filtered per consent by the
  * reader). M31 only ever sees this projection, never {@link DocumentDigest}. */
 export interface PortalDocumentDigest {
@@ -618,7 +627,11 @@ export interface OrgDocumentAccessProvider {
     /** The staff member the URL is minted for (their membership), recorded on the access ledger. */
     readonly accessorMembershipId: string;
   }): Promise<
-    | { readonly url: string; readonly expiresAt: IsoInstant; readonly documentVersionId: DocumentVersionId }
+    | {
+        readonly url: string;
+        readonly expiresAt: IsoInstant;
+        readonly documentVersionId: DocumentVersionId;
+      }
     | { readonly denied: true; readonly reason: OrgDocumentDenialReason }
   >;
 }

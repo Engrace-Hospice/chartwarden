@@ -26,6 +26,11 @@ import type {
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import type { StaffMintAccessLogPort } from "../routes/signed-url-service";
 import {
+  type OrgDocumentAccessPort,
+  REFUSING_ORG_DOCUMENT_ACCESS_PORT,
+  createOrgDocumentAccessProvider,
+} from "./org-document-access";
+import {
   createDocumentReader,
   createExtractionProvenanceReader,
   createIntakeMetricsProvider,
@@ -40,11 +45,6 @@ import {
   createInMemoryPortalAccessLog,
   createInMemoryPortalConsentPort,
 } from "./readers-store";
-import {
-  type OrgDocumentAccessPort,
-  REFUSING_ORG_DOCUMENT_ACCESS_PORT,
-  createOrgDocumentAccessProvider,
-} from "./org-document-access";
 import { createDocumentRenderer } from "./renderer";
 import { createDocumentStorageProvider } from "./storage-provider";
 export {

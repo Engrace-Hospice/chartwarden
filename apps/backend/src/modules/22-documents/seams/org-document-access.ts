@@ -50,7 +50,9 @@ export const REFUSING_ORG_DOCUMENT_ACCESS_PORT: OrgDocumentAccessPort = {
   },
 };
 
-export function createOrgDocumentAccessProvider(deps: OrgDocumentAccessDeps): OrgDocumentAccessProvider {
+export function createOrgDocumentAccessProvider(
+  deps: OrgDocumentAccessDeps,
+): OrgDocumentAccessProvider {
   return {
     async mintOrgDownloadUrl(args) {
       const facts = await deps.port.loadDocument({

@@ -1,3 +1,4 @@
+import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/16-bereavement/routes/mailing.routes.ts — M16 (ADR-0109 D10) routes 42-51: the mailing program.
 //
 // EVERY route is bereavement oversight only: the batch PDF holds every recipient's name and address. `bereavement.mailing.read` reads configs, runs and items;
@@ -19,7 +20,6 @@ import {
   PutMailingConfigBody,
   UpdateMailingRunContentBody,
 } from "./mailing-typebox";
-import { NotFoundError } from "@chartwarden/types";
 
 export interface MailingRouteDeps {
   readonly mailingService: M16MailingService;
@@ -41,7 +41,11 @@ export function registerBereavementMailingRoutes(
     "/api/v1/bereavement/mailings/config",
     {
       preHandler: [...oversight("bereavement.mailing.read")],
-      config: { auditRead: { none: "agency-authored mailing configuration (dates, audience, wording); no recipient and no PHI" } },
+      config: {
+        auditRead: {
+          none: "agency-authored mailing configuration (dates, audience, wording); no recipient and no PHI",
+        },
+      },
     },
     async (request) => mailingService.listConfigs(actorOf(request)),
   );
@@ -69,7 +73,10 @@ export function registerBereavementMailingRoutes(
       config: { auditRead: { resourceKind: "bereavement_mailing_run", list: true } },
     },
     async (request) =>
-      mailingService.listRuns(actorOf(request), parseQuery(MailingRunListQuerySchema, request.query)),
+      mailingService.listRuns(
+        actorOf(request),
+        parseQuery(MailingRunListQuerySchema, request.query),
+      ),
   );
 
   // 45 — one run with its item counts.

@@ -9,12 +9,12 @@
 import type {
   BereavedContactRelationship,
   BereavementMailingChannel,
+  BereavementMailingContent,
   BereavementMailingExclusionReason,
   BereavementMailingItemStatus,
   BereavementMailingKey,
   BereavementMailingRunKind,
   BereavementMailingRunStatus,
-  BereavementMailingContent,
 } from "@chartwarden/types";
 import type { M16ReadActor, M16WriteActor } from "./actor";
 import type { CursorPage } from "./concurrency";

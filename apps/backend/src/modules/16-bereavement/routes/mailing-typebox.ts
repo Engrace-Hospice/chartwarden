@@ -27,7 +27,14 @@ const MonthDay = Type.String({ pattern: "^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01
 export const BuiltMailingKey = literals(BEREAVEMENT_BUILT_MAILING_KEYS);
 const AnyMailingKey = literals([...BEREAVEMENT_BUILT_MAILING_KEYS, "decedent_birthday"] as const);
 const RunKind = literals(["newsletter", "holiday", "memorial_invitation"] as const);
-const RunStatus = literals(["draft", "generating", "ready", "mailed", "cancelled", "failed"] as const);
+const RunStatus = literals([
+  "draft",
+  "generating",
+  "ready",
+  "mailed",
+  "cancelled",
+  "failed",
+] as const);
 const ItemStatus = literals([
   "included",
   "excluded",

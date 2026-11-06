@@ -12,22 +12,6 @@ import type { CursorPage } from "./concurrency";
 import type { PreDeathDraftView as SvcPreDeathDraftView } from "./draft-service";
 import type { PhysicianLetterView as SvcPhysicianLetterView } from "./letter-service";
 import type {
-  MailingConfigView as SvcMailingConfigView,
-  MailingDownloadView as SvcMailingDownloadView,
-  MailingItemView as SvcMailingItemView,
-  MailingRunView as SvcMailingRunView,
-} from "./mailing-service";
-import type {
-  ContactTimelinePageResponseSchema,
-  MailingConfigListResponseSchema,
-  MailingConfigViewResponseSchema,
-  MailingDownloadViewResponseSchema,
-  MailingItemPageResponseSchema,
-  MailingItemViewResponseSchema,
-  MailingRunPageResponseSchema,
-  MailingRunViewResponseSchema,
-} from "./mailing-typebox";
-import type {
   BereavedContactRowViewResponseSchema,
   BereavementAssessmentTaskListResponseSchema,
   BereavementClosureViewResponseSchema,
@@ -48,7 +32,22 @@ import type {
   SupervisorDashboardViewResponseSchema,
 } from "./m16-typebox";
 import type {
-  ContactTimelinePage as SvcContactTimelinePage,
+  MailingConfigView as SvcMailingConfigView,
+  MailingDownloadView as SvcMailingDownloadView,
+  MailingItemView as SvcMailingItemView,
+  MailingRunView as SvcMailingRunView,
+} from "./mailing-service";
+import type {
+  ContactTimelinePageResponseSchema,
+  MailingConfigListResponseSchema,
+  MailingConfigViewResponseSchema,
+  MailingDownloadViewResponseSchema,
+  MailingItemPageResponseSchema,
+  MailingItemViewResponseSchema,
+  MailingRunPageResponseSchema,
+  MailingRunViewResponseSchema,
+} from "./mailing-typebox";
+import type {
   BereavedContactRowView as SvcBereavedContactRowView,
   BereavementAssessmentTaskList as SvcBereavementAssessmentTaskList,
   BereavementClosureView as SvcBereavementClosureView,
@@ -56,6 +55,7 @@ import type {
   BereavementPlanDetail as SvcBereavementPlanDetail,
   BereavementPlanListItem as SvcBereavementPlanListItem,
   BereavementRiskScoreView as SvcBereavementRiskScoreView,
+  ContactTimelinePage as SvcContactTimelinePage,
   CounselorDashboardView as SvcCounselorDashboardView,
   SupervisorDashboardView as SvcSupervisorDashboardView,
 } from "./read-service";
@@ -141,7 +141,10 @@ type _PhysicianLetterPage = Conforms<
 >;
 
 // ADR-0109 D10 — the mailing program and the contact timeline (routes 42-52).
-type _MailingConfig = Conforms<Static<typeof MailingConfigViewResponseSchema>, SvcMailingConfigView>;
+type _MailingConfig = Conforms<
+  Static<typeof MailingConfigViewResponseSchema>,
+  SvcMailingConfigView
+>;
 type _MailingConfigList = Conforms<
   Static<typeof MailingConfigListResponseSchema>,
   readonly SvcMailingConfigView[]

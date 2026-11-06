@@ -19,7 +19,16 @@
 // (M8), artifact_document_id (M22), logged_by_user_id (M2 membership) and external_resource_id_from_m40
 // (M40) are LOGICAL uuid, app-validated at the write boundary.
 import { sql } from "drizzle-orm";
-import { boolean, check, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { bereavementContactLogOutcome, bereavementOutreachKind } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
@@ -47,7 +56,9 @@ export const bereavementContactLog = pgTable(
       .references(() => bereavedContact.id, { onDelete: "restrict" }),
     // ADR-0109 D10 (migration 1373) — NULL on a PROGRAM ACTIVITY row (a mailing, a group session, a memorial attendance), which carries
     // `activity_kind` + `activity_ref_id` instead. The shape CHECK keeps the two row families exclusive.
-    outreachId: uuid("outreach_id").references(() => bereavementOutreach.id, { onDelete: "restrict" }),
+    outreachId: uuid("outreach_id").references(() => bereavementOutreach.id, {
+      onDelete: "restrict",
+    }),
 
     contactAt: timestamp("contact_at", { withTimezone: true }).notNull(), // PARTITION KEY
     kind: bereavementOutreachKind("kind"), // NULL on a program-activity row

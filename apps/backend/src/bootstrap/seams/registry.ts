@@ -130,6 +130,7 @@ import {
   onboardingStatusProviderDenyStub,
   orderProviderDenyStub,
   orderSignatureProviderDenyStub,
+  orgDocumentAccessProviderDenyStub,
   organizationReaderDenyStub,
   patientAddressReaderDenyStub,
   patientAdmissionClearanceReaderDenyStub,
@@ -188,7 +189,6 @@ import {
   visitReaderDenyStub,
   volunteerComplianceProviderDenyStub,
   volunteerGateExpiryReaderDenyStub,
-  orgDocumentAccessProviderDenyStub,
 } from "./providers";
 import { NotImplementedError } from "./providers";
 

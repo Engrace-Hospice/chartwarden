@@ -1034,7 +1034,8 @@ function createFakeBackend() {
 
   // ADR-0109 D10 — a minimal fake of the mailing service: the routes' wiring (guards, headers, status codes) is what this file proves; the state machine,
   // the set-based selection and the worker are proven over a real database in `m16-mailings.live.test.ts`.
-  const mailingCalls: { method: string; runId?: string; expectedVersion?: number | undefined }[] = [];
+  const mailingCalls: { method: string; runId?: string; expectedVersion?: number | undefined }[] =
+    [];
   const mailingRun = (runId: string, over: Partial<MailingRunView> = {}): MailingRunView => ({
     runId,
     runKind: "newsletter",
@@ -1056,17 +1057,19 @@ function createFakeBackend() {
   });
   const mailingService: M16MailingService = {
     async listConfigs() {
-      return ["newsletter_quarterly", "holiday_december", "mothers_day", "fathers_day"].map((mailingKey) => ({
-        mailingKey: mailingKey as never,
-        configured: false,
-        enabled: false,
-        leadDays: 10,
-        schedule: {},
-        audienceRelationships: null,
-        content: {},
-        version: 0,
-        updatedAt: null,
-      }));
+      return ["newsletter_quarterly", "holiday_december", "mothers_day", "fathers_day"].map(
+        (mailingKey) => ({
+          mailingKey: mailingKey as never,
+          configured: false,
+          enabled: false,
+          leadDays: 10,
+          schedule: {},
+          audienceRelationships: null,
+          content: {},
+          version: 0,
+          updatedAt: null,
+        }),
+      );
     },
     async putConfig(_actor, mailingKey, input) {
       mailingCalls.push({ method: "putConfig", expectedVersion: input.expectedVersion });
@@ -1092,7 +1095,11 @@ function createFakeBackend() {
       return runId === MAILING_RUN_ID ? { data: [], next_cursor: null, has_more: false } : null;
     },
     async updateRunContent(_actor, runId, input) {
-      mailingCalls.push({ method: "updateRunContent", runId, expectedVersion: input.expectedVersion });
+      mailingCalls.push({
+        method: "updateRunContent",
+        runId,
+        expectedVersion: input.expectedVersion,
+      });
       return mailingRun(runId, { content: input.content, version: input.expectedVersion + 1 });
     },
     async generateRun(_actor, runId, input) {
@@ -2477,11 +2484,28 @@ describe("M16 §4.1 routes 42-51 — the mailing program (bereavement oversight 
   const UNKNOWN_RUN = `${BASE}/runs/10000000-0000-4000-8000-0000000000fe`;
   // the platform idempotency middleware keys on the header: a reused key with a different request is a 409, so every write gets its own
   let keySeq = 0;
-  const write = (version = 0) => ({ "idempotency-key": `m-${(keySeq += 1)}`, "if-match": `"${version}"` });
-  const CONTENT = {
-    en: { title: "Autumn note", greeting: "Dear {name},", paragraphs: ["We are thinking of you."], signoff: "With care" },
+  const nextKey = (prefix: string): string => {
+    keySeq += 1;
+    return `${prefix}${keySeq}`;
   };
-  const CONFIG_BODY = { enabled: true, leadDays: 10, audienceRelationships: null, content: CONTENT };
+  const write = (version = 0) => ({
+    "idempotency-key": nextKey("m-"),
+    "if-match": `"${version}"`,
+  });
+  const CONTENT = {
+    en: {
+      title: "Autumn note",
+      greeting: "Dear {name},",
+      paragraphs: ["We are thinking of you."],
+      signoff: "With care",
+    },
+  };
+  const CONFIG_BODY = {
+    enabled: true,
+    leadDays: 10,
+    audienceRelationships: null,
+    content: CONTENT,
+  };
 
   it("oversight reads the configs, the runs, one run and its items", async () => {
     const { app } = makeServer();
@@ -2493,9 +2517,15 @@ describe("M16 §4.1 routes 42-51 — the mailing program (bereavement oversight 
       "mothers_day",
       "fathers_day",
     ]);
-    expect((await app.inject({ method: "GET", url: `${BASE}/runs`, headers: SUPERVISOR })).json().data).toHaveLength(1);
-    expect((await app.inject({ method: "GET", url: RUN, headers: SUPERVISOR })).json()).toMatchObject({ runId: MAILING_RUN_ID, status: "draft" });
-    expect((await app.inject({ method: "GET", url: `${RUN}/items`, headers: SUPERVISOR })).statusCode).toBe(200);
+    expect(
+      (await app.inject({ method: "GET", url: `${BASE}/runs`, headers: SUPERVISOR })).json().data,
+    ).toHaveLength(1);
+    expect(
+      (await app.inject({ method: "GET", url: RUN, headers: SUPERVISOR })).json(),
+    ).toMatchObject({ runId: MAILING_RUN_ID, status: "draft" });
+    expect(
+      (await app.inject({ method: "GET", url: `${RUN}/items`, headers: SUPERVISOR })).statusCode,
+    ).toBe(200);
     await app.close();
   });
 
@@ -2506,9 +2536,18 @@ describe("M16 §4.1 routes 42-51 — the mailing program (bereavement oversight 
       app.inject({ method: "GET", url: `${BASE}/runs`, headers: COUNSELOR }),
       app.inject({ method: "GET", url: RUN, headers: COUNSELOR }),
       app.inject({ method: "GET", url: `${RUN}/download`, headers: COUNSELOR }),
-      app.inject({ method: "PUT", url: `${BASE}/config/newsletter_quarterly`, headers: { ...COUNSELOR, ...write() }, payload: CONFIG_BODY }),
+      app.inject({
+        method: "PUT",
+        url: `${BASE}/config/newsletter_quarterly`,
+        headers: { ...COUNSELOR, ...write() },
+        payload: CONFIG_BODY,
+      }),
       app.inject({ method: "POST", url: `${RUN}/generate`, headers: { ...COUNSELOR, ...write() } }),
-      app.inject({ method: "POST", url: `${RUN}/confirm-mailed`, headers: { ...COUNSELOR, ...write() } }),
+      app.inject({
+        method: "POST",
+        url: `${RUN}/confirm-mailed`,
+        headers: { ...COUNSELOR, ...write() },
+      }),
       app.inject({ method: "POST", url: `${RUN}/cancel`, headers: { ...COUNSELOR, ...write() } }),
     ];
     for (const res of await Promise.all(calls)) expect(res.statusCode).toBe(403);
@@ -2519,8 +2558,12 @@ describe("M16 §4.1 routes 42-51 — the mailing program (bereavement oversight 
   it("a volunteer and a caller with no permission are refused the whole surface", async () => {
     const { app } = makeServer();
     for (const headers of [VOLUNTEER, NO_PERMS]) {
-      expect((await app.inject({ method: "GET", url: `${BASE}/runs`, headers })).statusCode).toBe(403);
-      expect((await app.inject({ method: "GET", url: `${RUN}/download`, headers })).statusCode).toBe(403);
+      expect((await app.inject({ method: "GET", url: `${BASE}/runs`, headers })).statusCode).toBe(
+        403,
+      );
+      expect(
+        (await app.inject({ method: "GET", url: `${RUN}/download`, headers })).statusCode,
+      ).toBe(403);
     }
     await app.close();
   });
@@ -2536,9 +2579,20 @@ describe("M16 §4.1 routes 42-51 — the mailing program (bereavement oversight 
     ];
     for (const [method, url, payload] of writes) {
       const send = (headers: Record<string, string>) =>
-        app.inject({ method: method as "PUT", url, headers: { ...SUPERVISOR, ...headers }, ...(payload === undefined ? {} : { payload: payload as object }) });
-      expect((await send({ "if-match": '"0"', "x-note": "no-key" })).statusCode, `${method} ${url} without a key`).toBe(400);
-      expect((await send({ "idempotency-key": `m-x${(keySeq += 1)}` })).statusCode, `${method} ${url} without If-Match`).toBe(428);
+        app.inject({
+          method: method as "PUT",
+          url,
+          headers: { ...SUPERVISOR, ...headers },
+          ...(payload === undefined ? {} : { payload: payload as object }),
+        });
+      expect(
+        (await send({ "if-match": '"0"', "x-note": "no-key" })).statusCode,
+        `${method} ${url} without a key`,
+      ).toBe(400);
+      expect(
+        (await send({ "idempotency-key": nextKey("m-x") })).statusCode,
+        `${method} ${url} without If-Match`,
+      ).toBe(428);
     }
     expect(backend.mailingCalls).toEqual([]);
     await app.close();
@@ -2546,13 +2600,17 @@ describe("M16 §4.1 routes 42-51 — the mailing program (bereavement oversight 
 
   it("the If-Match header names the version the service decides on; a stale one is 412", async () => {
     const { app, backend } = makeServer();
-    const ok = await app.inject({ method: "POST", url: `${RUN}/generate`, headers: { ...SUPERVISOR, ...write() } });
+    const ok = await app.inject({
+      method: "POST",
+      url: `${RUN}/generate`,
+      headers: { ...SUPERVISOR, ...write() },
+    });
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toMatchObject({ status: "generating", version: 1 });
     const stale = await app.inject({
       method: "POST",
       url: `${RUN}/generate`,
-      headers: { ...SUPERVISOR, "idempotency-key": `m-y${(keySeq += 1)}`, "if-match": '"9"' },
+      headers: { ...SUPERVISOR, "idempotency-key": nextKey("m-y"), "if-match": '"9"' },
     });
     expect(stale.statusCode).toBe(412);
     expect(backend.mailingCalls.map((c) => c.expectedVersion)).toEqual([0, 9]);
@@ -2562,25 +2620,49 @@ describe("M16 §4.1 routes 42-51 — the mailing program (bereavement oversight 
   it("config: the first write is If-Match 0; a bad lead, a bad date and the deferred birthday mailing are refused", async () => {
     const { app } = makeServer();
     const put = (key: string, payload: unknown) =>
-      app.inject({ method: "PUT", url: `${BASE}/config/${key}`, headers: { ...SUPERVISOR, ...write() }, payload: payload as object });
+      app.inject({
+        method: "PUT",
+        url: `${BASE}/config/${key}`,
+        headers: { ...SUPERVISOR, ...write() },
+        payload: payload as object,
+      });
     const ok = await put("mothers_day", CONFIG_BODY);
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toMatchObject({ mailingKey: "mothers_day", enabled: true, version: 1 });
     expect((await put("mothers_day", { ...CONFIG_BODY, leadDays: 2 })).statusCode).toBe(422);
     expect((await put("mothers_day", { ...CONFIG_BODY, leadDays: 61 })).statusCode).toBe(422);
-    expect((await put("newsletter_quarterly", { ...CONFIG_BODY, schedule: { monthDays: ["13-40"] } })).statusCode).toBe(422);
+    expect(
+      (await put("newsletter_quarterly", { ...CONFIG_BODY, schedule: { monthDays: ["13-40"] } }))
+        .statusCode,
+    ).toBe(422);
     expect((await put("decedent_birthday", CONFIG_BODY)).statusCode).toBe(422);
-    expect((await put("mothers_day", { ...CONFIG_BODY, content: { en: { ...CONTENT.en, paragraphs: Array(13).fill("x") } } })).statusCode).toBe(422);
+    expect(
+      (
+        await put("mothers_day", {
+          ...CONFIG_BODY,
+          content: { en: { ...CONTENT.en, paragraphs: Array(13).fill("x") } },
+        })
+      ).statusCode,
+    ).toBe(422);
     await app.close();
   });
 
   it("a run that does not exist is a 404 on every read, and offset pagination is refused", async () => {
     const { app } = makeServer();
     for (const suffix of ["", "/items"]) {
-      expect((await app.inject({ method: "GET", url: `${UNKNOWN_RUN}${suffix}`, headers: SUPERVISOR })).statusCode).toBe(404);
+      expect(
+        (await app.inject({ method: "GET", url: `${UNKNOWN_RUN}${suffix}`, headers: SUPERVISOR }))
+          .statusCode,
+      ).toBe(404);
     }
-    expect((await app.inject({ method: "GET", url: `${BASE}/runs?offset=5`, headers: SUPERVISOR })).statusCode).toBe(400);
-    expect((await app.inject({ method: "GET", url: `${BASE}/runs?status=bogus`, headers: SUPERVISOR })).statusCode).toBe(422);
+    expect(
+      (await app.inject({ method: "GET", url: `${BASE}/runs?offset=5`, headers: SUPERVISOR }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (await app.inject({ method: "GET", url: `${BASE}/runs?status=bogus`, headers: SUPERVISOR }))
+        .statusCode,
+    ).toBe(422);
     await app.close();
   });
 
@@ -2588,7 +2670,10 @@ describe("M16 §4.1 routes 42-51 — the mailing program (bereavement oversight 
     const { app, backend } = makeServer();
     const res = await app.inject({ method: "GET", url: `${RUN}/download`, headers: SUPERVISOR });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ runId: MAILING_RUN_ID, url: "https://objects.example.test/batch" });
+    expect(res.json()).toMatchObject({
+      runId: MAILING_RUN_ID,
+      url: "https://objects.example.test/batch",
+    });
     expect(res.headers["cache-control"]).toBe("no-store");
     expect(backend.mailingCalls).toEqual([{ method: "downloadRun", runId: MAILING_RUN_ID }]);
     await app.close();
@@ -2603,11 +2688,23 @@ describe("M16 §4.1 route 52 — a contact's program timeline", () => {
     const url = `/api/v1/bereavement/contacts/${contact.contactId}/timeline`;
     const res = await app.inject({ method: "GET", url, headers: SUPERVISOR });
     expect(res.statusCode).toBe(200);
-    expect(res.json().data[0]).toMatchObject({ source: "program_activity", activityKind: "newsletter_mailing", outcome: "mailed" });
+    expect(res.json().data[0]).toMatchObject({
+      source: "program_activity",
+      activityKind: "newsletter_mailing",
+      outcome: "mailed",
+    });
     expect(res.json()).toHaveProperty("redactedCategories");
-    expect((await app.inject({ method: "GET", url: `${url}?offset=5`, headers: SUPERVISOR })).statusCode).toBe(400);
     expect(
-      (await app.inject({ method: "GET", url: "/api/v1/bereavement/contacts/10000000-0000-4000-8000-0000000000fd/timeline", headers: SUPERVISOR })).statusCode,
+      (await app.inject({ method: "GET", url: `${url}?offset=5`, headers: SUPERVISOR })).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/v1/bereavement/contacts/10000000-0000-4000-8000-0000000000fd/timeline",
+          headers: SUPERVISOR,
+        })
+      ).statusCode,
     ).toBe(404);
     expect((await app.inject({ method: "GET", url, headers: NO_PERMS })).statusCode).toBe(403);
     await app.close();

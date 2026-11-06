@@ -653,7 +653,9 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       ),
     ).rejects.toThrow(/berv_mailing_run_occurrence_uniq/);
     await expect(run("ready")).rejects.toThrow(/berv_mailing_run_ready_chk/);
-    await expect(run("mailed", ", gen_random_uuid(), NULL, NULL, NULL")).rejects.toThrow(/berv_mailing_run_mailed_chk/);
+    await expect(run("mailed", ", gen_random_uuid(), NULL, NULL, NULL")).rejects.toThrow(
+      /berv_mailing_run_mailed_chk/,
+    );
     await expect(run("failed")).rejects.toThrow(/berv_mailing_run_failed_chk/);
     const item = (status: string, reason: string | null) =>
       db.query(
@@ -679,7 +681,9 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       ),
     ).rejects.toThrow(/berv_mailing_item_run_contact_uniq/);
     await expect(
-      db.query("UPDATE bereavement_mailing_config SET lead_days = 2 WHERE id=$1", [a.mailingConfig]),
+      db.query("UPDATE bereavement_mailing_config SET lead_days = 2 WHERE id=$1", [
+        a.mailingConfig,
+      ]),
     ).rejects.toThrow(/berv_mailing_config_lead_chk/);
   });
 

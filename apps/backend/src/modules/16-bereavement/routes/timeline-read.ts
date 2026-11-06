@@ -13,7 +13,13 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { BereavementActivityKind, IsoInstant } from "@chartwarden/types";
 import { and, desc, eq, lt, or } from "drizzle-orm";
 import type { M16ReadActor } from "./actor";
-import { type Cursor, M16_PAGE_SIZES, clampLimit, decodeCursor, toCursorPage } from "./concurrency";
+import {
+  type Cursor,
+  M16_PAGE_SIZES,
+  clampLimit,
+  decodeCheckedCursor,
+  toCursorPage,
+} from "./concurrency";
 import type { BereavementDisclosureDecision } from "./disclosure";
 import type { ContactTimelineEntry, ContactTimelinePage } from "./read-service";
 
@@ -23,7 +29,10 @@ export interface ContactTimelineDeps {
   /** The read-side reach rule of the plan (the read service's own). */
   readonly mayReachPlan: (actor: M16ReadActor, plan: PlanRow) => boolean;
   /** The §7.13 / D10 disclosure posture for this actor on this decedent. */
-  readonly disclosure: (actor: M16ReadActor, patientId: string) => Promise<BereavementDisclosureDecision>;
+  readonly disclosure: (
+    actor: M16ReadActor,
+    patientId: string,
+  ) => Promise<BereavementDisclosureDecision>;
 }
 
 export async function listContactTimeline(
@@ -36,7 +45,7 @@ export async function listContactTimeline(
   const LOG = schema.bereavementContactLog;
   const scope = { organizationId: actor.organizationId, userId: actor.userId };
   const limit = clampLimit(query.limit, M16_PAGE_SIZES.dashboard);
-  const after: Cursor | null = decodeCursor(query.cursor);
+  const after: Cursor | null = decodeCheckedCursor(query.cursor, "instant");
 
   const found = await withOrgContext(db, scope, async (tx) => {
     const [contact] = await tx

@@ -322,6 +322,7 @@ async function wipePrior(
     const contactIds = contacts.rows.map((r) => r.id);
     if (contactIds.length) {
       for (const t of [
+        "bereavement_mailing_item",
         "bereavement_contact_log",
         "bereavement_opt_out",
         "bereavement_outreach",

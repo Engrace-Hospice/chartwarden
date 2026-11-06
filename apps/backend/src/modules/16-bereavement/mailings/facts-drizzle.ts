@@ -11,7 +11,7 @@ import type {
   BereavementOutreachKind,
 } from "@chartwarden/types";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { type MailingEligibilityFacts, type OpenOptOutFact } from "./eligibility";
+import type { MailingEligibilityFacts, OpenOptOutFact } from "./eligibility";
 
 type Tx = DbClient;
 

@@ -64,7 +64,6 @@ import type {
   RiskScoreListQuery,
   SupervisorDashboardQuery,
 } from "./m16-typebox";
-import { listContactTimeline } from "./timeline-read";
 import type {
   BereavedContactRowView,
   BereavementAssessmentTaskView,
@@ -78,6 +77,7 @@ import type {
   SupervisorDashboardView,
 } from "./read-service";
 import { unreachableProposalOf } from "./read-service";
+import { listContactTimeline } from "./timeline-read";
 
 const iso = (d: Date | string): string =>
   d instanceof Date ? d.toISOString() : new Date(d).toISOString();

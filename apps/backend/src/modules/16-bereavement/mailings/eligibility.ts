@@ -88,7 +88,9 @@ function declinesChannel(row: OpenOptOutFact, channel: BereavementMailingChannel
     : named.includes("email");
 }
 
-export function decideMailingEligibility(facts: MailingEligibilityFacts): MailingEligibilityDecision {
+export function decideMailingEligibility(
+  facts: MailingEligibilityFacts,
+): MailingEligibilityDecision {
   if (facts.planStatus !== "active") return out("plan_not_active");
   if (NOT_ENGAGEABLE.has(facts.contactStatus)) return out("contact_not_engageable");
   if (facts.audience !== null && !facts.audience.includes(facts.relationship)) {

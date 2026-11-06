@@ -15,7 +15,9 @@ export const GREETING_NAME_TOKEN = "{name}";
 const trimmed = (v: string): string => v.trim();
 
 /** Trim every string and drop blank paragraphs. The shape stays `{ en: {...} }`; an absent locale stays absent. */
-export function normalizeMailingContent(content: BereavementMailingContent): BereavementMailingContent {
+export function normalizeMailingContent(
+  content: BereavementMailingContent,
+): BereavementMailingContent {
   const en = content.en;
   if (en === undefined) return {};
   return {
@@ -33,7 +35,9 @@ export function isMailingContentComplete(
   content: BereavementMailingContent,
 ): content is { readonly en: BereavementMailingLocaleContent } {
   const en = content.en;
-  return en !== undefined && en.title.trim().length > 0 && en.paragraphs.some((p) => p.trim().length > 0);
+  return (
+    en !== undefined && en.title.trim().length > 0 && en.paragraphs.some((p) => p.trim().length > 0)
+  );
 }
 
 /** 422 `MAILING_CONTENT_EMPTY` when the run's wording is not complete (generation never ships a default). */

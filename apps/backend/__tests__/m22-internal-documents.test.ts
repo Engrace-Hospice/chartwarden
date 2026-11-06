@@ -20,6 +20,7 @@ import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/regist
 import { BEREAVEMENT_OVERSIGHT_ROLES } from "../src/modules/16-bereavement/abac-predicates";
 import {
   SCOPE_BYPASS_ROLES,
+  canReadInternalDocument,
   canReadInternalDocuments,
 } from "../src/modules/22-documents/abac-predicates";
 import {
@@ -31,7 +32,9 @@ import {
 import {
   INTERNAL_DOCUMENT_OVERSIGHT_ROLES,
   INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES,
+  SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES,
   isInternalOnlyAggregateType,
+  isSeamOnlyAggregateType,
 } from "../src/modules/22-documents/internal-documents";
 import { PLATFORM_TEMPLATE_TABLE } from "../src/modules/22-documents/seams/renderer";
 import { hasBereavementOversightRole } from "../src/modules/39-consent/access-scope";
@@ -192,6 +195,30 @@ describe("the internal-only document types", () => {
         "bereavement_volunteer",
         "bereavement_program_coordinator",
       ]),
+    ).toBe(false);
+  });
+
+  // ADR-0109 D10 — the mailing batch holds every family's name and address: NO generic read admits it, whatever the role. Its one door is
+  // `OrgDocumentAccessProvider` (the oversight-only `bereavement.mailing.dispatch` download).
+  it("the mailing batch is seam-only: an internal type that no role reads through the generic routes", () => {
+    expect([...SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES]).toEqual(["bereavement_mailing_batch"]);
+    for (const type of SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES) {
+      expect(INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES.has(type), type).toBe(true);
+    }
+    expect(isSeamOnlyAggregateType("bereavement_mailing_batch")).toBe(true);
+    expect(isSeamOnlyAggregateType("bereavement_physician_letter")).toBe(false);
+    const everyone = [
+      ...BEREAVEMENT_OVERSIGHT_ROLES,
+      ...SCOPE_BYPASS_ROLES,
+      ...INTERNAL_DOCUMENT_OVERSIGHT_ROLES,
+    ];
+    for (const role of everyone) {
+      expect(canReadInternalDocument("bereavement_mailing_batch", [role]), role).toBe(false);
+      // the other internal types are still read by role
+      expect(canReadInternalDocument("bereavement_discharge_summary", [role]), role).toBe(true);
+    }
+    expect(
+      canReadInternalDocument("bereavement_mailing_batch", ["rn", "bereavement_volunteer"]),
     ).toBe(false);
   });
 

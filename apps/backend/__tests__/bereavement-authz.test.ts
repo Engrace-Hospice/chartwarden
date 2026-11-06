@@ -160,7 +160,11 @@ describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
 
   // ADR-0109 D10 — the mailing batch PDF holds every recipient's address, so the whole mailing surface is oversight-only.
   it("the three mailing keys are gated by bereavement oversight, never by a window or a portal self", () => {
-    for (const key of ["bereavement.mailing.read", "bereavement.mailing.manage", "bereavement.mailing.dispatch"] as const) {
+    for (const key of [
+      "bereavement.mailing.read",
+      "bereavement.mailing.manage",
+      "bereavement.mailing.dispatch",
+    ] as const) {
       expect(M16_PERMISSION_KEY_LIST).toContain(key);
       expect(M16_CONTRIBUTED_PERMISSIONS[key].abac).toBe("org_scope_bereavement_oversight");
       expect(M16_PORTAL_SELF_PERMISSION_KEYS as readonly string[]).not.toContain(key);
@@ -172,9 +176,15 @@ describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
       new URL("../../../packages/db/migrations/1377_m16_mailing_permissions.sql", import.meta.url),
       "utf8",
     );
-    for (const key of ["bereavement.mailing.read", "bereavement.mailing.manage", "bereavement.mailing.dispatch"] as const) {
+    for (const key of [
+      "bereavement.mailing.read",
+      "bereavement.mailing.manage",
+      "bereavement.mailing.dispatch",
+    ] as const) {
       const def = M16_CONTRIBUTED_PERMISSIONS[key];
-      expect(sql).toContain(`('${key}', '${def.resource}', '${def.action}', '${def.category}', '${def.abac}', '')`);
+      expect(sql).toContain(
+        `('${key}', '${def.resource}', '${def.action}', '${def.category}', '${def.abac}', '')`,
+      );
     }
     expect([...sql.matchAll(/\('bereavement\./g)]).toHaveLength(3);
   });

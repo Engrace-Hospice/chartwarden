@@ -3,8 +3,8 @@
 // PURE date math, all in UTC calendar dates (`YYYY-MM-DD`): the sweep runs every five minutes and must derive the same occurrence key for the
 // same mailing every time, so the key never depends on a clock-of-day or a time zone.
 //
-//   newsletter_quarterly  four dates a year (default 01-15, 04-15, 07-15, 10-15; a tenant overrides `schedule.monthDays`); key `<mailingKey>:<YYYY>-Q<n>`
-//                         where n is the date's position in the sorted list.
+//   newsletter_quarterly  four dates a year (default 01-15, 04-15, 07-15, 10-15; a tenant overrides `schedule.monthDays`); key `<mailingKey>:<YYYY-MM-DD>`
+//                         (the date itself, so editing the list can never shift one issue onto another's key).
 //   holiday_december      one date (default 12-15, overridable `schedule.monthDay`);                           key `<mailingKey>:<YYYY>`
 //   mothers_day           the 2nd Sunday of May;                                                              key `<mailingKey>:<YYYY>`
 //   fathers_day           the 3rd Sunday of June;                                                             key `<mailingKey>:<YYYY>`
@@ -16,7 +16,12 @@ import type { BereavementMailingKey } from "@chartwarden/types";
 
 const MS_PER_DAY = 86_400_000;
 
-export const DEFAULT_NEWSLETTER_MONTH_DAYS: readonly string[] = ["01-15", "04-15", "07-15", "10-15"];
+export const DEFAULT_NEWSLETTER_MONTH_DAYS: readonly string[] = [
+  "01-15",
+  "04-15",
+  "07-15",
+  "10-15",
+];
 export const DEFAULT_DECEMBER_MONTH_DAY = "12-15";
 const MONTH_DAY_RE = /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
@@ -77,13 +82,18 @@ function occurrencesInYear(
   const key = config.mailingKey;
   switch (key) {
     case "newsletter_quarterly":
-      return newsletterMonthDays(config.schedule).flatMap((monthDay, index) => {
+      return newsletterMonthDays(config.schedule).flatMap((monthDay) => {
         const date = dateOf(year, monthDay);
-        return date === null ? [] : [{ occurrenceKey: `${key}:${year}-Q${index + 1}`, scheduledFor: date }];
+        // keyed on the DATE, not the date's position in the list: a tenant who drops or adds a date mid-year must neither
+        // suppress a later issue (a shifted index hitting an existing key) nor draft the same issue twice
+        return date === null ? [] : [{ occurrenceKey: `${key}:${date}`, scheduledFor: date }];
       });
     case "holiday_december": {
       const configured = config.schedule?.monthDay;
-      const date = dateOf(year, validMonthDay(configured) ? configured : DEFAULT_DECEMBER_MONTH_DAY);
+      const date = dateOf(
+        year,
+        validMonthDay(configured) ? configured : DEFAULT_DECEMBER_MONTH_DAY,
+      );
       return date === null ? [] : [{ occurrenceKey: `${key}:${year}`, scheduledFor: date }];
     }
     case "mothers_day":
@@ -109,7 +119,9 @@ export function nextOccurrences(
     if (!config.enabled) continue;
     for (const y of [year, year + 1]) {
       for (const occ of occurrencesInYear(config, y)) {
-        const draftFrom = isoDate(Date.parse(`${occ.scheduledFor}T00:00:00.000Z`) - config.leadDays * MS_PER_DAY);
+        const draftFrom = isoDate(
+          Date.parse(`${occ.scheduledFor}T00:00:00.000Z`) - config.leadDays * MS_PER_DAY,
+        );
         if (draftFrom <= today && today <= occ.scheduledFor) {
           found.push({ mailingKey: config.mailingKey, ...occ, draftFrom });
         }
@@ -117,7 +129,9 @@ export function nextOccurrences(
     }
   }
   return found.sort(
-    (a, b) => a.scheduledFor.localeCompare(b.scheduledFor) || a.occurrenceKey.localeCompare(b.occurrenceKey),
+    (a, b) =>
+      a.scheduledFor.localeCompare(b.scheduledFor) ||
+      a.occurrenceKey.localeCompare(b.occurrenceKey),
   );
 }
 

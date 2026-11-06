@@ -8,7 +8,9 @@ import {
   runKindOf,
 } from "../src/modules/16-bereavement/mailings/occurrence";
 
-const cfg = (over: Partial<MailingOccurrenceConfig> & Pick<MailingOccurrenceConfig, "mailingKey">): MailingOccurrenceConfig => ({
+const cfg = (
+  over: Partial<MailingOccurrenceConfig> & Pick<MailingOccurrenceConfig, "mailingKey">,
+): MailingOccurrenceConfig => ({
   enabled: true,
   leadDays: 10,
   ...over,
@@ -33,7 +35,9 @@ describe("nthSundayOfMonth", () => {
 
 describe("nextOccurrences", () => {
   it("drafts nothing for a disabled config and nothing outside the lead window", () => {
-    expect(nextOccurrences([cfg({ mailingKey: "mothers_day", enabled: false })], "2026-05-05")).toEqual([]);
+    expect(
+      nextOccurrences([cfg({ mailingKey: "mothers_day", enabled: false })], "2026-05-05"),
+    ).toEqual([]);
     // Mother's Day 2026-05-10, 10 lead days: the window opens 2026-04-30
     expect(nextOccurrences([cfg({ mailingKey: "mothers_day" })], "2026-04-29")).toEqual([]);
   });
@@ -41,7 +45,12 @@ describe("nextOccurrences", () => {
   it("opens the window exactly `leadDays` before and closes it on the day", () => {
     const first = nextOccurrences([cfg({ mailingKey: "mothers_day" })], "2026-04-30");
     expect(first).toEqual([
-      { mailingKey: "mothers_day", occurrenceKey: "mothers_day:2026", scheduledFor: "2026-05-10", draftFrom: "2026-04-30" },
+      {
+        mailingKey: "mothers_day",
+        occurrenceKey: "mothers_day:2026",
+        scheduledFor: "2026-05-10",
+        draftFrom: "2026-04-30",
+      },
     ]);
     expect(nextOccurrences([cfg({ mailingKey: "mothers_day" })], "2026-05-10")).toHaveLength(1);
     // the day after the holiday it is never drafted late
@@ -49,28 +58,65 @@ describe("nextOccurrences", () => {
   });
 
   it("subtracts a tenant's lead days (3..60)", () => {
-    expect(nextOccurrences([cfg({ mailingKey: "fathers_day", leadDays: 3 })], "2026-06-17")).toHaveLength(0);
-    expect(nextOccurrences([cfg({ mailingKey: "fathers_day", leadDays: 3 })], "2026-06-18")).toHaveLength(1);
-    expect(nextOccurrences([cfg({ mailingKey: "fathers_day", leadDays: 60 })], "2026-04-22")).toHaveLength(1);
-    expect(nextOccurrences([cfg({ mailingKey: "fathers_day", leadDays: 60 })], "2026-04-21")).toHaveLength(0);
+    expect(
+      nextOccurrences([cfg({ mailingKey: "fathers_day", leadDays: 3 })], "2026-06-17"),
+    ).toHaveLength(0);
+    expect(
+      nextOccurrences([cfg({ mailingKey: "fathers_day", leadDays: 3 })], "2026-06-18"),
+    ).toHaveLength(1);
+    expect(
+      nextOccurrences([cfg({ mailingKey: "fathers_day", leadDays: 60 })], "2026-04-22"),
+    ).toHaveLength(1);
+    expect(
+      nextOccurrences([cfg({ mailingKey: "fathers_day", leadDays: 60 })], "2026-04-21"),
+    ).toHaveLength(0);
   });
 
-  it("the quarterly newsletter has four dates a year with positional quarter keys", () => {
+  it("the quarterly newsletter has four dates a year, each keyed on its own date", () => {
     const c = [cfg({ mailingKey: "newsletter_quarterly" })];
-    expect(nextOccurrences(c, "2026-10-10")[0]).toMatchObject({ occurrenceKey: "newsletter_quarterly:2026-Q4", scheduledFor: "2026-10-15" });
-    expect(nextOccurrences(c, "2026-04-06")[0]).toMatchObject({ occurrenceKey: "newsletter_quarterly:2026-Q2", scheduledFor: "2026-04-15" });
+    expect(nextOccurrences(c, "2026-10-10")[0]).toMatchObject({
+      occurrenceKey: "newsletter_quarterly:2026-10-15",
+      scheduledFor: "2026-10-15",
+    });
+    expect(nextOccurrences(c, "2026-04-06")[0]).toMatchObject({
+      occurrenceKey: "newsletter_quarterly:2026-04-15",
+      scheduledFor: "2026-04-15",
+    });
     expect(nextOccurrences(c, "2026-03-01")).toEqual([]);
+  });
+
+  it("editing the date list never shifts one issue onto another's key (a dropped date cannot suppress a later issue, an added one cannot double an issue)", () => {
+    const keyOf = (monthDays: string[], today: string) =>
+      nextOccurrences(
+        [cfg({ mailingKey: "newsletter_quarterly", leadDays: 10, schedule: { monthDays } })],
+        today,
+      ).map((o) => o.occurrenceKey);
+    // July's issue has the same key whether or not April's date is still in the list
+    expect(keyOf(["01-15", "04-15", "07-15", "10-15"], "2026-07-10")).toEqual([
+      "newsletter_quarterly:2026-07-15",
+    ]);
+    expect(keyOf(["01-15", "07-15", "10-15"], "2026-07-10")).toEqual([
+      "newsletter_quarterly:2026-07-15",
+    ]);
+    expect(keyOf(["07-15"], "2026-07-10")).toEqual(["newsletter_quarterly:2026-07-15"]);
   });
 
   it("looks across the year boundary: a January newsletter drafts in late December", () => {
     const c = [cfg({ mailingKey: "newsletter_quarterly", leadDays: 30 })];
     expect(nextOccurrences(c, "2026-12-20")).toEqual([
-      { mailingKey: "newsletter_quarterly", occurrenceKey: "newsletter_quarterly:2027-Q1", scheduledFor: "2027-01-15", draftFrom: "2026-12-16" },
+      {
+        mailingKey: "newsletter_quarterly",
+        occurrenceKey: "newsletter_quarterly:2027-01-15",
+        scheduledFor: "2027-01-15",
+        draftFrom: "2026-12-16",
+      },
     ]);
   });
 
   it("the December holiday defaults to 12-15 and a tenant can move it", () => {
-    expect(nextOccurrences([cfg({ mailingKey: "holiday_december" })], "2026-12-05")[0]).toMatchObject({
+    expect(
+      nextOccurrences([cfg({ mailingKey: "holiday_december" })], "2026-12-05")[0],
+    ).toMatchObject({
       occurrenceKey: "holiday_december:2026",
       scheduledFor: "2026-12-15",
     });
@@ -79,14 +125,30 @@ describe("nextOccurrences", () => {
   });
 
   it("a tenant's newsletter dates override the defaults; malformed or impossible dates fall back or are dropped", () => {
-    const c = cfg({ mailingKey: "newsletter_quarterly", schedule: { monthDays: ["03-01", "09-01"] } });
-    expect(nextOccurrences([c], "2026-02-25")[0]).toMatchObject({ occurrenceKey: "newsletter_quarterly:2026-Q1", scheduledFor: "2026-03-01" });
-    expect(nextOccurrences([c], "2026-08-25")[0]).toMatchObject({ occurrenceKey: "newsletter_quarterly:2026-Q2", scheduledFor: "2026-09-01" });
+    const c = cfg({
+      mailingKey: "newsletter_quarterly",
+      schedule: { monthDays: ["03-01", "09-01"] },
+    });
+    expect(nextOccurrences([c], "2026-02-25")[0]).toMatchObject({
+      occurrenceKey: "newsletter_quarterly:2026-03-01",
+      scheduledFor: "2026-03-01",
+    });
+    expect(nextOccurrences([c], "2026-08-25")[0]).toMatchObject({
+      occurrenceKey: "newsletter_quarterly:2026-09-01",
+      scheduledFor: "2026-09-01",
+    });
     // garbage falls back to the default four dates
-    const bad = cfg({ mailingKey: "newsletter_quarterly", schedule: { monthDays: ["13-40", "nope"] } });
+    const bad = cfg({
+      mailingKey: "newsletter_quarterly",
+      schedule: { monthDays: ["13-40", "nope"] },
+    });
     expect(nextOccurrences([bad], "2026-10-10")[0]?.scheduledFor).toBe("2026-10-15");
     // Feb 29 exists in 2028 only: the common year drops it instead of rolling it into March
-    const leap = cfg({ mailingKey: "newsletter_quarterly", leadDays: 3, schedule: { monthDays: ["02-29"] } });
+    const leap = cfg({
+      mailingKey: "newsletter_quarterly",
+      leadDays: 3,
+      schedule: { monthDays: ["02-29"] },
+    });
     expect(nextOccurrences([leap], "2027-02-27")).toEqual([]);
     expect(nextOccurrences([leap], "2028-02-27")[0]?.scheduledFor).toBe("2028-02-29");
   });
@@ -98,7 +160,10 @@ describe("nextOccurrences", () => {
   });
 
   it("is a pure function of its inputs and sorts by date then key", () => {
-    const configs = [cfg({ mailingKey: "fathers_day", leadDays: 60 }), cfg({ mailingKey: "mothers_day", leadDays: 60 })];
+    const configs = [
+      cfg({ mailingKey: "fathers_day", leadDays: 60 }),
+      cfg({ mailingKey: "mothers_day", leadDays: 60 }),
+    ];
     const a = nextOccurrences(configs, "2026-05-01");
     const b = nextOccurrences([...configs].reverse(), "2026-05-01");
     expect(a).toEqual(b);

@@ -167,7 +167,7 @@ export {
   runMailingGenerateJob,
   runMailingSweepCron,
 } from "./jobs/mailing-workers";
-export { type MailingGenerateEnqueuePort, type MailingGenerateJob } from "./mailings/enqueue-port";
+export type { MailingGenerateEnqueuePort, MailingGenerateJob } from "./mailings/enqueue-port";
 
 // GAP-129 — the per-tenant DEK envelope for the four `*_cipher` columns, the contact-channel reader and the roster seed.
 export {

@@ -258,7 +258,8 @@ export const BereavementMailingBatchRenderPayload = Type.Object({
   /** The letter's heading (the agency's own wording). Deliberately NOT named `title`: the renderer reads `title` as the document row's title, which stays the generic default. */
   heading: text,
   paragraphs: Type.Array(text, { minItems: 1 }),
-  signoff: text,
+  /** Optional: no default wording ships, so an empty sign-off is omitted, not replaced. */
+  signoff: Type.Optional(text),
   letters: Type.Array(BereavementMailingBatchLetter, { minItems: 1 }),
 });
 export type BereavementMailingBatchRenderPayload = Static<
@@ -267,4 +268,8 @@ export type BereavementMailingBatchRenderPayload = Static<
 export const assertBereavementMailingBatchRenderPayload = (
   p: unknown,
 ): BereavementMailingBatchRenderPayload =>
-  assertRenderPayload(BEREAVEMENT_MAILING_BATCH_TEMPLATE_KEY, BereavementMailingBatchRenderPayload, p);
+  assertRenderPayload(
+    BEREAVEMENT_MAILING_BATCH_TEMPLATE_KEY,
+    BereavementMailingBatchRenderPayload,
+    p,
+  );

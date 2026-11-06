@@ -7,11 +7,23 @@ import {
   personalizeGreeting,
 } from "../src/modules/16-bereavement/mailings/content";
 
-const GOOD = { en: { title: "A note from our team", greeting: "Dear {name},", paragraphs: ["We are thinking of you."], signoff: "With care" } };
+const GOOD = {
+  en: {
+    title: "A note from our team",
+    greeting: "Dear {name},",
+    paragraphs: ["We are thinking of you."],
+    signoff: "With care",
+  },
+};
 
 describe("mailing content", () => {
   it("refuses empty content: nothing written, no title, or only blank paragraphs", () => {
-    for (const content of [{}, { en: { ...GOOD.en, title: "   " } }, { en: { ...GOOD.en, paragraphs: [] } }, { en: { ...GOOD.en, paragraphs: ["  ", ""] } }]) {
+    for (const content of [
+      {},
+      { en: { ...GOOD.en, title: "   " } },
+      { en: { ...GOOD.en, paragraphs: [] } },
+      { en: { ...GOOD.en, paragraphs: ["  ", ""] } },
+    ]) {
       expect(isMailingContentComplete(normalizeMailingContent(content))).toBe(false);
       expect(() => assertMailingContentComplete(content)).toThrowError(
         expect.objectContaining({ code: "MAILING_CONTENT_EMPTY", statusCode: 422 }),
@@ -21,9 +33,19 @@ describe("mailing content", () => {
 
   it("accepts a title and one paragraph, trimmed, dropping blank paragraphs", () => {
     const en = assertMailingContentComplete({
-      en: { title: "  Hello ", greeting: " Dear {name}, ", paragraphs: [" one ", " ", "two"], signoff: " Warmly " },
+      en: {
+        title: "  Hello ",
+        greeting: " Dear {name}, ",
+        paragraphs: [" one ", " ", "two"],
+        signoff: " Warmly ",
+      },
     });
-    expect(en).toEqual({ title: "Hello", greeting: "Dear {name},", paragraphs: ["one", "two"], signoff: "Warmly" });
+    expect(en).toEqual({
+      title: "Hello",
+      greeting: "Dear {name},",
+      paragraphs: ["one", "two"],
+      signoff: "Warmly",
+    });
   });
 
   it("personalizes the greeting with the recipient's name, and never prints a literal token", () => {
