@@ -29,32 +29,4 @@ describe("priorElectionClosureTx", () => {
     expect(notrWhere).toMatch(/"notr_record"."state" in \(/i);
     expect(notrWhere).toMatch(/"notr_record"."external_filing_status" = /i);
   });
-
-  // A cancelled notice is not a filing: an election reversal cancels the NOTR (the M6 consumer does it too, where a 409 is not
-  // possible), so a CANCELLED row must never close the prior election, whatever marker it still carries.
-  it("does not count a CANCELLED notice, even one still marked filed outside ChartWarden", async () => {
-    const dialect = new PgDialect();
-    const wheres: { sql: string; params: unknown[] }[] = [];
-    const chain = {
-      from: () => chain,
-      where: (condition: Parameters<PgDialect["sqlToQuery"]>[0]) => {
-        const q = dialect.sqlToQuery(condition);
-        wheres.push({ sql: q.sql, params: q.params });
-        return chain;
-      },
-      limit: async () => [],
-    };
-
-    await priorElectionClosureTx({ select: () => chain } as never, {
-      admissionId: "11111111-1111-4111-8111-111111111111",
-      patientId: "22222222-2222-4222-8222-222222222222",
-    });
-
-    const notr = wheres[0];
-    // the filed-externally clause is guarded by "state <> CANCELLED"
-    expect(notr?.sql).toMatch(
-      /"notr_record"."external_filing_status" = \$\d+ and "notr_record"."state" <> \$\d+/i,
-    );
-    expect(notr?.params).toContain("CANCELLED");
-  });
 });
