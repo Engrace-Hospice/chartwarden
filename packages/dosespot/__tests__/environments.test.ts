@@ -3,6 +3,8 @@
 import { describe, expect, it } from "vitest";
 import {
   DOSESPOT_SANDBOX_DEFAULT_BASE_URL,
+  environmentAllowsLive,
+  isSandboxEnabled,
   resolveDoseSpotEnvironment,
   subscriptionKeyFallback,
 } from "../src";
@@ -83,6 +85,32 @@ describe("DoseSpot environment resolution", () => {
         DOSESPOT_BASE_URL_PRODUCTION: host,
       }),
     ).toEqual({ ok: true, baseUrl: "https://sandbox2.dosespot.com/webapi/v2" });
+  });
+
+  it("a sandbox registration may be VERIFIED anywhere, but may only be LIVE where the platform enables sandbox (exactly 'true')", () => {
+    expect(resolveDoseSpotEnvironment("sandbox", {})).toEqual({
+      ok: true,
+      baseUrl: DOSESPOT_SANDBOX_DEFAULT_BASE_URL,
+    }); // verify is not gated
+    expect(isSandboxEnabled({ DOSESPOT_SANDBOX_ENABLED: "true" })).toBe(true);
+    for (const flag of ["TRUE", "1", "yes", " true", "", undefined]) {
+      expect(isSandboxEnabled({ DOSESPOT_SANDBOX_ENABLED: flag })).toBe(false);
+      expect(environmentAllowsLive("sandbox", { DOSESPOT_SANDBOX_ENABLED: flag })).toBe(false);
+    }
+    expect(environmentAllowsLive("sandbox", { DOSESPOT_SANDBOX_ENABLED: "true" })).toBe(true);
+  });
+
+  it("production may be live only with its own flag and host, whatever the sandbox flag says", () => {
+    expect(environmentAllowsLive("production", { DOSESPOT_SANDBOX_ENABLED: "true" })).toBe(false);
+    expect(
+      environmentAllowsLive("production", {
+        DOSESPOT_PRODUCTION_ENABLED: "true",
+        DOSESPOT_BASE_URL_PRODUCTION: "https://my.dosespot.com/webapi/v2",
+      }),
+    ).toBe(true);
+    expect(environmentAllowsLive("production", { DOSESPOT_PRODUCTION_ENABLED: "true" })).toBe(
+      false,
+    );
   });
 
   it("reads the platform subscription-key fallback per environment, empty when unset", () => {

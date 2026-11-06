@@ -10,7 +10,8 @@ const ORG = "11111111-1111-4111-8111-111111111111";
 const KEY = randomBytes(32);
 const ring = { dekForOrg: async () => ({ version: "v1", key: KEY }) };
 const cipher = buildClinicSecretCipher(ring);
-const PLATFORM_KEY = { DOSESPOT_SUBSCRIPTION_KEY_SANDBOX: "platform-sandbox-sub-key" };
+const SUBSCRIPTION_KEY_ONLY = { DOSESPOT_SUBSCRIPTION_KEY_SANDBOX: "platform-sandbox-sub-key" };
+const PLATFORM_KEY = { ...SUBSCRIPTION_KEY_ONLY, DOSESPOT_SANDBOX_ENABLED: "true" };
 
 async function rowWith(
   over: Partial<ConfigRow> = {},
@@ -199,6 +200,26 @@ describe("DoseSpot tenant config source", () => {
       statusCode: 503,
       code: "DOSESPOT_CREDENTIAL_UNREADABLE",
     });
+  });
+
+  it("an active SANDBOX row is not usable to operate while the platform has sandbox off, and is again when it is on", async () => {
+    const off = await sourceOver(await rowWith(), SUBSCRIPTION_KEY_ONLY).source.lookup(
+      ORG,
+      "operate",
+    );
+    expect(off).toMatchObject({ kind: "present", usable: false });
+    expect(
+      await sourceOver(await rowWith(), PLATFORM_KEY).source.lookup(ORG, "operate"),
+    ).toMatchObject({
+      usable: true,
+    });
+    // verifying and enrolling are not what the flag gates
+    expect(
+      await sourceOver(await rowWith({ status: "verified" }), SUBSCRIPTION_KEY_ONLY).source.lookup(
+        ORG,
+        "setup",
+      ),
+    ).toMatchObject({ usable: true });
   });
 
   it("an active production row is NOT usable once the platform flag is off (fail closed)", async () => {

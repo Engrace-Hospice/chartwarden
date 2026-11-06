@@ -2991,7 +2991,7 @@ function buildM34OnboardingFacts(db: DbClient) {
     },
     // Wizard step 10: the org's DoseSpot clinic registration is `active` (tenant onboarding slice 4). M12 owns the table; this
     // reader opens the org's own `withOrgContext` and reads only the status.
-    dosespotSettled: buildDoseSpotSettledReader(db),
+    dosespotSettled: buildDoseSpotSettledReader(db, process.env),
   };
 }
 
@@ -5588,6 +5588,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher, {
             // Queue for e-prescribing only when the org's DoseSpot is live AND the signing prescriber is linked to DoseSpot.
             transmissionGate: createTransmissionGate({
+              platformEnv: process.env,
               envFallbackFor: async (organizationId) =>
                 m12EnvConfig.configuredOrganizationIds().includes(organizationId.toLowerCase()),
             }),

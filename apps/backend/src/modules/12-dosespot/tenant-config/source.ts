@@ -21,6 +21,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import type { ConfigRow } from "./config-store";
+import { registrationIsLive } from "./liveness";
 import type { ClinicSecretCipher } from "./secret-cipher";
 
 const R = schema.dosespotClinicRegistrations;
@@ -50,8 +51,15 @@ export interface DrizzleTenantConfigSourceDeps {
  */
 export const CREDENTIAL_CACHE_TTL_MS = 5 * 60_000;
 
-const usableFor = (status: string, purpose: DoseSpotConfigPurpose): boolean =>
-  purpose === "operate" ? status === "active" : status === "active" || status === "verified";
+/** `operate` = LIVE (liveness.ts); `setup` (a prescriber's vendor enrolment) is allowed from `verified` on, wherever the environment resolves. */
+const usableFor = (
+  row: ConfigRow,
+  purpose: DoseSpotConfigPurpose,
+  platformEnv: Readonly<Record<string, string | undefined>>,
+): boolean =>
+  purpose === "operate"
+    ? registrationIsLive(row, platformEnv)
+    : row.status === "active" || row.status === "verified";
 
 export function createDrizzleTenantConfigSource(
   deps: DrizzleTenantConfigSourceDeps,
@@ -131,7 +139,7 @@ export function createDrizzleTenantConfigSource(
         row.environment as DoseSpotEnvironment,
         deps.platformEnv,
       );
-      const usable = usableFor(row.status, purpose) && resolved.ok;
+      const usable = usableFor(row, purpose, deps.platformEnv) && resolved.ok;
       // a row that is not usable keeps no unsealed credential in memory (a deactivation, a rotation in progress, a closed environment)
       if (!usable) built.delete(organizationId);
       return {

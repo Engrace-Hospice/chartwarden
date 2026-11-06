@@ -252,6 +252,7 @@ describe.skipIf(!DB_URL)(
     }
 
     beforeAll(async () => {
+      platformEnv.DOSESPOT_SANDBOX_ENABLED = "true"; // the platform enables sandbox registrations to go live (the flag has its own cases below)
       admin = new Client({ connectionString: DB_URL });
       await admin.connect();
       await resetPublicSchema(admin);
@@ -787,7 +788,10 @@ describe.skipIf(!DB_URL)(
 
     // ── the sign gate ────────────────────────────────────────────────────────────────────────────────
     describe("the sign gate reads the signing transaction", () => {
-      const gate = createTransmissionGate({ envFallbackFor: async (org) => org === ORG_D });
+      const gate = createTransmissionGate({
+        platformEnv,
+        envFallbackFor: async (org) => org === ORG_D,
+      });
       const decide = (org: string, member: string) =>
         withOrgContext(tenantPool.db, { organizationId: org, userId: "" }, (tx) =>
           gate(tx as unknown as DbClient, org, member),
@@ -1180,9 +1184,71 @@ describe.skipIf(!DB_URL)(
       });
     });
 
+    // ── the sandbox flag (H1) ───────────────────────────────────────────────────────────────────────
+    describe("DOSESPOT_SANDBOX_ENABLED gates a sandbox registration going live and staying live", () => {
+      const gate = createTransmissionGate({ platformEnv, envFallbackFor: async () => false });
+      const settledReader = () => buildDoseSpotSettledReader(tenantPool.db, platformEnv);
+      const SBX_MEMBER = "99000000-0000-4000-8000-0000000000e1";
+
+      it("with the flag off an ACTIVE sandbox row stops transmitting: resolver, sign gate and wizard fact all say not live", async () => {
+        await admin.query(
+          `INSERT INTO "user" (id,email) VALUES ('99000000-0000-4000-8000-0000000000e9','sbx@ds.test') ON CONFLICT DO NOTHING`,
+        );
+        await admin.query(
+          "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,'99000000-0000-4000-8000-0000000000e9',$2,'active') ON CONFLICT DO NOTHING",
+          [SBX_MEMBER, ORG_A],
+        );
+        await admin.query(
+          "INSERT INTO dosespot_prescriber (organization_id, membership_id, dosespot_prescriber_id, enrolled_at) VALUES ($1,$2,'791',now()) ON CONFLICT DO NOTHING",
+          [ORG_A, SBX_MEMBER],
+        );
+        const decide = () =>
+          withOrgContext(tenantPool.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+            gate(tx as unknown as DbClient, ORG_A, SBX_MEMBER),
+          );
+        // flag ON (the suite default): live everywhere
+        expect((await rowOf(ORG_A))?.status).toBe("active");
+        expect(await decide()).toBe(true);
+        expect(await settledReader()(ORG_A)).toBe(true);
+        // flag OFF: the row is still `active`, but nothing serves it
+        platformEnv.DOSESPOT_SANDBOX_ENABLED = undefined;
+        try {
+          expect((await rowOf(ORG_A))?.status).toBe("active");
+          fetchLog.length = 0;
+          const denied = await client.getPrescriptionStatus(ORG_A, "501", "77").catch((e) => e);
+          expect(denied.name).toBe("NotEnabledError");
+          expect(fetchLog).toHaveLength(0);
+          expect(await decide()).toBe(false); // the order activates locally instead of stalling in `queued`
+          expect(await settledReader()(ORG_A)).toBe(false);
+        } finally {
+          platformEnv.DOSESPOT_SANDBOX_ENABLED = "true";
+        }
+        // flag back ON: it serves again, with no change to the row
+        expect(await decide()).toBe(true);
+        expect(await settledReader()(ORG_A)).toBe(true);
+      });
+
+      it("a verified sandbox row cannot be activated while the flag is off (409 DOSESPOT_SANDBOX_NOT_ENABLED), but verifies and deactivates", async () => {
+        await route.deactivate(tenantActor(ORG_A));
+        platformEnv.DOSESPOT_SANDBOX_ENABLED = undefined;
+        try {
+          probeStatus = 200;
+          expect((await route.verify(tenantActor(ORG_A))).view.status).toBe("verified"); // verify is open anywhere
+          expect(await errorCode(route.activate(tenantActor(ORG_A)))).toBe(
+            "DOSESPOT_SANDBOX_NOT_ENABLED",
+          );
+          expect((await rowOf(ORG_A))?.status).toBe("verified");
+        } finally {
+          platformEnv.DOSESPOT_SANDBOX_ENABLED = "true";
+        }
+        await route.activate(tenantActor(ORG_A));
+        expect((await rowOf(ORG_A))?.status).toBe("active");
+      });
+    });
+
     // ── the wizard fact ──────────────────────────────────────────────────────────────────────────────
     describe("wizard step 10 settles from the registration", () => {
-      const readerFor = buildDoseSpotSettledReader;
+      const readerFor = (db: typeof tenantPool.db) => buildDoseSpotSettledReader(db, platformEnv);
       const advancer = () =>
         createOnboardingAdvancer({
           db: tenantPool.db,

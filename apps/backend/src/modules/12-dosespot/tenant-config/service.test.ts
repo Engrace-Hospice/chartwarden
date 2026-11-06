@@ -20,7 +20,9 @@ const OPS: ClinicActor = {
   lane: "platform",
 };
 
-const withPlatformKey = { DOSESPOT_SUBSCRIPTION_KEY_SANDBOX: "platform-sandbox-sub-key" };
+const SUBSCRIPTION_KEY_ONLY = { DOSESPOT_SUBSCRIPTION_KEY_SANDBOX: "platform-sandbox-sub-key" };
+/** The platform has enabled sandbox registrations to go live (DOSESPOT_SANDBOX_ENABLED, exactly `true`). */
+const withPlatformKey = { ...SUBSCRIPTION_KEY_ONLY, DOSESPOT_SANDBOX_ENABLED: "true" };
 const CLINIC_KEY = "clinic-key-plaintext-aaaa1111";
 const SUB_KEY = "sub-key-plaintext-bbbb2222";
 const BASE = { environment: "sandbox", clinicId: "clinic-1", serviceClinicianId: "900" } as const;
@@ -542,6 +544,50 @@ describe("activate and deactivate", () => {
       statusCode: 409,
       code: "DOSESPOT_NOT_CONFIGURED",
     });
+  });
+});
+
+describe("sandbox activation is gated by DOSESPOT_SANDBOX_ENABLED", () => {
+  it("a sandbox registration verifies without the flag but activate is refused with its own code (409)", async () => {
+    const h = build({ env: SUBSCRIPTION_KEY_ONLY });
+    await putFull(h);
+    const out = await verifyFully(h); // verify is open anywhere
+    expect(out.view.status).toBe("verified");
+    await expect(h.service.activate(h.store, TENANT)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "DOSESPOT_SANDBOX_NOT_ENABLED",
+    });
+    expect((await h.service.view(h.store, ORG)).status).toBe("verified");
+  });
+
+  it("only an exact 'true' enables it; the ops lane is held to the same gate", async () => {
+    for (const flag of ["TRUE", "1", "yes", ""]) {
+      const h = build({ env: { ...SUBSCRIPTION_KEY_ONLY, DOSESPOT_SANDBOX_ENABLED: flag } });
+      await putFull(h);
+      await verifyFully(h);
+      await expect(h.service.activate(h.store, OPS)).rejects.toMatchObject({
+        code: "DOSESPOT_SANDBOX_NOT_ENABLED",
+      });
+    }
+    const on = build({ env: withPlatformKey });
+    await putFull(on);
+    await verifyFully(on);
+    expect((await on.service.activate(on.store, OPS)).view.status).toBe("active");
+  });
+
+  it("a deactivation and a re-test never need the flag (a live row can always be taken out of service)", async () => {
+    const h = build({ env: withPlatformKey });
+    await putFull(h);
+    await verifyFully(h);
+    await h.service.activate(h.store, TENANT);
+    const off = createDoseSpotClinicService({
+      cipher: buildClinicSecretCipher({
+        dekForOrg: async () => ({ version: "v1", key: randomBytes(32) }),
+      }),
+      probe: { probe: async () => "ok" },
+      env: SUBSCRIPTION_KEY_ONLY,
+    });
+    expect((await off.deactivate(h.store, TENANT)).view.status).toBe("verified");
   });
 });
 

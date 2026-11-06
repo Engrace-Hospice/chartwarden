@@ -8,13 +8,14 @@
 // linked to DoseSpot. Either missing => the order activates locally, exactly as for an unconfigured tenant.
 import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, isNull } from "drizzle-orm";
+import { type RegistrationRef, registrationIsLive } from "./tenant-config/liveness";
 
 const R = schema.dosespotClinicRegistrations;
 const P = schema.dosespotPrescribers;
 
 export interface TransmissionFacts {
-  /** The org's registration status, or null when it has no row. */
-  readonly registrationStatus: string | null;
+  /** The org's registration: null when it has no row, else whether it is LIVE (`liveness.ts`: active AND its environment allowed). */
+  readonly registration: { readonly live: boolean } | null;
   /** The org has no row and is served by the env fallback (`DOSESPOT_TENANT_CONFIGS`). */
   readonly envFallback: boolean;
   /** The signing prescriber's DoseSpot id, or null when not linked (or revoked). */
@@ -22,8 +23,20 @@ export interface TransmissionFacts {
 }
 
 export function decideTransmission(f: TransmissionFacts): boolean {
-  const live = f.registrationStatus === null ? f.envFallback : f.registrationStatus === "active";
+  const live = f.registration === null ? f.envFallback : f.registration.live;
   return live && f.prescriberVendorId !== null;
+}
+
+/**
+ * The registration fact from the row, by the SAME predicate the resolver uses (`registrationIsLive`): an `active` row whose environment
+ * the platform does not allow to be live (sandbox with the flag off, production without its flag or host) is NOT live, so an order
+ * activates locally instead of stalling in `queued` behind a resolver that will never serve it.
+ */
+export function registrationFactOf(
+  row: RegistrationRef | null,
+  platformEnv: Readonly<Record<string, string | undefined>>,
+): { readonly live: boolean } | null {
+  return row === null ? null : { live: registrationIsLive(row, platformEnv) };
 }
 
 /** The sign path's gate: `true` => enqueue the transmission in the signing transaction. */
@@ -36,14 +49,16 @@ export type TransmissionGate = (
 export function createTransmissionGate(deps: {
   /** Is this org (with no row of its own) served by the env fallback? */
   readonly envFallbackFor: (organizationId: string) => Promise<boolean>;
+  /** The platform's settings (production and sandbox flags, hosts): the same ones the config source reads. */
+  readonly platformEnv: Readonly<Record<string, string | undefined>>;
 }): TransmissionGate {
   return async (tx, organizationId, prescriberMembershipId) => {
     const [registration] = await tx
-      .select({ status: R.status })
+      .select({ status: R.status, environment: R.environment })
       .from(R)
       .where(eq(R.organizationId, organizationId))
       .limit(1);
-    const registrationStatus = registration?.status ?? null;
+    const fact = registrationFactOf(registration ?? null, deps.platformEnv);
     const [prescriber] = await tx
       .select({ id: P.dosespotPrescriberId })
       .from(P)
@@ -56,8 +71,8 @@ export function createTransmissionGate(deps: {
       )
       .limit(1);
     return decideTransmission({
-      registrationStatus,
-      envFallback: registrationStatus === null && (await deps.envFallbackFor(organizationId)),
+      registration: fact,
+      envFallback: fact === null && (await deps.envFallbackFor(organizationId)),
       prescriberVendorId: prescriber?.id ?? null,
     });
   };

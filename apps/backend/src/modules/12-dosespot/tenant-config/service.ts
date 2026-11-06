@@ -22,6 +22,7 @@ import {
   type DoseSpotConnectionProbe,
   type DoseSpotEnvironment,
   type DoseSpotTenantConfig,
+  isSandboxEnabled,
   resolveDoseSpotEnvironment,
   subscriptionKeyFallback,
 } from "@chartwarden/dosespot";
@@ -585,6 +586,14 @@ export function createDoseSpotClinicService(
       throw conflict("DOSESPOT_NOT_VERIFIED", "test the DoseSpot connection before activating it");
     }
     baseUrlFor(row.environment as DoseSpotEnvironment); // production re-checks the platform flag at the moment of activation
+    // A sandbox registration may be verified anywhere but goes LIVE only where the platform enables it: otherwise a deployment that never
+    // said so would send real prescriptions to DoseSpot's test environment.
+    if (row.environment === "sandbox" && !isSandboxEnabled(env())) {
+      throw conflict(
+        "DOSESPOT_SANDBOX_NOT_ENABLED",
+        "DoseSpot sandbox registrations cannot go live on this deployment; use the production environment, or ask platform support to enable sandbox",
+      );
+    }
     const saved = await save(store, row, {
       status: "active",
       activatedAt: now(),

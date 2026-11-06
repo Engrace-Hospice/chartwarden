@@ -73,6 +73,9 @@ export {
 export {
   DOSESPOT_PRODUCTION_ENABLED_ENV,
   DOSESPOT_SANDBOX_DEFAULT_BASE_URL,
+  DOSESPOT_SANDBOX_ENABLED_ENV,
+  environmentAllowsLive,
+  isSandboxEnabled,
   resolveDoseSpotEnvironment,
   subscriptionKeyFallback,
   type DoseSpotEnvironment,

@@ -10,6 +10,7 @@ export type DoseSpotEnvironment = "sandbox" | "production";
 
 export const DOSESPOT_SANDBOX_DEFAULT_BASE_URL = "https://my.staging.dosespot.com/webapi/v2";
 export const DOSESPOT_PRODUCTION_ENABLED_ENV = "DOSESPOT_PRODUCTION_ENABLED";
+export const DOSESPOT_SANDBOX_ENABLED_ENV = "DOSESPOT_SANDBOX_ENABLED";
 
 const BASE_URL_ENV: Readonly<Record<DoseSpotEnvironment, string>> = {
   sandbox: "DOSESPOT_BASE_URL_SANDBOX",
@@ -69,6 +70,22 @@ export function resolveDoseSpotEnvironment(
     }
   }
   return { ok: true, baseUrl };
+}
+
+/**
+ * May a registration in `environment` be LIVE (activated, transmitting, settling the wizard step) on this deployment?
+ *   production  its flag and host (the same test `resolveDoseSpotEnvironment` applies);
+ *   sandbox     `DOSESPOT_SANDBOX_ENABLED` exactly `true`. A sandbox registration may be VERIFIED anywhere (that is how an operator
+ *               tries a tenant's credentials), but a deployment that does not enable sandbox must never serve one as live: prescriptions
+ *               for real patients would go to DoseSpot's test environment.
+ */
+export function environmentAllowsLive(environment: DoseSpotEnvironment, env: Env): boolean {
+  if (!resolveDoseSpotEnvironment(environment, env).ok) return false;
+  return environment === "production" || isSandboxEnabled(env);
+}
+
+export function isSandboxEnabled(env: Env): boolean {
+  return env[DOSESPOT_SANDBOX_ENABLED_ENV] === "true";
 }
 
 /** The platform's own Subscription-Key for `environment`, used when a tenant's row carries none; null when unset. */
