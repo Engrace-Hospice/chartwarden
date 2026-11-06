@@ -48,6 +48,19 @@ export {
   useSearchTerm,
 } from "./hooks/use-search-term";
 
+// Platform-ops writes (2026-11 tenant onboarding): the reason an operator gives, what a refusal means, one Idempotency-Key per attempt
+export { REASON_RULES, checkReason, normalizeReason } from "./ops-write/reason";
+export type { ReasonRule } from "./ops-write/reason";
+export { describeOpsError } from "./ops-write/ops-error";
+export type {
+  OpsErrorCopy,
+  OpsErrorDetail,
+  OpsFailure,
+  OpsFailureKind,
+} from "./ops-write/ops-error";
+export { createIdempotencyKeeper, useIdempotencyKeeper } from "./ops-write/idempotency";
+export type { IdempotencyKeeper } from "./ops-write/idempotency";
+
 // Theme tokens (plain data — no styling runtime)
 export { brandColors, colors, statusColors } from "./theme/colors";
 

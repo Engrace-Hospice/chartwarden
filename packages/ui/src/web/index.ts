@@ -93,6 +93,13 @@ export {
 } from "./components/step-up-draft";
 export { StatusPill } from "./components/status-pill";
 export type { StatusPillProps, StatusTone } from "./components/status-pill";
+// Wizard kit (2026-11 tenant onboarding): the step rail, "what settles this step", and the prompt every platform write goes through
+export { StepRail } from "./components/step-rail";
+export type { StepRailItem, StepRailProps, StepRailState } from "./components/step-rail";
+export { FactList } from "./components/fact-list";
+export type { Fact, FactListProps, FactState } from "./components/fact-list";
+export { ReasonDialog } from "./components/reason-dialog";
+export type { ReasonDialogProps, ReasonDialogRecordLine } from "./components/reason-dialog";
 export { WorkflowStepper } from "./components/workflow-stepper";
 export type {
   WorkflowStep,
