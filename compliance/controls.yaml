@@ -387,6 +387,84 @@ controls:
       - script: test:m30:phi-scope:live
       - script: test:m32:kill-switch-role-key:live
 
+  # ---------------------------------------------------------------- M16 bereavement program (ADR-0109, PR 1)
+  - id: CW-BR-01
+    title: Bereavement physician condolence letter — a human (bereavement oversight) approves it before anything is disclosed, it goes only to an internal active member of the organization, the reviewer's note is sealed with the tenant DEK, and a decline reason is scrubbed from the audit trail
+    hipaa: ["164.312(a)(1)", "164.312(b)", "164.312(a)(2)(iv)"]
+    soc2: ["CC6.1", "CC6.3", "C1.1"]
+    status: implemented
+    evidence:
+      - script: test:rls:live:m16
+      - script: test:m16:routes:live
+      - script: test:m16:bereavement-intake:live
+      - script: test:m16:document-rendered:live
+      - script: arch:audit-denylist-sync
+      - script: arch:abac-predicates
+      - file: apps/backend/src/modules/16-bereavement/routes/letter-service-drizzle.ts
+      - file: apps/backend/src/modules/16-bereavement/lifecycle/physician-letter.ts
+      - file: apps/backend/src/modules/16-bereavement/routes/physician-letter.routes.ts
+      - file: packages/db/migrations/1345_m16_physician_letter.sql
+      - file: apps/backend/__tests__/bereavement-physician-letter.test.ts
+
+  - id: CW-BR-02
+    title: Pre-death bereavement risk assessment — only an MSW, chaplain or bereavement counselor on the patient's care team (or bereavement oversight) reads or writes the draft; volunteers and every portal session are denied; an unresolvable admission or a failed read denies; the substance-use factor is stored unknown unless the writer is cleared for 42 CFR Part 2
+    hipaa: ["164.312(a)(1)", "164.308(a)(4)(ii)(B)", "164.312(b)"]
+    soc2: ["CC6.1", "CC6.3", "C1.1"]
+    status: implemented
+    evidence:
+      - script: arch:abac-predicates
+      - script: arch:abac-composed
+      - script: test:m16:routes:live
+      - script: test:rls:live:m16
+      - file: apps/backend/src/modules/16-bereavement/abac-predicates.ts
+      - file: apps/backend/__tests__/bereavement-pre-death-assessor.test.ts
+      - file: packages/db/migrations/1343_m16_risk_assessment_draft.sql
+
+  - id: CW-BR-03
+    title: Bereavement discharge summary and physician letter are INTERNAL documents — M22 admits only the scope-bypass roles and bereavement oversight to read them (never caseload membership, so not a bereavement volunteer who served the patient), refuses to make one patient-facing, never lists them to anyone else, and the portal reader refuses them whatever patient_facing says; the summary carries no contact notes, care goals, risk factors or substance-use data
+    hipaa: ["164.312(a)(1)", "164.308(a)(4)(ii)(B)", "164.312(c)(1)"]
+    soc2: ["CC6.1", "CC6.3", "C1.1"]
+    status: implemented
+    evidence:
+      - script: test
+      - script: test:m16:cron-workers:live
+      - script: test:m16:opt-out-changed:live
+      - script: test:m16:document-rendered:live
+      - script: arch:pdf-templates
+      - script: arch:outbox-bindings
+      - file: apps/backend/src/modules/22-documents/internal-documents.ts
+      - file: apps/backend/__tests__/m22-internal-documents.test.ts
+      - file: apps/backend/__tests__/document-readers.test.ts
+      - file: apps/backend/__tests__/m16-document-requests.test.ts
+      - file: apps/backend/src/modules/16-bereavement/render-payloads/discharge-summary.ts
+      - file: packages/types/src/render-payloads/m16-bereavement.ts
+
+  - id: CW-BR-04
+    title: Bereavement care goals are PHI sealed at rest with the tenant DEK (cipher column bereaved_contact.care_goals), withheld from the volunteer scope and every portal session, erased by the bereavement eraser, and never placed on an outbox event or in the discharge summary
+    hipaa: ["164.312(a)(2)(iv)", "164.312(a)(1)", "164.312(b)"]
+    soc2: ["CC6.1", "C1.1"]
+    status: implemented
+    evidence:
+      - script: test:m16:routes:live
+      - script: test:m16:cron-workers:live
+      - script: test:m34:tenant-key-provider:live
+      - file: apps/backend/src/modules/16-bereavement/care-goals.ts
+      - file: apps/backend/src/modules/16-bereavement/bereavement-crypto.ts
+      - file: apps/backend/src/modules/16-bereavement/erasers/bereavement-eraser.ts
+      - file: apps/backend/__tests__/bereavement-care-goals.test.ts
+
+  - id: CW-BR-05
+    title: Bereavement no_mailings opt-out is enforced, not advisory — the contact stays active and its calls continue, mailed floor items become calls (already-scheduled rows converted in place), the preference raises its own event so M36 keeps the family channel, a rescind restores it, and the portal self-service route can set it only for the session's own contact
+    hipaa: ["164.312(a)(1)", "164.312(b)"]
+    soc2: ["CC6.1", "CC6.3"]
+    status: implemented
+    evidence:
+      - script: test:m16:routes:live
+      - script: arch:abac-predicates
+      - file: packages/bereavement/src/outreach-kinds.ts
+      - file: apps/backend/src/modules/16-bereavement/lifecycle/contact.ts
+      - file: apps/backend/src/modules/31-portal/routes/write.routes.ts
+
 # Every one of these must be cited by at least one row (the gate enforces it), so a row cannot be
 # deleted to make a gap disappear.
 required:
