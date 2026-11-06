@@ -290,6 +290,31 @@ describe("ADR-0109 D6 — physician letter review in the intake queue", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
+  it("opens the picker when the recorded attending has left, then sends the chosen recipient", async () => {
+    const { calls } = mount({
+      letters: [letter()],
+      members: [member(CLINICIAN, "Dr Bell")],
+      actionResponse: {
+        status: 422,
+        body: {
+          error: { code: "PHYSICIAN_LETTER_ATTENDING_INVALID", message: "not an active member" },
+        },
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /Approve the letter for plan/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByLabelText("Internal clinician")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Approve letter" }));
+    await within(dialog).findByText(/no longer an active member\. Choose another/);
+    fireEvent.change(await within(dialog).findByLabelText("Internal clinician"), {
+      target: { value: CLINICIAN },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Approve letter" }));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[0]?.body).toEqual({});
+    expect(calls[1]?.body).toEqual({ attendingUserId: CLINICIAN });
+  });
+
   it("declines only with a reason of 20 or more characters, and sends it trimmed", async () => {
     const { calls } = mount({
       letters: [letter()],

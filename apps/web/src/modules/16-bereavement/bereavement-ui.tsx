@@ -442,9 +442,9 @@ export function StatusLine({
 
 /**
  * One `Idempotency-Key` per write attempt. `keyFor(fingerprint)` hands back the SAME key while the request (version +
- * body, as a string) is unchanged, so a retry after a lost response or a 5xx dedupes server-side; an edited request gets
- * a new key. `settle(status)` forgets the key once the server answered definitively (2xx or 4xx: the next try is a new
- * write); a lost response (status 0) or a 5xx keeps it.
+ * body, as a string) is unchanged, so a retry after a lost response dedupes server-side; an edited request gets
+ * a new key. `settle(status)` forgets the key whenever the server answered at all — the idempotency plugin replays any
+ * stored answer, a 5xx included, so keeping the key would replay the failure; only a lost response (status 0) keeps it.
  */
 export function useIdempotencyKey(): {
   keyFor: (fingerprint: string) => string;
@@ -456,7 +456,7 @@ export function useIdempotencyKey(): {
     return slot.current.key;
   }, []);
   const settle = useCallback((status: number): void => {
-    if (status !== 0 && status < 500) slot.current = null;
+    if (status !== 0) slot.current = null;
   }, []);
   return { keyFor, settle };
 }

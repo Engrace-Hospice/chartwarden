@@ -18,6 +18,7 @@ import {
   type PhysicianLetter,
   approvePhysicianLetter,
   declinePhysicianLetter,
+  errorCode,
   errorMessage,
   isStaleWrite,
   listPhysicianLetters,
@@ -322,7 +323,9 @@ function ApproveModal({
   onStale: () => void;
 }): JSX.Element {
   const client = useApiClient();
-  const needsRecipient = letter.attendingUserId === null;
+  // The server re-checks the recorded attending on every approve; one who has left is refused, so the picker opens.
+  const [attendingLeft, setAttendingLeft] = useState(false);
+  const needsRecipient = letter.attendingUserId === null || attendingLeft;
   const { clinicians, loading: loadingClinicians } = useClinicians(needsRecipient);
   const [note, setNote] = useState("");
   const [attendingUserId, setAttendingUserId] = useState("");
@@ -352,7 +355,12 @@ function ApproveModal({
     setBusy(false);
     if (err) {
       if (isStaleWrite(status)) onStale();
-      else setError(errorMessage(err, "The letter could not be approved."));
+      else if (!needsRecipient && errorCode(err) === "PHYSICIAN_LETTER_ATTENDING_INVALID") {
+        setAttendingLeft(true);
+        setError(
+          "The recorded attending is no longer an active member. Choose another internal clinician.",
+        );
+      } else setError(errorMessage(err, "The letter could not be approved."));
       return;
     }
     onDone();
@@ -382,8 +390,10 @@ function ApproveModal({
       {needsRecipient ? (
         <>
           <Notice tone="warning">
-            The care team has no attending clinician on record for this patient. Choose the
-            clinician inside the agency who should receive the letter.
+            {attendingLeft
+              ? "The attending clinician on record is no longer an active member of the agency."
+              : "The care team has no attending clinician on record for this patient."}{" "}
+            Choose the clinician inside the agency who should receive the letter.
           </Notice>
           {loadingClinicians ? (
             <span style={mutedStyle}>Loading the agency's clinicians…</span>
