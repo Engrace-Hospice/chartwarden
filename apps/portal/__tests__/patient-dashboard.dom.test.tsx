@@ -31,6 +31,47 @@ const visits = [
   },
 ];
 
+const medications = [
+  {
+    medicationOrderId: "m1",
+    drugName: "Testadine",
+    dose: "5 mg",
+    scheduleSummary: "Every 4 hours",
+    isPrn: true,
+  },
+  {
+    medicationOrderId: "m2",
+    drugName: "Sampleprofen",
+    dose: "200 mg",
+    scheduleSummary: "Every 8 hours",
+  },
+  { medicationOrderId: "m3", drugName: "Fixturol", dose: "1 tab" },
+  { medicationOrderId: "m4", drugName: "Fourthamine", dose: "2 mg" },
+];
+const messages = [
+  {
+    messageId: "a",
+    body: "Oldest note",
+    sentAt: "2026-10-01T10:00:00.000Z",
+    direction: "incoming",
+    senderLabel: "Care Team",
+  },
+  {
+    messageId: "b",
+    body: "Newest note",
+    sentAt: "2026-10-03T10:00:00.000Z",
+    direction: "incoming",
+    senderLabel: "Nurse Robin",
+  },
+  {
+    messageId: "c",
+    body: "Second note",
+    sentAt: "2026-10-02T10:00:00.000Z",
+    direction: "outgoing",
+    senderLabel: "Me",
+  },
+];
+
 function response(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -46,6 +87,10 @@ function renderDashboard(
     upcomingStatus?: number;
     onSummary?: () => Response | Promise<Response>;
     onUpcoming?: () => Response | Promise<Response>;
+    onMedications?: () => Response | Promise<Response>;
+    onOther?: () => Response | Promise<Response>;
+    medications?: unknown;
+    messages?: unknown;
   } = {},
 ) {
   window.history.pushState({}, "", `/portal/p/${PATIENT_ID}`);
@@ -63,6 +108,14 @@ function renderDashboard(
           options.onUpcoming?.() ??
           response(wrap(options.upcoming ?? visits), options.upcomingStatus ?? 200)
         );
+      if (path === "/api/v1/portal/medications/active")
+        return (
+          options.onMedications?.() ??
+          options.onOther?.() ??
+          response({ items: options.medications ?? medications })
+        );
+      if (path === "/api/v1/portal/messages/history")
+        return options.onOther?.() ?? response({ messages: options.messages ?? messages });
       return response({}, 404);
     },
   });
@@ -72,10 +125,16 @@ function renderDashboard(
 describe("patient dashboard redesign", () => {
   it("renders independent loading skeletons with one page heading", async () => {
     const never = () => new Promise<Response>(() => undefined);
-    renderDashboard({ onUpcoming: never, onSummary: never });
-    expect(await screen.findByRole("heading", { name: "Welcome back", level: 1 })).toBeTruthy();
+    renderDashboard({ onUpcoming: never, onSummary: never, onOther: never });
+    expect(
+      await screen.findByRole("heading", {
+        name: "Welcome back",
+        level: 1,
+      }),
+    ).toBeTruthy();
     expect(screen.getByRole("status", { name: "Loading next visit" })).toBeTruthy();
-    expect(screen.getByRole("status", { name: "Loading message summary" })).toBeTruthy();
+    expect(screen.getByRole("status", { name: "Loading medications" })).toBeTruthy();
+    expect(screen.getByRole("status", { name: "Loading recent messages" })).toBeTruthy();
   });
 
   it("sorts valid future visits and renders the earliest visit", async () => {
@@ -94,36 +153,70 @@ describe("patient dashboard redesign", () => {
         pendingDocumentSharesCount: 0,
       },
       upcoming: [],
+      medications: [],
+      messages: [],
     });
     expect(await screen.findByText("No upcoming visits scheduled")).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Open messages/ })).toBeTruthy();
+    expect(await screen.findByText(/No active medications are shared/)).toBeTruthy();
+    expect(await screen.findByText(/No messages yet/)).toBeTruthy();
     expect(screen.queryByText(/^0$/)).toBeNull();
-    expect(screen.getAllByRole("link", { name: /Medications/ }).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/0 new/)).toBeNull();
+    expect(screen.getByRole("link", { name: /View all messages/ })).toBeTruthy();
   });
 
-  it("uses accurate positive count labels and real destinations", async () => {
+  it("previews medications, the latest messages and counts with real destinations", async () => {
     renderDashboard();
-    expect(await screen.findByText("3")).toBeTruthy();
-    expect(screen.getByText("unread messages")).toBeTruthy();
-    expect(screen.getByText("4 new document shares")).toBeTruthy();
+    expect(await screen.findByText("Testadine 5 mg")).toBeTruthy();
+    expect(screen.getByText("Every 4 hours as needed")).toBeTruthy();
+    expect(screen.queryByText("Fourthamine")).toBeNull();
+    expect(screen.getByText("2 active medications")).toBeTruthy();
+    expect(await screen.findByText("Newest note")).toBeTruthy();
+    expect(screen.getByText("Second note")).toBeTruthy();
+    expect(screen.queryByText("Oldest note")).toBeNull();
+    expect(screen.getByText("3 new")).toBeTruthy();
+    expect(screen.getByText("4 new documents")).toBeTruthy();
     expect(
       screen
-        .getAllByRole("link", { name: /Care plan/ })
+        .getAllByRole("link", { name: /Care plan/i })
         .some((link) => link.getAttribute("href") === `/portal/p/${PATIENT_ID}/care-plan`),
     ).toBe(true);
     expect(
       screen
-        .getAllByRole("link", { name: /Documents/ })
-        .some((link) => link.getAttribute("href") === `/portal/p/${PATIENT_ID}/documents`),
+        .getAllByRole("link", { name: /View documents/ })
+        .every((link) => link.getAttribute("href") === `/portal/p/${PATIENT_ID}/documents`),
     ).toBe(true);
+    expect(screen.getByRole("link", { name: /Message the care team/ }).getAttribute("href")).toBe(
+      `/portal/p/${PATIENT_ID}/messages`,
+    );
+  });
+
+  it("offers urgent help without inventing a phone number", async () => {
+    renderDashboard();
+    const help = await screen.findByRole("region", { name: "Need help now?" });
+    expect(help.textContent).toContain("In an emergency, call 911.");
+    expect(help.textContent).toContain("Portal messages are not for emergencies.");
+    expect(help.querySelector('a[href^="tel:"]')).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Urgent care information" })).toBeNull();
+  });
+
+  it("keeps other cards when one source fails and retries only that card", async () => {
+    let medAttempts = 0;
+    renderDashboard({
+      onMedications: () => {
+        medAttempts += 1;
+        return medAttempts === 1 ? response({}, 500) : response({ items: medications });
+      },
+    });
+    expect(await screen.findByText("Earlier visit")).toBeTruthy();
+    expect(await screen.findByText("Newest note")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Testadine 5 mg")).toBeTruthy();
+    expect(medAttempts).toBe(2);
   });
 
   it("preserves upcoming visit content when the summary fails", async () => {
     renderDashboard({ summaryStatus: 500 });
     expect(await screen.findByText("Earlier visit")).toBeTruthy();
-    expect(
-      screen.getByText("Counts are unavailable. These care sections remain accessible."),
-    ).toBeTruthy();
     expect(screen.getAllByRole("link", { name: /Medications/ }).length).toBeGreaterThan(0);
   });
 
@@ -135,7 +228,7 @@ describe("patient dashboard redesign", () => {
         return attempts === 1 ? response({}, 500) : response(wrap(visits));
       },
     });
-    expect(await screen.findByText("2 active medications")).toBeTruthy();
+    expect(await screen.findByText("Testadine 5 mg")).toBeTruthy();
     fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
     expect(await screen.findByText("Earlier visit")).toBeTruthy();
     expect(attempts).toBe(2);

@@ -21,11 +21,12 @@ describe("PR5 portal navigation and authorization metadata parity", () => {
     }
   });
 
-  it("has exactly three fixed mobile destinations and routes account outside the patient path", () => {
+  it("has exactly four fixed mobile destinations and routes account outside the patient path", () => {
     expect(PORTAL_NAVIGATION.filter((item) => item.mobile).map((item) => item.mobile)).toEqual([
       "home",
       "visits",
       "messages",
+      "care-plan",
     ]);
     expect(portalNavPath("portal.account", patientId)).toBe("/account");
   });

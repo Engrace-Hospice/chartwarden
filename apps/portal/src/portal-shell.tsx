@@ -5,6 +5,8 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { PORTAL_BASE_PATH } from "./base-path";
 import { PORTAL_NAVIGATION, portalBreadcrumbs, portalNavPath, portalNavTitle } from "./navigation";
 import { PortalPatientContext, usePortalPatient } from "./patient-context";
+import { isOwnRecord, patientNameOf } from "./portal-relationship";
+import { PortalViewerProvider, usePortalViewer } from "./viewer-context";
 
 const PATIENT_PATH = /^\/p\/([^/]+)/;
 
@@ -42,6 +44,18 @@ function Brand({
   );
 }
 
+function UnreadBadge(): JSX.Element | null {
+  const { summary } = usePortalPatient();
+  const unread = summary?.unreadMessagesCount ?? 0;
+  if (unread <= 0) return null;
+  return (
+    <span className="wx-family-nav-badge">
+      {unread}
+      <span className="wx-sr-only"> unread</span>
+    </span>
+  );
+}
+
 function NavigationLinks({
   patientId,
   onNavigate,
@@ -67,6 +81,7 @@ function NavigationLinks({
             >
               <Glyph name={item.icon} size={20} strokeWidth={1.8} />
               <span>{item.label}</span>
+              {item.id === "portal.messages" ? <UnreadBadge /> : null}
             </NavLink>
           ))}
         </div>
@@ -107,32 +122,55 @@ function PortalSidebar({
           </NavLink>
         </nav>
       )}
-      <div className="wx-portal-sidebar__footer">
-        <span>Private and secure</span>
-        <small>Your access is protected by ChartWarden.</small>
-      </div>
+      {patientId ? (
+        <div className="wx-portal-sidebar__footer wx-family-support">
+          <Glyph name="phone" size={22} />
+          <span>
+            <strong>24/7 hospice support</strong>
+            <small>Call your care team anytime. In an emergency, call 911.</small>
+          </span>
+        </div>
+      ) : (
+        <div className="wx-portal-sidebar__footer">
+          <span>Private and secure</span>
+          <small>Your access is protected by ChartWarden.</small>
+        </div>
+      )}
     </aside>
   );
 }
 
+function initialsOf(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 function PatientIdentity(): JSX.Element {
   const { summary, loading, error } = usePortalPatient();
+  const viewer = usePortalViewer();
+  const realName = patientNameOf(summary?.patient);
+  const name = loading
+    ? "Loading patient…"
+    : error || !summary
+      ? "Patient unavailable"
+      : (realName ?? summary.patient.layLabel);
+  const initials = !loading && realName ? initialsOf(realName) : "";
   return (
-    <div className="wx-portal-patient-identity" aria-live="polite">
+    <Link className="wx-portal-patient-identity" to="/patient-picker">
       <span className="wx-portal-patient-identity__avatar" aria-hidden="true">
-        <Glyph name="user" size={18} />
+        {initials || <Glyph name="user" size={18} />}
       </span>
-      <span>
-        <small>Viewing care for</small>
-        <strong>
-          {loading
-            ? "Loading patient…"
-            : error || !summary
-              ? "Patient unavailable"
-              : (summary.patient.preferredName ?? summary.patient.layLabel)}
-        </strong>
+      <span aria-live="polite">
+        <small>{isOwnRecord(viewer.relationship) ? "Your own record" : "Viewing care for"}</small>
+        <strong>{name}</strong>
       </span>
-    </div>
+      <span className="wx-sr-only">Switch patient</span>
+      <Glyph name="chevron-down" size={18} />
+    </Link>
   );
 }
 
@@ -157,12 +195,15 @@ function PortalHeader({
       {patientId ? <PatientIdentity /> : null}
       <div className="wx-portal-topbar__actions">
         {patientId ? (
-          <Link className="wx-portal-switch-link" to="/patient-picker">
-            <Glyph name="users" size={18} />
-            <span>Switch patient</span>
+          <Link
+            className="wx-portal-icon-button"
+            to={`/p/${encodeURIComponent(patientId)}/preferences`}
+            aria-label="Notification preferences"
+          >
+            <Glyph name="bell" size={21} />
           </Link>
         ) : null}
-        {!patientId ? <PortalHelp /> : null}
+        <PortalHelp />
         <NavLink
           className="wx-portal-account-button"
           to="/account"
@@ -332,6 +373,7 @@ function PortalMobileNav({ patientId }: { patientId: string }): JSX.Element {
           >
             <Glyph name={item.icon} size={22} />
             <span>{item.label}</span>
+            {item.id === "portal.messages" ? <UnreadBadge /> : null}
           </NavLink>
         ))}
         <button
@@ -371,6 +413,8 @@ export function PortalAppShell(): JSX.Element {
   // Messaging is a bounded workspace: the history scrolls while the composer remains visible.
   // Keep the mode route-driven so no layout class leaks into other portal screens.
   const messagingWorkspace = /^\/p\/[^/]+\/messages\/?$/.test(pathname);
+  // The Family Care Dashboard carries its own "Need help now?" card; elsewhere the strip stays.
+  const isDashboard = /^\/p\/[^/]+\/?$/.test(pathname);
   const shellRef = useRef<HTMLDivElement>(null);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   useEffect(() => {
@@ -404,28 +448,30 @@ export function PortalAppShell(): JSX.Element {
     };
   }, [messagingWorkspace]);
   return (
-    <PortalPatientContext patientId={patientId}>
-      <div
-        ref={shellRef}
-        className={`wx-portal-shell${patientId ? "" : " wx-portal-shell--unbound"}${messagingWorkspace ? " wx-portal-shell--messages" : ""}${messagingWorkspace && keyboardOpen ? " wx-portal-shell--keyboard" : ""}`}
-      >
-        <a className="wx-portal-skip-link" href="#portal-main">
-          Skip to main content
-        </a>
-        <PortalSidebar patientId={patientId} />
-        <div className="wx-portal-workspace">
-          <PortalHeader patientId={patientId} />
-          <main className="wx-portal-main" id="portal-main" tabIndex={-1}>
-            <Breadcrumbs items={portalBreadcrumbs(pathname, patientId)} />
-            {/* A patient ID alone never grants access (the server enforces that).
+    <PortalViewerProvider>
+      <PortalPatientContext patientId={patientId}>
+        <div
+          ref={shellRef}
+          className={`wx-portal-shell wx-family-theme${patientId ? "" : " wx-portal-shell--unbound"}${messagingWorkspace ? " wx-portal-shell--messages" : ""}${messagingWorkspace && keyboardOpen ? " wx-portal-shell--keyboard" : ""}`}
+        >
+          <a className="wx-portal-skip-link" href="#portal-main">
+            Skip to main content
+          </a>
+          <PortalSidebar patientId={patientId} />
+          <div className="wx-portal-workspace">
+            <PortalHeader patientId={patientId} />
+            <main className="wx-portal-main" id="portal-main" tabIndex={-1}>
+              <Breadcrumbs items={portalBreadcrumbs(pathname, patientId)} />
+              {/* A patient ID alone never grants access (the server enforces that).
                 Remounting the routed screen on patient changes also ensures drafts,
                 request state, and prior patient data cannot flash before effects run. */}
-            <Outlet key={patientId ?? "no-active-patient"} />
-          </main>
-          {patientId ? <PortalUrgentHelp /> : null}
+              <Outlet key={patientId ?? "no-active-patient"} />
+            </main>
+            {patientId && !isDashboard ? <PortalUrgentHelp /> : null}
+          </div>
+          {patientId ? <PortalMobileNav patientId={patientId} /> : <PortalAccountMobileNav />}
         </div>
-        {patientId ? <PortalMobileNav patientId={patientId} /> : <PortalAccountMobileNav />}
-      </div>
-    </PortalPatientContext>
+      </PortalPatientContext>
+    </PortalViewerProvider>
   );
 }
