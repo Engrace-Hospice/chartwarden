@@ -88,6 +88,7 @@ export type { FieldErrors } from "./components/form-validation";
 export {
   STEP_UP_DRAFT_TTL_MS,
   discardStepUpDrafts,
+  peekStepUpDraft,
   stashStepUpDraft,
   useStepUpDraft,
 } from "./components/step-up-draft";

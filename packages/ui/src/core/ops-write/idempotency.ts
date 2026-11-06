@@ -5,13 +5,15 @@
 // up, so an attempt holds ONE key:
 //   - the same body keeps the same key, so a retry replays instead of writing twice;
 //   - a changed body gets a new key (the same key with a different body is not safe);
-//   - once the write has settled (success, or an answer the operator acts on), the next attempt starts on a new key.
+//   - once the server has ANSWERED, the next attempt starts on a new key. The server caches whatever it answered under the key,
+//     refusals included (a 403 STEP_UP_REQUIRED, a 409, a 422), so a retry on the same key after re-verifying would be handed the
+//     cached refusal and could never succeed. Only a request that got no answer at all (the network dropped it) retries on its key.
 import { useRef } from "react";
 
 export interface IdempotencyKeeper {
   /** The key for an attempt with this body (JSON text or any stable fingerprint). */
   keyFor(fingerprint: string): string;
-  /** The write got its answer: the next attempt starts fresh. */
+  /** The server answered (success OR refusal): the next attempt starts on a new key. */
   settled(): void;
 }
 
