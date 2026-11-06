@@ -92,6 +92,7 @@ import {
   useActionStatus,
   useIdempotencyKey,
 } from "./bereavement-ui";
+import { ProgramActivityCard } from "./program-activity-card";
 
 /** What a refused write on this page means: the contact moved (or was decided) under the reader, so the page reloads. */
 const CONTACT_MOVED =
@@ -395,6 +396,9 @@ function ContactForPlan({
         />
         <ContactSchedule schedule={schedule} onRetry={() => void load()} />
       </Card>
+
+      {/* ADR-0109 D10 — touchpoints and program activities (mailings, sessions); renders nothing for a reader the server refuses. */}
+      <ProgramActivityCard contactId={contactId} />
 
       <Card title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>

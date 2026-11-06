@@ -1016,6 +1016,30 @@
       "app": "web",
       "module": "16-bereavement",
       "moduleId": 16,
+      "id": "bereavement.mailings",
+      "path": "/bereavement/mailings",
+      "permission": "bereavement.mailing.read"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.mailings.settings",
+      "path": "/bereavement/mailings/settings",
+      "permission": "bereavement.mailing.manage"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.mailings.run",
+      "path": "/bereavement/mailings/runs/:runId",
+      "permission": "bereavement.mailing.read"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
       "id": "bereavement.plan.outreach",
       "path": "/bereavement/plans/:planId/outreach",
       "permission": "bereavement.outreach.read"

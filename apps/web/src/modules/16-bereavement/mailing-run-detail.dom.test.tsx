@@ -1,0 +1,689 @@
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+// apps/web/src/modules/16-bereavement — ADR-0109 D10: one mailing run (routes 45-51).
+// Wording first (no default ever ships), Generate with the version read, a poll that stops when the render ends, Download only for a
+// ready or mailed run, Confirm mailed through a dialog that says eligibility is re-checked, Cancel, the items table, and the rules an
+// oversight surface keeps: a 403 renders nothing, other failures are announced and keep the page up, a refetch never blanks it.
+import axe from "axe-core";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { SessionProvider } from "../../shell/session";
+import { MailingRunDetail } from "./mailing-run-detail";
+
+const RUN_ID = "11111111-1111-4111-8111-111111111111";
+const PLAN_ID = "22222222-2222-4222-8222-222222222222";
+const CONTACT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const CONTACT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const POLL_MS = 25;
+const ALL_KEYS = [
+  "bereavement.mailing.read",
+  "bereavement.mailing.manage",
+  "bereavement.mailing.dispatch",
+];
+const WORDING = {
+  en: {
+    title: "Winter remembrance",
+    greeting: "Dear {name},",
+    paragraphs: ["We are thinking of your family this season."],
+    signoff: "With care",
+  },
+};
+
+const run = (over: Record<string, unknown> = {}) => ({
+  runId: RUN_ID,
+  runKind: "holiday",
+  mailingKey: "holiday_december",
+  occurrenceKey: "holiday_december:2026",
+  scheduledFor: "2026-12-15",
+  status: "draft",
+  content: WORDING,
+  recipientCount: 0,
+  excludedCount: 0,
+  failureCode: null,
+  hasDocument: false,
+  generatedAt: null,
+  mailedAt: null,
+  itemCounts: { included: 0, excluded: 0, logged: 0, excludedAfterRender: 0 },
+  version: 4,
+  createdAt: "2026-12-01T00:00:00.000Z",
+  ...over,
+});
+
+const item = (over: Record<string, unknown> = {}) => ({
+  itemId: crypto.randomUUID(),
+  contactId: CONTACT_A,
+  planId: PLAN_ID,
+  relationshipCode: "spouse",
+  channel: "postal",
+  status: "included",
+  exclusionReason: null,
+  ordinal: 1,
+  ...over,
+});
+
+interface Req {
+  readonly method: string;
+  readonly path: string;
+  readonly query: URLSearchParams;
+  readonly body: unknown;
+  readonly ifMatch: string | null;
+  readonly idempotencyKey: string | null;
+}
+type Reply = { status: number; body?: unknown } | "reject";
+type Handler = (req: Req) => Reply | Promise<Reply>;
+
+const ok = (body: unknown): Reply => ({ status: 200, body });
+const refused = (status: number, code: string, message = "refused"): Reply => ({
+  status,
+  body: { error: { code, message } },
+});
+
+function mount(handler: Handler, permissions: string[] = ALL_KEYS) {
+  const calls: Req[] = [];
+  const stub = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const req = input instanceof Request ? input : null;
+    const url = new URL(req ? req.url : String(input), "http://localhost");
+    const method = (req?.method ?? init?.method ?? "GET").toUpperCase();
+    const text = req && method !== "GET" ? await req.clone().text() : "";
+    const recorded: Req = {
+      method,
+      path: url.pathname,
+      query: url.searchParams,
+      body: text ? JSON.parse(text) : null,
+      ifMatch: req?.headers.get("if-match") ?? null,
+      idempotencyKey: req?.headers.get("idempotency-key") ?? null,
+    };
+    calls.push(recorded);
+    const reply = await handler(recorded);
+    if (reply === "reject") throw new TypeError("network down");
+    return new Response(JSON.stringify(reply.body ?? {}), {
+      status: reply.status,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const view = render(
+    <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stub })}>
+      <SessionProvider session={{ userId: "u-1", organizationId: "org-1", permissions }}>
+        <MemoryRouter initialEntries={[`/bereavement/mailings/runs/${RUN_ID}`]}>
+          <Routes>
+            <Route
+              path="/bereavement/mailings/runs/:runId"
+              element={<MailingRunDetail pollMs={POLL_MS} />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </SessionProvider>
+    </ApiClientProvider>,
+  );
+  return { calls, ...view };
+}
+
+const RUN_PATH = `/api/v1/bereavement/mailings/runs/${RUN_ID}`;
+const ITEMS_PATH = `${RUN_PATH}/items`;
+const runReads = (calls: Req[]): number =>
+  calls.filter((c) => c.method === "GET" && c.path === RUN_PATH).length;
+
+/** The default server: one run, an empty item list, and whatever `write` answers for a POST/PATCH. */
+const server =
+  (opts: {
+    run?: () => Reply;
+    items?: (q: URLSearchParams) => Reply | Promise<Reply>;
+    write?: Handler;
+  }): Handler =>
+  (req) => {
+    if (req.method === "GET" && req.path === RUN_PATH) return (opts.run ?? (() => ok(run())))();
+    if (req.method === "GET" && req.path === ITEMS_PATH)
+      return (opts.items ?? (() => ok({ data: [], next_cursor: null, has_more: false })))(
+        req.query,
+      );
+    if (req.method === "GET" && req.path === `${RUN_PATH}/download`)
+      return ok({
+        runId: RUN_ID,
+        url: "https://files.example.test/batch.pdf?sig=abc",
+        expiresAt: "x",
+      });
+    return opts.write?.(req) ?? ok(run());
+  };
+
+afterEach(() => vi.restoreAllMocks());
+
+describe("mailing run — what it shows", () => {
+  it("shows the run, its wording and its counts, and offers no default wording", async () => {
+    mount(
+      server({
+        run: () =>
+          ok(
+            run({
+              status: "ready",
+              recipientCount: 3,
+              itemCounts: { included: 3, excluded: 1, logged: 0, excludedAfterRender: 0 },
+            }),
+          ),
+      }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "December holiday card for 2026-12-15" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Winter remembrance")).toBeTruthy();
+    expect(screen.getByText("We are thinking of your family this season.")).toBeTruthy();
+    expect(screen.getAllByText("Ready").length).toBeGreaterThan(0);
+  });
+
+  it("a run with no wording says so and Generate is disabled with the reason; nothing is filled in", async () => {
+    const { calls } = mount(server({ run: () => ok(run({ content: {} })) }));
+    const generate = (await screen.findByRole("button", { name: "Generate" })) as HTMLButtonElement;
+    expect(generate.disabled).toBe(true);
+    expect(screen.getByText(/Generate is unavailable until the wording has a title/)).toBeTruthy();
+    expect(screen.getByText(/No wording has been written for this run/)).toBeTruthy();
+    expect(generate.getAttribute("aria-describedby")).toBeTruthy();
+    fireEvent.click(generate);
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
+    expect(screen.queryByText(/Winter remembrance|With care|Dear /)).toBeNull();
+  });
+
+  it("a failed run shows its failure code in words and Retry sends Generate", async () => {
+    const { calls } = mount(
+      server({
+        run: () => ok(run({ status: "failed", failureCode: "NO_RECIPIENTS" })),
+        write: () => ok(run({ status: "generating", version: 5 })),
+      }),
+    );
+    expect(await screen.findByText(/Nobody was eligible for this mailing/)).toBeTruthy();
+    expect(screen.getByText(/Code: NO_RECIPIENTS/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry generation" }));
+    await waitFor(() => expect(calls.some((c) => c.path.endsWith("/generate"))).toBe(true));
+  });
+
+  it("an item row links to its contact, names no one, and says why a family was left out", async () => {
+    mount(
+      server({
+        run: () => ok(run({ status: "ready" })),
+        items: () =>
+          ok({
+            data: [
+              item({ ordinal: 1 }),
+              item({
+                contactId: CONTACT_B,
+                status: "excluded",
+                ordinal: null,
+                exclusionReason: "no_mailing_address",
+              }),
+            ],
+            next_cursor: null,
+            has_more: false,
+          }),
+      }),
+    );
+    const link = await screen.findByRole("link", { name: "Open contact aaaaaaaa" });
+    expect(link.getAttribute("href")).toBe(`/bereavement/plans/${PLAN_ID}/contacts/${CONTACT_A}`);
+    expect(screen.getByText("No mailing address on file")).toBeTruthy();
+    expect(screen.getAllByText("In the batch").length).toBeGreaterThan(0);
+  });
+});
+
+describe("mailing run — who sees it, and how it fails", () => {
+  it("a 403 on the run renders nothing at all", async () => {
+    const { container } = mount(server({ run: () => refused(403, "FORBIDDEN") }));
+    await waitFor(() => expect(container.firstChild).toBeNull());
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("a 404 says the run does not exist", async () => {
+    mount(server({ run: () => refused(404, "MAILING_RUN_NOT_FOUND") }));
+    expect(await screen.findByText("This mailing run does not exist.")).toBeTruthy();
+  });
+
+  it("a server error is announced with Try again, and the retry loads the run", async () => {
+    let reads = 0;
+    const { calls } = mount(
+      server({
+        run: () => {
+          reads += 1;
+          return reads === 1 ? refused(500, "INTERNAL", "boom") : ok(run());
+        },
+      }),
+    );
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("boom");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Winter remembrance")).toBeTruthy();
+    expect(runReads(calls)).toBe(2);
+  });
+
+  it("a dropped connection is announced, not a blank page", async () => {
+    mount(server({ run: () => "reject" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/connection dropped/i);
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+
+  it("a failed refresh is announced and the run stays on screen", async () => {
+    let reads = 0;
+    mount(
+      server({
+        run: () => {
+          reads += 1;
+          return reads === 1 ? ok(run({ status: "generating" })) : refused(500, "INTERNAL", "boom");
+        },
+      }),
+    );
+    expect(await screen.findByText("Winter remembrance")).toBeTruthy();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("boom");
+    expect(screen.getByText("Winter remembrance")).toBeTruthy();
+  });
+
+  it("a 403 on the items hides the table and nothing else", async () => {
+    mount(server({ items: () => refused(403, "FORBIDDEN") }));
+    expect(await screen.findByText("Winter remembrance")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText("Families in this run")).toBeNull());
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("a reader with read only sees the run but none of the actions", async () => {
+    mount(server({}), ["bereavement.mailing.read"]);
+    expect(await screen.findByText("Winter remembrance")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Generate" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit wording" })).toBeNull();
+    expect(screen.getByText(/can view this run but not change or send it/)).toBeTruthy();
+  });
+});
+
+describe("mailing run — generate and the poll", () => {
+  it("Generate sends If-Match = the version read and an Idempotency-Key, then waits for the render", async () => {
+    let current = run();
+    const { calls } = mount(
+      server({
+        run: () => ok(current),
+        write: () => {
+          current = run({ status: "generating", version: 5 });
+          return ok(current);
+        },
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    const post = calls.find((c) => c.method === "POST");
+    expect(post).toMatchObject({ path: `${RUN_PATH}/generate`, ifMatch: "4", body: null });
+    expect(post?.idempotencyKey).toBeTruthy();
+    expect(
+      await screen.findByText(/The batch is being generated\. This page checks again/),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Generate" })).toBeNull();
+  });
+
+  it("a double click sends one request and shows the busy state", async () => {
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { calls } = mount(
+      server({
+        write: async () => {
+          await held;
+          return ok(run({ status: "generating", version: 5 }));
+        },
+      }),
+    );
+    const generate = (await screen.findByRole("button", { name: "Generate" })) as HTMLButtonElement;
+    fireEvent.click(generate);
+    fireEvent.click(generate);
+    await waitFor(() => expect(generate.disabled).toBe(true));
+    expect(generate.getAttribute("aria-busy")).toBe("true");
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+    release();
+    await screen.findByText(/The batch is being generated/);
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+  });
+
+  it("the 422 for empty wording is shown in words and the button comes back", async () => {
+    mount(
+      server({
+        write: () =>
+          refused(422, "MAILING_CONTENT_EMPTY", "write the mailing's title and a paragraph"),
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Generate" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("No default wording is sent");
+    await waitFor(() =>
+      expect((screen.getByRole("button", { name: "Generate" }) as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    );
+  });
+
+  it("a 412 says the run moved and reloads it", async () => {
+    const { calls } = mount(server({ write: () => refused(412, "STALE_VERSION") }));
+    fireEvent.click(await screen.findByRole("button", { name: "Generate" }));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "changed while you were working",
+    );
+    await waitFor(() => expect(runReads(calls)).toBe(2));
+  });
+
+  it("polls while generating without unmounting, and stops once the run leaves generating", async () => {
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reads = 0;
+    const { calls } = mount(
+      server({
+        run: () => {
+          reads += 1;
+          return ok(run({ status: reads >= 3 ? "ready" : "generating", version: 4 + reads }));
+        },
+        items: async () => {
+          if (reads === 2) await held;
+          return ok({ data: [], next_cursor: null, has_more: false });
+        },
+      }),
+    );
+    const heading = await screen.findByRole("heading", { name: /December holiday card/ });
+    await waitFor(() => expect(runReads(calls)).toBeGreaterThanOrEqual(3));
+    // the page was never torn down while it re-read
+    expect(screen.getByRole("heading", { name: /December holiday card/ })).toBe(heading);
+    release();
+    await waitFor(() => expect(screen.getAllByText("Ready").length).toBeGreaterThan(0));
+    const settled = runReads(calls);
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS * 6));
+    expect(runReads(calls)).toBe(settled);
+  });
+});
+
+describe("mailing run — download, confirm and cancel", () => {
+  it("offers Download only for a ready or mailed run, and opens the URL in a new tab with no opener", async () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    mount(server({ run: () => ok(run({ status: "ready" })) }));
+    fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+    expect(open).toHaveBeenCalledWith(
+      "https://files.example.test/batch.pdf?sig=abc",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    // the link is not kept anywhere on the page
+    expect(document.body.innerHTML).not.toContain("sig=abc");
+  });
+
+  it.each(["draft", "generating", "cancelled", "failed"])(
+    "does not offer Download for a %s run",
+    async (status) => {
+      mount(server({ run: () => ok(run({ status })) }));
+      await screen.findByRole("heading", { name: /December holiday card/ });
+      expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+    },
+  );
+
+  it("offers Download for a mailed run", async () => {
+    mount(server({ run: () => ok(run({ status: "mailed" })) }));
+    expect(await screen.findByRole("button", { name: "Download" })).toBeTruthy();
+  });
+
+  it("a refused download is announced and nothing opens", async () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const base = server({ run: () => ok(run({ status: "ready" })) });
+    mount((req) =>
+      req.path.endsWith("/download")
+        ? refused(409, "MAILING_DOWNLOAD_UNAVAILABLE", "not ready")
+        : base(req),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("not ready");
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("Confirm mailed asks first, says eligibility is re-checked, then shows how many were left out and are not logged", async () => {
+    const { calls } = mount(
+      server({
+        run: () =>
+          ok(
+            run({
+              status: "ready",
+              itemCounts: { included: 3, excluded: 0, logged: 0, excludedAfterRender: 0 },
+            }),
+          ),
+        write: () =>
+          ok(
+            run({
+              status: "mailed",
+              version: 5,
+              itemCounts: { included: 0, excluded: 0, logged: 1, excludedAfterRender: 2 },
+            }),
+          ),
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm mailed" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/Eligibility is checked again now/)).toBeTruthy();
+    expect(within(dialog).getByText(/NOT logged as mailed/)).toBeTruthy();
+    expect(within(dialog).getByText(/Each of the 3 families in the batch/)).toBeTruthy();
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm mailed" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const post = calls.find((c) => c.method === "POST");
+    expect(post).toMatchObject({ path: `${RUN_PATH}/confirm-mailed`, ifMatch: "4" });
+    expect(post?.idempotencyKey).toBeTruthy();
+    expect(
+      await screen.findByText(/Marked as mailed\. 1 logged\. 2 left out after printing/),
+    ).toBeTruthy();
+    expect(screen.getByText(/2 families were left out after printing/)).toBeTruthy();
+  });
+
+  it("closing the Confirm dialog without confirming sends nothing", async () => {
+    const { calls } = mount(server({ run: () => ok(run({ status: "ready" })) }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm mailed" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
+  });
+
+  it("Cancel run goes through a dialog and sends the version read", async () => {
+    const { calls } = mount(
+      server({
+        run: () => ok(run({ status: "ready" })),
+        write: () => ok(run({ status: "cancelled", version: 5 })),
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel run" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes, cancel this run" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(calls.find((c) => c.method === "POST")).toMatchObject({
+      path: `${RUN_PATH}/cancel`,
+      ifMatch: "4",
+    });
+    expect(await screen.findByText("The run was cancelled.")).toBeTruthy();
+  });
+
+  it("a refusal inside the Confirm dialog stays in the dialog and keeps it open", async () => {
+    mount(
+      server({
+        run: () => ok(run({ status: "ready" })),
+        write: () => refused(409, "MAILING_RUN_NOT_READY", "the run is not ready"),
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm mailed" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm mailed" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toContain(
+      "the run is not ready",
+    );
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+});
+
+describe("mailing run — editing the wording and the items list", () => {
+  it("edits a draft's wording: the PATCH carries the version read and the trimmed content", async () => {
+    const { calls } = mount(
+      server({
+        write: () =>
+          ok(
+            run({
+              version: 5,
+              content: { en: { ...WORDING.en, title: "Holiday greetings" } },
+            }),
+          ),
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit wording" }));
+    const dialog = await screen.findByRole("dialog");
+    expect((within(dialog).getByLabelText("Title") as HTMLInputElement).value).toBe(
+      "Winter remembrance",
+    );
+    fireEvent.change(within(dialog).getByLabelText("Title"), {
+      target: { value: "  Holiday greetings  " },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save wording" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const patch = calls.find((c) => c.method === "PATCH");
+    expect(patch).toMatchObject({
+      path: `${RUN_PATH}/content`,
+      ifMatch: "4",
+      body: { content: { en: { ...WORDING.en, title: "Holiday greetings" } } },
+    });
+    expect(patch?.idempotencyKey).toBeTruthy();
+    expect(await screen.findByText("Holiday greetings")).toBeTruthy();
+  });
+
+  it("is offered only for a draft", async () => {
+    mount(server({ run: () => ok(run({ status: "ready" })) }));
+    await screen.findByRole("heading", { name: /December holiday card/ });
+    expect(screen.queryByRole("button", { name: "Edit wording" })).toBeNull();
+  });
+
+  it("unsaved wording asks before it is discarded; keeping it leaves the dialog and the text", async () => {
+    mount(server({}));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit wording" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Title"), { target: { value: "Changed" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(within(dialog).getByText(/You have unsaved wording\. Discard it\?/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+    expect((within(dialog).getByLabelText("Title") as HTMLInputElement).value).toBe("Changed");
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(within(dialog).getByText(/You have unsaved wording/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Discard changes" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("an untouched wording dialog closes at once", async () => {
+    mount(server({}));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit wording" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Cancel" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("every control is inert while the wording saves, and the dialog cannot be closed", async () => {
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { calls } = mount(
+      server({
+        write: async () => {
+          await held;
+          return ok(run({ version: 5 }));
+        },
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit wording" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Title"), { target: { value: "Changed" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save wording" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
+    expect((within(dialog).getByLabelText("Title") as HTMLInputElement).disabled).toBe(true);
+    expect(
+      (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(within(dialog).getByRole("button", { name: "Saving…" })).toBeTruthy();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    release();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("limits mirror the server: a paragraph over 2000 characters blocks Save, a thirteenth cannot be added", async () => {
+    const { calls } = mount(server({}));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit wording" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Paragraph 1"), {
+      target: { value: "x".repeat(2001) },
+    });
+    expect(within(dialog).getByText("Paragraph 1 is over 2000 characters.")).toBeTruthy();
+    const save = within(dialog).getByRole("button", { name: "Save wording" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.change(within(dialog).getByLabelText("Paragraph 1"), { target: { value: "Short." } });
+    expect(save.disabled).toBe(false);
+    const add = within(dialog).getByRole("button", { name: "Add paragraph" }) as HTMLButtonElement;
+    for (let i = 0; i < 11; i += 1) fireEvent.click(add);
+    expect(within(dialog).getByText("12 of 12 paragraphs")).toBeTruthy();
+    expect(add.disabled).toBe(true);
+    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
+  });
+
+  it("filters the items, keeps the rows while the filter reads, and Load more appends the next page", async () => {
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { calls } = mount(
+      server({
+        run: () => ok(run({ status: "ready" })),
+        items: async (q) => {
+          if (q.get("status") === "excluded") await held;
+          if (q.get("cursor") === "c2")
+            return ok({
+              data: [item({ contactId: CONTACT_B, ordinal: 2 })],
+              next_cursor: null,
+              has_more: false,
+            });
+          return ok({ data: [item({ ordinal: 1 })], next_cursor: "c2", has_more: true });
+        },
+      }),
+    );
+    await screen.findByRole("link", { name: "Open contact aaaaaaaa" });
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    await screen.findByRole("link", { name: "Open contact bbbbbbbb" });
+    expect(screen.getByRole("link", { name: "Open contact aaaaaaaa" })).toBeTruthy();
+    expect(calls.some((c) => c.path === ITEMS_PATH && c.query.get("cursor") === "c2")).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("Item status"), { target: { value: "excluded" } });
+    await waitFor(() =>
+      expect(calls.some((c) => c.path === ITEMS_PATH && c.query.get("status") === "excluded")).toBe(
+        true,
+      ),
+    );
+    // the read is held: the rows already shown stay
+    expect(screen.getByRole("link", { name: "Open contact bbbbbbbb" })).toBeTruthy();
+    release();
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: "Open contact bbbbbbbb" })).toBeNull(),
+    );
+  });
+});
+
+describe("mailing run — accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = mount(
+      server({
+        run: () => ok(run({ status: "ready" })),
+        items: () => ok({ data: [item()], next_cursor: null, has_more: false }),
+      }),
+    );
+    await screen.findByRole("link", { name: "Open contact aaaaaaaa" });
+    // The same rule set the e2e route walk gates on (WCAG 2.x A and AA).
+    const results = await axe.run(container, {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] },
+      rules: { "color-contrast": { enabled: false } },
+    });
+    expect(
+      results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(" ")}`),
+    ).toEqual([]);
+  });
+});

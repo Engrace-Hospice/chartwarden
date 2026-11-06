@@ -102,6 +102,9 @@ function mount(opts: Opts = {}): { sent: Sent[]; planGets: () => number } {
         ? reply({ error: { code: "FORBIDDEN", message: "forbidden" } }, opts.outreachStatus)
         : reply({ data: [], next_cursor: null, has_more: false });
     }
+    // The page's "Program activity" card reads the contact's timeline once; it is not a plan read.
+    if (url.pathname.endsWith("/timeline"))
+      return reply({ data: [], next_cursor: null, has_more: false, redactedCategories: [] });
     planGets += 1;
     return reply(plan(sent.length > 0 && opts.afterWrite ? opts.afterWrite : contact()));
   };
