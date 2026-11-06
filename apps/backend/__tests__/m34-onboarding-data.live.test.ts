@@ -42,6 +42,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { buildDrizzleOrgProfilePort } from "../src/bootstrap/org-profile";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { m34PlatformBypassAuditor } from "../src/index";
 import { createTaxIdCipher } from "../src/modules/02-identity/tax-id-cipher";
@@ -63,8 +64,11 @@ import {
 import {
   buildDrizzleOnboardingDataService,
   buildPlatformTenantResolver,
+  createDrizzleWizardRunner,
+  createOnboardingWizard,
   mountTenantPlatformRoutes,
 } from "../src/modules/34-saas-tenant-platform/index";
+import { registerOnboardingRoutes } from "../src/modules/34-saas-tenant-platform/routes/tenant/onboarding-tasks";
 import {
   appRoleConnectionString,
   appRoleUrl,
@@ -1125,6 +1129,70 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
         ).length,
       ).toBe(before);
     });
+  });
+
+  it("review fix (compliance): the tenant's GET /api/v1/tenant/onboarding read leaves its read-audit row (a missing resourceIdParam or a swallowed insert would leave none)", async () => {
+    const TENANT_ADMIN = "c3000000-0000-4000-8000-0000000000d1";
+    await q(`INSERT INTO "user" (id,email) VALUES ($1,'tenant-b-admin@test.test')`, [TENANT_ADMIN]);
+    // The tenant surface over the REAL wizard on the real tenant pool, behind the real permission guard.
+    registerEffectivePermissionResolver(
+      createInMemoryEffectivePermissionStore([
+        {
+          orgId: ORG_B,
+          userId: TENANT_ADMIN,
+          grants: [
+            {
+              roleKey: "org_admin",
+              enabled: true,
+              expiresAt: null,
+              permissionKeys: ["onboarding.read_own"],
+            },
+          ],
+        },
+      ]).store,
+    );
+    const wizard = createOnboardingWizard({
+      runner: createDrizzleWizardRunner({
+        db: tenantPool.db,
+        platformDb: platformPool.db,
+        auditBypass: m34PlatformBypassAuditor,
+        platformJobId: JOB_ID,
+        activation: async () => undefined,
+        orgProfileFor: (tx) => buildDrizzleOrgProfilePort(tx),
+      }),
+      orgProfile: buildDrizzleOrgProfilePort(tenantPool.db),
+    });
+    const tenantServer = buildServer({
+      authenticate: headerAuth,
+      security: { rateLimitEnabled: false },
+      db: tenantPool.db,
+    });
+    registerOnboardingRoutes(tenantServer, { wizard });
+    try {
+      const before = await q<{ n: number }>(
+        "SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND resource_kind='onboarding_task' AND event_type='onboarding_task.list_viewed'",
+        [ORG_B],
+      );
+      const res = await tenantServer.inject({
+        method: "GET",
+        url: "/api/v1/tenant/onboarding",
+        headers: {
+          "x-test-user": TENANT_ADMIN,
+          "x-test-org": ORG_B,
+          "x-test-roles": "org_admin",
+        },
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      const after = await q<{ actor_user_id: string | null; resource_id: string | null }>(
+        "SELECT actor_user_id, resource_id FROM audit_event WHERE organization_id=$1 AND resource_kind='onboarding_task' AND event_type='onboarding_task.list_viewed' ORDER BY created_at DESC",
+        [ORG_B],
+      );
+      expect(after.length).toBe((before[0]?.n ?? 0) + 1);
+      expect(after[0]?.actor_user_id).toBe(TENANT_ADMIN);
+    } finally {
+      await tenantServer.close();
+      useInMemoryPermissions();
+    }
   });
 
   it("LOCKED ONCE ACTIVE: the same writes now answer 409 TENANT_NOT_ONBOARDING, change nothing, and the refusal is audited", async () => {

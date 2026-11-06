@@ -204,6 +204,11 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         [ORG_L, T_L, key, status],
       );
     }
+    // A tenant org_admin role materialized BEFORE the onboarding.manage_own key existed (review fix: 1329 must backfill it).
+    await admin.query(
+      "INSERT INTO role (organization_id, key, name, category) VALUES ($1,'org_admin','org_admin','admin_executive')",
+      [ORG_L],
+    );
     await apply(files.filter((f) => f >= "1327"));
 
     const provisioned = spawnSync("bun", ["run", "scripts/db/provision-runtime-roles.ts"], {
@@ -437,6 +442,28 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
   });
 
   // ── the strict sequence, on both roles ──────────────────────────────────────────────────────────────────
+  it("review fix (code M2): 1329 gives onboarding.manage_own to org_admin roles that existed before the key, and re-applying it changes nothing", async () => {
+    const holders = async () =>
+      (
+        await admin.query(
+          `SELECT r.organization_id, count(*)::int AS n FROM role_permission rp JOIN role r ON r.id = rp.role_id
+            WHERE rp.permission_key = 'onboarding.manage_own' AND r.key IN ('org_admin','administrator')
+            GROUP BY r.organization_id`,
+        )
+      ).rows;
+    const before = await holders();
+    expect(before.find((row) => row.organization_id === ORG_L)).toMatchObject({ n: 1 });
+    await apply(sqlFiles().filter((f) => f.startsWith("1329_")));
+    expect(await holders()).toEqual(before);
+    // and a tenant org_admin of such an org passes the route's permission key (the role really holds it now)
+    const held = await admin.query(
+      `SELECT 1 FROM role_permission rp JOIN role r ON r.id = rp.role_id
+        WHERE r.organization_id = $1 AND r.key = 'org_admin' AND rp.permission_key = 'onboarding.manage_own'`,
+      [ORG_L],
+    );
+    expect(held.rowCount).toBe(1);
+  });
+
   it("refuses an out-of-order step on the platform and the tenant roles, and changes nothing", async () => {
     const ccn = await taskId(T_A, "ccn_registered");
     const platformRefusal = await refusal(
