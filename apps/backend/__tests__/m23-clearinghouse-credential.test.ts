@@ -171,7 +171,10 @@ describe("per-organization binding (tenant clearinghouses): the rejection hold e
     expect(String(second)).toContain(`(${CH.NOT_WIRED})`);
     expect(calls).toBe(1); // the second call is held, not sent
     expect(captured.alerts).toHaveLength(1);
-    expect(captured.alerts[0]).toMatchObject({ alertCode: CREDENTIAL_REJECTED_ALERT, organizationId: ORG_A });
+    expect(captured.alerts[0]).toMatchObject({
+      alertCode: CREDENTIAL_REJECTED_ALERT,
+      organizationId: ORG_A,
+    });
   });
 
   it("a re-entered credential is a new binding, so the old hold does not apply to it", async () => {

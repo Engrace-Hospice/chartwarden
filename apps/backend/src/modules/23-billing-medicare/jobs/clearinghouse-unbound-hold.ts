@@ -12,10 +12,7 @@
 // ponytail: the once-per-window alert memory is per process; a durable one only if several workers must share it.
 import type { UnboundReason } from "@chartwarden/x12-837-client";
 import { DelayedError } from "bullmq";
-import {
-  CLAIMS_BILLING_HOLD_MS,
-  type HoldableJob,
-} from "../../../bootstrap/claims-billing-gate";
+import { CLAIMS_BILLING_HOLD_MS, type HoldableJob } from "../../../bootstrap/claims-billing-gate";
 import { type M23TransportDeps, transportForOrg } from "./clearinghouse-submission";
 
 export const CLEARINGHOUSE_UNBOUND_ALERT = "m23.clearinghouse.unbound_hold";
@@ -74,7 +71,10 @@ export async function holdJobWhileUnbound(input: {
         payload: { queue, reason },
       }),
     ).catch(() => {
-      deps.logger?.error({ organizationId, queue, reason }, "clearinghouse hold alert not dispatched");
+      deps.logger?.error(
+        { organizationId, queue, reason },
+        "clearinghouse hold alert not dispatched",
+      );
     });
   }
   await job.moveToDelayed(at + CLAIMS_BILLING_HOLD_MS, token);
