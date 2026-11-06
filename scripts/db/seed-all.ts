@@ -37,10 +37,10 @@ if (import.meta.main) {
   };
   for (const [bin = "bun", ...args] of expandSeedChain(scripts, "db:seed:all")) {
     console.log(`\n$ ${[bin, ...args].join(" ")}`);
-    const { status, error } = spawnSync(bin, args, { stdio: "inherit" });
+    const { status, signal, error } = spawnSync(bin, args, { stdio: "inherit" });
     if (status !== 0) {
       console.error(
-        `seed step failed (${error?.message ?? `exit ${status}`}): ${[bin, ...args].join(" ")}`,
+        `seed step failed (${error?.message ?? (signal ? `signal ${signal}` : `exit ${status}`)}): ${[bin, ...args].join(" ")}`,
       );
       process.exit(status ?? 1);
     }
