@@ -31,7 +31,7 @@ permanent; the per-tenant circuit breaker (open/close edges are published as `m1
 cron tick); NewRx idempotency (the D8 key is sent as `Idempotency-Key` AND a created-but-unsent prescription is remembered in
 process so a retry re-sends rather than creating a second).
 
-**Fail-closed.** With no complete per-tenant config (`DOSESPOT_TENANT_CONFIGS`; https only) every call rejects with a
+**Fail-closed.** With no complete per-tenant config (a tenant's own `dosespot_clinic_registration` that is `active`, or, for a tenant with NO row, its `DOSESPOT_TENANT_CONFIGS` entry; https only) every call rejects with a
 non-retryable `DegradedError` before any payload is touched, the vendor-facing crons skip the tenant, and nothing is queued.
 A controlled substance is refused for a tenant whose config does not say `epcsCertified` (D18). The boot log states
 "UNBOUND until per-tenant credentials are configured" or the bound tenant count, plus the unverified endpoint list.
@@ -77,11 +77,35 @@ Everything below is flagged in code (`client/endpoints.ts` `verification`, `clie
 9. **Prescriber token**: `transmitNewRx` authenticates as the prescribing clinician (`dosespotPrescriberId`); every other call as
    `serviceClinicianId`. Whether the send needs the prescriber's PIN is unconfirmed (`pin` is optional in the swagger).
 
+## Tenant registration (slice 4, ADR-0110)
+
+A tenant registers its own clinic: `PUT /api/v1/tenant/dosespot` (org admin) or `PUT /api/v1/platform/tenants/:orgSlug/dosespot`
+(platform ops, while the tenant is onboarding), then `verify` (one token mint, no PHI), then `activate`. The clinic key is sealed under
+the tenant key ring and never returned; the environment (`sandbox` | `production`) maps to a platform host, never a tenant-typed URL.
+A rotation lands on `registered` and needs a fresh test; a plain deactivation goes to `verified`. `GET` shows `prescribersEnrolled` and
+`queuedTransmissions`; neither gates anything. A prescriber is enrolled with DoseSpot by
+`POST /api/v1/admin/dosespot-prescribers/:membershipId/dosespot-enrollment` (or the operator's copy), which records the vendor id the
+transmit cron sends under; the sign path queues an order only for a prescriber linked this way.
+
+**Added to "requires sandbox verification" (all still unverified):**
+
+10. **The Subscription-Key**: per clinic (platform support enters it per tenant, sealed in the registration) or ChartWarden's own,
+    shared (the platform env `DOSESPOT_SUBSCRIPTION_KEY_*` applies when a row carries none)? The tenant lane may rotate one that
+    platform support set and never introduce one, so a platform key is never typed in by a tenant. The sandbox run decides.
+11. **Clinician dedupe**: does `POST /api/clinicians` refuse a second clinician with the same NPI? A crash between the vendor create and
+    the local record leaves an orphan clinician, and the retry may meet a duplicate (the request marker is committed first).
+12. **The production host and the BAA**: production has no baked-in host; it needs `DOSESPOT_PRODUCTION_ENABLED=true` and
+    `DOSESPOT_BASE_URL_PRODUCTION`, set only once the ChartWarden / DoseSpot BAA is executed and the wire shapes are confirmed.
+13. **A vendor rejection of a rotated key at runtime** still fails the order permanently (a token-mint 4xx is permanent); a guard that
+    holds orders and alerts once, as the clearinghouse has (#714), is not built.
+
 ## Operational notes
 
-- Enabling a tenant = set its entry in `DOSESPOT_TENANT_CONFIGS` (staging URL first), enroll its prescribers (`dosespot_prescriber`
-  with `dosespot_prescriber_id`), and let patient sync populate `dosespot_patient_sync`. A tenant that loses its config keeps its
-  queued orders `queued` (the crons skip it) rather than failing them.
+- Enabling a tenant = it (or an operator for it) registers, tests and activates its clinic (sandbox first), then enrols its prescribers
+  with DoseSpot; patient sync then populates `dosespot_patient_sync`. `DOSESPOT_TENANT_CONFIGS` is only the fallback for an org with no
+  registration row (the demo tenant): the boot log names each such org, and a row takes over the day it exists. A tenant that loses its
+  live registration (deactivated, rotated) keeps its queued orders `queued` (the crons skip it) rather than failing them; newly signed
+  orders activate locally and its administrators are alerted.
 - A tenant with an outage longer than ~31 minutes of real failed attempts sees orders land in `transmission_failed`; the existing
   `retransmit` route mints the corrected order. Breaker-open ticks do not count.
 - Live proof: `test:m12:crons-transmit:live` and `test:m12:crons-housekeeping:live` (CI job "M12 DoseSpot crons"), run against a

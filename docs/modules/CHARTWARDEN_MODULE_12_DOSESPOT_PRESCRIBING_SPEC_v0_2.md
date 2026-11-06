@@ -346,6 +346,8 @@ type DoseSpotCredentials = {
 
 The loader reads from the secrets manager at boot (Security Hardening §4.5); rotates on signal. No plaintext on disk in production. The boot sequence fails fast if any registered tenant lacks credentials.
 
+> **Implementation note (tenant onboarding slice 4, 2026-11, ADR-0110).** The `packages/dosespot/credentials/` loader above was never built; the credentials now live in a per-tenant registration row (`dosespot_clinic_registration`, migration 1380), the clinic key sealed under the tenant's M34 key ring, with the environment (`sandbox` | `production`) mapped to a platform-held host instead of a stored `baseUrl`. A tenant or a platform operator registers, tests and activates it through the API; `DOSESPOT_TENANT_CONFIGS` remains only a fallback for an organization with no row. `epcsCertified` is always `false` for a registration (the D18 gate stands). `docs/history/m12-dosespot-adapter.md` carries what is still unverified.
+
 **Circuit breaker (M1 §25.14, Integrations §3.2).** Every adapter call is wrapped in a circuit breaker. Breaker opens at 5 consecutive failures within 60s; half-open probes at 30s intervals; closes on probe success. Open breaker emits `DegradedError` and a System-category alert via M36 (Integrations §3.2). The per-tenant `dosespot_degraded` feature flag flips to `true` on open and to `false` on close — driving the UI behavior in D11.
 
 **Webhook security (D7).** Inbound DoseSpot webhooks land at `POST /webhooks/dosespot` (a public route, no session required). The handler:

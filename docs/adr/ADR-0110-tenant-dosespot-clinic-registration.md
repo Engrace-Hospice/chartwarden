@@ -1,0 +1,46 @@
+# ADR-0110 — A tenant registers its own DoseSpot clinic: a sealed per-tenant registration row (draft, registered, verified, active) in front of the env map, a named environment instead of a URL, and an e-prescribing gate that also needs a linked prescriber
+
+- **Status:** **Accepted** (2026-11-06). The product decisions below were made by the owner on 2026-11-06 (tenant onboarding revamp, slice 4).
+- **Date:** 2026-11-06
+- **Phase:** post-launch tenant onboarding (the ops wizard's e-prescribing step); builds on the M12 DoseSpot adapter (GAP-037).
+- **Related:** [ADR-0019](ADR-0019-controlled-substance-go-live.md) (EPCS is deferred; a lawful non-EPCS path exists, and this ADR keeps it that way), [ADR-0020](ADR-0020-integration-governance.md) (INT-014: a BAA executes before PHI flows), [ADR-0053](ADR-0053-clearinghouse-transport-port.md) (the per-tenant clearinghouse amendment of 2026-11-06 is the pattern this follows: a sealed per-tenant config in draft, verified, active, written by the tenant or by platform ops through the tenant's own scope), `docs/history/m12-dosespot-adapter.md`, `docs/architecture/CHARTWARDEN_INTEGRATIONS_v0_1.md` section 6.1.
+- **Amends:** the M12 spec section 2.5 (D5) credential model, which put the clinic credentials "in `packages/dosespot/credentials/`", a path that was never created; the credentials lived in the `DOSESPOT_TENANT_CONFIGS` environment map, read once at boot.
+
+## Context
+
+Facts read from the repo on 2026-11-06:
+
+- The DoseSpot adapter (`packages/dosespot`) is bound per tenant only through `DOSESPOT_TENANT_CONFIGS`, a JSON map in the environment. Enabling a tenant meant editing a secret and redeploying; the clinic key sat in the environment in the clear; a tenant could not register its own clinic and an operator could not do it for a tenant.
+- The roster `enroll` route only wrote a local row. No production path set `dosespot_prescriber.dosespot_prescriber_id`, the id `transmit-newrx` sends under, so an API-enrolled prescriber's orders failed permanently as `prescriber_not_enrolled`.
+- The sign path asked a synchronous boolean ("does this tenant have a config?") and then queued every signed order, linked prescriber or not.
+- The tenant onboarding wizard has a step "e-Prescribing (DoseSpot)" (order 10, an `either` step) whose precondition read `context.dosespotKickoffRecorded`, a fact nothing produced.
+- The M12 spec says the adapter's `baseUrl` is "env-derived, never branch".
+
+## Decision
+
+**D1 — A registration row per tenant.** `dosespot_clinic_registration` (migration 1380), one row per organization, RLS enabled and forced on `app.org_id`, column-level UPDATE (never the id or the organization), no DELETE, the M4 write-audit trigger scrubbing the sealed secret and recording that it changed. States: `draft` (saved, incomplete: the wizard can resume) -> `registered` (clinic id, service clinician and key all present) -> `verified` (a connection test passed) -> `active` (in use). Only `active` transmits. CHECKs make a half-state impossible.
+
+**D2 — Sealed under the tenant key ring.** The clinic key (and the Subscription-Key when the tenant has its own) is one JSON envelope, AES-256-GCM under the tenant's M34 key-ring DEK, its AAD binding organization, environment and clinic. The DEK version rides in `secret_dek_ref`. A tenant shred makes it unreadable; a ciphertext copied to another tenant, the other environment or another clinic does not open. It is write-only: no view carries it, no log, error or audit row holds it. (Slice 3 sealed the clearinghouse credential under a key derived from the M24 KEK; the DoseSpot module already holds the key ring for its webhook receipts, so it uses the ring, which also gives DEK versioning and crypto-shred at offboarding.)
+
+**D3 — An environment, never a URL.** A tenant (or an operator for it) picks `sandbox` or `production`; the host is platform configuration (`DOSESPOT_BASE_URL_*`, https and `dosespot.com` only, no credentials in the URL). Sandbox defaults to DoseSpot's public staging host. Production has no baked-in host and is refused (verify and activate answer 409) unless `DOSESPOT_PRODUCTION_ENABLED` is exactly `true` and its host is set: the flag is set only once the ChartWarden / DoseSpot BAA is executed and a sandbox run has confirmed the wire shapes. A URL a caller could type would let the clinic key and PHI go to any server.
+
+**D4 — Database in front of env.** The adapter reads its config through an async resolver. A tenant WITH a row is served by that row alone: a draft, registered, verified-only or deactivated row is never served from the env map. A tenant with NO row still is, so the demo tenant keeps working; the boot log names each organization the map still serves. The row is read on every call and the sealed key opened once per row version; the token cache keys on that version, so a rotated key never reuses the old key's token.
+
+**D5 — Who writes.** Both. The tenant administrator through `/api/v1/tenant/dosespot` (org-level `prescribing.clinic.read` / `.admin`, bound to `org_admin` and `administrator` only, fresh step-up, Idempotency-Key, `If-Match`, AI actors refused). Platform ops through `/api/v1/platform/tenants/:orgSlug/dosespot` (`tenant_dosespot.read_platform` / `.write_platform` on the exact `platform_ops` role, fresh step-up, a recorded reason, only while the tenant is provisioning or onboarding; a deactivation, the one write a live tenant also needs, is not status-gated). Both run the same M12 service under the tenant's own RLS. The tenant lane may rotate a Subscription-Key platform support set but never introduce one (it may be the platform's own); ops may set it, and a platform environment key per environment applies when a row carries none. Whether DoseSpot's Subscription-Key is per clinic or ours to share is unconfirmed: the sandbox run decides.
+
+**D6 — Rotation.** Any change to the environment, clinic, service clinician or a key puts the row back to `registered` (or `draft` while incomplete) and clears what the old credential earned; a change of environment or clinic also drops the stored key. A rotation of an active registration pauses e-prescribing: newly signed orders activate locally, queued ones wait, the outbox publishes `m12.dosespot_config.deactivated` (cause `credential_changed`) and the tenant's administrators are alerted. A plain deactivation goes to `verified` (the credential is unchanged, so no new test is owed).
+
+**D7 — No separate BAA step.** DoseSpot's BAA is ChartWarden's with DoseSpot (Surescripts coverage flows through it), not tenant-held, so unlike the clearinghouse there is no per-tenant BAA record. The gate is D3's production flag. The vendor BAA stays a prose-tracked row in `CW-BA-01`.
+
+**D8 — EPCS stays off.** There is no EPCS column: a registration resolves `epcsCertified: false`, so the D18 certification gate stands and no route here can change it. Enrolling a prescriber never starts EPCS or IAL2 (the adapter already says so).
+
+**D9 — A prescriber's vendor enrolment, and the sign gate.** Create-then-record, never a transaction across the vendor call: commit the roster row and `vendor_enrollment_requested_at` (migration 1381), call `addClinician`, record the vendor's id and NPI, publish `m12.prescriber_enrolled` with the real id. Allowed once the registration is `verified` or `active`. The sign path now queues an order for transmission only when the org's DoseSpot is live AND the signing prescriber is linked to DoseSpot, read inside the signing transaction; otherwise it activates locally, as for an unconfigured tenant.
+
+**D10 — The wizard fact.** Step 10 settles from `context.dosespotSettled` (migration 1382, a `contract` migration like 1351: the previous release cannot evaluate the new field), true while the registration is `active`. The prescriber count is shown and does not gate: a prescriber needs a membership, and the first-admin step comes after this one. A human may still attest the step.
+
+## Consequences
+
+- Enabling a tenant is now an API call (and a sandbox test), not an environment edit and a deploy; `DOSESPOT_TENANT_CONFIGS` shrinks to a fallback and is removed once the demo tenant has a row.
+- A registration written during onboarding by an operator also voids a pending go-live attestation (the attestation said the data was ready).
+- Not verified against DoseSpot (docs/history): the token endpoint, the `addClinician` field names, whether the Subscription-Key is per clinic, DoseSpot's dedupe of a clinician by NPI (a crash between the vendor create and the record can leave an orphan clinician and a retry may meet a duplicate), and the production host. The connection test proves the credential was accepted; it does not prove our payload field names.
+- Not built: a vendor-side clinic creation (DoseSpot issues the clinic id and key; no creation endpoint is in the public swagger), a runtime credential guard that holds orders and alerts once on a vendor rejection of the key (a rotated key rejected at the vendor currently fails the order permanently, as before), a per-prescriber revoke at DoseSpot (no endpoint), and webhook-secret storage (the webhook scheme is itself unverified).
