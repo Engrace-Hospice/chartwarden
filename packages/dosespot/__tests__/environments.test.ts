@@ -113,6 +113,23 @@ describe("DoseSpot environment resolution", () => {
     );
   });
 
+  it("a sandbox override can never name the KNOWN production host, even when the production URL is unset", () => {
+    for (const host of [
+      "https://my.dosespot.com/webapi/v2",
+      "https://MY.dosespot.com/webapi/v2/",
+    ]) {
+      expect(resolveDoseSpotEnvironment("sandbox", { DOSESPOT_BASE_URL_SANDBOX: host })).toEqual({
+        ok: false,
+        reason: "base_url_invalid",
+      });
+    }
+    expect(
+      resolveDoseSpotEnvironment("sandbox", {
+        DOSESPOT_BASE_URL_SANDBOX: "https://my.staging.dosespot.com/webapi/v2",
+      }),
+    ).toEqual({ ok: true, baseUrl: "https://my.staging.dosespot.com/webapi/v2" });
+  });
+
   it("reads the platform subscription-key fallback per environment, empty when unset", () => {
     expect(subscriptionKeyFallback("sandbox", { DOSESPOT_SUBSCRIPTION_KEY_SANDBOX: "k-s" })).toBe(
       "k-s",

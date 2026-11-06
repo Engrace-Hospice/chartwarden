@@ -31,6 +31,11 @@ export type DoseSpotEnvironmentResolution =
     };
 
 const HOST_SUFFIX = ".dosespot.com";
+/**
+ * Hosts known to be PRODUCTION, so a sandbox override can never name one even while `DOSESPOT_BASE_URL_PRODUCTION` is unset (the flag guards
+ * production only). Unverified against DoseSpot until the sandbox run; extend it when that run confirms the real hosts.
+ */
+const KNOWN_PRODUCTION_HOSTS: ReadonlySet<string> = new Set(["my.dosespot.com"]);
 
 /** The URL without a trailing slash, or null when it is not an https `*.dosespot.com` URL with no credentials. */
 function vendorUrlOrNull(raw: string): string | null {
@@ -65,7 +70,11 @@ export function resolveDoseSpotEnvironment(
   if (environment === "sandbox") {
     const production = env[BASE_URL_ENV.production]?.trim();
     const productionUrl = production ? vendorUrlOrNull(production) : null;
-    if (productionUrl !== null && new URL(productionUrl).host === new URL(baseUrl).host) {
+    const host = new URL(baseUrl).host;
+    if (
+      KNOWN_PRODUCTION_HOSTS.has(host) ||
+      (productionUrl !== null && new URL(productionUrl).host === host)
+    ) {
       return { ok: false, reason: "base_url_invalid" };
     }
   }
