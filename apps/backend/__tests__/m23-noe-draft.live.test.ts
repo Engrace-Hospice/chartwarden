@@ -1557,6 +1557,81 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     }
   }, 60_000);
 
+  // Round 3, L1a: the worker read the notice, checked it, then spent a network call on the upload before it wrote anything, so a
+  // record / park of the same notice could commit in between and the notice would be transmitted AND recorded as filed. The worker
+  // now takes the row's lock with its read and holds it to its commit: the concurrent write waits, and then loses (412).
+  it.each(["record", "park"] as const)(
+    "the submit worker holds the NOE row from its read to its commit: a concurrent %s waits for the upload and then loses, so the notice is never transmitted AND filed",
+    async (concurrent) => {
+      const vendor = externalFilingService(false);
+      const outside = externalFilingService(true);
+      const id = await seedNoe(ORG_A, { state: "DRAFT" });
+      const queued = await vendor.service.submitNoe(actorOf(ORG_A), id);
+
+      let reachedUpload!: () => void;
+      const atUpload = new Promise<void>((resolve) => {
+        reachedUpload = resolve;
+      });
+      let finishUpload!: () => void;
+      const uploadMayFinish = new Promise<void>((resolve) => {
+        finishUpload = resolve;
+      });
+      const slowDeps: M23WorkerDeps = {
+        ...workerDeps,
+        macPortal: {
+          ...workerDeps.macPortal,
+          upload: async (input) => {
+            reachedUpload();
+            await uploadMayFinish;
+            return { accepted: true, generatedFileUri: `s3://notices/${input.controlNumber}.x12` };
+          },
+        },
+      };
+      const worker = withOrgContext(
+        handle.db as never,
+        { organizationId: ORG_A, userId: "" },
+        (tx) =>
+          runNoeSubmit(tx as never, slowDeps, {
+            organizationId: ORG_A,
+            noeId: id,
+            submissionId: queued.submissionId as string,
+          }),
+      );
+      await atUpload; // the worker has read and checked the notice and is mid-upload
+
+      let outcome: string = "pending";
+      const rival =
+        concurrent === "record"
+          ? outside.service.recordNoeExternalFiling(actorOf(ORG_A), id, { filedOn: todayIso() })
+          : outside.service.submitNoe(actorOf(ORG_A), id);
+      const settledRival = rival.then(
+        () => {
+          outcome = "committed";
+        },
+        (error: { code?: string }) => {
+          outcome = error.code ?? "failed";
+        },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      const outcomeWhileUploading = outcome;
+      finishUpload(); // always let the worker end, so a failing assertion cannot strand its connection
+      const workerResult = await worker.then(
+        () => "done",
+        (error: unknown) => String(error),
+      );
+      await settledRival;
+      expect(
+        outcomeWhileUploading,
+        "the concurrent write must wait behind the worker's row lock",
+      ).toBe("pending");
+      expect(workerResult).toBe("done");
+      expect(outcome).toBe("VERSION_CONFLICT");
+      expect(await noeRow(id)).toMatchObject({ state: "SUBMITTED", external_filing_status: null });
+      expect(await eventRows("m23.noe.submitted", "noeId", id)).toHaveLength(1);
+    },
+    60_000,
+  );
+
   it("cross-tenant: org B cannot record (or park) org A's NOE; the worker's park of a job enqueued before the org switched is org-scoped too", async () => {
     const { service } = externalFilingService(true);
     const id = await seedNoe(ORG_A);

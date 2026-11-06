@@ -1332,7 +1332,8 @@ export async function runNoeSubmit(
 
   // Owner decision D4: never generate or upload for an org whose clearinghouse is not live (the worker pre-flight parks or holds).
   await assertNoticeMayTransmit(deps, job.organizationId, "noe");
-  const noe = await noes.findById(job.noeId);
+  // Locked to the end of this transaction (past the upload): a concurrent record / park waits and loses its version check.
+  const noe = await noes.findByIdForUpdate(job.noeId);
   if (!noe) throw new Error(`noe_record ${job.noeId} not found`);
   const settled = await settleNoticeJobAttempt(tx, {
     submissionId: job.submissionId,
@@ -1400,7 +1401,7 @@ export async function runNotrSubmit(
   const now = (deps.now ?? (() => new Date()))();
 
   await assertNoticeMayTransmit(deps, job.organizationId, "notr");
-  const notr = await notrs.findById(job.notrId);
+  const notr = await notrs.findByIdForUpdate(job.notrId);
   if (!notr) throw new Error(`notr_record ${job.notrId} not found`);
   const settled = await settleNoticeJobAttempt(tx, {
     submissionId: job.submissionId,
