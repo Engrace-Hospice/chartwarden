@@ -26,6 +26,7 @@ import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { auditPlatformEvent } from "@chartwarden/audit";
 import {
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
@@ -35,9 +36,14 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
-import { createDbClient } from "@chartwarden/db";
+import { type DbClient, createDbClient } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
-import { registerPlatformJob, withOrgContext } from "@chartwarden/tenancy";
+import {
+  getRequestContext,
+  registerPlatformJob,
+  withOrgContext,
+  withPlatformContext,
+} from "@chartwarden/tenancy";
 import { InMemoryAttemptStore } from "@chartwarden/x12-837-client";
 import { createInMemoryHarness } from "@chartwarden/x12-837-client/testing";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -83,8 +89,20 @@ import {
   mountTenantPlatformRoutes,
 } from "../src/modules/34-saas-tenant-platform/index";
 import { createOnboardingAdvancer } from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
+import { buildPricingOnboardingPort } from "../src/modules/34-saas-tenant-platform/onboarding/pricing-port";
 import { createSettleOnboardingForOrg } from "../src/modules/34-saas-tenant-platform/onboarding/settle-for-org";
 import { createDrizzleSubscriptionWorkBlockReader } from "../src/modules/35-subscription/addon/entitlement";
+import { M35_OUTBOX_EVENTS } from "../src/modules/35-subscription/events-by-m35";
+import {
+  type ContractService,
+  buildContractService,
+} from "../src/modules/35-subscription/pricing/contract-service";
+import { SYSTEM_TRIGGER, modeTriggerOf } from "../src/modules/35-subscription/pricing/mode-trigger";
+import {
+  type PricingPlanService,
+  buildPricingPlanService,
+} from "../src/modules/35-subscription/pricing/plan-service";
+import { buildPlatformAuditPort } from "../src/modules/35-subscription/pricing/ports";
 import {
   countQueuedCommercialSubmissions,
   countQueuedCommercialSubmissionsOn,
@@ -110,6 +128,7 @@ const ORG_E = "e5000000-0000-4000-8000-0000000000e5"; // named in the env fallba
 const ORG_F = "f6000000-0000-4000-8000-0000000000f6"; // onboarding: chooses outside through the platform route
 const ORG_G = "a7000000-0000-4000-8000-0000000000a7"; // stedi, active
 const ORG_H = "a8000000-0000-4000-8000-0000000000a8"; // only the operator's list of external filings reads it (nothing else seeds here)
+const ORG_I = "a9000000-0000-4000-8000-0000000000a9"; // a live tenant with a signed contract: its own outside choice sets billing mode none
 const OPERATOR = "c9000000-0000-4000-8000-0000000000c9";
 const MEMBERSHIP = "e9000000-0000-4000-8000-0000000000e9";
 const TENANT_ADMIN = "7a000000-0000-4000-8000-0000000000a7";
@@ -143,6 +162,8 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
   let tenantPool: ReturnType<typeof createDbClient>;
   let platformPool: ReturnType<typeof createDbClient>;
   let server: FastifyInstance;
+  let plans: PricingPlanService;
+  let contracts: ContractService;
   let seq = 0;
   const probed: { secret: string; mode: string }[] = [];
   const cipher = buildClearinghouseSecretCipher(Buffer.alloc(32, 11));
@@ -237,6 +258,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_F, "ch-f"],
       [ORG_G, "ch-g"],
       [ORG_H, "ch-h"],
+      [ORG_I, "ch-i"],
     ] as const) {
       await admin.query(
         "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -259,6 +281,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_B, "onboarding"],
       [ORG_F, "onboarding"],
       [ORG_H, "active"],
+      [ORG_I, "onboarding"],
     ] as const) {
       await admin.query(
         "INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,$3,'b@x.test','p@x.test')",
@@ -344,10 +367,59 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         },
       },
     });
+    // Slice 5: the REAL pricing contract service on the real platform credential, run the way the composition root runs it (an audited
+    // `withPlatformContext` per platform transaction). The wizard is a double: only the plan_contract step is read and attested.
+    const m35Publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M35_OUTBOX_EVENTS]));
+    const signedSlugs = new Set<string>();
+    const wizardDouble = {
+      getPlatform: async (slug: string) =>
+        ({
+          steps: [
+            {
+              key: "plan_contract",
+              id: `task-${slug}`,
+              status: signedSlugs.has(slug) ? "done" : "pending",
+              lockedBy: null,
+            },
+          ],
+        }) as never,
+      attestPlatform: async (slug: string) => {
+        signedSlugs.add(slug);
+        return {} as never;
+      },
+    };
+    const m35Runner = <T>(fn: (tx: DbClient) => Promise<T>): Promise<T> =>
+      withPlatformContext(
+        platformPool.db,
+        { jobId: JOB_ID, reason: "attribution live suite", crossTenant: true },
+        m34PlatformBypassAuditor,
+        (tx) => fn(tx as unknown as DbClient),
+      );
+    const m35Audit = buildPlatformAuditPort((tx, row) => auditPlatformEvent(tx as never, row));
+    plans = buildPricingPlanService({ platformRunner: m35Runner, audit: m35Audit });
+    contracts = buildContractService({
+      db: tenantPool.db,
+      platformRunner: m35Runner,
+      outbox: {
+        publish: (tx, e) => m35Publisher.publish(tx as never, { ...e, callerModule: "m35" }),
+      },
+      audit: m35Audit,
+      onboarding: buildPricingOnboardingPort({ wizard: wizardDouble as never }),
+    });
     const settleOnboarding = createSettleOnboardingForOrg({
       db: tenantPool.db,
       advance: async ({ tenantAccountId, organizationId }) => {
         await advance({ tenantAccountId, orgId: organizationId });
+      },
+      // A live tenant has nothing for the sweep, but a switch to outside still reaches its billing mode: the same two steps the
+      // composition root takes (the wizard's sync reads the choice; the glue attributes the change to the ambient request's actor).
+      afterChange: async (organizationId) => {
+        const choice = await getSeam("TenantClearinghouseReader").choiceForOrg(organizationId);
+        if (choice.vendor !== "outside") return;
+        await contracts.setModeNoneForOutsideBilling(
+          organizationId,
+          modeTriggerOf(getRequestContext(), organizationId),
+        );
       },
     });
 
@@ -405,7 +477,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
             },
           ],
         },
-        ...[ORG_A, ORG_B, ORG_G].map((orgId) => ({
+        ...[ORG_A, ORG_B, ORG_G, ORG_I].map((orgId) => ({
           orgId,
           userId: TENANT_ADMIN,
           grants: [
@@ -1597,6 +1669,110 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
           statusCode: 409,
         },
       );
+    });
+  });
+
+  // ── slice 5: a tenant that chooses `outside` pays no billing percentage, and the mode change is attributed ──────────────────────
+  // The tenant's own PUT runs the post-commit settle, which reaches the pricing contract service. That write is the system's (no
+  // operator), but a person set it off: its audit row names the tenant actor and the request's correlation id.
+  describe("a tenant's own outside choice sets the billing mode to none, attributed to it", () => {
+    const bypassRows = async () =>
+      Number(
+        (
+          await q<{ n: string }>(
+            "SELECT count(*)::text AS n FROM audit_event WHERE event_type='platform.bypass_invoked'",
+          )
+        )[0]?.n,
+      );
+
+    it("names the tenant administrator and the request's correlation id on the audit row, and a repeat leaves nothing behind", async () => {
+      const operator = {
+        organizationId: PLATFORM_ORG,
+        userId: OPERATOR,
+        roles: ["platform_ops"],
+        membershipId: MEMBERSHIP,
+        stepUpRecent: true,
+      };
+      const draft = await plans.create(
+        operator,
+        {
+          familySlug: "hospice-attribution",
+          name: "Hospice attribution",
+          perUserPriceCents: 10_000,
+          bands: [
+            { minAdc: 0, monthlyFeeCents: 100_000 },
+            { minAdc: 10, monthlyFeeCents: 200_000 },
+          ],
+          billingSoftwareBps: 100,
+          managedBillingBps: 400,
+          contractTermMonths: 12,
+          implementationFeeCents: 250_000,
+          minimumMonthlyCents: null,
+        },
+        "price list for the attribution story",
+      );
+      const published = await plans.publish(operator, draft.id, "approved by the owner");
+      await contracts.createForTenant(operator, "ch-i", {
+        planSlug: published.slug,
+        billingServiceMode: "billing_software",
+        orderFormRef: "OF-ATTRIBUTION-1",
+        reason: "order form signed by the customer's administrator",
+      });
+      // the tenant goes live after signing: a change to none then takes effect from the 1st of next month
+      await q(
+        "UPDATE tenant_account SET status='active', activated_at=now() - interval '40 days' WHERE organization_id=$1",
+        [ORG_I],
+      );
+
+      const correlation = `corr-attribution-${randomUUID()}`;
+      const res = await tenantCall(
+        "PUT",
+        ORG_I,
+        "",
+        { vendor: "outside" },
+        {
+          "x-correlation-id": correlation,
+        },
+      );
+
+      expect(res.statusCode, res.body).toBe(201);
+      const audits = await q<{ context: Record<string, string | null>; correlation_id: string }>(
+        `SELECT context, correlation_id FROM audit_event
+          WHERE event_type='m35.subscription.billing_service_mode_changed' AND context->>'organizationId'=$1`,
+        [ORG_I],
+      );
+      expect(audits).toHaveLength(1);
+      expect(audits[0]?.context).toMatchObject({
+        from: "billing_software",
+        to: "none",
+        trigger: "clearinghouse_outside",
+        // a system action, set off by the tenant's own administrator: an id and a membership, never a name
+        operatorUserId: "system",
+        triggeredBy: "tenant",
+        triggeredByUserId: TENANT_ADMIN,
+        triggeredByMembershipId: MEMBERSHIP,
+      });
+      expect(audits[0]?.context.effectiveOn).toMatch(/^\d{4}-\d{2}-01$/);
+      expect(audits[0]?.correlation_id).toBe(correlation);
+
+      // Every later settle asks again; a no-op (the mode is already pending none) is decided on the tenant pool and never enters the
+      // platform runner, so it leaves no critical platform bypass row and no second mode row.
+      const before = await bypassRows();
+      expect(await contracts.setModeNoneForOutsideBilling(ORG_I, SYSTEM_TRIGGER)).toEqual({
+        changed: false,
+      });
+      expect(await bypassRows()).toBe(before);
+      expect(
+        await q(
+          `SELECT 1 FROM audit_event WHERE event_type='m35.subscription.billing_service_mode_changed' AND context->>'organizationId'=$1`,
+          [ORG_I],
+        ),
+      ).toHaveLength(1);
+      // and a tenant with no contract is a no-op too, with no platform bypass
+      expect(await contracts.setModeNoneForOutsideBilling(ORG_A, SYSTEM_TRIGGER)).toEqual({
+        changed: false,
+      });
+      expect(await bypassRows()).toBe(before);
     });
   });
 });

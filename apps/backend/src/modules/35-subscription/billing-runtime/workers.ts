@@ -78,7 +78,36 @@ export interface M35WorkerDeps {
     /** When a tenant went live (M34's tenant activation): statements are charged from the go-live day. */
     readonly goLive: GoLiveReader;
     readonly stripe?: StatementStripePort;
+    /**
+     * The backstop for "a tenant that bills outside ChartWarden pays no billing percentage": the M34 wizard sets the mode post-commit and
+     * best effort, so a failure there is only retried by another clearinghouse change. This runs for every org BEFORE its statement is
+     * computed, and applies the rule if the org's clearinghouse is `outside` and its mode is not already none. Idempotent and cheap.
+     */
+    readonly reconcileOutsideMode?: (organizationId: string) => Promise<void>;
   };
+}
+
+/**
+ * One org's statement step: first the outside-mode reconcile, then the statement. A reconcile that fails is logged and NEVER blocks the
+ * statement (the statement would then be computed on the old mode, which the next hourly sweep corrects while the month is a draft).
+ */
+export async function reconcileThenStatement(
+  reconcile: ((organizationId: string) => Promise<void>) | undefined,
+  log: M35JobDeps["log"],
+  statement: (organizationId: string) => Promise<unknown>,
+  organizationId: string,
+): Promise<void> {
+  if (reconcile) {
+    try {
+      await reconcile(organizationId);
+    } catch (err) {
+      log?.("m35 outside billing mode reconcile failed for an org", {
+        organizationId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  await statement(organizationId);
 }
 
 /** One Worker per bound queue. */
@@ -180,18 +209,24 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
             listOrgs: async () => [...contracted].map((organizationId) => ({ organizationId })),
           },
           (o) =>
-            runStatementsForOrg(
-              {
-                platformRunner: jobs.platformRunner,
-                keyProvider: pricing.keyProvider,
-                netCollections: pricing.netCollections,
-                goLive: pricing.goLive,
-                ...(pricing.stripe ? { stripe: pricing.stripe } : {}),
-                ...(jobs.now ? { now: jobs.now } : {}),
-                ...(jobs.log ? { log: jobs.log } : {}),
-              },
+            reconcileThenStatement(
+              pricing.reconcileOutsideMode,
+              jobs.log,
+              (org) =>
+                runStatementsForOrg(
+                  {
+                    platformRunner: jobs.platformRunner,
+                    keyProvider: pricing.keyProvider,
+                    netCollections: pricing.netCollections,
+                    goLive: pricing.goLive,
+                    ...(pricing.stripe ? { stripe: pricing.stripe } : {}),
+                    ...(jobs.now ? { now: jobs.now } : {}),
+                    ...(jobs.log ? { log: jobs.log } : {}),
+                  },
+                  org,
+                ),
               o,
-            ).then(() => undefined),
+            ),
           "pricing_statement",
         );
       }),

@@ -176,6 +176,7 @@ import {
   summarizeRotation,
   wirePartitionRotationTenancy,
 } from "./bootstrap/jobs/partition-rotation";
+import { lateBound } from "./bootstrap/late-bound";
 import { buildM11CosignerCounter } from "./bootstrap/m11-cosigner-counter";
 import { buildDdeAssigneeEligibility } from "./bootstrap/m23-dde-assignee";
 import { buildMortalityReviewerResolver } from "./bootstrap/m30-mortality-reviewer-resolver";
@@ -1624,9 +1625,11 @@ import { createSettleOnboardingForOrg } from "./modules/34-saas-tenant-platform/
 // bound as deny-stubs in T05 and are still dormant (GAP-208): nothing registers a live impl and no
 // in-repo consumer resolves them via `getSeam`.
 import {
+  type ContractService,
   M35_JOBS_PLATFORM_JOB_ID,
   M35_OUTBOX_EVENTS,
   type PlatformRunner,
+  SYSTEM_TRIGGER,
   buildContractService,
   buildDrizzleAddonService,
   buildDrizzleM35RouteService,
@@ -1638,6 +1641,7 @@ import {
   buildPricingPlanService,
   createDrizzlePseudonymKeyProvider,
   loadM35StripeConfig,
+  modeTriggerOf,
   mountM35Routes,
   registerM35AbacPredicates,
   registerM35Seams,
@@ -4440,6 +4444,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // GAP-058 — Stripe bindings (all optional, each fail-closed when its env is absent) and the ONE audited
   // platform runner every M35 platform-table touch shares (admin routes, webhook ingest, workers).
   const m35Stripe = loadM35StripeConfig(process.env);
+  // Slice 5: a tenant that bills outside ChartWarden pays no billing percentage. The M34 wizard's post-commit clearinghouse sync and the
+  // hourly statement sweep both set the billing mode to `none` through the pricing contract service, which is built later (when the pricing
+  // routes mount; M34 has no edge to M35). A lost binding must be loud, never a silent no-op: `get()` throws and boot asserts it.
+  const pricingContracts = lateBound<ContractService>("the pricing contract service");
   const m35PlatformRunner: PlatformRunner | undefined = platformDbHandle
     ? (fn) =>
         withPlatformContext(
@@ -5996,12 +6004,6 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           const onboardingWizardHolder: {
             current?: { syncClearinghouseSteps(orgId: string): Promise<void> };
           } = {};
-          // Slice 5: a tenant that bills outside ChartWarden pays no billing percentage. The wizard's post-commit clearinghouse sync
-          // asks the pricing contract service (built when the routes mount, below) to set the billing mode to `none`; the holder is
-          // how the wizard reaches it without M34 importing M35.
-          const pricingContractsHolder: {
-            current?: { setModeNoneForOutsideBilling(organizationId: string): Promise<unknown> };
-          } = {};
           const settleOnboardingForOrg = createSettleOnboardingForOrg({
             db: dbHandle.db,
             advance: async ({ tenantAccountId, organizationId }) => {
@@ -6137,8 +6139,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 if (choice.vendor === null) return "none";
                 return choice.vendor === "outside" ? "outside" : "vendor";
               },
+              // Attributed to whoever set it off (the tenant's own request, an operator's, or a sweep) and joined to that request's trail.
               settleBillingModeForOutside: async (organizationId) => {
-                await pricingContractsHolder.current?.setModeNoneForOutsideBilling(organizationId);
+                await pricingContracts
+                  .get()
+                  .setModeNoneForOutsideBilling(
+                    organizationId,
+                    modeTriggerOf(getRequestContext(), organizationId),
+                  );
               },
               warn: (message, context) => app.log.warn(context, message),
             }),
@@ -6468,8 +6476,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 onboarding: buildPricingOnboardingPort({ wizard: m34Onboarding.wizard }),
                 log: (message, detail) => app.log.warn(detail, message),
               });
-              // The M34 wizard's post-commit clearinghouse sync reaches the contract service through this holder (M34 has no edge to M35).
-              pricingContractsHolder.current = contracts;
+              pricingContracts.bind(contracts);
               return {
                 plans: buildPricingPlanService({
                   ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
@@ -6479,6 +6486,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               };
             })(),
           });
+          // The wizard's clearinghouse sync (and the statement sweep) reach this service through the late-bound holder: prove the wiring
+          // at boot, so a lost binding stops the process instead of silently skipping "outside means billing mode none" at run time.
+          pricingContracts.assertBound();
           // M37 (Inpatient Unit / IPU Management) — mount the §4.1 core route spine over the Drizzle route
           // service. Each mutation opens its own withOrgContext (RLS scopes every statement to app.org_id),
           // drives the pure @chartwarden/inpatient §2 machines, and emits its §4.4 m37.* event through the
@@ -8377,6 +8387,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 },
                 // M34 owns the go-live date (tenant activation); M35 has no edge to it, so it reads it through this port.
                 goLive: { goLiveAt: (tx, orgId) => readTenantGoLive(tx, orgId) },
+                // The backstop for "outside means billing mode none": the wizard's sync is post-commit and best effort, so the hourly
+                // sweep applies it again, before the statement, for any org whose clearinghouse is outside (a no-op when already none).
+                reconcileOutsideMode: async (orgId) => {
+                  const choice = await getSeam("TenantClearinghouseReader").choiceForOrg(orgId);
+                  if (choice.vendor !== "outside") return;
+                  await pricingContracts.get().setModeNoneForOutsideBilling(orgId, SYSTEM_TRIGGER);
+                },
               },
             }
           : {}),

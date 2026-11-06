@@ -124,7 +124,9 @@ export {
   type PricingPlanView,
   buildPricingPlanService,
 } from "./pricing/plan-service";
+export { SYSTEM_TRIGGER, modeTriggerOf } from "./pricing/mode-trigger";
 export {
+  type ModeTrigger,
   type OnboardingPricingPort,
   type OnboardingTenantFacts,
   type PlanContractStep,

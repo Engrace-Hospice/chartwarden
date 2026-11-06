@@ -3210,6 +3210,9 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         effectiveOn: "2026-11-10",
         trigger: "clearinghouse_outside",
         operatorUserId: "system",
+        // no request set it off (a sweep, or a caller that names no trigger): attributed to the system, no person
+        triggeredBy: "system",
+        triggeredByUserId: null,
       });
       expect(audits[0]?.context.reason).toMatch(/bills outside ChartWarden/);
 

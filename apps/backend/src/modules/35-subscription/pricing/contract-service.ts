@@ -18,7 +18,7 @@
 //
 // Which contract an org "has" is decided in ONE place (./contract-select.ts), not here.
 import { type DbClient, schema } from "@chartwarden/db";
-import { withOrgContext } from "@chartwarden/tenancy";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import type { BillingServiceMode } from "@chartwarden/types";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 import { desc, eq } from "drizzle-orm";
@@ -33,8 +33,10 @@ import {
   pendingModeAfter,
 } from "./contract-mode";
 import { type ContractRecord, loadModeHistory, selectNewestContract } from "./contract-select";
+import { SYSTEM_TRIGGER } from "./mode-trigger";
 import { type PricingBandView, bandViews, loadBands } from "./plan-service";
 import {
+  type ModeTrigger,
   type OnboardingPricingPort,
   type OnboardingTenantFacts,
   PLAN_CONTRACT_STEP_KEY,
@@ -141,9 +143,14 @@ export interface ContractService {
    * Slice 5: a tenant that bills outside ChartWarden pays no billing percentage. Sets the org's billing service mode to `none` as a
    * SYSTEM action (no operator), dated like any mode change: at once while the tenant is onboarding with nothing billed, else from
    * the 1st of next month. Idempotent: `changed:false` when there is no contract, or when `none` is already in force or already
-   * pending. Audited with the reason and `trigger: clearinghouse_outside`.
+   * pending. Audited with the reason and `trigger: clearinghouse_outside`; `trigger` says who set it off (the tenant's own request, a
+   * platform operator's, or a sweep) and joins the row to that request's correlation id. The mode is read on the tenant pool first, so
+   * a no-op (the common case: every settle asks) never enters the platform runner and never leaves a platform bypass audit row.
    */
-  setModeNoneForOutsideBilling(organizationId: string): Promise<{ readonly changed: boolean }>;
+  setModeNoneForOutsideBilling(
+    organizationId: string,
+    trigger?: ModeTrigger,
+  ): Promise<{ readonly changed: boolean }>;
   /** A platform operator's read of a tenant's contract and statements; it writes a structured read-audit row naming the operator. */
   platformView(actor: M35WriteActor, orgSlug: string): Promise<PlatformPricingView>;
   tenantView(organizationId: string, userId: string): Promise<TenantPricingView>;
@@ -635,9 +642,30 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
       });
     },
 
-    async setModeNoneForOutsideBilling(organizationId) {
+    async setModeNoneForOutsideBilling(organizationId, trigger = SYSTEM_TRIGGER) {
       const audit = requireAuditPort(deps.audit);
       const onboarding = requireOnboardingPort(deps.onboarding);
+      // Most calls change nothing (every clearinghouse settle asks): decide that on the tenant pool, where no platform bypass is recorded.
+      const at0 = now();
+      const needsChange = await withOrgContext(
+        deps.db,
+        systemOrgContext(organizationId),
+        async (scoped) => {
+          const seen = await loadContract(
+            scoped as unknown as WriteTx,
+            "live",
+            at0,
+            organizationId,
+          );
+          if (!seen) return false;
+          const today0 = utcDateOf(at0);
+          return (
+            (pendingModeAfter(seen.history, today0)?.billingServiceMode ??
+              modeInForceOn(seen.history, today0)) !== "none"
+          );
+        },
+      );
+      if (!needsChange) return { changed: false };
       return platformRunner(async (tx) => {
         const tenant = await onboarding.enterByOrg(tx, organizationId);
         if (!tenant) return { changed: false };
@@ -656,7 +684,16 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
           organizationId: tenant.organizationId,
           operator: SYSTEM_OPERATOR,
           reason: "the tenant bills outside ChartWarden, so it pays no billing percentage",
-          detail: { from: current, to: "none", effectiveOn, trigger: "clearinghouse_outside" },
+          detail: {
+            from: current,
+            to: "none",
+            effectiveOn,
+            trigger: "clearinghouse_outside",
+            triggeredBy: trigger.kind,
+            triggeredByUserId: trigger.userId,
+            triggeredByMembershipId: trigger.membershipId,
+          },
+          ...(trigger.correlationId ? { correlationId: trigger.correlationId } : {}),
         });
         return { changed: true };
       });

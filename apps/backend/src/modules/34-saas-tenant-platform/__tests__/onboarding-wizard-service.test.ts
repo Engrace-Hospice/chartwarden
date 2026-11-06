@@ -1776,6 +1776,17 @@ describe("choosing outside ChartWarden: the billing service mode follows (slice 
     expect(warnings.some((w) => /billing service mode/i.test(w))).toBe(true);
   });
 
+  it("a failed attempt is retried by the next sync: the first call fails, a later one reaches the pricing side", async () => {
+    failWith = new Error("pricing unavailable");
+    await modeWizard().syncClearinghouseSteps(ORG);
+    expect(calls).toEqual([ORG]); // asked once, and refused
+    expect(warnings.some((w) => /billing service mode/i.test(w))).toBe(true);
+
+    failWith = null;
+    await modeWizard().syncClearinghouseSteps(ORG);
+    expect(calls).toEqual([ORG, ORG]); // asked again, and this time it went through
+  });
+
   it("is optional: a deployment without the pricing side syncs the steps as before", async () => {
     await expect(modeWizard(false).syncClearinghouseSteps(ORG)).resolves.toBeUndefined();
     expect(calls).toEqual([]);

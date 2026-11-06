@@ -15,6 +15,19 @@ export interface PlatformAuditEntry {
   readonly operator: Pick<M35WriteActor, "userId" | "membershipId">;
   readonly reason: string;
   readonly detail?: Readonly<Record<string, string | number | boolean | null>>;
+  /** The request this change belongs to, when there is one: it becomes the row's correlation id so the change joins that request's trail. */
+  readonly correlationId?: string;
+}
+
+/**
+ * Who set a billing mode when no operator did: the actor that TRIGGERED a system action, and the request it came in on. Ids only.
+ * `system` is a sweep (no request, no person); `tenant` is the tenant's own request; `platform` is a platform operator's.
+ */
+export interface ModeTrigger {
+  readonly kind: "tenant" | "platform" | "system";
+  readonly userId: string | null;
+  readonly membershipId: string | null;
+  readonly correlationId: string | null;
 }
 
 /** The structural org-context transaction handle the queries run through (mirrors M27's WriteTx). */
@@ -111,7 +124,9 @@ export function buildPlatformAuditPort(
         resourceId: entry.resourceId,
         outcome: "success",
         severity: "warn",
-        correlationId: `m35-pricing:${entry.eventType}:${entry.resourceId}:${randomUUID()}`,
+        correlationId:
+          entry.correlationId ??
+          `m35-pricing:${entry.eventType}:${entry.resourceId}:${randomUUID()}`,
         // `detail` FIRST: it can add facts but never overwrite the operator, the tenant or the reason that follow it.
         context: {
           ...entry.detail,
