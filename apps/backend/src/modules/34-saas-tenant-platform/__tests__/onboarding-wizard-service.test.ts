@@ -946,6 +946,204 @@ describe("platform staff are never the compliance officer or the attester (one o
   });
 });
 
+describe("a pending attestation does not survive a change to the data it attested", () => {
+  beforeEach(async () => {
+    settle("organisation", "billing", "locations", "baa_auto");
+    await wizard().attestGoLive(OFFICER, ORG, "all checks reviewed");
+  });
+  const pendingCount = () => state.goLive.filter((g) => g.status === "pending").length;
+
+  it("an org-profile edit by the tenant's admin voids the pending attestation, audited with its reason and the actor", async () => {
+    expect(statusOf("go_live_checklist_complete")).toBe("in_progress");
+    await wizard().setOrgProfile(ADMIN, ORG, { displayName: "Acme Hospice East" });
+    expect(pendingCount()).toBe(0);
+    expect(state.goLive[0]).toMatchObject({
+      status: "revoked",
+      revokeReason: "onboarding data changed after attestation",
+      revokedByUserId: "admin-u",
+      revokedByMembershipId: "admin-m",
+    });
+    expect(statusOf("go_live_checklist_complete")).toBe("pending");
+    // approval can no longer rest on it
+    expect(
+      await code(wizard().approveGoLive("acme", OPS, "reviewed the evidence and the BAA")),
+    ).toBe("GO_LIVE_NOT_ATTESTED");
+    expect(tenant().status).toBe("onboarding");
+  });
+
+  it("the same edit by a platform operator voids it, attributed to the operator", async () => {
+    await wizard().setOrgProfilePlatform("acme", OPS, { orgTimezone: "America/Chicago" });
+    expect(state.goLive[0]).toMatchObject({
+      status: "revoked",
+      revokedByUserId: "ops-u",
+      revokedByMembershipId: "ops-m",
+    });
+  });
+
+  it("the officer can attest again after the void", async () => {
+    await wizard().setOrgProfile(ADMIN, ORG, { displayName: "Acme Hospice East" });
+    await wizard().attestGoLive(OFFICER, ORG, "re-checked after the change");
+    expect(pendingCount()).toBe(1);
+  });
+
+  it("a refused or invalid edit voids nothing", async () => {
+    expect(await code(wizard().setOrgProfile(ADMIN, ORG, { orgTimezone: "Mars/Olympus" }))).toBe(
+      "INVALID_ORG_TIMEZONE",
+    );
+    expect(pendingCount()).toBe(1);
+    state.tenants = [{ ...tenant(), status: "active" }];
+    expect(await code(wizard().setOrgProfile(ADMIN, ORG, { displayName: "Too Late" }))).toBe(
+      "TENANT_NOT_ONBOARDING",
+    );
+    expect(pendingCount()).toBe(1);
+  });
+
+  it("an edit with no pending attestation is a plain edit", async () => {
+    await wizard().revokeGoLive("acme", OPS, "BAA addendum is being renegotiated");
+    const before = JSON.stringify(state.goLive);
+    await wizard().setOrgProfile(ADMIN, ORG, { displayName: "Acme Hospice East" });
+    expect(JSON.stringify(state.goLive)).toBe(before);
+  });
+});
+
+describe("a BAA recorded or last changed by the approving operator cannot take the tenant live", () => {
+  const APPROVAL = "reviewed the evidence and the BAA";
+  beforeEach(async () => {
+    settle("organisation", "billing", "locations", "baa_auto");
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+  });
+
+  it.each([
+    ["recorded", { recordedByUserId: "ops-u" }],
+    ["last changed", { recordedByUserId: "someone-u", updatedByUserId: "ops-u" }],
+  ])(
+    "refuses (409 GO_LIVE_APPROVER_WROTE_BAA) an approver who %s the governing BAA, and changes nothing",
+    async (_label, writer) => {
+      state.baa = new Map([
+        [
+          TENANT,
+          { baaStatus: "executed", expiresOn: "2028-01-01", documentId: "doc-1", ...writer },
+        ],
+      ]);
+      try {
+        await wizard().approveGoLive("acme", OPS, APPROVAL);
+        expect.unreachable("the BAA's own writer cannot approve the go-live");
+      } catch (e) {
+        expect((e as ChartWardenError).code).toBe("GO_LIVE_APPROVER_WROTE_BAA");
+        expect((e as ChartWardenError).statusCode).toBe(409);
+      }
+      expect(tenant().status).toBe("onboarding");
+      expect(state.goLive[0]?.status).toBe("pending");
+      expect(activateOrganization).not.toHaveBeenCalled();
+    },
+  );
+
+  it("another operator approves, and a legacy row with no recorded writer cannot be judged", async () => {
+    state.baa = new Map([
+      [
+        TENANT,
+        {
+          baaStatus: "executed",
+          expiresOn: "2028-01-01",
+          documentId: "doc-1",
+          recordedByUserId: "someone-u",
+        },
+      ],
+    ]);
+    await expect(wizard().approveGoLive("acme", OPS, APPROVAL)).resolves.toBeDefined();
+  });
+
+  it("a legacy BAA row with no writer columns still lets the approval through", async () => {
+    await expect(wizard().approveGoLive("acme", OPS, APPROVAL)).resolves.toBeDefined();
+  });
+});
+
+describe("a failed officer assignment leaves no stray role grant", () => {
+  const unbind = vi.fn(async () => undefined);
+  const wizardWithUnbind = () =>
+    createOnboardingWizard({
+      runner: createMemoryWizardRunner(state),
+      orgProfile: createMemoryOrgProfile(state),
+      bindComplianceOfficerRole: bindOfficerRole,
+      unbindComplianceOfficerRole: unbind,
+      warn: (message) => warnings.push(message),
+      now: () => NOW,
+    });
+  beforeEach(() => unbind.mockClear());
+
+  it("expires the grant the assignment just bound when a later step fails, and the original error reaches the caller", async () => {
+    const runner = createMemoryWizardRunner(state);
+    const failingAudit = createOnboardingWizard({
+      runner: {
+        inTenant: runner.inTenant,
+        inPlatform: (reason, fn, actor) =>
+          runner.inPlatform(
+            reason,
+            (store) =>
+              fn({
+                ...store,
+                recordPlatformAudit: async () => {
+                  throw new Error("audit write unavailable");
+                },
+              }),
+            actor,
+          ),
+      },
+      orgProfile: createMemoryOrgProfile(state),
+      bindComplianceOfficerRole: bindOfficerRole,
+      unbindComplianceOfficerRole: unbind,
+      now: () => NOW,
+    });
+    await expect(
+      failingAudit.setComplianceOfficerPlatform("acme", OPS, "admin-m", OPS_REASON),
+    ).rejects.toThrow("audit write unavailable");
+    expect(bindOfficerRole).toHaveBeenCalledTimes(1);
+    expect(unbind).toHaveBeenCalledWith({
+      organizationId: ORG,
+      tenantAccountId: TENANT,
+      membershipId: "admin-m",
+      operator: OPS,
+      reason: OPS_REASON,
+    });
+  });
+
+  it("does not undo a grant it did not make", async () => {
+    await wizardWithUnbind().setComplianceOfficerPlatform("acme", OPS, "co-m", OPS_REASON);
+    expect(unbind).not.toHaveBeenCalled();
+  });
+
+  it("a failing undo is logged and never replaces the assignment's own error", async () => {
+    unbind.mockRejectedValueOnce(new Error("tenant database unavailable"));
+    const runner = createMemoryWizardRunner(state);
+    const w = createOnboardingWizard({
+      runner: {
+        inTenant: runner.inTenant,
+        inPlatform: (reason, fn, actor) =>
+          runner.inPlatform(
+            reason,
+            (store) =>
+              fn({
+                ...store,
+                recordPlatformAudit: async () => {
+                  throw new Error("audit write unavailable");
+                },
+              }),
+            actor,
+          ),
+      },
+      orgProfile: createMemoryOrgProfile(state),
+      bindComplianceOfficerRole: bindOfficerRole,
+      unbindComplianceOfficerRole: unbind,
+      warn: (message) => warnings.push(message),
+      now: () => NOW,
+    });
+    await expect(
+      w.setComplianceOfficerPlatform("acme", OPS, "admin-m", OPS_REASON),
+    ).rejects.toThrow("audit write unavailable");
+    expect(warnings.some((m) => /undoing the compliance officer role bind/.test(m))).toBe(true);
+  });
+});
+
 describe("go-live: two people, a live attester, a fresh attestation", () => {
   beforeEach(() => settle("organisation", "billing", "locations", "baa_auto"));
   const DAY_MS = 24 * 3600 * 1000;

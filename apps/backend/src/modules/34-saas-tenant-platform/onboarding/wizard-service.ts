@@ -68,6 +68,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
   const { attest, skip, reopen, start, block } = steps;
   const {
     ensureOfficerRole,
+    undoOfficerRoleBind,
     assignOfficer,
     goLiveAttest,
     goLiveApprove,
@@ -158,15 +159,36 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     const result = await stepResult(ctx, task);
     return { ...result, view: redactStepForTenant(result.view) };
   };
-  const profileResult = async (
+  /**
+   * The org-profile write, on the TENANT pool as the actor (an operator acts through the tenant's own RLS scope, as the
+   * onboarding-data writes do), in ONE transaction: the shared onboarding lock, the status check under it, the write, and the
+   * void of a pending go-live attestation the change makes stale. A check made before the transaction could be overtaken by
+   * go-live approval (which takes the lock exclusive); this one cannot.
+   */
+  const profileResult = (
     organizationId: string,
     patch: ProfileInput,
-    actorUserId: string,
-    tenant: TenantRef,
-  ) => {
-    requireOnboarding(tenant);
-    return deps.orgProfile.update(organizationId, normalizeOrgProfilePatch(patch), actorUserId);
-  };
+    actor: { readonly userId: string; readonly membershipId: string },
+  ) =>
+    deps.runner.inTenant(
+      { kind: "tenant", userId: actor.userId, membershipId: actor.membershipId, roles: [] },
+      organizationId,
+      async (store) => {
+        await store.lockOnboardingShared(organizationId);
+        requireOnboarding(await loadTenant(store, { organizationId }));
+        const profile = await store.updateOrgProfile(
+          organizationId,
+          normalizeOrgProfilePatch(patch),
+          actor.userId,
+        );
+        await store.voidPendingGoLiveForDataChange({
+          organizationId,
+          revokedByUserId: actor.userId,
+          revokedByMembershipId: actor.membershipId,
+        });
+        return profile;
+      },
+    );
 
   return {
     getPlatform: (orgSlug) => platform("platform-ops tenant onboarding read", orgSlug, withProfile),
@@ -208,7 +230,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
         "platform-ops tenant org profile lookup",
         async (store) => loadTenant(store, { orgSlug }),
       );
-      return profileResult(tenant.organizationId, patch, actor.userId, tenant);
+      return profileResult(tenant.organizationId, patch, actor);
     },
     setComplianceOfficerPlatform: async (orgSlug, actor, membershipId, reasonInput) => {
       const reason = normalizeReason(reasonInput, { max: OFFICER_REASON_MAX });
@@ -218,32 +240,33 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
         async (ctx) => {
           const previous = ctx.tenant.complianceOfficerMembershipId;
           const roleBound = await ensureOfficerRole(ctx, actor, membershipId, reason);
-          const assigned = await assignOfficer(ctx, membershipId, actor);
-          if (assigned.superseded) {
-            await revokePending(
-              ctx,
-              assigned.superseded,
-              actor.membershipId,
-              OFFICER_CHANGED_REVOKE_REASON,
-            );
+          try {
+            const assigned = await assignOfficer(ctx, membershipId, actor);
+            if (assigned.superseded) {
+              await revokePending(ctx, assigned.superseded, actor, OFFICER_CHANGED_REVOKE_REASON);
+            }
+            // The row trigger names the operator (app.user_id) but cannot say why or who it replaced: one explicit entry.
+            await ctx.store.recordPlatformAudit({
+              eventType: "m34.onboarding.compliance_officer_assigned",
+              tenantAccountId: ctx.tenant.tenantAccountId,
+              organizationId: ctx.tenant.organizationId,
+              operator: { userId: actor.userId, membershipId: actor.membershipId },
+              reason,
+              detail: {
+                previousOfficerMembershipId: previous,
+                newOfficerMembershipId: membershipId,
+                roleBoundByOperator: roleBound ? "true" : "false",
+              },
+            });
+            return {
+              tenant: ctx.tenant,
+              out: { complianceOfficerMembershipId: assigned.complianceOfficerMembershipId },
+            };
+          } catch (error) {
+            // The bind committed on its own transaction; a later failure must not leave that grant behind.
+            if (roleBound) await undoOfficerRoleBind(ctx, actor, membershipId, reason);
+            throw error;
           }
-          // The row trigger names the operator (app.user_id) but cannot say why or who it replaced: one explicit entry.
-          await ctx.store.recordPlatformAudit({
-            eventType: "m34.onboarding.compliance_officer_assigned",
-            tenantAccountId: ctx.tenant.tenantAccountId,
-            organizationId: ctx.tenant.organizationId,
-            operator: { userId: actor.userId, membershipId: actor.membershipId },
-            reason,
-            detail: {
-              previousOfficerMembershipId: previous,
-              newOfficerMembershipId: membershipId,
-              roleBoundByOperator: roleBound ? "true" : "false",
-            },
-          });
-          return {
-            tenant: ctx.tenant,
-            out: { complianceOfficerMembershipId: assigned.complianceOfficerMembershipId },
-          };
         },
         actor,
       );
@@ -310,12 +333,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
           ),
         )
       ).view,
-    setOrgProfile: async (actor, organizationId, patch) => {
-      const tenant = await deps.runner.inTenant(actor, organizationId, async (store) =>
-        loadTenant(store, { organizationId }),
-      );
-      return profileResult(organizationId, patch, actor.userId, tenant);
-    },
+    setOrgProfile: (actor, organizationId, patch) => profileResult(organizationId, patch, actor),
     setComplianceOfficer: async (actor, organizationId, membershipId) => {
       const done = await tenantTx(actor, organizationId, async (ctx) => ({
         tenant: ctx.tenant,

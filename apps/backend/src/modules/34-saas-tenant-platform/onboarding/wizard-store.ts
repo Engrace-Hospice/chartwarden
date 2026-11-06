@@ -5,6 +5,7 @@
 // transaction), over Drizzle in production and over memory in tests. A store is bound to ONE open transaction.
 import type {
   GoLiveAttestation,
+  GoverningBaa,
   PlatformActor,
   StepTask,
   StepTemplate,
@@ -13,6 +14,7 @@ import type {
   TenantRef,
   WizardMember,
 } from "./model";
+import type { OrgProfile, OrgProfilePatch } from "./org-profile";
 
 /** Columns a service call may change on a task. `completionEvidence` replaces the jsonb bag (the caller merges). */
 export interface TaskPatch {
@@ -82,16 +84,36 @@ export interface WizardStore {
         }
       | {
           readonly status: "revoked";
-          readonly revokedByMembershipId: string;
+          readonly revokedByUserId: string;
+          readonly revokedByMembershipId: string | null;
           readonly revokeReason: string;
         },
   ): Promise<GoLiveAttestation | null>;
-  latestBaa(
-    tenantAccountId: string,
-  ): Promise<{ readonly baaStatus: string; readonly expiresOn: string | null } | undefined>;
+  /** The governing BAA (newest dated; an undated termination wins), or undefined. */
+  latestBaa(tenantAccountId: string): Promise<GoverningBaa | undefined>;
   setComplianceOfficer(tenantAccountId: string, membershipId: string): Promise<void>;
   /** Writes `entry` as a platform-scoped audit event, atomically with the change it describes (platform stores only). */
   recordPlatformAudit(entry: PlatformAuditEntry): Promise<void>;
+  /**
+   * Takes the SHARED onboarding lock (held until this transaction ends), so "the tenant is still onboarding" stays true for the
+   * write that follows: go-live approval takes the same lock EXCLUSIVE. Call it before reading the status you act on.
+   */
+  lockOnboardingShared(organizationId: string): Promise<void>;
+  /** Writes the validated org profile patch inside THIS transaction (through the M1/M2 port) and returns the stored profile. */
+  updateOrgProfile(
+    organizationId: string,
+    patch: OrgProfilePatch,
+    actorUserId: string,
+  ): Promise<OrgProfile>;
+  /**
+   * Revokes the organisation's pending go-live attestation because onboarding data changed after it was attested (true when
+   * one was voided), inside THIS transaction. The attestation stated the data was ready; a change makes that statement stale.
+   */
+  voidPendingGoLiveForDataChange(input: {
+    readonly organizationId: string;
+    readonly revokedByUserId: string;
+    readonly revokedByMembershipId: string | null;
+  }): Promise<boolean>;
   /** The membership as it is now (user, liveness, roles), or null when it is not a membership of the organisation. */
   loadMember(organizationId: string, membershipId: string): Promise<WizardMember | null>;
   /**

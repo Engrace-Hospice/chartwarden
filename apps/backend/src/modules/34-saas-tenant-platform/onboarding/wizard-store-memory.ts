@@ -6,6 +6,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   GoLiveAttestation,
+  GoverningBaa,
   StepTask,
   StepTemplate,
   TaskStatus,
@@ -13,18 +14,23 @@ import type {
   TenantRef,
   WizardMember,
 } from "./model";
+import { GO_LIVE_DATA_CHANGED_REVOKE_REASON, GO_LIVE_TEMPLATE_KEY } from "./model";
 import type { OrgProfile, OrgProfilePatch, OrgProfilePort } from "./org-profile";
 import type { PlatformAuditEntry, TaskPatch, WizardRunner, WizardStore } from "./wizard-store";
 
 /** An attestation row with the organisation the real table scopes it by. */
 export type MemoryGoLive = GoLiveAttestation & { organizationId: string };
 
+/** A BAA as the memory store keeps it: the writer and document fields are optional (absent = a legacy row). */
+export type MemoryBaa = Pick<GoverningBaa, "baaStatus" | "expiresOn"> &
+  Partial<Pick<GoverningBaa, "documentId" | "recordedByUserId" | "updatedByUserId">>;
+
 export interface MemoryWizardState {
   tenants: TenantRef[];
   templates: StepTemplate[];
   tasks: (StepTask & { tenantAccountId: string; completionEvidence: Record<string, unknown> })[];
   goLive: MemoryGoLive[];
-  baa: Map<string, { baaStatus: string; expiresOn: string | null }>;
+  baa: Map<string, MemoryBaa>;
   /** Memberships by id; a membership is visible only to its own organisation. */
   members: Map<string, WizardMember & { organizationId: string }>;
   activations: { tenantAccountId: string; actorMembershipId: string; reason: string }[];
@@ -158,6 +164,7 @@ export function createMemoryWizardStore(
         approvedAt: null,
         approvalReason: null,
         revokedByMembershipId: null,
+        revokedByUserId: null,
         revokedAt: null,
         revokeReason: null,
       };
@@ -184,6 +191,7 @@ export function createMemoryWizardStore(
           : {
               ...current,
               status: "revoked",
+              revokedByUserId: patch.revokedByUserId,
               revokedByMembershipId: patch.revokedByMembershipId,
               revokedAt: at,
               revokeReason: patch.revokeReason,
@@ -192,7 +200,15 @@ export function createMemoryWizardStore(
       return next;
     },
     async latestBaa(tenantAccountId) {
-      return state.baa.get(tenantAccountId);
+      const baa = state.baa.get(tenantAccountId);
+      return baa
+        ? {
+            documentId: null,
+            recordedByUserId: null,
+            updatedByUserId: null,
+            ...baa,
+          }
+        : undefined;
     },
     async setComplianceOfficer(tenantAccountId, membershipId) {
       state.tenants = state.tenants.map((t) =>
@@ -210,6 +226,43 @@ export function createMemoryWizardStore(
       if (!member || member.organizationId !== organizationId) return null;
       const { organizationId: _org, ...visible } = member;
       return visible;
+    },
+    async lockOnboardingShared() {
+      // One in-process "database": nothing runs concurrently with a memory transaction.
+    },
+    async updateOrgProfile(organizationId, patch) {
+      const current = state.profiles.get(organizationId);
+      const next: OrgProfile = {
+        displayName: patch.displayName ?? current?.displayName ?? "",
+        orgTimezone: patch.orgTimezone ?? current?.orgTimezone ?? "America/New_York",
+      };
+      state.profiles.set(organizationId, next);
+      return next;
+    },
+    async voidPendingGoLiveForDataChange(input) {
+      const index = state.goLive.findIndex(
+        (g) => g.organizationId === input.organizationId && g.status === "pending",
+      );
+      if (index < 0) return false;
+      state.goLive[index] = {
+        ...(state.goLive[index] as MemoryGoLive),
+        status: "revoked",
+        revokedByUserId: input.revokedByUserId,
+        revokedByMembershipId: input.revokedByMembershipId,
+        revokedAt: new Date(),
+        revokeReason: GO_LIVE_DATA_CHANGED_REVOKE_REASON,
+      };
+      const task = state.tasks.findIndex(
+        (t) => t.templateKey === GO_LIVE_TEMPLATE_KEY && t.status === "in_progress",
+      );
+      if (task >= 0) {
+        state.tasks[task] = {
+          ...(state.tasks[task] as MemoryWizardState["tasks"][number]),
+          status: "pending",
+          startedAt: null,
+        };
+      }
+      return true;
     },
     async isPlatformStaff(userId) {
       return state.platformStaffUserIds.has(userId);

@@ -71,6 +71,7 @@ const att = (over: Partial<GoLiveAttestation> = {}): GoLiveAttestation => ({
   approvedAt: null,
   approvalReason: null,
   revokedByMembershipId: null,
+  revokedByUserId: null,
   revokedAt: null,
   revokeReason: null,
   ...over,

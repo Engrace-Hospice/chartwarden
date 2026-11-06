@@ -82,6 +82,7 @@ const ORG_A = "a1000000-0000-4000-8000-0000000000a1"; // active tenant that alre
 const ORG_B = "b2000000-0000-4000-8000-0000000000b2"; // the tenant being onboarded
 const ORG_D = "d4000000-0000-4000-8000-0000000000d4"; // still provisioning
 const ORG_E = "e6000000-0000-4000-8000-0000000000e6"; // onboarding; idempotency + activation-lock cases
+const ORG_F = "f8000000-0000-4000-8000-0000000000f8"; // onboarding; attestation-void, advance and reason-screen cases
 const OPERATOR = "c3000000-0000-4000-8000-0000000000c3";
 const MEMBERSHIP = "e5000000-0000-4000-8000-0000000000e5";
 const A_PE = "f6000000-0000-4000-8000-0000000000f6";
@@ -136,6 +137,8 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
   let platformPool: ReturnType<typeof createDbClient>;
   let server: FastifyInstance;
   let seq = 0;
+  const advanced: { tenantAccountId: string; organizationId: string }[] = [];
+  const warnings: string[] = [];
   let peId = "";
   let locationId = "";
   let credentialId = "";
@@ -240,6 +243,7 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
       [ORG_B, "onb-b"],
       [ORG_D, "onb-d"],
       [ORG_E, "onb-e"],
+      [ORG_F, "onb-f"],
     ] as const) {
       await admin.query(
         "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -254,6 +258,7 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
       [ORG_B, "onboarding"],
       [ORG_D, "provisioning"],
       [ORG_E, "onboarding"],
+      [ORG_F, "onboarding"],
     ] as const) {
       await admin.query(
         "INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,$3,'b@x.test','p@x.test')",
@@ -305,6 +310,10 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
     registerPlatformJob(JOB_ID);
     const service = buildDrizzleOnboardingDataService({
       db: tenantPool.db,
+      advance: async (tenant) => {
+        advanced.push(tenant);
+      },
+      warn: (message) => warnings.push(message),
       resolveTenant: buildPlatformTenantResolver({
         platformDb: platformPool.db,
         auditBypass: m34PlatformBypassAuditor,
@@ -989,6 +998,132 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
 
     it("an unknown tenant slug is a 404, not a hint", async () => {
       await refused(await call("POST", "no-such-tenant", "provider-entities", body777), 404);
+    });
+  });
+
+  describe("review fixes: a write voids a stale attestation, settles at once, and screens its reason", () => {
+    const F_LOCATION = (peIdF: string, name: string) => ({
+      providerEntityId: peIdF,
+      name,
+      addressLine1: "9 Elm St",
+      city: "Fresno",
+      state: "CA",
+      postalCode: "93701",
+      timezone: "America/Los_Angeles",
+      reason: REASON,
+    });
+    let peF = "";
+    const pendingAttestation = () =>
+      q(
+        `INSERT INTO tenant_go_live_attestation (organization_id, tenant_account_id, attested_by_membership_id, attested_by_user_id)
+         SELECT $1, id, 'e5000000-0000-4000-8000-0000000000f1', 'c3000000-0000-4000-8000-0000000000f2' FROM tenant_account WHERE organization_id=$1
+         RETURNING id`,
+        [ORG_F],
+      );
+    const attestationStatus = async () =>
+      (
+        await q<{
+          status: string;
+          revoke_reason: string | null;
+          revoked_by_user_id: string | null;
+          revoked_by_membership_id: string | null;
+        }>(
+          "SELECT status, revoke_reason, revoked_by_user_id, revoked_by_membership_id FROM tenant_go_live_attestation WHERE organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+          [ORG_F],
+        )
+      )[0];
+
+    it("an operator write settles at once: the advance runs for the tenant after the commit, not for a refused write", async () => {
+      advanced.length = 0;
+      const created = await call("POST", "onb-f", "provider-entities", {
+        ...PE_BODY,
+        ccn: "666661",
+        npi: "1245319599",
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      peF = created.json().id;
+      const tenantF = (
+        await q<{ id: string }>("SELECT id FROM tenant_account WHERE organization_id=$1", [ORG_F])
+      )[0]?.id;
+      expect(advanced).toEqual([{ tenantAccountId: tenantF, organizationId: ORG_F }]);
+
+      advanced.length = 0;
+      const refused = await call("POST", "onb-a", "provider-entities", {
+        ...PE_BODY,
+        ccn: "666662",
+        npi: "1245319599",
+      });
+      expect(refused.statusCode).toBe(409); // tenant A is active
+      expect(advanced).toEqual([]);
+    });
+
+    it("an advance failure is warned, never thrown: the write stays", async () => {
+      warnings.length = 0;
+      const original = advanced.push.bind(advanced);
+      advanced.push = () => {
+        throw new Error("advance pass unavailable");
+      };
+      try {
+        const res = await call(
+          "POST",
+          "onb-f",
+          "locations",
+          F_LOCATION(peF, "Advance Fails Annex"),
+        );
+        expect(res.statusCode, res.body).toBe(201);
+      } finally {
+        advanced.push = original;
+      }
+      expect(warnings).toHaveLength(1);
+      expect((await q("SELECT 1 FROM location WHERE name='Advance Fails Annex'")).length).toBe(1);
+    });
+
+    it("a write voids the pending go-live attestation in the same transaction, attributed to the operator", async () => {
+      await pendingAttestation();
+      const res = await call("POST", "onb-f", "locations", F_LOCATION(peF, "Main Campus"));
+      expect(res.statusCode, res.body).toBe(201);
+      expect(await attestationStatus()).toMatchObject({
+        status: "revoked",
+        revoke_reason: "onboarding data changed after attestation",
+        revoked_by_user_id: OPERATOR,
+        revoked_by_membership_id: MEMBERSHIP,
+      });
+    });
+
+    it("a write that FAILS rolls the void back: the attestation stays pending", async () => {
+      await pendingAttestation();
+      const dup = await call("POST", "onb-f", "provider-entities", {
+        ...PE_BODY,
+        ccn: "666661", // the CCN created above
+        npi: "1679576722",
+      });
+      expect(dup.statusCode).toBe(409);
+      expect(await attestationStatus()).toMatchObject({ status: "pending" });
+      await q("DELETE FROM tenant_go_live_attestation WHERE organization_id=$1", [ORG_F]);
+    });
+
+    it("a reason that holds a patient identifier is refused (422) and writes nothing", async () => {
+      const before = (
+        await q(
+          "SELECT 1 FROM location l JOIN provider_entity p ON p.id=l.provider_entity_id WHERE p.organization_id=$1",
+          [ORG_F],
+        )
+      ).length;
+      const res = await call("POST", "onb-f", "locations", {
+        ...F_LOCATION(peF, "Should Not Exist"),
+        reason: "Customer asked support to enter this, patient 900-12-3456 on the call",
+      });
+      expect(res.statusCode, res.body).toBe(422);
+      expect(errorCode(res)).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+      expect(res.body).not.toContain("900-12-3456");
+      expect(
+        (
+          await q(
+            "SELECT 1 FROM location l JOIN provider_entity p ON p.id=l.provider_entity_id WHERE p.organization_id=$1",
+            [ORG_F],
+          )
+        ).length,
+      ).toBe(before);
     });
   });
 

@@ -17,6 +17,8 @@ import {
 } from "@chartwarden/tenancy";
 import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { pickGoverningBaa } from "../routes/platform/activation-guards";
+import { lockTenantOnboardingShared } from "../routes/platform/tenant-onboarding-lock";
+import { voidPendingGoLiveForDataChange as voidPendingGoLive } from "./go-live-void";
 import type {
   CompletionMode,
   GoLiveAttestation,
@@ -28,6 +30,7 @@ import type {
   TenantRef,
   WizardMember,
 } from "./model";
+import type { OrgProfilePort } from "./org-profile";
 import type { TaskPatch, WizardRunner, WizardStore } from "./wizard-store";
 
 /** onboarding -> active inside the caller's transaction (built by the platform backend: it owns the lifecycle machine). */
@@ -41,6 +44,9 @@ export type WizardActivation = (
     readonly tasksSkipped: number;
   },
 ) => Promise<void>;
+
+/** The org-profile port bound to ONE open transaction (its own `withOrgContext` then nests as a savepoint in it). */
+export type OrgProfilePortFor = (tx: DbClient) => OrgProfilePort;
 
 const T = schema.onboardingTaskTemplate;
 const K = schema.onboardingTask;
@@ -93,6 +99,7 @@ const toGoLive = (row: schema.TenantGoLiveAttestation): GoLiveAttestation => ({
   approvedAt: row.approvedAt,
   approvalReason: row.approvalReason,
   revokedByMembershipId: row.revokedByMembershipId,
+  revokedByUserId: row.revokedByUserId,
   revokedAt: row.revokedAt,
   revokeReason: row.revokeReason,
 });
@@ -101,7 +108,11 @@ const toGoLive = (row: schema.TenantGoLiveAttestation): GoLiveAttestation => ({
 const dateOnly = (v: string | Date | null): string | null =>
   v === null ? null : typeof v === "string" ? v : v.toISOString().slice(0, 10);
 
-export function createDrizzleWizardStore(tx: DbClient, activation?: WizardActivation): WizardStore {
+export function createDrizzleWizardStore(
+  tx: DbClient,
+  activation?: WizardActivation,
+  orgProfileFor?: OrgProfilePortFor,
+): WizardStore {
   const repo = new OnboardingRepository(tx);
   return {
     async loadTenant(by) {
@@ -189,6 +200,7 @@ export function createDrizzleWizardStore(tx: DbClient, activation?: WizardActiva
             }
           : {
               status: "revoked" as const,
+              revokedByUserId: patch.revokedByUserId,
               revokedByMembershipId: patch.revokedByMembershipId,
               revokedAt: at,
               revokeReason: patch.revokeReason,
@@ -204,7 +216,15 @@ export function createDrizzleWizardStore(tx: DbClient, activation?: WizardActiva
     async latestBaa(tenantAccountId) {
       const rows = await new BaaRegisterRepository(tx).listByTenantAccountId(tenantAccountId);
       const baa = pickGoverningBaa(rows);
-      return baa ? { baaStatus: baa.baaStatus, expiresOn: dateOnly(baa.expiresOn) } : undefined;
+      return baa
+        ? {
+            baaStatus: baa.baaStatus,
+            expiresOn: dateOnly(baa.expiresOn),
+            documentId: baa.documentId,
+            recordedByUserId: baa.recordedByUserId,
+            updatedByUserId: baa.updatedByUserId,
+          }
+        : undefined;
     },
     async setComplianceOfficer(tenantAccountId, membershipId) {
       await tx
@@ -268,6 +288,14 @@ export function createDrizzleWizardStore(tx: DbClient, activation?: WizardActiva
         roleKeys: held.map((r) => r.key),
       };
     },
+    async lockOnboardingShared(organizationId) {
+      await lockTenantOnboardingShared(tx, organizationId);
+    },
+    async updateOrgProfile(organizationId, patch, actorUserId) {
+      if (!orgProfileFor) throw new Error("this wizard store has no org profile port");
+      return orgProfileFor(tx).update(organizationId, patch, actorUserId);
+    },
+    voidPendingGoLiveForDataChange: (input) => voidPendingGoLive(tx, input),
     async isPlatformStaff(userId) {
       const holders = await tx.execute<{ user_id: string }>(
         sql`SELECT user_id FROM m34_platform_role_holders(ARRAY[${sql.join(
@@ -292,13 +320,15 @@ export interface DrizzleWizardRunnerDeps {
   readonly auditBypass: PlatformBypassAuditor<DbClient>;
   readonly platformJobId: string;
   readonly activation: WizardActivation;
+  /** The org-profile write, bound to the wizard's own transaction so the status check, the write and the void share it. */
+  readonly orgProfileFor: OrgProfilePortFor;
 }
 
 export function createDrizzleWizardRunner(deps: DrizzleWizardRunnerDeps): WizardRunner {
   return {
     inTenant: (actor, organizationId, fn) =>
       withOrgContext(deps.db, { organizationId, userId: actor.userId }, (tx) =>
-        fn(createDrizzleWizardStore(tx as unknown as DbClient)),
+        fn(createDrizzleWizardStore(tx as unknown as DbClient, undefined, deps.orgProfileFor)),
       ),
     inPlatform: <T>(reason: string, fn: (store: WizardStore) => Promise<T>, actorUserId?: string) =>
       withPlatformContext<DbClient, T>(

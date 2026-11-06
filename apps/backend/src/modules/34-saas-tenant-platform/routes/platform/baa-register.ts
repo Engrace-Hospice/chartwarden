@@ -89,6 +89,7 @@ export function registerBaaRegisterRoutes(app: FastifyInstance, deps: BaaRegiste
         expiresOn: body.expiresOn ?? null,
         breachNotificationContactEmail: body.breachNotificationContactEmail ?? null,
         breachNotificationContactPhone: body.breachNotificationContactPhone ?? null,
+        documentId: body.documentId ?? null,
       });
       return reply.code(201).send(res);
     },

@@ -24,7 +24,7 @@ import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 
 export const COMPLIANCE_OFFICER_ROLE_KEY = "compliance_officer";
 
@@ -171,4 +171,89 @@ async function isPlatformStaffUser(
     )}]::text[]) WHERE user_id = ${memberUserId}::uuid`,
   );
   return holders.rows.length > 0;
+}
+
+/**
+ * The compensation for a bind whose assignment then failed: EXPIRES the member's `compliance_officer` grant (expires_at = now,
+ * never a delete: the grant row stays as history) and audits `m3.role.revoked` naming the operator and why. Same tenant pool,
+ * same RLS scope, same org-bound lookups as the binder; a no-op when the member holds no live grant. `onUnbound` drops the
+ * member's cached permissions, as `onBound` does.
+ */
+export function createComplianceOfficerRoleUnbinder(
+  db: DbClient,
+  onUnbound?: (organizationId: string, userId: string) => void,
+): (input: ComplianceOfficerRoleBindInput) => Promise<void> {
+  return async (input) => {
+    const memberUserId = await withOrgContext(
+      db,
+      { organizationId: input.organizationId, userId: input.operator.userId },
+      async (rawTx) => {
+        const tx = rawTx as unknown as DbClient;
+        const [role] = await tx
+          .select({ id: schema.roles.id })
+          .from(schema.roles)
+          .where(
+            and(
+              eq(schema.roles.organizationId, input.organizationId),
+              eq(schema.roles.key, COMPLIANCE_OFFICER_ROLE_KEY),
+            ),
+          )
+          .limit(1);
+        const [member] = await tx
+          .select({ userId: schema.memberships.userId })
+          .from(schema.memberships)
+          .where(
+            and(
+              eq(schema.memberships.id, input.membershipId),
+              eq(schema.memberships.organizationId, input.organizationId),
+            ),
+          )
+          .limit(1);
+        if (!role || !member) return null;
+        const expired = await tx
+          .update(schema.membershipRoles)
+          .set({ expiresAt: new Date() })
+          .where(
+            and(
+              eq(schema.membershipRoles.organizationId, input.organizationId),
+              eq(schema.membershipRoles.membershipId, input.membershipId),
+              eq(schema.membershipRoles.roleId, role.id),
+              or(
+                isNull(schema.membershipRoles.expiresAt),
+                gt(schema.membershipRoles.expiresAt, sql`now()`),
+              ),
+            ),
+          )
+          .returning({ id: schema.membershipRoles.id });
+        if (expired.length === 0) return null;
+        await audit(
+          tx,
+          {
+            organizationId: input.organizationId,
+            userId: input.operator.userId,
+            actorKind: "user",
+            correlationId: `m34-onboarding:compliance_officer_role_unbound:${input.tenantAccountId}:${randomUUID()}`,
+          },
+          {
+            eventType: "m3.role.revoked",
+            resourceKind: "membership_role",
+            resourceId: input.membershipId,
+            outcome: "success",
+            severity: "warn",
+            retentionClass: "compliance",
+            after: {
+              roleKey: COMPLIANCE_OFFICER_ROLE_KEY,
+              revokedBy: "platform_ops",
+              operatorUserId: input.operator.userId,
+              operatorMembershipId: input.operator.membershipId,
+              tenantAccountId: input.tenantAccountId,
+              reason: `the officer assignment failed after the role was bound: ${input.reason}`,
+            },
+          },
+        );
+        return member.userId;
+      },
+    );
+    if (memberUserId) onUnbound?.(input.organizationId, memberUserId);
+  };
 }

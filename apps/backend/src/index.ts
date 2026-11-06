@@ -105,7 +105,10 @@ import {
 } from "./bootstrap/ack-queue-metrics";
 import { startAckQueueWatchdog } from "./bootstrap/ack-queue-watchdog";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
-import { createComplianceOfficerRoleBinder } from "./bootstrap/bind-compliance-officer-role";
+import {
+  createComplianceOfficerRoleBinder,
+  createComplianceOfficerRoleUnbinder,
+} from "./bootstrap/bind-compliance-officer-role";
 import {
   bindPlatformStaffToOrg,
   reconcilePlatformStaff,
@@ -241,6 +244,7 @@ import {
   runParitySweep,
   scheduleDailyUtc,
 } from "./bootstrap/rust-bridge/index";
+import { createDrizzleSiteAdminRepository } from "./bootstrap/site-admin-repository";
 import { siteDisplayForOrg } from "./bootstrap/site-display-for-org";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
@@ -1580,6 +1584,7 @@ import {
   scheduleM34BundleExpiryJob,
   scheduleM34PlatformSweepJobs,
   validateModule34Seams,
+  voidPendingGoLiveForDataChange,
   wireM34AlertRuleSeed,
   wireM34Tenancy,
 } from "./modules/34-saas-tenant-platform/index";
@@ -5221,6 +5226,24 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           mountOrgAdminRoutes(app, dbHandle.db, {
             outbox: m2OutboxPublisher,
             taxIdCipher,
+            // A provider-entity / location write also voids a pending go-live attestation in the SAME transaction (the
+            // attestation said the data was ready; this write makes that stale). M34's helper, M2's routes, joined here.
+            siteWriteScope: (scope, run) =>
+              withOrgContext(
+                dbHandle.db,
+                { organizationId: scope.organizationId, userId: scope.userId },
+                async (tx) => {
+                  const result = await run(
+                    createDrizzleSiteAdminRepository(tx as unknown as DbClient, scope.userId),
+                  );
+                  await voidPendingGoLiveForDataChange(tx as unknown as DbClient, {
+                    organizationId: scope.organizationId,
+                    revokedByUserId: scope.userId,
+                    revokedByMembershipId: scope.membershipId,
+                  });
+                  return result;
+                },
+              ),
           });
           // M2 (ADR-0023 D2 / SecHardening §12.2/§12.4) — the device-attestation write path. This is what
           // puts rows in `device_attestation`, which is what lets the authenticate hook stamp
@@ -5948,11 +5971,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 auditBypass: m34PlatformBypassAuditor,
                 platformJobId: M34_PLATFORM_JOB_ID,
                 activation: m34PlatformBackend.activateApprovedTenant,
+                // The org-profile write runs inside the wizard's own tenant transaction (status check, write and attestation void).
+                orgProfileFor: (tx) => buildDrizzleOrgProfilePort(tx),
               }),
               orgProfile: buildDrizzleOrgProfilePort(dbHandle.db),
               // The PLATFORM compliance-officer assignment binds the role to the chosen member (the tenant's org_admin cannot:
               // anti-escalation). Tenant pool under the tenant's RLS, audited; the member's cached permissions are dropped.
               bindComplianceOfficerRole: createComplianceOfficerRoleBinder(
+                dbHandle.db,
+                (organizationId, userId) => liveRbacHandle?.invalidateActor(organizationId, userId),
+              ),
+              // If the assignment fails after the bind committed, the grant is expired again (best effort, audited).
+              unbindComplianceOfficerRole: createComplianceOfficerRoleUnbinder(
                 dbHandle.db,
                 (organizationId, userId) => liveRbacHandle?.invalidateActor(organizationId, userId),
               ),
@@ -6012,6 +6042,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             onboardingData: {
               service: buildDrizzleOnboardingDataService({
                 db: dbHandle.db,
+                // After a write commits the advance sweep settles the step the data satisfies (best effort).
+                advance: async ({ tenantAccountId, organizationId }) => {
+                  await m34OnboardingAdvance({ tenantAccountId, orgId: organizationId });
+                },
+                warn: (message, context) => app.log.warn(context, message),
                 // The slug lookup is the only cross-tenant step (an audited platform context); no platform pool => 503.
                 ...(platformDbHandle
                   ? {

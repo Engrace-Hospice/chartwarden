@@ -71,6 +71,20 @@ describe("businessRule() — the registration IS the index declaration", () => {
     );
   });
 
+  it("maps a duplicate go-live attestation and a duplicate platform BAA record to a 409 meaning, not a 500", () => {
+    // Review fix (code M4): both are races the application check cannot close (two officers attesting at once, two operators
+    // filing the same addendum), so Postgres's 23505 is the authority and must read as the caller's conflict.
+    for (const [constraint, meaning] of [
+      ["tenant_go_live_attestation_pending_uq", /already attested/i],
+      ["platform_tenant_baa_unique", /already exists/i],
+    ] as const) {
+      const violation = classifyDatabaseError(wrapped(pgUniqueViolation(constraint)));
+      expect(violation, constraint).not.toBeNull();
+      expect(violation?.constraint).toBe(constraint);
+      expect(violation?.meaning).toMatch(meaning);
+    }
+  });
+
   it("every registered constraint actually exists in the migrations", () => {
     // The registry is a promise about a name Postgres will report. A typo, or a meaning left behind
     // after the index was renamed or dropped, is a rule that can never fire — indistinguishable from

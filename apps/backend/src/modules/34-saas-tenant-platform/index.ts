@@ -431,6 +431,7 @@ export {
   type OnboardingTenantReader,
   createOnboardingTenantReader,
 } from "./onboarding/onboarding-tenant-reader";
+export { voidPendingGoLiveForDataChange } from "./onboarding/go-live-void";
 export {
   createMemoryOrgProfile,
   createMemoryWizardRunner,
