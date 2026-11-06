@@ -16,7 +16,7 @@ import {
 // / `dpoa_active` predicates are registered by M5/M7 (resolving through M39's `ConsentEvaluator` seam); M9
 // binds the Part 2 / DPOA gate by enforcing it in the service (`DPOA_CONSENT_REQUIRED` on the write path,
 // `redacted` projection on reads — M09-F05 keeps SUD off the write predicate). §2.3: the correction route
-// carries the parent row version in `If-Match` → 412 STALE_VERSION on skew.
+// carries the parent row version in `If-Match` → 409 STALE_VERSION on skew.
 //
 // GAP-015 (2026-08-09): the §4.1 route table also requires `caseload_or_scope` on 11 routes — this file
 // previously wired it on NONE, so any staff member holding `assessment.read`/`author` could reach any
@@ -153,7 +153,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
     },
   );
 
-  // 2 — correction-of-record (append-only supersede; §2.3 If-Match → 412 STALE_VERSION).
+  // 2 — correction-of-record (append-only supersede; §2.3 If-Match → 409 STALE_VERSION).
   app.post(
     "/api/v1/patients/:patientId/assessments/:id/corrections",
     { preHandler: [AMEND, SCOPE_FOR("assessment.amend"), ABAC_DISCIPLINE, IF_MATCH] },

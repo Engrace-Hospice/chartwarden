@@ -10,7 +10,7 @@ import { hasOrgWideScope, requireAbac, requirePermission, requireStepUp } from "
 // predicate (abac-predicates.ts) on routes 1/2/3/8/18/19/20/22 — the module previously shipped with NO
 // route-level caseload enforcement despite the header comment's prior claim it was "composed separately
 // upstream" (nothing ever composed it). §7.7: the selections PATCH carries `If-Match` (the row version)
-// → 412 VERSION_MISMATCH on skew. Sign routes (14/20/21/25) carry the client's step-up timestamp;
+// → 409 STALE_VERSION on skew. Sign routes (14/20/21/25) carry the client's step-up timestamp;
 // freshness (≤ 5 min, §2.7 D13) is verified here and injected into the lifecycle machine
 // (STEP_UP_AUTH_REQUIRED → 412 when stale).
 import {

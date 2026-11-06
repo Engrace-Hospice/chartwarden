@@ -8,7 +8,7 @@ import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth
 // §4.1.1 (M07-F09) — the three PATCH routes additionally carry `requireIdempotencyKey` + `requireIfMatch`
 // pre-handlers (./concurrency.ts). `Idempotency-Key` presence is enforced here; the replay/body-mismatch
 // caching is the M1 platform middleware (applyIdempotency, mounted globally). `If-Match` carries the row
-// version the client read; the service raises 412 STALE_VERSION on skew (§7.7).
+// version the client read; the service raises 409 STALE_VERSION on skew (§7.7).
 //
 // GAP-012 (2026-08-09): the §4 ABAC composition is wired here — `caseload_or_scope` on every
 // patient/plan-scoped route (via `SCOPE`/`SCOPE_BY_QUERY_PATIENT` below), `signer_role_match` on the

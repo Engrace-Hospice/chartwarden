@@ -348,7 +348,7 @@ describe("§2.7 synchronous validators", () => {
       () => checkVocabVersion({ pinnedVersionId: "v1", activeVersionId: "v2" }),
       "VOCAB_VERSION_MISMATCH",
     );
-    expectCode(() => checkVersion({ expected: 3, actual: 4 }), "VERSION_MISMATCH");
+    expectCode(() => checkVersion({ expected: 3, actual: 4 }), "STALE_VERSION");
     expectCode(() => checkParentNotVoided({ parentStatus: "voided" }), "PARENT_VOIDED");
     expect(() => checkParentNotVoided({ parentStatus: "signed" })).not.toThrow();
     expectCode(() => checkMutableForEdit({ status: "signed" }), "IMMUTABLE_AFTER_SIGN");

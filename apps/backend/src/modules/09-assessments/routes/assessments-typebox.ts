@@ -11,7 +11,7 @@ import type {
 // envelope. The record body is the §4.3 discriminated-union envelope: a `scaleType` (validated against the
 // canonical `SCALE_TYPES`), the common capture envelope, and a per-scale `data` object the server scores
 // (the API ignores any client-sent `score` — D6 server-authoritative). Optimistic concurrency on the
-// correction route rides the `If-Match` header (NOT the body) → 412 STALE_VERSION on skew.
+// correction route rides the `If-Match` header (NOT the body) → 409 STALE_VERSION on skew.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
