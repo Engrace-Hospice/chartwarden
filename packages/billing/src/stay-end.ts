@@ -1,4 +1,4 @@
-// @chartwarden/billing · claim-codes/stay-end — the stay-ending fact and the discharge codes of a claim.
+// @chartwarden/billing · stay-end — the stay-ending fact and the discharge codes of a claim.
 //
 // Resolve HOW and WHEN the stay ended from the M6 facts the assembly already read, then derive the claim's
 // discharge codes (CMS Pub. 100-04 Ch. 11 §30.3, `deriveDischargeClaimCodes`). PURE: no I/O, no clock.
@@ -11,16 +11,16 @@
 //     also with NO discharge_event.
 // A completed discharge_event wins over the other two (it is the explicit terminal record); otherwise the
 // earliest of transfer-out / revocation ends the stay.
-import type { AdmissionContext } from "../claim-assembly-seams";
-import type { IsoDate, TypeOfBill } from "../contracts";
-import { deriveTypeOfBill } from "../tob/derivation";
+import type { AdmissionContext } from "./claim-assembly-seams";
 import {
   type ClaimDischargeFact,
   type DischargeClaimCodes,
   type PlaceOfDeath,
   type ReceivingCareSetting,
   deriveDischargeClaimCodes,
-} from "./discharge-codes";
+} from "./claim-codes/discharge-codes";
+import type { IsoDate, TypeOfBill } from "./contracts";
+import { deriveTypeOfBill } from "./tob/derivation";
 
 const PLACES: readonly string[] = ["home", "facility", "unknown"];
 const SETTINGS: readonly string[] = ["home", "facility"];

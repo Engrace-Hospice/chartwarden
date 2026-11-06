@@ -39285,7 +39285,7 @@ export interface operations {
         parameters: {
             query?: {
                 cursor?: string;
-                pageSize?: number;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -46351,8 +46351,8 @@ export interface operations {
                 state?: "draft" | "ready" | "submitted" | "ack_pending" | "accepted" | "rejected" | "paid" | "partially_paid" | "denied" | "void";
                 payerKind?: "commercial_only" | "medicare_secondary" | "medicaid_secondary";
                 patientId?: string;
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -47503,7 +47503,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                     /** Format: uuid */
                     assigneeMembershipId: string;
@@ -47579,7 +47579,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                 };
             };
@@ -47653,7 +47653,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                 };
             };
@@ -47727,7 +47727,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                 };
             };
@@ -47801,7 +47801,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                     /**
                      * Format: date
@@ -47886,7 +47886,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                     /** @constant */
                     outcome: "returned";
@@ -47970,7 +47970,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                     /** @description The DCN / ICN / receipt number FISS showed (13 to 23 characters). */
                     dcn?: string;
@@ -48048,7 +48048,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                 };
             };
@@ -48122,7 +48122,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                 };
             };
@@ -48196,7 +48196,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    /** @description The item `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                 };
             };
@@ -49840,7 +49840,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The notice `version` the change is applied against (a stale value → 412). */
+                    /** @description The notice `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                     reason: string;
                 };
@@ -49935,7 +49935,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The notice `version` the change is applied against (a stale value → 412). */
+                    /** @description The notice `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                     /**
                      * Format: date
@@ -50224,7 +50224,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The notice `version` the change is applied against (a stale value → 412). */
+                    /** @description The notice `version` the change is applied against (a stale value → 409 STALE_VERSION). */
                     expectedVersion: number;
                 };
             };
@@ -51064,7 +51064,10 @@ export interface operations {
     };
     getApiV1CapAccrualsPatientByPeriodIdByPatientIdLines: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 periodId: string;
@@ -56874,7 +56877,7 @@ export interface operations {
         parameters: {
             query?: {
                 cursor?: string;
-                pageSize?: number;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -99310,7 +99313,7 @@ export interface operations {
         parameters: {
             query?: {
                 cursor?: string;
-                pageSize?: number;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -99416,7 +99419,7 @@ export interface operations {
         parameters: {
             query?: {
                 cursor?: string;
-                pageSize?: number;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -99539,7 +99542,7 @@ export interface operations {
         parameters: {
             query?: {
                 cursor?: string;
-                pageSize?: number;
+                limit?: number;
             };
             header?: never;
             path?: never;

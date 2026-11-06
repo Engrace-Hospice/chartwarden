@@ -43663,18 +43663,17 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
           {
-            "name": "pageSize",
+            "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
               "minimum": 1,
-              "maximum": 200,
-              "default": 50,
+              "maximum": 100,
               "type": "integer"
             }
           }
@@ -71796,7 +71795,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -75570,6 +75568,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -75577,16 +75584,6 @@
               "minimum": 1,
               "maximum": 100,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "minLength": 1,
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -78641,7 +78638,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -80737,7 +80733,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   },
                   "assigneeMembershipId": {
@@ -81202,7 +81198,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   }
                 }
@@ -81663,7 +81659,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   }
                 }
@@ -82124,7 +82120,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   }
                 }
@@ -82585,7 +82581,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   },
                   "macAcceptedOn": {
@@ -83080,7 +83076,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   },
                   "outcome": {
@@ -83581,7 +83577,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   },
                   "dcn": {
@@ -84052,7 +84048,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   }
                 }
@@ -84513,7 +84509,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   }
                 }
@@ -84974,7 +84970,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "description": "The item `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   }
                 }
@@ -86688,7 +86684,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -88639,7 +88634,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -90152,7 +90146,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -91704,7 +91697,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The notice `version` the change is applied against (a stale value → 412).",
+                    "description": "The notice `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   },
                   "reason": {
@@ -92224,7 +92217,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The notice `version` the change is applied against (a stale value → 412).",
+                    "description": "The notice `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   },
                   "priorHospiceThroughDate": {
@@ -93347,7 +93340,7 @@
                 "properties": {
                   "expectedVersion": {
                     "minimum": 0,
-                    "description": "The notice `version` the change is applied against (a stale value → 412).",
+                    "description": "The notice `version` the change is applied against (a stale value → 409 STALE_VERSION).",
                     "type": "integer"
                   }
                 }
@@ -93909,7 +93902,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -96363,6 +96355,25 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
             }
           }
         ],
@@ -119708,18 +119719,17 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
           {
-            "name": "pageSize",
+            "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
               "minimum": 1,
-              "maximum": 200,
-              "default": 50,
+              "maximum": 100,
               "type": "integer"
             }
           }
@@ -177655,6 +177665,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -222517,7 +222528,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -224530,7 +224540,6 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
               "maxLength": 512,
               "type": "string"
             }
@@ -280832,18 +280841,17 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
           {
-            "name": "pageSize",
+            "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
               "minimum": 1,
-              "maximum": 200,
-              "default": 50,
+              "maximum": 100,
               "type": "integer"
             }
           }
@@ -281070,18 +281078,17 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
           {
-            "name": "pageSize",
+            "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
               "minimum": 1,
-              "maximum": 200,
-              "default": 50,
+              "maximum": 100,
               "type": "integer"
             }
           }
@@ -281417,18 +281424,17 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
           {
-            "name": "pageSize",
+            "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
               "minimum": 1,
-              "maximum": 200,
-              "default": 50,
+              "maximum": 100,
               "type": "integer"
             }
           }

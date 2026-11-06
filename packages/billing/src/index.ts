@@ -79,6 +79,7 @@ export * from "./tob";
 // CMS Pub. 100-04 Ch. 11 §30.3 the pure discharge claim codes (patient status, condition 52/H2, occurrence 42/55).
 export * from "./claim-codes";
 export type * from "./claim-assembly-seams";
+export * from "./stay-end";
 // CMS Pub. 100-04 Ch. 11 §30.3 the pure hospice visit lines (rev 042x-057x + G-codes, 15-minute units), CHC
 // quarter-hour units and the CBSA value code by level of care.
 export * from "./claim-lines";
