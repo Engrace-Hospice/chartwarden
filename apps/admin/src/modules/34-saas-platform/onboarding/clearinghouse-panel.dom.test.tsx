@@ -255,6 +255,46 @@ describe("ClearinghousePanel: choosing", () => {
   });
 });
 
+describe("ClearinghousePanel: the write-only credential box and the no-patient confirmation", () => {
+  it("asks the browser to offer no saved password for the vendor credential", async () => {
+    mount(NOTHING);
+    fireEvent.click(await screen.findByRole("button", { name: "Choose clearinghouse" }));
+    expect(secretBox().getAttribute("autocomplete")).toBe("new-password");
+  });
+
+  const STEDI: ClearinghouseView = { ...CLAIMMD, vendor: "stedi", verifiableBy: "attestation" };
+  const NOTE = "Sent a 270 test transaction with the sandbox key and read the 271 reply";
+  const tick = () =>
+    screen.getByLabelText("This note names no patient information") as HTMLInputElement;
+
+  it("clears the tick when the note is edited, so the operator confirms the words that will be recorded", async () => {
+    mount(STEDI);
+    fireEvent.click(await screen.findByRole("button", { name: "Verify the connection" }));
+    fireEvent.change(screen.getByLabelText(/^What was checked, and by whom/), {
+      target: { value: NOTE },
+    });
+    fireEvent.click(tick());
+    expect(tick().checked).toBe(true);
+    fireEvent.change(screen.getByLabelText(/^What was checked, and by whom/), {
+      target: { value: `${NOTE}; also read the claim for the member` },
+    });
+    expect(tick().checked).toBe(false);
+  });
+
+  it("clears the tick when the reason prompt is cancelled, so going back to the note asks again", async () => {
+    mount(STEDI);
+    fireEvent.click(await screen.findByRole("button", { name: "Verify the connection" }));
+    fireEvent.change(screen.getByLabelText(/^What was checked, and by whom/), {
+      target: { value: NOTE },
+    });
+    fireEvent.click(tick());
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(tick().checked).toBe(false);
+  });
+});
+
 describe("ClearinghousePanel: the server's field errors land on their inputs", () => {
   it("shows a refused vendor credential under the credential box, with the form still open and what was typed kept", async () => {
     mount(NOTHING, {

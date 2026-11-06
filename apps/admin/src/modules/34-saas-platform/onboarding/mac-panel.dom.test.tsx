@@ -149,6 +149,15 @@ describe("MacPanel", () => {
     );
   });
 
+  it("asks the browser to offer no saved password for the write-only client secret", async () => {
+    mount([]);
+    await screen.findByText(/No MAC credential yet/);
+    fireEvent.click(screen.getByRole("button", { name: "Add MAC credential" }));
+    expect(screen.getByLabelText(/^Client secret/).getAttribute("autocomplete")).toBe(
+      "new-password",
+    );
+  });
+
   it("requires every field before it asks for a reason", async () => {
     mount([]);
     await screen.findByText(/No MAC credential yet/);

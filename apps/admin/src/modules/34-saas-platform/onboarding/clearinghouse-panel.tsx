@@ -19,6 +19,7 @@ import type { JSX } from "react";
 import { VerifyBaa } from "./clearinghouse-baa-verify";
 import {
   BLANK_CHOICE,
+  type ChoiceContext,
   type ChoiceErrors,
   type ChoiceForm,
   ChoiceFormCard,
@@ -153,6 +154,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
   function closeDialog(): void {
     write.clear();
     setDialog(null);
+    setNotePhiFree(false); // backing out of the prompt: the confirmation is asked again before the words are sent
   }
 
   function openChoice(): void {
@@ -280,6 +282,12 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
   }
 
   const facts: Fact[] = current ? clearinghouseFacts(current) : [];
+  const choiceContext: ChoiceContext = {
+    tenantStatus: wizard.tenantStatus,
+    hasContract: wizard.steps.some(
+      (step) => step.key === "plan_contract" && step.status === "done",
+    ),
+  };
   const vendorChosen = current !== null && isTransmitting(current) && current.source === "tenant";
 
   return (
@@ -362,6 +370,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
             form={form}
             secret={secret}
             errors={withServerErrors(errors, write.failure?.fieldErrors ?? {})}
+            context={choiceContext}
             onChange={(next) => {
               setForm(next);
               setErrors({});
@@ -393,7 +402,10 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
             label="What was checked, and by whom"
             rows={3}
             value={note}
-            onChange={(e) => setNote(e.target.value)}
+            onChange={(e) => {
+              setNote(e.target.value);
+              setNotePhiFree(false); // the confirmation is about THESE words
+            }}
             error={noteError ?? write.failure?.fieldErrors.evidenceNote ?? undefined}
           />
           <label className="inline-flex min-h-11 items-center gap-2">
@@ -429,7 +441,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
             ? "Change the clearinghouse"
             : "Choose the clearinghouse"
         }
-        description={current ? consequenceOf(current, form) : undefined}
+        description={current ? consequenceOf(current, form, choiceContext) : undefined}
         confirmLabel="Save"
         write={write}
         orgSlug={orgSlug}

@@ -295,7 +295,7 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
               label="Client secret"
               hint="Write-only. Sealed under the tenant's key and never shown again."
               type="password"
-              autoComplete="off"
+              autoComplete="new-password"
               value={clientSecret}
               onChange={(e) => setClientSecret(e.target.value)}
               error={fieldError("clientSecret")}
