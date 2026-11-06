@@ -74,7 +74,7 @@ export interface M16MailingDeps {
   readonly emailChannelAvailable?: boolean;
   readonly now?: () => Date;
   /** Operational warnings (ids and an error class only, never a name or an address); index.ts binds the Fastify logger. */
-  readonly log?: (message: string, context: Record<string, unknown>) => void;
+  readonly log: (message: string, context: Record<string, unknown>) => void;
 }
 
 const iso = (d: Date): string => d.toISOString();
@@ -518,14 +518,11 @@ export function buildDrizzleM16MailingService(
           });
         } catch (error) {
           // ids only; the sweep owns recovery
-          deps.log?.(
-            "m16.mailing-generate: enqueue failed after the claim; the sweep re-sends it",
-            {
-              organizationId: actor.organizationId,
-              runId: claimed.row.id,
-              error: error instanceof Error ? error.name : "unknown",
-            },
-          );
+          deps.log("m16.mailing-generate: enqueue failed after the claim; the sweep re-sends it", {
+            organizationId: actor.organizationId,
+            runId: claimed.row.id,
+            error: error instanceof Error ? error.name : "unknown",
+          });
         }
       }
       return claimed.view;

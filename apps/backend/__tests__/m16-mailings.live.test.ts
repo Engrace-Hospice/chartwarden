@@ -487,6 +487,7 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
             : { denied: true, reason: "not_found" };
         },
       }),
+      log: () => undefined,
     });
     app = buildServer({
       authenticate: headerAuth,
@@ -1784,6 +1785,7 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
       const realMailing = buildDrizzleM16MailingService(handle.db, {
         outbox: outbox as never,
         enqueue: { enqueue: async (job) => void enqueued.push(job) },
+        log: () => undefined,
         orgDocuments: () =>
           createOrgDocumentAccessProvider({
             port: createDrizzleOrgDocumentAccessPort(handle.db),
@@ -1848,6 +1850,12 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
         expect(res.statusCode).toBe(200);
         return enqueued.at(-1) as MailingGenerateJob;
       };
+      // the worker logs (console, ids only): an orphaned attempt names its document id so a purge can find it
+      const consoleLog = vi.spyOn(console, "log");
+      const loggedFor = (message: string): Record<string, unknown>[] =>
+        consoleLog.mock.calls
+          .filter(([m]) => typeof m === "string" && m.includes(message))
+          .map(([, meta]) => meta as Record<string, unknown>);
       const plan = await seedPlan(ORG_B, { status: "active" });
       await seedContact(ORG_B, plan, { name: "Racer Stays", address: ADDRESS.ada });
 
@@ -1872,6 +1880,9 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
       expect(state1.rendered_document_id).toBe(winner.documents[0]);
       expect(late.documents).toHaveLength(1);
       expect(late.documents[0]).not.toBe(winner.documents[0]); // its own document, referenced by nothing
+      expect(loggedFor("this attempt's document is unreferenced")).toContainEqual(
+        expect.objectContaining({ runId: run1, documentId: late.documents[0] }),
+      );
       // the winner's document carries exactly its own version: the loser appended nothing to it
       expect(
         (
@@ -1899,6 +1910,10 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 — M16 mailings, LIVE Postgres", () => {
       await fresh.atRender; // has re-checked: the family is excluded on the items
       stale.release();
       await stale.done; // rolled back, not failed
+      expect(loggedFor("claim abandoned")).toContainEqual(
+        expect.objectContaining({ runId: run2, documentId: stale.documents[0] }),
+      );
+      consoleLog.mockRestore();
       let state2 = await runRow(run2);
       expect(state2).toMatchObject({
         status: "generating",

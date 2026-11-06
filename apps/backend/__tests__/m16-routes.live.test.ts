@@ -333,6 +333,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
       mailingService: buildDrizzleM16MailingService(handle.db, {
         outbox: outbox as never,
         enqueue: { enqueue: async () => undefined },
+        log: () => undefined,
       }),
       writeService: buildDrizzleM16WriteService(handle.db, readService, {
         outbox: outbox as never,

@@ -372,6 +372,8 @@ export async function runMailingGenerateJob(
     return;
   }
 
+  /** This attempt's rendered document, once filed: named in the log when it ends up unreferenced, so a later purge can find it. */
+  let documentId: string | null = null;
   try {
     if (deps.cipher === undefined) throw new TerminalMailingError("CIPHER_UNBOUND");
     const wording = assertMailingContentComplete(
@@ -433,14 +435,15 @@ export async function runMailingGenerateJob(
     // Every ATTEMPT files its OWN document (never the run id): a late or duplicate job (a sweep re-send, a stalled redelivery) that loses the
     // compare-and-set below leaves an unreferenced document behind, instead of appending a version that would become the active PDF of the
     // document the winner's `rendered_document_id` names.
-    const { documentId } = await (deps.render ?? defaultRender)(organizationId, {
+    ({ documentId } = await (deps.render ?? defaultRender)(organizationId, {
       aggregateId: randomUUID(),
       heading: wording.title,
       paragraphs: wording.paragraphs,
       // no default wording ships: an empty sign-off is simply not printed
       ...(wording.signoff.length > 0 ? { signoff: wording.signoff } : {}),
       letters: numbered,
-    });
+    }));
+    const renderedDocumentId = documentId;
 
     const at = (deps.now ?? (() => new Date()))();
     const won = await inOrg(deps, organizationId, async (tx) => {
@@ -449,7 +452,7 @@ export async function runMailingGenerateJob(
         .update(RUN)
         .set({
           status: "ready",
-          renderedDocumentId: documentId,
+          renderedDocumentId,
           generatedAt: at,
           recipientCount: kept.length,
           version: version + 1,
@@ -467,7 +470,8 @@ export async function runMailingGenerateJob(
             ordinal: null,
             updatedAt: at,
           })
-          .where(inArray(ITEM.id, unaddressed));
+          // only items still `included`: an overlapping attempt may have excluded one meanwhile, and its reason stands
+          .where(and(inArray(ITEM.id, unaddressed), eq(ITEM.status, "included")));
       }
       // The PDF holds exactly `kept`. An overlapping attempt's re-check may have excluded one of them since OUR re-check (an opt-out in
       // between): then this PDF names someone it must not, so the whole claim rolls back and the newer attempt (or the sweep) renders it.
@@ -503,6 +507,7 @@ export async function runMailingGenerateJob(
           organizationId,
           runId,
           version,
+          documentId,
         },
       );
       return;
@@ -517,10 +522,12 @@ export async function runMailingGenerateJob(
   } catch (error) {
     if (error instanceof AbandonedRenderError) {
       // Not a failure: the run stays `generating` and a newer attempt (or the sweep's stale re-send) renders the current batch.
+      // this attempt's document is unreferenced (the claim rolled back): its id is logged so a purge can find it
       log("m16.mailing-generate: a rendered recipient was excluded meanwhile — claim abandoned", {
         organizationId,
         runId,
         version,
+        documentId,
       });
       return;
     }
