@@ -13,6 +13,12 @@ export type NewConfigRow = Omit<schema.NewTenantClearinghouseConfigRow, "id" | "
 export type ConfigPatch = Partial<Omit<ConfigRow, "id" | "organizationId" | "createdAt">>;
 
 export interface ConfigStore {
+  /**
+   * The open org-scoped transaction this store reads and writes on; absent on the in-memory store. A rule that must read another
+   * table while the config row is locked reads it on THIS transaction, never on a second pooled connection (re-review L5: a pool
+   * drained by requests that each hold one connection and wait for another deadlocks the service).
+   */
+  readonly tx?: DbClient;
   /** The org's row, locked for the rest of the transaction; null when it has none. */
   findForUpdate(organizationId: string): Promise<ConfigRow | null>;
   find(organizationId: string): Promise<ConfigRow | null>;
@@ -35,6 +41,7 @@ export const isUniqueViolation = (err: unknown): boolean => {
 /** The Drizzle store over a transaction already scoped to the org (the tenant's own, or a platform operator's on its behalf). */
 export function createDrizzleConfigStore(tx: DbClient): ConfigStore {
   return {
+    tx,
     async findForUpdate(organizationId) {
       const [row] = await tx
         .select()

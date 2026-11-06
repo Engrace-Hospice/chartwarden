@@ -36,7 +36,7 @@ import {
 } from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
-import { registerPlatformJob } from "@chartwarden/tenancy";
+import { registerPlatformJob, withOrgContext } from "@chartwarden/tenancy";
 import { InMemoryAttemptStore } from "@chartwarden/x12-837-client";
 import { createInMemoryHarness } from "@chartwarden/x12-837-client/testing";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -60,6 +60,7 @@ import {
   buildDrizzleOrgMacJurisdictionReader,
   buildMacFeedConfiguredReader,
 } from "../src/modules/23-billing-medicare/jobs/mac-jurisdictions";
+import { createDrizzleConfigStore } from "../src/modules/23-billing-medicare/tenant-clearinghouse/config-store";
 import { buildTenantClearinghouseOnboardingPort } from "../src/modules/23-billing-medicare/tenant-clearinghouse/onboarding-port";
 import { registerM23TenantClearinghouseSeams } from "../src/modules/23-billing-medicare/tenant-clearinghouse/register";
 import { createTenantClearinghouseRuntime } from "../src/modules/23-billing-medicare/tenant-clearinghouse/resolver";
@@ -67,7 +68,10 @@ import { registerTenantClearinghouseRoutes } from "../src/modules/23-billing-med
 import { buildClearinghouseSecretCipher } from "../src/modules/23-billing-medicare/tenant-clearinghouse/secret-cipher";
 import { createTenantClearinghouseService } from "../src/modules/23-billing-medicare/tenant-clearinghouse/service";
 import { buildDrizzleTenantClearinghouseRouteService } from "../src/modules/23-billing-medicare/tenant-clearinghouse/tenant-service";
-import { countQueuedClaims } from "../src/modules/23-billing-medicare/tenant-clearinghouse/waiting-work";
+import {
+  countQueuedClaims,
+  countQueuedClaimsOn,
+} from "../src/modules/23-billing-medicare/tenant-clearinghouse/waiting-work";
 import { M34_OUTBOX_EVENTS } from "../src/modules/34-saas-tenant-platform/events-by-m34";
 import {
   buildDrizzleOnboardingDataService,
@@ -77,7 +81,10 @@ import {
 import { createOnboardingAdvancer } from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
 import { createSettleOnboardingForOrg } from "../src/modules/34-saas-tenant-platform/onboarding/settle-for-org";
 import { createDrizzleSubscriptionWorkBlockReader } from "../src/modules/35-subscription/addon/entitlement";
-import { countQueuedCommercialSubmissions } from "../src/modules/41-billing-commercial/index";
+import {
+  countQueuedCommercialSubmissions,
+  countQueuedCommercialSubmissionsOn,
+} from "../src/modules/41-billing-commercial/index";
 import {
   appRoleConnectionString,
   appRoleUrl,
@@ -340,12 +347,13 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     const service = createTenantClearinghouseService({
       cipher,
       // A switch is refused while claims or commercial submissions are queued (the same real counters the composition root binds).
-      waitingWork: async (organizationId) => ({
-        claims: await countQueuedClaims(tenantPool.db, organizationId),
-        commercialSubmissions: await countQueuedCommercialSubmissions(
-          tenantPool.db,
-          organizationId,
-        ),
+      waitingWork: async (organizationId, tx) => ({
+        claims: tx
+          ? await countQueuedClaimsOn(tx, organizationId)
+          : await countQueuedClaims(tenantPool.db, organizationId),
+        commercialSubmissions: tx
+          ? await countQueuedCommercialSubmissionsOn(tx, organizationId)
+          : await countQueuedCommercialSubmissions(tenantPool.db, organizationId),
       }),
       // The Claim.MD connection test is a mock: no network. It records what it was handed.
       probes: {
@@ -916,6 +924,46 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     expect(refused.statusCode).toBe(409);
     expect(errorCode(refused)).toBe("CLEARINGHOUSE_WORK_WAITING");
     expect(JSON.stringify(refused.json())).toContain('"claims"');
+
+    // Round 2, L5: the same refusal on a ONE-connection pool. The count must read on the service's own transaction (the config row is
+    // locked there); a count on a second pooled connection would wait forever for the one this transaction holds.
+    const soloPool = createDbClient({
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      max: 1,
+    });
+    try {
+      const actor = {
+        organizationId: ORG_G,
+        userId: TENANT_ADMIN,
+        membershipId: MEMBERSHIP,
+      };
+      const solo = createTenantClearinghouseService({
+        cipher,
+        probes: {},
+        waitingWork: async (organizationId, tx) => ({
+          claims: tx
+            ? await countQueuedClaimsOn(tx, organizationId)
+            : await countQueuedClaims(soloPool.db, organizationId),
+          commercialSubmissions: tx
+            ? await countQueuedCommercialSubmissionsOn(tx, organizationId)
+            : await countQueuedCommercialSubmissions(soloPool.db, organizationId),
+        }),
+      });
+      const err = await withOrgContext(
+        soloPool.db,
+        { organizationId: ORG_G, userId: TENANT_ADMIN },
+        (tx) =>
+          solo.put(
+            createDrizzleConfigStore(tx as never),
+            actor,
+            { vendor: "outside" },
+            row?.version,
+          ),
+      ).catch((e: unknown) => e);
+      expect(err).toMatchObject({ code: "CLEARINGHOUSE_WORK_WAITING", statusCode: 409 });
+    } finally {
+      await soloPool.close();
+    }
     await admin
       .query("DELETE FROM claim_submission WHERE organization_id=$1", [ORG_G])
       .catch(() => undefined);

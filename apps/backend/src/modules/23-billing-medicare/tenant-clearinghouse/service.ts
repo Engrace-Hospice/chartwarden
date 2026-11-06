@@ -129,8 +129,14 @@ export interface TenantClearinghouseServiceDeps {
   readonly platformFallback?: (organizationId: string) => PlatformFallback | null;
   /** NODE_ENV is production: the tenant lane may not choose test mode (only platform ops may, with a recorded reason). */
   readonly isProduction?: boolean;
-  /** Queued work the org still has on its vendor (M23 claims, M41 submissions); absent = nothing is checked. */
-  readonly waitingWork?: (organizationId: string) => Promise<WaitingWork>;
+  /**
+   * Queued work the org still has on its vendor (M23 claims, M41 submissions); absent = nothing is checked. `tx` is the store's open
+   * transaction (undefined for the in-memory store): the count reads on it, so a switch holds ONE pooled connection while the config
+   * row is locked. Only an ACTIVE config is asked: nothing else can drain the work, so counting it would strand the tenant. Queued
+   * NOE / NOTR / transfer notices are deliberately not counted: a worker re-resolves the org's transport when it runs, so a notice
+   * transmits through the new vendor (or parks for `outside`), and holding a switch could cost the 5-day filing deadline.
+   */
+  readonly waitingWork?: (organizationId: string, tx: ConfigStore["tx"]) => Promise<WaitingWork>;
 }
 
 /** What `prepareVerify` read: everything `completeVerify` needs, so no store call is open while the vendor is called. */
@@ -486,7 +492,10 @@ export function createTenantClearinghouseService(
         "this organization has production submissions in flight; its vendor and mode cannot change until an operator migrates them",
       );
     }
-    const waiting = await deps.waitingWork?.(organizationId);
+    // A config that is not active sends nothing and cannot drain what waits (the workers hold it), so the queue does not lock it:
+    // refusing the switch would leave the tenant with no way out (re-review M3).
+    if (existing.status !== "active") return;
+    const waiting = await deps.waitingWork?.(organizationId, store.tx);
     if (waiting && waiting.claims + waiting.commercialSubmissions > 0) {
       throw new ChartWardenError(
         "CLEARINGHOUSE_WORK_WAITING",

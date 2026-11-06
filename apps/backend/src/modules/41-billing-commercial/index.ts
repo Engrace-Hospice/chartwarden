@@ -82,7 +82,10 @@ export {
 export { type ScheduleProbe, createScheduleProbe } from "./jobs/schedule-probe";
 export { M41_CRON_QUEUES, M41_PLATFORM_JOB_ID, wireM41Tenancy } from "./jobs/queues";
 export { buildCommercialRenderPorts } from "./services/render-ports";
-export { countQueuedCommercialSubmissions } from "./services/queued-count";
+export {
+  countQueuedCommercialSubmissions,
+  countQueuedCommercialSubmissionsOn,
+} from "./services/queued-count";
 export { buildCommercial837iRenderer } from "./services/render-837i";
 export type {
   CommercialRenderParties,

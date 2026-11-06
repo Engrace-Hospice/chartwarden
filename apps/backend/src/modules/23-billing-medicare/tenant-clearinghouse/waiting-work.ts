@@ -5,20 +5,21 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 
-/** Queued claim attempts of the org, read under its own RLS scope. */
-export async function countQueuedClaims(db: DbClient, organizationId: string): Promise<number> {
+/** Queued claim attempts of the org, on a transaction already scoped to it (the config service's own: one pooled connection). */
+export async function countQueuedClaimsOn(tx: DbClient, organizationId: string): Promise<number> {
   const S = schema.claimSubmission;
-  return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-    const [row] = await (tx as unknown as DbClient)
-      .select({ n: sql<number>`count(*)::int` })
-      .from(S)
-      .where(
-        and(
-          eq(S.organizationId, organizationId),
-          eq(S.kind, "claim_837i"),
-          eq(S.outcome, "queued"),
-        ),
-      );
-    return row?.n ?? 0;
-  });
+  const [row] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(S)
+    .where(
+      and(eq(S.organizationId, organizationId), eq(S.kind, "claim_837i"), eq(S.outcome, "queued")),
+    );
+  return row?.n ?? 0;
+}
+
+/** Queued claim attempts of the org, read under its own RLS scope (a pooled connection of its own: never inside another transaction). */
+export async function countQueuedClaims(db: DbClient, organizationId: string): Promise<number> {
+  return withOrgContext(db, { organizationId, userId: "" }, (tx) =>
+    countQueuedClaimsOn(tx as unknown as DbClient, organizationId),
+  );
 }

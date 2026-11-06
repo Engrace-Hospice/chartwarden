@@ -1178,7 +1178,10 @@ import { buildOrgRouteKeyReader } from "./modules/23-billing-medicare/tenant-cle
 import { buildClearinghouseSecretCipherFromEnv } from "./modules/23-billing-medicare/tenant-clearinghouse/secret-cipher";
 import { createTenantClearinghouseService } from "./modules/23-billing-medicare/tenant-clearinghouse/service";
 import { buildDrizzleTenantClearinghouseRouteService } from "./modules/23-billing-medicare/tenant-clearinghouse/tenant-service";
-import { countQueuedClaims } from "./modules/23-billing-medicare/tenant-clearinghouse/waiting-work";
+import {
+  countQueuedClaims,
+  countQueuedClaimsOn,
+} from "./modules/23-billing-medicare/tenant-clearinghouse/waiting-work";
 import { isVoidM23Claim } from "./modules/23-billing-medicare/void-claim";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
@@ -1895,6 +1898,7 @@ import {
   buildM41EnrollmentReportConsumer,
   buildM41RemittanceConsumer,
   countQueuedCommercialSubmissions,
+  countQueuedCommercialSubmissionsOn,
   registerCommercialAckQuarantineRoutes,
   registerCommercialBillingRoutes,
   registerM41AbacPredicates,
@@ -6002,13 +6006,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             platformFallback: clearinghouseFallback.lookup,
             // Security M4: the tenant lane may not choose test mode on a production deployment (platform ops may, with a reason).
             isProduction: process.env.NODE_ENV === "production",
-            // A switch of clearinghouse is refused while claims or commercial submissions are still queued on the old one.
-            waitingWork: async (organizationId) => ({
-              claims: await countQueuedClaims(dbHandle.db, organizationId),
-              commercialSubmissions: await countQueuedCommercialSubmissions(
-                dbHandle.db,
-                organizationId,
-              ),
+            // A switch of an ACTIVE clearinghouse is refused while claims or commercial submissions are still queued on it. The
+            // service hands over its own open transaction (the config row is locked): count on it, not on a second pooled connection.
+            waitingWork: async (organizationId, tx) => ({
+              claims: tx
+                ? await countQueuedClaimsOn(tx, organizationId)
+                : await countQueuedClaims(dbHandle.db, organizationId),
+              commercialSubmissions: tx
+                ? await countQueuedCommercialSubmissionsOn(tx, organizationId)
+                : await countQueuedCommercialSubmissions(dbHandle.db, organizationId),
             }),
           });
           const m34PlatformBackend = buildDrizzlePlatformService({
