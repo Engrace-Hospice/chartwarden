@@ -311,15 +311,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 34,
-        "enriched": 34
+        "routes": 38,
+        "enriched": 38
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
-        "tables": 11,
-        "covered": 11
+        "tables": 13,
+        "covered": 13
       }
     },
     {
@@ -611,8 +611,8 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 67,
-        "enriched": 67
+        "routes": 68,
+        "enriched": 68
       },
       "screens": true,
       "tests": true,

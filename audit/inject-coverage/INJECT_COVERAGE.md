@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 40/40 modules covered (100%) · 1892/1892 route defs sit behind a covered module · 1725/1892 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 40/40 modules covered (100%) · 1897/1897 route defs sit behind a covered module · 1730/1897 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
@@ -22,7 +22,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 13-emar | 28 | ✅ | 22/28 | apps/backend/__tests__/emar-caregiver-barcode.test.ts, apps/backend/__tests__/emar-routes.test.ts, apps/backend/__tests__/m6-readmission.live.test.ts, apps/backend/__tests__/s11-adversarial-stages.live.test.ts |
 | 14-idg | 39 | ✅ | 39/39 | apps/backend/__tests__/idg-discipline-notes.test.ts, apps/backend/__tests__/idg-enrichment.test.ts, apps/backend/__tests__/idg-inject.test.ts, apps/backend/__tests__/idg-packet-content.test.ts, apps/backend/__tests__/idg-routes.test.ts, apps/backend/__tests__/idg-schedule-meeting.test.ts, apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts, apps/backend/__tests__/m14-chart-promotion.test.ts, apps/backend/__tests__/m36-promotion-targets.live.test.ts, apps/backend/__tests__/m36-promotions.live.test.ts, apps/backend/__tests__/m6-readmission.live.test.ts, apps/backend/__tests__/s11-adversarial-stages.live.test.ts |
 | 15-discipline-care-plans | 28 | ✅ | 28/28 | apps/backend/__tests__/discipline-plans-caseload-scope.test.ts, apps/backend/__tests__/discipline-plans-inject.test.ts, apps/backend/__tests__/m6-readmission.live.test.ts |
-| 16-bereavement | 34 | ✅ | 34/34 | apps/backend/__tests__/bereavement-inject.test.ts, apps/backend/__tests__/m16-routes.live.test.ts, apps/backend/__tests__/m6-readmission.live.test.ts |
+| 16-bereavement | 38 | ✅ | 38/38 | apps/backend/__tests__/bereavement-inject.test.ts, apps/backend/__tests__/m16-routes.live.test.ts, apps/backend/__tests__/m6-readmission.live.test.ts |
 | 17-scheduling | 39 | ✅ | 34/39 | apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts, apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts, apps/backend/__tests__/gap-093-membership-credential-live.test.ts, apps/backend/__tests__/scheduling-caseload-scope.test.ts, apps/backend/__tests__/scheduling-inject.test.ts, apps/backend/__tests__/scheduling-own-vs-any.test.ts |
 | 18-evv | 26 | ✅ | 26/26 | apps/backend/__tests__/evv-inject.test.ts |
 | 19-oncall | 40 | ✅ | 39/40 | apps/backend/__tests__/oncall-inject.test.ts |
@@ -37,7 +37,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 28-fhir | 35 | ✅ | 35/35 | apps/backend/__tests__/fhir-inject.test.ts, apps/backend/__tests__/m28-fhir-gateway.live.test.ts |
 | 29-external-interfaces | 33 | ✅ | 33/33 | apps/backend/__tests__/external-interfaces-inject.test.ts |
 | 30-quality | 63 | ✅ | 63/63 | apps/backend/__tests__/gap-091-m30-phi-scope.test.ts, apps/backend/__tests__/m30-close-cosign.test.ts, apps/backend/__tests__/m30-mortality-patient-display.test.ts, apps/backend/__tests__/quality-inject.test.ts |
-| 31-portal | 67 | ✅ | 62/67 | apps/backend/__tests__/f225-portal-document-access-log.live.test.ts, apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts, apps/backend/__tests__/m31-portal-signin-decision.test.ts, apps/backend/__tests__/m31-portal-signin.live.test.ts, apps/backend/__tests__/m31-signature-requests.live.test.ts, apps/backend/__tests__/portal-inject.test.ts |
+| 31-portal | 68 | ✅ | 63/68 | apps/backend/__tests__/f225-portal-document-access-log.live.test.ts, apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts, apps/backend/__tests__/m31-portal-signin-decision.test.ts, apps/backend/__tests__/m31-portal-signin.live.test.ts, apps/backend/__tests__/m31-signature-requests.live.test.ts, apps/backend/__tests__/portal-inject.test.ts |
 | 32-ai-platform | 32 | ✅ | 32/32 | apps/backend/__tests__/ai-platform-inject.test.ts, apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/m36-ai.live.test.ts |
 | 33-reporting | 43 | ✅ | 43/43 | apps/backend/__tests__/gap-097-m33-schedule-authz.test.ts, apps/backend/__tests__/m36-response-analytics.live.test.ts, apps/backend/__tests__/m6-readmission.live.test.ts, apps/backend/__tests__/reporting-inject.test.ts |
 | 34-saas-tenant-platform | 58 | ✅ | 57/58 | apps/backend/__tests__/m34-ops-routes-inject.test.ts, apps/backend/__tests__/saas-tenant-platform-inject.test.ts |
