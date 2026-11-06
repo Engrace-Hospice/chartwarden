@@ -17,6 +17,7 @@ import { ProvisioningCard } from "../provisioning-card";
 import { statusLabel } from "../saas-status";
 import { StepTitlesContext } from "./failure-notice";
 import { panelFor } from "./panels";
+import { StaleNotice } from "./stale-notice";
 import { useLoad } from "./use-load";
 import {
   type WizardView,
@@ -96,6 +97,8 @@ export function TenantOnboardingWizard(): JSX.Element {
           <Link to={tenantPath(orgSlug)}>Back to tenant</Link>
         </div>
       </header>
+
+      <StaleNotice stale={wizard.stale} onReload={() => void wizard.reload()} />
 
       {view.tenantStatus === "provisioning" ? (
         <ProvisioningCard key={orgSlug} orgSlug={orgSlug} onChanged={() => void refresh()} />

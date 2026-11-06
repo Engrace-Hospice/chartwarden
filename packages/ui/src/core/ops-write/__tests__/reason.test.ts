@@ -38,6 +38,7 @@ describe("checkReason", () => {
     expect(REASON_RULES.officer).toEqual({ min: 8, max: 500 });
     expect(REASON_RULES.onboardingData).toEqual({ min: 8, max: 500 });
     expect(REASON_RULES.skip).toEqual({ min: 8, max: 2000 });
-    expect(REASON_RULES.pricing).toEqual({ min: 1, max: 2000 });
+    // M35's pricing reasons are judged by its own normalizeReason: 8 to 500 characters.
+    expect(REASON_RULES.pricing).toEqual({ min: 8, max: 500 });
   });
 });

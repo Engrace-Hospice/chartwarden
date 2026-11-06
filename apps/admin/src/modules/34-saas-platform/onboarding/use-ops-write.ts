@@ -29,6 +29,13 @@ export interface OpsWrite {
   clear(): void;
 }
 
+/** A gateway error page: a 5xx whose body is not the API's error envelope never got to the app. */
+function reachedNoOne(result: FetchResult<unknown>): boolean {
+  if (result.error === undefined || (result.response?.status ?? 0) < 500) return false;
+  const code = (result.error as { error?: { code?: unknown } } | null | undefined)?.error?.code;
+  return typeof code !== "string";
+}
+
 export function useOpsWrite(): OpsWrite {
   const keeper = useIdempotencyKeeper();
   const [busy, setBusy] = useState(false);
@@ -43,7 +50,9 @@ export function useOpsWrite(): OpsWrite {
       setFailure(null);
       try {
         const result = await call(keeper.keyFor(fingerprint));
-        keeper.settled(); // the server answered: its answer is cached under that key
+        // The server answered, and its answer is cached under the key: the next attempt starts on a new one. A 5xx WITHOUT the standard
+        // error envelope is a gateway (502/504) that never reached the app: nothing was cached, so a retry keeps the key.
+        if (!reachedNoOne(result)) keeper.settled();
         if (result.error !== undefined) {
           const refused = describeOpsError(
             result.error,

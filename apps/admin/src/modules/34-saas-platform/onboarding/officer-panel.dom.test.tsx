@@ -99,12 +99,55 @@ describe("OfficerPanel", () => {
       { params: { path: unknown }; body: Record<string, unknown> },
     ];
     expect(path).toBe(OFFICER);
+    expect((init as { headers?: Record<string, string> }).headers?.["Idempotency-Key"]).toMatch(
+      /\S/,
+    );
     expect(init.params.path).toEqual({ orgSlug: ORG_SLUG });
     expect(init.body).toEqual({
       membershipId: ADA,
       reason: "Customer named Ada on the kickoff call",
     });
     await waitFor(() => expect(ctx.refresh).toHaveBeenCalled());
+  });
+
+  it("reloads the staff after an assignment, so the roles shown are the roles held now", async () => {
+    const { client } = mount(members, {
+      PUT: { [OFFICER]: () => ok({ complianceOfficerMembershipId: ADA }) },
+    });
+    fireEvent.click(await screen.findByRole("radio", { name: /Ada Admin/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Assign compliance officer" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), {
+      target: { value: "Customer named Ada on the kickoff call" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Assign" }));
+    await waitFor(() => expect(client.PUT).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(client.GET.mock.calls.filter((c) => c[0] === MEMBERS).length).toBe(2),
+    );
+  });
+
+  it("reads the tenant's staff only when the panel can assign (a read-only panel has no use for the list)", async () => {
+    const { client } = mount(members, {}, view({ tenantStatus: "active" }));
+    await screen.findByText(/Onboarding is complete|This tenant is live/);
+    expect(client.GET.mock.calls.filter((c) => c[0] === MEMBERS)).toHaveLength(0);
+    expect(screen.queryByRole("group", { name: "Tenant staff" })).toBeNull();
+  });
+
+  it("says when the list was cut at the bound", async () => {
+    const client = stubClient({
+      GET: { [MEMBERS]: () => ok({ items: members, truncated: true }) },
+    });
+    renderAt(
+      "/x",
+      [
+        {
+          path: "/x",
+          element: <OfficerPanel ctx={panelCtx(view(), "compliance_officer_assigned")} />,
+        },
+      ],
+      client,
+    );
+    expect(await screen.findByText(/first 500/)).toBeTruthy();
   });
 
   it("does not offer Assign until someone is picked", async () => {
@@ -149,7 +192,7 @@ describe("OfficerPanel", () => {
 
   it("offers no assignment when the step cannot be acted on", async () => {
     mount(members, {}, view({ tenantStatus: "provisioning" }));
-    await screen.findByRole("group", { name: "Tenant staff" });
+    await screen.findByText(/still provisioning/);
     expect(screen.queryByRole("button", { name: "Assign compliance officer" })).toBeNull();
   });
 });

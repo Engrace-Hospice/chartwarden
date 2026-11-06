@@ -54,6 +54,9 @@ describe("OrganisationPanel", () => {
       { params: { path: unknown }; body: unknown },
     ];
     expect(path).toBe(PATCH);
+    expect((init as { headers?: Record<string, string> }).headers?.["Idempotency-Key"]).toMatch(
+      /\S/,
+    );
     expect(init.params.path).toEqual({ orgSlug: ORG_SLUG });
     expect(init.body).toEqual({
       displayName: "Cedar Ridge Hospice",

@@ -126,6 +126,9 @@ describe("BaaPanel", () => {
     await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
     const [path, init] = client.POST.mock.calls[0] as [string, { body: Record<string, unknown> }];
     expect(path).toBe(REGISTER);
+    expect((init as { headers?: Record<string, string> }).headers?.["Idempotency-Key"]).toMatch(
+      /\S/,
+    );
     expect(init.body).toEqual({
       tenantAccountId: "ta-1",
       addendumVersion: "v1",

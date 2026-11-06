@@ -155,6 +155,39 @@ describe("PlanContractPanel", () => {
     expect(client.POST).toHaveBeenCalledTimes(1);
   });
 
+  it("a blank staff count or census is not zero: it asks for them, and prices nothing", async () => {
+    const { client } = mount({
+      GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok(NO_CONTRACT) },
+      POST: { [PREVIEW]: () => ok(PREVIEW_RESULT) },
+    });
+    await screen.findByLabelText("Plan");
+    fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+    expect(screen.getByText(/Enter the staff accounts/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Staff accounts"), { target: { value: "12" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+    expect(screen.getByText(/Enter the average daily census/)).toBeTruthy();
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
+  it("billing through ChartWarden needs the expected collections; a tenant billing outside need not give any", async () => {
+    const { client } = mount({
+      GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok(NO_CONTRACT) },
+      POST: { [PREVIEW]: () => ok(PREVIEW_RESULT) },
+    });
+    await screen.findByLabelText("Plan");
+    fireEvent.change(screen.getByLabelText("Staff accounts"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Average daily census"), { target: { value: "14" } });
+    fireEvent.change(screen.getByLabelText("Billing service"), {
+      target: { value: "billing_software" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+    expect(screen.getByText(/Enter the expected net collections/)).toBeTruthy();
+    expect(client.POST).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Billing service"), { target: { value: "none" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+  });
+
   it("signs the plan for this tenant behind a reason and an Idempotency-Key, then reloads the wizard", async () => {
     const { client, ctx } = mount({
       GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok(NO_CONTRACT) },

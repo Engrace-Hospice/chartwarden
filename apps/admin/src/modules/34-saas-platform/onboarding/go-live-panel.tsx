@@ -10,7 +10,7 @@ import {
   REASON_RULES,
   useApiClient,
 } from "@chartwarden/ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import type { PanelContext } from "./panel-types";
@@ -37,7 +37,18 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   const { orgSlug, view } = ctx;
   const { goLive } = view;
   const [dialog, setDialog] = useState<Dialog>(null);
-  const [done, setDone] = useState<string | null>(null);
+  // The outcome banner belongs to the state its action leads to (and the one it was written in, until the wizard reloads): any other
+  // state, e.g. the officer attesting again after a revoke, is a new situation and does not inherit it.
+  const [done, setDone] = useState<{
+    message: string;
+    from: string;
+    to: string;
+    /** The wizard has left the state the action was taken in (so that state, if it comes back, is a new situation). */
+    left: boolean;
+  } | null>(null);
+  useEffect(() => {
+    setDone((d) => (d && !d.left && goLive.state !== d.from ? { ...d, left: true } : d));
+  }, [goLive.state]);
   const write = useOpsWrite();
 
   const open = view.steps.filter(
@@ -53,23 +64,35 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
 
   async function decide(kind: "approve" | "revoke", reason: string): Promise<void> {
     const body = { reason };
-    const outcome = await write.run(`${kind}:${reason}`, () =>
+    const outcome = await write.run(`${kind}:${reason}`, (key) =>
       kind === "approve"
         ? client.POST("/api/v1/platform/tenants/{orgSlug}/go-live/approve", {
             params: { path: { orgSlug } },
             body,
+            headers: { "Idempotency-Key": key },
           })
         : client.POST("/api/v1/platform/tenants/{orgSlug}/go-live/revoke", {
             params: { path: { orgSlug } },
             body,
+            headers: { "Idempotency-Key": key },
           }),
     );
     if (outcome.ok) {
       setDialog(null);
       setDone(
         kind === "approve"
-          ? "Approved. The tenant is live."
-          : "Attestation revoked. The compliance officer can attest again.",
+          ? {
+              message: "Approved. The tenant is live.",
+              from: goLive.state,
+              to: "live",
+              left: false,
+            }
+          : {
+              message: "Attestation revoked. The compliance officer can attest again.",
+              from: goLive.state,
+              to: "awaiting_attestation",
+              left: false,
+            },
       );
       await ctx.refresh();
     }
@@ -196,7 +219,9 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
           </>
         ) : null}
 
-        {done ? <InlineAlert tone="success">{done}</InlineAlert> : null}
+        {done && (goLive.state === done.to || (goLive.state === done.from && !done.left)) ? (
+          <InlineAlert tone="success">{done.message}</InlineAlert>
+        ) : null}
       </section>
 
       <RecordSaveDialog

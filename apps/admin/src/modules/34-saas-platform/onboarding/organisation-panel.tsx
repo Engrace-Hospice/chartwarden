@@ -57,10 +57,11 @@ export function OrganisationPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
       displayName: displayName.trim(),
       ...(orgTimezone.trim() ? { orgTimezone: orgTimezone.trim() } : {}),
     };
-    const outcome = await write.run(JSON.stringify(body), () =>
+    const outcome = await write.run(JSON.stringify(body), (key) =>
       client.PATCH("/api/v1/platform/tenants/{orgSlug}/org-profile", {
         params: { path: { orgSlug } },
         body,
+        headers: { "Idempotency-Key": key },
       }),
     );
     if (outcome.ok) await ctx.refresh();

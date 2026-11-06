@@ -21,8 +21,8 @@ export const REASON_RULES = {
   onboardingData: { min: 8, max: 500 },
   /** Skipping a step. */
   skip: { min: 8, max: 2000 },
-  /** Pricing writes (sign a contract, change the billing service). */
-  pricing: { min: 1, max: 2000 },
+  /** Pricing writes (sign a contract, change the billing service): M35 judges them with its own normalizeReason, 8 to 500. */
+  pricing: { min: 8, max: 500 },
 } as const satisfies Record<string, ReasonRule>;
 
 /** Whitespace runs become one space, control and format characters go, the ends are trimmed. Whitespace first, so "a\nb" never fuses. */

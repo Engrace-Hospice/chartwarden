@@ -65,10 +65,11 @@ export function AttestCard({
       reason: normalizeReason(reason),
     };
     const taskId = step.id;
-    const outcome = await write.run(JSON.stringify(body), () =>
+    const outcome = await write.run(JSON.stringify(body), (key) =>
       client.POST("/api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/attest", {
         params: { path: { orgSlug, taskId } },
         body,
+        headers: { "Idempotency-Key": key },
       }),
     );
     if (outcome.ok) {

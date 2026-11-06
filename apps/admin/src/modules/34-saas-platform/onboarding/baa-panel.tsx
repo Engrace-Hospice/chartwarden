@@ -165,14 +165,16 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
       ...(form.documentId.trim() ? { documentId: form.documentId.trim() } : {}),
     };
     const id = editing.id;
-    const outcome = await write.run(`${id ?? "new"}:${JSON.stringify(fields)}`, () =>
+    const outcome = await write.run(`${id ?? "new"}:${JSON.stringify(fields)}`, (key) =>
       id === null
         ? client.POST("/api/v1/platform/baa-register", {
             body: { tenantAccountId, addendumVersion: form.addendumVersion.trim(), ...fields },
+            headers: { "Idempotency-Key": key },
           })
         : client.PATCH("/api/v1/platform/baa-register/{id}", {
             params: { path: { id } },
             body: fields,
+            headers: { "Idempotency-Key": key },
           }),
     );
     if (outcome.ok) {

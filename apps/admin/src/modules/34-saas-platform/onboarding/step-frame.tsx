@@ -108,15 +108,17 @@ export function StepFrame({
   async function decide(kind: "skip" | "reopen", reason: string): Promise<void> {
     const taskId = step.id;
     if (!taskId) return;
-    const outcome = await write.run(`${kind}:${reason}`, () =>
+    const outcome = await write.run(`${kind}:${reason}`, (key) =>
       kind === "skip"
         ? client.POST("/api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/skip", {
             params: { path: { orgSlug, taskId } },
             body: { skipRationale: reason },
+            headers: { "Idempotency-Key": key },
           })
         : client.POST("/api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/reopen", {
             params: { path: { orgSlug, taskId } },
             body: { reason },
+            headers: { "Idempotency-Key": key },
           }),
     );
     if (outcome.ok) {

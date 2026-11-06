@@ -65,6 +65,23 @@ describe("useOpsWrite", () => {
     expect(keys[1]).not.toBe(keys[0]);
   });
 
+  it("keeps the key after a gateway failure that carries no error envelope: it never reached the app, so nothing was cached", async () => {
+    const { keys, attempt } = setup();
+    await attempt("body-1", { error: "<html>Bad Gateway</html>", response: { status: 502 } });
+    await attempt("body-1", { data: { id: "1" }, response: { status: 200 } });
+    expect(keys[1]).toBe(keys[0]);
+  });
+
+  it("renews the key after a 5xx that carries the standard envelope: the app answered and the answer is cached", async () => {
+    const { keys, attempt } = setup();
+    await attempt("body-1", {
+      error: { error: { code: "INTERNAL_ERROR", message: "boom" } },
+      response: { status: 500 },
+    });
+    await attempt("body-1", { data: { id: "1" }, response: { status: 200 } });
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+
   it("starts on a new key when the body changes", async () => {
     const { keys, attempt } = setup();
     await attempt("body-1", "throw");

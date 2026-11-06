@@ -217,6 +217,10 @@ describe("TenantOverview: key rotation", () => {
       { body: unknown },
     ];
     expect(call[1].body).toEqual({ reason: "Quarterly key rotation, ticket CHG-77" });
+    // one key per attempt: a retry after no answer must replay, not enqueue a second rotation job
+    expect((call[1] as { headers?: Record<string, string> }).headers?.["Idempotency-Key"]).toMatch(
+      /\S/,
+    );
   });
 
   it("will not rotate on a reason that is too short", async () => {

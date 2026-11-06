@@ -8,6 +8,7 @@ import type { JSX } from "react";
 import type { PanelContext } from "./panel-types";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
 import { RecordSaveDialog } from "./record-save-dialog";
+import { StaleNotice } from "./stale-notice";
 import { StepFrame } from "./step-frame";
 import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
@@ -26,8 +27,15 @@ export function OfficerPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   const client = useApiClient();
   const { orgSlug, view, actions } = ctx;
   const canWrite = actions.readOnlyReason === null;
-  const members = useLoad<{ items: Member[] }>(`members:${orgSlug}`, () =>
-    client.GET("/api/v1/platform/tenants/{orgSlug}/members", { params: { path: { orgSlug } } }),
+  // The staff list is read only to pick an officer: a panel that cannot assign (locked, tenant not onboarding) does not read it.
+  const members = useLoad<{ items: Member[]; truncated?: boolean }>(
+    `members:${orgSlug}:${canWrite}`,
+    async () =>
+      canWrite
+        ? client.GET("/api/v1/platform/tenants/{orgSlug}/members", {
+            params: { path: { orgSlug } },
+          })
+        : { data: { items: [], truncated: false } },
   );
   const [picked, setPicked] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
@@ -45,16 +53,18 @@ export function OfficerPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   async function assign(reason: string): Promise<void> {
     if (!picked) return;
     const body = { membershipId: picked, reason };
-    const outcome = await write.run(JSON.stringify(body), () =>
+    const outcome = await write.run(JSON.stringify(body), (key) =>
       client.PUT("/api/v1/platform/tenants/{orgSlug}/compliance-officer", {
         params: { path: { orgSlug } },
         body,
+        headers: { "Idempotency-Key": key },
       }),
     );
     if (outcome.ok) {
       setAsking(false);
       setPicked(null);
-      await ctx.refresh();
+      // The role the member now holds shows in the picker, and the wizard shows the officer.
+      await Promise.all([members.reload(true), ctx.refresh()]);
     }
   }
 
@@ -81,10 +91,17 @@ export function OfficerPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         ) : null}
         <PendingAttestationWarning view={view} />
         {members.failure ? <p role="alert">Could not load the tenant's staff.</p> : null}
-        {members.data && people.length === 0 ? (
+        <StaleNotice stale={members.stale} onReload={() => void members.reload()} />
+        {canWrite && members.data && people.length === 0 ? (
           <p>
             This tenant has no active staff yet. Once the first admin has accepted their invitation
             and added staff, pick the compliance officer here.
+          </p>
+        ) : null}
+        {members.data?.truncated ? (
+          <p className="wx-row-sub">
+            Showing the first 500 of this tenant's staff, by name. If the officer is not listed,
+            assign them from the tenant app.
           </p>
         ) : null}
         {people.length > 0 ? (

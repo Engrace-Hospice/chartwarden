@@ -2,7 +2,9 @@
 // Step 14, Go-live: two people. The tenant's compliance officer attests readiness in the tenant app; a different platform operator
 // approves here (fresh step-up, a reason), and only then does the tenant go active. The panel shows where it stands and offers
 // exactly what this operator can do in that state.
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { type JSX, useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { GoLivePanel } from "./go-live-panel";
 import {
@@ -127,9 +129,44 @@ describe("GoLivePanel: awaiting approval", () => {
       { params: { path: unknown }; body: unknown },
     ];
     expect(path).toBe(APPROVE);
+    expect((init as { headers?: Record<string, string> }).headers?.["Idempotency-Key"]).toMatch(
+      /\S/,
+    );
     expect(init.params.path).toEqual({ orgSlug: ORG_SLUG });
     expect(init.body).toEqual({ reason: "Checked the BAA and the officer's attestation" });
     await waitFor(() => expect(ctx.refresh).toHaveBeenCalled());
+  });
+
+  it("the outcome banner belongs to the state it was written for: a later state does not inherit it", async () => {
+    let setView: (v: WizardView) => void = () => undefined;
+    function Host({ initial }: { initial: WizardView }): JSX.Element {
+      const [view, set] = useState(initial);
+      setView = set;
+      return <GoLivePanel ctx={panelCtx(view, "go_live_checklist_complete")} />;
+    }
+    const client = stubClient({ POST: { [REVOKE]: () => ok(wizard("awaiting_attestation")) } });
+    renderAt(
+      "/x",
+      [
+        {
+          path: "/x",
+          element: <Host initial={wizard("awaiting_approval", { attestation: attestation() })} />,
+        },
+      ],
+      client,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Revoke attestation" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), {
+      target: { value: "The BAA needs another look first" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
+    expect(await screen.findByText(/Attestation revoked/)).toBeTruthy();
+    // the wizard reloads into the state the revoke produced: its banner stays
+    act(() => setView(wizard("awaiting_attestation")));
+    expect(screen.getByText(/Attestation revoked/)).toBeTruthy();
+    // the officer attests again: the new waiting-for-approval state does not inherit the old banner
+    act(() => setView(wizard("awaiting_approval", { attestation: attestation({ id: "att-2" }) })));
+    expect(screen.queryByText(/Attestation revoked/)).toBeNull();
   });
 
   it("revokes the attestation behind a reason, so the officer can attest again", async () => {

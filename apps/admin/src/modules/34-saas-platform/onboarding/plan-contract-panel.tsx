@@ -200,17 +200,25 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
   const plan = offered.find((p) => p.slug === (planSlug || offered[0]?.slug));
 
   async function runPreview(): Promise<void> {
-    const staffCount = Number(staff);
-    const averageDailyCensus = Number(census);
-    const dollars = Number(collections || "0");
-    if (
-      ![staffCount, averageDailyCensus, dollars].every((n) => Number.isFinite(n) && n >= 0) ||
-      !Number.isInteger(staffCount) ||
-      !plan
-    ) {
-      setInputError(
-        "Enter the staff accounts (a whole number), the average daily census and the expected net collections.",
-      );
+    // A blank box is not zero: Number("") is 0, which would price a tenant with no staff.
+    const asNumber = (text: string): number => (text.trim() === "" ? Number.NaN : Number(text));
+    const staffCount = asNumber(staff);
+    const averageDailyCensus = asNumber(census);
+    const dollars = collections.trim() === "" ? 0 : Number(collections);
+    const problem =
+      !Number.isInteger(staffCount) || staffCount < 0
+        ? "Enter the staff accounts (a whole number)."
+        : !Number.isFinite(averageDailyCensus) || averageDailyCensus < 0
+          ? "Enter the average daily census."
+          : mode !== "none" && collections.trim() === ""
+            ? "Enter the expected net collections: the billing percentage is charged on them."
+            : !Number.isFinite(dollars) || dollars < 0
+              ? "Enter the expected net collections as dollars."
+              : !plan
+                ? "Pick a plan."
+                : null;
+    if (problem !== null || !plan) {
+      setInputError(problem);
       return;
     }
     setInputError(null);

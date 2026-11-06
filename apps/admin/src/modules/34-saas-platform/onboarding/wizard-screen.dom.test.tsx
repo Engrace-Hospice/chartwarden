@@ -192,6 +192,9 @@ describe("TenantOnboardingWizard: marking a step done with evidence", () => {
       { params: { path: Record<string, string> }; body: unknown },
     ];
     expect(path).toBe(ATTEST);
+    expect((init as { headers?: Record<string, string> }).headers?.["Idempotency-Key"]).toMatch(
+      /\S/,
+    );
     expect(init.params.path).toEqual({ orgSlug: ORG_SLUG, taskId: TASK("payer_enrollment") });
     expect(init.body).toEqual({
       evidenceNote: "Confirmed enrolment letter with the customer",
@@ -199,6 +202,23 @@ describe("TenantOnboardingWizard: marking a step done with evidence", () => {
       reason: "Customer asked us to settle this for them",
     });
     await waitFor(() => expect(client.GET.mock.calls.length).toBeGreaterThan(before));
+  });
+
+  it("says so when the page could not be refreshed after a saved change, instead of showing old state as current", async () => {
+    let reads = 0;
+    const view = wizardView(steps());
+    const client = stubClient({
+      GET: {
+        [ONBOARDING]: () => (++reads === 1 ? ok(view) : refused(500, "INTERNAL_ERROR")),
+        [OVERVIEW_PATH]: () => ok(OVERVIEW),
+      },
+      POST: { [ATTEST]: () => ok(view.steps[1]) },
+    });
+    await openAttest(client);
+    fill("Confirmed enrolment letter", "", "Customer asked us to settle this");
+    fireEvent.click(screen.getByRole("button", { name: "Save and mark done" }));
+    expect(await screen.findByText(/may be out of date/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
   });
 
   it("leaves the reference out when it is blank", async () => {
@@ -301,6 +321,9 @@ describe("TenantOnboarding wizard: skip and re-open", () => {
     await waitFor(() => expect(writes(client)).toHaveLength(1));
     const [path, init] = writes(client)[0] as [string, { body: unknown }];
     expect(path).toBe(SKIP);
+    expect((init as { headers?: Record<string, string> }).headers?.["Idempotency-Key"]).toMatch(
+      /\S/,
+    );
     expect(init.body).toEqual({ skipRationale: "Tenant bills outside ChartWarden" });
   });
 
@@ -323,6 +346,9 @@ describe("TenantOnboarding wizard: skip and re-open", () => {
     await waitFor(() => expect(writes(client)).toHaveLength(1));
     const [path, init] = writes(client)[0] as [string, { body: unknown }];
     expect(path).toBe(REOPEN);
+    expect((init as { headers?: Record<string, string> }).headers?.["Idempotency-Key"]).toMatch(
+      /\S/,
+    );
     expect(init.body).toEqual({ reason: "Display name was misspelled" });
   });
 

@@ -129,10 +129,12 @@ export function TenantOverview(): JSX.Element {
 
   const rotateDek = useCallback(
     async (reason: string) => {
-      const outcome = await rotateWrite.run(reason, () =>
+      const outcome = await rotateWrite.run(reason, (key) =>
         client.POST("/api/v1/platform/tenants/{orgSlug}/dek-rotate", {
           params: { path: { orgSlug } },
           body: { reason },
+          // One key per attempt: a retry after no answer replays instead of enqueueing a second rotation job.
+          headers: { "Idempotency-Key": key },
         }),
       );
       if (!outcome.ok) return; // the dialog stays open and says why
