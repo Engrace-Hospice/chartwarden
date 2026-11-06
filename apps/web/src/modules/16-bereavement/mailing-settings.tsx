@@ -3,11 +3,12 @@
 // The four mailings a tenant can configure: the quarterly newsletter, the December holiday card, Mother's Day and Father's Day. (The
 // decedent-birthday mailing is deferred and never offered.) Reading the settings needs `bereavement.mailing.read`; changing them
 // needs `bereavement.mailing.manage`, and a reader without it sees the settings read-only. A 403 on the read renders nothing.
-// Each mailing is its own card with its own version, so saving one never overwrites another.
+// Each mailing is its own card with its own version, so saving one never overwrites another. While any card holds an unsaved edit that
+// is not being saved, leaving the page in-app asks first (one `useBlocker` here: a router supports one blocker at a time).
 import { Button, LoadingSpinner, PageHeader, useApiClient } from "@chartwarden/ui";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import type { JSX } from "react";
-import { Link } from "react-router-dom";
+import { Link, useBlocker } from "react-router-dom";
 import { useSession } from "../../shell/session";
 import { type MailingConfig, listMailingConfigs } from "./bereavement-api";
 import {
@@ -43,6 +44,15 @@ export function MailingSettings(): JSX.Element | null {
   }, [client]);
   const { state, reload, patch } = useLoaded<MailingConfig[]>(fetchConfigs, CONFIGS_LOAD_FAILED);
   const { announce, region } = useActionStatus();
+  const [unsaved, setUnsaved] = useState<Readonly<Record<string, boolean>>>({});
+  const reportDirty = useCallback(
+    (mailingKey: string, blocking: boolean) =>
+      setUnsaved((prev) =>
+        prev[mailingKey] === blocking ? prev : { ...prev, [mailingKey]: blocking },
+      ),
+    [],
+  );
+  const blocker = useBlocker(Object.values(unsaved).some(Boolean));
 
   if (state.kind === "hidden") return null;
   if (state.kind === "loading") return <LoadingSpinner label="Loading the mailing settings" />;
@@ -79,6 +89,17 @@ export function MailingSettings(): JSX.Element | null {
         a new run starts with; each run's wording can still be edited before it is generated.
       </span>
       {region}
+      {blocker.state === "blocked" ? (
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+          <ErrorText>You have unsaved mailing settings. Leave without saving them?</ErrorText>
+          <Button size="sm" tone="secondary" onClick={() => blocker.reset()}>
+            Stay on this page
+          </Button>
+          <Button size="sm" tone="danger" onClick={() => blocker.proceed()}>
+            Leave without saving
+          </Button>
+        </div>
+      ) : null}
       {state.notice ? (
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
           <ErrorText>{state.notice}</ErrorText>
@@ -102,6 +123,7 @@ export function MailingSettings(): JSX.Element | null {
           readOnly={!mayManage}
           onSaved={saved}
           onReload={() => void reload()}
+          onDirtyChange={reportDirty}
         />
       ))}
     </div>

@@ -5100,7 +5100,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Confirm the batch was mailed: re-check eligibility over the rendered contacts (an opt-out or closure since the render is flagged `excluded_after_render` and never logged as mailed), ready to mailed, `m16.bereavement.mailing_run_mailed`; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #50) */
+        /** Confirm the batch was mailed (bookkeeping): re-check eligibility over the rendered contacts (an opt-out or closure since the download is flagged `excluded_after_render` and never logged as mailed; staff pull that letter by its printed Ref; nothing recalls a letter already posted), ready to mailed, `m16.bereavement.mailing_run_mailed`; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #50) */
         post: operations["postApiV1BereavementMailingsRunsByRunIdConfirmmailed"];
         delete?: never;
         options?: never;
@@ -5132,7 +5132,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** A short-lived URL for the rendered batch PDF (every recipient's name and address: internal-only), minted through the M22 org-level document seam, which records the access; 409 unless the run is ready or mailed; never cached (ADR-0109 D10, #49) */
+        /** A short-lived URL for the rendered batch PDF (every recipient's name and address, across the whole tenant: internal-only), minted through the M22 org-level document seam, which records the access; needs a fresh step-up; the URL is served as an attachment; 409 `MAILING_RUN_NOT_READY` unless the run is ready or mailed; on a ready run eligibility is re-checked first and a batch naming anyone no longer eligible is refused with 409 `MAILING_RUN_STALE` (a count only): regenerate it (#48) and download again; never cached (ADR-0109 D10, #49) */
         get: operations["getApiV1BereavementMailingsRunsByRunIdDownload"];
         put?: never;
         post?: never;
@@ -5151,7 +5151,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Generate the batch: compare-and-set draft (or failed) to generating, select the recipients set-based through the eligibility rule, hand the render to the worker; 422 `MAILING_CONTENT_EMPTY` when no wording was written (no default ships); a run with no eligible recipient lands `failed` (`NO_RECIPIENTS`); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #48) */
+        /** Generate the batch: compare-and-set draft, failed or ready to generating, select the recipients set-based through the eligibility rule, hand the render to the worker (which re-checks eligibility just before rendering). From `ready` it REGENERATES a batch that went stale (download answered 409 `MAILING_RUN_STALE`): the old PDF is detached and a fresh one rendered; 422 `MAILING_CONTENT_EMPTY` when no wording was written (no default ships); a run with no eligible recipient lands `failed` (`NO_RECIPIENTS`); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #48) */
         post: operations["postApiV1BereavementMailingsRunsByRunIdGenerate"];
         delete?: never;
         options?: never;

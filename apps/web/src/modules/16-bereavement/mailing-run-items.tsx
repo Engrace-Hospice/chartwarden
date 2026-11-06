@@ -62,6 +62,8 @@ export function MailingRunItems({
   const { state, reload, loadMore } = usePagedList<MailingItem>(fetchPage, ITEMS_LOAD_FAILED);
 
   if (state.kind === "hidden") return null;
+  // No card chrome before the first answer: a reader the server refuses must not see a card flash and vanish.
+  if (state.kind === "loading") return <LoadingSpinner label="Loading the run's items" />;
   const rows = state.kind === "ready" ? state.rows : [];
   const failure =
     state.kind === "error" ? state.message : state.kind === "ready" ? state.notice : null;
@@ -88,7 +90,6 @@ export function MailingRunItems({
           </Button>
         </div>
       ) : null}
-      {state.kind === "loading" ? <LoadingSpinner label="Loading the run's items" /> : null}
       {state.kind === "ready" && rows.length === 0 ? (
         <span style={mutedStyle}>
           {status === ALL_ITEMS

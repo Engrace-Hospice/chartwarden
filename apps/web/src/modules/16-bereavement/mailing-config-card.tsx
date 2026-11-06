@@ -4,7 +4,8 @@
 // newsletter and the December card have one) and the agency's own wording. The save carries the config version the screen READ in
 // `If-Match` (0 for a mailing never configured). A 412 means someone else saved first: the card says so and offers a reload, which
 // discards the unsaved edits, so it is never done for the reader. While the write is in flight every control is inert and the
-// button shows it; an unsaved edit is flagged, can be discarded, and the browser warns before the tab is closed over it.
+// button shows it; an unsaved edit is flagged, can be discarded, and the browser warns before the tab is closed over it. The card reports
+// "unsaved and not saving" to the settings page, which holds the one in-app navigation blocker (a router supports one blocker at a time).
 import { Button, StatusPill, t } from "@chartwarden/ui";
 import { useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
@@ -47,6 +48,7 @@ export function MailingConfigCard({
   readOnly,
   onSaved,
   onReload,
+  onDirtyChange,
 }: {
   config: MailingConfig;
   /** The reader may see the settings but not change them. */
@@ -54,6 +56,8 @@ export function MailingConfigCard({
   onSaved: (saved: MailingConfig) => void;
   /** Read every config again (the card is rebuilt from what comes back). */
   onReload: () => void;
+  /** Whether this card holds an unsaved edit that is not being saved (the page blocks in-app navigation while any card does). */
+  onDirtyChange?: (mailingKey: string, blocking: boolean) => void;
 }): JSX.Element {
   const client = useApiClient();
   const label = mailingLabel(config.mailingKey);
@@ -69,6 +73,12 @@ export function MailingConfigCard({
   const built = buildBody(config.mailingKey, draft);
   const wordingSentences = new Set(wordingProblems(draft.wording));
   const cardProblems = built.problems.filter((p) => !wordingSentences.has(p));
+
+  useEffect(() => {
+    const key = config.mailingKey;
+    onDirtyChange?.(key, dirty && !busy);
+    return () => onDirtyChange?.(key, false);
+  }, [dirty, busy, onDirtyChange, config.mailingKey]);
 
   // A closed tab or a reload would lose the edit: the browser asks first.
   useEffect(() => {
@@ -138,6 +148,7 @@ export function MailingConfigCard({
             minWidth: 0,
           }}
         >
+          <legend style={visuallyHidden}>{label} settings</legend>
           <CheckboxField
             label="Send this mailing"
             checked={draft.enabled}
@@ -215,12 +226,12 @@ export function MailingConfigCard({
           <ErrorText key={problem}>{problem}</ErrorText>
         ))}
         {stale ? (
-          <Notice tone="warning">
-            {CONFIG_MOVED}{" "}
+          <div style={{ display: "flex", gap: t.space2, alignItems: "center", flexWrap: "wrap" }}>
+            <ErrorText>{CONFIG_MOVED}</ErrorText>
             <Button size="sm" tone="secondary" onClick={onReload}>
               Reload settings
             </Button>
-          </Notice>
+          </div>
         ) : null}
         {error ? <ErrorText>{error}</ErrorText> : null}
         {readOnly ? null : (
@@ -229,7 +240,7 @@ export function MailingConfigCard({
               loading={busy}
               disabled={!dirty || built.body === null}
               onClick={() => void save()}
-              aria-label={`Save ${label} settings`}
+              aria-label={`Save settings for ${label}`}
             >
               {busy ? "Saving…" : "Save settings"}
             </Button>

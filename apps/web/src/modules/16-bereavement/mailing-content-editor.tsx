@@ -98,7 +98,7 @@ export function MailingContentEditor({
           type="button"
           style={ghostButtonStyle}
           disabled={value.paragraphs.length >= CONTENT_LIMITS.paragraphs}
-          aria-label={label("add paragraph")}
+          aria-label={label("add a paragraph")}
           onClick={() => onChange({ ...value, paragraphs: [...value.paragraphs, ""] })}
         >
           Add a paragraph

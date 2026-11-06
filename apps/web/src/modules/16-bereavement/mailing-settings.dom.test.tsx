@@ -5,7 +5,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 // If-Match (0 for a never-configured mailing), a 412 prompts a reload instead of overwriting, an unsaved edit is flagged and warned
 // about, a write in flight makes every control inert, and no wording is ever supplied for the agency.
 import axe from "axe-core";
-import { MemoryRouter } from "react-router-dom";
+import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { MailingSettings } from "./mailing-settings";
@@ -110,9 +110,15 @@ function mount(opts: {
           permissions: opts.permissions ?? MANAGER,
         }}
       >
-        <MemoryRouter>
-          <MailingSettings />
-        </MemoryRouter>
+        <RouterProvider
+          router={createMemoryRouter(
+            [
+              { path: "/bereavement/mailings/settings", element: <MailingSettings /> },
+              { path: "/bereavement/mailings", element: <p>Runs page</p> },
+            ],
+            { initialEntries: ["/bereavement/mailings/settings"] },
+          )}
+        />
       </SessionProvider>
     </ApiClientProvider>,
   );
@@ -211,7 +217,9 @@ describe("mailing settings — saving", () => {
     });
     const december = await card("December holiday card settings");
     fireEvent.change(december.getByLabelText("Lead time in days"), { target: { value: "21" } });
-    fireEvent.click(december.getByRole("button", { name: "Save December holiday card settings" }));
+    fireEvent.click(
+      december.getByRole("button", { name: "Save settings for December holiday card" }),
+    );
     await waitFor(() => expect(puts(calls)).toHaveLength(1));
     const put = puts(calls)[0];
     expect(put).toMatchObject({
@@ -254,18 +262,18 @@ describe("mailing settings — saving", () => {
     fireEvent.change(mothers.getByLabelText("Mother's Day letter title"), {
       target: { value: "For mothers" },
     });
-    fireEvent.click(mothers.getByRole("button", { name: "Mother's Day letter add paragraph" }));
+    fireEvent.click(mothers.getByRole("button", { name: "Mother's Day letter add a paragraph" }));
     fireEvent.change(mothers.getByLabelText("Mother's Day letter paragraph 1"), {
       target: { value: "Thinking of you." },
     });
-    fireEvent.click(mothers.getByRole("button", { name: "Save Mother's Day letter settings" }));
+    fireEvent.click(mothers.getByRole("button", { name: "Save settings for Mother's Day letter" }));
     await waitFor(() => expect(puts(calls)).toHaveLength(1));
     expect(puts(calls)[0]?.ifMatch).toBe("0");
 
     await screen.findByText("The Mother's Day letter settings were saved.");
     const again = await card("Mother's Day letter settings");
     fireEvent.change(again.getByLabelText("Lead time in days"), { target: { value: "30" } });
-    fireEvent.click(again.getByRole("button", { name: "Save Mother's Day letter settings" }));
+    fireEvent.click(again.getByRole("button", { name: "Save settings for Mother's Day letter" }));
     await waitFor(() => expect(puts(calls)).toHaveLength(2));
     expect(puts(calls)[1]?.ifMatch).toBe("1");
     expect(puts(calls)[1]?.idempotencyKey).not.toBe(puts(calls)[0]?.idempotencyKey);
@@ -279,7 +287,9 @@ describe("mailing settings — saving", () => {
     fireEvent.change(newsletter.getByLabelText("Issue dates (MM-DD, separated by commas)"), {
       target: { value: "01-10, 04-10 07-10" },
     });
-    fireEvent.click(newsletter.getByRole("button", { name: "Save Quarterly newsletter settings" }));
+    fireEvent.click(
+      newsletter.getByRole("button", { name: "Save settings for Quarterly newsletter" }),
+    );
     await waitFor(() => expect(puts(calls)).toHaveLength(1));
     expect(puts(calls)[0]?.body).toMatchObject({
       schedule: { monthDays: ["01-10", "04-10", "07-10"] },
@@ -287,7 +297,9 @@ describe("mailing settings — saving", () => {
 
     const december = await card("December holiday card settings");
     fireEvent.change(december.getByLabelText("Card date (MM-DD)"), { target: { value: "12-20" } });
-    fireEvent.click(december.getByRole("button", { name: "Save December holiday card settings" }));
+    fireEvent.click(
+      december.getByRole("button", { name: "Save settings for December holiday card" }),
+    );
     await waitFor(() => expect(puts(calls)).toHaveLength(2));
     expect(puts(calls)[1]?.body).toMatchObject({ schedule: { monthDay: "12-20" } });
   });
@@ -296,7 +308,7 @@ describe("mailing settings — saving", () => {
     const { calls } = mount({});
     const december = await card("December holiday card settings");
     const save = december.getByRole("button", {
-      name: "Save December holiday card settings",
+      name: "Save settings for December holiday card",
     }) as HTMLButtonElement;
     fireEvent.change(december.getByLabelText("Card date (MM-DD)"), { target: { value: "13-40" } });
     expect(december.getByText(/Write the card's date as MM-DD/)).toBeTruthy();
@@ -323,7 +335,7 @@ describe("mailing settings — saving", () => {
     fireEvent.click(fathers.getByLabelText("Everyone on the roster"));
     fireEvent.click(fathers.getByLabelText("Spouse"));
     fireEvent.click(fathers.getByLabelText("Child"));
-    fireEvent.click(fathers.getByRole("button", { name: "Save Father's Day letter settings" }));
+    fireEvent.click(fathers.getByRole("button", { name: "Save settings for Father's Day letter" }));
     await waitFor(() => expect(puts(calls)).toHaveLength(1));
     expect(puts(calls)[0]?.body).toMatchObject({ audienceRelationships: ["child", "spouse"] });
   });
@@ -336,7 +348,7 @@ describe("mailing settings — saving", () => {
     expect(mothers.queryByText(/This mailing is on but has no wording/)).toBeNull();
     fireEvent.click(mothers.getByLabelText("Send this mailing"));
     expect(mothers.getByText(/This mailing is on but has no wording/)).toBeTruthy();
-    fireEvent.click(mothers.getByRole("button", { name: "Save Mother's Day letter settings" }));
+    fireEvent.click(mothers.getByRole("button", { name: "Save settings for Mother's Day letter" }));
     await waitFor(() => expect(puts(calls)).toHaveLength(1));
     expect(puts(calls)[0]?.body).toMatchObject({ enabled: true, content: {} });
   });
@@ -359,8 +371,13 @@ describe("mailing settings — saving", () => {
     });
     const december = await card("December holiday card settings");
     fireEvent.change(december.getByLabelText("Lead time in days"), { target: { value: "21" } });
-    fireEvent.click(december.getByRole("button", { name: "Save December holiday card settings" }));
-    expect(await december.findByText(/Someone else saved this mailing's settings/)).toBeTruthy();
+    fireEvent.click(
+      december.getByRole("button", { name: "Save settings for December holiday card" }),
+    );
+    // announced, not just painted: the conflict is an alert inside the card
+    expect((await december.findByRole("alert")).textContent).toMatch(
+      /Someone else saved this mailing's settings/,
+    );
     // nothing was reloaded on its own, and the edit is still there
     expect(configReads(calls)).toBe(1);
     expect((december.getByLabelText("Lead time in days") as HTMLInputElement).value).toBe("21");
@@ -381,7 +398,7 @@ describe("mailing settings — saving", () => {
     const { calls } = mount({ put: () => refused(422, "VALIDATION", "lead time is out of range") });
     const december = await card("December holiday card settings");
     fireEvent.change(december.getByLabelText("Lead time in days"), { target: { value: "21" } });
-    const save = december.getByRole("button", { name: "Save December holiday card settings" });
+    const save = december.getByRole("button", { name: "Save settings for December holiday card" });
     fireEvent.click(save);
     expect(await december.findByText("lead time is out of range")).toBeTruthy();
     fireEvent.click(save);
@@ -401,7 +418,7 @@ describe("mailing settings — saving", () => {
     });
     const december = await card("December holiday card settings");
     fireEvent.change(december.getByLabelText("Lead time in days"), { target: { value: "21" } });
-    const save = december.getByRole("button", { name: "Save December holiday card settings" });
+    const save = december.getByRole("button", { name: "Save settings for December holiday card" });
     fireEvent.click(save);
     expect(await december.findByText(/connection dropped/i)).toBeTruthy();
     fireEvent.click(save);
@@ -422,7 +439,7 @@ describe("mailing settings — saving", () => {
     });
     const december = await card("December holiday card settings");
     fireEvent.change(december.getByLabelText("Lead time in days"), { target: { value: "21" } });
-    const save = december.getByRole("button", { name: "Save December holiday card settings" });
+    const save = december.getByRole("button", { name: "Save settings for December holiday card" });
     fireEvent.click(save);
     await waitFor(() => expect(puts(calls)).toHaveLength(1));
     expect(inert(december.getByLabelText("Lead time in days"))).toBe(true);
@@ -457,11 +474,30 @@ describe("mailing settings — unsaved edits", () => {
     expect(december.queryByText("You have unsaved changes.")).toBeNull();
   });
 
+  it("leaving the page in-app over an unsaved edit asks first; staying keeps it, leaving goes", async () => {
+    mount({});
+    const december = await card("December holiday card settings");
+    fireEvent.change(december.getByLabelText("Lead time in days"), { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("link", { name: "Mailing runs" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/unsaved mailing settings/);
+    fireEvent.click(screen.getByRole("button", { name: "Stay on this page" }));
+    await waitFor(() => expect(screen.queryByText(/unsaved mailing settings/)).toBeNull());
+    expect((december.getByLabelText("Lead time in days") as HTMLInputElement).value).toBe("30");
+    fireEvent.click(screen.getByRole("link", { name: "Mailing runs" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Leave without saving" }));
+    expect(await screen.findByText("Runs page")).toBeTruthy();
+  });
+
+  it("each card's controls are a group named after the mailing", async () => {
+    mount({});
+    expect(await screen.findByRole("group", { name: "Father's Day letter settings" })).toBeTruthy();
+  });
+
   it("editing and reverting is not an edit", async () => {
     mount({});
     const december = await card("December holiday card settings");
     const save = december.getByRole("button", {
-      name: "Save December holiday card settings",
+      name: "Save settings for December holiday card",
     }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     fireEvent.change(december.getByLabelText("Lead time in days"), { target: { value: "30" } });
@@ -479,7 +515,9 @@ describe("mailing settings — unsaved edits", () => {
     const fathers = await card("Father's Day letter settings");
     fireEvent.change(fathers.getByLabelText("Lead time in days"), { target: { value: "40" } });
     fireEvent.change(december.getByLabelText("Lead time in days"), { target: { value: "21" } });
-    fireEvent.click(december.getByRole("button", { name: "Save December holiday card settings" }));
+    fireEvent.click(
+      december.getByRole("button", { name: "Save settings for December holiday card" }),
+    );
     await screen.findByText("The December holiday card settings were saved.");
     const fathersAfter = await card("Father's Day letter settings");
     expect((fathersAfter.getByLabelText("Lead time in days") as HTMLInputElement).value).toBe("40");

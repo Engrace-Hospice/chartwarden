@@ -96,6 +96,8 @@ export const RUN_STATUS_TONE: Record<string, StatusTone> = {
 /** Generation can be asked for from these states; the others are in flight or done. */
 export const canGenerate = (status: MailingRunStatus): boolean =>
   status === "draft" || status === "failed";
+/** A ready batch can be selected and rendered again (route 48 takes a ready run): after an opt-out, or a refused stale download. */
+export const canRegenerate = (status: MailingRunStatus): boolean => status === "ready";
 export const canDownload = (status: MailingRunStatus): boolean =>
   status === "ready" || status === "mailed";
 export const canConfirmMailed = (status: MailingRunStatus): boolean => status === "ready";

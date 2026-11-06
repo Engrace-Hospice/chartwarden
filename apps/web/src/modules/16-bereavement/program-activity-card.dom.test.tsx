@@ -57,14 +57,16 @@ function mount(answer: (query: URLSearchParams) => Reply | Promise<Reply>) {
       headers: { "content-type": "application/json" },
     });
   };
-  const view = render(
-    <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stub })}>
+  const client = createApiClient({ baseUrl: "http://localhost", fetch: stub });
+  const ui = (refreshKey: number) => (
+    <ApiClientProvider client={client}>
       <MemoryRouter>
-        <ProgramActivityCard contactId={CONTACT_ID} />
+        <ProgramActivityCard contactId={CONTACT_ID} refreshKey={refreshKey} />
       </MemoryRouter>
-    </ApiClientProvider>,
+    </ApiClientProvider>
   );
-  return { queries, ...view };
+  const view = render(ui(0));
+  return { queries, ...view, refresh: (key: number) => view.rerender(ui(key)) };
 }
 
 describe("program activity card — what it shows", () => {
@@ -99,6 +101,34 @@ describe("program activity card — what it shows", () => {
       "Memorial service attendance",
     ])
       expect(await screen.findByText(text)).toBeTruthy();
+  });
+
+  it("shows no card chrome before the first answer", async () => {
+    let answer: (r: Reply) => void = () => {};
+    const { queries } = mount(
+      () =>
+        new Promise<Reply>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    await waitFor(() => expect(queries).toHaveLength(1));
+    expect(screen.queryByRole("heading", { name: "Program activity" })).toBeNull();
+    answer(page([]));
+    expect(await screen.findByRole("heading", { name: "Program activity" })).toBeTruthy();
+  });
+
+  it("reads again when the page says an entry was added, keeping the rows on screen", async () => {
+    let reads = 0;
+    const { queries, refresh } = mount(() => {
+      reads += 1;
+      return page(reads === 1 ? [entry()] : [activity(), entry()]);
+    });
+    await screen.findByText("Phone call");
+    refresh(0); // an unrelated re-render reads nothing
+    expect(queries).toHaveLength(1);
+    refresh(1);
+    expect(await screen.findByText("Newsletter mailing")).toBeTruthy();
+    expect(queries).toHaveLength(2);
   });
 
   it("says nothing has been recorded when the timeline is empty", async () => {

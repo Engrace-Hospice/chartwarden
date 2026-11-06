@@ -5,7 +5,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 // ready or mailed run, Confirm mailed through a dialog that says eligibility is re-checked, Cancel, the items table, and the rules an
 // oversight surface keeps: a 403 renders nothing, other failures are announced and keep the page up, a refetch never blanks it.
 import axe from "axe-core";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import type { JSX } from "react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { MailingRunDetail } from "./mailing-run-detail";
@@ -114,6 +115,7 @@ function mount(handler: Handler, permissions: string[] = ALL_KEYS) {
               path="/bereavement/mailings/runs/:runId"
               element={<MailingRunDetail pollMs={POLL_MS} />}
             />
+            <Route path="/step-up" element={<StepUpProbe />} />
           </Routes>
         </MemoryRouter>
       </SessionProvider>
@@ -144,12 +146,18 @@ const server =
       return ok({
         runId: RUN_ID,
         url: "https://files.example.test/batch.pdf?sig=abc",
-        expiresAt: "x",
+        expiresAt: "2099-01-01T00:00:00.000Z",
       });
     return opts.write?.(req) ?? ok(run());
   };
 
 afterEach(() => vi.restoreAllMocks());
+
+/** Where a step-up refusal lands: shows the `returnTo` it was given. */
+function StepUpProbe(): JSX.Element {
+  const { search } = useLocation();
+  return <p data-testid="step-up">{search}</p>;
+}
 
 describe("mailing run — what it shows", () => {
   it("shows the run, its wording and its counts, and offers no default wording", async () => {
@@ -396,46 +404,138 @@ describe("mailing run — generate and the poll", () => {
   });
 });
 
+describe("mailing run — the poll's limits", () => {
+  it("announces a render that failed while the page waited", async () => {
+    let reads = 0;
+    mount(
+      server({
+        run: () => {
+          reads += 1;
+          return ok(
+            run(
+              reads >= 2
+                ? { status: "failed", failureCode: "RENDER_FAILED" }
+                : { status: "generating" },
+            ),
+          );
+        },
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("status").some((el) => el.textContent?.includes("Generation failed")),
+      ).toBe(true),
+    );
+  });
+
+  it("stops polling when the run is gone (404)", async () => {
+    let reads = 0;
+    const { calls } = mount(
+      server({
+        run: () => {
+          reads += 1;
+          return reads >= 2 ? refused(404, "NOT_FOUND", "gone") : ok(run({ status: "generating" }));
+        },
+      }),
+    );
+    await waitFor(() => expect(runReads(calls)).toBe(2));
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS * 6));
+    expect(runReads(calls)).toBe(2);
+  });
+
+  it("pauses while the tab is hidden and resumes when it is shown", async () => {
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    const { calls } = mount(server({ run: () => ok(run({ status: "generating" })) }));
+    await screen.findByRole("heading", { name: /December holiday card/ });
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS * 6));
+    expect(runReads(calls)).toBe(1);
+    hidden.mockReturnValue(false);
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(runReads(calls)).toBeGreaterThanOrEqual(2));
+  });
+});
+
 describe("mailing run — download, confirm and cancel", () => {
-  it("offers Download only for a ready or mailed run, and opens the URL in a new tab with no opener", async () => {
+  it("Download offers an explicit Open batch link (new tab, no opener) and drops it once clicked; no pop-up is attempted", async () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null);
     mount(server({ run: () => ok(run({ status: "ready" })) }));
     fireEvent.click(await screen.findByRole("button", { name: "Download" }));
-    await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
-    expect(open).toHaveBeenCalledWith(
-      "https://files.example.test/batch.pdf?sig=abc",
-      "_blank",
-      "noopener,noreferrer",
-    );
-    // the link is not kept anywhere on the page
+    const link = (await screen.findByRole("link", { name: "Open batch" })) as HTMLAnchorElement;
+    expect(link.href).toBe("https://files.example.test/batch.pdf?sig=abc");
+    expect(link.target).toBe("_blank");
+    expect(link.rel).toBe("noopener noreferrer");
+    // nothing claims the batch opened: the user opens it
+    expect(screen.getByRole("status").textContent).toContain("Use Open batch");
+    expect(open).not.toHaveBeenCalled();
+    fireEvent.click(link);
+    await waitFor(() => expect(screen.queryByRole("link", { name: "Open batch" })).toBeNull());
     expect(document.body.innerHTML).not.toContain("sig=abc");
   });
 
-  it.each(["draft", "generating", "cancelled", "failed"])(
-    "does not offer Download for a %s run",
-    async (status) => {
-      mount(server({ run: () => ok(run({ status })) }));
-      await screen.findByRole("heading", { name: /December holiday card/ });
-      expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
-    },
-  );
-
-  it("offers Download for a mailed run", async () => {
-    mount(server({ run: () => ok(run({ status: "mailed" })) }));
-    expect(await screen.findByRole("button", { name: "Download" })).toBeTruthy();
-  });
-
-  it("a refused download is announced and nothing opens", async () => {
-    const open = vi.spyOn(window, "open").mockReturnValue(null);
+  it("refuses a batch link that is not https", async () => {
     const base = server({ run: () => ok(run({ status: "ready" })) });
     mount((req) =>
       req.path.endsWith("/download")
-        ? refused(409, "MAILING_DOWNLOAD_UNAVAILABLE", "not ready")
+        ? ok({
+            runId: RUN_ID,
+            url: "http://files.example.test/b.pdf",
+            expiresAt: "2099-01-01T00:00:00.000Z",
+          })
         : base(req),
     );
     fireEvent.click(await screen.findByRole("button", { name: "Download" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("not ready");
-    expect(open).not.toHaveBeenCalled();
+    expect((await screen.findByRole("alert")).textContent).toContain("not a secure (https) link");
+    expect(screen.queryByRole("link", { name: "Open batch" })).toBeNull();
+  });
+
+  it("a stale batch (409 MAILING_RUN_STALE) is not downloaded: the page says so and Regenerate sends Generate on the ready run", async () => {
+    let regenerated = false;
+    const base = server({
+      run: () =>
+        ok(run({ status: regenerated ? "generating" : "ready", version: regenerated ? 5 : 4 })),
+      write: (req) => {
+        regenerated = true;
+        return req.path.endsWith("/generate")
+          ? ok(run({ status: "generating", version: 5 }))
+          : ok(run());
+      },
+    });
+    const { calls } = mount((req) =>
+      req.path.endsWith("/download")
+        ? refused(409, "MAILING_RUN_STALE", "2 recipients in this batch are no longer eligible.")
+        : base(req),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("out of date");
+    expect(alert.textContent).toContain("2 recipients");
+    expect(screen.queryByRole("link", { name: "Open batch" })).toBeNull();
+    const regenerate = screen.getAllByRole("button", { name: "Regenerate batch" });
+    expect(regenerate).toHaveLength(1);
+    fireEvent.click(regenerate[0] as HTMLElement);
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === "POST")).toMatchObject({
+        path: `${RUN_PATH}/generate`,
+        ifMatch: "4",
+      }),
+    );
+    expect(await screen.findByText(/do not mail the earlier one/)).toBeTruthy();
+  });
+
+  it("a ready run offers Regenerate batch as a secondary action", async () => {
+    mount(server({ run: () => ok(run({ status: "ready" })) }));
+    expect(await screen.findByRole("button", { name: "Regenerate batch" })).toBeTruthy();
+  });
+
+  it("a download that needs a fresh step-up goes to /step-up and comes back to this run", async () => {
+    const base = server({ run: () => ok(run({ status: "ready" })) });
+    mount((req) =>
+      req.path.endsWith("/download") ? refused(403, "STEP_UP_REQUIRED", "step up") : base(req),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    expect((await screen.findByTestId("step-up")).textContent).toContain(
+      encodeURIComponent(`/bereavement/mailings/runs/${RUN_ID}`),
+    );
   });
 
   it("Confirm mailed asks first, says eligibility is re-checked, then shows how many were left out and are not logged", async () => {
@@ -460,8 +560,10 @@ describe("mailing run — download, confirm and cancel", () => {
     );
     fireEvent.click(await screen.findByRole("button", { name: "Confirm mailed" }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/Eligibility is checked again now/)).toBeTruthy();
-    expect(within(dialog).getByText(/NOT logged as mailed/)).toBeTruthy();
+    // bookkeeping only: it promises no recall, it flags and names the Ref to pull
+    expect(within(dialog).getByText(/cannot recall printed letters/)).toBeTruthy();
+    expect(within(dialog).getByText(/not logged as mailed/)).toBeTruthy();
+    expect(within(dialog).getByText(/Ref/)).toBeTruthy();
     expect(within(dialog).getByText(/Each of the 3 families in the batch/)).toBeTruthy();
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
 
@@ -493,9 +595,15 @@ describe("mailing run — download, confirm and cancel", () => {
       }),
     );
     fireEvent.click(await screen.findByRole("button", { name: "Cancel run" }));
-    const dialog = await screen.findByRole("dialog");
+    // destructive: an alertdialog described by what cancelling does, dismissed by "Keep run"
+    const dialog = await screen.findByRole("alertdialog", { name: "Cancel this mailing run" });
+    expect(dialog.getAttribute("aria-describedby")).toBeTruthy();
+    expect(
+      document.getElementById(dialog.getAttribute("aria-describedby") ?? "")?.textContent,
+    ).toContain("cannot be reopened");
+    expect(within(dialog).getByRole("button", { name: "Keep run" })).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Yes, cancel this run" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(calls.find((c) => c.method === "POST")).toMatchObject({
       path: `${RUN_PATH}/cancel`,
       ifMatch: "4",
@@ -503,8 +611,8 @@ describe("mailing run — download, confirm and cancel", () => {
     expect(await screen.findByText("The run was cancelled.")).toBeTruthy();
   });
 
-  it("a refusal inside the Confirm dialog stays in the dialog and keeps it open", async () => {
-    mount(
+  it("a stale refusal (409) inside the Confirm dialog closes it and says why on the page", async () => {
+    const { calls } = mount(
       server({
         run: () => ok(run({ status: "ready" })),
         write: () => refused(409, "MAILING_RUN_NOT_READY", "the run is not ready"),
@@ -513,10 +621,22 @@ describe("mailing run — download, confirm and cancel", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Confirm mailed" }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm mailed" }));
-    expect((await within(dialog).findByRole("alert")).textContent).toContain(
-      "the run is not ready",
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect((await screen.findByRole("alert")).textContent).toContain("the run is not ready");
+    await waitFor(() => expect(runReads(calls)).toBe(2));
+  });
+
+  it("any other refusal inside the Confirm dialog stays in the dialog", async () => {
+    mount(
+      server({
+        run: () => ok(run({ status: "ready" })),
+        write: () => refused(500, "INTERNAL", "server trouble"),
+      }),
     );
-    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm mailed" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm mailed" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("server trouble");
   });
 });
 
@@ -553,6 +673,73 @@ describe("mailing run — editing the wording and the items list", () => {
     expect(await screen.findByText("Holiday greetings")).toBeTruthy();
   });
 
+  it("a 412 on the wording shows THEIR newer wording and blocks Save until the reader picks one", async () => {
+    let saved = false;
+    const theirs = { en: { ...WORDING.en, title: "Their title" } };
+    const { calls } = mount(
+      server({
+        run: () => ok(saved ? run({ version: 5, content: theirs }) : run()),
+        write: (req) => {
+          if (calls.filter((c) => c.method === "PATCH").length === 1) {
+            saved = true;
+            return refused(412, "STALE_VERSION");
+          }
+          return ok(run({ version: 6, content: { en: { ...WORDING.en, title: "Mine" } } }));
+        },
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit wording" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Title"), { target: { value: "Mine" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save wording" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toContain(
+      "Choose which wording to keep",
+    );
+    const theirsRegion = await within(dialog).findByRole("region", { name: "Their saved wording" });
+    expect(theirsRegion.textContent).toContain("Their title");
+    // never a silent overwrite: Save waits for the choice
+    expect(
+      (within(dialog).getByRole("button", { name: "Save wording" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect((within(dialog).getByLabelText("Title") as HTMLInputElement).value).toBe("Mine");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Overwrite with mine" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save wording" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(calls.filter((c) => c.method === "PATCH").map((c) => c.ifMatch)).toEqual(["4", "5"]);
+  });
+
+  it("Replace with theirs puts their wording in the editor", async () => {
+    let saved = false;
+    const theirs = { en: { ...WORDING.en, title: "Their title" } };
+    mount(
+      server({
+        run: () => ok(saved ? run({ version: 5, content: theirs }) : run()),
+        write: () => {
+          saved = true;
+          return refused(412, "STALE_VERSION");
+        },
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit wording" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Title"), { target: { value: "Mine" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save wording" }));
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Replace with theirs" }));
+    expect((within(dialog).getByLabelText("Title") as HTMLInputElement).value).toBe("Their title");
+  });
+
+  it("a 409 on the wording (the run left draft) closes the dialog and says why on the page", async () => {
+    mount(
+      server({ write: () => refused(409, "MAILING_RUN_NOT_EDITABLE", "the wording is locked") }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit wording" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Title"), { target: { value: "Mine" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save wording" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect((await screen.findByRole("alert")).textContent).toContain("the wording is locked");
+  });
+
   it("is offered only for a draft", async () => {
     mount(server({ run: () => ok(run({ status: "ready" })) }));
     await screen.findByRole("heading", { name: /December holiday card/ });
@@ -565,7 +752,10 @@ describe("mailing run — editing the wording and the items list", () => {
     const dialog = await screen.findByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Title"), { target: { value: "Changed" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    expect(within(dialog).getByText(/You have unsaved wording\. Discard it\?/)).toBeTruthy();
+    // announced, not just shown
+    expect(within(dialog).getByRole("alert").textContent).toMatch(
+      /You have unsaved wording\. Discard it\?/,
+    );
     fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
     expect((within(dialog).getByLabelText("Title") as HTMLInputElement).value).toBe("Changed");
     fireEvent.keyDown(dialog, { key: "Escape" });
@@ -624,7 +814,9 @@ describe("mailing run — editing the wording and the items list", () => {
     expect(save.disabled).toBe(true);
     fireEvent.change(within(dialog).getByLabelText("Paragraph 1"), { target: { value: "Short." } });
     expect(save.disabled).toBe(false);
-    const add = within(dialog).getByRole("button", { name: "Add paragraph" }) as HTMLButtonElement;
+    const add = within(dialog).getByRole("button", {
+      name: "Add a paragraph",
+    }) as HTMLButtonElement;
     for (let i = 0; i < 11; i += 1) fireEvent.click(add);
     expect(within(dialog).getByText("12 of 12 paragraphs")).toBeTruthy();
     expect(add.disabled).toBe(true);

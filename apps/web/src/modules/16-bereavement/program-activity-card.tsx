@@ -9,7 +9,7 @@
 // the field is absent from the response, and that is shown as "Not shown to you", never as a guess. A 403 renders nothing; any other
 // failure is announced and keeps the entries on screen; "Load more" appends.
 import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { JSX } from "react";
 import {
   type ContactTimelinePage,
@@ -30,7 +30,14 @@ const entryLabel = (entry: TimelineEntry): string =>
     ? activityLabel(entry.activityKind)
     : outreachKindLabel(entry.kind);
 
-export function ProgramActivityCard({ contactId }: { contactId: string }): JSX.Element | null {
+export function ProgramActivityCard({
+  contactId,
+  refreshKey = 0,
+}: {
+  contactId: string;
+  /** Changes when the page wrote something that adds an entry: the card reads again, keeping its rows on screen. */
+  refreshKey?: number;
+}): JSX.Element | null {
   const client = useApiClient();
   const fetchPage = useCallback(
     async (cursor: string | null) => {
@@ -46,8 +53,16 @@ export function ProgramActivityCard({ contactId }: { contactId: string }): JSX.E
     fetchPage,
     TIMELINE_LOAD_FAILED,
   );
+  const lastKey = useRef(refreshKey);
+  useEffect(() => {
+    if (lastKey.current === refreshKey) return;
+    lastKey.current = refreshKey;
+    void reload();
+  }, [refreshKey, reload]);
 
   if (state.kind === "hidden") return null;
+  // No card chrome before the first answer: a reader the server refuses must not see a card flash and vanish.
+  if (state.kind === "loading") return <LoadingSpinner label="Loading program activity" />;
   const rows = state.kind === "ready" ? state.rows : [];
   const failure =
     state.kind === "error" ? state.message : state.kind === "ready" ? state.notice : null;
@@ -69,7 +84,6 @@ export function ProgramActivityCard({ contactId }: { contactId: string }): JSX.E
           </Button>
         </div>
       ) : null}
-      {state.kind === "loading" ? <LoadingSpinner label="Loading program activity" /> : null}
       {state.kind === "ready" && rows.length === 0 ? (
         <span style={mutedStyle}>Nothing has been recorded for this survivor yet.</span>
       ) : null}
