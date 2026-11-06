@@ -52,7 +52,6 @@ function compactVisitTime(iso: string | undefined): string | null {
   const time = instant.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   return `${date} at ${time}`;
 }
-const MESSAGE_PAGE = 10;
 
 /**
  * One independently-retryable list read. `load` and `select` must be stable (module-level or useCallback):
@@ -300,7 +299,8 @@ export function PortalPatientDashboard(): JSX.Element {
   const loadMessages = useCallback(
     () =>
       client.GET("/api/v1/portal/messages/history", {
-        params: { query: { limit: MESSAGE_PAGE } },
+        // Minimum necessary: the history route returns newest first and the preview shows two.
+        params: { query: { limit: RECENT_MESSAGES } },
       }) as Promise<ApiResult>,
     [client],
   );
