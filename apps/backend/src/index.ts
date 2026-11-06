@@ -5970,6 +5970,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // after a change, so a blocked `baa_executed` step settles at once rather than at the next write or the 06:00 sweep.
           const m34OnboardingAdvance = buildM34OnboardingAdvance(dbHandle.db, m34OutboxPublisher);
           // Choosing a clearinghouse (platform or tenant route) settles wizard step 7 at once, post-commit and best effort.
+          // The wizard is built below; the settle hook reaches it through this holder (owner decision D5: a clearinghouse change
+          // also makes the billing steps follow the choice, through the wizard's own skip / reopen).
+          const onboardingWizardHolder: {
+            current?: { syncClearinghouseSteps(orgId: string): Promise<void> };
+          } = {};
           const settleOnboardingForOrg = createSettleOnboardingForOrg({
             db: dbHandle.db,
             advance: async ({ tenantAccountId, organizationId }) => {
@@ -5985,6 +5990,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           const m34PlatformBackend = buildDrizzlePlatformService({
             advanceOnboarding: async ({ tenantAccountId, organizationId }) => {
               await m34OnboardingAdvance({ tenantAccountId, orgId: organizationId });
+              await onboardingWizardHolder.current?.syncClearinghouseSteps(organizationId);
             },
             warn: (message, context) => app.log.warn(context, message),
             platformDb: platformDbHandle?.db ?? dbHandle.db,
@@ -6074,9 +6080,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               advance: async ({ tenantAccountId, organizationId }) => {
                 await m34OnboardingAdvance({ tenantAccountId, orgId: organizationId });
               },
+              // Owner decision D5: `outside` skips the MAC and payer-enrollment steps, a vendor reopens them. M23 owns the choice;
+              // the seam resolves lazily so registration order never matters.
+              clearinghouseChoice: async (organizationId) => {
+                const choice = await getSeam("TenantClearinghouseReader").choiceForOrg(
+                  organizationId,
+                );
+                if (choice.vendor === null) return "none";
+                return choice.vendor === "outside" ? "outside" : "vendor";
+              },
               warn: (message, context) => app.log.warn(context, message),
             }),
           };
+          onboardingWizardHolder.current = m34Onboarding.wizard;
           mountTenantPlatformRoutes(app, dbHandle.db, {
             tenantBaseDomain,
             // Each slug probe is an audited platform read: 30/min/user, 300/min/org, fail-open (an availability control).

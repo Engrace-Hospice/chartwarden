@@ -49,10 +49,18 @@ export interface OnboardingWizardDeps {
   }) => Promise<void>;
   /** Runs the advance sweep for one tenant after a change (best effort; a failure never fails the change). */
   readonly advance?: (tenant: { tenantAccountId: string; organizationId: string }) => Promise<void>;
+  /**
+   * What the organization chose for its claims (M23's clearinghouse choice, read through the seam): `outside` (it bills outside
+   * ChartWarden), `vendor` (Stedi or Claim.MD) or `none`. Owner decision D5: `outside` skips the billing steps that only matter
+   * when ChartWarden transmits, and going back to a vendor reopens them. Unbound: the steps are never touched.
+   */
+  readonly clearinghouseChoice?: (organizationId: string) => Promise<ClearinghouseChoiceKind>;
   /** `err` carries a raw error: the composition root logs it through the redacting serializer (a database error holds bound values). */
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
   readonly now?: () => Date;
 }
+
+export type ClearinghouseChoiceKind = "outside" | "vendor" | "none";
 
 export interface WizardViewWithProfile extends WizardView {
   readonly orgProfile: OrgProfile | null;
@@ -92,6 +100,13 @@ export interface OnboardingWizard {
   ): Promise<{ complianceOfficerMembershipId: string }>;
   approveGoLive(orgSlug: string, actor: PlatformActor, reason: string): Promise<WizardView>;
   revokeGoLive(orgSlug: string, actor: PlatformActor, reason: string): Promise<WizardView>;
+  /**
+   * Owner decision D5: make the billing steps follow the organization's clearinghouse choice (skip them under `outside`, reopen
+   * the ones the system skipped when a vendor is chosen again), through the wizard's own skip / reopen so the audit and the strict
+   * sequence hold. Best effort and idempotent: a step an earlier open step still locks is left for the next change to settle.
+   * Called after a clearinghouse change commits, and by the wizard itself after every change of the wizard.
+   */
+  syncClearinghouseSteps(organizationId: string): Promise<void>;
   // ── tenant surface (the actor's own org) ───────────────────────────────────────────────────────────────────
   getTenant(organizationId: string): Promise<WizardViewWithProfile>;
   startTask(actor: TenantActor, organizationId: string, taskId: string): Promise<WizardStepView>;
