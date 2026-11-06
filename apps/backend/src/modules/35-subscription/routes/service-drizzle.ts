@@ -1407,7 +1407,7 @@ export function buildDrizzleM35RouteService(
     async adminGetSubscription(subscriptionId) {
       return platform(async (tx) => {
         const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).limit(1);
-        if (!sub) throw new NotFoundError("subscription not found");
+        if (!sub) throw new NotFoundError("subscription", subscriptionId);
         const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
         return subscriptionAdminView(
@@ -1582,7 +1582,7 @@ export function buildDrizzleM35RouteService(
     async adminApplyPromo(actor, subscriptionId, promoCode) {
       return platform(async (tx) => {
         const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).limit(1);
-        if (!sub) throw new NotFoundError("subscription not found");
+        if (!sub) throw new NotFoundError("subscription", subscriptionId);
         const { application: app, promoCode: code } = await redeemPromoInTx(tx, {
           code: promoCode,
           organizationId: sub.organizationId,

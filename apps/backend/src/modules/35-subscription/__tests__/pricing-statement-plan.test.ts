@@ -693,6 +693,31 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
     ]);
   });
 
+  it("a paused->paused row (a plan change during a pause) keeps the pause open", () => {
+    const life = lifetimeFromTransitions(
+      [
+        t("active", "paused", "2026-11-10T09:00:00Z"),
+        t("paused", "paused", "2026-11-12T09:00:00Z"),
+      ],
+      sub("paused", "2026-11-12T09:00:00Z"),
+    );
+    expect(life.pauses).toEqual([{ from: at("2026-11-10T09:00:00Z"), to: null }]);
+  });
+
+  it("a pause with a plan change inside it closes at the resume, not at the plan change", () => {
+    const life = lifetimeFromTransitions(
+      [
+        t("active", "paused", "2026-11-10T09:00:00Z"),
+        t("paused", "paused", "2026-11-12T09:00:00Z"),
+        t("paused", "active", "2026-11-16T09:00:00Z"),
+      ],
+      sub("active", "2026-11-16T09:00:00Z"),
+    );
+    expect(life.pauses).toEqual([
+      { from: at("2026-11-10T09:00:00Z"), to: at("2026-11-16T09:00:00Z") },
+    ]);
+  });
+
   it("the end is canceled_at, else the cancel transition, else the last write; none while the subscription runs", () => {
     expect(
       lifetimeFromTransitions([], sub("canceled", "2026-11-25T00:00:00Z", "2026-11-20T14:00:00Z"))
