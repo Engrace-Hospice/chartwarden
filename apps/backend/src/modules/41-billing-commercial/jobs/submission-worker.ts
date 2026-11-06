@@ -32,6 +32,7 @@ import type { Render837iArgs, Render837iResult } from "../services/render-837i";
 import { evaluateGateForClaim } from "../services/submission-service";
 import type { CommercialActor, CommercialOutboxPort, CommercialTx } from "../services/types";
 import { M41_CRON_QUEUES, M41_JOB_SCHEDULES } from "./queues";
+import { type UnboundAlertPort, reportUnboundWithWork } from "./unbound-alert";
 
 type SubmissionRow = typeof schema.commercialSubmissions.$inferSelect;
 
@@ -109,6 +110,8 @@ export interface SubmissionWorkerDeps {
     listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
   };
   readonly now?: () => Date;
+  /** One alert per org per window when an org has rows waiting and no live clearinghouse (the tick still carries on). */
+  readonly alerts?: UnboundAlertPort;
   /** PHI-free log sink (ids and codes only). */
   readonly log?: (event: {
     readonly event: string;
@@ -537,7 +540,7 @@ async function dueCount(deps: SubmissionWorkerDeps, organizationId: string): Pro
   });
 }
 
-/** The cron body. Throws after every org ran when anything failed, so BullMQ retries and the DLQ alert fires. */
+/** The cron body. Throws after every org ran when anything FAILED, so BullMQ retries and the DLQ alert fires; an org that is merely unbound is reported, not failed. */
 export async function runSubmissionDrain(deps: SubmissionWorkerDeps): Promise<DrainResult> {
   const failures: string[] = [];
   let sent = 0;
@@ -546,11 +549,16 @@ export async function runSubmissionDrain(deps: SubmissionWorkerDeps): Promise<Dr
       // Resolved once per org: the rest of this org's tick uses ITS clearinghouse; another org's tick is never affected by it.
       const orgDeps = await withOrgBinding(deps, organizationId);
       if (orgDeps.binding.vendor === null) {
-        // Unbound: nothing may be sent and nothing is skipped silently. The route refuses to queue while unbound, so a waiting row
-        // means the vendor was removed after queueing: fail loudly.
+        // Unbound: nothing may be sent, and nothing is skipped silently: an org with rows waiting is REPORTED (one alert per window,
+        // and a log line) and the tick carries on. It is that tenant's setup, not a fault of this shared job: failing the tick would
+        // retry it into the DLQ for every other tenant too. The rows stay queued until the tenant has a live clearinghouse.
         const waiting = await dueCount(orgDeps, organizationId);
         if (waiting > 0) {
-          failures.push(`org ${organizationId}: CH_NOT_WIRED (${waiting} submission(s) waiting)`);
+          await reportUnboundWithWork(deps, {
+            organizationId,
+            queue: M41_CRON_QUEUES.submissionDrain,
+            waiting,
+          });
         }
         continue;
       }

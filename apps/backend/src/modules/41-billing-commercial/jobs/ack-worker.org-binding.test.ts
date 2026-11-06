@@ -34,6 +34,7 @@ import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
 import type { AckBinding, AckWorkerDeps } from "./ack-apply";
 import { heldQuarantineReport } from "./ack-held-replay";
 import { runAckPull } from "./ack-worker";
+import { M41_UNBOUND_WITH_WORK_ALERT } from "./unbound-alert";
 
 const PE = "00000000-0000-4000-8000-0000000000e1";
 const bindingOf = (vendor: string | null, reached: ClearinghouseContext[]): AckBinding => ({
@@ -101,14 +102,20 @@ describe("runAckPull with a clearinghouse per organization", () => {
     expect(reached["org-2"]?.map((c) => c.organizationId)).toEqual(["org-2"]);
   });
 
-  it("fails only the organization with no clearinghouse (it has an answer waiting), and still pulls the other", async () => {
+  it("REPORTS the organization with no clearinghouse (it has an answer waiting; one alert, no failed tick) and still pulls the other", async () => {
     const { deps, reached } = depsFor({ "org-1": "stedi" });
+    const alerts: { alertCode: string; organizationId: string; payload: unknown }[] = [];
+    const withAlerts = { ...deps, alerts: { dispatch: async (a: never) => void alerts.push(a) } };
 
-    await expect(runAckPull(deps)).rejects.toThrow(
-      /^commercial acknowledgment pull failed: org org-2: CH_NOT_WIRED \(1 provider entity\(ies\) waiting for acknowledgments\)$/,
-    );
+    await expect(runAckPull(withAlerts)).resolves.toMatchObject({ failures: [] });
     expect(reached["org-1"]).toHaveLength(1);
     expect(reached["org-2"] ?? []).toEqual([]); // nothing was asked of any transport for it
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({
+      alertCode: M41_UNBOUND_WITH_WORK_ALERT,
+      organizationId: "org-2",
+      payload: { waiting: 1 },
+    });
   });
 
   it("is quiet for an organization with none while nothing waits for an answer", async () => {

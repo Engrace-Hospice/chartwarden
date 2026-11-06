@@ -45,6 +45,7 @@ import {
 } from "./ack-apply";
 import { replayHeldEvents, sweepHeldEvents } from "./ack-held-replay";
 import { M41_CRON_QUEUES, M41_JOB_SCHEDULES } from "./queues";
+import { reportUnboundWithWork } from "./unbound-alert";
 
 // the apply core lives in ack-apply.ts and the held-event replay in ack-held-replay.ts; this file keeps the public surface
 export {
@@ -287,7 +288,7 @@ export async function pullOrgAcks(
   return { ...tally, failures, backlog, quarantined };
 }
 
-/** The cron body. Throws after every org ran when anything failed (BullMQ retries; the DLQ alert fires). Unbound with work waiting fails. */
+/** The cron body. Throws after every org ran when anything FAILED (BullMQ retries; the DLQ alert fires). An org unbound with work waiting is reported per org, not failed. */
 export async function runAckPull(deps: AckWorkerDeps): Promise<AckPullResult> {
   const total: Tally = { applied: 0, duplicates: 0, unmatched: 0 };
   const failures: string[] = [];
@@ -302,9 +303,13 @@ export async function runAckPull(deps: AckWorkerDeps): Promise<AckPullResult> {
         await sweepHeldEvents(orgDeps, organizationId, new Set());
         const waiting = await outstanding(orgDeps, organizationId);
         if (waiting.length > 0) {
-          failures.push(
-            `org ${organizationId}: CH_NOT_WIRED (${waiting.length} provider entity(ies) waiting for acknowledgments)`,
-          );
+          // That tenant's setup, not a fault of this shared job: one alert per window, and the tick carries on (failing it
+          // would retry the job into the DLQ for every other tenant too).
+          await reportUnboundWithWork(deps, {
+            organizationId,
+            queue: M41_CRON_QUEUES.ackPull,
+            waiting: waiting.length,
+          });
         }
         continue;
       }

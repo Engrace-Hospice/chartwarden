@@ -38,6 +38,7 @@ import {
   runSubmissionDrain,
   transportKeyFor,
 } from "./submission-worker";
+import { M41_UNBOUND_WITH_WORK_ALERT } from "./unbound-alert";
 
 describe("classifyTransportRefusal", () => {
   it("retries only an unavailable transport", () => {
@@ -150,9 +151,16 @@ describe("runSubmissionDrain with no clearinghouse bound", () => {
     renderCalls = 0;
   });
 
-  it("fails the tick with CH_NOT_WIRED when a submission is waiting, and renders and sends nothing", async () => {
+  it("reports (one alert, no failed tick) a submission waiting with no vendor bound, and renders and sends nothing", async () => {
     waiting = 2;
-    await expect(runSubmissionDrain(deps())).rejects.toThrow(/CH_NOT_WIRED \(2 submission/);
+    const alerts: unknown[] = [];
+    await expect(
+      runSubmissionDrain({
+        ...deps(),
+        alerts: { dispatch: async (a: unknown) => void alerts.push(a) },
+      }),
+    ).resolves.toEqual({ sent: 0, failures: [] });
+    expect(alerts).toHaveLength(1);
     expect(submitCalls).toBe(0);
     expect(renderCalls).toBe(0);
     expect(transactions).toBe(1); // only the count; nothing was leased
@@ -199,15 +207,50 @@ describe("runSubmissionDrain with a clearinghouse per organization (ADR-0053 ame
     orgsOpened.length = 0;
   });
 
-  it("drains the org that has a clearinghouse and fails only the one without, whichever comes first", async () => {
+  // The shared cron must not fail for every tenant because ONE tenant has not finished setup: it is reported per org (one
+  // alert) and the tick carries on. Which transport an org's drain uses is proven end to end in
+  // submission-worker.org-isolation.test.ts, with a row that really goes out.
+  it("drains the org that has a clearinghouse and REPORTS (alert, no failure) the one without, whichever comes first", async () => {
     waiting = 2;
+    const alerts: { alertCode: string; organizationId: string; payload: unknown }[] = [];
+    const deps = {
+      ...perOrgDeps({ "org-1": "stedi" }),
+      alerts: { dispatch: async (a: never) => void alerts.push(a) },
+    };
 
-    await expect(runSubmissionDrain(perOrgDeps({ "org-1": "stedi" }))).rejects.toThrow(
-      /^commercial submission drain failed: org org-2: CH_NOT_WIRED \(2 submission\(s\) waiting\)$/,
-    );
+    await expect(runSubmissionDrain(deps)).resolves.toEqual({ sent: 0, failures: [] });
     // org-1 got its due-list read (the drain ran for it); org-2 only the count (nothing leased).
     expect(orgsOpened).toEqual(["org-1", "org-2"]);
-    expect(submitted).toEqual([]);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({
+      alertCode: M41_UNBOUND_WITH_WORK_ALERT,
+      organizationId: "org-2",
+      payload: { waiting: 2 },
+    });
+  });
+
+  it("raises ONE alert per org per window however many ticks find the rows still waiting, and a dead alert router fails nothing", async () => {
+    waiting = 3;
+    const alerts: unknown[] = [];
+    const deps = {
+      ...perOrgDeps({}),
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: "org-quiet" }] },
+      alerts: { dispatch: async (a: unknown) => void alerts.push(a) },
+    };
+    await runSubmissionDrain(deps);
+    await runSubmissionDrain(deps);
+    await runSubmissionDrain(deps);
+    expect(alerts).toHaveLength(1);
+    const broken = {
+      ...perOrgDeps({}),
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: "org-broken" }] },
+      alerts: {
+        dispatch: async () => {
+          throw new Error("alert router down");
+        },
+      },
+    };
+    await expect(runSubmissionDrain(broken)).resolves.toEqual({ sent: 0, failures: [] });
   });
 
   it("drains both organizations when each has its own clearinghouse", async () => {
@@ -236,7 +279,7 @@ describe("runSubmissionDrain with a clearinghouse per organization (ADR-0053 ame
     };
 
     await expect(runSubmissionDrain(broken)).rejects.toThrow(
-      /^commercial submission drain failed: org org-1: Error$/,
+      /^commercial submission drain failed: org org-1: ChartWardenError$/,
     );
     expect(orgsOpened).toEqual(["org-2"]);
   });
