@@ -10397,7 +10397,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/platform/tenants": {
     summary:
-      "Provision a tenant from a signup_intent or raw input (enqueues tenant.provision; step-up)",
+      "Provision a tenant from a signup_intent or raw input (enqueues tenant.provision; step-up). planLabel is optional: omitted, the tenant is stored as 'unassigned' until a census-banded contract is signed at onboarding step 2",
     body: M34ProvisionTenantRequest,
     response: M34TenantJobAckSchema,
   },
@@ -10493,7 +10493,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
 
   // ── platform-ops tenant invitations ──
   "GET /api/v1/platform/tenant-invitations": {
-    summary: "Platform → first-admin invitations across tenants (cursor-paginated)",
+    summary:
+      "Platform → first-admin invitations across tenants (cursor-paginated; ?tenantAccountId narrows the list to one tenant)",
     query: M34InvitationListQuerySchema,
     response: M34InvitationListResponseSchema,
   },

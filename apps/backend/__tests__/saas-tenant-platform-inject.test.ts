@@ -476,6 +476,42 @@ describe("M34-saas-tenant-platform-inject — provisioning slug (POST /api/v1/pl
   it("accepts a valid slug", async () => {
     expect((await post("sunrise")).statusCode).toBe(202);
   });
+
+  // Slice 5 (G5): the plan is chosen at onboarding step 2 (a census-banded contract), so provisioning no longer needs the retired
+  // flat tier. An omitted `planLabel` is stored as the honest placeholder "unassigned", never as a tier nobody picked.
+  it("provisions without a planLabel and stores the placeholder 'unassigned'", async () => {
+    const { app } = makeServer();
+    const { planLabel: _omitted, ...withoutPlan } = body;
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/tenants",
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { ...withoutPlan, slug: "sunrise" },
+    });
+    expect(res.statusCode).toBe(202);
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenants?search=Sunrise",
+      headers: PLATFORM_OPS,
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().items.map((t: { planLabel: string }) => t.planLabel)).toEqual([
+      "unassigned",
+    ]);
+    await app.close();
+  });
+
+  it("still refuses a planLabel that is not one of the known labels", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/tenants",
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { ...body, slug: "sunrise", planLabel: "platinum" },
+    });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
 });
 
 // ── slug availability (GET /api/v1/platform/tenant-slugs/:slug/availability) ─────────────────────────
@@ -753,6 +789,54 @@ describe("M34-saas-tenant-platform-inject — platform → first-admin invitatio
     expect(revoke.statusCode).toBe(200);
     expect(revoke.json().status).toBe("revoked");
 
+    await app.close();
+  });
+
+  // Slice 5 (G3): the wizard's "first admin" step reads ONE tenant's invitations in a single call. The list used to be global, so the
+  // admin console paged every tenant's invitations client-side to find its own.
+  it("narrows the list to one tenant with ?tenantAccountId", async () => {
+    const { app } = makeServer();
+    const issue = (orgSlug: string, email: string) =>
+      app.inject({
+        method: "POST",
+        url: "/api/v1/platform/tenant-invitations",
+        headers: PLATFORM_OPS_STEPUP,
+        payload: { orgSlug, firstAdminEmail: email },
+      });
+    expect((await issue("acme", "first@acme.example.org")).statusCode).toBe(201);
+    expect((await issue("destroying-corp", "first@destroying.example.org")).statusCode).toBe(201);
+
+    const all = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-invitations",
+      headers: PLATFORM_OPS,
+    });
+    expect(all.json().items).toHaveLength(2);
+
+    const acme = await app.inject({
+      method: "GET",
+      url: `/api/v1/platform/tenant-invitations?tenantAccountId=${TENANT_ACME_ID}`,
+      headers: PLATFORM_OPS,
+    });
+    expect(acme.statusCode).toBe(200);
+    expect(acme.json().items.map((i: { tenantAccountId: string }) => i.tenantAccountId)).toEqual([
+      TENANT_ACME_ID,
+    ]);
+
+    const stranger = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-invitations?tenantAccountId=99999999-9999-4999-8999-999999999999",
+      headers: PLATFORM_OPS,
+    });
+    expect(stranger.statusCode).toBe(200);
+    expect(stranger.json().items).toEqual([]);
+
+    const malformed = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-invitations?tenantAccountId=not-a-uuid",
+      headers: PLATFORM_OPS,
+    });
+    expect(malformed.statusCode).toBe(422);
     await app.close();
   });
 });

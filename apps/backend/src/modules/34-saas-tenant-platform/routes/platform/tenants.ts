@@ -35,6 +35,12 @@ import {
 } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
 
+/**
+ * What `tenant_account.plan_label` holds until a contract is signed. The label is the retired flat tier; the plan a tenant
+ * actually pays for is the census-banded contract of onboarding step 2 (M35), so a tenant provisioned without a label says so.
+ */
+export const UNASSIGNED_PLAN_LABEL = "unassigned";
+
 /** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
@@ -173,7 +179,7 @@ export function registerTenantPlatformRoutes(
         breachNotificationContactEmail: body.breachNotificationContactEmail,
         firstAdminEmail: body.firstAdminEmail,
         firstAdminFullName: body.firstAdminFullName,
-        planLabel: body.planLabel,
+        planLabel: body.planLabel ?? UNASSIGNED_PLAN_LABEL,
       });
       return reply.code(202).send(res);
     },

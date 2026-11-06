@@ -6,6 +6,17 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-06 — Admin console reads for the tenant onboarding wizard
+
+**Why.** The platform-ops console now runs tenant onboarding as one ordered wizard. It needs a few reads and one relaxed field.
+
+- `GET /api/v1/platform/tenant-invitations` accepts `?tenantAccountId=<uuid>` and returns only that tenant's invitations (a malformed id is a
+  `422`). Without it the list is unchanged (every tenant, newest first).
+- `POST /api/v1/platform/tenants` no longer requires `planLabel`. The retired flat tier is replaced by the census-banded contract signed at
+  onboarding step 2, so an omitted label is stored as `"unassigned"`. A label that is sent must still be `starter`, `standard` or `enterprise`.
+
+---
+
 ## 2026-11-06 — Tenant lifecycle transitions refuse a stale status
 
 **Why.** Two operator transitions racing on one tenant were last-writer-wins, and the status ledger recorded the wrong

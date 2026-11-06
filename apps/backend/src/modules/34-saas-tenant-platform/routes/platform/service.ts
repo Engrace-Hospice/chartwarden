@@ -327,7 +327,7 @@ export interface TenantPlatformRouteService {
   ): Promise<{ tenantAccountId: string; state: string }>;
   // ── tenant-invitations (§4.1) ──
   listInvitations(
-    filter: { status?: string },
+    filter: { status?: string; tenantAccountId?: string },
     cursor: string | undefined,
     limit: number | undefined,
   ): Promise<CursorPage<TenantInvitationView>>;
@@ -844,6 +844,9 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
         [...tenants.values()]
           .flatMap((t) => [...t.invitations.values()])
           .filter((i) => (filter.status ? i.status === filter.status : true))
+          .filter((i) =>
+            filter.tenantAccountId ? i.tenantAccountId === filter.tenantAccountId : true,
+          )
           .map((i) => ({ ...i, createdAt: i.issuedAt })),
       );
       const page = paginate(rows, cursor, limit);

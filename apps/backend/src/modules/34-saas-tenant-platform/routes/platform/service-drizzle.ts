@@ -841,6 +841,11 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const rows = await tx
           .select()
           .from(schema.tenantInvitation)
+          .where(
+            filter.tenantAccountId
+              ? eq(schema.tenantInvitation.tenantAccountId, filter.tenantAccountId)
+              : undefined,
+          )
           .orderBy(desc(schema.tenantInvitation.issuedAt), desc(schema.tenantInvitation.id));
         const views = rows
           .filter((i) => (filter.status ? i.status === filter.status : true))

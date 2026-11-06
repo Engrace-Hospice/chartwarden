@@ -66,7 +66,14 @@ export function registerTenantInvitationRoutes(
     async (request) => {
       actorOf(request);
       const q = parse(InvitationListQuerySchema, request.query);
-      return service.listInvitations({ status: q.status }, q.cursor, q.limit);
+      return service.listInvitations(
+        {
+          ...(q.status !== undefined ? { status: q.status } : {}),
+          ...(q.tenantAccountId !== undefined ? { tenantAccountId: q.tenantAccountId } : {}),
+        },
+        q.cursor,
+        q.limit,
+      );
     },
   );
 

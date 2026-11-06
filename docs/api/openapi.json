@@ -257313,7 +257313,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Platform → first-admin invitations across tenants (cursor-paginated)",
+        "summary": "Platform → first-admin invitations across tenants (cursor-paginated; ?tenantAccountId narrows the list to one tenant)",
         "parameters": [
           {
             "name": "status",
@@ -257321,6 +257321,15 @@
             "required": false,
             "schema": {
               "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "name": "tenantAccountId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
               "type": "string"
             }
           },
@@ -257798,7 +257807,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Provision a tenant from a signup_intent or raw input (enqueues tenant.provision; step-up)",
+        "summary": "Provision a tenant from a signup_intent or raw input (enqueues tenant.provision; step-up). planLabel is optional: omitted, the tenant is stored as 'unassigned' until a census-banded contract is signed at onboarding step 2",
         "parameters": [],
         "responses": {
           "200": {
@@ -257841,8 +257850,7 @@
                   "billingContactEmail",
                   "breachNotificationContactEmail",
                   "firstAdminEmail",
-                  "firstAdminFullName",
-                  "planLabel"
+                  "firstAdminFullName"
                 ],
                 "properties": {
                   "signupIntentId": {

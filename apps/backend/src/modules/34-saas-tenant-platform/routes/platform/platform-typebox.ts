@@ -118,7 +118,8 @@ export const ProvisionTenantRequest = Type.Object({
   breachNotificationContactEmail: Type.String({ format: "email" }),
   firstAdminEmail: Type.String({ format: "email" }),
   firstAdminFullName: Type.String({ minLength: 1, maxLength: 200 }),
-  planLabel: lit(PLAN_LABEL),
+  /** Retired flat tier. Optional: the real plan is a census-banded contract signed at onboarding step 2. */
+  planLabel: Type.Optional(lit(PLAN_LABEL)),
 });
 
 // §4.2 — POST /platform/tenants/:orgSlug/status. The eleven-state machine guards apply server-side.
@@ -256,6 +257,8 @@ export const TenantListQuerySchema = Type.Object({
 
 export const InvitationListQuerySchema = Type.Object({
   status: Type.Optional(Type.String({ maxLength: 64 })),
+  /** Narrow to one tenant's invitations (the onboarding wizard's first-admin step). */
+  tenantAccountId: Type.Optional(Type.String({ format: "uuid" })),
   ...PageQuery,
 });
 

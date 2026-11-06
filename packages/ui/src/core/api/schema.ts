@@ -21071,7 +21071,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Platform → first-admin invitations across tenants (cursor-paginated) */
+        /** Platform → first-admin invitations across tenants (cursor-paginated; ?tenantAccountId narrows the list to one tenant) */
         get: operations["getApiV1PlatformTenantinvitations"];
         put?: never;
         /** Issue a single-use first-admin invitation token (sent via M36; step-up) */
@@ -21126,7 +21126,7 @@ export interface paths {
         /** Platform tenant inventory (cross-tenant; status/plan/search filters) */
         get: operations["getApiV1PlatformTenants"];
         put?: never;
-        /** Provision a tenant from a signup_intent or raw input (enqueues tenant.provision; step-up) */
+        /** Provision a tenant from a signup_intent or raw input (enqueues tenant.provision; step-up). planLabel is optional: omitted, the tenant is stored as 'unassigned' until a census-banded contract is signed at onboarding step 2 */
         post: operations["postApiV1PlatformTenants"];
         delete?: never;
         options?: never;
@@ -92276,6 +92276,7 @@ export interface operations {
         parameters: {
             query?: {
                 status?: string;
+                tenantAccountId?: string;
                 cursor?: string;
                 limit?: number;
             };
@@ -92472,7 +92473,7 @@ export interface operations {
                     /** Format: email */
                     firstAdminEmail: string;
                     firstAdminFullName: string;
-                    planLabel: "starter" | "standard" | "enterprise";
+                    planLabel?: "starter" | "standard" | "enterprise";
                 };
             };
         };
