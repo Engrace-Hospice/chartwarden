@@ -300,6 +300,21 @@ import {
   SupervisorDashboardQuerySchema as M16SupervisorDashboardQuerySchema,
   UpdateContactBody as M16UpdateContactBody,
 } from "../../apps/backend/src/modules/16-bereavement/routes/m16-typebox";
+// ADR-0109 D10 — the M16 mailing program (routes 42-51) and the contact timeline (route 52).
+import {
+  ContactTimelinePageResponseSchema as M16ContactTimelinePageResponse,
+  ContactTimelineQuerySchema as M16ContactTimelineQuerySchema,
+  MailingConfigListResponseSchema as M16MailingConfigListResponse,
+  MailingConfigViewResponseSchema as M16MailingConfigResponse,
+  MailingDownloadViewResponseSchema as M16MailingDownloadResponse,
+  MailingItemListQuerySchema as M16MailingItemListQuerySchema,
+  MailingItemPageResponseSchema as M16MailingItemPageResponse,
+  MailingRunListQuerySchema as M16MailingRunListQuerySchema,
+  MailingRunPageResponseSchema as M16MailingRunPageResponse,
+  MailingRunViewResponseSchema as M16MailingRunResponse,
+  PutMailingConfigBody as M16PutMailingConfigBody,
+  UpdateMailingRunContentBody as M16UpdateMailingRunContentBody,
+} from "../../apps/backend/src/modules/16-bereavement/routes/mailing-typebox";
 // M19 On-Call Triage — the §4.2 request bodies + list queries the §4.1 route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M19-T08
 // web screens call the surface these type. Note what is deliberately ABSENT from every body and therefore
@@ -7876,6 +7891,68 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Decline a pending letter with a documented reason of at least 20 characters; `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #40)",
     body: M16DeclineLetterBody,
     response: M16PhysicianLetterResponse,
+  },
+
+  // ── mailing.routes.ts (ADR-0109 D10) ──
+  "GET /api/v1/bereavement/mailings/config": {
+    summary:
+      "The four configurable mailings (quarterly newsletter, December holiday, Mother's Day, Father's Day), each merged with its stored config or a disabled default at version 0; bereavement oversight only (ADR-0109 D10, #42)",
+    response: M16MailingConfigListResponse,
+  },
+  "PUT /api/v1/bereavement/mailings/config/:mailingKey": {
+    summary:
+      "Configure one mailing: enabled, lead days (3..60), the occurrence dates, the audience and the agency's own wording (no default wording ships); `If-Match` (0 for the first write) and `Idempotency-Key` required (ADR-0109 D10, #43)",
+    body: M16PutMailingConfigBody,
+    response: M16MailingConfigResponse,
+  },
+  "GET /api/v1/bereavement/mailings/runs": {
+    summary:
+      "Mailing runs, newest scheduled first (`?status=`), cursor-paginated, each with its item counts; bereavement oversight only (ADR-0109 D10, #44)",
+    query: M16MailingRunListQuerySchema,
+    response: M16MailingRunPageResponse,
+  },
+  "GET /api/v1/bereavement/mailings/runs/:runId": {
+    summary:
+      "One mailing run: status, wording snapshot, recipient / excluded counts and per-state item counts; the batch document itself is reached only through download (ADR-0109 D10, #45)",
+    response: M16MailingRunResponse,
+  },
+  "GET /api/v1/bereavement/mailings/runs/:runId/items": {
+    summary:
+      "A run's items in letter order: contact id, relationship, channel, status and exclusion reason; never a name or an address (ADR-0109 D10, #46)",
+    query: M16MailingItemListQuerySchema,
+    response: M16MailingItemPageResponse,
+  },
+  "PATCH /api/v1/bereavement/mailings/runs/:runId/content": {
+    summary:
+      "Replace a DRAFT run's wording; 409 once the run is generating or later; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #47)",
+    body: M16UpdateMailingRunContentBody,
+    response: M16MailingRunResponse,
+  },
+  "POST /api/v1/bereavement/mailings/runs/:runId/generate": {
+    summary:
+      "Generate the batch: compare-and-set draft (or failed) to generating, select the recipients set-based through the eligibility rule, hand the render to the worker; 422 `MAILING_CONTENT_EMPTY` when no wording was written (no default ships); a run with no eligible recipient lands `failed` (`NO_RECIPIENTS`); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #48)",
+    response: M16MailingRunResponse,
+  },
+  "GET /api/v1/bereavement/mailings/runs/:runId/download": {
+    summary:
+      "A short-lived URL for the rendered batch PDF (every recipient's name and address: internal-only), minted through the M22 org-level document seam, which records the access; 409 unless the run is ready or mailed; never cached (ADR-0109 D10, #49)",
+    response: M16MailingDownloadResponse,
+  },
+  "POST /api/v1/bereavement/mailings/runs/:runId/confirm-mailed": {
+    summary:
+      "Confirm the batch was mailed: re-check eligibility over the rendered contacts (an opt-out or closure since the render is flagged `excluded_after_render` and never logged as mailed), ready to mailed, `m16.bereavement.mailing_run_mailed`; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #50)",
+    response: M16MailingRunResponse,
+  },
+  "POST /api/v1/bereavement/mailings/runs/:runId/cancel": {
+    summary:
+      "Cancel a draft, ready or failed run; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #51)",
+    response: M16MailingRunResponse,
+  },
+  "GET /api/v1/bereavement/contacts/:contactId/timeline": {
+    summary:
+      "The contact's touchpoints and program activities (mailings, sessions), newest first, cursor-paginated; program activities satisfy no cadence item; a bereavement volunteer sees no touchpoint outcome (ADR-0109 D10, #52)",
+    query: M16ContactTimelineQuerySchema,
+    response: M16ContactTimelinePageResponse,
   },
 
   // ── contacts.routes.ts ──

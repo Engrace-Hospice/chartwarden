@@ -808,6 +808,7 @@ import {
   buildDrizzleBereavementAbacResolver,
   buildDrizzleM16DraftService,
   buildDrizzleM16LetterService,
+  buildDrizzleM16MailingService,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
   buildM16BereavementIntakeConsumer,
@@ -818,6 +819,7 @@ import {
   buildM16DocumentRenderedConsumer,
   buildM16EncounterSignedConsumer,
   buildM16IdgDecisionConsumer,
+  buildM16MailingEnqueuePort,
   buildM16PatientOptOutChangedConsumer,
   buildM16WorkerDeps,
   createBereavementCipher,
@@ -3757,6 +3759,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // gateway — only the Valkey connection the worker itself already requires to run. Built unconditionally
   // (queueConnection may still be undefined; the port fails closed per-call in that case, RULE 4).
   const m23RevalidateEnqueue = buildM23RevalidateEnqueuePort(queueConnection);
+  // ADR-0109 D10 — the `m16-mailing-generate` enqueue side: the mailing route service hands a claimed run to the worker through it
+  // (fails closed per call with no Valkey connection; the sweep re-sends a lost hand-off).
+  const m16MailingEnqueue = buildM16MailingEnqueuePort(queueConnection);
   // GAP-070 — the `validation-run` / `eligibility.refresh` producer (queue connection only; no launch gateway).
   const m23WorkQueues = queueConnection ? buildM23WorkQueueEnqueuePort(queueConnection) : null;
   // M24 (WX-PR-011) — the Oregon launch-gateway, gated the same way as M23's (unset in dev/test/CI so
@@ -6624,6 +6629,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               outbox: m16OutboxPublisher,
               cipher: m16Cipher,
             }),
+            // ADR-0109 D10 — the mailing program (oversight only): configs, runs, the batch download (M22's org-level document seam) and
+            // confirm-mailed (emits `mailing_run_mailed` on its own transaction). The render itself runs in the `m16-mailing-generate` worker.
+            mailingService: buildDrizzleM16MailingService(dbHandle.db, {
+              outbox: m16OutboxPublisher,
+              enqueue: m16MailingEnqueue.port,
+            }),
           });
           // M21 (Supplies, DME & Comfort Kits) — mount the §4.1 route plugins over the Drizzle READ +
           // WRITE services. Every read opens its own withOrgContext (RLS scopes each statement to
@@ -7234,6 +7245,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   }
   app.addHook("onClose", async () => {
     await Promise.all(m23RevalidateEnqueue.queues.map((queue) => queue.close()));
+    await Promise.all(m16MailingEnqueue.queues.map((queue) => queue.close()));
     await Promise.all((m23WorkQueues?.queues ?? []).map((queue) => queue.close()));
   });
   if (m24SubmissionQueues) {
@@ -9959,6 +9971,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       outbox: m16OutboxPublisher,
       activeOrgs: m16ActiveOrgs,
       alerts: createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter),
+      // ADR-0109 D10 — the mailing generate worker opens each addressee's mailing address with the tenant-DEK envelope, in-process, and
+      // hands it to the registry's DocumentRenderer in memory; the sweep re-sends a lost render hand-off through the same enqueue port.
+      cipher: createBereavementCipher({
+        dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+        dekForOrgVersion: (orgId, version) => getTenantKeyProvider().dekForOrgVersion(orgId, version),
+      }),
+      mailingEnqueue: m16MailingEnqueue.port,
     });
     const m16Workers = registerM16CronWorkers(m16WorkerDeps);
     attachDlqAlertsToAll(m16Workers, "m16");

@@ -125,6 +125,12 @@ export function nextOccurrences(
 export const runKindOf = (key: BereavementMailingKey): "newsletter" | "holiday" =>
   key === "newsletter_quarterly" ? "newsletter" : "holiday";
 
-/** A mailing key's contact-log activity kind (`bereavement_contact_log.activity_kind`). */
-export const activityKindOf = (key: BereavementMailingKey): "newsletter_mailing" | "holiday_mailing" =>
-  key === "newsletter_quarterly" ? "newsletter_mailing" : "holiday_mailing";
+/** A run kind's contact-log activity kind (`bereavement_contact_log.activity_kind`). */
+export const activityKindOfRun = (
+  runKind: "newsletter" | "holiday" | "memorial_invitation",
+): "newsletter_mailing" | "holiday_mailing" | "memorial_invitation_mailing" =>
+  runKind === "newsletter"
+    ? "newsletter_mailing"
+    : runKind === "holiday"
+      ? "holiday_mailing"
+      : "memorial_invitation_mailing";

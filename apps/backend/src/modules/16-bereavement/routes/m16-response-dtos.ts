@@ -12,6 +12,22 @@ import type { CursorPage } from "./concurrency";
 import type { PreDeathDraftView as SvcPreDeathDraftView } from "./draft-service";
 import type { PhysicianLetterView as SvcPhysicianLetterView } from "./letter-service";
 import type {
+  MailingConfigView as SvcMailingConfigView,
+  MailingDownloadView as SvcMailingDownloadView,
+  MailingItemView as SvcMailingItemView,
+  MailingRunView as SvcMailingRunView,
+} from "./mailing-service";
+import type {
+  ContactTimelinePageResponseSchema,
+  MailingConfigListResponseSchema,
+  MailingConfigViewResponseSchema,
+  MailingDownloadViewResponseSchema,
+  MailingItemPageResponseSchema,
+  MailingItemViewResponseSchema,
+  MailingRunPageResponseSchema,
+  MailingRunViewResponseSchema,
+} from "./mailing-typebox";
+import type {
   BereavedContactRowViewResponseSchema,
   BereavementAssessmentTaskListResponseSchema,
   BereavementClosureViewResponseSchema,
@@ -32,6 +48,7 @@ import type {
   SupervisorDashboardViewResponseSchema,
 } from "./m16-typebox";
 import type {
+  ContactTimelinePage as SvcContactTimelinePage,
   BereavedContactRowView as SvcBereavedContactRowView,
   BereavementAssessmentTaskList as SvcBereavementAssessmentTaskList,
   BereavementClosureView as SvcBereavementClosureView,
@@ -121,4 +138,29 @@ type _PhysicianLetter = Conforms<
 type _PhysicianLetterPage = Conforms<
   Static<typeof PhysicianLetterPageResponseSchema>,
   CursorPage<SvcPhysicianLetterView>
+>;
+
+// ADR-0109 D10 — the mailing program and the contact timeline (routes 42-52).
+type _MailingConfig = Conforms<Static<typeof MailingConfigViewResponseSchema>, SvcMailingConfigView>;
+type _MailingConfigList = Conforms<
+  Static<typeof MailingConfigListResponseSchema>,
+  readonly SvcMailingConfigView[]
+>;
+type _MailingRun = Conforms<Static<typeof MailingRunViewResponseSchema>, SvcMailingRunView>;
+type _MailingRunPage = Conforms<
+  Static<typeof MailingRunPageResponseSchema>,
+  CursorPage<SvcMailingRunView>
+>;
+type _MailingItem = Conforms<Static<typeof MailingItemViewResponseSchema>, SvcMailingItemView>;
+type _MailingItemPage = Conforms<
+  Static<typeof MailingItemPageResponseSchema>,
+  CursorPage<SvcMailingItemView>
+>;
+type _MailingDownload = Conforms<
+  Static<typeof MailingDownloadViewResponseSchema>,
+  SvcMailingDownloadView
+>;
+type _ContactTimeline = Conforms<
+  Static<typeof ContactTimelinePageResponseSchema>,
+  SvcContactTimelinePage
 >;

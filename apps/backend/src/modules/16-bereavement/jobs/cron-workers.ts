@@ -11,6 +11,8 @@
 //                                    `risk_assessment_overdue` alert.
 //   · `m16-anniversary-lookahead` → `anniversary_due_in_14_days` for each unfired reminder landing in the next
 //                                    14 days; `alert_fired_at` is stamped in the SAME tx as the outbox write.
+//   · `m16-mailing-sweep` (*/5)   → ADR-0109 D10: drafts mailing runs, re-sends a lost render hand-off and writes the activity log (jobs/mailing-workers.ts);
+//                                    `m16-mailing-generate` is its job-driven sibling, the batch render worker.
 //   · `m16-unreachable-detector` → PROPOSES `markUnreachable` (§2.3 / §4.9) for each active contact of an active
 //                                    plan whose newest 3 touchpoint-log rows are all `no_response`: stamps
 //                                    `unreachable_proposed_through_at` and emits
@@ -47,6 +49,13 @@ import { requestDischargeSummary } from "../render-payloads/index";
 import { settleOutstandingForClosure } from "../routes/closure-settlement";
 import { runEffects } from "../routes/effects-runner";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
+import type { BereavementCipher } from "../bereavement-crypto";
+import type { MailingGenerateEnqueuePort } from "../mailings/enqueue-port";
+import {
+  type MailingBatchRenderer,
+  registerM16MailingGenerateWorker,
+  runMailingSweepCron,
+} from "./mailing-workers";
 import {
   M16_ANNIVERSARY_LOOKAHEAD_DAYS,
   M16_CRON_BATCH_LIMIT,
@@ -85,6 +94,12 @@ export interface M16WorkerDeps {
   readonly outbox: WriteOutboxPort;
   readonly alerts?: AlertPort;
   readonly activeOrgs?: ActiveOrgListPort;
+  /** ADR-0109 D10 — the tenant-DEK envelope the mailing generate worker opens addresses with. Unbound => a generate job fails closed. */
+  readonly cipher?: BereavementCipher;
+  /** ADR-0109 D10 — re-sends a run stuck in `generating` (the route service's enqueue port). */
+  readonly mailingEnqueue?: MailingGenerateEnqueuePort;
+  /** ADR-0109 D10 — the batch renderer hand-off (defaults to the registry's `DocumentRenderer`; tests inject one). */
+  readonly render?: MailingBatchRenderer;
   now?: () => Date;
 }
 
@@ -108,6 +123,9 @@ export function buildM16WorkerDeps(deps: {
   outbox: WriteOutboxPort;
   alerts?: AlertPort;
   activeOrgs?: ActiveOrgListPort;
+  cipher?: BereavementCipher;
+  mailingEnqueue?: MailingGenerateEnqueuePort;
+  render?: MailingBatchRenderer;
 }): M16WorkerDeps {
   return {
     connection: deps.connection,
@@ -115,6 +133,9 @@ export function buildM16WorkerDeps(deps: {
     outbox: deps.outbox,
     ...(deps.alerts ? { alerts: deps.alerts } : {}),
     activeOrgs: deps.activeOrgs,
+    ...(deps.cipher ? { cipher: deps.cipher } : {}),
+    ...(deps.mailingEnqueue ? { mailingEnqueue: deps.mailingEnqueue } : {}),
+    ...(deps.render ? { render: deps.render } : {}),
     now: () => new Date(),
   };
 }
@@ -741,7 +762,7 @@ export async function runUnreachableDetectorCron(
 
 // ── BullMQ construction (the M20/M9 registerMxCronWorkers / scheduleMxJobs template) ───────────────────
 
-/** Construct the four §4.9 cron `Worker`s (the caller owns lifecycle — `close()` on shutdown). */
+/** Construct the §4.9 cron `Worker`s plus the ADR-0109 D10 mailing sweep and render worker (the caller owns lifecycle — `close()` on shutdown). */
 export function registerM16CronWorkers(deps: M16WorkerDeps): Worker[] {
   const make = (
     queue: string,
@@ -765,6 +786,9 @@ export function registerM16CronWorkers(deps: M16WorkerDeps): Worker[] {
       M16_QUEUE_PARAMS.unreachableDetector,
       runUnreachableDetectorCron,
     ),
+    // ADR-0109 D10 — the mailing sweep (cron) and the render worker (one job per claimed run).
+    make(M16_QUEUES.mailingSweep, M16_QUEUE_PARAMS.mailingSweep, runMailingSweepCron),
+    registerM16MailingGenerateWorker(deps),
   ];
 }
 
@@ -775,6 +799,7 @@ export async function scheduleM16Jobs(connection: ConnectionOptions): Promise<Qu
     ["anniversaryLookahead"],
     ["missDeadline"],
     ["unreachableDetector"],
+    ["mailingSweep"],
   ] as const;
   const queues: Queue[] = [];
   for (const [key] of entries) {

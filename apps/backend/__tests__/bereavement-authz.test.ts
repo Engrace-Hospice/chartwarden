@@ -716,6 +716,7 @@ describe("M16-T06 §8.5 — the bereavement_record eraser", () => {
         anniversaryReminders: 2,
         assessmentTasks: 4,
         physicianLetters: 1,
+        mailingItems: 3,
         contacts: 2,
         plansTombstoned: 1,
         closuresShredded: 1,
@@ -725,7 +726,7 @@ describe("M16-T06 §8.5 — the bereavement_record eraser", () => {
     expect(locked).toEqual([PATIENT]);
     expect(result.shredded).toBe(7);
     // The tombstoned plan root and the surviving closure row are bookkeeping, NOT deletions.
-    expect(result.erased).toBe(4 + 3 + 1 + 9 + 2 + 4 + 1 + 2);
+    expect(result.erased).toBe(4 + 3 + 1 + 9 + 2 + 4 + 1 + 3 + 2);
     expect(result.counts.plansTombstoned).toBe(1);
     expect(result.counts.closuresShredded).toBe(1);
   });

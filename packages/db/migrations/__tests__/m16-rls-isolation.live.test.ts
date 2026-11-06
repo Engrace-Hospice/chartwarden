@@ -62,6 +62,9 @@ type SeedIds = {
   assessmentTask: string;
   assessmentDraft: string;
   physicianLetter: string;
+  mailingConfig: string;
+  mailingRun: string;
+  mailingItem: string;
 };
 
 /** The 9 manifest-owned M16 tables, each with the seeded row the isolation case looks for. */
@@ -79,6 +82,10 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "bereavement_assessment_task", key: "assessmentTask" },
   { table: "bereavement_risk_assessment_draft", key: "assessmentDraft" },
   { table: "bereavement_physician_letter", key: "physicianLetter" },
+  // ADR-0109 D10 — the mailing program (config and run are org-level; the item names a plan and a contact).
+  { table: "bereavement_mailing_config", key: "mailingConfig" },
+  { table: "bereavement_mailing_run", key: "mailingRun" },
+  { table: "bereavement_mailing_item", key: "mailingItem" },
 ];
 
 describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -262,6 +269,29 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
         [org, pe, location, plan, patient],
       )
     ).rows[0].id as string;
+    // ADR-0109 D10 — one config, one run and one item of that run.
+    const mailingConfig = (
+      await db.query(
+        `INSERT INTO bereavement_mailing_config (organization_id, mailing_key, enabled, configured_by_membership_id)
+         VALUES ($1,'newsletter_quarterly',true,$2) RETURNING id`,
+        [org, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
+    const mailingRun = (
+      await db.query(
+        `INSERT INTO bereavement_mailing_run (organization_id, run_kind, mailing_key, occurrence_key, scheduled_for, content_jsonb)
+         VALUES ($1,'newsletter','newsletter_quarterly','newsletter_quarterly:2026-Q4','2026-10-15','{}'::jsonb) RETURNING id`,
+        [org],
+      )
+    ).rows[0].id as string;
+    const mailingItem = (
+      await db.query(
+        `INSERT INTO bereavement_mailing_item (organization_id, provider_entity_id, location_id, run_id, plan_id,
+           bereaved_contact_id, channel, status)
+         VALUES ($1,$2,$3,$4,$5,$6,'postal','included') RETURNING id`,
+        [org, pe, location, mailingRun, plan, contact],
+      )
+    ).rows[0].id as string;
     return {
       pe,
       location,
@@ -278,6 +308,9 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       assessmentTask,
       assessmentDraft,
       physicianLetter,
+      mailingConfig,
+      mailingRun,
+      mailingItem,
     };
   }
 
@@ -313,6 +346,7 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       "1342_m16_assessment_task.sql",
       "1343_m16_risk_assessment_draft.sql",
       "1345_m16_physician_letter.sql",
+      "1374_m16_mailings.sql",
     ]
       .map((file) => readFileSync(join(MIGRATIONS_DIR, file), "utf8"))
       .join("\n");
@@ -584,6 +618,84 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
         ),
       ),
     ).rejects.toThrow(/berv_physician_letter_plan_uniq/);
+  });
+
+  it("a contact-log ACTIVITY row (no outreach, no kind) is tenant-scoped through the parent like any other log row (1373)", async () => {
+    await db.query(
+      `INSERT INTO bereavement_contact_log (organization_id, provider_entity_id, location_id, plan_id, bereaved_contact_id,
+         contact_at, outcome, activity_kind, activity_ref_id, logged_by_user_id)
+       VALUES ($1,$2,$3,$4,$5, now(), 'mailed', 'newsletter_mailing', $6, $7)`,
+      [ORG_A, a.pe, a.location, a.plan, a.contact, a.mailingRun, MEMBERSHIP],
+    );
+    const count = (org: string) =>
+      withOrg(org, () =>
+        db.query<{ n: number }>(
+          "SELECT count(*)::int AS n FROM bereavement_contact_log WHERE activity_kind IS NOT NULL AND outreach_id IS NULL AND kind IS NULL",
+        ),
+      );
+    expect((await count(ORG_A)).rows[0].n).toBe(1);
+    expect((await count(ORG_B)).rows[0].n).toBe(0);
+    await db.query("DELETE FROM bereavement_contact_log WHERE activity_kind IS NOT NULL");
+  });
+
+  it("a mailing run pins its lifecycle: one run per occurrence, a rendered batch before ready, a mailer before mailed, a reason on every excluded item (1374)", async () => {
+    const run = (status: string, over = "") =>
+      db.query(
+        `INSERT INTO bereavement_mailing_run (organization_id, run_kind, mailing_key, occurrence_key, scheduled_for, status, content_jsonb ${over ? ", rendered_document_id, mailed_at, mailed_by_membership_id, failure_code" : ""})
+         VALUES ($1,'newsletter','newsletter_quarterly',$2,'2026-10-15',$3,'{}'::jsonb ${over})`,
+        [ORG_A, `k-${status}-${Math.random()}`, status],
+      );
+    await expect(
+      db.query(
+        `INSERT INTO bereavement_mailing_run (organization_id, run_kind, mailing_key, occurrence_key, scheduled_for, content_jsonb)
+         VALUES ($1,'newsletter','newsletter_quarterly','newsletter_quarterly:2026-Q4','2026-10-15','{}'::jsonb)`,
+        [ORG_A],
+      ),
+    ).rejects.toThrow(/berv_mailing_run_occurrence_uniq/);
+    await expect(run("ready")).rejects.toThrow(/berv_mailing_run_ready_chk/);
+    await expect(run("mailed", ", gen_random_uuid(), NULL, NULL, NULL")).rejects.toThrow(/berv_mailing_run_mailed_chk/);
+    await expect(run("failed")).rejects.toThrow(/berv_mailing_run_failed_chk/);
+    const item = (status: string, reason: string | null) =>
+      db.query(
+        `INSERT INTO bereavement_mailing_item (organization_id, provider_entity_id, run_id, plan_id, bereaved_contact_id, channel, status, exclusion_reason)
+         SELECT $1, i.provider_entity_id, i.run_id, i.plan_id, c.id, 'postal', $2, $3
+           FROM bereavement_mailing_item i, bereaved_contact c WHERE i.id=$4 AND c.id <> i.bereaved_contact_id LIMIT 1`,
+        [ORG_A, status, reason, a.mailingItem],
+      );
+    // a second contact is needed for the (run, contact) key: reuse the org's own contact via a fresh row
+    await db.query(
+      `INSERT INTO bereaved_contact (organization_id, provider_entity_id, location_id, plan_id, status, display_name, relationship_code)
+       VALUES ($1,$2,$3,$4,'active','Second','child')`,
+      [ORG_A, a.pe, a.location, a.plan],
+    );
+    await expect(item("excluded", null)).rejects.toThrow(/berv_mailing_item_excluded_chk/);
+    await expect(item("included", "no_mailings")).rejects.toThrow(/berv_mailing_item_excluded_chk/);
+    await expect(item("excluded", "because")).rejects.toThrow(/berv_mailing_item_reason_chk/);
+    await expect(
+      db.query(
+        `INSERT INTO bereavement_mailing_item (organization_id, provider_entity_id, run_id, plan_id, bereaved_contact_id, channel, status)
+         SELECT organization_id, provider_entity_id, run_id, plan_id, bereaved_contact_id, 'postal', 'included' FROM bereavement_mailing_item WHERE id=$1`,
+        [a.mailingItem],
+      ),
+    ).rejects.toThrow(/berv_mailing_item_run_contact_uniq/);
+    await expect(
+      db.query("UPDATE bereavement_mailing_config SET lead_days = 2 WHERE id=$1", [a.mailingConfig]),
+    ).rejects.toThrow(/berv_mailing_config_lead_chk/);
+  });
+
+  it("the destruction role holds DELETE on mailing items only (1376), and chartwarden_app holds no DELETE on any mailing table", async () => {
+    const { rows } = await db.query<{ table_name: string; privilege_type: string }>(
+      `SELECT table_name, privilege_type FROM information_schema.role_table_grants
+       WHERE grantee='chartwarden_destruction' AND table_name LIKE 'bereavement_mailing_%' ORDER BY table_name, privilege_type`,
+    );
+    expect(rows).toEqual([
+      { table_name: "bereavement_mailing_item", privilege_type: "DELETE" },
+      { table_name: "bereavement_mailing_item", privilege_type: "SELECT" },
+    ]);
+    const policy = await db.query<{ qual: string }>(
+      "SELECT qual FROM pg_policies WHERE tablename='bereavement_mailing_item' AND policyname='bereavement_mailing_item_destruction'",
+    );
+    expect(policy.rows[0]?.qual).toContain("app.org_id");
   });
 
   it("chartwarden_app holds no DELETE on the M16 tables — destruction runs through the eraser (§8.5)", async () => {

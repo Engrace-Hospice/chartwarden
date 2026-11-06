@@ -71,6 +71,10 @@ import type {
   M16LetterService,
   PhysicianLetterView,
 } from "../src/modules/16-bereavement/routes/letter-service";
+import type {
+  M16MailingService,
+  MailingRunView,
+} from "../src/modules/16-bereavement/routes/mailing-service";
 import type { RecomputeRiskInput } from "../src/modules/16-bereavement/routes/write-service";
 
 // ── the M2 header-auth test shim (the M11/M40 `orders-routes.test.ts` / `mdm-routes.test.ts` precedent) ──
@@ -115,6 +119,8 @@ const DRAFT_PATIENT = "10000000-0000-4000-8000-0000000000aa";
 /** ADR-0109 D6 — the physician letter fixtures: the plan the letter belongs to and the internal clinician it addresses. */
 const LETTER_PLAN_ID = "10000000-0000-4000-8000-0000000000bb";
 const LETTER_ATTENDING = "10000000-0000-4000-8000-0000000000cc";
+/** ADR-0109 D10 — the one mailing run the fake mailing service knows. */
+const MAILING_RUN_ID = "10000000-0000-4000-8000-0000000000f1";
 const PICKED_CLINICIAN = "10000000-0000-4000-8000-0000000000dd";
 /** The care team of `DRAFT_PATIENT`: only the plan counselor's user sits on it. */
 const ASSESSOR_PROBE: PreDeathAssessorProbe = {
@@ -441,6 +447,24 @@ function createFakeBackend() {
       if (!plans.has(planId)) return null;
       return {
         items: assessmentTasks.filter((t) => t.planId === planId),
+        redactedCategories: [],
+      };
+    },
+    async listContactTimeline(_actor, contactId) {
+      if (!contacts.has(contactId)) return null;
+      return {
+        data: [
+          {
+            entryId: "10000000-0000-4000-8000-0000000000e1",
+            at: NOW as never,
+            source: "program_activity",
+            kind: null,
+            activityKind: "newsletter_mailing",
+            outcome: "mailed",
+          },
+        ],
+        next_cursor: null,
+        has_more: false,
         redactedCategories: [],
       };
     },
@@ -1008,11 +1032,95 @@ function createFakeBackend() {
     },
   };
 
+  // ADR-0109 D10 — a minimal fake of the mailing service: the routes' wiring (guards, headers, status codes) is what this file proves; the state machine,
+  // the set-based selection and the worker are proven over a real database in `m16-mailings.live.test.ts`.
+  const mailingCalls: { method: string; runId?: string; expectedVersion?: number | undefined }[] = [];
+  const mailingRun = (runId: string, over: Partial<MailingRunView> = {}): MailingRunView => ({
+    runId,
+    runKind: "newsletter",
+    mailingKey: "newsletter_quarterly",
+    occurrenceKey: "newsletter_quarterly:2026-Q4",
+    scheduledFor: "2026-10-15",
+    status: "draft",
+    content: {},
+    recipientCount: 0,
+    excludedCount: 0,
+    failureCode: null,
+    hasDocument: false,
+    generatedAt: null,
+    mailedAt: null,
+    itemCounts: { included: 0, excluded: 0, logged: 0, excludedAfterRender: 0 },
+    version: 0,
+    createdAt: NOW,
+    ...over,
+  });
+  const mailingService: M16MailingService = {
+    async listConfigs() {
+      return ["newsletter_quarterly", "holiday_december", "mothers_day", "fathers_day"].map((mailingKey) => ({
+        mailingKey: mailingKey as never,
+        configured: false,
+        enabled: false,
+        leadDays: 10,
+        schedule: {},
+        audienceRelationships: null,
+        content: {},
+        version: 0,
+        updatedAt: null,
+      }));
+    },
+    async putConfig(_actor, mailingKey, input) {
+      mailingCalls.push({ method: "putConfig", expectedVersion: input.expectedVersion });
+      return {
+        mailingKey,
+        configured: true,
+        enabled: input.enabled,
+        leadDays: input.leadDays,
+        schedule: input.schedule ?? {},
+        audienceRelationships: input.audienceRelationships,
+        content: input.content,
+        version: input.expectedVersion + 1,
+        updatedAt: NOW,
+      };
+    },
+    async listRuns() {
+      return { data: [mailingRun(MAILING_RUN_ID)], next_cursor: null, has_more: false };
+    },
+    async getRun(_actor, runId) {
+      return runId === MAILING_RUN_ID ? mailingRun(runId) : null;
+    },
+    async listItems(_actor, runId) {
+      return runId === MAILING_RUN_ID ? { data: [], next_cursor: null, has_more: false } : null;
+    },
+    async updateRunContent(_actor, runId, input) {
+      mailingCalls.push({ method: "updateRunContent", runId, expectedVersion: input.expectedVersion });
+      return mailingRun(runId, { content: input.content, version: input.expectedVersion + 1 });
+    },
+    async generateRun(_actor, runId, input) {
+      mailingCalls.push({ method: "generateRun", runId, expectedVersion: input.expectedVersion });
+      checkVersion(input.expectedVersion, 0);
+      return mailingRun(runId, { status: "generating", version: 1 });
+    },
+    async downloadRun(_actor, runId) {
+      mailingCalls.push({ method: "downloadRun", runId });
+      return { runId, url: "https://objects.example.test/batch", expiresAt: NOW };
+    },
+    async confirmMailed(_actor, runId, input) {
+      mailingCalls.push({ method: "confirmMailed", runId, expectedVersion: input.expectedVersion });
+      return mailingRun(runId, { status: "mailed", version: input.expectedVersion + 1 });
+    },
+    async cancelRun(_actor, runId, input) {
+      mailingCalls.push({ method: "cancelRun", runId, expectedVersion: input.expectedVersion });
+      return mailingRun(runId, { status: "cancelled", version: input.expectedVersion + 1 });
+    },
+  };
+
   return {
     readService,
     writeService,
     draftService,
     letterService,
+    mailingService,
+    mailingCalls,
     seedLetter,
     letters,
     letterEvents,
@@ -1095,6 +1203,7 @@ function makeServer(): { app: ReturnType<typeof buildServer>; backend: FakeBacke
     writeService: backend.writeService,
     draftService: backend.draftService,
     letterService: backend.letterService,
+    mailingService: backend.mailingService,
   });
   return { app, backend };
 }
@@ -2356,6 +2465,151 @@ describe("M16 §4.1 routes 30–31 — dashboards", () => {
     });
     expect(supervisorDash.statusCode).toBe(200);
 
+    await app.close();
+  });
+});
+
+// ── routes 42-52 — the mailing program and the contact timeline (ADR-0109 D10) ───────────────────────────
+
+describe("M16 §4.1 routes 42-51 — the mailing program (bereavement oversight only)", () => {
+  const BASE = "/api/v1/bereavement/mailings";
+  const RUN = `${BASE}/runs/${MAILING_RUN_ID}`;
+  const UNKNOWN_RUN = `${BASE}/runs/10000000-0000-4000-8000-0000000000fe`;
+  // the platform idempotency middleware keys on the header: a reused key with a different request is a 409, so every write gets its own
+  let keySeq = 0;
+  const write = (version = 0) => ({ "idempotency-key": `m-${(keySeq += 1)}`, "if-match": `"${version}"` });
+  const CONTENT = {
+    en: { title: "Autumn note", greeting: "Dear {name},", paragraphs: ["We are thinking of you."], signoff: "With care" },
+  };
+  const CONFIG_BODY = { enabled: true, leadDays: 10, audienceRelationships: null, content: CONTENT };
+
+  it("oversight reads the configs, the runs, one run and its items", async () => {
+    const { app } = makeServer();
+    const configs = await app.inject({ method: "GET", url: `${BASE}/config`, headers: SUPERVISOR });
+    expect(configs.statusCode).toBe(200);
+    expect(configs.json().map((c: { mailingKey: string }) => c.mailingKey)).toEqual([
+      "newsletter_quarterly",
+      "holiday_december",
+      "mothers_day",
+      "fathers_day",
+    ]);
+    expect((await app.inject({ method: "GET", url: `${BASE}/runs`, headers: SUPERVISOR })).json().data).toHaveLength(1);
+    expect((await app.inject({ method: "GET", url: RUN, headers: SUPERVISOR })).json()).toMatchObject({ runId: MAILING_RUN_ID, status: "draft" });
+    expect((await app.inject({ method: "GET", url: `${RUN}/items`, headers: SUPERVISOR })).statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("a counselor holding every key is still refused: the predicate is oversight, the batch holds every address", async () => {
+    const { app, backend } = makeServer();
+    const calls = [
+      app.inject({ method: "GET", url: `${BASE}/config`, headers: COUNSELOR }),
+      app.inject({ method: "GET", url: `${BASE}/runs`, headers: COUNSELOR }),
+      app.inject({ method: "GET", url: RUN, headers: COUNSELOR }),
+      app.inject({ method: "GET", url: `${RUN}/download`, headers: COUNSELOR }),
+      app.inject({ method: "PUT", url: `${BASE}/config/newsletter_quarterly`, headers: { ...COUNSELOR, ...write() }, payload: CONFIG_BODY }),
+      app.inject({ method: "POST", url: `${RUN}/generate`, headers: { ...COUNSELOR, ...write() } }),
+      app.inject({ method: "POST", url: `${RUN}/confirm-mailed`, headers: { ...COUNSELOR, ...write() } }),
+      app.inject({ method: "POST", url: `${RUN}/cancel`, headers: { ...COUNSELOR, ...write() } }),
+    ];
+    for (const res of await Promise.all(calls)) expect(res.statusCode).toBe(403);
+    expect(backend.mailingCalls).toEqual([]);
+    await app.close();
+  });
+
+  it("a volunteer and a caller with no permission are refused the whole surface", async () => {
+    const { app } = makeServer();
+    for (const headers of [VOLUNTEER, NO_PERMS]) {
+      expect((await app.inject({ method: "GET", url: `${BASE}/runs`, headers })).statusCode).toBe(403);
+      expect((await app.inject({ method: "GET", url: `${RUN}/download`, headers })).statusCode).toBe(403);
+    }
+    await app.close();
+  });
+
+  it("every write needs Idempotency-Key (400) and If-Match (428)", async () => {
+    const { app, backend } = makeServer();
+    const writes: [string, string, unknown][] = [
+      ["PUT", `${BASE}/config/newsletter_quarterly`, CONFIG_BODY],
+      ["PATCH", `${RUN}/content`, { content: CONTENT }],
+      ["POST", `${RUN}/generate`, undefined],
+      ["POST", `${RUN}/confirm-mailed`, undefined],
+      ["POST", `${RUN}/cancel`, undefined],
+    ];
+    for (const [method, url, payload] of writes) {
+      const send = (headers: Record<string, string>) =>
+        app.inject({ method: method as "PUT", url, headers: { ...SUPERVISOR, ...headers }, ...(payload === undefined ? {} : { payload: payload as object }) });
+      expect((await send({ "if-match": '"0"', "x-note": "no-key" })).statusCode, `${method} ${url} without a key`).toBe(400);
+      expect((await send({ "idempotency-key": `m-x${(keySeq += 1)}` })).statusCode, `${method} ${url} without If-Match`).toBe(428);
+    }
+    expect(backend.mailingCalls).toEqual([]);
+    await app.close();
+  });
+
+  it("the If-Match header names the version the service decides on; a stale one is 412", async () => {
+    const { app, backend } = makeServer();
+    const ok = await app.inject({ method: "POST", url: `${RUN}/generate`, headers: { ...SUPERVISOR, ...write() } });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({ status: "generating", version: 1 });
+    const stale = await app.inject({
+      method: "POST",
+      url: `${RUN}/generate`,
+      headers: { ...SUPERVISOR, "idempotency-key": `m-y${(keySeq += 1)}`, "if-match": '"9"' },
+    });
+    expect(stale.statusCode).toBe(412);
+    expect(backend.mailingCalls.map((c) => c.expectedVersion)).toEqual([0, 9]);
+    await app.close();
+  });
+
+  it("config: the first write is If-Match 0; a bad lead, a bad date and the deferred birthday mailing are refused", async () => {
+    const { app } = makeServer();
+    const put = (key: string, payload: unknown) =>
+      app.inject({ method: "PUT", url: `${BASE}/config/${key}`, headers: { ...SUPERVISOR, ...write() }, payload: payload as object });
+    const ok = await put("mothers_day", CONFIG_BODY);
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({ mailingKey: "mothers_day", enabled: true, version: 1 });
+    expect((await put("mothers_day", { ...CONFIG_BODY, leadDays: 2 })).statusCode).toBe(422);
+    expect((await put("mothers_day", { ...CONFIG_BODY, leadDays: 61 })).statusCode).toBe(422);
+    expect((await put("newsletter_quarterly", { ...CONFIG_BODY, schedule: { monthDays: ["13-40"] } })).statusCode).toBe(422);
+    expect((await put("decedent_birthday", CONFIG_BODY)).statusCode).toBe(422);
+    expect((await put("mothers_day", { ...CONFIG_BODY, content: { en: { ...CONTENT.en, paragraphs: Array(13).fill("x") } } })).statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("a run that does not exist is a 404 on every read, and offset pagination is refused", async () => {
+    const { app } = makeServer();
+    for (const suffix of ["", "/items"]) {
+      expect((await app.inject({ method: "GET", url: `${UNKNOWN_RUN}${suffix}`, headers: SUPERVISOR })).statusCode).toBe(404);
+    }
+    expect((await app.inject({ method: "GET", url: `${BASE}/runs?offset=5`, headers: SUPERVISOR })).statusCode).toBe(400);
+    expect((await app.inject({ method: "GET", url: `${BASE}/runs?status=bogus`, headers: SUPERVISOR })).statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("download hands out a URL that is never cached", async () => {
+    const { app, backend } = makeServer();
+    const res = await app.inject({ method: "GET", url: `${RUN}/download`, headers: SUPERVISOR });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ runId: MAILING_RUN_ID, url: "https://objects.example.test/batch" });
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(backend.mailingCalls).toEqual([{ method: "downloadRun", runId: MAILING_RUN_ID }]);
+    await app.close();
+  });
+});
+
+describe("M16 §4.1 route 52 — a contact's program timeline", () => {
+  it("answers the contact's touchpoints and activities, refuses offset pagination, and 404s an absent contact", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan();
+    const contact = backend.seedContact(plan.planId);
+    const url = `/api/v1/bereavement/contacts/${contact.contactId}/timeline`;
+    const res = await app.inject({ method: "GET", url, headers: SUPERVISOR });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data[0]).toMatchObject({ source: "program_activity", activityKind: "newsletter_mailing", outcome: "mailed" });
+    expect(res.json()).toHaveProperty("redactedCategories");
+    expect((await app.inject({ method: "GET", url: `${url}?offset=5`, headers: SUPERVISOR })).statusCode).toBe(400);
+    expect(
+      (await app.inject({ method: "GET", url: "/api/v1/bereavement/contacts/10000000-0000-4000-8000-0000000000fd/timeline", headers: SUPERVISOR })).statusCode,
+    ).toBe(404);
+    expect((await app.inject({ method: "GET", url, headers: NO_PERMS })).statusCode).toBe(403);
     await app.close();
   });
 });

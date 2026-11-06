@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type MailingOccurrenceConfig,
-  activityKindOf,
+  activityKindOfRun,
   nextOccurrences,
   nthSundayOfMonth,
   runKindOf,
@@ -105,10 +105,11 @@ describe("nextOccurrences", () => {
     expect(a.map((o) => o.mailingKey)).toEqual(["mothers_day", "fathers_day"]);
   });
 
-  it("maps a mailing key to its run kind and contact-log activity kind", () => {
+  it("maps a mailing key to its run kind and a run kind to its contact-log activity kind", () => {
     expect(runKindOf("newsletter_quarterly")).toBe("newsletter");
     expect(runKindOf("mothers_day")).toBe("holiday");
-    expect(activityKindOf("newsletter_quarterly")).toBe("newsletter_mailing");
-    expect(activityKindOf("holiday_december")).toBe("holiday_mailing");
+    expect(activityKindOfRun("newsletter")).toBe("newsletter_mailing");
+    expect(activityKindOfRun("holiday")).toBe("holiday_mailing");
+    expect(activityKindOfRun("memorial_invitation")).toBe("memorial_invitation_mailing");
   });
 });

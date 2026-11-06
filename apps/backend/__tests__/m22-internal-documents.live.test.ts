@@ -52,11 +52,13 @@ const PORTAL_ACCOUNT = "e2200000-0000-4000-8000-0000000000e2";
 const PDF_B64 = Buffer.from("%PDF-1.7 hand-made").toString("base64");
 
 /** The decedent's chart carries the two internal documents and one ordinary one; the internal ones are `patient_facing = true`
- *  on purpose: the portal must refuse them whatever that flag says. */
+ *  on purpose: the portal must refuse them whatever that flag says. The mailing batch (ADR-0109 D10) is ORG-LEVEL (no patient: it
+ *  holds every addressee), so it is seeded patient-less and flagged patient-facing for the same reason. */
 const DOCS = {
-  letter: { aggregate: "bereavement_physician_letter", facing: true },
-  summary: { aggregate: "bereavement_discharge_summary", facing: true },
-  plain: { aggregate: "encounter", facing: true },
+  letter: { aggregate: "bereavement_physician_letter", facing: true, onChart: true },
+  summary: { aggregate: "bereavement_discharge_summary", facing: true, onChart: true },
+  batch: { aggregate: "bereavement_mailing_batch", facing: true, onChart: false },
+  plain: { aggregate: "encounter", facing: true, onChart: true },
 } as const;
 
 const KEYS = [
@@ -100,13 +102,13 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
   const doc: Record<keyof typeof DOCS, { document: string; version: string }> = {} as never;
 
   async function seedDocument(key: keyof typeof DOCS): Promise<void> {
-    const { aggregate, facing } = DOCS[key];
+    const { aggregate, facing, onChart } = DOCS[key];
     const document = (
       await admin.query(
         `INSERT INTO document (organization_id, patient_id, retention_class, source_kind, aggregate_type, title,
            patient_facing, created_by_membership_id)
          VALUES ($1,$2,'bereavement','user_upload',$3::document_aggregate_type,$4,$5,$6) RETURNING id`,
-        [ORG_A, PATIENT, aggregate, `Seed ${key}`, facing, MEMBERSHIP],
+        [ORG_A, onChart ? PATIENT : null, aggregate, `Seed ${key}`, facing, MEMBERSHIP],
       )
     ).rows[0].id as string;
     const version = (
@@ -240,7 +242,7 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
 
   it("a caseload member of the decedent's chart gets 404 by id for the internal documents and an ordinary document still reads", async () => {
     for (const who of [RN, VOLUNTEER]) {
-      for (const key of ["letter", "summary"] as const) {
+      for (const key of ["letter", "summary", "batch"] as const) {
         const res = await app.inject({
           method: "GET",
           url: `/api/v1/documents/${doc[key].document}`,
@@ -263,17 +265,18 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
       expect(seen).toContain(doc.plain.document);
       expect(seen).not.toContain(doc.letter.document);
       expect(seen).not.toContain(doc.summary.document);
+      expect(seen).not.toContain(doc.batch.document);
     }
     for (const who of [SUPERVISOR, COMPLIANCE, COORDINATOR]) {
       expect(await listed(who)).toEqual(
-        expect.arrayContaining([doc.letter.document, doc.summary.document]),
+        expect.arrayContaining([doc.letter.document, doc.summary.document, doc.batch.document]),
       );
     }
   });
 
   it("oversight, compliance and the bereavement coordinator read an internal document by id without sitting on the chart", async () => {
     for (const who of [SUPERVISOR, COMPLIANCE, COORDINATOR]) {
-      for (const key of ["letter", "summary"] as const) {
+      for (const key of ["letter", "summary", "batch"] as const) {
         const res = await app.inject({
           method: "GET",
           url: `/api/v1/documents/${doc[key].document}`,
@@ -285,10 +288,10 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
   });
 
   it("minting the content is refused to a caseload member (404) and allowed to oversight", async () => {
-    const url = (key: "letter" | "summary") =>
+    const url = (key: "letter" | "summary" | "batch") =>
       `/api/v1/documents/${doc[key].document}/versions/${doc[key].version}/content?purpose=treatment`;
     for (const who of [RN, VOLUNTEER]) {
-      for (const key of ["letter", "summary"] as const) {
+      for (const key of ["letter", "summary", "batch"] as const) {
         expect(
           (await app.inject({ method: "GET", url: url(key), headers: who })).statusCode,
           key,
@@ -416,10 +419,10 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
     expect(
       (
         await admin.query(
-          "SELECT count(*)::int AS n FROM document WHERE aggregate_type IN ('bereavement_physician_letter','bereavement_discharge_summary')",
+          "SELECT count(*)::int AS n FROM document WHERE aggregate_type IN ('bereavement_physician_letter','bereavement_discharge_summary','bereavement_mailing_batch')",
         )
       ).rows[0].n,
-    ).toBe(2); // only the two seeded rows
+    ).toBe(3); // only the three seeded rows
   });
 
   it("the portal digest, resolver and mint exclude the internal documents even though patient_facing is true", async () => {
@@ -439,7 +442,8 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
       expect(ids).toContain(doc.plain.document);
       expect(ids).not.toContain(doc.letter.document);
       expect(ids).not.toContain(doc.summary.document);
-      for (const key of ["letter", "summary"] as const) {
+      expect(ids).not.toContain(doc.batch.document);
+      for (const key of ["letter", "summary", "batch"] as const) {
         expect(
           await reader.resolvePortalDocumentVersion({
             documentId: doc[key].document as never,
@@ -447,15 +451,18 @@ describe.skipIf(!DB_URL)("M22 internal-only documents — LIVE Postgres (ADR-010
             organizationId: ORG_A as never,
           }),
         ).toBeNull();
-        expect(
-          await reader.mintPortalDownloadUrl({
-            documentVersionId: doc[key].version as never,
-            portalSessionId: PORTAL_SESSION,
-            portalAccountId: PORTAL_ACCOUNT,
-            patientId: PATIENT as never,
-            organizationId: ORG_A as never,
-          } as never),
-        ).toEqual({ denied: true, reason: "not_patient_facing" });
+        const minted = await reader.mintPortalDownloadUrl({
+          documentVersionId: doc[key].version as never,
+          portalSessionId: PORTAL_SESSION,
+          portalAccountId: PORTAL_ACCOUNT,
+          patientId: PATIENT as never,
+          organizationId: ORG_A as never,
+        } as never);
+        // the chart's internal documents are refused as internal; the org-level batch belongs to no patient, so it is refused as not theirs: no URL either way
+        expect(minted).toEqual({
+          denied: true,
+          reason: key === "batch" ? "not_owner" : "not_patient_facing",
+        });
       }
       // the ordinary patient-facing document of the same chart still resolves for the portal
       expect(

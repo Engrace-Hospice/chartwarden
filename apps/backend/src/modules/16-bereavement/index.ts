@@ -130,6 +130,9 @@ export {
   type M16DraftService,
   type M16LetterDeps,
   type M16LetterService,
+  type M16MailingDeps,
+  type M16MailingService,
+  buildDrizzleM16MailingService,
   type M16ReadDeps,
   type M16ReadService,
   type M16RouteServices,
@@ -143,6 +146,28 @@ export {
   buildDrizzleM16WriteService,
 } from "./routes/index";
 export { mountM16Routes } from "./routes/mount";
+
+// ADR-0109 D10 — the mailing program: the pure rules (who is written to, when a mailing is due, what wording is complete), the sweep and the render worker.
+export {
+  type MailingEligibilityDecision,
+  type MailingEligibilityFacts,
+  decideMailingEligibility,
+  preferredMailingChannel,
+} from "./mailings/eligibility";
+export { type MailingOccurrence, nextOccurrences } from "./mailings/occurrence";
+export {
+  type MailingBatchRenderer,
+  type MailingWorkerDeps,
+  addressLinesOf,
+  buildM16MailingEnqueuePort,
+  draftDueMailingRuns,
+  logMailedRuns,
+  registerM16MailingGenerateWorker,
+  requeueStaleGeneratingRuns,
+  runMailingGenerateJob,
+  runMailingSweepCron,
+} from "./jobs/mailing-workers";
+export { type MailingGenerateEnqueuePort, type MailingGenerateJob } from "./mailings/enqueue-port";
 
 // GAP-129 — the per-tenant DEK envelope for the four `*_cipher` columns, the contact-channel reader and the roster seed.
 export {
