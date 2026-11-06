@@ -239,11 +239,13 @@ export function SelectField({
   value,
   options,
   onChange,
+  disabled,
 }: {
   label: string;
   value: string;
   options: readonly { value: string; label: string }[];
   onChange: (v: string) => void;
+  disabled?: boolean;
 }): JSX.Element {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
@@ -252,6 +254,7 @@ export function SelectField({
       </span>
       <select
         aria-label={label}
+        disabled={disabled}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="wx-select"
@@ -274,6 +277,7 @@ export function TextField({
   type = "text",
   placeholder,
   describedBy,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -281,6 +285,7 @@ export function TextField({
   type?: "text" | "number" | "date" | "datetime-local" | "email" | "tel";
   placeholder?: string;
   describedBy?: string;
+  maxLength?: number;
 }): JSX.Element {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
@@ -290,6 +295,7 @@ export function TextField({
         aria-describedby={describedBy}
         type={type}
         value={value}
+        maxLength={maxLength}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         style={inputStyle}

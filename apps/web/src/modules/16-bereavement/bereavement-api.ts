@@ -77,6 +77,13 @@ export type OutreachRow = Ok<operations["postApiV1BereavementOutreachByOutreachI
 /** Route 29 — one immutable row of the append-only score ledger. */
 export type RiskScoreRow = Ok<operations["postApiV1BereavementPlansByPlanIdRecomputerisk"]>;
 
+/** Route 37 — the plan's assessment checkpoints (ADR-0109 D3). */
+export type AssessmentTaskList = Ok<operations["getApiV1BereavementPlansByPlanIdAssessmenttasks"]>;
+export type AssessmentTaskRow = AssessmentTaskList["items"][number];
+
+/** Routes 35 / 36 — the pre-death risk-assessment draft for an admission (ADR-0109 D5). */
+export type PreDeathDraft = Ok<operations["getApiV1BereavementPredeathassessmentsByAdmissionId"]>;
+
 /** Route 30 — the counselor's own caseload plus what is coming due. */
 export type CounselorDashboard = Ok<operations["getApiV1BereavementDashboardCounselor"]>;
 
@@ -238,6 +245,31 @@ export async function listRiskScores(
   });
   if (res.error) return { page: null, error: res.error };
   return { page: res.data, error: null };
+}
+
+/** Route 37 — the plan's assessment checkpoints. Empty when the reader's scope holds no clinical content. */
+export async function listAssessmentTasks(
+  client: ApiClient,
+  planId: string,
+): Promise<{ list: AssessmentTaskList | null; error: unknown }> {
+  const res = await client.GET("/api/v1/bereavement/plans/{planId}/assessment-tasks", {
+    params: { path: { planId } },
+  });
+  if (res.error) return { list: null, error: res.error };
+  return { list: res.data, error: null };
+}
+
+/** Route 35 — the pre-death draft (an empty all-unknown draft at version 0 when nothing is recorded). A 404 is
+ *  "no such admission OR not yours to know about" — never a 403 (nothing about who is dying leaks). */
+export async function getPreDeathDraft(
+  client: ApiClient,
+  admissionId: string,
+): Promise<{ draft: PreDeathDraft | null; error: unknown }> {
+  const res = await client.GET("/api/v1/bereavement/pre-death-assessments/{admissionId}", {
+    params: { path: { admissionId } },
+  });
+  if (res.error) return { draft: null, error: res.error };
+  return { draft: res.data, error: null };
 }
 
 /** Route 30 — the caller's OWN caseload. The counselor id comes from the session, never from a param. */
@@ -466,6 +498,40 @@ export async function updateContact(
   });
   if (res.error) return { contact: null, error: res.error };
   return { contact: res.data, error: null };
+}
+
+/** Route 41 — replace the contact's care goals (ADR-0109): at most 3, each 1..280 characters; an empty list clears
+ *  them. `version` is the contact version the caller READ; a volunteer scope is refused (403). */
+export async function setCareGoals(
+  client: ApiClient,
+  contactId: string,
+  version: number,
+  goals: string[],
+): Promise<{ contact: ContactRow | null; error: unknown }> {
+  const res = await client.PUT("/api/v1/bereavement/contacts/{contactId}/care-plan", {
+    params: { path: { contactId } },
+    headers: writeHeaders(version),
+    body: { goals },
+  });
+  if (res.error) return { contact: null, error: res.error };
+  return { contact: res.data, error: null };
+}
+
+/** Route 36 — record the pre-death draft. `version` is the one the caller READ (0 for the first write); the server
+ *  answers 409 `DRAFT_LOCKED` once a plan exists and 412 when the draft moved. */
+export async function putPreDeathDraft(
+  client: ApiClient,
+  admissionId: string,
+  version: number,
+  body: ReqBody<operations["putApiV1BereavementPredeathassessmentsByAdmissionId"]>,
+): Promise<{ draft: PreDeathDraft | null; error: unknown }> {
+  const res = await client.PUT("/api/v1/bereavement/pre-death-assessments/{admissionId}", {
+    params: { path: { admissionId } },
+    headers: writeHeaders(version),
+    body,
+  });
+  if (res.error) return { draft: null, error: res.error };
+  return { draft: res.data, error: null };
 }
 
 /** Route 13 — proposed → active. The D6 consent verdict is resolved through M39 server-side, fail-CLOSED. */

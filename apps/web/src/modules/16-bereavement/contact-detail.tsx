@@ -29,19 +29,24 @@ import {
   type BereavementOptOutKind,
   type BereavementOutreachKind,
   type ContactRow,
+  type OutreachRow,
   type PlanDetail,
   confirmContact,
   dismissUnreachableProposal,
   errorMessage,
   getPlan,
+  listOutreach,
   logDirectContact,
   markContactDeceased,
   markContactUnreachable,
   optOutContact,
   rescindOptOut,
+  setCareGoals,
   updateContact,
 } from "./bereavement-api";
 import {
+  CARE_GOALS_MAX,
+  CARE_GOAL_MAX_CHARS,
   CONTACT_STATUS_TONE,
   DEFAULT_LOG_OUTCOME,
   DEFAULT_NON_ENCOUNTER_KIND,
@@ -50,11 +55,16 @@ import {
   NON_ENCOUNTER_OUTREACH_KINDS,
   OPT_OUT_KINDS,
   OUTREACH_KINDS,
+  OUTREACH_STATUS_TONE,
   dateTime,
+  dueLabel,
   humanize,
+  optOutKindLabel,
   outreachKindLabel,
+  shortDate,
   shortId,
   toneOf,
+  touchpointLabel,
 } from "./bereavement-status";
 import {
   Card,
@@ -73,6 +83,10 @@ import {
   mutedStyle,
   pageTitleStyle,
   primaryButtonStyle,
+  rowLine,
+  tableStyle,
+  td,
+  th,
 } from "./bereavement-ui";
 
 type Ceremony =
@@ -94,20 +108,35 @@ export function BereavedContactDetail(): JSX.Element {
   const [ceremony, setCeremony] = useState<Ceremony>(null);
   const [keepTryingBusy, setKeepTryingBusy] = useState(false);
   const [keepTryingError, setKeepTryingError] = useState<string | null>(null);
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  // ADR-0109 — this contact's own schedule (null = not loaded / unreadable; the care plan then says so).
+  const [schedule, setSchedule] = useState<OutreachRow[] | null>(null);
 
   const load = useCallback(async () => {
     if (!planId) return;
     setLoading(true);
     setError(null);
-    const { plan: p, error: err } = await getPlan(client, planId);
+    const [{ plan: p, error: err }, outreach] = await Promise.all([
+      getPlan(client, planId),
+      contactId
+        ? listOutreach(client, planId, { contactId, limit: 100 })
+        : Promise.resolve({ page: null, error: null }),
+    ]);
     if (err) {
       setError(errorMessage(err, "This bereavement plan could not be loaded."));
       setLoading(false);
       return;
     }
     setPlan(p);
+    // The schedule is a convenience beside the care plan: an unreadable one never hides the contact.
+    setSchedule(
+      Array.isArray(outreach.page?.data)
+        ? outreach.page.data.filter((row) => row.contactId === contactId)
+        : null,
+    );
     setLoading(false);
-  }, [client, planId]);
+  }, [client, planId, contactId]);
 
   useEffect(() => {
     void load();
@@ -142,6 +171,19 @@ export function BereavedContactDetail(): JSX.Element {
       setKeepTryingError(
         errorMessage(err, "The unreachable proposal could not be dismissed. Reload and try again."),
       );
+      return;
+    }
+    void load();
+  };
+
+  // ADR-0109 D10 — mailings resume by rescinding the open `no_mailings` row; the contact never left the program.
+  const resumeMailings = async () => {
+    setResumeBusy(true);
+    setResumeError(null);
+    const { error: err } = await rescindOptOut(client, contact.contactId, contact.version, {});
+    setResumeBusy(false);
+    if (err) {
+      setResumeError(errorMessage(err, "Mailings could not be resumed. Reload and try again."));
       return;
     }
     void load();
@@ -228,6 +270,16 @@ export function BereavedContactDetail(): JSX.Element {
           <Field label="Risk tier" value={<RiskTierPill tier={contact.currentRiskTier} />} />
           <Field label="Confirmed" value={dateTime(contact.confirmedAt)} />
           <Field label="Opted out" value={dateTime(contact.optedOutAt)} />
+          <Field
+            label="Mailings"
+            value={
+              contact.mailingsAllowed ? (
+                "allowed"
+              ) : (
+                <StatusPill label="Mailings stopped" tone="warning" />
+              )
+            }
+          />
           <Field label="Unreachable" value={dateTime(contact.unreachableAt)} />
           <Field label="Deceased" value={dateTime(contact.deceasedAt)} />
           <Field
@@ -264,6 +316,11 @@ export function BereavedContactDetail(): JSX.Element {
         </div>
       </Card>
 
+      <Card title="Care plan">
+        <CarePlanGoals contact={contact} onSaved={() => void load()} />
+        <ContactSchedule rows={schedule} />
+      </Card>
+
       <Card title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           {contact.status === "proposed" ? (
@@ -281,6 +338,16 @@ export function BereavedContactDetail(): JSX.Element {
               Rescind opt-out
             </button>
           ) : null}
+          {contact.status === "active" && !contact.mailingsAllowed ? (
+            <button
+              type="button"
+              style={ghostButtonStyle}
+              disabled={resumeBusy}
+              onClick={resumeMailings}
+            >
+              {resumeBusy ? "Resuming…" : "Resume mailings"}
+            </button>
+          ) : null}
           <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("log")}>
             Log an ad-hoc contact
           </button>
@@ -291,6 +358,7 @@ export function BereavedContactDetail(): JSX.Element {
             Mark deceased
           </button>
         </div>
+        {resumeError ? <p style={alertStyle}>{resumeError}</p> : null}
         <span style={mutedStyle}>
           Marking a survivor deceased is §2.3's only terminal state, so the verification source is
           required. Marking unreachable accepts the nightly three-strikes proposal — the machine
@@ -320,6 +388,128 @@ export function BereavedContactDetail(): JSX.Element {
         <ChannelsModal contact={contact} onClose={() => setCeremony(null)} onDone={refresh} />
       ) : null}
     </div>
+  );
+}
+
+/** The contact's 1-3 care goals (ADR-0109). ABSENT `careGoals` means the D10 scope withheld them — no editor then. */
+function CarePlanGoals({
+  contact,
+  onSaved,
+}: { contact: ContactRow; onSaved: () => void }): JSX.Element {
+  const client = useApiClient();
+  const recorded = contact.careGoals;
+  const [goals, setGoals] = useState<string[]>([...(recorded ?? [])]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (recorded === undefined) {
+    return (
+      <span style={mutedStyle}>
+        Care goals are not shown in your scope. A volunteer sees the contact's name and schedule,
+        not the goals a counselor recorded with the family.
+      </span>
+    );
+  }
+
+  const trimmed = goals.map((g) => g.trim());
+  const blank = trimmed.some((g) => g.length === 0);
+  const unchanged =
+    trimmed.length === recorded.length && trimmed.every((g, i) => g === recorded[i]);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    const { error: err } = await setCareGoals(client, contact.contactId, contact.version, trimmed);
+    setBusy(false);
+    if (err) {
+      setError(errorMessage(err, "The care goals could not be saved."));
+      return;
+    }
+    onSaved();
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: t.space2 }}>
+      <span style={mutedStyle}>
+        Up to three goals recorded with the family, in their words. They are sealed at rest and not
+        shown to volunteers.
+      </span>
+      {goals.map((goal, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: an editable list of free text with no stable id
+        <div key={i} style={{ display: "flex", gap: t.space2, alignItems: "flex-end" }}>
+          <TextField
+            label={`Care goal ${i + 1}`}
+            value={goal}
+            maxLength={CARE_GOAL_MAX_CHARS}
+            onChange={(v) => setGoals(goals.map((g, j) => (j === i ? v : g)))}
+          />
+          <button
+            type="button"
+            style={ghostButtonStyle}
+            aria-label={`Remove care goal ${i + 1}`}
+            onClick={() => setGoals(goals.filter((_, j) => j !== i))}
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+        {goals.length < CARE_GOALS_MAX ? (
+          <button type="button" style={ghostButtonStyle} onClick={() => setGoals([...goals, ""])}>
+            Add goal
+          </button>
+        ) : null}
+        <button
+          type="button"
+          style={primaryButtonStyle}
+          disabled={busy || blank || unchanged}
+          onClick={save}
+        >
+          {busy ? "Saving…" : "Save care goals"}
+        </button>
+      </div>
+      {error ? <p style={alertStyle}>{error}</p> : null}
+    </div>
+  );
+}
+
+/** This contact's own touchpoints, each named by the Medicare-floor mark it was generated for (ADR-0109 D2/D4). */
+function ContactSchedule({ rows }: { rows: OutreachRow[] | null }): JSX.Element {
+  if (rows === null) {
+    return <span style={mutedStyle}>This survivor's schedule could not be loaded.</span>;
+  }
+  if (rows.length === 0) {
+    return <span style={mutedStyle}>No touchpoints are scheduled for this survivor.</span>;
+  }
+  return (
+    <table style={tableStyle}>
+      <thead>
+        <tr>
+          <th style={th}>Touchpoint</th>
+          <th style={th}>Modality</th>
+          <th style={th}>Due</th>
+          <th style={th}>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((o) => (
+          <tr key={o.outreachId} style={rowLine}>
+            <td style={td}>{touchpointLabel(o)}</td>
+            <td style={td}>{outreachKindLabel(o.kind)}</td>
+            <td style={td}>
+              {shortDate(o.dueAt)}
+              <div style={mutedStyle}>{dueLabel(o.dueAt)}</div>
+            </td>
+            <td style={td}>
+              <StatusPill
+                label={humanize(o.status)}
+                tone={toneOf(OUTREACH_STATUS_TONE, o.status)}
+              />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -431,15 +621,23 @@ function OptOutModal({
         </button>
       }
     >
-      <Notice tone="info">
-        A full opt-out cancels every future touchpoint for this survivor, and closes the plan if it
-        was the last enrollee. A self-service opt-out may be rescinded for 90 days; a counselor
-        rescind with a documented reason is not bound by that window.
-      </Notice>
+      {optOutKind === "no_mailings" ? (
+        <Notice tone="info">
+          Stops the cards, letters and invitations sent by post. The survivor stays in the program:
+          calls and visits continue, and a mailed touchpoint on the schedule becomes a phone call.
+          Mailings can be resumed at any time.
+        </Notice>
+      ) : (
+        <Notice tone="info">
+          A full opt-out cancels every future touchpoint for this survivor, and closes the plan if
+          it was the last enrollee. A self-service opt-out may be rescinded for 90 days; a counselor
+          rescind with a documented reason is not bound by that window.
+        </Notice>
+      )}
       <SelectField
         label="Scope"
         value={optOutKind}
-        options={OPT_OUT_KINDS.map((k) => ({ value: k, label: humanize(k) }))}
+        options={OPT_OUT_KINDS.map((k) => ({ value: k, label: optOutKindLabel(k) }))}
         onChange={setOptOutKind}
       />
       {optOutKind === "channel_specific" ? (

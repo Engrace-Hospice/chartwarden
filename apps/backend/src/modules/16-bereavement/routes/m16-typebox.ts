@@ -692,6 +692,7 @@ export const BereavementOutreachRowViewResponseSchema = Type.Object({
   kind: OutreachKind,
   status: OutreachStatus,
   anniversaryMark: Nullable(AnniversaryMark),
+  cadenceMark: Nullable(Str),
   dueAt: Str,
   lateGraceUntil: Str,
   startedAt: Nullable(Str),
