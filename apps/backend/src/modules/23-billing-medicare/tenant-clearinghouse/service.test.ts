@@ -688,6 +688,30 @@ describe("tenant clearinghouse service: the tenant-held vendor BAA (owner decisi
     expect((await service.view(store, ORG)).baa).toBeNull();
   });
 
+  // "Not in the future" is judged on the Eastern (CMS) calendar day, like every other date M23 decides on: 02:00 UTC on 11-07 is
+  // still 21:00 Eastern on 11-06, so a BAA dated 11-07 is a day ahead of the tenant's own calendar.
+  it("judges 'not in the future' on the EASTERN day, not UTC", async () => {
+    const store = createInMemoryConfigStore();
+    const eveningEastern = new Date("2026-11-07T02:00:00.000Z");
+    const service = createTenantClearinghouseService({
+      cipher: buildClearinghouseSecretCipher(randomBytes(32)),
+      probes: { claimmd: async () => "ok" },
+      now: () => eveningEastern,
+    });
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    expect(
+      await codeOf(service.recordBaa(store, ACTOR, { ...BAA, effectiveDate: "2026-11-07" })),
+    ).toBe("VALIDATION_FAILED");
+    expect(
+      await codeOf(service.recordBaa(store, ACTOR, { ...BAA, effectiveDate: "2026-11-06" })),
+    ).toBe("no error");
+  });
+
   it("refuses to record a BAA for `outside` (there is no vendor account) or with nothing chosen", async () => {
     const { store, service } = setup();
     expect(await codeOf(service.recordBaa(store, ACTOR, BAA))).toBe("CLEARINGHOUSE_NOT_CONFIGURED");

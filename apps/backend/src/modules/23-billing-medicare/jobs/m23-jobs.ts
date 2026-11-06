@@ -780,10 +780,14 @@ export function deterministicUuid(seed: string): string {
 /** The NOE/NOTR filing window (days). `m23.{noe,notr}.window_warning` reports how far into it a notice is. */
 const NOTICE_WINDOW_DAYS = 5;
 
-/** Whole-day count from `now` to a `yyyy-mm-dd` window target (negative when past). */
+/**
+ * Whole-day count from `now` to a `yyyy-mm-dd` window target (negative when past). "Today" is the Eastern (CMS) calendar day, the
+ * same one the record service and the DDE lookahead judge by: UTC runs a day ahead in the Eastern evening and would call the
+ * target day itself a breach.
+ */
 function daysToTarget(targetDate: string, now: Date): number {
   const target = new Date(`${targetDate}T00:00:00.000Z`).getTime();
-  const today = new Date(`${now.toISOString().slice(0, 10)}T00:00:00.000Z`).getTime();
+  const today = new Date(`${medicareReceiptDay(now)}T00:00:00.000Z`).getTime();
   return Math.round((target - today) / (24 * 60 * 60 * 1000));
 }
 
@@ -2261,7 +2265,7 @@ function reportDdeFailures(
  */
 export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
   const now = (deps.now ?? (() => new Date()))();
-  const asOf = now.toISOString().slice(0, 10);
+  const asOf = medicareReceiptDay(now); // the Eastern (CMS) day, see daysToTarget
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
 
   const ddeFailures: { organizationId: string; failures: readonly unknown[] }[] = [];
@@ -2339,7 +2343,7 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
 /** `notr.window-watch` (§4.8 cron): the NOTR twin of {@link runNoeWindowWatch}. */
 export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
   const now = (deps.now ?? (() => new Date()))();
-  const asOf = now.toISOString().slice(0, 10);
+  const asOf = medicareReceiptDay(now); // the Eastern (CMS) day, see daysToTarget
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
 
   const ddeFailures: { organizationId: string; failures: readonly unknown[] }[] = [];
