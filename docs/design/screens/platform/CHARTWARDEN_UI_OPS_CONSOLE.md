@@ -52,16 +52,20 @@ Right: Risk / Support Actions
 
 Shows:
 
-- Organization
-- Provider entities
-- Locations
-- Subscription status
-- Feature flags
-- Support history
-- Integration status
+- Identity and lifecycle status, with the lifecycle actions (suspend, resume, offboard, shred, key rotation; each with a reason)
+- Onboarding: how far the tenant is ("7 of 13 steps done, next: ..."), and the one next action (continue onboarding, or review
+  go-live when the compliance officer has attested and it waits for this operator's approval)
+- Contract and billing, read on request (each read of a tenant's pricing is audited)
+- Provider entities, locations, key ring, support and consent grants, first-admin invitation
 - Risk indicators
 
----
+A tenant in onboarding goes live through the onboarding wizard (`CHARTWARDEN_UI_ONBOARDING_WIZARD.md`), never through the
+status dialog.
+
+## Tenant List
+
+Every tenant with its lifecycle status and an Onboarding column (progress and the next step). A strip above the table lists
+the tenants waiting for this operator's go-live approval. A row opens a drawer whose primary action is the tenant's next step.
 
 ## Actions
 

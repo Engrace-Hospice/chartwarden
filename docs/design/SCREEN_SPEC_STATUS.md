@@ -27,7 +27,7 @@
 | `screens/admin/CHARTWARDEN_UI_INTEGRATION_MONITORING.md` | deferred | — | M29 has no screen set; interface health is read from the ops outbox console and logs. |
 | `screens/admin/CHARTWARDEN_UI_MASTER_DATA_MDM.md` | built | `web/40-mdm` |  |
 | `screens/admin/CHARTWARDEN_UI_MDM_HEALTH_SYNC.md` | partial | `web/40-mdm` | Sync-health panel lives inside the MDM console; no dedicated health screen. |
-| `screens/admin/CHARTWARDEN_UI_ONBOARDING_WIZARD.md` | built | `web/34-saas` `admin/34-saas-platform` | Tenant-side wizard (web) and platform onboarding templates (admin) |
+| `screens/admin/CHARTWARDEN_UI_ONBOARDING_WIZARD.md` | partial | `web/34-saas` `admin/34-saas-platform` | The platform operator's wizard (admin) and the tenant hub are built; the tenant-side wizard (web) is still the older checklist and is rebuilt on the same kit next |
 | `screens/admin/CHARTWARDEN_UI_ORG_PROVIDER_LOCATION_SETUP.md` | partial | `web/34-saas` `web/40-mdm` | Provider entity / location master data is edited in the MDM console; the dedicated setup screen is not built. |
 | `screens/admin/CHARTWARDEN_UI_REFERRAL_SOURCE_CRM.md` | deferred | — | No CRM / community-liaison screen; M6 referrals carry the source channel only. |
 | `screens/admin/CHARTWARDEN_UI_ROLES_PERMISSIONS.md` | built | `web/03-authorization` |  |

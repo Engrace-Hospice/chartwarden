@@ -5,8 +5,8 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 116 documented screen specs · 45 module screen-sets registered · 384 screens wired across web/portal/admin.
-- **admin**: 40 screen(s)
+**Coverage:** 116 documented screen specs · 45 module screen-sets registered · 385 screens wired across web/portal/admin.
+- **admin**: 41 screen(s)
 - **portal**: 19 screen(s)
 - **web**: 325 screen(s)
 
@@ -369,6 +369,7 @@
 | admin | 34-saas-platform | `saas.tenants` | `/tenants` | `tenant.list_platform` | ✅ |
 | admin | 34-saas-platform | `saas.tenant-overview` | `/tenants/:orgSlug` | `tenant.read_platform` | ✅ |
 | admin | 34-saas-platform | `saas.tenant-onboarding` | `/tenants/:orgSlug/onboarding` | `onboarding.read_platform` | ✅ |
+| admin | 34-saas-platform | `saas.tenant-onboarding-step` | `/tenants/:orgSlug/onboarding/:stepKey` | `onboarding.read_platform` | ✅ |
 | admin | 34-saas-platform | `saas.support-sessions` | `/support/sessions` | `support_session.list_platform` | ✅ |
 | admin | 34-saas-platform | `saas.dsar-queue` | `/exports/dsar` | `dsar_export.list_own` | ✅ |
 | admin | 34-saas-platform | `saas.tenant-export-queue` | `/exports/tenant` | `tenant_export.list_own` | ✅ |

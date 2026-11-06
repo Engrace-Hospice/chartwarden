@@ -22,7 +22,8 @@ const REVOKE = "/api/v1/platform/tenants/{orgSlug}/go-live/revoke";
 const NOW = Date.now();
 const iso = (offsetDays: number): string => new Date(NOW + offsetDays * 86_400_000).toISOString();
 
-const attestation = (over: Record<string, unknown> = {}) => ({
+type Attestation = NonNullable<WizardView["goLive"]["attestation"]>;
+const attestation = (over: Partial<Attestation> = {}): Attestation => ({
   id: "att-1",
   status: "pending",
   attestedByMembershipId: "m-officer",

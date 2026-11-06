@@ -18,7 +18,9 @@ import {
 const REGISTER = "/api/v1/platform/baa-register";
 const ONE = "/api/v1/platform/baa-register/{id}";
 const DOC = "9b2f3c4d-1111-4222-8333-444455556666";
-const record = (over: Record<string, unknown> = {}) => ({
+type BaaRow = Parameters<typeof baaFacts>[0][number];
+// The register's view also carries the organisation and the attestation time; the panel reads only the fields in BaaRow.
+const record = (over: Partial<BaaRow> = {}): BaaRow & Record<string, unknown> => ({
   id: "baa-1",
   organizationId: "org-1",
   tenantAccountId: "ta-1",
@@ -46,7 +48,7 @@ beforeEach(() => window.sessionStorage.clear());
 
 describe("baaFacts", () => {
   const TODAY = new Date("2026-11-06T00:00:00Z");
-  const states = (records: ReturnType<typeof record>[]) =>
+  const states = (records: BaaRow[]) =>
     Object.fromEntries(baaFacts(records, TODAY).map((f) => [f.key, f.state]));
 
   it("has nothing met without a record", () => {
