@@ -401,6 +401,16 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     actorKind: LifecycleActorKind,
     event: LifecycleEvent,
   ): Promise<schema.TenantAccount> {
+    // The caller decided `event` from the status it read, maybe before waiting on a lock. Lock the row and refuse if
+    // another transition (e.g. the go-live approval) committed in between, so a stale status never overwrites a fresh one.
+    const [current] = await tx.select().from(A).where(eq(A.id, account.id)).limit(1).for("update");
+    if (!current || current.status !== account.status) {
+      throw new ChartWardenError(
+        "TENANT_STATUS_CHANGED",
+        "the tenant's status changed while this request was waiting; reload and retry",
+        409,
+      );
+    }
     const repo = new TenantAccountRepository(tx);
     const res = transitionTenant(account.status, event);
 
