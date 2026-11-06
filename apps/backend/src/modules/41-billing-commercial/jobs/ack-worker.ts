@@ -31,6 +31,7 @@ import { COMMERCIAL_UNSUPPORTED_CLEARINGHOUSES } from "@chartwarden/types";
 import { CH } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, eq, gte, inArray, or, sql } from "drizzle-orm";
+import { withOrgBinding } from "../services/org-binding";
 import {
   ACK_POLL_MAX_AGE_DAYS,
   type AckCursorKey,
@@ -248,9 +249,10 @@ export async function outstanding(
 }
 
 export async function pullOrgAcks(
-  deps: AckWorkerDeps,
+  rawDeps: AckWorkerDeps,
   organizationId: string,
 ): Promise<AckPullResult> {
+  const deps = await withOrgBinding(rawDeps, organizationId);
   const tally: Tally = { applied: 0, duplicates: 0, unmatched: 0 };
   const failures: string[] = [];
   const backlog: string[] = [];
@@ -292,23 +294,21 @@ export async function runAckPull(deps: AckWorkerDeps): Promise<AckPullResult> {
   const backlog: string[] = [];
   const quarantined: { eventId: string; reason: string }[] = [];
   for (const { organizationId } of await deps.activeOrgs.listActiveOrgs()) {
-    if (deps.binding.vendor === null) {
-      try {
+    try {
+      // Resolved once per org: the rest of this org's pull uses ITS clearinghouse; another org's pull is never affected by it.
+      const orgDeps = await withOrgBinding(deps, organizationId);
+      if (orgDeps.binding.vendor === null) {
         // unbound: no transport is needed to close out aged / foreign-stream / event-less held rows, so they still leave audited
-        await sweepHeldEvents(deps, organizationId, new Set());
-        const waiting = await outstanding(deps, organizationId);
+        await sweepHeldEvents(orgDeps, organizationId, new Set());
+        const waiting = await outstanding(orgDeps, organizationId);
         if (waiting.length > 0) {
           failures.push(
             `org ${organizationId}: CH_NOT_WIRED (${waiting.length} provider entity(ies) waiting for acknowledgments)`,
           );
         }
-      } catch (err) {
-        failures.push(`org ${organizationId}: ${err instanceof Error ? err.name : "failed"}`);
+        continue;
       }
-      continue;
-    }
-    try {
-      const res = await pullOrgAcks(deps, organizationId);
+      const res = await pullOrgAcks(orgDeps, organizationId);
       total.applied += res.applied;
       total.duplicates += res.duplicates;
       total.unmatched += res.unmatched;

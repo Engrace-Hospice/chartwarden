@@ -27,6 +27,7 @@ import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { claimsBillingAllowsWork } from "../../../bootstrap/claims-billing-gate";
 import type { CommercialContextPort } from "../eligibility/service";
+import { withOrgBinding } from "../services/org-binding";
 import type { Render837iArgs, Render837iResult } from "../services/render-837i";
 import { evaluateGateForClaim } from "../services/submission-service";
 import type { CommercialActor, CommercialOutboxPort, CommercialTx } from "../services/types";
@@ -88,13 +89,17 @@ export const transportKeyFor = (claimId: string): string => `m41.claim.${claimId
 const SAFE_CODE = /^[A-Z0-9_]{1,64}$/;
 const safeCode = (code: string): string => (SAFE_CODE.test(code) ? code : FAILURE.TRANSPORT_FAULT);
 
+/** `vendor` null = unbound: the drain refuses to send anything for the organization. `forOrg` = per-organization (see org-binding.ts). */
+export interface SubmissionBinding {
+  readonly vendor: string | null;
+  readonly transport: Pick<ClearinghouseTransport, "submitClaim">;
+  readonly forOrg?: (organizationId: string) => Promise<SubmissionBinding>;
+}
+
 export interface SubmissionWorkerDeps {
   readonly db: DbClient;
-  /** The platform clearinghouse binding. `vendor` null = unbound: the drain refuses to send anything. */
-  readonly binding: {
-    readonly vendor: string | null;
-    readonly transport: Pick<ClearinghouseTransport, "submitClaim">;
-  };
+  /** The platform clearinghouse binding (per organization when it carries `forOrg`). */
+  readonly binding: SubmissionBinding;
   readonly contexts: CommercialContextPort;
   readonly renderer: {
     render(actor: CommercialActor, args: Render837iArgs): Promise<Render837iResult>;
@@ -537,21 +542,19 @@ export async function runSubmissionDrain(deps: SubmissionWorkerDeps): Promise<Dr
   const failures: string[] = [];
   let sent = 0;
   for (const { organizationId } of await deps.activeOrgs.listActiveOrgs()) {
-    if (deps.binding.vendor === null) {
-      // Unbound: nothing may be sent and nothing is skipped silently. The route refuses to queue while unbound, so a waiting row
-      // means the vendor was removed after queueing: fail loudly.
-      try {
-        const waiting = await dueCount(deps, organizationId);
+    try {
+      // Resolved once per org: the rest of this org's tick uses ITS clearinghouse; another org's tick is never affected by it.
+      const orgDeps = await withOrgBinding(deps, organizationId);
+      if (orgDeps.binding.vendor === null) {
+        // Unbound: nothing may be sent and nothing is skipped silently. The route refuses to queue while unbound, so a waiting row
+        // means the vendor was removed after queueing: fail loudly.
+        const waiting = await dueCount(orgDeps, organizationId);
         if (waiting > 0) {
           failures.push(`org ${organizationId}: CH_NOT_WIRED (${waiting} submission(s) waiting)`);
         }
-      } catch (err) {
-        failures.push(`org ${organizationId}: ${err instanceof Error ? err.name : "failed"}`);
+        continue;
       }
-      continue;
-    }
-    try {
-      const res = await drainOrg(deps, organizationId);
+      const res = await drainOrg(orgDeps, organizationId);
       sent += res.sent;
       failures.push(...res.failures);
     } catch (err) {

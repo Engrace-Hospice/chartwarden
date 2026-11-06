@@ -25,6 +25,7 @@ import {
   type ClearinghouseTransport,
 } from "@chartwarden/x12-837-client";
 import { CommercialRefusalError, HTTP_STATUS, statusForRefusal } from "../errors";
+import { resolveBinding } from "../services/org-binding";
 import { type EligibilityFreshnessFinding, evaluateEligibilityFreshness } from "./freshness";
 import { evaluateSendGate } from "./send-gate";
 import type { EligibilityStore, OrgScope, PlanRef, StoredEligibilityCheck } from "./store";
@@ -74,6 +75,8 @@ export interface LatestEligibilityView {
 export interface ClearinghouseBindingPort {
   readonly vendor: string | null;
   readonly transport: Pick<ClearinghouseTransport, "checkEligibility">;
+  /** Per-organization binding (see services/org-binding.ts): resolved before acting for an organization. */
+  readonly forOrg?: (organizationId: string) => Promise<ClearinghouseBindingPort>;
 }
 
 export interface CommercialContextPort {
@@ -106,6 +109,12 @@ export interface EligibilityServiceDeps {
    * stored, logged or put in an error. Absent: none are sent (a transport that needs them refuses before any call).
    */
   readonly searchFacts?: EligibilitySearchFactsPort;
+  /**
+   * With a per-organization binding the vendor is only known per call, so `searchFacts` is bound always and this names the vendors
+   * that may receive them (minimum necessary: nothing is read or decrypted for any other vendor). Absent: every vendor does (the
+   * static-binding wiring binds `searchFacts` only for the vendor that needs it).
+   */
+  readonly searchFactsVendors?: readonly string[];
 }
 
 export interface EligibilitySearchFactsPort {
@@ -169,7 +178,7 @@ const isOutcome = (v: unknown): v is CommercialEligibilityOutcome =>
   (COMMERCIAL_ELIGIBILITY_OUTCOME_VALUES as readonly unknown[]).includes(v);
 
 export function createEligibilityService(deps: EligibilityServiceDeps) {
-  const { store, binding } = deps;
+  const { store } = deps;
 
   function view(
     row: StoredEligibilityCheck,
@@ -233,6 +242,8 @@ export function createEligibilityService(deps: EligibilityServiceDeps) {
         return view(prior, plan, true);
       }
 
+      // This organization's own clearinghouse (a per-organization platform binding resolves here).
+      const binding = await resolveBinding(deps.binding, organizationId);
       const clearinghouseKey = binding.vendor;
       const [routes, enrollments] =
         clearinghouseKey === null
@@ -296,10 +307,14 @@ export function createEligibilityService(deps: EligibilityServiceDeps) {
       const requestId = deps.newRequestId();
       let answer: Awaited<ReturnType<ClearinghouseTransport["checkEligibility"]>>;
       try {
-        const [subscriber, billingProviderTaxId] = deps.searchFacts
+        const searchFacts =
+          deps.searchFactsVendors === undefined || deps.searchFactsVendors.includes(boundKey)
+            ? deps.searchFacts
+            : undefined;
+        const [subscriber, billingProviderTaxId] = searchFacts
           ? await Promise.all([
-              deps.searchFacts.subscriber(organizationId, args.patientId),
-              deps.searchFacts.billingTaxId(organizationId, args.providerEntityId),
+              searchFacts.subscriber(organizationId, args.patientId),
+              searchFacts.billingTaxId(organizationId, args.providerEntityId),
             ])
           : [null, null];
         answer = await binding.transport.checkEligibility(

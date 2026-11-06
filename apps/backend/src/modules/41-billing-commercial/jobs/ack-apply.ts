@@ -9,6 +9,7 @@ import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { type ValidAckEvent, validateAckEvent } from "../domain/ack-event";
 import { transitionForAck } from "../domain/ack-transition";
 import type { CommercialContextPort } from "../eligibility/service";
+import { withOrgBinding } from "../services/org-binding";
 import type { CommercialOutboxPort, CommercialTx } from "../services/types";
 
 /** A sent claim older than this is no longer polled for; a held answer past it is asked about once (claim status), then abandoned. */
@@ -31,12 +32,16 @@ export interface AckCursorStore {
   advance(key: AckCursorKey, expectedVersion: number, next: string | null): Promise<boolean>;
 }
 
+/** `vendor` null = unbound. `forOrg` = per-organization (see services/org-binding.ts): resolve before acting for an organization. */
+export interface AckBinding {
+  readonly vendor: string | null;
+  readonly transport: Pick<ClearinghouseTransport, "fetchAcknowledgments" | "fetchClaimStatus">;
+  readonly forOrg?: (organizationId: string) => Promise<AckBinding>;
+}
+
 export interface AckWorkerDeps {
   readonly db: DbClient;
-  readonly binding: {
-    readonly vendor: string | null;
-    readonly transport: Pick<ClearinghouseTransport, "fetchAcknowledgments" | "fetchClaimStatus">;
-  };
+  readonly binding: AckBinding;
   readonly contexts: CommercialContextPort;
   readonly cursors: AckCursorStore;
   readonly outbox: CommercialOutboxPort;
@@ -319,10 +324,11 @@ export async function applyValidEvent(
  * event id changes nothing.
  */
 export async function applyAckEvent(
-  deps: AckApplyDeps,
+  rawDeps: AckApplyDeps,
   scope: Scope,
   raw: unknown,
 ): Promise<ApplyOutcome> {
+  const deps = await withOrgBinding(rawDeps, scope.organizationId);
   const checked = validateAckEvent(raw);
   if (!checked.ok) {
     const eventId = checked.eventId ?? derivedEventId(raw);

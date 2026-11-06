@@ -459,3 +459,101 @@ describe("EligibilityService.latest", () => {
     expect(r.freshness.severity).toBe("pass");
   });
 });
+
+describe("EligibilityService.check with a clearinghouse per organization (ADR-0053 amendment 2026-11-06)", () => {
+  const ORG_B = "00000000-0000-4000-8000-000000000042";
+  const ORG_NONE = "00000000-0000-4000-8000-000000000043";
+
+  function perOrgHarness(searchFactsVendors?: readonly string[]) {
+    const store = new FakeStore();
+    const reached: { vendor: string; organizationId: string }[] = [];
+    const factsAskedFor: string[] = [];
+    const transportOf = (vendor: string) =>
+      ({
+        vendor,
+        async checkEligibility(ctx: ClearinghouseContext) {
+          reached.push({ vendor, organizationId: ctx.organizationId });
+          return {
+            ok: true as const,
+            data: { outcome: "active" as const, asOfDate: "2026-10-25" },
+          };
+        },
+      }) as unknown as ClearinghouseTransport;
+    const bindings: Record<string, { vendor: string; transport: ClearinghouseTransport }> = {
+      [ORG]: { vendor: "stedi", transport: transportOf("stedi") },
+      [ORG_B]: { vendor: "claimmd", transport: transportOf("claimmd") },
+    };
+    const service = createEligibilityService({
+      store,
+      coverage: { coveragesForPatient: async () => [coverage()] },
+      // The platform pair is the unbound default; only forOrg says anything about an organization.
+      binding: {
+        vendor: null,
+        transport: transportOf("unbound"),
+        forOrg: async (organizationId) =>
+          bindings[organizationId] ?? { vendor: null, transport: transportOf("unbound") },
+      },
+      contexts: {
+        contextFor: async (organizationId, providerEntityId, payerId) => ({
+          organizationId,
+          providerEntityId,
+          payerId,
+          correlationId: "00000000-0000-4000-8000-0000000000aa",
+          usage: "test",
+          billingNpi: "1234567893",
+        }),
+      },
+      now: () => NOW,
+      newRequestId: () => "00000000-0000-4000-8000-0000000000aa",
+      log: () => undefined,
+      searchFacts: {
+        subscriber: async (org) => {
+          factsAskedFor.push(org);
+          return { firstName: "Test", lastName: "Patient", dateOfBirth: "1950-01-01" };
+        },
+        billingTaxId: async () => "000000000",
+      },
+      ...(searchFactsVendors ? { searchFactsVendors } : {}),
+    });
+    return { service, reached, factsAskedFor, store };
+  }
+
+  it("sends each organization's check to its OWN clearinghouse and stores that vendor's key", async () => {
+    const h = perOrgHarness();
+
+    const a = await h.service.check({ organizationId: ORG, userId: USER }, ARGS);
+    const b = await h.service.check(
+      { organizationId: ORG_B, userId: USER },
+      { ...ARGS, idempotencyKey: "idem-b" },
+    );
+
+    expect(h.reached).toEqual([
+      { vendor: "stedi", organizationId: ORG },
+      { vendor: "claimmd", organizationId: ORG_B },
+    ]);
+    expect([a.clearinghouseKey, b.clearinghouseKey]).toEqual(["stedi", "claimmd"]);
+  });
+
+  it("sends nothing for an organization with no clearinghouse, while another organization still sends", async () => {
+    const h = perOrgHarness();
+
+    const e = await refusal(h.service.check({ organizationId: ORG_NONE, userId: USER }, ARGS));
+    const ok = await h.service.check({ organizationId: ORG, userId: USER }, ARGS);
+
+    expect(e.code).toBe(COMMERCIAL_SEND_REFUSAL.NOT_WIRED);
+    expect(h.reached).toEqual([{ vendor: "stedi", organizationId: ORG }]);
+    expect(ok.outcome).toBe("active");
+  });
+
+  it("reads the search facts only for the vendors named, so a Stedi organization's subscriber is never read", async () => {
+    const h = perOrgHarness(["claimmd"]);
+
+    await h.service.check({ organizationId: ORG, userId: USER }, ARGS);
+    await h.service.check(
+      { organizationId: ORG_B, userId: USER },
+      { ...ARGS, idempotencyKey: "idem-b" },
+    );
+
+    expect(h.factsAskedFor).toEqual([ORG_B]);
+  });
+});

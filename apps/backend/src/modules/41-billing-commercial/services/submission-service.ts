@@ -29,6 +29,7 @@ import {
   statusForReasons,
 } from "./claim-send-gate";
 import type { SendGateReason } from "./claim-send-gate";
+import { resolveBinding } from "./org-binding";
 import { assertRowReachable } from "./scope-guard";
 import type { CommercialActor, CommercialClaimSeams, CommercialDb, CommercialTx } from "./types";
 import { evaluateClaim } from "./validation-runner";
@@ -43,6 +44,8 @@ export const TIMELINE_ACK_LIMIT = 100;
 /** The bound clearinghouse as the commercial lane needs it. `vendor` null means unbound: nothing can be sent. */
 export interface CommercialClearinghouseBinding {
   readonly vendor: string | null;
+  /** Per-organization binding (see org-binding.ts): resolved before acting for an organization. */
+  readonly forOrg?: (organizationId: string) => Promise<CommercialClearinghouseBinding>;
 }
 
 export interface SendGateView {
@@ -271,9 +274,10 @@ export function buildCommercialSubmissionService(
 
   return {
     async sendGate(actor, claimId) {
+      const { vendor } = await resolveBinding(binding, actor.organizationId);
       return inOrg(actor, async (tx) => {
         const claim = await loadClaim(tx, actor, claimId, false);
-        const gate = await evaluateGateForClaim(tx, claim, binding.vendor, { now: now() });
+        const gate = await evaluateGateForClaim(tx, claim, vendor, { now: now() });
         const reasons: SendGateReason[] = [...reasonsOf(gate)];
         // nothing would send a queued row while no drain is scheduled, so the view says so instead of offering the button
         if (!(await readiness.drainScheduled())) {
@@ -287,7 +291,7 @@ export function buildCommercialSubmissionService(
           state: claim.state,
           patientId: claim.patientId,
           canSubmit: gate.ok && reasons.length === 0,
-          clearinghouseKey: binding.vendor,
+          clearinghouseKey: vendor,
           reasons,
         };
       });
@@ -298,6 +302,7 @@ export function buildCommercialSubmissionService(
         throw new ChartWardenError("AI_ACTOR_FORBIDDEN", "AI actors may not submit a claim", 403);
       }
       await assertDrainScheduled(readiness);
+      const { vendor } = await resolveBinding(binding, actor.organizationId);
       return inOrg(actor, async (tx) => {
         const claim = await loadClaim(tx, actor, claimId, true);
         // A retried request with the same key is answered from the row it wrote, whatever the claim has become since.
@@ -312,7 +317,7 @@ export function buildCommercialSubmissionService(
           );
         if (existing) return viewOf(existing, true);
 
-        const gate = await evaluateGateForClaim(tx, claim, binding.vendor, { now: now() });
+        const gate = await evaluateGateForClaim(tx, claim, vendor, { now: now() });
         if (!gate.ok) {
           throw new ChartWardenError(
             COMMERCIAL_ERROR_CODES.sendRefused,
