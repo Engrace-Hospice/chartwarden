@@ -23,6 +23,9 @@ export interface UnboundAlertPort {
 
 const lastAlertAt = new Map<string, number>();
 
+/** Test seam: forget which orgs were already alerted, so a suite's cases do not depend on each other's order. */
+export const __resetUnboundAlertMemoryForTest = (): void => lastAlertAt.clear();
+
 /** Raise the once-per-window alert for an org with `waiting` work and no live clearinghouse. Never throws, never fails the tick. */
 export async function reportUnboundWithWork(
   deps: {
