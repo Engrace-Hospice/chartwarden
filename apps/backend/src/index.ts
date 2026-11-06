@@ -13930,7 +13930,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // user reconnects straight after the suspend-time disconnect.
           if (!actor.membershipId) return null;
           // A not-yet-live organization has no realtime channel: the socket is a second way in that the HTTP gate must not miss.
-          if (await organizationStage?.isPreActivation(actor.organizationId)) return null;
+          if (await organizationStage?.isConfined(actor.organizationId)) return null;
           if (mfaGate) {
             const verdict = await mfaGate.forRoles({
               userId: actor.userId,

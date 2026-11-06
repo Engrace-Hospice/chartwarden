@@ -9,7 +9,8 @@ import type { FastifyRequest } from "fastify";
 import { describe, expect, it, vi } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";
 import {
-  PRE_ACTIVATION_ALLOWED_ROOTS,
+  PRE_ACTIVATION_ALLOWED_ROUTES,
+  VENDOR_AUTH_ROUTE_TEMPLATE,
   createOrganizationStageReader,
   preActivationMayCall,
 } from "../src/bootstrap/onboarding-org-gate";
@@ -37,10 +38,16 @@ const resolver: SessionContextResolver = {
   }),
 };
 
-function request(method: string, url: string): FastifyRequest {
+/**
+ * A request as the authenticate hook sees it: `url` is what the client sent, `routeOptions.url` the TEMPLATE Fastify matched
+ * (`/api/v1/tenant/onboarding/:taskId/start`). The gate decides on the template; `template` defaults to the url's own path.
+ */
+function request(method: string, url: string, template?: string | null): FastifyRequest {
+  const routeUrl = template === undefined ? (url.split("?")[0] ?? url) : (template ?? undefined);
   return {
     method,
     url,
+    routeOptions: { url: routeUrl },
     headers: {},
     context: {
       userId: "",
@@ -65,63 +72,124 @@ const hook = (
     }),
     getResolver: () => resolver,
     organizationStage: {
-      isPreActivation:
-        typeof preActivation === "boolean" ? async () => preActivation : preActivation,
+      isConfined: typeof preActivation === "boolean" ? async () => preActivation : preActivation,
     },
   });
 
-describe("preActivationMayCall", () => {
+const may = (method: string, template: string | undefined, rawUrl = template ?? "") =>
+  preActivationMayCall({ method, routeTemplate: template, rawUrl });
+
+describe("preActivationMayCall: exact METHOD + route template pairs", () => {
   it.each([
-    "/api/auth/get-session",
-    "/api/v1/auth/select-organization",
-    "/api/v1/me/permissions",
-    "/api/v1/sessions/step-up",
-    "/api/v1/sessions/step-up/initiate",
-    "/api/v1/tenant/onboarding",
-    "/api/v1/tenant/onboarding/abc/attest?x=1",
-    "/api/v1/tenant/go-live/attest",
-    "/api/v1/tenant/account",
-    `/api/v1/orgs/${ORG}/invitations`,
-    "/api/v1/locations",
-    "/api/v1/provider-entities/abc",
-    "/api/v1/memberships/abc/roles",
-    "/api/v1/roles",
-    "/health",
-  ])("allows %s", (url) => {
-    expect(preActivationMayCall(url)).toBe(true);
+    ["GET", "/api/v1/auth/context"],
+    ["GET", "/api/v1/auth/csrf"],
+    ["GET", "/api/v1/auth/memberships"],
+    ["POST", "/api/v1/auth/select-organization"],
+    ["POST", "/api/v1/auth/unlock"],
+    ["GET", "/api/v1/me/permissions"],
+    ["GET", "/api/v1/me/session"],
+    ["POST", "/api/v1/sessions/step-up"],
+    ["POST", "/api/v1/sessions/step-up/initiate"],
+    ["GET", "/api/v1/tenant/onboarding"],
+    ["POST", "/api/v1/tenant/onboarding/:taskId/attest"],
+    ["POST", "/api/v1/tenant/onboarding/:taskId/start"],
+    ["PATCH", "/api/v1/tenant/org-profile"],
+    ["PUT", "/api/v1/tenant/compliance-officer"],
+    ["POST", "/api/v1/tenant/go-live/attest"],
+    ["GET", "/api/v1/tenant/account"],
+    ["GET", "/api/v1/tenant/baa"],
+    ["POST", "/api/v1/tenant/baa/:id/attest"],
+    ["GET", "/api/v1/orgs/:id/members"],
+    ["POST", "/api/v1/orgs/:id/invitations"],
+    ["GET", "/api/v1/locations"],
+    ["POST", "/api/v1/locations"],
+    ["PATCH", "/api/v1/provider-entities/:id"],
+    ["GET", "/api/v1/roles"],
+    ["POST", "/api/v1/memberships/:id/roles"],
+    ["GET", "/health"],
+  ])("allows %s %s", (method, template) => {
+    expect(may(method, template)).toBe(true);
   });
 
   it.each([
-    "/api/v1/patients",
-    "/api/v1/patients/abc/chart",
-    "/api/v1/admissions",
-    "/api/v1/encounters",
-    "/api/v1/claims",
-    "/api/v1/messages",
-    "/api/v1/portal/me",
-    "/api/v1/documents",
-    "/api/v1/platform/organizations",
-    "/api/v1/users/abc/deactivate",
-    // look-alikes: a prefix is a path root, not a string prefix
-    "/api/v1/tenants",
-    "/api/v1/tenant-export",
-    "/api/v1/orgs-secret",
-    "/api/v1/me-too",
-    // an encoded or dotted path must not borrow an allowed root to reach a route outside it
-    "/api/v1/tenant/../patients",
-    "/api/v1/me/%2e%2e/patients",
-    "/api/v1/tenant/..%2fpatients",
-    "/api/v1/tenant%5c..%5cpatients",
-    "/api/v1/%zz",
-    "",
-  ])("refuses %s", (url) => {
-    expect(preActivationMayCall(url)).toBe(false);
+    // the review's findings: roots that exposed tenant-wide exports, consent grants, staff, credentials and user provisioning
+    ["GET", "/api/v1/tenant/dsar-export-jobs"],
+    ["GET", "/api/v1/tenant/dsar-export-jobs/:id/download"],
+    ["POST", "/api/v1/tenant/dsar-export-jobs"],
+    ["GET", "/api/v1/tenant/tenant-export-jobs/:id/download"],
+    ["POST", "/api/v1/tenant/tenant-export-jobs"],
+    ["POST", "/api/v1/tenant/support-consent-grants"],
+    ["POST", "/api/v1/tenant/support-consent-grants/:id/revoke"],
+    ["GET", "/api/v1/tenant/feature-flags"],
+    ["POST", "/api/v1/tenant/feature-flags/:flagKey"],
+    ["GET", "/api/v1/orgs/:id/care-team-staff"],
+    ["GET", "/api/v1/memberships/:membershipId/credentials"],
+    ["POST", "/api/v1/memberships/:membershipId/credentials"],
+    ["POST", "/api/v1/orgs/:orgId/users"],
+    ["POST", "/api/v1/orgs/:orgId/users/:userId/password-reset"],
+    ["DELETE", "/api/v1/orgs/:id/members/:mId"],
+    ["POST", "/api/v1/roles"],
+    ["DELETE", "/api/v1/roles/:id"],
+    // clinical, billing and platform routes
+    ["GET", "/api/v1/patients"],
+    ["GET", "/api/v1/patients/:id/chart"],
+    ["POST", "/api/v1/claims/:id/submit"],
+    ["GET", "/api/v1/platform/organizations"],
+    // the right path with the wrong method, and look-alikes
+    ["DELETE", "/api/v1/tenant/onboarding"],
+    ["POST", "/api/v1/tenant/account"],
+    ["GET", "/api/v1/tenants"],
+    ["GET", "/api/v1/tenant-export"],
+  ])("refuses %s %s", (method, template) => {
+    expect(may(method, template)).toBe(false);
   });
 
-  it("every allowed root is a bare path root", () => {
-    for (const root of PRE_ACTIVATION_ALLOWED_ROOTS) {
-      expect(root.startsWith("/")).toBe(true);
-      expect(root.endsWith("/")).toBe(false);
+  it("refuses a request that matched no route (a 404 has no template), whatever its path says", () => {
+    expect(may("GET", undefined, "/api/v1/tenant/onboarding")).toBe(false);
+    expect(may("GET", "", "/api/v1/tenant/onboarding")).toBe(false);
+  });
+
+  it("is decided on the matched TEMPLATE: a concrete path that merely looks allowed does not open another route", () => {
+    // The router matched the export route; the URL borrowing an allowed prefix changes nothing.
+    expect(
+      may("GET", "/api/v1/tenant/dsar-export-jobs/:id/download", "/api/v1/tenant/onboarding/x"),
+    ).toBe(false);
+    // And the allowed route stays allowed whatever the concrete ids are.
+    expect(
+      may(
+        "POST",
+        "/api/v1/tenant/onboarding/:taskId/start",
+        "/api/v1/tenant/onboarding/..%2fx/start",
+      ),
+    ).toBe(true);
+  });
+
+  it("the vendor auth catch-all is admitted only for a clean /api/auth/ path", () => {
+    expect(may("GET", VENDOR_AUTH_ROUTE_TEMPLATE, "/api/auth/get-session")).toBe(true);
+    expect(may("POST", VENDOR_AUTH_ROUTE_TEMPLATE, "/api/auth/two-factor/verify-totp?x=1")).toBe(
+      true,
+    );
+    for (const raw of [
+      "/api/auth/../v1/patients",
+      "/api/auth/%2e%2e/v1/patients",
+      "/api/auth/..%2fv1/patients",
+      "/api/auth%5c..%5cpatients",
+      "/api/auth/%zz",
+      "/api/authx/anything",
+      "",
+    ]) {
+      expect(may("GET", VENDOR_AUTH_ROUTE_TEMPLATE, raw), raw).toBe(false);
+    }
+  });
+
+  it("every allowed entry is a bare METHOD + absolute template", () => {
+    for (const entry of PRE_ACTIVATION_ALLOWED_ROUTES) {
+      const [method, template, ...rest] = entry.split(" ");
+      expect(rest, entry).toEqual([]);
+      expect(["GET", "POST", "PUT", "PATCH", "DELETE"], entry).toContain(method);
+      expect(template?.startsWith("/"), entry).toBe(true);
+      expect(template?.endsWith("/") && template !== "/", entry).toBe(false);
+      expect(template?.includes("*"), entry).toBe(false);
     }
   });
 });
@@ -143,17 +211,48 @@ describe("authenticate on a not-yet-live organization", () => {
   });
 
   it("lets the onboarding, go-live, account and identity routes through, org-bound as usual", async () => {
-    for (const [method, url] of [
-      ["GET", "/api/v1/tenant/onboarding"],
-      ["POST", "/api/v1/tenant/go-live/attest"],
-      ["GET", "/api/v1/tenant/account"],
-      ["GET", "/api/v1/me/permissions"],
-      ["POST", `/api/v1/orgs/${ORG}/invitations`],
+    for (const [method, url, template] of [
+      ["GET", "/api/v1/tenant/onboarding", undefined],
+      ["POST", "/api/v1/tenant/go-live/attest", undefined],
+      ["GET", "/api/v1/tenant/account", undefined],
+      ["GET", "/api/v1/me/permissions", undefined],
+      ["POST", `/api/v1/orgs/${ORG}/invitations`, "/api/v1/orgs/:id/invitations"],
+      ["POST", "/api/v1/tenant/onboarding/abc/start", "/api/v1/tenant/onboarding/:taskId/start"],
     ] as const) {
-      const req = request(method, url);
+      const req = request(method, url, template);
       await expect(hook(true)(req), `${method} ${url}`).resolves.toBeUndefined();
       expect(req.context.organizationId).toBe(ORG);
     }
+  });
+
+  it("refuses the export, consent, care-team, credentials and user-provisioning routes of a not-yet-live organization", async () => {
+    for (const [method, url, template] of [
+      [
+        "GET",
+        "/api/v1/tenant/dsar-export-jobs/abc/download",
+        "/api/v1/tenant/dsar-export-jobs/:id/download",
+      ],
+      ["POST", "/api/v1/tenant/tenant-export-jobs", "/api/v1/tenant/tenant-export-jobs"],
+      ["POST", "/api/v1/tenant/support-consent-grants", "/api/v1/tenant/support-consent-grants"],
+      ["GET", `/api/v1/orgs/${ORG}/care-team-staff`, "/api/v1/orgs/:id/care-team-staff"],
+      [
+        "GET",
+        "/api/v1/memberships/abc/credentials",
+        "/api/v1/memberships/:membershipId/credentials",
+      ],
+      ["POST", `/api/v1/orgs/${ORG}/users`, "/api/v1/orgs/:orgId/users"],
+    ] as const) {
+      await expect(
+        hook(true)(request(method, url, template)),
+        `${method} ${url}`,
+      ).rejects.toMatchObject({ code: "ORGANIZATION_ONBOARDING", statusCode: 403 });
+    }
+  });
+
+  it("refuses a request that matched no route (no template) rather than trusting its path", async () => {
+    await expect(
+      hook(true)(request("GET", "/api/v1/tenant/onboarding", null)),
+    ).rejects.toMatchObject({ code: "ORGANIZATION_ONBOARDING" });
   });
 
   it("changes nothing once the organization is active", async () => {
@@ -180,35 +279,37 @@ describe("authenticate on a not-yet-live organization", () => {
 });
 
 describe("createOrganizationStageReader", () => {
-  it("reads `created` as pre-activation and anything else as live, caching briefly", async () => {
+  it("reads `active` as live and everything else as confined, caching briefly", async () => {
     let clock = 0;
     const read = vi.fn(async () => "created" as const);
     const reader = createOrganizationStageReader(read, { ttlMs: 1_000, now: () => clock });
 
-    expect(await reader.isPreActivation(ORG)).toBe(true);
-    expect(await reader.isPreActivation(ORG)).toBe(true);
+    expect(await reader.isConfined(ORG)).toBe(true);
+    expect(await reader.isConfined(ORG)).toBe(true);
     expect(read).toHaveBeenCalledTimes(1);
 
     clock = 1_000;
     read.mockResolvedValueOnce("active" as never);
-    expect(await reader.isPreActivation(ORG)).toBe(false);
+    expect(await reader.isConfined(ORG)).toBe(false);
     expect(read).toHaveBeenCalledTimes(2);
   });
 
   it("invalidate makes an activation visible at once", async () => {
     let status: "created" | "active" = "created";
     const reader = createOrganizationStageReader(async () => status, { ttlMs: 60_000 });
-    expect(await reader.isPreActivation(ORG)).toBe(true);
+    expect(await reader.isConfined(ORG)).toBe(true);
     status = "active";
-    expect(await reader.isPreActivation(ORG)).toBe(true); // still cached
+    expect(await reader.isConfined(ORG)).toBe(true); // still cached
     reader.invalidate(ORG);
-    expect(await reader.isPreActivation(ORG)).toBe(false);
+    expect(await reader.isConfined(ORG)).toBe(false);
   });
 
-  it("treats suspended, closed and unknown as not pre-activation (those sessions are revoked or never bound)", async () => {
-    for (const status of ["suspended", "closed", null] as const) {
+  it("confines anything but `active`, suspended, closed and unknown included (security L1: it used to fail open for those)", async () => {
+    for (const status of ["created", "suspended", "closed", null] as const) {
       const reader = createOrganizationStageReader(async () => status);
-      expect(await reader.isPreActivation(ORG), String(status)).toBe(false);
+      expect(await reader.isConfined(ORG), String(status)).toBe(true);
     }
+    const live = createOrganizationStageReader(async () => "active");
+    expect(await live.isConfined(ORG)).toBe(false);
   });
 });

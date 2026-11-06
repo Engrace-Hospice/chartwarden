@@ -2608,10 +2608,12 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         organizationStage: reader,
       });
     };
-    const req = (method: string, url: string) =>
+    const req = (method: string, url: string, template?: string) =>
       ({
         method,
         url,
+        // Fastify sets the matched route template before the onRequest hooks run; the gate decides on it.
+        routeOptions: { url: template ?? url.split("?")[0] },
         headers: {},
         context: {
           userId: "",
@@ -2733,10 +2735,26 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       );
 
       // The same session, no new sign-in: the clinical routes are open now.
-      expect(await stage.isPreActivation(ORG_G)).toBe(false);
+      expect(await stage.isConfined(ORG_G)).toBe(false);
       await expect(
         hookFor(ORG_G, stage, adminG)(req("GET", "/api/v1/patients")),
       ).resolves.toBeUndefined();
+    });
+
+    it("security L1: a real `suspended` organization is confined to the allowlist too (the gate used to fail open for it)", async () => {
+      const ORG_SUSP = "dddddddd-dddd-4ddd-8ddd-dddddddddd09";
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,'wiz-susp','wiz-susp','wiz-susp','suspended')",
+        [ORG_SUSP],
+      );
+      const hook = hookFor(ORG_SUSP, readerFor(ORG_SUSP), adminG);
+      await expect(hook(req("GET", "/api/v1/patients"))).rejects.toMatchObject({
+        code: "ORGANIZATION_ONBOARDING",
+      });
+      await expect(
+        hook(req("GET", "/api/v1/tenant/dsar-export-jobs", "/api/v1/tenant/dsar-export-jobs")),
+      ).rejects.toMatchObject({ code: "ORGANIZATION_ONBOARDING" });
+      await expect(hook(req("GET", "/api/v1/tenant/onboarding"))).resolves.toBeUndefined();
     });
 
     it("an organization with no onboarding tenant is not admitted by the fact, and the gate reads its real status", async () => {
