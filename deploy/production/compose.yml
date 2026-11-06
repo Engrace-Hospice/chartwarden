@@ -598,7 +598,7 @@ services:
     cpus: 1
     env_file: .env.production
     network_mode: "service:seed-api"
-    command: ["bun", "run", "db:seed:all"]
+    command: ["bun", "run", "scripts/db/seed-all.ts"] # db:seed:all, shell-free (distroless image)
     environment:
       BETTER_AUTH_URL: http://localhost:3000
       DATABASE_ADMIN_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
@@ -628,7 +628,7 @@ networks:
 # under the renamed `chartwarden` project until Window 2 copies them (volumes-copy.sh) and drops the pin.
 volumes:
   # CW-RUST-M02 P1 — tmpfs, so the socket never persists, with fixed ownership and mode whichever container mounts it
-  # first: owner cw-rust (65532), group 1000 (the `bun` user `api` runs as), 0750.
+  # first: owner cw-rust (65532), group 1000 (the uid/gid `api` runs as), 0750.
   rust-sock:
     driver: local
     driver_opts:
