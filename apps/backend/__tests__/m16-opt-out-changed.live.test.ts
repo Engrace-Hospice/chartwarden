@@ -124,7 +124,7 @@ describe.skipIf(!DB_URL)(
 
     async function closureRow(planId: string) {
       const { rows } = await admin.query(
-        `SELECT reason, close_kind, closed_by_user_id, cosigned_by_user_id
+        `SELECT id, reason, close_kind, closed_by_user_id, cosigned_by_user_id
          FROM bereavement_plan_closure WHERE plan_id = $1`,
         [planId],
       );
@@ -240,6 +240,13 @@ describe.skipIf(!DB_URL)(
       expect(events).toHaveLength(1);
       expect(events[0].payload).toMatchObject({ patientId });
 
+      // ADR-0109 D9 — a pre-death SKIP closes a plan that never had a roster or a schedule: no discharge summary is requested.
+      expect(
+        (await outboxRows(ORG_A, "m16.bereavement.document_requested")).filter(
+          (e) => e.payload.planId === planId,
+        ),
+      ).toHaveLength(0);
+
       // F-206 (#248) — the CoP-satisfied credit row is recorded, keyed on this event's own id.
       const credits = await copOptOutCreditRows(ORG_A, sourceEventId);
       expect(credits).toHaveLength(1);
@@ -267,6 +274,29 @@ describe.skipIf(!DB_URL)(
         status: "active",
       });
       await scheduleOutreach(planId, ORG_A, providerA);
+      // An already-DUE, never-attempted row and checkpoint (still inside their grace window): the patient's own opt-out removes the
+      // obligation, so the cascade CANCELS them (M30's denominator excludes cancelled) rather than leaving them `scheduled` on a closed
+      // plan, where no miss cron would ever look at them.
+      const { contactId } = (
+        await admin.query(
+          'SELECT id AS "contactId" FROM bereaved_contact WHERE plan_id = $1 LIMIT 1',
+          [planId],
+        )
+      ).rows[0];
+      await admin.query(
+        `INSERT INTO bereavement_outreach
+           (organization_id, provider_entity_id, plan_id, bereaved_contact_id, kind, status,
+            death_anchor_at, due_at, late_grace_until)
+         VALUES ($1, $2, $3, $4, 'phone_call', 'scheduled',
+                 CURRENT_DATE - 10, now() - interval '2 days', now() + interval '5 days')`,
+        [ORG_A, providerA, planId, contactId],
+      );
+      await admin.query(
+        `INSERT INTO bereavement_assessment_task
+           (organization_id, provider_entity_id, plan_id, bereaved_contact_id, task_kind, due_at, late_grace_until)
+         VALUES ($1, $2, $3, $4, 'initial_assessment', now() - interval '2 days', now() + interval '5 days')`,
+        [ORG_A, providerA, planId, contactId],
+      );
 
       await consumer.handle({
         id: crypto.randomUUID(),
@@ -277,13 +307,39 @@ describe.skipIf(!DB_URL)(
       const plan = await planRow(planId);
       expect(plan.status).toBe("closed_early");
       expect(plan.version).toBe(1);
+      expect(
+        (
+          await admin.query("SELECT status FROM bereavement_assessment_task WHERE plan_id = $1", [
+            planId,
+          ])
+        ).rows.map((r) => r.status),
+      ).toEqual(["cancelled"]);
 
       const closure = await closureRow(planId);
       expect(closure.reason).toBe("patient_opt_out_post_creation");
       expect(closure.close_kind).toBe("cascade");
       expect(closure.cosigned_by_user_id).toBeNull(); // D7 does not apply — §2.6 cosign-exempt
 
-      expect(await outreachStatuses(planId)).toEqual(["cancelled"]);
+      expect(await outreachStatuses(planId)).toEqual(["cancelled", "cancelled"]);
+
+      // ADR-0109 D9 — the post-creation cascade is a closure writer: it requests the internal discharge summary against its
+      // closure, after the future outreach was cancelled (so the summary states the final state).
+      const requested = (await outboxRows(ORG_A, "m16.bereavement.document_requested")).filter(
+        (e) => e.payload.planId === planId,
+      );
+      expect(requested).toHaveLength(1);
+      expect(requested[0]?.payload).toMatchObject({
+        documentKind: "discharge_summary",
+        aggregateId: closure.id,
+        templateKey: "bereavement_discharge_summary_internal",
+        payloadJsonb: { closureReason: "patient_opt_out_post_creation", closeKind: "cascade" },
+      });
+      const summary = (requested[0]?.payload.payloadJsonb ?? {}) as {
+        contacts?: Array<{ touchpoints: Array<{ status: string }> }>;
+        totals?: Record<string, number>;
+      };
+      expect(summary.totals?.cancelled).toBeGreaterThan(0);
+      expect(summary.totals?.outstanding).toBe(0);
 
       const events = await outboxRows(ORG_A, "m16.bereavement.plan_closed_early");
       expect(events).toHaveLength(1);

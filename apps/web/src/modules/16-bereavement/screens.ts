@@ -1,6 +1,7 @@
 import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/16-bereavement — M16 Bereavement screen registration (Track B / ADR-0030, §5.1).
-// The read + write surface over the live /api/v1/bereavement backend (33 routes, M16-T06).
+// The read + write surface over the live /api/v1/bereavement backend (33 routes, M16-T06, plus the ADR-0109
+// assessment-task, pre-death-draft and care-goal routes).
 //
 // Each `requiredPermission` is the REAL §4.7 M16 key the matching route gates on
 // (apps/backend/src/modules/16-bereavement/permission-keys.ts → `M16_CONTRIBUTED_PERMISSIONS` in
@@ -46,6 +47,9 @@ const BereavementPlanDetail = lazy(() =>
 );
 const BereavementPlanHistory = lazy(() =>
   import("./plan-history").then((m) => ({ default: m.BereavementPlanHistory })),
+);
+const PredeathAssessment = lazy(() =>
+  import("./predeath-assessment").then((m) => ({ default: m.PredeathAssessment })),
 );
 const BereavementRiskView = lazy(() =>
   import("./risk-view").then((m) => ({ default: m.BereavementRiskView })),
@@ -124,6 +128,14 @@ export const bereavementScreens: ScreenRegistryModule<ComponentType> = {
       title: "Bereavement Risk",
       requiredPermission: "bereavement.risk.read",
       screen: BereavementRiskView,
+    },
+    // --- the pre-death risk-assessment draft (ADR-0109 D5): addressed by ADMISSION, before any plan exists ---
+    {
+      id: "bereavement.predeath",
+      path: "/bereavement/pre-death/:admissionId",
+      title: "Pre-death Risk Assessment",
+      requiredPermission: "bereavement.assessment_draft.read",
+      screen: PredeathAssessment,
     },
     // --- the survivor (§5.1 #7, with the #15 opt-out modal) and their screen (#13, with #14) ---
     {

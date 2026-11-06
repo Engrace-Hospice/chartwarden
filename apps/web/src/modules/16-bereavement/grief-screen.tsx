@@ -36,6 +36,7 @@ import {
 import { CONTACT_STATUS_TONE, humanize, shortId, toneOf } from "./bereavement-status";
 import {
   Card,
+  ErrorText,
   Field,
   Modal,
   Notice,
@@ -44,7 +45,6 @@ import {
   SummaryGrid,
   TextAreaField,
   TextField,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
   mutedStyle,
@@ -322,7 +322,7 @@ function ReferralModal({
         onChange={setContactAt}
       />
       <TextAreaField label="Note" value={notes} onChange={setNotes} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -394,7 +394,7 @@ function EscalateModal({
         <Field label="IPGR total" value={ipgrScore ?? "—"} />
       </SummaryGrid>
       <TextAreaField label="Clinical note" value={note} onChange={setNote} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }

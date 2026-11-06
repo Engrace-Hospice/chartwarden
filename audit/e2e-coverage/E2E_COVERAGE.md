@@ -213,7 +213,7 @@
 
 ## Dynamic web screens (#852)
 
-28/114 registered `web` screens carrying a `:param` segment are axe-walked by the second test in `axe-route-walk.spec.ts`: every screen whose ONLY param is the patient id, with the id resolved at run time through the app (`openFirstPatientChart`). The rest are excluded, each with its reason:
+28/115 registered `web` screens carrying a `:param` segment are axe-walked by the second test in `axe-route-walk.spec.ts`: every screen whose ONLY param is the patient id, with the id resolved at run time through the app (`openFirstPatientChart`). The rest are excluded, each with its reason:
 
 | Screen id | Path | Permission | Why not walked |
 |---|---|---|---|
@@ -236,6 +236,7 @@
 | `bereavement.plan.outreach` | `/bereavement/plans/:planId/outreach` | bereavement.outreach.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `bereavement.plan.risk` | `/bereavement/plans/:planId/risk` | bereavement.risk.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `bereavement.plan.seed` | `/bereavement/plans/:planId/seed` | bereavement.plan.activate | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
+| `bereavement.predeath` | `/bereavement/pre-death/:admissionId` | bereavement.assessment_draft.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `billing.claim` | `/billing/claims/:claimId` | billing.claim.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `billing.claim.acknowledgments` | `/billing/claims/:claimId/acknowledgments` | billing.claim.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |
 | `billing.claim.submissions` | `/billing/claims/:claimId/submissions` | billing.claim.read | needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet |

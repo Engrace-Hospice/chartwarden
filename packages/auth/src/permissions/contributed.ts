@@ -4351,7 +4351,8 @@ export const M15_CONTRIBUTED_PERMISSIONS = {
 export type M15ContributedPermissionKey = keyof typeof M15_CONTRIBUTED_PERMISSIONS;
 
 /**
- * M16-T06 — the twenty-nine §4.7 Bereavement permission keys Module 16 registers into M3's catalog.
+ * M16-T06 — the thirty-three §4.7 Bereavement permission keys Module 16 registers into M3's catalog (twenty-nine from the
+ * original spec, the two ADR-0109 D5 pre-death-draft keys and the two D6 physician-letter keys).
  *
  * `abac` names the DEFAULT predicate the M3 catalog records for the key; the §4.1 route table is what
  * actually binds a guard, and it may bind a different (or no) predicate per route. Four of the five §4.8
@@ -4544,9 +4545,38 @@ export const M16_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "bereavement_window",
   },
+  // ADR-0109 D5 — the pre-death risk-assessment draft. An MSW, chaplain or bereavement counselor on the patient's care team
+  // (or bereavement oversight) reads and records the eight factors for an admission BEFORE the death; the predicate is the
+  // gate, these keys are the grant. Migration 1344 mirrors both into the permission catalog.
+  "bereavement.assessment_draft.read": {
+    resource: "bereavement_risk_assessment_draft",
+    action: "read",
+    category: "clinical",
+    abac: "bereavement_pre_death_assessor",
+  },
+  "bereavement.assessment_draft.write": {
+    resource: "bereavement_risk_assessment_draft",
+    action: "write",
+    category: "clinical",
+    abac: "bereavement_pre_death_assessor",
+  },
+  // ADR-0109 D6 — the physician condolence letter review queue. The letter goes to an internal hospice clinician only and a
+  // human approves it before anything is disclosed, so both keys are bereavement oversight only. Migration 1346 mirrors them.
+  "bereavement.letter.read": {
+    resource: "bereavement_physician_letter",
+    action: "read",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.letter.review": {
+    resource: "bereavement_physician_letter",
+    action: "review",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
 } satisfies Record<string, PermissionDef>;
 
-/** Union of the M16 contributed permission keys (twenty-nine). */
+/** Union of the M16 contributed permission keys (thirty-three). */
 export type M16ContributedPermissionKey = keyof typeof M16_CONTRIBUTED_PERMISSIONS;
 
 /**

@@ -1118,6 +1118,12 @@ jobs:
               name: "M22 staff mint access log",
               scripts: "test:m22:staff-mint-access-log:live",
             }
+          # ADR-0109 D6/D9 — M16's physician letter and discharge summary are INTERNAL: read by role only (a caseload member of
+          # the decedent's chart gets 404 by id, mint and list), render-only (every hand write refused 422), and never in the portal.
+          - {
+              name: "M22 internal documents",
+              scripts: "test:m22:internal-documents:live",
+            }
           # F-235 (#248) — the DocLens → M5 demographics chart writeback (F-231 decisions A1 + B): review
           # completion decrypts server-side, writes provenance and `m22.extraction.commit_requested`; the
           # real dispatcher delivers to M5 (contact rows + reply) and back to M22 (provenance stamp +

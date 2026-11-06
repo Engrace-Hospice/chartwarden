@@ -107,6 +107,18 @@ export const ABAC_VOLUNTEER_GATES = (key: string): PreHandler =>
     notFoundOnDeny: false,
   }) as PreHandler;
 
+/**
+ * ADR-0109 D5 — `bereavement_pre_death_assessor` over the route's `:admissionId` (routes 35 / 36). The draft exists before
+ * any plan, so there is no plan to resolve: the predicate decides from the caller's discipline, their seat on the patient's
+ * care team and the oversight roles. `notFoundOnDeny` keeps an admission the caller may not touch indistinguishable from one
+ * that does not exist.
+ */
+export const ABAC_PRE_DEATH_ASSESSOR = (key: string): PreHandler =>
+  requireAbac(key, "bereavement_pre_death_assessor", {
+    getTarget: (r) => ({ admissionId: param(r, "admissionId") }),
+    notFoundOnDeny: true,
+  }) as PreHandler;
+
 /** §4.8 `portal_self_service` over the route's `:contactId` (the bereaved person's own M31 session). */
 export const ABAC_PORTAL_SELF = (key: string): PreHandler =>
   requireAbac(key, "portal_self_service", {

@@ -6,22 +6,34 @@
 // §4.7 `requirePermission` key plus its §4.8 ABAC binding; the two close routes add the step-up gate; every
 // mutation declares `Idempotency-Key` (ADR-0021) and every state transition requires `If-Match` (§2.5).
 import type { FastifyInstance } from "fastify";
+import { registerBereavementAssessmentDraftRoutes } from "./assessment-draft.routes";
 import { registerBereavedContactRoutes } from "./contacts.routes";
 import { registerBereavementDashboardRoutes } from "./dashboard.routes";
 import type { M16RouteServices } from "./index";
 import { registerBereavementOutreachRoutes } from "./outreach.routes";
+import { registerBereavementPhysicianLetterRoutes } from "./physician-letter.routes";
 import { registerBereavementPlanRoutes } from "./plans.routes";
 
 export { registerBereavementPlanRoutes, type PlanRouteDeps } from "./plans.routes";
 export { registerBereavedContactRoutes, type ContactRouteDeps } from "./contacts.routes";
+export {
+  registerBereavementAssessmentDraftRoutes,
+  type DraftRouteDeps,
+} from "./assessment-draft.routes";
 export { registerBereavementOutreachRoutes, type OutreachRouteDeps } from "./outreach.routes";
+export {
+  registerBereavementPhysicianLetterRoutes,
+  type LetterRouteDeps,
+} from "./physician-letter.routes";
 export { registerBereavementDashboardRoutes, type DashboardRouteDeps } from "./dashboard.routes";
 
 /** Mount every M16 §4.1 route plugin over the Drizzle-backed (or in-memory) read + write services. */
 export function mountM16Routes(app: FastifyInstance, services: M16RouteServices): void {
-  const { readService, writeService } = services;
+  const { readService, writeService, draftService, letterService } = services;
   registerBereavementPlanRoutes(app, { readService, writeService });
   registerBereavedContactRoutes(app, { writeService });
   registerBereavementOutreachRoutes(app, { writeService });
   registerBereavementDashboardRoutes(app, { readService });
+  registerBereavementAssessmentDraftRoutes(app, { draftService });
+  registerBereavementPhysicianLetterRoutes(app, { letterService });
 }

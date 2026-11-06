@@ -473,7 +473,7 @@ async function main(): Promise<void> {
   const admin = await signIn("orgadmin@chartwarden.local");
   const rita = await signIn("rita@chartwarden.local");
   // `org_scope_bereavement_oversight` (M16 ABAC) only accepts clinical_supervisor / director_of_nursing /
-  // bereavement_program_coordinator / compliance_officer — vera's volunteer_coordinator role does NOT
+  // bereavement_coordinator / compliance_officer — vera's volunteer_coordinator role does NOT
   // qualify (confirmed live: FORBIDDEN), so M16's actor is supervisor@ (clinical_supervisor), not vera@.
   const supervisor = await signIn("supervisor@chartwarden.local");
   // The hospice physician — the only actor CoP 418.108 lets attest a GIP admission criterion (§2.4/D4).

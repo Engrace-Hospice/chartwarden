@@ -263,15 +263,18 @@ import {
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M16-T07
 // web screens call the surface these type.
 import {
+  ApproveLetterBody as M16ApproveLetterBody,
   AssignCounselorBody as M16AssignCounselorBody,
   AssignVolunteerBody as M16AssignVolunteerBody,
   CancelOutreachBody as M16CancelOutreachBody,
+  CareGoalsBody as M16CareGoalsBody,
   CloseEarlyBody as M16CloseEarlyBody,
   CompleteOutreachBody as M16CompleteOutreachBody,
   ConfirmContactBody as M16ConfirmContactBody,
   CosignCloseBody as M16CosignCloseBody,
   CounselorDashboardQuerySchema as M16CounselorDashboardQuerySchema,
   CreateContactBody as M16CreateContactBody,
+  DeclineLetterBody as M16DeclineLetterBody,
   DismissUnreachableProposalBody as M16DismissUnreachableProposalBody,
   FlagComplicatedGriefBody as M16FlagComplicatedGriefBody,
   InitiateContactBody as M16InitiateContactBody,
@@ -283,7 +286,9 @@ import {
   OutreachListQuerySchema as M16OutreachListQuerySchema,
   OutreachOutcomeBody as M16OutreachOutcomeBody,
   PausePlanBody as M16PausePlanBody,
+  PhysicianLetterListQuerySchema as M16PhysicianLetterListQuerySchema,
   PlanListQuerySchema as M16PlanListQuerySchema,
+  PreDeathDraftBody as M16PreDeathDraftBody,
   RecomputeRiskBody as M16RecomputeRiskBody,
   ReferExternalBody as M16ReferExternalBody,
   RegenerateScheduleBody as M16RegenerateScheduleBody,
@@ -1093,6 +1098,7 @@ import {
 // same M16* aliases — dedupe on merge) + the new §4.1 RESPONSE DTOs. Every symbol M16-aliased.
 import {
   // ── request bodies + list queries (§4.2) ──
+  BereavementAssessmentTaskListResponseSchema as M16AssessmentTaskListResponse,
   BereavementClosureViewResponseSchema as M16ClosureResponse,
   BereavementContactLogViewResponseSchema as M16ContactLogResponse,
   // ── §4.1 response DTOs (F0 enrichment; pinned to the read/write service views by Conforms) ──
@@ -1100,9 +1106,12 @@ import {
   CounselorDashboardViewResponseSchema as M16CounselorDashboardResponse,
   BereavementOutreachPageResponseSchema as M16OutreachPageResponse,
   BereavementOutreachRowViewResponseSchema as M16OutreachRowResponse,
+  PhysicianLetterPageResponseSchema as M16PhysicianLetterPageResponse,
+  PhysicianLetterViewResponseSchema as M16PhysicianLetterResponse,
   PlanActivationViewResponseSchema as M16PlanActivationResponse,
   BereavementPlanDetailResponseSchema as M16PlanDetailResponse,
   BereavementPlanPageResponseSchema as M16PlanPageResponse,
+  PreDeathDraftViewResponseSchema as M16PreDeathDraftResponse,
   BereavementRiskScorePageResponseSchema as M16RiskScorePageResponse,
   BereavementRiskScoreViewResponseSchema as M16RiskScoreResponse,
   ScheduleRegenerationViewResponseSchema as M16ScheduleRegenResponse,
@@ -2375,6 +2384,7 @@ import {
   AckResponse as M31AckResponse,
   AmendmentSubmitRequest as M31AmendmentSubmitRequest,
   AmendmentSubmitResponse as M31AmendmentSubmitResponse,
+  BereavementMailingPreferenceRequest as M31BereavementMailingPreferenceRequest,
   CarePlanSummaryResponse as M31CarePlanSummaryResponse,
   CareSummaryResponse as M31CareSummaryResponse,
   CaregiverAttestedAdministrationRequest as M31CaregiverAttestRequest,
@@ -4316,6 +4326,12 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   },
   "POST /api/v1/portal/bereavement/opt-out": {
     summary: "Self opt-out of the bereavement program (M16)",
+    response: M31AckResponse,
+  },
+  "POST /api/v1/portal/bereavement/mailing-preference": {
+    summary:
+      "Stop (allowMailings false) or resume (true) bereavement MAILINGS only — the contact stays in the program and calls continue (M16, ADR-0109 D10)",
+    body: M31BereavementMailingPreferenceRequest,
     response: M31AckResponse,
   },
   "GET /api/v1/portal/notification-preferences": {
@@ -7788,7 +7804,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/bereavement/plans/:planId/closure": {
     summary:
-      "The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it (§4.1 #10)",
+      "The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it; `dischargeSummaryDocumentId` (the internal discharge summary, once rendered) is shown to oversight only (§4.1 #10, ADR-0109 D9)",
     response: M16ClosureResponse,
   },
   "GET /api/v1/bereavement/plans/:planId/outreach": {
@@ -7820,11 +7836,58 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M16InitiateContactBody,
     response: M16OutreachRowResponse,
   },
+  "GET /api/v1/bereavement/plans/:planId/assessment-tasks": {
+    summary:
+      "The plan's two assessment checkpoints per survivor (initial d28, midpoint d180) with the human-appended score that completed each; empty when the reader's scope holds no clinical content (ADR-0109 D3, #37)",
+    response: M16AssessmentTaskListResponse,
+  },
+  "GET /api/v1/bereavement/pre-death-assessments/:admissionId": {
+    summary:
+      "The pre-death risk-assessment draft for an admission — eight tri-state factors, an empty all-unknown draft at version 0 when nothing is recorded; the care-team MSW / chaplain / bereavement counselor or oversight only (ADR-0109 D5, #35)",
+    response: M16PreDeathDraftResponse,
+  },
+  "PUT /api/v1/bereavement/pre-death-assessments/:admissionId": {
+    summary:
+      "Record the pre-death risk-assessment draft — replaces the whole eight-factor vector; `If-Match` (0 for the first write) and `Idempotency-Key` required; the substance-use slot is stored `unknown` unless the writer is cleared for 42 CFR Part 2; 409 `DRAFT_LOCKED` once a bereavement plan exists (ADR-0109 D5, #36)",
+    body: M16PreDeathDraftBody,
+    response: M16PreDeathDraftResponse,
+  },
+
+  // ── physician-letter.routes.ts (ADR-0109 D6) ──
+  "GET /api/v1/bereavement/physician-letters": {
+    summary:
+      "The physician condolence-letter review queue (`?status=`), oldest due first, cursor-paginated; bereavement oversight only (ADR-0109 D6, #38)",
+    query: M16PhysicianLetterListQuerySchema,
+    response: M16PhysicianLetterPageResponse,
+  },
+  "GET /api/v1/bereavement/plans/:planId/physician-letter": {
+    summary:
+      "The plan's physician condolence letter; 404 for a plan that has none; bereavement oversight only (ADR-0109 D6, #38)",
+    response: M16PhysicianLetterResponse,
+  },
+  "POST /api/v1/bereavement/physician-letters/:letterId/approve": {
+    summary:
+      "Approve a pending letter and request its render in the same transaction — an optional personal note (at most 1000 characters, sealed at rest) and, when the care team resolved no attending, the internal clinician who should receive it (an active member of the organization); `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #39)",
+    body: M16ApproveLetterBody,
+    response: M16PhysicianLetterResponse,
+  },
+  "POST /api/v1/bereavement/physician-letters/:letterId/decline": {
+    summary:
+      "Decline a pending letter with a documented reason of at least 20 characters; `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #40)",
+    body: M16DeclineLetterBody,
+    response: M16PhysicianLetterResponse,
+  },
 
   // ── contacts.routes.ts ──
   "POST /api/v1/bereavement/plans/:planId/contacts": {
     summary: "Add a bereaved contact to an open plan — lands `proposed` (§4.1 #11)",
     body: M16CreateContactBody,
+    response: M16ContactRowResponse,
+  },
+  "PUT /api/v1/bereavement/contacts/:contactId/care-plan": {
+    summary:
+      "Record the contact's care goals (ADR-0109, #41) — at most 3 goals of 1..280 characters, sealed with the tenant DEK; `If-Match` and `Idempotency-Key` required; an empty list clears them; a volunteer neither reads nor writes them",
+    body: M16CareGoalsBody,
     response: M16ContactRowResponse,
   },
   "PATCH /api/v1/bereavement/contacts/:contactId": {

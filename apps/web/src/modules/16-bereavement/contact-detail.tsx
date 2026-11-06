@@ -13,6 +13,7 @@
 // `flag_complicated_grief` deliberately does NOT: it ends the program for this survivor and belongs with
 // the screening instrument that justifies it (§5.1 #13).
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -20,7 +21,7 @@ import {
   t,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -29,19 +30,25 @@ import {
   type BereavementOptOutKind,
   type BereavementOutreachKind,
   type ContactRow,
+  type OutreachRow,
   type PlanDetail,
   confirmContact,
   dismissUnreachableProposal,
   errorMessage,
   getPlan,
+  isStaleWrite,
+  listOutreach,
   logDirectContact,
   markContactDeceased,
   markContactUnreachable,
   optOutContact,
   rescindOptOut,
+  setCareGoals,
   updateContact,
 } from "./bereavement-api";
 import {
+  CARE_GOALS_MAX,
+  CARE_GOAL_MAX_CHARS,
   CONTACT_STATUS_TONE,
   DEFAULT_LOG_OUTCOME,
   DEFAULT_NON_ENCOUNTER_KIND,
@@ -50,15 +57,21 @@ import {
   NON_ENCOUNTER_OUTREACH_KINDS,
   OPT_OUT_KINDS,
   OUTREACH_KINDS,
+  OUTREACH_STATUS_TONE,
   dateTime,
+  dueLabel,
   humanize,
+  optOutKindLabel,
   outreachKindLabel,
+  shortDate,
   shortId,
   toneOf,
+  touchpointLabel,
 } from "./bereavement-status";
 import {
   Card,
   CheckboxField,
+  ErrorText,
   Field,
   Modal,
   Notice,
@@ -67,13 +80,25 @@ import {
   SummaryGrid,
   TextAreaField,
   TextField,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
   mutedStyle,
   pageTitleStyle,
   primaryButtonStyle,
+  rowLine,
+  tableStyle,
+  td,
+  th,
+  useActionStatus,
+  useIdempotencyKey,
 } from "./bereavement-ui";
+
+/** What a refused write on this page means: the contact moved (or was decided) under the reader, so the page reloads. */
+const CONTACT_MOVED =
+  "This contact changed while you were working on it. The page has been refreshed: check it and try again.";
+
+/** This contact's schedule is a convenience beside the care plan; it says why when it is not there. */
+type Schedule = { kind: "ready"; rows: OutreachRow[] } | { kind: "forbidden" } | { kind: "error" };
 
 type Ceremony =
   | "opt-out"
@@ -86,31 +111,71 @@ type Ceremony =
   | null;
 
 export function BereavedContactDetail(): JSX.Element {
-  const client = useApiClient();
   const { planId, contactId } = useParams<{ planId: string; contactId: string }>();
+  // Keyed by plan + contact: a route-param change remounts, so one survivor's page is never shown under another's id.
+  return <ContactForPlan key={`${planId}/${contactId}`} planId={planId} contactId={contactId} />;
+}
+
+function ContactForPlan({
+  planId,
+  contactId,
+}: { planId: string | undefined; contactId: string | undefined }): JSX.Element {
+  const client = useApiClient();
   const [plan, setPlan] = useState<PlanDetail | null>(null);
+  // `loading` is the FIRST load only: after an action the page stays up with its data (no unmount, no lost focus or typing).
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [ceremony, setCeremony] = useState<Ceremony>(null);
   const [keepTryingBusy, setKeepTryingBusy] = useState(false);
   const [keepTryingError, setKeepTryingError] = useState<string | null>(null);
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  // ADR-0109 — this contact's own schedule (null until the first load).
+  const [schedule, setSchedule] = useState<Schedule | null>(null);
+  const { announce, region } = useActionStatus();
+  const keepTryingKey = useIdempotencyKey();
+  const resumeKey = useIdempotencyKey();
+  const latestRequest = useRef(0);
+  const hasPlan = useRef(false);
 
   const load = useCallback(async () => {
     if (!planId) return;
-    setLoading(true);
-    setError(null);
-    const { plan: p, error: err } = await getPlan(client, planId);
+    const mine = ++latestRequest.current;
+    const [{ plan: p, error: err }, outreach] = await Promise.all([
+      getPlan(client, planId),
+      contactId
+        ? listOutreach(client, planId, { contactId, limit: 100 })
+        : Promise.resolve({ page: null, error: null, status: 200 }),
+    ]);
+    if (mine !== latestRequest.current) return; // a newer load, or an unmount, superseded this response
     if (err) {
-      setError(errorMessage(err, "This bereavement plan could not be loaded."));
+      const message = errorMessage(err, "This bereavement plan could not be loaded.");
+      if (hasPlan.current) setRefreshError(message);
+      else setError(message);
       setLoading(false);
       return;
     }
+    hasPlan.current = true;
     setPlan(p);
+    // The schedule is a convenience beside the care plan: an unreadable one never hides the contact.
+    setSchedule(
+      Array.isArray(outreach.page?.data)
+        ? { kind: "ready", rows: outreach.page.data.filter((row) => row.contactId === contactId) }
+        : outreach.status === 403
+          ? { kind: "forbidden" }
+          : { kind: "error" },
+    );
+    setError(null);
+    setRefreshError(null);
     setLoading(false);
-  }, [client, planId]);
+  }, [client, planId, contactId]);
 
   useEffect(() => {
     void load();
+    return () => {
+      latestRequest.current += 1;
+    };
   }, [load]);
 
   if (loading) return <LoadingSpinner />;
@@ -124,27 +189,66 @@ export function BereavedContactDetail(): JSX.Element {
       />
     );
 
+  /** A write succeeded: reload (the page stays mounted) and say so, moving focus off a trigger that may be gone. */
+  const acted = (message: string) => {
+    announce(message);
+    void load();
+  };
+
   const refresh = () => {
     setCeremony(null);
-    void load();
+    acted("Saved. The page shows the latest version.");
   };
 
   const keepTrying = async () => {
     setKeepTryingBusy(true);
     setKeepTryingError(null);
-    const { error: err } = await dismissUnreachableProposal(
+    const { error: err, status } = await dismissUnreachableProposal(
       client,
       contact.contactId,
       contact.version,
+      keepTryingKey.keyFor(String(contact.version)),
     );
+    keepTryingKey.settle(status);
     setKeepTryingBusy(false);
     if (err) {
+      if (isStaleWrite(status)) void load();
       setKeepTryingError(
-        errorMessage(err, "The unreachable proposal could not be dismissed. Reload and try again."),
+        isStaleWrite(status)
+          ? CONTACT_MOVED
+          : errorMessage(
+              err,
+              "The unreachable proposal could not be dismissed. Reload and try again.",
+            ),
       );
       return;
     }
-    void load();
+    acted("Kept trying: the unreachable proposal was dismissed.");
+  };
+
+  // ADR-0109 D10 — mailings resume by rescinding the open `no_mailings` row; the contact never left the program.
+  const resumeMailings = async () => {
+    setResumeBusy(true);
+    setResumeError(null);
+    const { error: err, status } = await rescindOptOut(
+      client,
+      contact.contactId,
+      contact.version,
+      {},
+      resumeKey.keyFor(String(contact.version)),
+    );
+    resumeKey.settle(status);
+    setResumeBusy(false);
+    if (err) {
+      if (isStaleWrite(status)) void load();
+      setResumeError(
+        isStaleWrite(status)
+          ? CONTACT_MOVED
+          : errorMessage(err, "Mailings could not be resumed. Reload and try again."),
+      );
+      return;
+    }
+    acted("Mailings resumed.");
   };
 
   return (
@@ -165,6 +269,15 @@ export function BereavedContactDetail(): JSX.Element {
           </div>
         }
       />
+      {region}
+      {refreshError ? (
+        <div style={{ display: "flex", gap: t.space2, alignItems: "center", flexWrap: "wrap" }}>
+          <ErrorText>{refreshError}</ErrorText>
+          <Button size="sm" tone="secondary" onClick={() => void load()}>
+            Try again
+          </Button>
+        </div>
+      ) : null}
 
       {contact.status === "proposed" ? (
         <Notice tone="warning">
@@ -200,7 +313,7 @@ export function BereavedContactDetail(): JSX.Element {
               {keepTryingBusy ? "Saving…" : "Keep trying"}
             </button>
           </div>
-          {keepTryingError ? <p style={alertStyle}>{keepTryingError}</p> : null}
+          {keepTryingError ? <ErrorText>{keepTryingError}</ErrorText> : null}
         </Notice>
       ) : null}
 
@@ -228,6 +341,16 @@ export function BereavedContactDetail(): JSX.Element {
           <Field label="Risk tier" value={<RiskTierPill tier={contact.currentRiskTier} />} />
           <Field label="Confirmed" value={dateTime(contact.confirmedAt)} />
           <Field label="Opted out" value={dateTime(contact.optedOutAt)} />
+          <Field
+            label="Mailings"
+            value={
+              contact.mailingsAllowed ? (
+                "allowed"
+              ) : (
+                <StatusPill label="Mailings stopped" tone="warning" />
+              )
+            }
+          />
           <Field label="Unreachable" value={dateTime(contact.unreachableAt)} />
           <Field label="Deceased" value={dateTime(contact.deceasedAt)} />
           <Field
@@ -264,6 +387,15 @@ export function BereavedContactDetail(): JSX.Element {
         </div>
       </Card>
 
+      <Card title="Care plan">
+        <CarePlanGoals
+          contact={contact}
+          onSaved={() => acted("Care goals saved.")}
+          onStale={() => void load()}
+        />
+        <ContactSchedule schedule={schedule} onRetry={() => void load()} />
+      </Card>
+
       <Card title="Actions">
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           {contact.status === "proposed" ? (
@@ -281,6 +413,16 @@ export function BereavedContactDetail(): JSX.Element {
               Rescind opt-out
             </button>
           ) : null}
+          {contact.status === "active" && !contact.mailingsAllowed ? (
+            <button
+              type="button"
+              style={ghostButtonStyle}
+              disabled={resumeBusy}
+              onClick={resumeMailings}
+            >
+              {resumeBusy ? "Resuming…" : "Resume mailings"}
+            </button>
+          ) : null}
           <button type="button" style={ghostButtonStyle} onClick={() => setCeremony("log")}>
             Log an ad-hoc contact
           </button>
@@ -291,6 +433,7 @@ export function BereavedContactDetail(): JSX.Element {
             Mark deceased
           </button>
         </div>
+        {resumeError ? <ErrorText>{resumeError}</ErrorText> : null}
         <span style={mutedStyle}>
           Marking a survivor deceased is §2.3's only terminal state, so the verification source is
           required. Marking unreachable accepts the nightly three-strikes proposal — the machine
@@ -320,6 +463,171 @@ export function BereavedContactDetail(): JSX.Element {
         <ChannelsModal contact={contact} onClose={() => setCeremony(null)} onDone={refresh} />
       ) : null}
     </div>
+  );
+}
+
+const sameList = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((value, i) => value === b[i]);
+
+/** The contact's 1-3 care goals (ADR-0109). ABSENT `careGoals` means the D10 scope withheld them — no editor then. */
+function CarePlanGoals({
+  contact,
+  onSaved,
+  onStale,
+}: { contact: ContactRow; onSaved: () => void; onStale: () => void }): JSX.Element {
+  const client = useApiClient();
+  const recorded = contact.careGoals;
+  const [goals, setGoals] = useState<string[]>([...(recorded ?? [])]);
+  // The server's goals the editor was last seeded from. A reload for an unrelated action keeps what was typed: the editor
+  // is re-seeded only when the contact's version moved AND the reader has not edited it.
+  const [seeded, setSeeded] = useState({ version: contact.version, goals: recorded ?? [] });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const idempotency = useIdempotencyKey();
+
+  if (seeded.version !== contact.version) {
+    if (sameList(goals, seeded.goals)) setGoals([...(recorded ?? [])]);
+    setSeeded({ version: contact.version, goals: recorded ?? [] });
+  }
+
+  if (recorded === undefined) {
+    return (
+      <span style={mutedStyle}>
+        Care goals are not shown in your scope. A volunteer sees the contact's name and schedule,
+        not the goals a counselor recorded with the family.
+      </span>
+    );
+  }
+
+  const trimmed = goals.map((g) => g.trim());
+  const blank = trimmed.some((g) => g.length === 0);
+  const unchanged = sameList(trimmed, recorded);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    const { error: err, status } = await setCareGoals(
+      client,
+      contact.contactId,
+      contact.version,
+      trimmed,
+      idempotency.keyFor(`${contact.version}:${JSON.stringify(trimmed)}`),
+    );
+    idempotency.settle(status);
+    setBusy(false);
+    if (err) {
+      if (isStaleWrite(status)) {
+        // What was typed stays in the editor; the page reloads so the next save carries the version now current.
+        setError(CONTACT_MOVED);
+        onStale();
+        return;
+      }
+      setError(errorMessage(err, "The care goals could not be saved."));
+      return;
+    }
+    onSaved();
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: t.space2 }}>
+      <span style={mutedStyle}>
+        Up to three goals recorded with the family, in their words. They are sealed at rest and not
+        shown to volunteers.
+      </span>
+      {goals.map((goal, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: an editable list of free text with no stable id
+        <div key={i} style={{ display: "flex", gap: t.space2, alignItems: "flex-end" }}>
+          <TextField
+            label={`Care goal ${i + 1}`}
+            value={goal}
+            maxLength={CARE_GOAL_MAX_CHARS}
+            onChange={(v) => setGoals(goals.map((g, j) => (j === i ? v : g)))}
+          />
+          <button
+            type="button"
+            style={ghostButtonStyle}
+            aria-label={`Remove care goal ${i + 1}`}
+            onClick={() => setGoals(goals.filter((_, j) => j !== i))}
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
+        {goals.length < CARE_GOALS_MAX ? (
+          <button type="button" style={ghostButtonStyle} onClick={() => setGoals([...goals, ""])}>
+            Add goal
+          </button>
+        ) : null}
+        <button
+          type="button"
+          style={primaryButtonStyle}
+          disabled={busy || blank || unchanged}
+          onClick={save}
+        >
+          {busy ? "Saving…" : "Save care goals"}
+        </button>
+      </div>
+      {error ? <ErrorText>{error}</ErrorText> : null}
+    </div>
+  );
+}
+
+/** This contact's own touchpoints, each named by the Medicare-floor mark it was generated for (ADR-0109 D2/D4). */
+function ContactSchedule({
+  schedule,
+  onRetry,
+}: { schedule: Schedule | null; onRetry: () => void }): JSX.Element {
+  if (schedule === null || schedule.kind === "error") {
+    return (
+      <div style={{ display: "flex", gap: t.space2, alignItems: "center", flexWrap: "wrap" }}>
+        <ErrorText>This survivor's schedule could not be loaded.</ErrorText>
+        <Button size="sm" tone="secondary" onClick={onRetry}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
+  if (schedule.kind === "forbidden") {
+    return (
+      <span style={mutedStyle}>
+        Your role does not include the touchpoint schedule, so it is not shown here.
+      </span>
+    );
+  }
+  const rows = schedule.rows;
+  if (rows.length === 0) {
+    return <span style={mutedStyle}>No touchpoints are scheduled for this survivor.</span>;
+  }
+  return (
+    <table style={tableStyle}>
+      <thead>
+        <tr>
+          <th style={th}>Touchpoint</th>
+          <th style={th}>Modality</th>
+          <th style={th}>Due</th>
+          <th style={th}>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((o) => (
+          <tr key={o.outreachId} style={rowLine}>
+            <td style={td}>{touchpointLabel(o)}</td>
+            <td style={td}>{outreachKindLabel(o.kind)}</td>
+            <td style={td}>
+              {shortDate(o.dueAt)}
+              <div style={mutedStyle}>{dueLabel(o.dueAt)}</div>
+            </td>
+            <td style={td}>
+              <StatusPill
+                label={humanize(o.status)}
+                tone={toneOf(OUTREACH_STATUS_TONE, o.status)}
+              />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -371,7 +679,7 @@ function ConfirmModal({
       <Notice tone="info">
         Consent is resolved by the server against Module 39. It is never decided by this form.
       </Notice>
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -416,9 +724,11 @@ function OptOutModal({
     onDone();
   };
 
+  // `no_mailings` is not a departure: the survivor stays in the program, so the ceremony says what it does.
+  const stopsMailings = optOutKind === "no_mailings";
   return (
     <Modal
-      title="Record opt-out"
+      title={stopsMailings ? "Stop mailings" : "Record opt-out"}
       onClose={onClose}
       footer={
         <button
@@ -427,19 +737,27 @@ function OptOutModal({
           disabled={busy || (optOutKind === "channel_specific" && channelKinds.length === 0)}
           onClick={submit}
         >
-          {busy ? "Recording…" : "Record opt-out"}
+          {busy ? "Recording…" : stopsMailings ? "Stop mailings" : "Record opt-out"}
         </button>
       }
     >
-      <Notice tone="info">
-        A full opt-out cancels every future touchpoint for this survivor, and closes the plan if it
-        was the last enrollee. A self-service opt-out may be rescinded for 90 days; a counselor
-        rescind with a documented reason is not bound by that window.
-      </Notice>
+      {stopsMailings ? (
+        <Notice tone="info">
+          Stops the cards, letters and invitations sent by post. The survivor stays in the program:
+          calls and visits continue, and a mailed touchpoint on the schedule becomes a phone call.
+          Mailings can be resumed at any time.
+        </Notice>
+      ) : (
+        <Notice tone="info">
+          A full opt-out cancels every future touchpoint for this survivor, and closes the plan if
+          it was the last enrollee. A self-service opt-out may be rescinded for 90 days; a counselor
+          rescind with a documented reason is not bound by that window.
+        </Notice>
+      )}
       <SelectField
         label="Scope"
         value={optOutKind}
-        options={OPT_OUT_KINDS.map((k) => ({ value: k, label: humanize(k) }))}
+        options={OPT_OUT_KINDS.map((k) => ({ value: k, label: optOutKindLabel(k) }))}
         onChange={setOptOutKind}
       />
       {optOutKind === "channel_specific" ? (
@@ -456,7 +774,7 @@ function OptOutModal({
         </div>
       ) : null}
       <TextAreaField label="Reason (optional)" value={reason} onChange={setReason} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -502,7 +820,7 @@ function RescindModal({
         say why.
       </Notice>
       <TextAreaField label="Reason" value={reason} onChange={setReason} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -565,7 +883,7 @@ function DeceasedModal({
         onChange={setDeathSource}
         placeholder="e.g. family notification, obituary, state registry"
       />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -616,7 +934,7 @@ function UnreachableModal({
       }
     >
       <TextAreaField label="Note (optional)" value={note} onChange={setNote} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -698,7 +1016,7 @@ function LogDirectModal({
         onChange={setResponded}
       />
       <TextAreaField label="Counselor note" value={notes} onChange={setNotes} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -764,7 +1082,7 @@ function ChannelsModal({
         checked={volunteerVisibleOnly}
         onChange={setVolunteerVisibleOnly}
       />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }

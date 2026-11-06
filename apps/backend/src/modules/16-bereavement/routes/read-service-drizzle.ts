@@ -38,6 +38,8 @@ import type {
 } from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { BEREAVEMENT_OVERSIGHT_ROLES } from "../abac-predicates";
+import type { BereavementCipher } from "../bereavement-crypto";
+import { decodeCareGoals } from "../care-goals";
 import { COP_DENOMINATOR_STATUSES, COP_NUMERATOR_STATUSES } from "../seams/store";
 import type { M16ReadActor } from "./actor";
 import {
@@ -64,6 +66,7 @@ import type {
 } from "./m16-typebox";
 import type {
   BereavedContactRowView,
+  BereavementAssessmentTaskView,
   BereavementClosureView,
   BereavementOutreachRowView,
   BereavementPlanDetail,
@@ -132,6 +135,11 @@ const EMPTY_CLOSURE_COUNTS: { [K in BereavementPlanClosureReason]: number } = {
 export interface M16ReadDeps {
   readonly now?: () => IsoInstant;
   readonly disclosure?: BereavementDisclosurePort;
+  /**
+   * ADR-0109 — the tenant-DEK envelope the contact's care goals are opened with. UNBOUND ⇒ `careGoals` is simply ABSENT from
+   * the contact rows (a reader is never told "no goals" when they could not be read).
+   */
+  readonly cipher?: BereavementCipher;
 }
 
 export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {}): M16ReadService {
@@ -141,10 +149,40 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
   const SCORE = schema.bereavementRiskScore;
   const CLOSURE = schema.bereavementPlanClosure;
   const OPT_OUT = schema.bereavementOptOut;
+  const TASK = schema.bereavementAssessmentTask;
   const GATE_OVERRIDE = schema.tenantBereavementExternalSourceGateOverride;
 
   const now = deps.now ?? (() => new Date().toISOString() as IsoInstant);
   const disclosurePort = deps.disclosure ?? seamBereavementDisclosurePort;
+  const cipher = deps.cipher;
+
+  /**
+   * ADR-0109 — open the care goals of the contacts a reader may see them for. Runs AFTER the read transaction (the key
+   * provider takes its own pooled connection, and holding ours while it does is the M21-T05 self-deadlock). A blob that
+   * cannot be opened or is malformed leaves `careGoals` ABSENT for that contact — never a partial or guessed list.
+   */
+  async function withCareGoals(
+    organizationId: string,
+    contacts: readonly BereavedContactRowView[],
+    sealed: ReadonlyMap<string, string | null>,
+  ): Promise<BereavedContactRowView[]> {
+    if (cipher === undefined) return [...contacts];
+    return Promise.all(
+      contacts.map(async (contact) => {
+        const blob = sealed.get(contact.contactId);
+        if (blob === undefined) return contact;
+        if (blob === null) return { ...contact, careGoals: [] };
+        try {
+          const goals = decodeCareGoals(
+            await cipher.decrypt(organizationId, "bereaved_contact.care_goals", blob),
+          );
+          return goals === null ? contact : { ...contact, careGoals: goals };
+        } catch {
+          return contact;
+        }
+      }),
+    );
+  }
 
   const scope = (actor: M16ReadActor) => ({
     organizationId: actor.organizationId,
@@ -187,6 +225,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
     kind: r.kind,
     status: r.status,
     anniversaryMark: r.anniversaryMark ?? null,
+    cadenceMark: r.cadenceMark ?? null,
     dueAt: iso(r.dueAt) as IsoInstant,
     lateGraceUntil: iso(r.lateGraceUntil) as IsoInstant,
     startedAt: isoN(r.startedAt) as IsoInstant | null,
@@ -202,6 +241,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
     r: typeof CONTACT.$inferSelect,
     gate: BereavementDisclosureDecision,
     openOptOutAt: string | null,
+    mailingsAllowed: boolean,
     asOf: IsoInstant,
   ): BereavedContactRowView => ({
     contactId: r.id,
@@ -223,6 +263,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
       r.status === "opted_out" &&
       openOptOutAt !== null &&
       isWithinOptOutRescindWindow(openOptOutAt, asOf),
+    mailingsAllowed,
     ...(gate.clinicalRiskAllowed ? { currentRiskTier: r.currentRiskTier ?? null } : {}),
     version: r.version,
   });
@@ -347,18 +388,36 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
       const gate = await resolveBereavementDisclosure(actor, plan.patientId, disclosurePort);
       const asOf = now();
 
-      return withOrgContext(db, scope(actor), async (tx) => {
+      const sealedGoals = new Map<string, string | null>();
+      const detail = await withOrgContext(db, scope(actor), async (tx) => {
         const contacts = await tx
           .select()
           .from(CONTACT)
           .where(eq(CONTACT.planId, planId))
           .orderBy(asc(CONTACT.createdAt), asc(CONTACT.id));
+        // ADR-0109 — only a reader the D10 scope permits gets goals; the sealed value is carried out of the tx to be opened.
+        if (gate.careGoalsAllowed) {
+          for (const c of contacts) sealedGoals.set(c.id, c.careGoalsCipher ?? null);
+        }
 
         const openOptOuts = await tx
-          .select({ contactId: OPT_OUT.bereavedContactId, optedOutAt: OPT_OUT.optedOutAt })
+          .select({
+            contactId: OPT_OUT.bereavedContactId,
+            optedOutAt: OPT_OUT.optedOutAt,
+            optOutKind: OPT_OUT.optOutKind,
+          })
           .from(OPT_OUT)
           .where(and(eq(OPT_OUT.planId, planId), isNull(OPT_OUT.rescindedAt)));
-        const optOutAt = new Map(openOptOuts.map((o) => [o.contactId, iso(o.optedOutAt)]));
+        // ADR-0109 D10 — read BY KIND. An open `no_mailings` row is a mailing preference, not a departure: it must never
+        // make an active contact look opted out (or hold the rescind window open), it only turns `mailingsAllowed` off.
+        const optOutAt = new Map(
+          openOptOuts
+            .filter((o) => o.optOutKind !== "no_mailings")
+            .map((o) => [o.contactId, iso(o.optedOutAt)]),
+        );
+        const mailingsStopped = new Set(
+          openOptOuts.filter((o) => o.optOutKind === "no_mailings").map((o) => o.contactId),
+        );
 
         const [stats] = await tx
           .select({
@@ -414,7 +473,9 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
           externalSource: external,
           firstContactAllowed: verdict.allowed,
           firstContactGateReason: verdict.allowed ? null : verdict.code,
-          contacts: contacts.map((c) => toContactRow(c, gate, optOutAt.get(c.id) ?? null, asOf)),
+          contacts: contacts.map((c) =>
+            toContactRow(c, gate, optOutAt.get(c.id) ?? null, !mailingsStopped.has(c.id), asOf),
+          ),
           stats: outreachStats,
           ...(gate.clinicalRiskAllowed
             ? {
@@ -437,6 +498,10 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
         };
         return detail;
       });
+      return {
+        ...detail,
+        contacts: await withCareGoals(actor.organizationId, detail.contacts, sealedGoals),
+      };
     },
 
     // ── 10 — the §3.3.7 closure record ──────────────────────────────────────────────────────────────
@@ -462,6 +527,9 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
             contactsOptedOutCount: row.contactsOptedOutCount,
           },
           bereavementSummaryDocumentId: row.bereavementSummaryDocumentId ?? null,
+          dischargeSummaryDocumentId: hasOversight(actor)
+            ? (row.dischargeSummaryDocumentId ?? null)
+            : null,
         };
         return view;
       });
@@ -560,6 +628,43 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
           };
         },
       );
+    },
+
+    // ── 37 — the plan's assessment checkpoints (ADR-0109 D3) ─────────────────────────────────────────
+    async listAssessmentTasks(actor, planId) {
+      const plan = await loadReachablePlan(actor, planId);
+      if (plan === null) return null;
+      const gate = await resolveBereavementDisclosure(actor, plan.patientId, disclosurePort);
+      // D10 — a volunteer's scope holds no clinical risk content, and an assessment task is exactly that: the
+      // list is empty and the category is named, never a 403 (the row shape decides, as for the score ledger).
+      if (!gate.clinicalRiskAllowed)
+        return { items: [], redactedCategories: gate.redactedCategories };
+      const rows = await withOrgContext(db, scope(actor), async (tx) =>
+        tx
+          .select()
+          .from(TASK)
+          .where(eq(TASK.planId, planId))
+          .orderBy(asc(TASK.dueAt), asc(TASK.taskKind), asc(TASK.id)),
+      );
+      return {
+        items: rows.map(
+          (r): BereavementAssessmentTaskView => ({
+            taskId: r.id,
+            planId: r.planId,
+            contactId: r.bereavedContactId,
+            taskKind: r.taskKind,
+            status: r.status,
+            dueAt: iso(r.dueAt) as IsoInstant,
+            lateGraceUntil: iso(r.lateGraceUntil) as IsoInstant,
+            completedAt: isoN(r.completedAt) as IsoInstant | null,
+            completedByMembershipId: (r.completedByMembershipId ?? null) as MembershipId | null,
+            riskScoreId: (r.riskScoreId ?? null) as BereavementAssessmentTaskView["riskScoreId"],
+            assigneeUserId: (r.assigneeUserId ?? null) as MembershipId | null,
+            version: r.version,
+          }),
+        ),
+        redactedCategories: gate.redactedCategories,
+      };
     },
 
     // ── 30 — the counselor's own caseload + what is coming due ───────────────────────────────────────

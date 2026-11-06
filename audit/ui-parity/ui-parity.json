@@ -1032,6 +1032,14 @@
       "app": "web",
       "module": "16-bereavement",
       "moduleId": 16,
+      "id": "bereavement.predeath",
+      "path": "/bereavement/pre-death/:admissionId",
+      "permission": "bereavement.assessment_draft.read"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
       "id": "bereavement.contact",
       "path": "/bereavement/plans/:planId/contacts/:contactId",
       "permission": "bereavement.plan.read"

@@ -9,8 +9,11 @@
 // tsc still type-checks this file (it is inside the module's compilation), so the pins are enforced.
 import type { Static } from "@sinclair/typebox";
 import type { CursorPage } from "./concurrency";
+import type { PreDeathDraftView as SvcPreDeathDraftView } from "./draft-service";
+import type { PhysicianLetterView as SvcPhysicianLetterView } from "./letter-service";
 import type {
   BereavedContactRowViewResponseSchema,
+  BereavementAssessmentTaskListResponseSchema,
   BereavementClosureViewResponseSchema,
   BereavementContactLogViewResponseSchema,
   BereavementOutreachPageResponseSchema,
@@ -21,12 +24,16 @@ import type {
   BereavementRiskScorePageResponseSchema,
   BereavementRiskScoreViewResponseSchema,
   CounselorDashboardViewResponseSchema,
+  PhysicianLetterPageResponseSchema,
+  PhysicianLetterViewResponseSchema,
   PlanActivationViewResponseSchema,
+  PreDeathDraftViewResponseSchema,
   ScheduleRegenerationViewResponseSchema,
   SupervisorDashboardViewResponseSchema,
 } from "./m16-typebox";
 import type {
   BereavedContactRowView as SvcBereavedContactRowView,
+  BereavementAssessmentTaskList as SvcBereavementAssessmentTaskList,
   BereavementClosureView as SvcBereavementClosureView,
   BereavementOutreachRowView as SvcBereavementOutreachRowView,
   BereavementPlanDetail as SvcBereavementPlanDetail,
@@ -98,4 +105,20 @@ type _OutreachPage = Conforms<
 type _RiskScorePage = Conforms<
   Static<typeof BereavementRiskScorePageResponseSchema>,
   CursorPage<SvcBereavementRiskScoreView>
+>;
+type _AssessmentTasks = Conforms<
+  Static<typeof BereavementAssessmentTaskListResponseSchema>,
+  SvcBereavementAssessmentTaskList
+>;
+type _PreDeathDraft = Conforms<
+  Static<typeof PreDeathDraftViewResponseSchema>,
+  SvcPreDeathDraftView
+>;
+type _PhysicianLetter = Conforms<
+  Static<typeof PhysicianLetterViewResponseSchema>,
+  SvcPhysicianLetterView
+>;
+type _PhysicianLetterPage = Conforms<
+  Static<typeof PhysicianLetterPageResponseSchema>,
+  CursorPage<SvcPhysicianLetterView>
 >;

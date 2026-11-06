@@ -31,6 +31,7 @@ import {
 import {
   CLOSURE_REASON_TONE,
   anniversaryMarkLabel,
+  cadenceMarkLabel,
   dateTime,
   humanize,
   outreachKindLabel,
@@ -220,7 +221,10 @@ function buildTimeline(
 
   // ── touchpoints ──
   for (const o of outreach) {
-    const label = `${outreachKindLabel(o.kind)}${o.anniversaryMark ? ` (${anniversaryMarkLabel(o.anniversaryMark)})` : ""}`;
+    const mark = cadenceMarkLabel(o.cadenceMark);
+    const label = mark
+      ? `${mark} · ${outreachKindLabel(o.kind)}`
+      : `${outreachKindLabel(o.kind)}${o.anniversaryMark ? ` (${anniversaryMarkLabel(o.anniversaryMark)})` : ""}`;
     push(o.startedAt, "Touchpoint", "Started", `${label} — ${nameOf(o.contactId)}`);
     push(
       o.completedAt,

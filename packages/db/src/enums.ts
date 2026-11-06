@@ -2231,6 +2231,10 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   "spiritual_plan",
   "volunteer_plan",
   "bereavement_letter",
+  // ADR-0109 D6 / D9 (mig 1347) — M16's two INTERNAL bereavement documents, each its own type so the read path can refuse them
+  // by aggregate type (the portal allowlist never lists them, and the §4.7 caseload rule never admits them).
+  "bereavement_physician_letter", // the approved condolence letter to the internal attending clinician
+  "bereavement_discharge_summary", // the internal discharge summary an auditor reads at closure
   "visit_confirmation",
   "evv_verification",
   "patient_amendment_statement_of_disagreement",
@@ -2734,11 +2738,13 @@ export const bereavementPlanClosureReason = pgEnum("bereavement_plan_closure_rea
 ]);
 
 /** `bereavement_opt_out_kind` — D9 per-contact opt-out granularity. Only `full` closes the contact;
- *  `channel_specific` restricts modalities and `pause_temporarily` suspends without closing. */
+ *  `channel_specific` restricts modalities, `pause_temporarily` suspends without closing, and
+ *  `no_mailings` (migration 1340, ADR-0109) stops mailings while calls and visits continue. */
 export const bereavementOptOutKind = pgEnum("bereavement_opt_out_kind", [
   "full",
   "channel_specific",
   "pause_temporarily",
+  "no_mailings",
 ]);
 
 /** `bereavement_plan_pause_kind` — the §2.2 pause taxonomy. A pause cancels future-scheduled outreach;

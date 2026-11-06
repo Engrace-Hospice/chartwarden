@@ -23,6 +23,7 @@ import type {
   BereavementRiskEvidence,
   BereavementScoredResult,
   DerivedRiskFactors,
+  ManualRiskFactors,
 } from "@chartwarden/bereavement";
 import {
   DETERMINISTIC_AUGMENTATION_COLUMNS,
@@ -104,6 +105,11 @@ export interface RiskFactorsJsonb {
   readonly deterministicTier: BereavementRiskTier;
   /** True when a seam was unreadable, so the `unknown`s are an outage rather than an unasked question. */
   readonly evidenceDegraded: boolean;
+  /**
+   * ADR-0109 D5 — the human-stated factors this vector was merged with ("true wins"). STICKY: the next score for the same
+   * subject starts from them, so an automatic recompute never forgets what an assessor recorded. Not part of any read DTO.
+   */
+  readonly manualFactors: ManualRiskFactors;
 }
 
 /** The INSERT payload for one immutable `bereavement_risk_score` row (§3.3.3 column names). */
@@ -179,6 +185,7 @@ export function computeDeterministicRisk(
       amendmentReason: request.amendmentReason ?? null,
       deterministicTier: scored.tier,
       evidenceDegraded,
+      manualFactors: evidence.manualFactors ?? {},
     },
     // The Layer-2 columns start empty on EVERY row; `augmentation.ts` is the only writer, and only after
     // the `ai.full` ladder clears. `score_kind` is the deterministic discriminator until then.

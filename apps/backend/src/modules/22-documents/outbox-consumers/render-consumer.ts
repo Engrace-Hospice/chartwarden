@@ -173,6 +173,15 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     templateKeyField: "templateKey",
     contentField: "payloadJsonb",
   },
+  // ADR-0109 D6 / D9 — M16's two plan-level documents behind ONE event. The aggregate is `aggregateId` (the letter, or the
+  // closure) — the body field the catalog pins, and the row M16's back-ref consumer stamps. The payload names its own template
+  // (`bereavement_physician_condolence_letter` | `bereavement_discharge_summary_internal`), and `payloadJsonb` is the typed render
+  // payload; both templates are internal-only, so their aggregate types are never patient-facing.
+  "m16.bereavement.document_requested": {
+    aggregateIdFields: ["aggregateId"],
+    templateKeyField: "templateKey",
+    contentField: "payloadJsonb",
+  },
   // M20 §4.10 — "M22's renderer consumes it; M20 ships no PDF code". `renderTargetKind` is a literal
   // `"pdf"`, so it discriminates nothing and the key is fixed.
   "m20.safety.incident_report_requested": {
@@ -696,6 +705,18 @@ export interface DocumentRequestConsumerDeps {
     readonly templateKey: string;
     readonly content: Record<string, unknown>;
   }) => Promise<{ readonly detail: string } | null>;
+  /**
+   * Late-bound content: runs right before the render (never on an idempotent re-delivery) and returns the content the renderer draws.
+   * It is how a producer keeps a SEALED field off the outbox (ADR-0109 D6: the physician letter's personal note): the request carries
+   * ids only and the composition root binds a port that opens the field with the producer's own cipher. M22 imports no producer, so the
+   * port is the whole contract. A throw is a delivery failure (retry-then-DLQ); the content is never stored by M22.
+   */
+  readonly resolveRenderContent?: (request: {
+    readonly organizationId: string;
+    readonly templateKey: string;
+    readonly aggregateId: string;
+    readonly content: Record<string, unknown>;
+  }) => Promise<Record<string, unknown>>;
   /** Template table override (tests); defaults to the T04 published table. */
   readonly templates?: Readonly<Record<string, TemplateDescriptor>>;
   /**
@@ -902,8 +923,15 @@ export function buildM22DocumentRequestConsumer(
           // NOR rendered under its ADMISSION's id and `notice_of_rights_acknowledgment.document_id` could
           // never be stamped. The document existed, addressed to the wrong row, which is the one failure
           // mode a back-ref cannot recover from.
+          const content =
+            (await deps.resolveRenderContent?.({
+              organizationId: payload.organizationId,
+              templateKey: render.templateKey,
+              aggregateId: render.aggregateId,
+              content: render.content,
+            })) ?? render.content;
           await renderer().render({ orgId: payload.organizationId }, render.templateKey, {
-            ...render.content,
+            ...content,
             aggregateId: render.aggregateId,
             patientId: render.patientId,
             ...(render.title ? { title: render.title } : {}),

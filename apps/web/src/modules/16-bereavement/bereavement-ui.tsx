@@ -8,7 +8,9 @@
 // mode is automatic.
 import { Modal as SharedModal, StatusPill, t } from "@chartwarden/ui";
 import type { StatusTone } from "@chartwarden/ui";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
+import { idemKey } from "./bereavement-api";
 import { RISK_TIER_GLYPH, RISK_TIER_TONE, humanize, toneOf } from "./bereavement-status";
 
 // ── No-Line table (§6.7): no vertical rules, a hairline row separator, uppercase micro-heads ───────────
@@ -86,7 +88,16 @@ export const sectionTitleStyle: CSSProperties = {
   color: t.onSurface,
 };
 export const mutedStyle: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant };
-export const alertStyle: CSSProperties = { margin: 0, fontSize: "0.82rem", color: t.error };
+const alertStyle: CSSProperties = { margin: 0, fontSize: "0.82rem", color: t.error };
+
+/** The shared error line. `role="alert"` so a failure that appears after a click is announced, not just painted red. */
+export function ErrorText({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <p role="alert" style={alertStyle}>
+      {children}
+    </p>
+  );
+}
 export const linkStyle: CSSProperties = {
   fontSize: "0.8rem",
   color: t.primary,
@@ -239,11 +250,13 @@ export function SelectField({
   value,
   options,
   onChange,
+  disabled,
 }: {
   label: string;
   value: string;
   options: readonly { value: string; label: string }[];
   onChange: (v: string) => void;
+  disabled?: boolean;
 }): JSX.Element {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
@@ -252,6 +265,7 @@ export function SelectField({
       </span>
       <select
         aria-label={label}
+        disabled={disabled}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="wx-select"
@@ -274,6 +288,7 @@ export function TextField({
   type = "text",
   placeholder,
   describedBy,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -281,6 +296,7 @@ export function TextField({
   type?: "text" | "number" | "date" | "datetime-local" | "email" | "tel";
   placeholder?: string;
   describedBy?: string;
+  maxLength?: number;
 }): JSX.Element {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
@@ -290,6 +306,7 @@ export function TextField({
         aria-describedby={describedBy}
         type={type}
         value={value}
+        maxLength={maxLength}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         style={inputStyle}
@@ -362,25 +379,43 @@ export function CheckboxField({
 
 /** The §5.1 modal shell — backdrop + dialog + footer actions. Every M16 ceremony reuses it. Delegates
  * to `@chartwarden/ui`'s focus-trapped `Modal` (UI-005) for the scrim, Escape-to-close, and focus
- * trap/restore, keeping this call-site's `{title, onClose, footer, children}` shape unchanged. */
+ * trap/restore, keeping this call-site's `{title, onClose, footer, children}` shape unchanged.
+ *
+ * `busy` (a write is in flight) makes the dialog undismissable by Cancel, Escape and the scrim: closing it would orphan
+ * the request and its outcome. `dirty` (typed text the reader would lose) only stops a stray scrim click. */
 export function Modal({
   title,
   onClose,
   footer,
   children,
+  busy = false,
+  dirty = false,
 }: {
   title: string;
   onClose: () => void;
   footer: ReactNode;
   children: ReactNode;
+  busy?: boolean;
+  dirty?: boolean;
 }): JSX.Element {
   return (
-    <SharedModal open onClose={onClose} ariaLabel={title} width="34rem">
+    <SharedModal
+      open
+      onClose={busy ? undefined : onClose}
+      dismissOnScrim={!busy && !dirty}
+      ariaLabel={title}
+      width="34rem"
+    >
       <div style={{ display: "flex", flexDirection: "column", gap: t.space4, padding: t.space5 }}>
         <h2 style={modalTitleStyle}>{title}</h2>
         {children}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: t.space2 }}>
-          <button type="button" onClick={onClose} style={ghostButtonStyle}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            style={busy ? disabledButtonStyle : ghostButtonStyle}
+          >
             Cancel
           </button>
           {footer}
@@ -388,6 +423,71 @@ export function Modal({
       </div>
     </SharedModal>
   );
+}
+
+/**
+ * A permanently mounted polite live region for an outcome message. It stays in the page when empty (visually hidden, so it
+ * takes no room) because a live region that is inserted together with its text is often not announced.
+ */
+export function StatusLine({
+  message,
+  tone = "success",
+}: { message: string; tone?: "info" | "warning" | "error" | "success" }): JSX.Element {
+  return (
+    <div aria-live="polite" style={message ? undefined : visuallyHidden}>
+      {message ? <Notice tone={tone}>{message}</Notice> : null}
+    </div>
+  );
+}
+
+/**
+ * One `Idempotency-Key` per write attempt. `keyFor(fingerprint)` hands back the SAME key while the request (version +
+ * body, as a string) is unchanged, so a retry after a lost response dedupes server-side; an edited request gets
+ * a new key. `settle(status)` forgets the key whenever the server answered at all — the idempotency plugin replays any
+ * stored answer, a 5xx included, so keeping the key would replay the failure; only a lost response (status 0) keeps it.
+ */
+export function useIdempotencyKey(): {
+  keyFor: (fingerprint: string) => string;
+  settle: (status: number) => void;
+} {
+  const slot = useRef<{ fingerprint: string; key: string } | null>(null);
+  const keyFor = useCallback((fingerprint: string): string => {
+    if (slot.current?.fingerprint !== fingerprint) slot.current = { fingerprint, key: idemKey() };
+    return slot.current.key;
+  }, []);
+  const settle = useCallback((status: number): void => {
+    if (status !== 0) slot.current = null;
+  }, []);
+  return { keyFor, settle };
+}
+
+/**
+ * A permanently mounted polite status line for the outcome of an action, which can also take focus. After a successful
+ * action the trigger often no longer exists (a confirmed contact has no Confirm button), and a closed modal restores
+ * focus to it, dropping the keyboard user on <body>: `announce` says what happened and moves focus here instead.
+ * Empty it is visually hidden (the live region stays in the page so the next message is announced).
+ */
+export function useActionStatus(): {
+  announce: (message: string) => void;
+  region: JSX.Element;
+} {
+  const [message, setMessage] = useState("");
+  const [focusRequests, setFocusRequests] = useState(0);
+  const ref = useRef<HTMLOutputElement>(null);
+  // An effect, not a direct call: it runs after the closing modal's cleanup has restored (and lost) focus.
+  useEffect(() => {
+    if (focusRequests > 0) ref.current?.focus();
+  }, [focusRequests]);
+  const announce = useCallback((next: string): void => {
+    setMessage(next);
+    setFocusRequests((n) => n + 1);
+  }, []);
+  const region = (
+    <output ref={ref} tabIndex={-1} style={message ? mutedStyle : visuallyHidden}>
+      {message}
+    </output>
+  );
+  return { announce, region };
 }
 
 /**

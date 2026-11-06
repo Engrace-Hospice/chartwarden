@@ -1,3 +1,4 @@
+import { COSIGN_REQUIRED_CLOSURE_REASONS } from "@chartwarden/bereavement";
 // apps/backend/src/modules/16-bereavement/erasers/bereavement-eraser.ts — M16-T06, the
 // `bereavement_record` data eraser (M16 spec §8.5; M4 destruction-cert workflow).
 //
@@ -31,8 +32,12 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { DataEraser } from "@chartwarden/types";
 import { eq, inArray, lt, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
+import { EMPTY_DRAFT_FACTORS } from "../lifecycle/pre-death-draft";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+
+/** What replaces a narrative that a CHECK constraint forbids from being NULL (at least 40 characters, free of any survivor's words). */
+const DESTROYED_NARRATIVE = "[narrative destroyed under a destruction certificate]";
 
 /** The per-table counts a bereavement-record destruction removed (recorded on the cert, §8.5). */
 export interface BereavementEraseCounts {
@@ -46,6 +51,12 @@ export interface BereavementEraseCounts {
   readonly outreach: number;
   /** `bereavement_anniversary_reminder` rows deleted. */
   readonly anniversaryReminders: number;
+  /** `bereavement_assessment_task` rows deleted (ADR-0109 D3). */
+  readonly assessmentTasks: number;
+  /** `bereavement_risk_assessment_draft` rows deleted (ADR-0109 D5 — keyed on the patient, not on a plan). */
+  readonly assessmentDrafts: number;
+  /** `bereavement_physician_letter` rows deleted (ADR-0109 D6). */
+  readonly physicianLetters: number;
   /** `bereaved_contact` rows deleted. */
   readonly contacts: number;
   /** `bereavement_plan` roots tombstoned (rows PRESERVED for FK integrity — not part of the tally). */
@@ -107,6 +118,9 @@ export async function eraseBereavementRecord(
     counts.optOuts +
     counts.outreach +
     counts.anniversaryReminders +
+    counts.assessmentTasks +
+    counts.assessmentDrafts +
+    counts.physicianLetters +
     counts.contacts;
   return { erased, shredded, counts };
 }
@@ -117,6 +131,9 @@ const ZERO: BereavementEraseCounts = {
   optOuts: 0,
   outreach: 0,
   anniversaryReminders: 0,
+  assessmentTasks: 0,
+  assessmentDrafts: 0,
+  physicianLetters: 0,
   contacts: 0,
   plansTombstoned: 0,
   closuresShredded: 0,
@@ -167,6 +184,9 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
   const SCORE = schema.bereavementRiskScore;
   const OPT_OUT = schema.bereavementOptOut;
   const REMINDER = schema.bereavementAnniversaryReminder;
+  const TASK = schema.bereavementAssessmentTask;
+  const DRAFT = schema.bereavementRiskAssessmentDraft;
+  const LETTER = schema.bereavementPhysicianLetter;
   const CLOSURE = schema.bereavementPlanClosure;
 
   /** The decedent's plan-root ids — every child table is keyed on `plan_id`, not on the patient. */
@@ -185,8 +205,14 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
 
     async shredPhiColumns(organizationId, patientId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        // ADR-0109 D5 — a pre-death draft exists BEFORE any plan, so it is shredded whether or not a plan was ever opened.
+        const drafts = await tx
+          .update(DRAFT)
+          .set({ factorsJsonb: EMPTY_DRAFT_FACTORS })
+          .where(eq(DRAFT.patientId, patientId))
+          .returning({ id: DRAFT.id });
         const planIds = await planIdsFor(tx, patientId);
-        if (planIds.length === 0) return 0;
+        if (planIds.length === 0) return drafts.length;
 
         const contacts = await tx
           .update(CONTACT)
@@ -194,6 +220,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
             emailCipher: null,
             phoneCipher: null,
             mailingAddressCipher: null,
+            careGoalsCipher: null,
             ineligibleReasonRedacted: null,
           })
           .where(inArray(CONTACT.planId, planIds))
@@ -204,6 +231,13 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
           .set({ contactNotesCipher: null })
           .where(inArray(LOG.planId, planIds))
           .returning({ id: LOG.id });
+
+        // ADR-0109 D6 — the reviewer's sealed note and the decline reason (the row's CHECK lets a declined letter's reason be NULL).
+        const letters = await tx
+          .update(LETTER)
+          .set({ personalNoteCipher: null, declineReasonRedacted: null })
+          .where(inArray(LETTER.planId, planIds))
+          .returning({ id: LETTER.id });
 
         // The score ledger is APPEND-ONLY and the M4 trigger refuses UPDATE on it in normal operation;
         // the destruction path is the one privileged writer, and it empties the factor vector rather than
@@ -232,14 +266,18 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
           .set({
             pauseReasonRedacted: null,
             ipocBereavementIntentSummaryRedacted: null,
-            earlyCloseNarrativeRedacted: null,
+            // A pending early-close request is all-or-none (`berv_plan_early_close_request_all_or_none`): a NULL narrative beside a
+            // reason would violate the CHECK and abort the destruction, so the narrative is overwritten, not nulled, while one is pending.
+            earlyCloseNarrativeRedacted: sql`CASE WHEN ${PLAN.earlyCloseReason} IS NULL THEN NULL ELSE ${DESTROYED_NARRATIVE} END`,
           })
           .where(inArray(PLAN.id, planIds))
           .returning({ id: PLAN.id });
 
         return (
+          drafts.length +
           contacts.length +
           logs.length +
+          letters.length +
           scores.length +
           optOuts.length +
           outreach.length +
@@ -250,15 +288,27 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
 
     async erasePatientRecords(organizationId, patientId, retentionAsOf) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const planIds = await planIdsFor(tx, patientId);
-        if (planIds.length === 0) return ZERO;
-        const boundary = new Date(retentionAsOf);
         const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
           (await run()).length;
+        // The draft names a risk score (RESTRICT), so it goes before the ledger — and it is deleted even when the
+        // decedent never had a plan (it is keyed on the patient).
+        const assessmentDrafts = await del(() =>
+          tx.delete(DRAFT).where(eq(DRAFT.patientId, patientId)).returning({ id: DRAFT.id }),
+        );
+        const planIds = await planIdsFor(tx, patientId);
+        if (planIds.length === 0) return { ...ZERO, assessmentDrafts };
+        const boundary = new Date(retentionAsOf);
 
-        // FK order: contact_log → risk_score / opt_out → outreach → anniversary_reminder → contact.
+        // FK order: contact_log → assessment_task (names a risk score) → risk_score / opt_out → outreach →
+        // anniversary_reminder → contact.
         const contactLogs = await del(() =>
           tx.delete(LOG).where(inArray(LOG.planId, planIds)).returning({ id: LOG.id }),
+        );
+        const assessmentTasks = await del(() =>
+          tx.delete(TASK).where(inArray(TASK.planId, planIds)).returning({ id: TASK.id }),
+        );
+        const physicianLetters = await del(() =>
+          tx.delete(LETTER).where(inArray(LETTER.planId, planIds)).returning({ id: LETTER.id }),
         );
         const riskScores = await del(() =>
           tx.delete(SCORE).where(inArray(SCORE.planId, planIds)).returning({ id: SCORE.id }),
@@ -285,7 +335,14 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
         // The closure row SURVIVES with its narrative already shredded — the §7.15 survey record.
         const closures = await tx
           .update(CLOSURE)
-          .set({ reasonNarrativeRedacted: null })
+          // The five early-close reasons carry a 40-character narrative floor (`berv_closure_early_requires_narrative`): the narrative is
+          // overwritten with a fixed placeholder for them and nulled for every other reason, so the row survives its own CHECK.
+          .set({
+            reasonNarrativeRedacted: sql`CASE WHEN ${CLOSURE.reason} IN (${sql.join(
+              COSIGN_REQUIRED_CLOSURE_REASONS.map((reason) => sql`${reason}`),
+              sql`, `,
+            )}) THEN ${DESTROYED_NARRATIVE} ELSE NULL END`,
+          })
           .where(inArray(CLOSURE.planId, planIds))
           .returning({ id: CLOSURE.id });
 
@@ -308,6 +365,9 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
           optOuts,
           outreach,
           anniversaryReminders,
+          assessmentTasks,
+          assessmentDrafts,
+          physicianLetters,
           contacts,
           plansTombstoned: tombstoned.length,
           closuresShredded: closures.length,

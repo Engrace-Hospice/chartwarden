@@ -72,6 +72,7 @@ import {
   ACK_ESCALATION_REQUIRED_ROLE,
   ALARM_INGEST_IP_BUDGET_PER_MINUTE,
   ALARM_INGEST_SOURCE_BUDGET_PER_MINUTE,
+  BEREAVEMENT_PHYSICIAN_CONDOLENCE_TEMPLATE_KEY,
   ChartWardenError,
   DegradedError,
   type Npi,
@@ -805,6 +806,8 @@ import {
   M16_OUTBOX_EVENTS,
   M16_PLATFORM_JOB_ID,
   buildDrizzleBereavementAbacResolver,
+  buildDrizzleM16DraftService,
+  buildDrizzleM16LetterService,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
   buildM16BereavementIntakeConsumer,
@@ -820,6 +823,7 @@ import {
   createBereavementCipher,
   createDrizzleBereavementEraseStore,
   createDrizzleBereavementSeamStore,
+  createM16AlertPort,
   denyStubBereavementAbacResolver,
   mountM16Routes,
   registerBereavementAbacPredicates,
@@ -830,6 +834,7 @@ import {
   wireM16Tenancy,
 } from "./modules/16-bereavement/index";
 import { bereavementCensusForOrg } from "./modules/16-bereavement/seams/bereavement-census-for-org";
+import { physicianLetterNoteForOrg } from "./modules/16-bereavement/seams/physician-letter-note-for-org";
 // F-161 (#248) — M16's org-explicit bereavement-plan-siting seam, injected as a port into M30's
 // plan-closure consumer (M30's manifest `dependsOn` excludes 16, the F-160 `CapConsumerStore` shape).
 import {
@@ -2220,6 +2225,25 @@ export function wireModuleSeams(
           roleGrants: createDbEffectivePermissionStore(deps.db),
         })
       : denyStubBereavementAbacResolver,
+    // ADR-0109 D5 — `bereavement_pre_death_assessor`: an admission resolves to its patient through M6's
+    // `AdmissionStatusReader`, and the caller's seat on that patient's care team through M5's `CareTeamProvider`
+    // (user-id space). Both are org-explicit seam reads resolved lazily per call; the predicate denies on any throw.
+    preDeathAssessor: {
+      async patientOfAdmission(organizationId, admissionId) {
+        const care = await getSeam("AdmissionStatusReader").getAdmissionPatientCare(
+          organizationId,
+          admissionId as never,
+        );
+        return care === null ? null : care.patientId;
+      },
+      async isOnCareTeam(organizationId, patientId, userId) {
+        const members = await getSeam("CareTeamProvider").careTeamMembers({
+          organizationId,
+          patientId,
+        });
+        return members.includes(userId);
+      },
+    },
     // §4.8's volunteer clause resolves through M15's published `VolunteerComplianceProvider` — the ONE
     // 42 CFR §418.78 gate implementation on the platform. Resolved lazily per call, fail-CLOSED on throw.
     volunteerGatesSatisfied: async ({ organizationId, volunteerMembershipId }) => {
@@ -3051,8 +3075,9 @@ export function wireModuleErasers(
   // tombstones the plan root for FK integrity. The `bereavement_plan_closure` row SURVIVES with its
   // narrative shredded — §7.15 survey reconstruction — and the org-scoped external-source gate override is
   // tenant config that is never touched, §8.5). The Drizzle store binds when a DB client is present;
-  // without one the slice's in-memory store stands.
-  registerBereavementErasers(deps.db ? { store: createDrizzleBereavementEraseStore(deps.db) } : {});
+  // without one the slice's in-memory store stands. Bound over `eraseDb` (migration 1348 grants the destruction
+  // role what the shred and delete passes run; the app role has no DELETE and may not touch the immutable score ledger).
+  registerBereavementErasers(eraseDb ? { store: createDrizzleBereavementEraseStore(eraseDb) } : {});
   registerIdgErasers(eraseDb ? { store: createDrizzleIdgEraseStore(eraseDb) } : {}); // M14 — `idg_record` (patient-scoped rows; meetings/minutes survive, minutes hash-redacted)
   // M22 — `documents`. With the MINIO_* env contract the erase destroys real object versions via
   // the SigV4 adapter (task-15); without it, object destruction refuses via DegradedError BEFORE
@@ -6559,16 +6584,22 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // sympathy-letter render handshake (`m16.bereavement.outreach_artifact_requested`) reaches M22.
           // The write service takes the READ service so every plan-shaped mutation answers with the SAME
           // projection route 2 serves (one DTO, one disclosure gate, no drift).
-          const m16ReadService = buildDrizzleM16ReadService(dbHandle.db);
+          // GAP-129 / ADR-0109 — ONE tenant-DEK envelope (M34 key ring, resolved lazily like every other cipher below) for a
+          // contact's email / phone / mailing address / care goals and a counselor's notes: the write service seals with
+          // it and the read service opens the care goals with it.
+          const m16Cipher = createBereavementCipher({
+            dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+            dekForOrgVersion: (orgId, version) =>
+              getTenantKeyProvider().dekForOrgVersion(orgId, version),
+          });
+          const m16ReadService = buildDrizzleM16ReadService(dbHandle.db, { cipher: m16Cipher });
+          const m16AlertPort = createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter);
           const m16WriteService = buildDrizzleM16WriteService(dbHandle.db, m16ReadService, {
             outbox: m16OutboxPublisher,
-            // GAP-129 — the tenant-DEK envelope (M34 key ring, resolved lazily like every other cipher below) for
-            // a contact's email / phone / mailing address and a counselor's notes.
-            cipher: createBereavementCipher({
-              dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
-              dekForOrgVersion: (orgId, version) =>
-                getTenantKeyProvider().dekForOrgVersion(orgId, version),
-            }),
+            // ADR-0109 D7 — M16 alerts ride the M36 AlertEmitter seam (routed kinds only; see alert-port.ts).
+            alerts: m16AlertPort,
+            // GAP-129 — the tenant-DEK envelope (shared with the read service above).
+            cipher: m16Cipher,
             // D6 — the confirm-contact consent gate. M39 answers over its published ConsentEvaluator seam
             // (the Drizzle store, read under withOrgContext for the caller's org): the contact's OWN
             // `bereavement_outreach_consent` record, pinned by id, and whether a survives-death
@@ -6579,6 +6610,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           mountM16Routes(app, {
             readService: m16ReadService,
             writeService: m16WriteService,
+            // ADR-0109 D5 — the pre-death draft reads M6's admission (patient + siting) and M39's Part 2 verdict
+            // through the seam registry, resolved per call.
+            draftService: buildDrizzleM16DraftService(dbHandle.db),
+            // ADR-0109 D6 — the physician condolence letter review queue; approval emits `m16.bereavement.document_requested`
+            // on its own transaction and seals the reviewer's note with the same tenant-DEK envelope.
+            letterService: buildDrizzleM16LetterService(dbHandle.db, {
+              outbox: m16OutboxPublisher,
+              cipher: m16Cipher,
+            }),
           });
           // M21 (Supplies, DME & Comfort Kits) — mount the §4.1 route plugins over the Drizzle READ +
           // WRITE services. Every read opens its own withOrgContext (RLS scopes each statement to
@@ -6878,6 +6918,60 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   );
                 }
                 return { contactsOptedOut, alreadyOptedOut };
+              },
+            },
+            // ADR-0109 D10 — the mailing preference: stop (or resume) MAILINGS for every contact of the account that is
+            // still in the program. M16's own `no_mailings` opt-out / its rescind — the contact stays active, its calls
+            // continue, and the already-scheduled mailed rows become calls.
+            bereavementMailingPreference: {
+              async setMailingPreference({
+                organizationId,
+                userId,
+                portalAccountId,
+                allowMailings,
+              }) {
+                const scopes = await getSeam("BereavedPortalScopeProvider").scopeForPortalAccount(
+                  organizationId,
+                  portalAccountId as never,
+                );
+                const portalActor = {
+                  organizationId,
+                  userId,
+                  membershipId: null,
+                  roles: [],
+                  sessionClass: "bereaved_portal",
+                  locationIds: [],
+                  portalAccountId,
+                  stepUpRecent: false,
+                };
+                let contactsUpdated = 0;
+                let alreadyInState = 0;
+                for (const scope of scopes) {
+                  // Only a contact still in the program and inside its window has a mailing preference to change.
+                  if (scope.status !== "active" || !scope.inBereavementWindow) continue;
+                  if (scope.mailingsAllowed === allowMailings) {
+                    alreadyInState += 1;
+                    continue;
+                  }
+                  if (allowMailings) {
+                    await m16WriteService.rescindOptOut(portalActor, scope.contactId, {});
+                  } else {
+                    await m16WriteService.optOutContact(portalActor, scope.contactId, {
+                      optOutKind: "no_mailings",
+                      sourceKind: "portal_self_service",
+                      reason: "stopped mailings by the bereaved family member in the portal",
+                    });
+                  }
+                  contactsUpdated += 1;
+                }
+                if (contactsUpdated === 0 && alreadyInState === 0) {
+                  throw new ChartWardenError(
+                    "BEREAVEMENT_MAILING_PREFERENCE_NOT_AVAILABLE",
+                    "there is no bereavement contact on this account whose mailing preference can change right now",
+                    409,
+                  );
+                }
+                return { contactsUpdated, alreadyInState };
               },
             },
             // GAP-092 — the admin audit-views list: the account user's own read / disclosure trail from M4's
@@ -9846,8 +9940,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // months, no outreach was ever marked `missed` (so M30's missed/overdue counts were permanently 0) and no
     // anniversary reminder was ever alerted. Three time-driven queues now produce them (`m16-close-13mo`,
     // `m16-miss-deadline`, `m16-anniversary-lookahead`); each writes its row change + the m16.* outbox event
-    // through the real catalog-validating tx publisher in ONE per-row org tx. `alerts` is left unbound like
-    // M16's routes: the M36 alerts ride the outbox events, and the workers' best-effort alert port is optional.
+    // through the real catalog-validating tx publisher in ONE per-row org tx. `alerts` is the ADR-0109 D7
+    // adapter over the M36 AlertEmitter seam (routed kinds only; an unrouted kind is a no-op).
     const m16ActiveOrgs = buildActiveOrgEnumerator({
       platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
@@ -9859,6 +9953,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       db: dbHandle.db,
       outbox: m16OutboxPublisher,
       activeOrgs: m16ActiveOrgs,
+      alerts: createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter),
     });
     const m16Workers = registerM16CronWorkers(m16WorkerDeps);
     attachDlqAlertsToAll(m16Workers, "m16");
@@ -11741,6 +11836,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM16BereavementIntakeConsumer({
             db: dbHandle.db,
             outbox: m16OutboxPublisher,
+            // ADR-0109 D7 — `death_intake`: the oversight roles are told an `eligible` plan awaits a counselor.
+            alerts: createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter),
+            // ADR-0109 D6 — the plan-opening delivery also creates the physician condolence letter, addressed to the care team's
+            // attending when M5 resolves one (else the reviewer picks an internal clinician at approval).
+            resolveAttendingUserId: (organizationId, patientId) =>
+              getSeam("CareTeamProvider").attendingUserId({ organizationId, patientId }),
             resolveAdmission: async (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),
@@ -11762,6 +11863,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM16DischargeDeathSecondaryConsumer({
             db: dbHandle.db,
             outbox: m16OutboxPublisher,
+            alerts: createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter),
+            // ADR-0109 D6 — the plan-opening delivery also creates the physician condolence letter, addressed to the care team's
+            // attending when M5 resolves one (else the reviewer picks an internal clinician at approval).
+            resolveAttendingUserId: (organizationId, patientId) =>
+              getSeam("CareTeamProvider").attendingUserId({ organizationId, patientId }),
             resolveAdmission: async (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),
@@ -12653,6 +12759,22 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // GAP-036 - the appeal packet re-verifies every enclosure it names (still visible, active, not Part 2)
             // at render time: a document can change class between submit and render.
             renderGuard: buildAppealPacketRenderGuard(() => getSeam("DocumentReader")),
+            // ADR-0109 D6 - the physician condolence letter's personal note is sealed in M16 and NEVER rides the outbox (a plaintext copy
+            // the eraser cannot reach): M22 pulls it here at render time and merges it into the content the template draws.
+            resolveRenderContent: async ({ organizationId, templateKey, aggregateId, content }) => {
+              if (templateKey !== BEREAVEMENT_PHYSICIAN_CONDOLENCE_TEMPLATE_KEY) return content;
+              const note = await physicianLetterNoteForOrg(
+                dbHandle.db,
+                createBereavementCipher({
+                  dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+                  dekForOrgVersion: (orgId, version) =>
+                    getTenantKeyProvider().dekForOrgVersion(orgId, version),
+                }),
+                organizationId,
+                aggregateId,
+              );
+              return { ...content, personalNote: note };
+            },
             // A gate refusal is a settled decision, not a delivery failure — the row completes, so without
             // this sink a refused SUD/BAA render would be silent. Not the DLQ path (that is a throw).
             onRefusal: (r) =>

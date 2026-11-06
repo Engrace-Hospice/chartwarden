@@ -76,7 +76,12 @@ function delivered(over: Partial<DispatchableOutboxEvent> = {}): DispatchableOut
 
 /** The consumer over in-memory ports, plus handles on what it produced. */
 function harness(
-  opts: { templates?: Parameters<typeof createDocumentRenderer>[0]["templates"] } = {},
+  opts: {
+    templates?: Parameters<typeof createDocumentRenderer>[0]["templates"];
+    resolveRenderContent?: Parameters<
+      typeof buildM22DocumentRequestConsumer
+    >[0]["resolveRenderContent"];
+  } = {},
 ) {
   const { store } = createInMemoryDocumentSeamStore();
   const objects = createInMemoryObjectStore();
@@ -96,6 +101,7 @@ function harness(
       },
     }),
     onRefusal: (r) => refusals.push({ kind: r.kind, detail: r.detail }),
+    ...(opts.resolveRenderContent ? { resolveRenderContent: opts.resolveRenderContent } : {}),
     ...(opts.templates ? { templates: opts.templates } : {}),
   });
   return { consumer, store, objects, rendered, refusals };
@@ -666,6 +672,8 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       // F-099 — six that were emitted from production write paths and drained by nothing.
       "m10.hope.summary_requested",
       "m16.bereavement.outreach_artifact_requested",
+      // ADR-0109 D6 / D9 — the approved physician condolence letter and the internal discharge summary.
+      "m16.bereavement.document_requested",
       "m20.safety.incident_report_requested",
       "m25.appeal_packet.render_requested",
       "m25.adr_packet.render_requested",
@@ -1057,5 +1065,66 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       organizationId: ORG,
     });
     expect(doc).not.toBeNull();
+  });
+  // ADR-0109 D6 — a producer keeps a sealed field off the outbox; the bound port supplies it at render time (never stored by M22).
+  it("merges late-bound content into the render, resolved identity still winning", async () => {
+    const calls: { templateKey: string; aggregateId: string }[] = [];
+    const h = harness({
+      resolveRenderContent: async ({ templateKey, aggregateId, content }) => {
+        calls.push({ templateKey, aggregateId });
+        return {
+          ...content,
+          personalNote: "Thank you for walking this family home.",
+          aggregateId: "x",
+        };
+      },
+    });
+    await h.consumer.handle(
+      delivered({
+        eventType: "m16.bereavement.document_requested",
+        aggregateKind: "bereavement_physician_letter",
+        aggregateId: DISPATCH,
+        payload: {
+          planId: ORDER,
+          patientId: PAT,
+          documentKind: "physician_condolence_letter",
+          aggregateId: DISPATCH,
+          templateKey: "bereavement_physician_condolence_letter",
+          payloadJsonb: { deathDate: "2026-11-01" },
+        },
+      }),
+    );
+    expect(calls).toEqual([
+      { templateKey: "bereavement_physician_condolence_letter", aggregateId: DISPATCH },
+    ]);
+    expect(h.rendered[0]?.payload).toMatchObject({
+      deathDate: "2026-11-01",
+      personalNote: "Thank you for walking this family home.",
+      aggregateId: DISPATCH,
+    });
+  });
+
+  it("does not resolve content again on an idempotent re-delivery", async () => {
+    let resolved = 0;
+    const h = harness({
+      resolveRenderContent: async ({ content }) => {
+        resolved += 1;
+        return content;
+      },
+    });
+    await h.consumer.handle(delivered());
+    await h.consumer.handle(delivered());
+    expect(resolved).toBe(1);
+    expect(h.rendered).toHaveLength(1);
+  });
+
+  it("a throwing resolver is a delivery failure: nothing is rendered", async () => {
+    const h = harness({
+      resolveRenderContent: async () => {
+        throw new Error("note unreadable");
+      },
+    });
+    await expect(h.consumer.handle(delivered())).rejects.toThrow("note unreadable");
+    expect(h.rendered).toHaveLength(0);
   });
 });

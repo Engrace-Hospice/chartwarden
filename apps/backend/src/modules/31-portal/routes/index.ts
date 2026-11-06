@@ -35,7 +35,11 @@ export { parse, parseQuery } from "./portal-typebox";
 import type { M31EventEmitter } from "../events";
 import type { PortalReasonCipher, PortalRoomCipher } from "../portal-crypto";
 import type { PortalProvisioning } from "../provisioning";
-import type { PortalAccountAuditPort, PortalBereavementOptOutPort } from "../provisioning/types";
+import type {
+  PortalAccountAuditPort,
+  PortalBereavementMailingPreferencePort,
+  PortalBereavementOptOutPort,
+} from "../provisioning/types";
 import type { PortalSignInPort } from "../sign-in";
 import type { M17VisitRoomReaderPort } from "../telehealth/room-mint";
 import type { PortalStore } from "./store";
@@ -113,6 +117,8 @@ export interface PortalRouteDeps {
   readonly provisioning?: PortalProvisioning;
   /** GAP-092 — M16's self-service opt-out (a bereaved family member's own D9 opt-out). ABSENT ⇒ 503. */
   readonly bereavementOptOut?: PortalBereavementOptOutPort;
+  /** ADR-0109 D10 — M16's mailing preference (stop / resume MAILINGS only; calls continue). ABSENT ⇒ 503. */
+  readonly bereavementMailingPreference?: PortalBereavementMailingPreferencePort;
   /** GAP-092 — M4's read trail for the admin audit-views list. ABSENT ⇒ 503. */
   readonly accountAudit?: PortalAccountAuditPort;
   /**
