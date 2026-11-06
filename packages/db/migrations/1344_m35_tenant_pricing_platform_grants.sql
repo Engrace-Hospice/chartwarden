@@ -11,6 +11,7 @@
 --   subscription_contract             INSERT, and UPDATE of the billing service mode alone (the guard trigger also freezes the rest)
 --   patient_census_daily              the daily census snapshot (INSERT, UPDATE: the latest observation of a day wins)
 --   subscription_statement            the monthly statement (INSERT, UPDATE: a draft is recomputed; a final row is frozen by its trigger)
+--   role (columns category, system_default)  the staff meter tells the SYSTEM auditor role (system_default) from a tenant's look-alike
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_platform') THEN
     GRANT SELECT ON "plan_census_band", "subscription_contract", "patient_census_daily", "subscription_statement" TO chartwarden_platform;
@@ -23,5 +24,6 @@ DO $$ BEGIN
     GRANT INSERT ON "subscription", "subscription_state_history", "subscription_contract" TO chartwarden_platform;
     GRANT UPDATE ("billing_service_mode", "updated_at") ON "subscription_contract" TO chartwarden_platform;
     GRANT INSERT, UPDATE ON "patient_census_daily", "subscription_statement" TO chartwarden_platform;
+    GRANT SELECT ("category", "system_default") ON "role" TO chartwarden_platform;
   END IF;
 END $$;

@@ -8,9 +8,13 @@
 //       bound), and a ChartWarden SUPPORT session (M34 `support_session`, platform side) never write the ledger at all;
 //   (2) held a MEMBERSHIP of the organisation that was live at some point in the month: accepted before the month ended and not revoked
 //       before it began (`membership.accepted_at` / `revoked_at`). A pending, never-accepted invitation is not an account;
-//   (3) is NOT excluded: the membership holds neither the organisation's `external_auditor` role (an auditor given a membership for an
-//       engagement) nor any PLATFORM-OWNED role (`role.organization_id IS NULL` with a reserved `platform_*` key: ChartWarden operators
-//       are bound into a tenant organisation by `platform_alert_audience` purely so alerts reach them). Any grant counts, expired or not.
+//   (3) is NOT excluded: a membership is excluded only when it holds at least one role grant and EVERY grant it holds is a non-staff
+//       one: the organisation's SYSTEM `external_auditor` role (an auditor given a membership for an engagement) or a PLATFORM-OWNED
+//       role (`role.organization_id IS NULL` with a reserved `platform_*` key: ChartWarden operators are bound into a tenant
+//       organisation by `platform_alert_audience` purely so alerts reach them). A membership that also holds any staff role is staff.
+//       "The system auditor role" is the row M3's auditor grant creates: org-owned, key AND category `external_auditor`, and
+//       `system_default`. A tenant can create a role named `external_auditor`, but never a `system_default` one (role-store.ts writes
+//       it FALSE), so a tenant cannot shrink its billed staff by attaching its own look-alike role to staff. An expired grant counts.
 // Two memberships of one user in one month (a revoked one and its replacement) count once.
 //
 // HOW. The ledger stores only `HMAC(key, membership_id)`, never an id (M35 D6), and cannot say what role a membership holds. So the
@@ -37,6 +41,8 @@ const RL = schema.roles;
 
 /** The org-owned role an auditor's membership holds for the length of an engagement (M3 `auditor-access-grant.ts`). */
 export const EXTERNAL_AUDITOR_ROLE_KEY = "external_auditor";
+/** The `role_category` M3's auditor grant stamps on that role (a tenant may also pick this category for its own role). */
+const EXTERNAL_AUDITOR_ROLE_CATEGORY = "external_auditor";
 
 export type StaffCountBasis = "identity_filtered" | "ledger_unfiltered";
 export interface StaffCount {
@@ -49,13 +55,35 @@ export interface MonthWindow {
   readonly end: Date;
 }
 
-/** True for a role grant that makes its holder something other than tenant staff. */
-export function isNonStaffRole(role: {
+export interface RoleFacts {
   readonly key: string;
   readonly organizationId: string | null;
-}): boolean {
+  readonly category: string;
+  readonly systemDefault: boolean;
+}
+
+/** True for a role grant that makes its holder something other than tenant staff (the system auditor role, a platform-owned role). */
+export function isNonStaffRole(role: RoleFacts): boolean {
   if (role.organizationId === null) return isReservedPlatformRoleKey(role.key);
-  return role.key === EXTERNAL_AUDITOR_ROLE_KEY;
+  return (
+    role.key === EXTERNAL_AUDITOR_ROLE_KEY &&
+    role.category === EXTERNAL_AUDITOR_ROLE_CATEGORY &&
+    role.systemDefault
+  );
+}
+
+/** The memberships whose EVERY grant is non-staff: one staff grant (or none at all) keeps a membership counted. */
+export function nonStaffMembershipIds(
+  grants: readonly (RoleFacts & { readonly membershipId: string })[],
+): ReadonlySet<string> {
+  const onlyNonStaff = new Map<string, boolean>();
+  for (const grant of grants) {
+    onlyNonStaff.set(
+      grant.membershipId,
+      (onlyNonStaff.get(grant.membershipId) ?? true) && isNonStaffRole(grant),
+    );
+  }
+  return new Set([...onlyNonStaff].filter(([, only]) => only).map(([id]) => id));
 }
 
 export async function countActiveStaffForMonth(
@@ -98,9 +126,15 @@ export async function countActiveStaffForMonth(
     );
   if (candidates.length === 0) return { count: 0, basis: "identity_filtered" };
 
-  // Every role grant of those memberships, expired or not: any non-staff grant excludes the membership.
+  // Every role grant of those memberships, expired or not: a membership is excluded only if ALL of them are non-staff.
   const grants = await tx
-    .select({ membershipId: MR.membershipId, key: RL.key, roleOrganizationId: RL.organizationId })
+    .select({
+      membershipId: MR.membershipId,
+      key: RL.key,
+      organizationId: RL.organizationId,
+      category: RL.category,
+      systemDefault: RL.systemDefault,
+    })
     .from(MR)
     .innerJoin(RL, eq(MR.roleId, RL.id))
     .where(
@@ -112,11 +146,7 @@ export async function countActiveStaffForMonth(
         ),
       ),
     );
-  const excluded = new Set(
-    grants
-      .filter((g) => isNonStaffRole({ key: g.key, organizationId: g.roleOrganizationId }))
-      .map((g) => g.membershipId),
-  );
+  const excluded = nonStaffMembershipIds(grants);
 
   const staffUsers = new Set<string>();
   for (const candidate of candidates) {
