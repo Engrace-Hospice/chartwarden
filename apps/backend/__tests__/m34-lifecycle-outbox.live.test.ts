@@ -449,14 +449,19 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
         toStatus: "suspended",
         transitionReason: "operator suspends the tenant",
       });
-      const settled = await Promise.race([
-        loser.then(
-          () => true,
-          () => true,
-        ),
-        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 750)),
-      ]);
-      expect(settled, "the loser read 'active' and now waits on the row").toBe(false);
+      loser.catch(() => {}); // handled below; keeps an early assertion failure from leaving an unhandled rejection
+      // Wait until the loser has read 'active' and is actually blocked on the winner's row lock (no fixed sleep).
+      const winnerPid = (await winner.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+      let blocked = false;
+      for (let i = 0; i < 100 && !blocked; i++) {
+        const r = await admin.query(
+          "SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))",
+          [winnerPid],
+        );
+        blocked = r.rowCount === 1;
+        if (!blocked) await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect(blocked, "the loser read 'active' and now waits on the row").toBe(true);
       await winner.query("UPDATE tenant_account SET status = 'at_risk' WHERE id = $1", [
         TENANT_ACCOUNT_C,
       ]);
