@@ -27,26 +27,35 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
+import { CompleteAssessmentModal } from "./assessment-completion";
 import {
+  type AssessmentTaskRow,
   type BereavementRiskFactors,
   type BereavementRiskTier,
   type PlanDetail,
+  type PreDeathDraft,
   type RiskScoreRow,
   type TriState,
   errorMessage,
   getPlan,
+  getPreDeathDraft,
+  listAssessmentTasks,
   listRiskScores,
   recomputeRisk,
 } from "./bereavement-api";
 import {
+  ASSESSMENT_TASK_STATUS_TONE,
   CONFIDENCE_BAND_TONE,
   DATA_COMPLETENESS_TONE,
   RISK_FACTOR_KEYS,
+  assessmentTaskKindLabel,
   dateTime,
+  dueLabel,
   humanize,
   redactionLabel,
   riskFactorLabel,
   scoreLabel,
+  shortDate,
   shortId,
   toneOf,
 } from "./bereavement-status";
@@ -86,6 +95,12 @@ export function BereavementRiskView(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [recomputeOpen, setRecomputeOpen] = useState(false);
+  // ADR-0109 — the checkpoints (null = unreadable), whether the D10 scope withheld them, the pre-death draft (null =
+  // unreadable or none: provenance is then simply not claimed) and the checkpoint being completed.
+  const [tasks, setTasks] = useState<AssessmentTaskRow[] | null>(null);
+  const [tasksWithheld, setTasksWithheld] = useState(false);
+  const [draft, setDraft] = useState<PreDeathDraft | null>(null);
+  const [completing, setCompleting] = useState<AssessmentTaskRow | null>(null);
 
   const load = useCallback(async () => {
     if (!planId) return;
@@ -107,6 +122,16 @@ export function BereavementRiskView(): JSX.Element {
     }
     setPlan(detail.plan);
     setScores(page.page?.data ?? []);
+    // The checkpoints and the draft are context beside the ledger: neither failing hides the ledger itself.
+    const [taskList, preDeath] = await Promise.all([
+      listAssessmentTasks(client, planId),
+      detail.plan?.admissionId
+        ? getPreDeathDraft(client, detail.plan.admissionId)
+        : Promise.resolve({ draft: null, error: null }),
+    ]);
+    setTasks(taskList.list?.items ?? null);
+    setTasksWithheld((taskList.list?.redactedCategories ?? []).includes("clinical_risk"));
+    setDraft(preDeath.draft);
     setLoading(false);
   }, [client, planId, contactFilter]);
 
@@ -240,6 +265,73 @@ export function BereavementRiskView(): JSX.Element {
         </Card>
       )}
 
+      <Card title={`Assessment checkpoints (${tasks?.length ?? 0})`}>
+        {tasks === null ? (
+          <span style={mutedStyle}>The assessment checkpoints could not be loaded.</span>
+        ) : tasksWithheld ? (
+          <span style={mutedStyle}>
+            Assessment checkpoints are not shown in your scope — they hold clinical risk content.
+          </span>
+        ) : tasks.length === 0 ? (
+          <span style={mutedStyle}>
+            No assessment checkpoints are scheduled. Each survivor gets an initial assessment at day
+            28 and a midpoint reassessment at day 180.
+          </span>
+        ) : (
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={th}>Survivor</th>
+                <th style={th}>Checkpoint</th>
+                <th style={th}>Due</th>
+                <th style={th}>Status</th>
+                <th style={th}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.map((task) => (
+                <tr key={task.taskId} style={rowLine}>
+                  <td style={td}>{nameOf(task.contactId)}</td>
+                  <td style={td}>{assessmentTaskKindLabel(task.taskKind)}</td>
+                  <td style={td}>
+                    {shortDate(task.dueAt)}
+                    <div style={mutedStyle}>
+                      {task.status === "completed"
+                        ? `completed ${shortDate(task.completedAt)}`
+                        : dueLabel(task.dueAt)}
+                    </div>
+                  </td>
+                  <td style={td}>
+                    <StatusPill
+                      label={humanize(task.status)}
+                      tone={toneOf(ASSESSMENT_TASK_STATUS_TONE, task.status)}
+                    />
+                  </td>
+                  <td style={td}>
+                    {task.status === "scheduled" || task.status === "missed" ? (
+                      <button
+                        type="button"
+                        style={ghostButtonStyle}
+                        onClick={() => setCompleting(task)}
+                      >
+                        Complete assessment
+                      </button>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <span style={mutedStyle}>
+          A checkpoint is completed only by a score a clinician records here; the automatic initial
+          score at plan opening does not complete one. A missed checkpoint can still be completed
+          late.
+        </span>
+      </Card>
+
       <Card title={`Score ledger (${scores.length})`}>
         {scores.length === 0 ? (
           <span style={mutedStyle}>The append-only ledger is empty.</span>
@@ -282,7 +374,14 @@ export function BereavementRiskView(): JSX.Element {
                     />
                     {s.evidenceDegraded ? <div style={mutedStyle}>evidence degraded</div> : null}
                   </td>
-                  <td style={td}>{humanize(s.scoreKind)}</td>
+                  <td style={td}>
+                    {humanize(s.scoreKind)}
+                    {draft?.carriedScoreId === s.scoreId ? (
+                      <div>
+                        <StatusPill label="from pre-death draft" tone="progress" />
+                      </div>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -293,6 +392,20 @@ export function BereavementRiskView(): JSX.Element {
           correction is a new row, never an edit.
         </span>
       </Card>
+
+      {completing ? (
+        <CompleteAssessmentModal
+          planId={planId}
+          task={completing}
+          contactName={nameOf(completing.contactId)}
+          draft={draft}
+          onClose={() => setCompleting(null)}
+          onDone={() => {
+            setCompleting(null);
+            void load();
+          }}
+        />
+      ) : null}
 
       {recomputeOpen ? (
         <RecomputeModal

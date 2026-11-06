@@ -169,6 +169,12 @@ export interface BereavementOutreachRowView {
   readonly kind: BereavementOutreachKind;
   readonly status: BereavementOutreachStatus;
   readonly anniversaryMark: BereavementAnniversaryMark | null;
+  /**
+   * ADR-0109 D4 — the cadence-floor mark this touchpoint was generated for (`initial_outreach`, `three_month`,
+   * `anniversary`, `closeout_letter`, …): what the schedule screens label it by. Null on a row written before the column
+   * and on an ad-hoc touchpoint.
+   */
+  readonly cadenceMark: string | null;
   readonly dueAt: IsoInstant;
   readonly lateGraceUntil: IsoInstant;
   readonly startedAt: IsoInstant | null;

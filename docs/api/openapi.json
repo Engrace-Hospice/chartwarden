@@ -56510,6 +56510,7 @@
                           "kind",
                           "status",
                           "anniversaryMark",
+                          "cadenceMark",
                           "dueAt",
                           "lateGraceUntil",
                           "startedAt",
@@ -56627,6 +56628,16 @@
                                     "type": "string"
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cadenceMark": {
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -56716,6 +56727,7 @@
                           "kind",
                           "status",
                           "anniversaryMark",
+                          "cadenceMark",
                           "dueAt",
                           "lateGraceUntil",
                           "startedAt",
@@ -56833,6 +56845,16 @@
                                     "type": "string"
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cadenceMark": {
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -57201,6 +57223,7 @@
                     "kind",
                     "status",
                     "anniversaryMark",
+                    "cadenceMark",
                     "dueAt",
                     "lateGraceUntil",
                     "startedAt",
@@ -57318,6 +57341,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cadenceMark": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -57458,6 +57491,7 @@
                     "kind",
                     "status",
                     "anniversaryMark",
+                    "cadenceMark",
                     "dueAt",
                     "lateGraceUntil",
                     "startedAt",
@@ -57575,6 +57609,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cadenceMark": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -57877,6 +57921,7 @@
                     "kind",
                     "status",
                     "anniversaryMark",
+                    "cadenceMark",
                     "dueAt",
                     "lateGraceUntil",
                     "startedAt",
@@ -57994,6 +58039,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cadenceMark": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -58130,6 +58185,7 @@
                     "kind",
                     "status",
                     "anniversaryMark",
+                    "cadenceMark",
                     "dueAt",
                     "lateGraceUntil",
                     "startedAt",
@@ -58247,6 +58303,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cadenceMark": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -58378,6 +58444,7 @@
                     "kind",
                     "status",
                     "anniversaryMark",
+                    "cadenceMark",
                     "dueAt",
                     "lateGraceUntil",
                     "startedAt",
@@ -58495,6 +58562,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cadenceMark": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -58631,6 +58708,7 @@
                     "kind",
                     "status",
                     "anniversaryMark",
+                    "cadenceMark",
                     "dueAt",
                     "lateGraceUntil",
                     "startedAt",
@@ -58748,6 +58826,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cadenceMark": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -63299,6 +63387,7 @@
                     "kind",
                     "status",
                     "anniversaryMark",
+                    "cadenceMark",
                     "dueAt",
                     "lateGraceUntil",
                     "startedAt",
@@ -63416,6 +63505,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cadenceMark": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -63733,6 +63832,7 @@
                           "kind",
                           "status",
                           "anniversaryMark",
+                          "cadenceMark",
                           "dueAt",
                           "lateGraceUntil",
                           "startedAt",
@@ -63850,6 +63950,16 @@
                                     "type": "string"
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cadenceMark": {
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -65188,6 +65298,7 @@
                           "kind",
                           "status",
                           "anniversaryMark",
+                          "cadenceMark",
                           "dueAt",
                           "lateGraceUntil",
                           "startedAt",
@@ -65305,6 +65416,16 @@
                                     "type": "string"
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cadenceMark": {
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"

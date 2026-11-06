@@ -225,6 +225,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
     kind: r.kind,
     status: r.status,
     anniversaryMark: r.anniversaryMark ?? null,
+    cadenceMark: r.cadenceMark ?? null,
     dueAt: iso(r.dueAt) as IsoInstant,
     lateGraceUntil: iso(r.lateGraceUntil) as IsoInstant,
     startedAt: isoN(r.startedAt) as IsoInstant | null,

@@ -46,6 +46,7 @@ import {
   LOG_OUTCOMES,
   OUTREACH_STATUS_TONE,
   anniversaryMarkLabel,
+  cadenceMarkLabel,
   dateTime,
   dueLabel,
   humanize,
@@ -238,7 +239,8 @@ export function BereavementOutreachPlanner(): JSX.Element {
                     <td style={td}>{nameOf(o.contactId)}</td>
                     <td style={td}>{outreachKindLabel(o.kind)}</td>
                     <td style={td}>
-                      {o.anniversaryMark ? anniversaryMarkLabel(o.anniversaryMark) : "—"}
+                      {cadenceMarkLabel(o.cadenceMark) ??
+                        (o.anniversaryMark ? anniversaryMarkLabel(o.anniversaryMark) : "—")}
                     </td>
                     <td style={td}>
                       <StatusPill

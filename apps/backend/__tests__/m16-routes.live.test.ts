@@ -483,6 +483,16 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
       [planId],
     );
     expect(unmarked.rows[0].n).toBe(0);
+    // ... and the outreach DTO exposes it, so the schedule screens label a touchpoint by its floor mark.
+    const listed = await call(
+      "GET",
+      `/api/v1/bereavement/plans/${planId}/outreach?limit=100`,
+      "don",
+    );
+    expect(listed.statusCode).toBe(200);
+    const listedRows = listed.json().data as { cadenceMark: string | null }[];
+    expect(listedRows.length).toBeGreaterThan(0);
+    expect(listedRows.every((r) => typeof r.cadenceMark === "string")).toBe(true);
   });
 
   it("seed generates both assessment checkpoints per contact; the automatic initial score completes neither (ADR-0109 D3)", async () => {

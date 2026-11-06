@@ -388,6 +388,7 @@ function createFakeBackend() {
       kind: o.kind as never,
       status: o.status as never,
       anniversaryMark: o.anniversaryMark as never,
+      cadenceMark: null,
       dueAt: o.dueAt,
       lateGraceUntil: o.lateGraceUntil,
       startedAt: o.startedAt,

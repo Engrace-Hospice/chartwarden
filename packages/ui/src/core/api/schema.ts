@@ -42599,6 +42599,7 @@ export interface operations {
                             kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                             status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                             anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                            cadenceMark: string | null;
                             dueAt: string;
                             lateGraceUntil: string;
                             startedAt: string | null;
@@ -42616,6 +42617,7 @@ export interface operations {
                             kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                             status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                             anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                            cadenceMark: string | null;
                             dueAt: string;
                             lateGraceUntil: string;
                             startedAt: string | null;
@@ -42738,6 +42740,7 @@ export interface operations {
                         kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                         status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                         anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        cadenceMark: string | null;
                         dueAt: string;
                         lateGraceUntil: string;
                         startedAt: string | null;
@@ -42797,6 +42800,7 @@ export interface operations {
                         kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                         status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                         anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        cadenceMark: string | null;
                         dueAt: string;
                         lateGraceUntil: string;
                         startedAt: string | null;
@@ -42843,6 +42847,7 @@ export interface operations {
                         kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                         status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                         anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        cadenceMark: string | null;
                         dueAt: string;
                         lateGraceUntil: string;
                         startedAt: string | null;
@@ -42887,6 +42892,7 @@ export interface operations {
                         kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                         status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                         anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        cadenceMark: string | null;
                         dueAt: string;
                         lateGraceUntil: string;
                         startedAt: string | null;
@@ -42933,6 +42939,7 @@ export interface operations {
                         kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                         status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                         anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        cadenceMark: string | null;
                         dueAt: string;
                         lateGraceUntil: string;
                         startedAt: string | null;
@@ -42977,6 +42984,7 @@ export interface operations {
                         kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                         status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                         anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        cadenceMark: string | null;
                         dueAt: string;
                         lateGraceUntil: string;
                         startedAt: string | null;
@@ -43666,6 +43674,7 @@ export interface operations {
                         kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                         status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                         anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        cadenceMark: string | null;
                         dueAt: string;
                         lateGraceUntil: string;
                         startedAt: string | null;
@@ -43715,6 +43724,7 @@ export interface operations {
                             kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                             status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                             anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                            cadenceMark: string | null;
                             dueAt: string;
                             lateGraceUntil: string;
                             startedAt: string | null;
@@ -43941,6 +43951,7 @@ export interface operations {
                             kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
                             status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
                             anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                            cadenceMark: string | null;
                             dueAt: string;
                             lateGraceUntil: string;
                             startedAt: string | null;
