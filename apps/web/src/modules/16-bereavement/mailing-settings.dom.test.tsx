@@ -1,5 +1,5 @@
 import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 // apps/web/src/modules/16-bereavement — ADR-0109 D10: the mailing settings (routes 42-43).
 // Four mailings (never the deferred birthday one), each its own card with its own version: a save carries the version READ in
 // If-Match (0 for a never-configured mailing), a 412 prompts a reload instead of overwriting, an unsaved edit is flagged and warned
@@ -101,6 +101,14 @@ function mount(opts: {
       headers: { "content-type": "application/json" },
     });
   };
+  const router = createMemoryRouter(
+    [
+      { path: "/bereavement/mailings/settings", element: <MailingSettings /> },
+      { path: "/bereavement/mailings", element: <p>Runs page</p> },
+      { path: "/expired", element: <p>Session expired page</p> },
+    ],
+    { initialEntries: ["/bereavement/mailings/settings"] },
+  );
   const view = render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stub })}>
       <SessionProvider
@@ -110,19 +118,11 @@ function mount(opts: {
           permissions: opts.permissions ?? MANAGER,
         }}
       >
-        <RouterProvider
-          router={createMemoryRouter(
-            [
-              { path: "/bereavement/mailings/settings", element: <MailingSettings /> },
-              { path: "/bereavement/mailings", element: <p>Runs page</p> },
-            ],
-            { initialEntries: ["/bereavement/mailings/settings"] },
-          )}
-        />
+        <RouterProvider router={router} />
       </SessionProvider>
     </ApiClientProvider>,
   );
-  return { calls, ...view };
+  return { calls, router, ...view };
 }
 
 const card = async (name: string) => within(await screen.findByRole("region", { name }));
@@ -447,6 +447,8 @@ describe("mailing settings — saving", () => {
     expect(inert(december.getByLabelText("December holiday card title"))).toBe(true);
     expect(inert(save)).toBe(true);
     expect(save.getAttribute("aria-busy")).toBe("true");
+    // the accessible name carries the visible words
+    expect(december.getByRole("button", { name: /Saving… for December holiday card/ })).toBe(save);
     fireEvent.click(save);
     expect(puts(calls)).toHaveLength(1);
     release();
@@ -474,17 +476,64 @@ describe("mailing settings — unsaved edits", () => {
     expect(december.queryByText("You have unsaved changes.")).toBeNull();
   });
 
-  it("leaving the page in-app over an unsaved edit asks first; staying keeps it, leaving goes", async () => {
+  it("leaving the page in-app over an unsaved edit asks first in an alertdialog; staying keeps it (focus back), leaving goes", async () => {
     mount({});
     const december = await card("December holiday card settings");
     fireEvent.change(december.getByLabelText("Lead time in days"), { target: { value: "30" } });
-    fireEvent.click(screen.getByRole("link", { name: "Mailing runs" }));
-    expect((await screen.findByRole("alert")).textContent).toMatch(/unsaved mailing settings/);
-    fireEvent.click(screen.getByRole("button", { name: "Stay on this page" }));
-    await waitFor(() => expect(screen.queryByText(/unsaved mailing settings/)).toBeNull());
+    const runsLink = screen.getByRole("link", { name: "Mailing runs" });
+    runsLink.focus();
+    fireEvent.click(runsLink);
+    const dialog = await screen.findByRole("alertdialog", { name: "Leave without saving?" });
+    expect(
+      document.getElementById(dialog.getAttribute("aria-describedby") ?? "")?.textContent,
+    ).toMatch(/unsaved mailing settings/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stay on this page" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(document.activeElement).toBe(runsLink);
     expect((december.getByLabelText("Lead time in days") as HTMLInputElement).value).toBe("30");
     fireEvent.click(screen.getByRole("link", { name: "Mailing runs" }));
     fireEvent.click(await screen.findByRole("button", { name: "Leave without saving" }));
+    expect(await screen.findByText("Runs page")).toBeTruthy();
+  });
+
+  it("never blocks the shell's own exit: a session expiry leaves at once over an unsaved edit", async () => {
+    const { router } = mount({});
+    const december = await card("December holiday card settings");
+    fireEvent.change(december.getByLabelText("Lead time in days"), { target: { value: "30" } });
+    await act(() => router.navigate("/expired"));
+    expect(await screen.findByText("Session expired page")).toBeTruthy();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("leaving mid-save asks first; a save that lands lets the navigation through, one that fails stays and is shown", async () => {
+    let release: (reply: Reply) => void = () => {};
+    const { calls } = mount({
+      put: () =>
+        new Promise<Reply>((resolve) => {
+          release = resolve;
+        }),
+    });
+    const december = await card("December holiday card settings");
+    fireEvent.change(december.getByLabelText("Lead time in days"), { target: { value: "21" } });
+    fireEvent.click(
+      december.getByRole("button", { name: "Save settings for December holiday card" }),
+    );
+    await waitFor(() => expect(puts(calls)).toHaveLength(1));
+    fireEvent.click(screen.getByRole("link", { name: "Mailing runs" }));
+    await screen.findByRole("alertdialog", { name: "A save is still in progress" });
+    release(refused(500, "INTERNAL", "server trouble"));
+    // the failure is not lost with the page: the prompt stays (now over an unsaved edit) and the card shows why
+    await screen.findByRole("alertdialog", { name: "Leave without saving?" });
+    fireEvent.click(screen.getByRole("button", { name: "Stay on this page" }));
+    expect((await december.findByRole("alert")).textContent).toContain("server trouble");
+
+    fireEvent.click(
+      december.getByRole("button", { name: "Save settings for December holiday card" }),
+    );
+    await waitFor(() => expect(puts(calls)).toHaveLength(2));
+    fireEvent.click(screen.getByRole("link", { name: "Mailing runs" }));
+    await screen.findByRole("alertdialog", { name: "A save is still in progress" });
+    release({ status: 200, body: config("holiday_december", { leadDays: 21, version: 4 }) });
     expect(await screen.findByText("Runs page")).toBeTruthy();
   });
 

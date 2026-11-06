@@ -98,8 +98,8 @@ export const canGenerate = (status: MailingRunStatus): boolean =>
   status === "draft" || status === "failed";
 /** A ready batch can be selected and rendered again (route 48 takes a ready run): after an opt-out, or a refused stale download. */
 export const canRegenerate = (status: MailingRunStatus): boolean => status === "ready";
-export const canDownload = (status: MailingRunStatus): boolean =>
-  status === "ready" || status === "mailed";
+/** Only a ready batch: a mailed one went out and is never handed out again (the server answers 409 MAILING_RUN_ALREADY_MAILED). */
+export const canDownload = (status: MailingRunStatus): boolean => status === "ready";
 export const canConfirmMailed = (status: MailingRunStatus): boolean => status === "ready";
 export const canCancel = (status: MailingRunStatus): boolean =>
   status === "draft" || status === "ready" || status === "failed";

@@ -5,7 +5,7 @@
 // `If-Match` (0 for a mailing never configured). A 412 means someone else saved first: the card says so and offers a reload, which
 // discards the unsaved edits, so it is never done for the reader. While the write is in flight every control is inert and the
 // button shows it; an unsaved edit is flagged, can be discarded, and the browser warns before the tab is closed over it. The card reports
-// "unsaved and not saving" to the settings page, which holds the one in-app navigation blocker (a router supports one blocker at a time).
+// "unsaved" or "saving" to the settings page, which holds the one in-app navigation blocker (a router supports one blocker at a time).
 import { Button, StatusPill, t } from "@chartwarden/ui";
 import { useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
@@ -43,12 +43,15 @@ const PRECONDITION_FAILED = 412;
 const CONFIG_MOVED =
   "Someone else saved this mailing's settings after you opened them. Reload to see the latest version; reloading discards your unsaved edits.";
 
+/** What a card would lose if the page went away: an unsaved edit, or a save whose outcome nobody would see. */
+export type PendingEdit = "unsaved" | "saving" | null;
+
 export function MailingConfigCard({
   config,
   readOnly,
   onSaved,
   onReload,
-  onDirtyChange,
+  onPendingChange,
 }: {
   config: MailingConfig;
   /** The reader may see the settings but not change them. */
@@ -56,8 +59,8 @@ export function MailingConfigCard({
   onSaved: (saved: MailingConfig) => void;
   /** Read every config again (the card is rebuilt from what comes back). */
   onReload: () => void;
-  /** Whether this card holds an unsaved edit that is not being saved (the page blocks in-app navigation while any card does). */
-  onDirtyChange?: (mailingKey: string, blocking: boolean) => void;
+  /** What this card would lose (the page blocks in-app navigation while any card would lose something). */
+  onPendingChange?: (mailingKey: string, pending: PendingEdit) => void;
 }): JSX.Element {
   const client = useApiClient();
   const label = mailingLabel(config.mailingKey);
@@ -76,9 +79,9 @@ export function MailingConfigCard({
 
   useEffect(() => {
     const key = config.mailingKey;
-    onDirtyChange?.(key, dirty && !busy);
-    return () => onDirtyChange?.(key, false);
-  }, [dirty, busy, onDirtyChange, config.mailingKey]);
+    onPendingChange?.(key, busy ? "saving" : dirty ? "unsaved" : null);
+    return () => onPendingChange?.(key, null);
+  }, [dirty, busy, onPendingChange, config.mailingKey]);
 
   // A closed tab or a reload would lose the edit: the browser asks first.
   useEffect(() => {
@@ -240,9 +243,10 @@ export function MailingConfigCard({
               loading={busy}
               disabled={!dirty || built.body === null}
               onClick={() => void save()}
-              aria-label={`Save settings for ${label}`}
             >
               {busy ? "Saving…" : "Save settings"}
+              {/* the name carries the visible words, then which mailing (several cards share the page) */}
+              <span style={visuallyHidden}> for {label}</span>
             </Button>
             {dirty && !busy ? (
               <Button tone="secondary" onClick={() => setDraft(baseline)}>

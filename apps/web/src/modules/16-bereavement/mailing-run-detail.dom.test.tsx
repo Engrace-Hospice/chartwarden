@@ -2,14 +2,14 @@ import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 // apps/web/src/modules/16-bereavement — ADR-0109 D10: one mailing run (routes 45-51).
 // Wording first (no default ever ships), Generate with the version read, a poll that stops when the render ends, Download only for a
-// ready or mailed run, Confirm mailed through a dialog that says eligibility is re-checked, Cancel, the items table, and the rules an
+// ready run (a mailed batch is never handed out again), Confirm mailed through a dialog that says eligibility is re-checked, Cancel, the items table, and the rules an
 // oversight surface keeps: a 403 renders nothing, other failures are announced and keep the page up, a refetch never blanks it.
 import axe from "axe-core";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
-import { MailingRunDetail } from "./mailing-run-detail";
+import { MailingRunDetail, linkLifetimeMs } from "./mailing-run-detail";
 
 /** jest-dom's `toBeDisabled`: the control itself, or a descendant of a disabled fieldset (how these screens make a whole form inert). */
 const inert = (el: HTMLElement): boolean =>
@@ -20,6 +20,7 @@ const PLAN_ID = "22222222-2222-4222-8222-222222222222";
 const CONTACT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const CONTACT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const POLL_MS = 25;
+const LINK_TTL_MS = 5 * 60_000;
 const ALL_KEYS = [
   "bereavement.mailing.read",
   "bereavement.mailing.manage",
@@ -146,12 +147,16 @@ const server =
       return ok({
         runId: RUN_ID,
         url: "https://files.example.test/batch.pdf?sig=abc",
-        expiresAt: "2099-01-01T00:00:00.000Z",
+        // a realistic presign: five minutes from now
+        expiresAt: new Date(Date.now() + LINK_TTL_MS).toISOString(),
       });
     return opts.write?.(req) ?? ok(run());
   };
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 /** Where a step-up refusal lands: shows the `returnTo` it was given. */
 function StepUpProbe(): JSX.Element {
@@ -426,6 +431,30 @@ describe("mailing run — the poll's limits", () => {
         screen.getAllByRole("status").some((el) => el.textContent?.includes("Generation failed")),
       ).toBe(true),
     );
+    // a poll noticed it, not the reader: focus is not pulled to the message
+    const said = screen
+      .getAllByRole("status")
+      .find((el) => el.textContent?.includes("Generation failed"));
+    expect(document.activeElement).not.toBe(said);
+  });
+
+  it("a poll a 404 stopped starts again when Try again reads the run and it is still generating", async () => {
+    let reads = 0;
+    const { calls } = mount(
+      server({
+        run: () => {
+          reads += 1;
+          return reads === 2
+            ? refused(404, "NOT_FOUND", "gone")
+            : ok(run({ status: "generating" }));
+        },
+      }),
+    );
+    await waitFor(() => expect(runReads(calls)).toBe(2));
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS * 4));
+    expect(runReads(calls)).toBe(2);
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(runReads(calls)).toBeGreaterThanOrEqual(4));
   });
 
   it("stops polling when the run is gone (404)", async () => {
@@ -456,11 +485,16 @@ describe("mailing run — the poll's limits", () => {
 });
 
 describe("mailing run — download, confirm and cancel", () => {
-  it("Download offers an explicit Open batch link (new tab, no opener) and drops it once clicked; no pop-up is attempted", async () => {
+  it("Download offers an explicit Open batch link (new tab, no opener), focuses it, and drops it once clicked before expiry; no pop-up is attempted", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const open = vi.spyOn(window, "open").mockReturnValue(null);
     mount(server({ run: () => ok(run({ status: "ready" })) }));
     fireEvent.click(await screen.findByRole("button", { name: "Download" }));
     const link = (await screen.findByRole("link", { name: "Open batch" })) as HTMLAnchorElement;
+    await waitFor(() => expect(document.activeElement).toBe(link));
+    // well before the five-minute expiry the link is still offered (a far expiry no longer fires the timer at once)
+    vi.advanceTimersByTime(60_000);
+    expect(screen.getByRole("link", { name: "Open batch" })).toBe(link);
     expect(link.href).toBe("https://files.example.test/batch.pdf?sig=abc");
     expect(link.target).toBe("_blank");
     expect(link.rel).toBe("noopener noreferrer");
@@ -470,6 +504,30 @@ describe("mailing run — download, confirm and cancel", () => {
     fireEvent.click(link);
     await waitFor(() => expect(screen.queryByRole("link", { name: "Open batch" })).toBeNull());
     expect(document.body.innerHTML).not.toContain("sig=abc");
+  });
+
+  it("an unclicked link is dropped when it expires", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mount(server({ run: () => ok(run({ status: "ready" })) }));
+    fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    await screen.findByRole("link", { name: "Open batch" });
+    vi.advanceTimersByTime(LINK_TTL_MS + 1000);
+    await waitFor(() => expect(screen.queryByRole("link", { name: "Open batch" })).toBeNull());
+    expect(document.body.innerHTML).not.toContain("sig=abc");
+  });
+
+  it("a link lifetime is clamped to what a timer can wait, and an unreadable expiry is already expired", () => {
+    const now = Date.parse("2026-11-06T00:00:00.000Z");
+    expect(linkLifetimeMs("2026-11-06T00:05:00.000Z", now)).toBe(LINK_TTL_MS);
+    expect(linkLifetimeMs("2099-01-01T00:00:00.000Z", now)).toBe(2 ** 31 - 1);
+    expect(linkLifetimeMs("2026-11-05T00:00:00.000Z", now)).toBe(0);
+    expect(linkLifetimeMs("not a date", now)).toBe(0);
+  });
+
+  it("a mailed run offers no Download: the batch went out and is never handed out again", async () => {
+    mount(server({ run: () => ok(run({ status: "mailed", hasDocument: true })) }));
+    await screen.findByRole("heading", { name: /December holiday card/ });
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
   });
 
   it("refuses a batch link that is not https", async () => {
@@ -507,8 +565,10 @@ describe("mailing run — download, confirm and cancel", () => {
     );
     fireEvent.click(await screen.findByRole("button", { name: "Download" }));
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("out of date");
-    expect(alert.textContent).toContain("2 recipients");
+    expect(alert.textContent).toContain("was not downloaded");
+    // the page's own words, once (the server's sentence also says "regenerate"; it is not echoed)
+    expect(alert.textContent).not.toContain("no longer eligible.");
+    expect(alert.textContent?.match(/[Rr]egenerate/g)).toHaveLength(1);
     expect(screen.queryByRole("link", { name: "Open batch" })).toBeNull();
     const regenerate = screen.getAllByRole("button", { name: "Regenerate batch" });
     expect(regenerate).toHaveLength(1);
@@ -522,9 +582,50 @@ describe("mailing run — download, confirm and cancel", () => {
     expect(await screen.findByText(/do not mail the earlier one/)).toBeTruthy();
   });
 
+  it("the stale notice goes once a later download succeeds", async () => {
+    let downloads = 0;
+    const base = server({ run: () => ok(run({ status: "ready" })) });
+    mount((req) => {
+      if (!req.path.endsWith("/download")) return base(req);
+      downloads += 1;
+      return downloads === 1 ? refused(409, "MAILING_RUN_STALE", "1 recipient") : base(req);
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Download" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("was not downloaded");
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+    await screen.findByRole("link", { name: "Open batch" });
+    expect(screen.queryByText(/was not downloaded/)).toBeNull();
+  });
+
   it("a ready run offers Regenerate batch as a secondary action", async () => {
     mount(server({ run: () => ok(run({ status: "ready" })) }));
     expect(await screen.findByRole("button", { name: "Regenerate batch" })).toBeTruthy();
+  });
+
+  it("Regenerate on a ready batch asks first: an earlier download and its Ref numbers are superseded", async () => {
+    const { calls } = mount(
+      server({
+        run: () => ok(run({ status: "ready" })),
+        write: () => ok(run({ status: "generating", version: 5 })),
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Regenerate batch" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Regenerate this batch" });
+    const described = document.getElementById(dialog.getAttribute("aria-describedby") ?? "");
+    expect(described?.textContent).toContain("Ref numbers");
+    expect(described?.textContent).toContain("superseded");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep this batch" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Regenerate batch" }));
+    const again = await screen.findByRole("alertdialog", { name: "Regenerate this batch" });
+    fireEvent.click(within(again).getByRole("button", { name: "Regenerate batch" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(calls.find((c) => c.method === "POST")).toMatchObject({
+      path: `${RUN_PATH}/generate`,
+      ifMatch: "4",
+    });
   });
 
   it("a download that needs a fresh step-up goes to /step-up and comes back to this run", async () => {
@@ -559,7 +660,10 @@ describe("mailing run — download, confirm and cancel", () => {
       }),
     );
     fireEvent.click(await screen.findByRole("button", { name: "Confirm mailed" }));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("alertdialog", { name: "Confirm the run was mailed" });
+    expect(
+      document.getElementById(dialog.getAttribute("aria-describedby") ?? "")?.textContent,
+    ).toContain("Each of the 3 families");
     // bookkeeping only: it promises no recall, it flags and names the Ref to pull
     expect(within(dialog).getByText(/cannot recall printed letters/)).toBeTruthy();
     expect(within(dialog).getByText(/not logged as mailed/)).toBeTruthy();
@@ -568,7 +672,7 @@ describe("mailing run — download, confirm and cancel", () => {
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm mailed" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     const post = calls.find((c) => c.method === "POST");
     expect(post).toMatchObject({ path: `${RUN_PATH}/confirm-mailed`, ifMatch: "4" });
     expect(post?.idempotencyKey).toBeTruthy();
@@ -581,9 +685,9 @@ describe("mailing run — download, confirm and cancel", () => {
   it("closing the Confirm dialog without confirming sends nothing", async () => {
     const { calls } = mount(server({ run: () => ok(run({ status: "ready" })) }));
     fireEvent.click(await screen.findByRole("button", { name: "Confirm mailed" }));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
   });
 
@@ -619,10 +723,13 @@ describe("mailing run — download, confirm and cancel", () => {
       }),
     );
     fireEvent.click(await screen.findByRole("button", { name: "Confirm mailed" }));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm mailed" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect((await screen.findByRole("alert")).textContent).toContain("the run is not ready");
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    // announced where focus lands (the dialog's trigger may be gone after the reload)
+    const status = screen.getByRole("status");
+    await waitFor(() => expect(status.textContent).toContain("the run is not ready"));
+    await waitFor(() => expect(document.activeElement).toBe(status));
     await waitFor(() => expect(runReads(calls)).toBe(2));
   });
 
@@ -634,7 +741,7 @@ describe("mailing run — download, confirm and cancel", () => {
       }),
     );
     fireEvent.click(await screen.findByRole("button", { name: "Confirm mailed" }));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm mailed" }));
     expect((await within(dialog).findByRole("alert")).textContent).toContain("server trouble");
   });
@@ -708,6 +815,37 @@ describe("mailing run — editing the wording and the items list", () => {
     expect(calls.filter((c) => c.method === "PATCH").map((c) => c.ifMatch)).toEqual(["4", "5"]);
   });
 
+  it("a 412 whose reload fails does not dead-end: the dialog says so, keeps the typed wording and Try again loads theirs", async () => {
+    let refusedOnce = false;
+    let failReads = true;
+    const theirs = { en: { ...WORDING.en, title: "Their title" } };
+    mount(
+      server({
+        run: () =>
+          !refusedOnce
+            ? ok(run())
+            : failReads
+              ? refused(500, "INTERNAL", "read failed")
+              : ok(run({ version: 5, content: theirs })),
+        write: () => {
+          refusedOnce = true;
+          return refused(412, "STALE_VERSION");
+        },
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit wording" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Title"), { target: { value: "Mine" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save wording" }));
+    expect(await within(dialog).findByText(/newer wording could not be loaded/)).toBeTruthy();
+    expect((within(dialog).getByLabelText("Title") as HTMLInputElement).value).toBe("Mine");
+    failReads = false;
+    fireEvent.click(within(dialog).getByRole("button", { name: "Try again" }));
+    const theirsRegion = await within(dialog).findByRole("region", { name: "Their saved wording" });
+    expect(theirsRegion.textContent).toContain("Their title");
+    expect((within(dialog).getByLabelText("Title") as HTMLInputElement).value).toBe("Mine");
+  });
+
   it("Replace with theirs puts their wording in the editor", async () => {
     let saved = false;
     const theirs = { en: { ...WORDING.en, title: "Their title" } };
@@ -737,7 +875,9 @@ describe("mailing run — editing the wording and the items list", () => {
     fireEvent.change(within(dialog).getByLabelText("Title"), { target: { value: "Mine" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save wording" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect((await screen.findByRole("alert")).textContent).toContain("the wording is locked");
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toContain("the wording is locked"),
+    );
   });
 
   it("is offered only for a draft", async () => {

@@ -10,11 +10,14 @@
 //  3. A STALE BATCH IS NOT HANDED OUT. The server re-checks eligibility before rendering and again at download: when someone in a ready
 //     batch has since opted out (or their plan closed), the download is refused (409 MAILING_RUN_STALE) and the page offers
 //     "Regenerate batch", which selects and renders the run again. Download needs a fresh step-up; a refusal goes to /step-up and back.
+//     Regenerating a ready batch the reader did NOT just see refused asks first (an alertdialog): an earlier download and its Ref numbers
+//     are superseded. A mailed batch is never downloaded again (409 MAILING_RUN_ALREADY_MAILED): it went out; there is no reprint.
 //  4. CONFIRM MAILED IS BOOKKEEPING. It re-checks once more and does not log anyone who became ineligible since the download ("left out
 //     after printing"); the printed letters cannot be recalled, so the page names them and each letter carries a "Ref N" (the item's
 //     order) to pull it by if it has not gone out.
 //  5. THE DOWNLOAD URL IS A CREDENTIAL to a document holding every addressee. It must be https; it is held only in this page's memory as
-//     an "Open batch" link the user clicks (a pop-up opened after an await is often blocked), and is dropped on the click or at expiry.
+//     an "Open batch" link the user clicks (a pop-up opened after an await is often blocked; focus moves to it), and is dropped on the
+//     click or at expiry.
 //     Never logged, stored or cached.
 //  6. A 403 renders nothing; any other failure is announced and never unmounts what is on screen. The generating poll is chained (no
 //     overlapping reads), pauses while the tab is hidden and stops on a terminal status or a 404.
@@ -92,6 +95,14 @@ const RUN_MOVED =
   "This run changed while you were working on it. The page has been refreshed: check it and try again.";
 const STALE_BATCH_CODE = "MAILING_RUN_STALE";
 const NOT_FOUND = 404;
+/** The longest delay `setTimeout` honours (a larger one fires at once). */
+const MAX_TIMEOUT_MS = 2 ** 31 - 1;
+
+/** How long until a batch link expires, clamped to what a timer can wait (an unparseable expiry is already expired). */
+export function linkLifetimeMs(expiresAt: string, now: number): number {
+  const left = Date.parse(expiresAt) - now;
+  return Number.isFinite(left) ? Math.min(Math.max(0, left), MAX_TIMEOUT_MS) : 0;
+}
 
 /** A batch link is only ever https (loopback http is the local dev object store). */
 export function isSafeBatchUrl(url: string): boolean {
@@ -106,7 +117,7 @@ export function isSafeBatchUrl(url: string): boolean {
   }
 }
 
-type Ceremony = "wording" | "confirm" | "cancel" | null;
+type Ceremony = "wording" | "regenerate" | "confirm" | "cancel" | null;
 type ActionName = "generate" | "download" | "confirm" | "cancel";
 type WriteResult = { run: MailingRun | null; error: unknown; status: number };
 
@@ -135,22 +146,35 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
   const [ceremony, setCeremony] = useState<Ceremony>(null);
   const [busy, setBusy] = useState<ActionName | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  /** A refused stale download (409 MAILING_RUN_STALE): the server's message (a count only), shown with "Regenerate batch". */
-  const [staleBatch, setStaleBatch] = useState<string | null>(null);
+  /** A download was refused as stale (409 MAILING_RUN_STALE): the page says so and offers "Regenerate batch". */
+  const [staleBatch, setStaleBatch] = useState(false);
   /** The minted batch link, in memory only until it is clicked or expires. */
   const [batchLink, setBatchLink] = useState<MailingDownload | null>(null);
+  const batchLinkRef = useRef<HTMLAnchorElement>(null);
+  /** Bumped by a manual "Try again" that read the run: a poll a 404 had stopped starts again if the run is still generating. */
+  const [pollEpoch, setPollEpoch] = useState(0);
   const inFlight = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const { announce, region } = useActionStatus();
   const generateKey = useIdempotencyKey();
   const confirmKey = useIdempotencyKey();
   const cancelKey = useIdempotencyKey();
   const reasonId = useId();
   const cancelDescId = useId();
+  const regenerateDescId = useId();
+  const confirmDescId = useId();
 
   const status = state.kind === "ready" ? state.data.status : null;
   const version = state.kind === "ready" ? state.data.version : null;
   // Chained, never overlapping: the next read is scheduled only after the previous one answered. Paused while the tab is hidden;
   // stops when the run leaves `generating` (this effect re-runs) or the run is gone (404).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pollEpoch is the trigger that restarts a poll a 404 stopped
   useEffect(() => {
     if (status !== "generating") return;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -183,7 +207,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
       if (timer !== null) clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [status, reload, pollMs]);
+  }, [status, reload, pollMs, pollEpoch]);
 
   // Say the outcome of a render the page was waiting on (the status pill alone is not announced).
   const previousStatus = useRef(status);
@@ -191,22 +215,33 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
     const before = previousStatus.current;
     previousStatus.current = status;
     if (before !== "generating") return;
-    if (status === "failed") announce("Generation failed. See the reason on the page.");
-    if (status === "ready") announce("The batch is ready to download.");
+    // a poll noticed it, not the reader: say it, but leave focus where they are
+    if (status === "failed") {
+      announce("Generation failed. See the reason on the page.", { focus: false });
+    }
+    if (status === "ready") announce("The batch is ready to download.", { focus: false });
   }, [status, announce]);
 
-  // A link minted for an earlier batch is never offered for a newer one; an expired link is dropped.
+  // A link minted for an earlier batch is never offered for a newer one, and a stale-batch refusal is about the batch it refused; an
+  // expired link is dropped.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the run moving (status / version) is the trigger
-  useEffect(() => setBatchLink(null), [status, version]);
+  useEffect(() => {
+    setBatchLink(null);
+    setStaleBatch(false);
+  }, [status, version]);
   useEffect(() => {
     if (batchLink === null) return;
-    const left = Date.parse(batchLink.expiresAt) - Date.now();
+    batchLinkRef.current?.focus();
     const timer = setTimeout(
       () => setBatchLink(null),
-      Math.max(0, Number.isFinite(left) ? left : 0),
+      linkLifetimeMs(batchLink.expiresAt, Date.now()),
     );
     return () => clearTimeout(timer);
   }, [batchLink]);
+
+  const retryRead = async (): Promise<void> => {
+    if (await reload()) setPollEpoch((n) => n + 1);
+  };
 
   if (state.kind === "hidden") return null;
   if (state.kind === "loading") return <LoadingSpinner label="Loading the mailing run" />;
@@ -217,7 +252,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
       <div className="wx-kit-column" style={columnStyle}>
         <ErrorText>{state.message}</ErrorText>
         <div>
-          <Button size="sm" tone="secondary" onClick={() => void reload()}>
+          <Button size="sm" tone="secondary" onClick={() => void retryRead()}>
             Try again
           </Button>
         </div>
@@ -229,7 +264,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
   const wording = wordingOf(run.content);
   const wordingComplete = isWordingComplete(wording);
   const hasWording = contentForSave(wording).en !== undefined;
-  const confirmOpen = ceremony === "confirm" || ceremony === "cancel";
+  const confirmOpen = ceremony === "confirm" || ceremony === "cancel" || ceremony === "regenerate";
   const openCeremony = (next: Ceremony): void => {
     setActionError(null);
     setCeremony(next);
@@ -251,18 +286,22 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
     inFlight.current = false;
     setBusy(null);
     if (error || !next) {
-      if (isStaleWrite(http)) {
-        // What the dialog was confirming no longer holds: close it and say so on the page.
-        setCeremony(null);
-        void reload();
-      }
-      setActionError(
+      const message =
         http === 412
           ? RUN_MOVED
           : errorCode(error) === CONTENT_EMPTY_CODE
             ? CONTENT_EMPTY_MESSAGE
-            : errorMessage(error, fallback),
-      );
+            : errorMessage(error, fallback);
+      if (isStaleWrite(http)) {
+        void reload();
+        if (ceremony !== null) {
+          // What the dialog was confirming no longer holds: close it, and say so where focus lands (its trigger may be gone).
+          setCeremony(null);
+          announce(message);
+          return null;
+        }
+      }
+      setActionError(message);
       return null;
     }
     adopt(next);
@@ -278,7 +317,8 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
       "The batch could not be generated.",
     );
     if (!next) return;
-    setStaleBatch(null);
+    setCeremony(null);
+    setStaleBatch(false);
     announce(
       regenerating
         ? "Regenerating the batch. Download the new batch when it is ready; do not mail the earlier one."
@@ -293,6 +333,8 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
     setActionError(null);
     const { download: link, error, status: http } = await downloadMailingRun(client, run.runId);
     inFlight.current = false;
+    // The reader left while it was minted: never navigate them (to /step-up) from a page they are no longer on.
+    if (!mounted.current) return;
     setBusy(null);
     if (error || !link) {
       const stepUp = stepUpRedirectFor(error, `${location.pathname}${location.search}`);
@@ -301,7 +343,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
         return;
       }
       if (errorCode(error) === STALE_BATCH_CODE) {
-        setStaleBatch(errorMessage(error, "Someone in this batch is no longer eligible."));
+        setStaleBatch(true);
         void reload();
         return;
       }
@@ -313,8 +355,9 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
       setActionError("The batch link was refused: it is not a secure (https) link.");
       return;
     }
-    setBatchLink(link);
-    announce("The batch link is ready. Use Open batch to open it.");
+    setStaleBatch(false);
+    setBatchLink(link); // focus moves to the link (the effect above)
+    announce("The batch link is ready. Use Open batch to open it.", { focus: false });
   };
 
   const confirmMailed = async (): Promise<void> => {
@@ -374,7 +417,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
             size="sm"
             tone="secondary"
             loading={state.refreshing}
-            onClick={() => void reload()}
+            onClick={() => void retryRead()}
           >
             Try again
           </Button>
@@ -389,8 +432,11 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
       {staleBatch && run.status === "ready" ? (
         <div style={{ display: "flex", gap: t.space2, alignItems: "center", flexWrap: "wrap" }}>
           <ErrorText>
-            The batch was not downloaded: it is out of date. {staleBatch} Regenerate it to leave
-            them out, then download the new batch.
+            The batch was not downloaded: someone in it opted out or their plan closed since it was
+            generated.{" "}
+            {mayDispatch
+              ? "Regenerate the batch to leave them out, then download the new one."
+              : "Someone who can send mailings must regenerate it before it can be downloaded."}
           </ErrorText>
           {mayDispatch ? (
             <Button
@@ -491,7 +537,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
                 tone="secondary"
                 loading={busy === "generate"}
                 disabled={busy !== null || !wordingComplete}
-                onClick={() => void generate()}
+                onClick={() => openCeremony("regenerate")}
               >
                 Regenerate batch
               </Button>
@@ -530,6 +576,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
         {batchLink ? (
           <span>
             <a
+              ref={batchLinkRef}
               href={batchLink.url}
               target="_blank"
               rel="noopener noreferrer"
@@ -538,7 +585,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
               Open batch
             </a>{" "}
             <span style={mutedStyle}>
-              (opens in a new tab; the link works once from here and expires at{" "}
+              (opens in a new tab and is removed from this page once used; it expires at{" "}
               {dateTime(batchLink.expiresAt)})
             </span>
           </span>
@@ -552,10 +599,10 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
         <EditWordingModal
           run={run}
           onClose={() => setCeremony(null)}
-          onStale={() => void reload()}
+          onStale={reload}
           onRefused={(message) => {
             setCeremony(null);
-            setActionError(message);
+            announce(message);
             void reload();
           }}
           onSaved={(next) => {
@@ -565,11 +612,40 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
           }}
         />
       ) : null}
+      {ceremony === "regenerate" ? (
+        <Modal
+          title="Regenerate this batch"
+          onClose={() => setCeremony(null)}
+          busy={busy === "generate"}
+          role="alertdialog"
+          describedBy={regenerateDescId}
+          cancelLabel="Keep this batch"
+          footer={
+            <button
+              type="button"
+              style={primaryButtonStyle}
+              disabled={busy !== null || !canRegenerate(run.status)}
+              onClick={() => void generate()}
+            >
+              {busy === "generate" ? "Regenerating…" : "Regenerate batch"}
+            </button>
+          }
+        >
+          <span id={regenerateDescId}>
+            The recipients are selected and the batch is rendered again. Any copy of this batch
+            already downloaded, and its Ref numbers, are superseded: do not mail it. Download the
+            new batch when it is ready.
+          </span>
+          {actionError ? <ErrorText>{actionError}</ErrorText> : null}
+        </Modal>
+      ) : null}
       {ceremony === "confirm" ? (
         <Modal
           title="Confirm the run was mailed"
           onClose={() => setCeremony(null)}
           busy={busy === "confirm"}
+          role="alertdialog"
+          describedBy={confirmDescId}
           footer={
             <button
               type="button"
@@ -581,7 +657,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
             </button>
           }
         >
-          <span style={mutedStyle}>
+          <span id={confirmDescId} style={mutedStyle}>
             Confirming records that the printed letters went out. Each of the {counts.included}{" "}
             {counts.included === 1 ? "family" : "families"} in the batch gets this mailing logged on
             their contact as a program activity; it does not count as a touchpoint.

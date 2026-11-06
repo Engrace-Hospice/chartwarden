@@ -485,7 +485,8 @@ export function useIdempotencyKey(): {
  * Empty it is visually hidden (the live region stays in the page so the next message is announced).
  */
 export function useActionStatus(): {
-  announce: (message: string) => void;
+  /** `focus: false` for a message nobody acted for (a poll noticed it): it is announced, but focus stays where the reader is. */
+  announce: (message: string, opts?: { readonly focus?: boolean }) => void;
   region: JSX.Element;
 } {
   const [message, setMessage] = useState("");
@@ -496,9 +497,9 @@ export function useActionStatus(): {
     // preventScroll: the status line sits at the top of the page; a save lower down must not jump the reader there.
     if (focusRequests > 0) ref.current?.focus({ preventScroll: true });
   }, [focusRequests]);
-  const announce = useCallback((next: string): void => {
+  const announce = useCallback((next: string, opts?: { readonly focus?: boolean }): void => {
     setMessage(next);
-    setFocusRequests((n) => n + 1);
+    if (opts?.focus !== false) setFocusRequests((n) => n + 1);
   }, []);
   const region = (
     <output ref={ref} tabIndex={-1} style={message ? mutedStyle : visuallyHidden}>

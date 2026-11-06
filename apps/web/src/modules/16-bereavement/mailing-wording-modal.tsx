@@ -3,7 +3,8 @@
 // The save carries the run version the page READ in `If-Match`. A 412 means someone else saved first: the page reloads, what was typed
 // stays in the editor, and the dialog shows THEIR saved wording beside it. Saving is then blocked until the reader picks one: "Replace
 // with theirs" (drop the typed wording) or "Overwrite with mine" (the next save writes over theirs, against the newer version). A newer
-// version is never written over silently. A 409/404 (the run is no longer a draft, or is gone) closes the dialog and the page says why.
+// version is never written over silently. If that reload fails (or still answers the refused version), the dialog says so and offers
+// "Try again"; the typed wording stays. A 409/404 (the run is no longer a draft, or is gone) closes the dialog and the page says why.
 // Unsaved wording is protected three ways: the scrim cannot dismiss the dialog, Cancel and Escape ask before discarding, and while the
 // write is in flight every control is inert and the dialog cannot close.
 import { useApiClient } from "@chartwarden/ui";
@@ -39,8 +40,8 @@ export function EditWordingModal({
   run: MailingRun;
   onClose: () => void;
   onSaved: (run: MailingRun) => void;
-  /** The run moved under the editor: the page reloads (the draft in the editor is kept). */
-  onStale: () => void;
+  /** The run moved under the editor: the page reloads (the draft in the editor is kept). Resolves true when the page now holds a fresh read. */
+  onStale: () => Promise<boolean>;
   /** The run can no longer take this edit (409 / 404): the page closes the dialog, shows `message` and reloads. */
   onRefused: (message: string) => void;
 }): JSX.Element {
@@ -52,6 +53,8 @@ export function EditWordingModal({
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   /** The run version a 412 refused; until the reader chooses, saving is blocked. */
   const [conflictAt, setConflictAt] = useState<number | null>(null);
+  /** The page is re-reading the run after a 412. */
+  const [reloading, setReloading] = useState(false);
   const idempotency = useIdempotencyKey();
   // The newer wording, once the page has re-read the run past the refused version.
   const theirs = conflictAt !== null && run.version !== conflictAt ? baseline : null;
@@ -63,6 +66,12 @@ export function EditWordingModal({
   const requestClose = (): void => {
     if (dirty) setConfirmingDiscard(true);
     else onClose();
+  };
+
+  const reloadTheirs = async (): Promise<void> => {
+    setReloading(true);
+    await onStale();
+    setReloading(false); // whether it failed or answered the same version, `theirs` stays null and the dialog offers "Try again"
   };
 
   const save = async (): Promise<void> => {
@@ -85,8 +94,8 @@ export function EditWordingModal({
     if (err || !next) {
       if (status === 412) {
         setConflictAt(run.version);
-        onStale();
         setError(RUN_MOVED);
+        await reloadTheirs();
         return;
       }
       const message = errorMessage(err, "The wording could not be saved.");
@@ -121,7 +130,18 @@ export function EditWordingModal({
       {busy ? <Notice tone="info">Saving the wording…</Notice> : null}
       {conflictAt !== null ? (
         theirs === null ? (
-          <Notice tone="info">Loading the newer wording…</Notice>
+          reloading ? (
+            <Notice tone="info">Loading the newer wording…</Notice>
+          ) : (
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+              <ErrorText>
+                The newer wording could not be loaded. Your wording is still here.
+              </ErrorText>
+              <button type="button" style={ghostButtonStyle} onClick={() => void reloadTheirs()}>
+                Try again
+              </button>
+            </div>
+          )
         ) : (
           <section aria-label="Their saved wording">
             <Notice tone="warning">

@@ -168,8 +168,11 @@ the platform provides the layout, the agency provides the words.
   1. **Edit wording** (draft only).
   2. **Generate** (`bereavement.mailing.dispatch`): disabled with the reason while the wording is empty; the server's 422 is shown
      verbatim. The page then refetches until the status leaves `generating` (the render runs in a worker) without unmounting.
-  3. **Download** (ready or mailed): opens a short-lived link in a new tab. The link is never shown, stored or logged; the download
-     is recorded on the access ledger and in the read audit.
+  3. **Download** (ready only; a mailed batch went out and is never handed out again, `MAILING_RUN_ALREADY_MAILED`): offers a
+     short-lived "Open batch" link (focused) that opens it in a new tab and is dropped once used or at expiry. The link is never
+     stored or logged; the download is recorded on the access ledger and in the read audit. A stale batch (`MAILING_RUN_STALE`) is
+     not downloaded and the page offers a one-click Regenerate; "Regenerate batch" on a ready run otherwise asks first in an
+     alertdialog (an earlier download and its Ref numbers are superseded).
   4. **Confirm mailed** (ready): a confirmation dialog states what will happen: eligibility is checked again, anyone who has opted
      out or whose plan has closed since the batch was rendered is flagged `Removed after render` and is **not** logged as mailed,
      and the rest are logged on their timelines. The result shows the flagged count.
