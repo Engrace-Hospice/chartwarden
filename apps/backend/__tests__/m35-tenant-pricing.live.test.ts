@@ -80,6 +80,9 @@ const ORG_K = "ab000000-0000-4000-8000-0000000000ab"; // a plan minimum, prorate
 const ORG_L = "ac000000-0000-4000-8000-0000000000ac"; // canceled mid-month, inside the grace window
 const ORG_M = "ad000000-0000-4000-8000-0000000000ad"; // suspended (paused) mid-month: its last month must still finalize
 const ORG_N = "ae000000-0000-4000-8000-0000000000ae"; // re-signed: two contracts, the first canceled
+const ORG_O = "af000000-0000-4000-8000-0000000000af"; // slice 5: onboarding, signed on billing software, then it bills outside
+const ORG_P = "b0000000-0000-4000-8000-0000000000b0"; // slice 5: live (went live after signing), then it bills outside
+const ORG_Q = "b1000000-0000-4000-8000-0000000000b1"; // slice 5: no contract at all
 const OPERATOR_USER = "0a000000-0000-4000-8000-000000000001";
 const OPERATOR_MEMBERSHIP = "0b000000-0000-4000-8000-000000000001";
 const KEY = {
@@ -376,6 +379,9 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       [ORG_L, "pricing-l"],
       [ORG_M, "pricing-m"],
       [ORG_N, "pricing-n"],
+      [ORG_O, "pricing-o"],
+      [ORG_P, "pricing-p"],
+      [ORG_Q, "pricing-q"],
     ] as const) {
       await seedOrg(org, slug, "onboarding");
     }
@@ -397,6 +403,9 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       ["pricing-l", ORG_L],
       ["pricing-m", ORG_M],
       ["pricing-n", ORG_N],
+      ["pricing-o", ORG_O],
+      ["pricing-p", ORG_P],
+      ["pricing-q", ORG_Q],
     ]);
     const stepStatus = new Map<string, "pending" | "done">();
     const wizard = {
@@ -3159,6 +3168,89 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
           "SELECT 1 FROM plan WHERE tier IN ('starter','professional','enterprise') AND is_active",
         ),
       ).toHaveLength(0);
+    });
+  });
+
+  // Slice 5 (owner decision): a tenant that bills outside ChartWarden pays no billing percentage. Choosing `outside` sets its billing
+  // service mode to `none` through the pricing side (the M34 wizard's post-commit clearinghouse sync calls it); choosing a vendor again
+  // does not touch the mode.
+  describe("a tenant that bills outside ChartWarden pays no billing percentage", () => {
+    const sign = (org: string, slug: string, day: string) =>
+      contractsAt(day).createForTenant(operator, slug, {
+        planSlug: planV2Slug,
+        billingServiceMode: "billing_software",
+        orderFormRef: "OF-OUTSIDE-1",
+        reason: "order form signed by the customer's administrator",
+      });
+    const modeRows = (org: string) =>
+      q<{ billing_service_mode: string; effective_from: string }>(
+        `SELECT billing_service_mode, effective_from::text FROM subscription_contract_mode WHERE organization_id=$1 ORDER BY created_at`,
+        [org],
+      );
+    const changedAudits = (org: string) =>
+      q<{ context: Record<string, string> }>(
+        `SELECT context FROM audit_event
+          WHERE event_type='m35.subscription.billing_service_mode_changed' AND context->>'organizationId'=$1 ORDER BY created_at`,
+        [org],
+      );
+
+    it("an onboarding tenant with nothing billed is set to none AT ONCE, audited as the system, and a repeat changes nothing", async () => {
+      const day = "2026-11-10T12:00:00Z";
+      await sign(ORG_O, "pricing-o", day);
+      expect(await readBillingServiceMode(app.db, ORG_O, new Date(day))).toBe("billing_software");
+
+      const first = await contractsAt(day).setModeNoneForOutsideBilling(ORG_O);
+      expect(first).toEqual({ changed: true });
+      expect(await readBillingServiceMode(app.db, ORG_O, new Date(day))).toBe("none");
+      const audits = await changedAudits(ORG_O);
+      expect(audits).toHaveLength(1);
+      expect(audits[0]?.context).toMatchObject({
+        from: "billing_software",
+        to: "none",
+        effectiveOn: "2026-11-10",
+        trigger: "clearinghouse_outside",
+        operatorUserId: "system",
+      });
+      expect(audits[0]?.context.reason).toMatch(/bills outside ChartWarden/);
+
+      const rowsBefore = await modeRows(ORG_O);
+      expect(await contractsAt(day).setModeNoneForOutsideBilling(ORG_O)).toEqual({
+        changed: false,
+      });
+      expect(await modeRows(ORG_O)).toEqual(rowsBefore);
+      expect(await changedAudits(ORG_O)).toHaveLength(1);
+    });
+
+    it("a live tenant keeps its current month: the change takes effect from the 1st of next month", async () => {
+      const day = "2026-11-12T09:00:00Z";
+      await sign(ORG_P, "pricing-p", "2026-11-03T09:00:00Z");
+      await admin.query(
+        "UPDATE tenant_account SET status='active', activated_at='2026-11-04T00:00:00Z' WHERE organization_id=$1",
+        [ORG_P],
+      );
+      expect(await contractsAt(day).setModeNoneForOutsideBilling(ORG_P)).toEqual({ changed: true });
+      expect(await readBillingServiceMode(app.db, ORG_P, new Date(day))).toBe("billing_software");
+      const view = await contractsAt(day).platformView(operator, "pricing-p");
+      expect(view.contract?.pendingBillingServiceMode).toEqual({
+        billingServiceMode: "none",
+        effectiveOn: "2026-12-01",
+      });
+      // already pending: a second call is a no-op, so the ledger holds one row for the change
+      expect(await contractsAt(day).setModeNoneForOutsideBilling(ORG_P)).toEqual({
+        changed: false,
+      });
+      expect((await modeRows(ORG_P)).filter((r) => r.billing_service_mode === "none")).toHaveLength(
+        1,
+      );
+    });
+
+    it("does nothing for a tenant with no contract (a mode is never invented), and refuses nothing it does not own", async () => {
+      expect(await contractsAt("2026-11-10T12:00:00Z").setModeNoneForOutsideBilling(ORG_Q)).toEqual(
+        {
+          changed: false,
+        },
+      );
+      expect(await modeRows(ORG_Q)).toEqual([]);
     });
   });
 });

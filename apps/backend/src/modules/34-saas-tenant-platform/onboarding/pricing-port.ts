@@ -25,6 +25,10 @@ export interface PricingOnboardingPort {
     tx: DbClient,
     orgSlug: string,
   ): Promise<{ organizationId: string; tenantAccountId: string; status: string } | null>;
+  enterByOrg(
+    tx: DbClient,
+    organizationId: string,
+  ): Promise<{ organizationId: string; tenantAccountId: string; status: string } | null>;
   planContractStep(
     orgSlug: string,
   ): Promise<{ taskId: string | null; status: StepStatus; lockedBy: string | null } | null>;
@@ -64,19 +68,25 @@ export function buildPricingOnboardingPort(deps: {
     }
   }
 
+  /** The tenant's facts after the shared onboarding lock (a go-live approval takes it exclusively), for an organization id. */
+  async function factsOf(tx: DbClient, organizationId: string) {
+    await lockTenantOnboardingShared(tx, organizationId);
+    const [account] = await tx
+      .select({ id: ACCOUNT.id, status: ACCOUNT.status })
+      .from(ACCOUNT)
+      .where(eq(ACCOUNT.organizationId, organizationId))
+      .limit(1);
+    return account ? { organizationId, tenantAccountId: account.id, status: account.status } : null;
+  }
+
   return {
     async enter(tx, orgSlug) {
       const [org] = await tx.select({ id: ORG.id }).from(ORG).where(eq(ORG.slug, orgSlug)).limit(1);
-      if (!org) return null;
-      await lockTenantOnboardingShared(tx, org.id);
-      const [account] = await tx
-        .select({ id: ACCOUNT.id, status: ACCOUNT.status })
-        .from(ACCOUNT)
-        .where(eq(ACCOUNT.organizationId, org.id))
-        .limit(1);
-      return account
-        ? { organizationId: org.id, tenantAccountId: account.id, status: account.status }
-        : null;
+      return org ? factsOf(tx, org.id) : null;
+    },
+
+    async enterByOrg(tx, organizationId) {
+      return factsOf(tx, organizationId);
     },
 
     async planContractStep(orgSlug) {

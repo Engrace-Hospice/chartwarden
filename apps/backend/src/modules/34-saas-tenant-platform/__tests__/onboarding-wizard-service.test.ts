@@ -1691,3 +1691,68 @@ describe("choosing outside ChartWarden: the billing steps follow (D5)", () => {
     expect(statusOf("payer_enrollment")).toBe("skipped");
   });
 });
+
+// Owner decision (2026-11-06, slice 5): a tenant that bills outside ChartWarden pays no billing percentage, so choosing `outside`
+// sets its billing service mode to `none`, through the pricing side's port, in the same post-commit sync that skips the billing
+// steps. Choosing a vendor again leaves the mode alone: an operator picks the mode the vendor billing calls for (the console says so).
+describe("choosing outside ChartWarden: the billing service mode follows (slice 5)", () => {
+  let choice: "outside" | "vendor" | "none";
+  let calls: string[];
+  let failWith: Error | null;
+
+  function modeWizard(withHook = true) {
+    return createOnboardingWizard({
+      runner: createMemoryWizardRunner(state),
+      orgProfile: createMemoryOrgProfile(state),
+      activateOrganization,
+      advance,
+      clearinghouseChoice: async () => choice,
+      ...(withHook
+        ? {
+            settleBillingModeForOutside: async (organizationId: string) => {
+              calls.push(organizationId);
+              if (failWith) throw failWith;
+            },
+          }
+        : {}),
+      warn: (message) => warnings.push(message),
+      now: () => NOW,
+    });
+  }
+
+  beforeEach(() => {
+    choice = "outside";
+    calls = [];
+    failWith = null;
+  });
+
+  it("asks the pricing side to set the mode to none when the org bills outside", async () => {
+    await modeWizard().syncClearinghouseSteps(ORG);
+    expect(calls).toEqual([ORG]);
+  });
+
+  it("does it for a live tenant too: a tenant that switches to outside after go-live stops paying the percentage", async () => {
+    state.tenants[0] = { ...(state.tenants[0] as TenantRef), status: "active" };
+    await modeWizard().syncClearinghouseSteps(ORG);
+    expect(calls).toEqual([ORG]);
+  });
+
+  it("leaves the mode alone for a vendor and while nothing is chosen", async () => {
+    choice = "vendor";
+    await modeWizard().syncClearinghouseSteps(ORG);
+    choice = "none";
+    await modeWizard().syncClearinghouseSteps(ORG);
+    expect(calls).toEqual([]);
+  });
+
+  it("a failing pricing side is warned about and never fails the sync or the change that triggered it", async () => {
+    failWith = new Error("pricing unavailable");
+    await expect(modeWizard().syncClearinghouseSteps(ORG)).resolves.toBeUndefined();
+    expect(warnings.some((w) => /billing service mode/i.test(w))).toBe(true);
+  });
+
+  it("is optional: a deployment without the pricing side syncs the steps as before", async () => {
+    await expect(modeWizard(false).syncClearinghouseSteps(ORG)).resolves.toBeUndefined();
+    expect(calls).toEqual([]);
+  });
+});

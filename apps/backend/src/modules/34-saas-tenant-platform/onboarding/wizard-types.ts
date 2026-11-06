@@ -55,6 +55,14 @@ export interface OnboardingWizardDeps {
    * when ChartWarden transmits, and going back to a vendor reopens them. Unbound: the steps are never touched.
    */
   readonly clearinghouseChoice?: (organizationId: string) => Promise<ClearinghouseChoiceKind>;
+  /**
+   * Slice 5 owner decision: a tenant that bills outside ChartWarden pays no billing percentage, so when the choice is `outside` the
+   * pricing side sets the organization's billing service mode to `none` (a no-op when it already is, or when there is no contract).
+   * Called from the same post-commit sync that skips the billing steps, for a live tenant too. Choosing a vendor again does NOT
+   * call it: the mode stays, and an operator picks the mode the vendor billing calls for. Unbound: the mode is never touched.
+   * The composition root binds it to the pricing contract service (M34 has no edge to M35).
+   */
+  readonly settleBillingModeForOutside?: (organizationId: string) => Promise<void>;
   /** `err` carries a raw error: the composition root logs it through the redacting serializer (a database error holds bound values). */
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
   readonly now?: () => Date;

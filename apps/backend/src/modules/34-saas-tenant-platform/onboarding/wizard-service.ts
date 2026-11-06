@@ -146,6 +146,21 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     if (!deps.clearinghouseChoice) return;
     const choice = await deps.clearinghouseChoice(organizationId);
     if (choice === "none") return;
+    if (choice === "outside" && deps.settleBillingModeForOutside) {
+      // Pricing is its own module and its own transaction: a failure is warned about and must never fail the sync (the billing steps
+      // below still follow the choice) or the change that triggered it. The next change of the wizard or the clearinghouse retries it.
+      try {
+        await deps.settleBillingModeForOutside(organizationId);
+      } catch (error) {
+        deps.warn?.(
+          "m34.onboarding wizard: setting the billing service mode for an outside tenant failed",
+          {
+            organizationId,
+            err: error,
+          },
+        );
+      }
+    }
     await deps.runner.inTenant(SYSTEM_TENANT_ACTOR, organizationId, async (store) => {
       let ctx = await load(store, { organizationId });
       if (ctx.tenant.status !== ONBOARDING_STATUS) return;

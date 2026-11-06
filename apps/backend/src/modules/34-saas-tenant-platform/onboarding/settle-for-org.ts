@@ -18,6 +18,11 @@ export type OnboardingAdvance = (tenant: {
 export function createSettleOnboardingForOrg(deps: {
   readonly db: DbClient;
   readonly advance: OnboardingAdvance;
+  /**
+   * Runs for a tenant that is NOT being onboarded (a live one): its sweep has nothing to settle, but a change of clearinghouse
+   * still has to reach what follows the choice (the billing service mode of a tenant that switched to outside).
+   */
+  readonly afterChange?: (organizationId: string) => Promise<void>;
 }): (organizationId: string) => Promise<void> {
   return async (organizationId) => {
     const account = await withOrgContext(deps.db, { organizationId, userId: "" }, async (tx) => {
@@ -28,7 +33,11 @@ export function createSettleOnboardingForOrg(deps: {
         .limit(1);
       return row ?? null;
     });
-    if (!account || !ONBOARDING_WRITABLE_STATUSES.has(account.status)) return;
+    if (!account) return;
+    if (!ONBOARDING_WRITABLE_STATUSES.has(account.status)) {
+      await deps.afterChange?.(organizationId);
+      return;
+    }
     await deps.advance({ tenantAccountId: account.id, organizationId });
   };
 }

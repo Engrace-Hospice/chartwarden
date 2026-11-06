@@ -59,6 +59,8 @@ export interface PlanContractStep {
  */
 export interface OnboardingPricingPort {
   enter(tx: WriteTx, orgSlug: string): Promise<OnboardingTenantFacts | null>;
+  /** The same facts, addressed by organization (the system sync after a clearinghouse change knows no slug), under the same shared lock. */
+  enterByOrg(tx: WriteTx, organizationId: string): Promise<OnboardingTenantFacts | null>;
   planContractStep(orgSlug: string): Promise<PlanContractStep | null>;
   attestPlanContract(input: {
     readonly orgSlug: string;

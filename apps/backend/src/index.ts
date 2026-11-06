@@ -5996,10 +5996,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           const onboardingWizardHolder: {
             current?: { syncClearinghouseSteps(orgId: string): Promise<void> };
           } = {};
+          // Slice 5: a tenant that bills outside ChartWarden pays no billing percentage. The wizard's post-commit clearinghouse sync
+          // asks the pricing contract service (built when the routes mount, below) to set the billing mode to `none`; the holder is
+          // how the wizard reaches it without M34 importing M35.
+          const pricingContractsHolder: {
+            current?: { setModeNoneForOutsideBilling(organizationId: string): Promise<unknown> };
+          } = {};
           const settleOnboardingForOrg = createSettleOnboardingForOrg({
             db: dbHandle.db,
             advance: async ({ tenantAccountId, organizationId }) => {
               await m34OnboardingAdvance({ tenantAccountId, orgId: organizationId });
+              await onboardingWizardHolder.current?.syncClearinghouseSteps(organizationId);
+            },
+            // A LIVE tenant has nothing for the onboarding sweep, but a switch to outside still has to reach its billing mode.
+            afterChange: async (organizationId) => {
               await onboardingWizardHolder.current?.syncClearinghouseSteps(organizationId);
             },
           });
@@ -6126,6 +6136,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 );
                 if (choice.vendor === null) return "none";
                 return choice.vendor === "outside" ? "outside" : "vendor";
+              },
+              settleBillingModeForOutside: async (organizationId) => {
+                await pricingContractsHolder.current?.setModeNoneForOutsideBilling(organizationId);
               },
               warn: (message, context) => app.log.warn(context, message),
             }),
@@ -6452,14 +6465,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
                   audit: m35PricingAudit,
                 }),
-                contracts: buildContractService({
+                contracts: (pricingContractsHolder.current = buildContractService({
                   db: dbHandle.db,
                   ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
                   outbox: m35OutboxPublisher,
                   audit: m35PricingAudit,
                   onboarding: buildPricingOnboardingPort({ wizard: m34Onboarding.wizard }),
                   log: (message, detail) => app.log.warn(detail, message),
-                }),
+                })),
               };
             })(),
           });

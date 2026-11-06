@@ -137,6 +137,13 @@ export interface ContractService {
     mode: BillingServiceMode,
     reason: unknown,
   ): Promise<PlatformContractView>;
+  /**
+   * Slice 5: a tenant that bills outside ChartWarden pays no billing percentage. Sets the org's billing service mode to `none` as a
+   * SYSTEM action (no operator), dated like any mode change: at once while the tenant is onboarding with nothing billed, else from
+   * the 1st of next month. Idempotent: `changed:false` when there is no contract, or when `none` is already in force or already
+   * pending. Audited with the reason and `trigger: clearinghouse_outside`.
+   */
+  setModeNoneForOutsideBilling(organizationId: string): Promise<{ readonly changed: boolean }>;
   /** A platform operator's read of a tenant's contract and statements; it writes a structured read-audit row naming the operator. */
   platformView(actor: M35WriteActor, orgSlug: string): Promise<PlatformPricingView>;
   tenantView(organizationId: string, userId: string): Promise<TenantPricingView>;
@@ -153,6 +160,9 @@ export interface ContractServiceDeps {
   readonly now?: () => Date;
   readonly log?: (message: string, detail: Record<string, unknown>) => void;
 }
+
+/** Who a system action is attributed to in the platform audit trail (no person acted). */
+const SYSTEM_OPERATOR = { userId: "system", membershipId: "system" } as const;
 
 type PlanRow = typeof PL.$inferSelect;
 type Band = { readonly minAdc: number; readonly monthlyFeeCents: number };
@@ -622,6 +632,33 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
           },
         ];
         return platformViewOf(record, found.bands, history, today, signature);
+      });
+    },
+
+    async setModeNoneForOutsideBilling(organizationId) {
+      const audit = requireAuditPort(deps.audit);
+      const onboarding = requireOnboardingPort(deps.onboarding);
+      return platformRunner(async (tx) => {
+        const tenant = await onboarding.enterByOrg(tx, organizationId);
+        if (!tenant) return { changed: false };
+        const at = now();
+        const today = utcDateOf(at);
+        const found = await loadContract(tx, "live", at, tenant.organizationId);
+        if (!found) return { changed: false }; // a mode is never invented for a tenant that has no contract
+        const current = modeInForceOn(found.history, today);
+        const pending = pendingModeAfter(found.history, today);
+        if ((pending?.billingServiceMode ?? current) === "none") return { changed: false };
+        const { effectiveOn } = await insertModeChange(tx, tenant, found.record, "none", at);
+        await audit.record(tx, {
+          eventType: "m35.subscription.billing_service_mode_changed",
+          resourceKind: "subscription",
+          resourceId: found.record.sub.id,
+          organizationId: tenant.organizationId,
+          operator: SYSTEM_OPERATOR,
+          reason: "the tenant bills outside ChartWarden, so it pays no billing percentage",
+          detail: { from: current, to: "none", effectiveOn, trigger: "clearinghouse_outside" },
+        });
+        return { changed: true };
       });
     },
 
