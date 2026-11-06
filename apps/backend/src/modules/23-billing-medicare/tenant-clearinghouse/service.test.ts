@@ -6,7 +6,9 @@ import { buildClearinghouseSecretCipher } from "./secret-cipher";
 import {
   type ClearinghouseActor,
   type ClearinghouseProbes,
+  type TenantClearinghouseService,
   createTenantClearinghouseService,
+  verifyConnection,
 } from "./service";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -17,6 +19,41 @@ const ACTOR: ClearinghouseActor = {
   membershipId: "44444444-4444-4444-8444-444444444444",
 };
 const FAKE_KEY = "fake-key-not-a-secret#1";
+const OPERATOR: ClearinghouseActor = {
+  organizationId: ORG,
+  userId: "55555555-5555-4555-8555-555555555555",
+  membershipId: "66666666-6666-4666-8666-666666666666",
+  lane: "platform",
+};
+const BAA = {
+  heldBy: "tenant",
+  effectiveDate: "2026-01-15",
+  documentRef: "Claim.MD BAA, signed 2026-01-15, contract folder 7",
+} as const;
+
+/** The route's own orchestration: read + decrypt, probe with NO transaction open, then compare-and-set. */
+const verify = (
+  service: TenantClearinghouseService,
+  store: ReturnType<typeof createInMemoryConfigStore>,
+  actor: ClearinghouseActor,
+  input: { evidenceNote?: string; confirmNoPatientInformation?: boolean } = {},
+) => verifyConnection(service, (fn) => fn(store), actor, input);
+const ATTEST = {
+  evidenceNote: "Sandbox claim accepted by Stedi test mode, ticket OPS-123",
+  confirmNoPatientInformation: true,
+} as const;
+
+/** A claimmd config taken all the way to active (connection verified, BAA recorded and verified). */
+async function makeActive(
+  service: TenantClearinghouseService,
+  store: ReturnType<typeof createInMemoryConfigStore>,
+) {
+  await service.put(store, ACTOR, { vendor: "claimmd", mode: "test", secret: FAKE_KEY }, undefined);
+  await verify(service, store, ACTOR);
+  await service.recordBaa(store, ACTOR, BAA);
+  await service.verifyBaa(store, OPERATOR);
+  return service.activate(store, ACTOR);
+}
 
 function setup(probes: ClearinghouseProbes = {}) {
   const store = createInMemoryConfigStore();
@@ -153,22 +190,22 @@ describe("tenant clearinghouse service: choosing", () => {
 
   it("puts a vendor or mode change back to draft and demands the new credential", async () => {
     const { store, service } = setup();
-    await service.put(
-      store,
-      ACTOR,
-      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
-      undefined,
-    );
-    await service.verify(store, ACTOR, {});
-    await service.activate(store, ACTOR);
+    const live = await makeActive(service, store);
     expect(
-      await codeOf(service.put(store, ACTOR, { vendor: "claimmd", mode: "production" }, 3)),
+      await codeOf(
+        service.put(
+          store,
+          ACTOR,
+          { vendor: "claimmd", mode: "production" },
+          live.version as number,
+        ),
+      ),
     ).toBe("VALIDATION_FAILED");
     const { view } = await service.put(
       store,
       ACTOR,
       { vendor: "claimmd", mode: "production", secret: `${FAKE_KEY}-prod` },
-      3,
+      live.version as number,
     );
     expect(view).toMatchObject({
       status: "draft",
@@ -178,24 +215,139 @@ describe("tenant clearinghouse service: choosing", () => {
     });
   });
 
-  it("keeps a live config live across a credential rotation but forgets the last test", async () => {
+  // D6 (owner, 2026-11-06): rotating the credential of a verified or live config means the NEW key has not been tried.
+  it("drops a verified or active config back to draft on a credential rotation, and clears what the old key earned", async () => {
+    for (const stopAt of ["verified", "active"] as const) {
+      const { store, service } = setup();
+      const before =
+        stopAt === "active"
+          ? await makeActive(service, store)
+          : await (async () => {
+              await service.put(
+                store,
+                ACTOR,
+                { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+                undefined,
+              );
+              return (await verify(service, store, ACTOR)).view;
+            })();
+      expect(before.status).toBe(stopAt);
+      const { view, changedFields } = await service.put(
+        store,
+        ACTOR,
+        { vendor: "claimmd", mode: "test", secret: `${FAKE_KEY}-rotated` },
+        before.version as number,
+      );
+      expect(view).toMatchObject({
+        status: "draft",
+        lastTest: null,
+        verification: null,
+        activatedAt: null,
+      });
+      expect(changedFields).toEqual(["secret"]);
+      // the connection to the new key must be re-verified, and the config re-activated
+      expect(await codeOf(service.activate(store, ACTOR))).toBe("CLEARINGHOUSE_NOT_VERIFIED");
+    }
+  });
+
+  it("keeps the vendor BAA across a same-vendor rotation or mode change, and voids it when the vendor changes", async () => {
     const { store, service } = setup();
-    await service.put(
+    const live = await makeActive(service, store);
+    const rotated = await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: `${FAKE_KEY}-rotated` },
+      live.version as number,
+    );
+    expect(rotated.view.baa?.verified).not.toBeNull();
+    const remoded = await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "production", secret: `${FAKE_KEY}-prod` },
+      rotated.view.version as number,
+    );
+    expect(remoded.view.baa?.verified).not.toBeNull();
+    const switched = await service.put(
+      store,
+      ACTOR,
+      { vendor: "stedi", mode: "production", secret: `${FAKE_KEY}-stedi` },
+      remoded.view.version as number,
+    );
+    expect(switched.view.baa).toBeNull();
+    expect(switched.view.status).toBe("draft");
+  });
+
+  it("reports which fields a put changed (names only), for the field-level audit row", async () => {
+    const { store, service } = setup();
+    const first = await service.put(
       store,
       ACTOR,
       { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
       undefined,
     );
-    await service.verify(store, ACTOR, {});
-    await service.activate(store, ACTOR);
-    const { view } = await service.put(
+    expect(first.changedFields).toEqual(["vendor", "mode", "secret"]);
+    const switched = await service.put(
       store,
       ACTOR,
-      { vendor: "claimmd", mode: "test", secret: `${FAKE_KEY}-rotated` },
-      3,
+      { vendor: "stedi", mode: "test", secret: FAKE_KEY },
+      first.view.version as number,
     );
-    expect(view).toMatchObject({ status: "active", lastTest: null });
-    expect(view.verification?.kind).toBe("connection_test");
+    expect(switched.changedFields).toEqual(["vendor", "secret"]);
+    const same = await service.put(
+      store,
+      ACTOR,
+      { vendor: "stedi", mode: "test" },
+      switched.view.version as number,
+    );
+    expect(same.changedFields).toEqual([]);
+  });
+
+  it("refuses to switch away from a vendor (or to outside) while the org has queued claims or submissions", async () => {
+    const store = createInMemoryConfigStore();
+    const cipher = buildClearinghouseSecretCipher(randomBytes(32));
+    const waiting = { claims: 2, commercialSubmissions: 1 };
+    const service = createTenantClearinghouseService({
+      cipher,
+      probes: {},
+      waitingWork: async () => waiting,
+    });
+    const first = await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    const version = first.view.version as number;
+    for (const input of [
+      { vendor: "outside" },
+      { vendor: "stedi", mode: "test", secret: FAKE_KEY },
+      { vendor: "claimmd", mode: "production", secret: FAKE_KEY },
+    ] as const) {
+      const err = await service.put(store, ACTOR, input, version).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ChartWardenError);
+      expect(err).toMatchObject({ code: "CLEARINGHOUSE_WORK_WAITING", statusCode: 409 });
+      // the 409 names the counts so the tenant knows what to wait for
+      expect(JSON.stringify((err as ChartWardenError).details)).toContain("claims");
+      expect(JSON.stringify((err as ChartWardenError).details)).toContain("2");
+    }
+    // a same-vendor, same-mode credential rotation is not a switch: nothing is re-routed
+    expect(
+      await codeOf(
+        service.put(
+          store,
+          ACTOR,
+          { vendor: "claimmd", mode: "test", secret: `${FAKE_KEY}-rotated` },
+          version,
+        ),
+      ),
+    ).toBe("no error");
+    // and once the queue is empty the switch is allowed
+    waiting.claims = 0;
+    waiting.commercialSubmissions = 0;
+    const next = await service.view(store, ORG);
+    expect(
+      await codeOf(service.put(store, ACTOR, { vendor: "outside" }, next.version as number)),
+    ).toBe("no error");
   });
 
   it("locks vendor and mode once a production submission exists, but still allows a rotation", async () => {
@@ -256,7 +408,7 @@ describe("tenant clearinghouse service: verifying and activating", () => {
       { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
       undefined,
     );
-    const { view, test } = await service.verify(store, ACTOR, {});
+    const { view, test } = await verify(service, store, ACTOR, {});
     expect(test).toEqual({ outcome: "ok" });
     expect(view).toMatchObject({
       status: "verified",
@@ -278,7 +430,7 @@ describe("tenant clearinghouse service: verifying and activating", () => {
       { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
       undefined,
     );
-    const { view, test } = await failing.verify(store, ACTOR, {});
+    const { view, test } = await verify(failing, store, ACTOR, {});
     expect(test).toEqual({ outcome: "credential_rejected" });
     expect(view).toMatchObject({
       status: "draft",
@@ -292,13 +444,13 @@ describe("tenant clearinghouse service: verifying and activating", () => {
     const { store, service } = setup();
     await service.put(store, ACTOR, { vendor: "stedi", mode: "test", secret: FAKE_KEY }, undefined);
     expect((await service.view(store, ORG)).verifiableBy).toBe("attestation");
-    expect(await codeOf(service.verify(store, ACTOR, {}))).toBe("VALIDATION_FAILED");
-    expect(await codeOf(service.verify(store, ACTOR, { evidenceNote: "short" }))).toBe(
-      "VALIDATION_FAILED",
-    );
-    const { view, test } = await service.verify(store, ACTOR, {
-      evidenceNote: "Sandbox claim accepted by Stedi test mode, ticket OPS-123",
-    });
+    expect(await codeOf(verify(service, store, ACTOR, {}))).toBe("VALIDATION_FAILED");
+    expect(
+      await codeOf(
+        verify(service, store, ACTOR, { evidenceNote: "short", confirmNoPatientInformation: true }),
+      ),
+    ).toBe("VALIDATION_FAILED");
+    const { view, test } = await verify(service, store, ACTOR, ATTEST);
     expect(test).toBeNull();
     expect(view).toMatchObject({
       status: "verified",
@@ -314,17 +466,20 @@ describe("tenant clearinghouse service: verifying and activating", () => {
     await service.put(store, ACTOR, { vendor: "stedi", mode: "test", secret: FAKE_KEY }, undefined);
     expect(
       await codeOf(
-        service.verify(store, ACTOR, { evidenceNote: "tested with beneficiary 900-12-3456 today" }),
+        verify(service, store, ACTOR, {
+          evidenceNote: "tested with beneficiary 900-12-3456 today",
+          confirmNoPatientInformation: true,
+        }),
       ),
     ).toBe("VALIDATION_FAILED");
   });
 
   it("refuses to verify with nothing chosen, with `outside`, or before the credential is entered", async () => {
     const { store, service } = setup();
-    expect(await codeOf(service.verify(store, ACTOR, {}))).toBe("CLEARINGHOUSE_NOT_CONFIGURED");
+    expect(await codeOf(verify(service, store, ACTOR, {}))).toBe("CLEARINGHOUSE_NOT_CONFIGURED");
     expect(await codeOf(service.activate(store, ACTOR))).toBe("CLEARINGHOUSE_NOT_CONFIGURED");
     await service.put(store, ACTOR, { vendor: "outside" }, undefined);
-    expect(await codeOf(service.verify(store, ACTOR, {}))).toBe(
+    expect(await codeOf(verify(service, store, ACTOR, {}))).toBe(
       "CLEARINGHOUSE_OUTSIDE_NOT_VERIFIABLE",
     );
   });
@@ -338,7 +493,9 @@ describe("tenant clearinghouse service: verifying and activating", () => {
       undefined,
     );
     expect(await codeOf(service.activate(store, ACTOR))).toBe("CLEARINGHOUSE_NOT_VERIFIED");
-    await service.verify(store, ACTOR, {});
+    await verify(service, store, ACTOR);
+    await service.recordBaa(store, ACTOR, BAA);
+    await service.verifyBaa(store, OPERATOR);
     const first = await service.activate(store, ACTOR);
     expect(first).toMatchObject({ status: "active" });
     expect(first.activatedAt).not.toBeNull();
@@ -348,15 +505,265 @@ describe("tenant clearinghouse service: verifying and activating", () => {
 
   it("re-verifying an active config keeps it active", async () => {
     const { store, service } = setup();
+    await makeActive(service, store);
+    const { view } = await verify(service, store, ACTOR);
+    expect(view.status).toBe("active");
+  });
+});
+
+describe("tenant clearinghouse service: the tenant-held vendor BAA (owner decision D2)", () => {
+  async function verifiedClaimMd() {
+    const ctx = setup();
+    await ctx.service.put(
+      ctx.store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    await verify(ctx.service, ctx.store, ACTOR);
+    return ctx;
+  }
+
+  it("refuses activation until a platform operator has verified the recorded BAA (409 CLEARINGHOUSE_BAA_NOT_VERIFIED)", async () => {
+    const { store, service } = await verifiedClaimMd();
+    // nothing recorded yet
+    expect(await codeOf(service.activate(store, ACTOR))).toBe("CLEARINGHOUSE_BAA_NOT_VERIFIED");
+    // recorded by the tenant, not yet verified by an operator
+    await service.recordBaa(store, ACTOR, BAA);
+    const err = await service.activate(store, ACTOR).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: "CLEARINGHOUSE_BAA_NOT_VERIFIED", statusCode: 409 });
+    expect((await service.view(store, ORG)).status).toBe("verified");
+    // verified by the operator: now it may go live
+    await service.verifyBaa(store, OPERATOR);
+    expect((await service.activate(store, ACTOR)).status).toBe("active");
+  });
+
+  it("shows the BAA status in the view: who holds it, when, the document reference, and whether it is verified", async () => {
+    const { store, service } = await verifiedClaimMd();
+    expect((await service.view(store, ORG)).baa).toBeNull();
+    const recorded = await service.recordBaa(store, ACTOR, BAA);
+    expect(recorded.view.baa).toMatchObject({
+      heldBy: "tenant",
+      effectiveDate: "2026-01-15",
+      documentRef: BAA.documentRef,
+      verified: null,
+    });
+    const verified = await service.verifyBaa(store, OPERATOR);
+    expect(verified.baa?.verified?.at).toEqual(expect.any(String));
+  });
+
+  it("validates the record: held by the tenant, a real past date, a reference with no patient identifier", async () => {
+    const { store, service } = await verifiedClaimMd();
+    const cases: unknown[] = [
+      { ...BAA, heldBy: "chartwarden" },
+      { ...BAA, effectiveDate: "2999-01-01" },
+      { ...BAA, effectiveDate: "not-a-date" },
+      { ...BAA, effectiveDate: "2026-02-30" },
+      { ...BAA, documentRef: "ab" },
+      { ...BAA, documentRef: "x".repeat(201) },
+      { ...BAA, documentRef: "scan for beneficiary 900-12-3456" },
+    ];
+    for (const bad of cases) {
+      expect(await codeOf(service.recordBaa(store, ACTOR, bad as typeof BAA))).toBe(
+        "VALIDATION_FAILED",
+      );
+    }
+    expect((await service.view(store, ORG)).baa).toBeNull();
+  });
+
+  it("refuses to record a BAA for `outside` (there is no vendor account) or with nothing chosen", async () => {
+    const { store, service } = setup();
+    expect(await codeOf(service.recordBaa(store, ACTOR, BAA))).toBe("CLEARINGHOUSE_NOT_CONFIGURED");
+    await service.put(store, ACTOR, { vendor: "outside" }, undefined);
+    expect(await codeOf(service.recordBaa(store, ACTOR, BAA))).toBe(
+      "CLEARINGHOUSE_BAA_NOT_APPLICABLE",
+    );
+    expect(await codeOf(service.verifyBaa(store, OPERATOR))).toBe(
+      "CLEARINGHOUSE_BAA_NOT_APPLICABLE",
+    );
+  });
+
+  it("will not verify a BAA nobody recorded, and verifying twice changes nothing", async () => {
+    const { store, service } = await verifiedClaimMd();
+    expect(await codeOf(service.verifyBaa(store, OPERATOR))).toBe("CLEARINGHOUSE_BAA_NOT_RECORDED");
+    await service.recordBaa(store, ACTOR, BAA);
+    const first = await service.verifyBaa(store, OPERATOR);
+    const again = await service.verifyBaa(store, OPERATOR);
+    expect(again.version).toBe(first.version);
+  });
+
+  it("re-recording the same BAA is a no-op; a changed record voids the verification and takes a live config out of service", async () => {
+    const { store, service } = setup();
+    const live = await makeActive(service, store);
+    const same = await service.recordBaa(store, ACTOR, BAA);
+    expect(same.view.version).toBe(live.version);
+    expect(same.view.status).toBe("active");
+
+    const changed = await service.recordBaa(store, ACTOR, {
+      ...BAA,
+      documentRef: "Claim.MD BAA amendment 2, contract folder 7",
+    });
+    expect(changed.view.baa?.verified).toBeNull();
+    // a live config cannot rest on an unverified BAA: it waits at `verified` until the operator re-verifies
+    expect(changed.view.status).toBe("verified");
+    expect(changed.view.activatedAt).toBeNull();
+    expect(await codeOf(service.activate(store, ACTOR))).toBe("CLEARINGHOUSE_BAA_NOT_VERIFIED");
+    await service.verifyBaa(store, OPERATOR);
+    expect((await service.activate(store, ACTOR)).status).toBe("active");
+  });
+});
+
+describe("tenant clearinghouse service: mode `test` in production (security M4)", () => {
+  const productionService = () => {
+    const store = createInMemoryConfigStore();
+    const service = createTenantClearinghouseService({
+      cipher: buildClearinghouseSecretCipher(randomBytes(32)),
+      probes: {},
+      isProduction: true,
+    });
+    return { store, service };
+  };
+  const TEST_MODE = { vendor: "stedi", mode: "test", secret: FAKE_KEY } as const;
+
+  it("refuses the tenant lane a test-mode config in production with a 422, and stores nothing", async () => {
+    const { store, service } = productionService();
+    const err = await service.put(store, ACTOR, TEST_MODE, undefined).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(JSON.stringify((err as ChartWardenError).details)).toContain(
+      "CLEARINGHOUSE_TEST_MODE_NOT_ALLOWED",
+    );
+    expect(store.rows()).toHaveLength(0);
+    expect(
+      await codeOf(service.put(store, ACTOR, { ...TEST_MODE, mode: "production" }, undefined)),
+    ).toBe("no error");
+  });
+
+  it("lets the platform-ops lane set test mode in production (it records a reason)", async () => {
+    const { store, service } = productionService();
+    expect(await codeOf(service.put(store, OPERATOR, TEST_MODE, undefined))).toBe("no error");
+  });
+
+  it("allows test mode outside production for either lane", async () => {
+    const { store, service } = setup();
+    expect(await codeOf(service.put(store, ACTOR, TEST_MODE, undefined))).toBe("no error");
+  });
+});
+
+describe("tenant clearinghouse service: the vendor probe never runs inside a transaction", () => {
+  /** A store that logs every call, so the order of reads, locks and the probe is visible. */
+  function tracedSetup(probeOutcome: "ok" | "unreachable" = "ok") {
+    const store = createInMemoryConfigStore();
+    const calls: string[] = [];
+    const traced = new Proxy(store, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (typeof value !== "function" || typeof prop !== "string") return value;
+        return (...args: unknown[]) => {
+          calls.push(prop);
+          return (value as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+    const service = createTenantClearinghouseService({
+      cipher: buildClearinghouseSecretCipher(randomBytes(32)),
+      probes: {
+        claimmd: async () => {
+          calls.push("PROBE");
+          return probeOutcome;
+        },
+      },
+    });
+    return { store, traced, service, calls };
+  }
+
+  it("reads and decrypts first (no lock), probes with no store call in flight, then locks only to compare-and-set", async () => {
+    const { store, traced, service, calls } = tracedSetup();
     await service.put(
       store,
       ACTOR,
       { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
       undefined,
     );
-    await service.verify(store, ACTOR, {});
-    await service.activate(store, ACTOR);
-    const { view } = await service.verify(store, ACTOR, {});
-    expect(view.status).toBe("active");
+    calls.length = 0;
+    await verifyConnection(
+      service,
+      async (fn) => {
+        calls.push("TX_OPEN");
+        try {
+          return await fn(traced);
+        } finally {
+          calls.push("TX_CLOSE");
+        }
+      },
+      ACTOR,
+      {},
+    );
+    const probeAt = calls.indexOf("PROBE");
+    expect(probeAt).toBeGreaterThan(-1);
+    // no transaction is open at the moment of the probe
+    const openBefore = calls.slice(0, probeAt).filter((c) => c === "TX_OPEN").length;
+    const closedBefore = calls.slice(0, probeAt).filter((c) => c === "TX_CLOSE").length;
+    expect(openBefore).toBe(closedBefore);
+    // the first transaction takes NO row lock; only the second (the write) does
+    const firstClose = calls.indexOf("TX_CLOSE");
+    expect(calls.slice(0, firstClose)).not.toContain("findForUpdate");
+    expect(calls.slice(probeAt)).toContain("findForUpdate");
+  });
+
+  it("answers 409 when the config moved while the probe was away, and writes nothing from the stale probe", async () => {
+    const { store, service } = tracedSetup();
+    const first = await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    const plan = await service.prepareVerify(store, ACTOR, {});
+    // another writer rotates the key while the probe runs
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: `${FAKE_KEY}-new` },
+      first.view.version as number,
+    );
+    const err = await service.completeVerify(store, ACTOR, plan, "ok").catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: "CLEARINGHOUSE_CHANGED_DURING_VERIFY", statusCode: 409 });
+    expect((await service.view(store, ORG)).status).toBe("draft");
+  });
+
+  it("treats a probe that throws as unreachable instead of failing the request", async () => {
+    const store = createInMemoryConfigStore();
+    const service = createTenantClearinghouseService({
+      cipher: buildClearinghouseSecretCipher(randomBytes(32)),
+      probes: {
+        claimmd: async () => {
+          throw new Error("socket hang up");
+        },
+      },
+    });
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    const { test, view } = await verify(service, store, ACTOR);
+    expect(test).toEqual({ outcome: "unreachable" });
+    expect(view.lastTest?.outcome).toBe("unreachable");
+  });
+});
+
+describe("tenant clearinghouse service: attesting a vendor with no safe probe", () => {
+  it("requires the confirmation that the evidence note names no patient information", async () => {
+    const { store, service } = setup();
+    await service.put(store, ACTOR, { vendor: "stedi", mode: "test", secret: FAKE_KEY }, undefined);
+    const err = await verify(service, store, ACTOR, {
+      evidenceNote: ATTEST.evidenceNote,
+    }).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(JSON.stringify((err as ChartWardenError).details)).toContain(
+      "CLEARINGHOUSE_NO_PHI_CONFIRMATION_REQUIRED",
+    );
+    expect((await verify(service, store, ACTOR, ATTEST)).view.status).toBe("verified");
   });
 });

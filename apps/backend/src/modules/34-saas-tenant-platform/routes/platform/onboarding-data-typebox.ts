@@ -210,6 +210,12 @@ export const OnboardingClearinghouseVerifyRequest = Type.Composite([
           "Required where the vendor has no safe connection test (Stedi): what was checked and by whom (8-500 characters; no patient information).",
       }),
     ),
+    confirmNoPatientInformation: Type.Optional(
+      Type.Boolean({
+        description:
+          "Required, and must be true, with an evidence note: the operator confirms the note names no patient information.",
+      }),
+    ),
   }),
   OnboardingReasonSchema,
 ]);
@@ -247,6 +253,19 @@ export const OnboardingClearinghouseViewSchema = Type.Object({
     }),
   ),
   lastTest: Nullable(Type.Object({ outcome: ClearinghouseOutcome, at: Iso })),
+  baaRequired: Type.Boolean({
+    description:
+      "True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active.",
+  }),
+  baa: Nullable(
+    Type.Object({
+      heldBy: Type.Literal("tenant"),
+      effectiveDate: Type.String({ format: "date" }),
+      documentRef: Type.String(),
+      recordedAt: Iso,
+      verified: Nullable(Type.Object({ at: Iso })),
+    }),
+  ),
   activatedAt: Nullable(Iso),
   version: Nullable(Type.Integer()),
   updatedAt: Nullable(Iso),

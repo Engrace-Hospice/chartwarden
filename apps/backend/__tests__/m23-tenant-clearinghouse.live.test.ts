@@ -15,7 +15,12 @@
  *   - the claims-billing gate allows / refuses per choice (enforce), through the real seams;
  *   - a platform operator sets the same config on the tenant's behalf only while it is onboarding (409 after), with an audit
  *     row naming operator + org + reason, and wizard step 7 settles through the real advance pass;
- *   - vendor and mode lock once a production submission exists, a credential rotation does not.
+ *   - vendor and mode lock once a production submission exists; a credential rotation drops a live config back to draft (D6);
+ *   - the tenant-held vendor BAA: the tenant records it, a platform operator verifies it (a live tenant too), and the table's
+ *     CHECK and the activation both refuse `active` without it (D2); the sealed credential's audit trigger says THAT it changed;
+ *   - the org-level `billing.clearinghouse.*` keys: a holder of only the provider-entity-scoped MAC keys is refused (D3);
+ *   - the tenant routes write a field-level audit row (names, never values); a switch is refused while claims are queued;
+ *   - a suspended subscription still refuses new claims work through the real seams (D1); a claim job for a draft config is held.
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
@@ -47,8 +52,10 @@ import {
   buildOrgSeedFactsReader,
 } from "../src/bootstrap/org-spine-facts";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { getSeam } from "../src/bootstrap/seams/registry";
+import { getSeam, registerSeam } from "../src/bootstrap/seams/registry";
 import { m34PlatformBypassAuditor } from "../src/index";
+import { buildClearinghouseAuditPort } from "../src/m23-clearinghouse-audit";
+import { holdBeforeRun } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
 import {
   buildDrizzleOrgMacJurisdictionReader,
   buildMacFeedConfiguredReader,
@@ -60,6 +67,7 @@ import { registerTenantClearinghouseRoutes } from "../src/modules/23-billing-med
 import { buildClearinghouseSecretCipher } from "../src/modules/23-billing-medicare/tenant-clearinghouse/secret-cipher";
 import { createTenantClearinghouseService } from "../src/modules/23-billing-medicare/tenant-clearinghouse/service";
 import { buildDrizzleTenantClearinghouseRouteService } from "../src/modules/23-billing-medicare/tenant-clearinghouse/tenant-service";
+import { countQueuedClaims } from "../src/modules/23-billing-medicare/tenant-clearinghouse/waiting-work";
 import { M34_OUTBOX_EVENTS } from "../src/modules/34-saas-tenant-platform/events-by-m34";
 import {
   buildDrizzleOnboardingDataService,
@@ -68,6 +76,8 @@ import {
 } from "../src/modules/34-saas-tenant-platform/index";
 import { createOnboardingAdvancer } from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
 import { createSettleOnboardingForOrg } from "../src/modules/34-saas-tenant-platform/onboarding/settle-for-org";
+import { createDrizzleSubscriptionWorkBlockReader } from "../src/modules/35-subscription/addon/entitlement";
+import { countQueuedCommercialSubmissions } from "../src/modules/41-billing-commercial/index";
 import {
   appRoleConnectionString,
   appRoleUrl,
@@ -91,7 +101,13 @@ const ORG_G = "a7000000-0000-4000-8000-0000000000a7"; // stedi, active
 const OPERATOR = "c9000000-0000-4000-8000-0000000000c9";
 const MEMBERSHIP = "e9000000-0000-4000-8000-0000000000e9";
 const TENANT_ADMIN = "7a000000-0000-4000-8000-0000000000a7";
+const ENTITY_MANAGER = "7b000000-0000-4000-8000-0000000000b7"; // a billing manager scoped to ONE provider entity (MAC keys only)
 const REASON = "Customer asked support to set up their clearinghouse, ticket CHG-5001";
+const BAA = {
+  heldBy: "tenant",
+  effectiveDate: "2026-01-15",
+  documentRef: "Claim.MD BAA, signed 2026-01-15, contract folder 7",
+} as const;
 
 const KEY_A = "fake-claimmd-key-A#live-1";
 const KEY_A2 = "fake-claimmd-key-A#live-2-rotated";
@@ -221,6 +237,10 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'admin-clearinghouse@test.test')`, [
       TENANT_ADMIN,
     ]);
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'entity-clearinghouse@test.test')`,
+      [ENTITY_MANAGER],
+    );
     for (const [org, status] of [
       [ORG_A, "active"],
       [ORG_B, "onboarding"],
@@ -273,7 +293,12 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     platformPool = createDbClient({ connectionString: platformUrl.toString() });
     registerPlatformJob(JOB_ID);
 
-    // The seams the gate and the wizard read, over the real tenant pool; the env fallback names ORG_E only.
+    // The seams the gate and the wizard read, over the real tenant pool; the env fallback names ORG_E only. The gate also asks
+    // M35 whether the subscription is suspended / paused / canceled (owner decision D1): the real reader.
+    registerSeam(
+      "SubscriptionWorkBlockReader",
+      createDrizzleSubscriptionWorkBlockReader(tenantPool.db),
+    );
     registerM23TenantClearinghouseSeams({
       db: tenantPool.db,
       env: { CLEARINGHOUSE_VENDOR: "in_memory", CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS: ORG_E },
@@ -314,6 +339,14 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
 
     const service = createTenantClearinghouseService({
       cipher,
+      // A switch is refused while claims or commercial submissions are queued (the same real counters the composition root binds).
+      waitingWork: async (organizationId) => ({
+        claims: await countQueuedClaims(tenantPool.db, organizationId),
+        commercialSubmissions: await countQueuedCommercialSubmissions(
+          tenantPool.db,
+          organizationId,
+        ),
+      }),
       // The Claim.MD connection test is a mock: no network. It records what it was handed.
       probes: {
         claimmd: async (secret, mode) => {
@@ -349,16 +382,30 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
               permissionKeys: [
                 "tenant_clearinghouse.read_platform",
                 "tenant_clearinghouse.write_platform",
+                "tenant_clearinghouse.verify_baa_platform",
               ],
             },
           ],
         },
-        ...[ORG_A, ORG_B].map((orgId) => ({
+        ...[ORG_A, ORG_B, ORG_G].map((orgId) => ({
           orgId,
           userId: TENANT_ADMIN,
           grants: [
             {
               roleKey: "org_admin",
+              enabled: true,
+              expiresAt: null,
+              permissionKeys: ["billing.clearinghouse.read", "billing.clearinghouse.admin"],
+            },
+          ],
+        })),
+        // D3: a billing manager scoped to one provider entity holds the entity-scoped MAC credential keys and NOT the org-level pair
+        ...[ORG_A, ORG_B].map((orgId) => ({
+          orgId,
+          userId: ENTITY_MANAGER,
+          grants: [
+            {
+              roleKey: "billing_manager",
               enabled: true,
               expiresAt: null,
               permissionKeys: ["billing.mac_credential.read", "billing.mac_credential.admin"],
@@ -378,6 +425,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       tenantClearinghouseService: buildDrizzleTenantClearinghouseRouteService({
         db: tenantPool.db,
         service,
+        audit: buildClearinghouseAuditPort(),
         onChanged: settleOnboarding,
       }),
     });
@@ -422,7 +470,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     expect((await tenantCall("GET", ORG_A, "")).body).not.toContain(KEY_A);
   });
 
-  it("verifies with the connection test on the unsealed key, then activates; the gate follows (draft refused, active allowed)", async () => {
+  it("verifies with the connection test on the unsealed key; activation needs the vendor BAA recorded by the tenant and verified by an operator; the gate follows", async () => {
     expect(await claimsBillingVerdict(ORG_A, {})).toEqual({
       allow: false,
       reason: "clearinghouse_not_active",
@@ -438,10 +486,70 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       allow: false,
       reason: "clearinghouse_not_active",
     });
+
+    // D2: connection verified is not enough. No BAA recorded -> 409.
+    const noBaa = await tenantCall("POST", ORG_A, "/activate", {});
+    expect(noBaa.statusCode).toBe(409);
+    expect(errorCode(noBaa)).toBe("CLEARINGHOUSE_BAA_NOT_VERIFIED");
+    // The tenant records its own BAA; an operator has not verified it yet -> still 409.
+    const record = await tenantCall("POST", ORG_A, "/baa", BAA);
+    expect(record.statusCode, record.body).toBe(200);
+    expect(record.json()).toMatchObject({
+      status: "verified",
+      baaRequired: true,
+      baa: { heldBy: "tenant", effectiveDate: BAA.effectiveDate, verified: null },
+    });
+    const unverified = await tenantCall("POST", ORG_A, "/activate", {});
+    expect(unverified.statusCode).toBe(409);
+    expect(errorCode(unverified)).toBe("CLEARINGHOUSE_BAA_NOT_VERIFIED");
+    // The tenant cannot verify its own BAA: the route does not exist on the tenant surface, and the body refuses the field.
+    expect((await tenantCall("POST", ORG_A, "/baa", { ...BAA, verified: true })).statusCode).toBe(
+      422,
+    );
+    // A platform operator verifies it: allowed for an ACTIVE tenant too (ORG_A is live), audited with operator, org and reason.
+    const verified = await platformCall("POST", "ch-a", "/baa/verify", { reason: REASON });
+    expect(verified.statusCode, verified.body).toBe(200);
+    expect(verified.json()).toMatchObject({ baa: { verified: { at: expect.any(String) } } });
+    const [baaAudit] = await q<{ actor_user_id: string; context: Record<string, unknown> }>(
+      "SELECT actor_user_id, context FROM audit_event WHERE organization_id=$1 AND event_type='m34.tenant_onboarding.clearinghouse_baa_verified'",
+      [ORG_A],
+    );
+    expect(baaAudit?.actor_user_id).toBe(OPERATOR);
+    expect(baaAudit?.context).toMatchObject({ reason: REASON, targetOrganizationId: ORG_A });
+
     const activate = await tenantCall("POST", ORG_A, "/activate", {});
     expect(activate.statusCode, activate.body).toBe(200);
     expect(activate.json()).toMatchObject({ status: "active" });
     expect(await claimsBillingVerdict(ORG_A, {})).toEqual({ allow: true });
+  });
+
+  it("D3: a billing manager scoped to one provider entity (MAC credential keys only) is refused on every clearinghouse route", async () => {
+    const headers = (stepUp: boolean) => ({
+      "x-test-user": ENTITY_MANAGER,
+      "x-test-org": ORG_A,
+      "x-test-roles": "billing_manager",
+      ...(stepUp ? { "x-step-up": "fresh", "idempotency-key": `live-${++seq}` } : {}),
+    });
+    const get = await server.inject({
+      method: "GET",
+      url: "/api/v1/tenant/clearinghouse",
+      headers: headers(false),
+    });
+    expect(get.statusCode).toBe(403);
+    for (const [method, path, payload] of [
+      ["PUT", "", { vendor: "outside" }],
+      ["POST", "/baa", BAA],
+      ["POST", "/verify", {}],
+      ["POST", "/activate", {}],
+    ] as const) {
+      const res = await server.inject({
+        method,
+        url: `/api/v1/tenant/clearinghouse${path}`,
+        headers: headers(true),
+        payload,
+      });
+      expect(res.statusCode, `${method} ${path}`).toBe(403);
+    }
   });
 
   it("the gate refuses outside and nothing-chosen, and allows the org named in the env fallback list", async () => {
@@ -523,20 +631,49 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     ).rejects.toThrow(/violates check constraint/);
   });
 
+  it("D2: the table refuses an ACTIVE transmitting config whose BAA is not verified, and a half-recorded BAA", async () => {
+    const sealed = (await cipher.encrypt(ORG_D, KEY_G, { vendor: "stedi", mode: "test" })).cipher;
+    const columns = `(organization_id, vendor, mode, status, secret_cipher, secret_dek_version, verification_kind, verified_at,
+       verified_by_membership_id, activated_at, activated_by_membership_id, set_by_membership_id`;
+    // active with a verified connection but NO verified BAA
+    await expect(
+      q(
+        `INSERT INTO tenant_clearinghouse_config ${columns})
+         VALUES ($1,'stedi','test','active',$2,1,'attested',now(),$3,now(),$3,$3)`,
+        [ORG_D, sealed, MEMBERSHIP],
+      ),
+    ).rejects.toThrow(/tenant_clearinghouse_config_active_baa_ck/);
+    // active with a recorded but unverified BAA
+    await expect(
+      q(
+        `INSERT INTO tenant_clearinghouse_config ${columns},
+           baa_effective_date, baa_document_ref, baa_recorded_at, baa_recorded_by_membership_id)
+         VALUES ($1,'stedi','test','active',$2,1,'attested',now(),$3,now(),$3,$3,'2026-01-01','BAA ref',now(),$3)`,
+        [ORG_D, sealed, MEMBERSHIP],
+      ),
+    ).rejects.toThrow(/tenant_clearinghouse_config_active_baa_ck/);
+    // a BAA record with a missing part
+    await expect(
+      q(
+        "INSERT INTO tenant_clearinghouse_config (organization_id, vendor, mode, status, baa_document_ref, set_by_membership_id) VALUES ($1,'stedi','test','draft','BAA ref',$2)",
+        [ORG_D, MEMBERSHIP],
+      ),
+    ).rejects.toThrow(/tenant_clearinghouse_config_baa_record_ck/);
+    // a verification with no record behind it
+    await expect(
+      q(
+        "INSERT INTO tenant_clearinghouse_config (organization_id, vendor, mode, status, baa_verified_at, baa_verified_by_membership_id, set_by_membership_id) VALUES ($1,'stedi','test','draft',now(),$2,$2)",
+        [ORG_D, MEMBERSHIP],
+      ),
+    ).rejects.toThrow(/tenant_clearinghouse_config_baa_verified_ck/);
+  });
+
   it("resolves each org's OWN transport from the real table: its vendor and mode, nothing for outside, draft or no row", async () => {
-    // a credential rotation (same vendor and mode, a new key) with the version last read: verify and activate bumped it to 3
-    const rotation = await tenantCall(
-      "PUT",
-      ORG_A,
-      "",
-      { vendor: "claimmd", mode: "test", secret: KEY_A },
-      { "if-match": '"3"' },
-    );
-    expect(rotation.statusCode, rotation.body).toBe(200);
     await q(
       `INSERT INTO tenant_clearinghouse_config (organization_id, vendor, mode, status, secret_cipher, secret_dek_version,
-         verification_kind, verified_at, verified_by_membership_id, activated_at, activated_by_membership_id, set_by_membership_id)
-       VALUES ($1,'stedi','production','active',$2,1,'attested',now(),$3,now(),$3,$3)`,
+         verification_kind, verified_at, verified_by_membership_id, activated_at, activated_by_membership_id, set_by_membership_id,
+         baa_effective_date, baa_document_ref, baa_recorded_at, baa_recorded_by_membership_id, baa_verified_at, baa_verified_by_membership_id)
+       VALUES ($1,'stedi','production','active',$2,1,'attested',now(),$3,now(),$3,$3,'2026-01-01','Stedi BAA ref',now(),$3,now(),$3)`,
       [
         ORG_G,
         (await cipher.encrypt(ORG_G, KEY_G, { vendor: "stedi", mode: "production" })).cipher,
@@ -566,7 +703,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     expect((await forOrg?.(ORG_A))?.transport).not.toBe((await forOrg?.(ORG_G))?.transport);
   });
 
-  it("locks vendor and mode once a production submission exists, but still allows a credential rotation", async () => {
+  it("locks vendor and mode once a production submission exists; a credential rotation drops the live config to draft, the gate refuses and a claim job is HELD (D6)", async () => {
     await q(
       `INSERT INTO clearinghouse_submission_attempt (organization_id, provider_entity_id, scope, usage, idempotency_key, control_number, kind, identity, status, reserved_at)
        VALUES ($1, gen_random_uuid(), 'scope-a', 'production', 'k-1', '000000001', 'claim', repeat('a',64), 'reserved', now())`,
@@ -594,7 +731,122 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       { "if-match": version },
     );
     expect(rotate.statusCode, rotate.body).toBe(200);
-    expect(rotate.json()).toMatchObject({ status: "active", lastTest: null });
+    // the NEW key has not been tried: back to draft, the old key's verification and activation are gone, the BAA (same vendor) stays
+    expect(rotate.json()).toMatchObject({
+      status: "draft",
+      lastTest: null,
+      verification: null,
+      activatedAt: null,
+      baa: { verified: { at: expect.any(String) } },
+    });
+    expect(await claimsBillingVerdict(ORG_A, {})).toEqual({
+      allow: false,
+      reason: "clearinghouse_not_active",
+    });
+    // a claim job for the org is HELD (delayed, no attempt spent), not failed into the DLQ, even in a mode that lets the work through
+    configureClaimsBillingGate({ mode: "shadow", log: () => {} });
+    const runtime = createTenantClearinghouseRuntime({
+      db: tenantPool.db,
+      cipher,
+      attempts: new InMemoryAttemptStore(),
+      platformBinding: { vendor: "in_memory", transport: createInMemoryHarness().transport },
+      fallbackOrgIds: new Set(),
+    });
+    const moved: number[] = [];
+    await expect(
+      holdBeforeRun(
+        {
+          db: tenantPool.db as never,
+          transport: { binding: runtime.binding, contexts: {} as never },
+          alerts: { dispatch: async () => undefined },
+        },
+        { moveToDelayed: async (at: number) => void moved.push(at) },
+        "tok",
+        "claim.submit",
+        { organizationId: ORG_A },
+      ),
+    ).rejects.toThrow();
+    expect(moved).toHaveLength(1);
+    configureClaimsBillingGate({ mode: "enforce", log: () => {} });
+    // re-verify and re-activate the new key: the BAA needs no second verification
+    const reverify = await tenantCall("POST", ORG_A, "/verify", {});
+    expect(reverify.json()).toMatchObject({
+      config: { status: "verified" },
+      test: { outcome: "ok" },
+    });
+    expect((await tenantCall("POST", ORG_A, "/activate", {})).json()).toMatchObject({
+      status: "active",
+    });
+    expect(await claimsBillingVerdict(ORG_A, {})).toEqual({ allow: true });
+  });
+
+  it("audit: the trigger says THAT the sealed credential changed (secret_changed), and the tenant route writes a field-level row (names only)", async () => {
+    const rows = await q<{ event_type: string; context: Record<string, unknown> }>(
+      `SELECT event_type, context FROM audit_event
+        WHERE organization_id=$1 AND resource_kind='tenant_clearinghouse_config'
+          AND event_type LIKE 'tenant_clearinghouse_config.%' ORDER BY created_at`,
+      [ORG_A],
+    );
+    const flags = rows.map((r) => r.context.secret_changed);
+    expect(flags[0]).toBe(true); // the first put sealed a credential
+    expect(flags).toContain(false); // verify / BAA / activate rewrote other columns only
+    // the rotation is the update that swapped the credential
+    expect(flags.filter((f) => f === true).length).toBeGreaterThanOrEqual(2);
+
+    const fieldRows = await q<{
+      event_type: string;
+      actor_user_id: string;
+      context: Record<string, unknown>;
+    }>(
+      `SELECT event_type, actor_user_id, context FROM audit_event
+        WHERE organization_id=$1 AND event_type LIKE 'm23.tenant_clearinghouse.%' ORDER BY created_at`,
+      [ORG_A],
+    );
+    const changed = fieldRows.filter((r) => r.event_type === "m23.tenant_clearinghouse.changed");
+    expect(changed[0]?.context).toMatchObject({ changedFields: ["vendor", "mode", "secret"] });
+    expect(changed.at(-1)?.context).toMatchObject({ changedFields: ["secret"] }); // the rotation
+    expect(changed[0]?.actor_user_id).toBe(TENANT_ADMIN);
+    expect(fieldRows.map((r) => r.event_type)).toEqual(
+      expect.arrayContaining([
+        "m23.tenant_clearinghouse.baa_recorded",
+        "m23.tenant_clearinghouse.verified",
+        "m23.tenant_clearinghouse.activated",
+      ]),
+    );
+    // names and codes only: never a credential, a document reference or an evidence note
+    const blob = JSON.stringify(fieldRows);
+    for (const secret of [KEY_A, KEY_A2, BAA.documentRef]) expect(blob).not.toContain(secret);
+  });
+
+  it("a switch is refused while the org has claims queued, with the counts; a same-vendor rotation is not a switch", async () => {
+    // ORG_G (stedi, active) with one queued claim attempt (FK triggers are off for this seed: only the count is under test)
+    await admin.query("SET session_replication_role = replica");
+    try {
+      await admin.query(
+        `INSERT INTO claim_submission (organization_id, provider_entity_id, kind, claim_id, claim_control_number, attempt_index, outcome)
+         VALUES ($1, gen_random_uuid(), 'claim_837i', gen_random_uuid(), 'CW-CTRL-QUEUED', 0, 'queued')`,
+        [ORG_G],
+      );
+    } finally {
+      await admin.query("SET session_replication_role = DEFAULT");
+    }
+    const [row] = await q<{ version: number }>(
+      "SELECT version FROM tenant_clearinghouse_config WHERE organization_id=$1",
+      [ORG_G],
+    );
+    const refused = await tenantCall(
+      "PUT",
+      ORG_G,
+      "",
+      { vendor: "outside" },
+      { "if-match": String(row?.version) },
+    );
+    expect(refused.statusCode).toBe(409);
+    expect(errorCode(refused)).toBe("CLEARINGHOUSE_WORK_WAITING");
+    expect(JSON.stringify(refused.json())).toContain('"claims"');
+    await admin
+      .query("DELETE FROM claim_submission WHERE organization_id=$1", [ORG_G])
+      .catch(() => undefined);
   });
 
   it("a tenant admin without the key is refused (403)", async () => {
@@ -615,6 +867,14 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     const verify = await platformCall("POST", "ch-b", "/verify", { reason: REASON });
     expect(verify.json()).toMatchObject({ test: { outcome: "ok" } });
     expect((await step7(ORG_B))[0]?.status).toBe("pending"); // verified is not active
+    // D2: the tenant's BAA must be recorded (by the tenant) and verified (by an operator) first
+    const early = await platformCall("POST", "ch-b", "/activate", { reason: REASON });
+    expect(early.statusCode).toBe(409);
+    expect(errorCode(early)).toBe("CLEARINGHOUSE_BAA_NOT_VERIFIED");
+    expect((await tenantCall("POST", ORG_B, "/baa", BAA)).statusCode).toBe(200);
+    expect((await platformCall("POST", "ch-b", "/baa/verify", { reason: REASON })).statusCode).toBe(
+      200,
+    );
     const activate = await platformCall("POST", "ch-b", "/activate", { reason: REASON });
     expect(activate.statusCode, activate.body).toBe(200);
     expect((await step7(ORG_B))[0]?.status).toBe("done"); // the real advance pass settled it

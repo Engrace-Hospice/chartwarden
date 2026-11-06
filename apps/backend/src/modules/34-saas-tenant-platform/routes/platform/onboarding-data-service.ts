@@ -110,6 +110,11 @@ export interface OnboardingDataService {
     reason: string,
   ): Promise<{ readonly config: unknown; readonly test: unknown }>;
   activateClearinghouse(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
+  /**
+   * The operator verifies the vendor BAA the tenant recorded. NOT gated on the tenant's onboarding status: a live tenant that
+   * changed vendor or re-recorded its BAA needs this too.
+   */
+  verifyClearinghouseBaa(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
   listMedicaidCredentials(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
   upsertMedicaidCredential(
     op: OnboardingOperator,
@@ -221,6 +226,8 @@ interface WriteSpec {
   readonly event: OnboardingAuditEvent;
   readonly resourceKind: string;
   readonly reason: string;
+  /** True for a write a LIVE tenant needs too (the BAA verification): the shared lock and the audit row stay, the status gate goes. */
+  readonly anyTenantStatus?: boolean;
 }
 
 const scopeOf = (op: OnboardingOperator, organizationId: string): OnboardingWriteScope => ({
@@ -315,7 +322,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             .limit(1);
           if (!account) throw new NotFoundError("tenant");
           tenantAccountId = account.id;
-          if (!ONBOARDING_WRITABLE_STATUSES.has(account.status)) {
+          if (!spec.anyTenantStatus && !ONBOARDING_WRITABLE_STATUSES.has(account.status)) {
             await recordOnboardingAudit(tx, op, target, {
               eventType: EVENTS.writeRefused,
               resourceKind: spec.resourceKind,
@@ -581,6 +588,16 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     },
 
     verifyClearinghouse: async (op, orgSlug, fields, reason) => {
+      // The vendor probe is a network call: it runs with NO transaction open (and no row lock held). Step 1 reads and unseals
+      // the credential on its own short read, step 2 is the probe, step 3 is the audited write transaction, which
+      // compare-and-sets on the version step 1 read (409 when the config moved meanwhile).
+      // ponytail: the tenant-status gate is inside `write`, so a verify against a tenant that is no longer onboarding probes
+      // the vendor once and is then refused (audited); the probe holds no PHI and no lock, so the waste is one vendor call.
+      const target = await targetOf(orgSlug);
+      const scope = scopeOf(op, target.organizationId);
+      const port = clearinghousePort();
+      const plan = await port.prepareVerify(scope, fields);
+      const outcome = await port.runProbe(plan);
       let organizationId = "";
       const result = await write(
         op,
@@ -588,7 +605,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
         { event: EVENTS.clearinghouseVerified, resourceKind: CLEARINGHOUSE_KIND, reason },
         async (tx, t) => {
           organizationId = t.organizationId;
-          const done = await clearinghousePort().verify(tx, scopeOf(op, t.organizationId), fields);
+          const done = await port.completeVerify(tx, scope, plan, outcome);
           return {
             value: { config: done.view, test: done.test ?? null },
             resourceId: done.resourceId,
@@ -613,6 +630,26 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       );
       return settleStepAfter(organizationId, view);
     },
+
+    verifyClearinghouseBaa: (op, orgSlug, reason) =>
+      write(
+        op,
+        orgSlug,
+        {
+          event: EVENTS.clearinghouseBaaVerified,
+          resourceKind: CLEARINGHOUSE_KIND,
+          reason,
+          anyTenantStatus: true,
+        },
+        async (tx, t) => {
+          const done = await clearinghousePort().verifyBaa(tx, scopeOf(op, t.organizationId));
+          return {
+            value: done.view,
+            resourceId: done.resourceId,
+            ...(done.detail ? { detail: done.detail } : {}),
+          };
+        },
+      ),
 
     listMedicaidCredentials: (op, orgSlug) => listCredentials(op, orgSlug, MEDICAID_LANE),
     upsertMedicaidCredential: (op, orgSlug, fields, reason) =>

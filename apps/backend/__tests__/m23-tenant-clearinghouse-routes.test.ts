@@ -1,8 +1,9 @@
 // apps/backend/__tests__/m23-tenant-clearinghouse-routes.test.ts — HTTP-layer proof of the tenant's own clearinghouse routes
 // (`/api/v1/tenant/clearinghouse`, ADR-0053 amendment 2026-11-06) over the REAL Authorization Contract and a recording
-// service: the MAC-credential permission keys guard them, every write needs a fresh step-up, the AI-block and
-// Idempotency-Key guards are composed, a malformed body is refused before the service runs, the org and acting membership
-// come from the session never the body, and the credential is never echoed.
+// service: the ORG-LEVEL `billing.clearinghouse.*` keys guard them (a holder of only the provider-entity-scoped
+// `billing.mac_credential.*` keys is refused), every write needs a fresh step-up, the AI-block and Idempotency-Key guards are
+// composed, a malformed body is refused before the service runs, the org and acting membership come from the session never
+// the body, the credential is never echoed, and `verify` is rate limited.
 import {
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
@@ -15,6 +16,11 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
+import {
+  CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
+  createRouteRateLimit,
+} from "../src/bootstrap/plugins/route-rate-limit";
 import { registerTenantClearinghouseRoutes } from "../src/modules/23-billing-medicare/tenant-clearinghouse/routes";
 import type {
   ClearinghouseConfigView,
@@ -48,6 +54,8 @@ const VIEW: ClearinghouseConfigView = {
   verifiableBy: "connection_test",
   verification: null,
   lastTest: null,
+  baaRequired: true,
+  baa: null,
   activatedAt: null,
   version: 1,
   updatedAt: "2026-11-06T00:00:00.000Z",
@@ -61,7 +69,7 @@ interface Call {
   readonly expectedVersion?: number | undefined;
 }
 
-function makeServer() {
+function makeServer(opts: { verifyLimit?: number } = {}) {
   const calls: Call[] = [];
   const service: TenantClearinghouseRouteService = {
     async get(actor) {
@@ -77,6 +85,10 @@ function makeServer() {
         expectedVersion,
       });
       return { created: expectedVersion === undefined, view: VIEW };
+    },
+    async recordBaa(actor, body) {
+      calls.push({ method: "recordBaa", organizationId: actor.organizationId, body });
+      return VIEW;
     },
     async verify(actor, body) {
       calls.push({ method: "verify", organizationId: actor.organizationId, body });
@@ -94,8 +106,10 @@ function makeServer() {
   });
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
-      grant("admin_1", ["billing.mac_credential.read", "billing.mac_credential.admin"]),
-      grant("reader_1", ["billing.mac_credential.read"]),
+      grant("admin_1", ["billing.clearinghouse.read", "billing.clearinghouse.admin"]),
+      grant("reader_1", ["billing.clearinghouse.read"]),
+      // a billing manager scoped to ONE provider entity holds the entity-scoped MAC-credential keys, never these
+      grant("entity_mgr_1", ["billing.mac_credential.read", "billing.mac_credential.admin"]),
       grant("none_1", []),
     ]).store,
   );
@@ -103,7 +117,18 @@ function makeServer() {
   reg.register("step_up_recent", async (context) => context.attributes.stepUpRecent === true);
   registerAbacRegistry(reg);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerTenantClearinghouseRoutes(app, { tenantClearinghouseService: service });
+  registerTenantClearinghouseRoutes(app, {
+    tenantClearinghouseService: service,
+    ...(opts.verifyLimit
+      ? {
+          verifyRateLimit: createRouteRateLimit({
+            store: createInMemoryRateLimitStore(),
+            limit: { ...CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT, perUser: opts.verifyLimit },
+            keyPrefix: "test-ch-verify",
+          }) as never,
+        }
+      : {}),
+  });
   return { app, calls };
 }
 
@@ -112,6 +137,11 @@ let seq = 0;
 const idem = () => ({ "idempotency-key": `tc-${++seq}` });
 const URL = "/api/v1/tenant/clearinghouse";
 const BODY = { vendor: "claimmd", mode: "test", secret: SECRET };
+const BAA_BODY = {
+  heldBy: "tenant",
+  effectiveDate: "2026-01-15",
+  documentRef: "Claim.MD BAA, signed 2026-01-15",
+};
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -127,6 +157,7 @@ afterEach(() => {
 describe("tenant clearinghouse routes", () => {
   const WRITES = [
     { method: "PUT", url: URL, payload: BODY },
+    { method: "POST", url: `${URL}/baa`, payload: BAA_BODY },
     { method: "POST", url: `${URL}/verify`, payload: {} },
     { method: "POST", url: `${URL}/activate`, payload: {} },
   ] as const;
@@ -142,6 +173,11 @@ describe("tenant clearinghouse routes", () => {
       ).toBe(403);
       expect(
         (await send({ "x-test-user": "reader_1", "x-test-step-up": "1", ...idem() })).statusCode,
+      ).toBe(403);
+      // D3: the provider-entity-scoped MAC-credential keys do not open the org-level clearinghouse surface
+      expect(
+        (await send({ "x-test-user": "entity_mgr_1", "x-test-step-up": "1", ...idem() }))
+          .statusCode,
       ).toBe(403);
       const stale = await send({ "x-test-user": "admin_1", ...idem() });
       expect(stale.statusCode).toBe(403);
@@ -163,6 +199,10 @@ describe("tenant clearinghouse routes", () => {
     const { app, calls } = makeServer();
     expect(
       (await app.inject({ method: "GET", url: URL, headers: { "x-test-user": "none_1" } }))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (await app.inject({ method: "GET", url: URL, headers: { "x-test-user": "entity_mgr_1" } }))
         .statusCode,
     ).toBe(403);
     const res = await app.inject({
@@ -239,6 +279,48 @@ describe("tenant clearinghouse routes", () => {
     expect(activate.statusCode).toBe(200);
     expect(activate.json()).toMatchObject({ status: "active" });
     expect(calls.map((c) => c.method)).toEqual(["verify", "activate"]);
+    await app.close();
+  });
+
+  it("POST baa records the tenant's own BAA: heldBy must be the tenant, the date a date, and nothing else is accepted", async () => {
+    const { app, calls } = makeServer();
+    const post = (payload: object) =>
+      app.inject({
+        method: "POST",
+        url: `${URL}/baa`,
+        headers: { ...ADMIN, ...idem() },
+        payload,
+      });
+    expect((await post(BAA_BODY)).statusCode).toBe(200);
+    expect((await post({ ...BAA_BODY, heldBy: "chartwarden" })).statusCode).toBe(422);
+    expect((await post({ ...BAA_BODY, effectiveDate: "yesterday" })).statusCode).toBe(422);
+    expect((await post({ ...BAA_BODY, documentRef: "ab" })).statusCode).toBe(422);
+    expect((await post({ ...BAA_BODY, verified: true })).statusCode).toBe(422); // a tenant cannot verify its own BAA
+    expect((await post({ heldBy: "tenant" })).statusCode).toBe(422);
+    expect(calls.map((c) => c.method)).toEqual(["recordBaa"]);
+    await app.close();
+  });
+
+  it("rate limits verify per user (a vendor call per request), after the permission and step-up guards", async () => {
+    const { app, calls } = makeServer({ verifyLimit: 2 });
+    const verify = (headers: Record<string, string>) =>
+      app.inject({
+        method: "POST",
+        url: `${URL}/verify`,
+        headers: { ...headers, ...idem() },
+        payload: {},
+      });
+    // a caller who may not verify is refused (403) without spending the budget
+    for (let i = 0; i < 5; i += 1) {
+      expect((await verify({ "x-test-user": "reader_1", "x-test-step-up": "1" })).statusCode).toBe(
+        403,
+      );
+    }
+    expect((await verify(ADMIN)).statusCode).toBe(200);
+    expect((await verify(ADMIN)).statusCode).toBe(200);
+    const limited = await verify(ADMIN);
+    expect(limited.statusCode).toBe(429);
+    expect(calls.filter((c) => c.method === "verify")).toHaveLength(2);
     await app.close();
   });
 });

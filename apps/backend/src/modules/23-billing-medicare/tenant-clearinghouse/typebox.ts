@@ -43,10 +43,37 @@ export const VerifyClearinghouseBodySchema = Type.Object(
           "Required where the vendor has no safe connection test (Stedi): what was checked and by whom (8-500 characters after whitespace is collapsed; no patient information). Ignored where a connection test runs (Claim.MD).",
       }),
     ),
+    confirmNoPatientInformation: Type.Optional(
+      Type.Boolean({
+        description:
+          "Required, and must be true, with an evidence note: the person confirms the note names no patient information. Ignored where a connection test runs (Claim.MD).",
+      }),
+    ),
   },
   { additionalProperties: false },
 );
 export type VerifyClearinghouseBody = Static<typeof VerifyClearinghouseBodySchema>;
+
+/** The tenant records the BAA it holds with its own vendor account (owner decision D2). No patient information. */
+export const RecordBaaBodySchema = Type.Object(
+  {
+    heldBy: Type.Literal("tenant", {
+      description: "Who holds the vendor BAA: the tenant itself (the account is the tenant's own).",
+    }),
+    effectiveDate: Type.String({
+      format: "date",
+      description: "The BAA's effective date (YYYY-MM-DD), not in the future.",
+    }),
+    documentRef: Type.String({
+      minLength: 3,
+      maxLength: 400,
+      description:
+        "Where the signed BAA is kept (3-200 characters after whitespace is collapsed): a title, contract folder or document id. Never patient information.",
+    }),
+  },
+  { additionalProperties: false },
+);
+export type RecordBaaBody = Static<typeof RecordBaaBodySchema>;
 
 export const ClearinghouseConfigViewSchema = Type.Object({
   vendor: Nullable(
@@ -85,6 +112,20 @@ export const ClearinghouseConfigViewSchema = Type.Object({
         Type.Literal("unreachable"),
       ]),
       at: Iso,
+    }),
+    Type.Null(),
+  ]),
+  baaRequired: Type.Boolean({
+    description:
+      "True for a tenant-held vendor account: it needs a recorded BAA, verified by a platform operator, before it may go active.",
+  }),
+  baa: Type.Union([
+    Type.Object({
+      heldBy: Type.Literal("tenant"),
+      effectiveDate: Type.String({ format: "date" }),
+      documentRef: Type.String(),
+      recordedAt: Iso,
+      verified: Type.Union([Type.Object({ at: Iso }), Type.Null()]),
     }),
     Type.Null(),
   ]),
