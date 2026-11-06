@@ -8,8 +8,9 @@
 #   bun run test:object-store:conformance:live
 #   scripts/object-store-conformance/seaweedfs-up.sh --down
 #
-# The two identities in s3.json mirror production: an admin key (bucket versioning, the out-of-scope
-# bucket) and an app key scoped to tenant-* / chartwarden-*. The credentials are test-only literals.
+# s3.json is rendered by scripts/storage/seaweedfs-identities.ts, the same code the production
+# `object-store-provision` one-shot runs: an admin key (bucket versioning, the out-of-scope bucket) and an app key
+# bound to deploy/production/object-store/app-policy.json (no `Admin`). The credentials are test-only literals.
 #
 # audit.json is fluent-logger-golang's Config: `timeout` / `write_timeout` are Go time.Duration, i.e. NANOSECONDS.
 # The SeaweedFS wiki's sample `"timeout": 3000` is 3 microseconds and silently drops every audit record (found
@@ -24,9 +25,17 @@ SEAWEEDFS_IMAGE="${OSC_SEAWEEDFS_IMAGE:-chrislusf/seaweedfs:4.52}"
 FLUENT_BIT_IMAGE="${OSC_FLUENT_BIT_IMAGE:-fluent/fluent-bit:5.1.5}"
 READY_ATTEMPTS=60
 
+REPO="$(cd "$DIR/../.." && pwd)"
+ADMIN_KEY=conformance-admin
+ADMIN_SECRET=conformance-admin-test-secret-not-real
+APP_KEY=conformance-app
+APP_SECRET=conformance-app-test-secret-not-real
+CONFIG_DIR="${TMPDIR:-/tmp}/cw-osc-seaweedfs-config"
+
 down() {
   docker rm -fv cw-osc-seaweedfs cw-osc-fluent-bit >/dev/null 2>&1 || true
   docker network rm "$NET" >/dev/null 2>&1 || true
+  rm -rf "$CONFIG_DIR"
 }
 
 if [ "${1:-}" = "--down" ]; then down; exit 0; fi
@@ -34,11 +43,12 @@ if [ "${1:-}" = "--env" ]; then
   cat <<EOF
 export OBJECT_STORE_ENDPOINT=http://127.0.0.1:$S3_PORT
 export OBJECT_STORE_REGION=us-east-1
-export OBJECT_STORE_ADMIN_ACCESS_KEY=conformance-admin
-export OBJECT_STORE_ADMIN_SECRET_KEY=conformance-admin-test-secret-not-real
-export OBJECT_STORE_APP_ACCESS_KEY=conformance-app
-export OBJECT_STORE_APP_SECRET_KEY=conformance-app-test-secret-not-real
+export OBJECT_STORE_ADMIN_ACCESS_KEY=$ADMIN_KEY
+export OBJECT_STORE_ADMIN_SECRET_KEY=$ADMIN_SECRET
+export OBJECT_STORE_APP_ACCESS_KEY=$APP_KEY
+export OBJECT_STORE_APP_SECRET_KEY=$APP_SECRET
 export OBJECT_STORE_AUDIT_SINK_PORT=$SINK_PORT
+export OBJECT_STORE_AUDIT_TOKEN=conformance-audit-token-not-real
 EOF
   exit 0
 fi
@@ -48,22 +58,31 @@ bun -e '
   const c = JSON.parse(await Bun.file(process.argv[1]).text());
   const bad = ["timeout", "write_timeout"].filter((k) => k in c && c[k] < 1e9);
   if (bad.length) { console.error(`audit.json: ${bad.join(", ")} must be Go nanoseconds (>= 1e9 = 1s)`); process.exit(1); }
-' "$DIR/audit.json"
+' "$REPO/deploy/production/object-store/audit.json"
 
 down
 docker network create "$NET" >/dev/null
+mkdir -p "$CONFIG_DIR"
+SEAWEEDFS_ADMIN_ACCESS_KEY=$ADMIN_KEY SEAWEEDFS_ADMIN_SECRET_KEY=$ADMIN_SECRET \
+  SEAWEEDFS_APP_ACCESS_KEY=$APP_KEY SEAWEEDFS_APP_SECRET_KEY=$APP_SECRET \
+  bun "$REPO/scripts/storage/seaweedfs-identities.ts" "$CONFIG_DIR/s3.json" >/dev/null
+# 0600 by design (it holds secrets); the test store runs as root, but a rootless/Linux CI bind mount keeps the mode.
+chmod 0644 "$CONFIG_DIR/s3.json"
 
 # Fluent Bit reaches the suite's sink on the host. host-gateway makes host.docker.internal resolve on Linux too.
 docker run -d --name cw-osc-fluent-bit --network "$NET" --network-alias fluent-bit \
   --add-host=host.docker.internal:host-gateway \
-  -e AUDIT_SINK_HOST=host.docker.internal -e AUDIT_SINK_PORT="$SINK_PORT" \
-  -v "$DIR/fluent-bit.yaml:/fluent-bit/etc/fluent-bit.yaml:ro" \
+  -e AUDIT_SINK_HOST=host.docker.internal -e AUDIT_SINK_PORT="$SINK_PORT" -e AUDIT_SINK_PATH=/audit \
+  -e AUDIT_SINK_TOKEN=conformance-audit-token-not-real \
+  -v "$REPO/deploy/production/object-store/fluent-bit.yaml:/fluent-bit/etc/fluent-bit.yaml:ro" \
   "$FLUENT_BIT_IMAGE" -c /fluent-bit/etc/fluent-bit.yaml >/dev/null
 
 docker run -d --name cw-osc-seaweedfs --network "$NET" -p "127.0.0.1:$S3_PORT:8333" \
-  -v "$DIR/s3.json:/etc/seaweedfs/s3.json:ro" -v "$DIR/audit.json:/etc/seaweedfs/audit.json:ro" \
+  -e WEED_MASTER_VOLUME_GROWTH_COPY_1=1 \
+  -v "$CONFIG_DIR/s3.json:/etc/seaweedfs/s3.json:ro" -v "$REPO/deploy/production/object-store/audit.json:/etc/seaweedfs/audit.json:ro" \
   "$SEAWEEDFS_IMAGE" server -dir=/data -ip.bind=0.0.0.0 -master.volumeSizeLimitMB=64 \
-  -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json -s3.auditLogConfig=/etc/seaweedfs/audit.json >/dev/null
+  -s3 -s3.port=8333 -s3.port.iceberg=0 -s3.port.lance=0 \
+  -s3.config=/etc/seaweedfs/s3.json -s3.auditLogConfig=/etc/seaweedfs/audit.json >/dev/null
 
 # Ready = the S3 gateway answers a request (any HTTP status; an anonymous request gets 403).
 for _ in $(seq "$READY_ATTEMPTS"); do

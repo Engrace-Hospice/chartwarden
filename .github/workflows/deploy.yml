@@ -474,6 +474,12 @@ jobs:
           # M36 WP 1.5 — the ClamAV sidecar's config is bind-mounted from $DEPLOY_DIR/clamav/ by compose.yml.
           ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p $DEPLOY_DIR/clamav"
           scp -P "$port" deploy/clamav/clamd.conf "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/clamav/clamd.conf"
+          # ADR-0050 D6 — SeaweedFS's audit config and the Fluent Bit pipeline are bind-mounted from
+          # $DEPLOY_DIR/object-store/ by compose.yml; the opt-in second-copy overlay rides along (README, "Second copy").
+          ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p $DEPLOY_DIR/object-store"
+          scp -P "$port" deploy/production/object-store/audit.json deploy/production/object-store/fluent-bit.yaml \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/object-store/"
+          scp -P "$port" deploy/production/compose.object-copy.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
           # #857 — the opt-in backup overlay and its image context ride along so the host copy matches the release;
           # nothing runs until an operator enables it (deploy/production/README.md, "Backups and restore").
           ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p $DEPLOY_DIR/backup/offsite-policies"

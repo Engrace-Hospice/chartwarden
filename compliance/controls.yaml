@@ -29,6 +29,12 @@ controls:
       - script: test:rls:live
       - ci: "cross-tenant isolation proof"
       - file: apps/backend/__tests__/_live-app-role.ts
+      # ADR-0050 D6 (2026-11-05) — the object store's tenant isolation: the api/worker key is bound to app-policy.json
+      # (tenant-* / chartwarden-* only, no bucket delete or versioning change, proven against SeaweedFS and RustFS), and
+      # a presigned URL rewritten to another tenant's bucket or key is refused.
+      - script: test:object-store:conformance:live
+      - script: test:object-store:resilience:live
+      - file: deploy/production/object-store/app-policy.json
 
   - id: CW-AC-02
     title: Unique user identification and authorization at the route (RBAC + ABAC predicates)
@@ -251,6 +257,11 @@ controls:
       - script: m36:restore-drill
       - file: audit/restore-drill/m36-restore-drill.md
       - file: ops/pgbackrest/pgbackrest.conf.template
+      # ADR-0050 D6 (2026-11-05) — a second copy of every object on another host (RustFS), synced with each object's
+      # SHA-256 and a mass-delete guard; restore from it is proven by the resilience suite (primary loss, guarded
+      # forward run, restore, verified reads). The backup's object restore now keeps the checksum too.
+      - file: deploy/production/compose.object-copy.yml
+      - file: scripts/object-store-copy.ts
     gap:
       reason: DR_BCP records that no streaming replica or WAL archiving is running yet; restore drills exist for M36 but not as a scheduled whole-database drill with recorded RTO/RPO.
       owner: platform

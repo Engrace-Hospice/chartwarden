@@ -1,0 +1,53 @@
+# The SECOND COPY of the object store (ADR-0050 D6 amendment 2026-11-05): every `tenant-*` / `chartwarden-*`
+# bucket mirrored from this host's SeaweedFS to a RustFS on ANOTHER host (deploy/production/replica/), each object
+# re-put with its SHA-256 and read back (scripts/object-store-copy.ts). An OVERLAY on compose.yml, opt-in:
+#
+#   docker compose --env-file .env.production -f compose.yml -f compose.object-copy.yml up -d object-copy
+#
+# after setting, in .env.production (README, "Object store: second copy"):
+#   OBJECT_COPY_SOURCE_ACCESS_KEY / _SECRET_KEY   the read-only SeaweedFS key; object-store-provision creates it on the
+#                                                 next deploy (reader-policy.json: list + get, nothing else)
+#   OBJECT_COPY_TARGET_ENDPOINT                   https://<replica>: the copy crosses hosts carrying PHI, so the job
+#                                                 refuses plain http
+#   OBJECT_COPY_TARGET_ACCESS_KEY / _SECRET_KEY   the replica's `chartwarden-copy` key (replica/copy-target-policy.json)
+#
+# It is a SYNC, not an archive: an erasure on the primary reaches the copy on the next run; the off-site Object Lock
+# backup (compose.backup.yml) stays the archive. Deletions are guarded (an empty source bucket, or more than
+# max(10, 10%) of a bucket, is refused and paged), so a primary re-provisioned empty after a loss cannot wipe it.
+# Each failed run pages OPS_ALERT_WEBHOOK_URL; the healthcheck fails when no run has been clean for 3 intervals.
+services:
+  object-copy:
+    image: ${CHARTWARDEN_IMAGE:?set immutable GHCR image in .env.production}
+    pull_policy: always
+    # Objects are buffered whole (scripts/object-store-copy.ts MAX_OBJECT_BYTES = 512 MiB).
+    mem_limit: 1g
+    cpus: 1
+    restart: unless-stopped
+    command: ["bun", "run", "scripts/object-store-copy.ts", "--every", "${OBJECT_COPY_INTERVAL_S:-3600}"]
+    environment:
+      SOURCE_S3_ENDPOINT: http://seaweedfs:8333
+      SOURCE_S3_ACCESS_KEY: ${OBJECT_COPY_SOURCE_ACCESS_KEY:?set in .env.production}
+      SOURCE_S3_SECRET_KEY: ${OBJECT_COPY_SOURCE_SECRET_KEY:?set in .env.production}
+      TARGET_S3_ENDPOINT: ${OBJECT_COPY_TARGET_ENDPOINT:?set in .env.production (https://...)}
+      TARGET_S3_ACCESS_KEY: ${OBJECT_COPY_TARGET_ACCESS_KEY:?set in .env.production}
+      TARGET_S3_SECRET_KEY: ${OBJECT_COPY_TARGET_SECRET_KEY:?set in .env.production}
+      OPS_ALERT_WEBHOOK_URL: ${OPS_ALERT_WEBHOOK_URL:?set in .env.production (https://, copy failures page through it)}
+      OBJECT_COPY_INTERVAL_S: ${OBJECT_COPY_INTERVAL_S:-3600}
+      OBJECT_COPY_HEARTBEAT_FILE: /tmp/object-copy-last-success
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - "const f = require('fs'); const age = Date.now() - f.statSync(process.env.OBJECT_COPY_HEARTBEAT_FILE).mtimeMs; process.exit(age < 3 * Number(process.env.OBJECT_COPY_INTERVAL_S) * 1000 ? 0 : 1)"
+      interval: 5m
+      timeout: 10s
+      start_period: 2h
+    depends_on:
+      seaweedfs:
+        condition: service_healthy

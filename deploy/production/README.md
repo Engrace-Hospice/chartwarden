@@ -21,7 +21,7 @@ access to the deploy directory (`/opt/chartwarden`; a legacy `/opt/wardenx` syml
 use a root SSH account or disable host-key checking.
 
 The server must already contain a mode-`0600` `.env.production` copied from the production template.
-To automate that first-time setup (and start MinIO before the first release), copy this repository
+To automate that first-time setup (storage vhost and object-store config before the first release), copy this repository
 (or just `deploy/production`) to the VPS and run:
 
 ```sh
@@ -40,9 +40,9 @@ sudo FRONTEND_DOMAIN=app.example.com BACKEND_DOMAIN=api.example.com STORAGE_DOMA
 ```
 
 The bootstrap keeps an existing `.env.production`, installs the storage Nginx vhost when Nginx is
-present, starts MinIO, and verifies `http://127.0.0.1:9000/minio/health/ready`. After DNS points
-`STORAGE_DOMAIN` to the VPS, issue TLS for that host with Certbot or the server's normal reverse-proxy
-TLS automation. The application reaches MinIO over the Compose network (`http://minio:9000`) and
+present and installs `object-store/` (the first `deploy.sh` starts SeaweedFS on `127.0.0.1:9000`, the storage vhost's
+upstream). After DNS points `STORAGE_DOMAIN` to the VPS, issue TLS for that host with Certbot or the server's normal
+reverse-proxy TLS automation. The application reaches SeaweedFS over the Compose network (`http://seaweedfs:8333`) and
 uses `STORAGE_PUBLIC_ORIGIN` only for browser-facing presigned URLs. The public origin must resolve
 for clients, but `/ready` does not depend on a host-network hairpin through Nginx/TLS.
 
@@ -67,7 +67,7 @@ Host requirements — the repo cannot enforce these, so check them once per host
   and confirm the new `/var/log/nginx/chartwarden-*.access.log` line shows `/api/health` with no `?q=Smith`.
 
 The workflow uploads `deploy.sh`, `smoke.sh` and `compose.yml` for every release, pulls the SHA-pinned
-images, provisions the scoped MinIO account, runs strict schema-only migrations and runtime-role
+images, renders the object store's scoped identities, runs strict schema-only migrations and runtime-role
 provisioning, recreates `api`, `worker` and `web`, then runs `smoke.sh`. If any step fails, it restores
 the previous image references and recreates those services. Database migrations are forward-only and
 are not rolled back.
@@ -90,9 +90,18 @@ Auth load the added origin. The vhost proxies the same-origin `/api/` and `/webh
   attests `ghcr.io/<owner>/chartwarden-docling-worker:sha-<commit>` and passes it to `deploy.sh` as an optional third
   argument; `deploy.sh` verifies it like the other images and writes the digest-pinned `CHARTWARDEN_DOCLING_IMAGE`.
   `api`/`worker` deliberately do not `depends_on` it: a down worker makes DocLens answer 503, nothing else.
-- **`minio-provision`** — a one-shot that creates the IAM policy (`CHARTWARDEN_MINIO_POLICY`, default `chartwarden-app`) and the service account the api/worker use
-  (`MINIO_APP_ACCESS_KEY` / `MINIO_APP_SECRET_KEY`). The policy allows object and bucket operations on `tenant-*`
-  and `chartwarden-*` buckets only; the MinIO root account is no longer an application credential.
+- **`seaweedfs`** — the object store (ADR-0050 D6, amendment 2026-11-05): all-in-one `weed server -s3`. Only the S3
+  gateway (8333) listens on the compose network; master, volume and filer are bound to the container's loopback, so
+  no other container can reach the filer's unauthenticated API. `127.0.0.1:9000` (the storage vhost's upstream) maps
+  to it. Health: `GET /healthz`.
+- **`object-store-provision`** — a no-network one-shot that renders SeaweedFS's identities (`s3.json`, in the
+  `seaweedfs-config` volume) with `scripts/storage/seaweedfs-identities.ts`: the admin (`MINIO_ROOT_USER` /
+  `MINIO_ROOT_PASSWORD`, operators and the one-time migration only), the app key the api/worker use (`MINIO_APP_ACCESS_KEY`
+  / `MINIO_APP_SECRET_KEY`, bound to `object-store/app-policy.json`: object and bucket operations on `tenant-*` and
+  `chartwarden-*`, lifecycle on `tenant-*`, no bucket delete and no versioning or policy change), and read-only keys
+  (`object-store/reader-policy.json`) for the backup and the second copy when they are configured. The admin is not an
+  application credential.
+- **`fluent-bit`** — forwards SeaweedFS's audit log to the api (see below).
 
 - **`clamav`** (M36 message attachments) — clamd over TCP on the compose network only (no published port), config from
   `deploy/clamav/clamd.conf` (shipped to `<deploy dir>/clamav/` by `deploy.yml`): alerts on encrypted archives/documents
@@ -101,17 +110,18 @@ Auth load the added origin. The vhost proxies the same-origin `/api/` and `/webh
   `depends_on` it: a down scanner leaves attachments `pending` (nothing is delivered). Alert on `pending` attachments
   older than a few minutes or repeated `deferred` scans; check the scanner with `docker compose exec clamav clamdcheck.sh`.
   `deploy.sh` brings it up without recreating it. clamd's protocol is unauthenticated, so the sidecar sits on a dedicated
-  `scan` network that only `clamav`, `api` and `worker` join (postgres, minio, docling and the rest cannot reach it), and
+  `scan` network that only `clamav`, `api` and `worker` join (postgres, seaweedfs, docling and the rest cannot reach it), and
   it is capped (`mem_limit: 4g`, `cpus: 2`) so a scan flood or a bad signature reload cannot starve the host. Follow-ups
   (not done here, they need network access to resolve): pin `clamav/clamav-debian:1.4` by digest
   (`image: clamav/clamav-debian@sha256:...`) when you promote it, and alert on a stale signature database (for example
   `docker compose exec clamav clamscan --version` reporting a database older than 2 days, or freshclam errors in the log).
 - **Attachment upload size (defence in depth).** The presigned PUT signs `content-length` for exactly the declared
-  `byteSize`, so MinIO refuses any other length and the quota (which counts `byteSize`) is real; `complete` also compares
+  `byteSize`, so the store refuses any other length and the quota (which counts `byteSize`) is real; `complete` also compares
   the stored size and destroys a mismatching object at once. The independent backstop is on the storage origin:
   `client_max_body_size` in `nginx/chartwarden-storage.conf` (100m today, sized for the largest M22 upload, so it is a ceiling
-  not a per-file limit) and, if you want a hard per-tenant cap, a MinIO bucket quota on `tenant-*` buckets
-  (`mc quota set <alias>/tenant-<orgId> --size <bytes>`). Browsers set `Content-Length` themselves and ignore it in the
+  not a per-file limit) and, if you want a hard per-tenant cap, a SeaweedFS bucket quota on `tenant-*` buckets
+  (`docker compose exec seaweedfs sh -c 'echo "s3.bucket.quota -name=tenant-<orgId> -op=set -sizeMB=<n>" | weed shell'`).
+  Browsers set `Content-Length` themselves and ignore it in the
   returned `headers` map, which is expected.
 - **Attachment retention.** `MESSAGING_ATTACHMENT_RETENTION_DAYS` (default 7) is how long the object of a quarantined file, or of
   a file on a deleted message, is kept before the reaper destroys it (the row stays for audit; it stops counting toward the
@@ -125,18 +135,101 @@ Auth load the added origin. The vhost proxies the same-origin `/api/` and `/webh
   (already true before attachments); `deploy.sh` generates one into `.env.production` when the file predates it and never
   overwrites a value an operator set.
 
-`minio` also runs MinIO's **audit webhook** to the api (`MINIO_AUDIT_WEBHOOK_*`, token `MINIO_ACCESS_LOG_WEBHOOK_TOKEN`):
-the api keeps successful `GetObject` calls on `tenant-*` buckets and records them as `signed_url_consumed` in
-`document_access_log`, attributed to the principal the signed URL was issued to (best effort; unattributable fetches are
-dropped).
+SeaweedFS writes an **audit record per S3 call** over the Fluent forward protocol (`object-store/audit.json`; its
+timeouts are Go nanoseconds, so `3000000000` is 3 s); `fluent-bit` posts each batch as JSON to the api's
+`/api/v1/webhooks/minio/access-log` with the bearer `MINIO_ACCESS_LOG_WEBHOOK_TOKEN` (`object-store/fluent-bit.yaml`). The
+api keeps successful object GETs on `tenant-*` buckets and records them as `signed_url_consumed` in `document_access_log`,
+attributed to the principal the signed URL was issued to (best effort; unattributable fetches are dropped). SeaweedFS
+logs asynchronously: a down `fluent-bit` loses audit records but never blocks an S3 request. The parser also reads
+MinIO's and RustFS's record shapes.
 
 `deploy.sh` generates `DOCLING_WORKER_TOKEN`, `MINIO_APP_ACCESS_KEY`, `MINIO_APP_SECRET_KEY` and `MINIO_ACCESS_LOG_WEBHOOK_TOKEN` into `.env.production`
 the first time it runs (existing values are never touched, and this happens before the rollback backup is taken).
-To rotate the MinIO application secret, edit `MINIO_APP_SECRET_KEY` and deploy: `minio-provision` re-sets it.
+To rotate the object store's app secret, edit `MINIO_APP_SECRET_KEY` and deploy: `object-store-provision` rewrites
+`s3.json` and `deploy.sh` recreates `seaweedfs` (it reads its identities at start only; a few seconds of storage
+downtime). The `MINIO_*` names are the adapter's env contract and outlived MinIO.
+
+## Object store: the SeaweedFS cutover (ADR-0050 D6 amendment, 2026-11-05)
+
+The first deploy of this release on a host that still has a `*_minio-data` volume and no `.object-store-cutover`
+marker migrates it in a short maintenance window (the api is down for the length of the copy), before any schema change:
+
+1. renders the identities, then STOPS the api and worker (`stop` keeps their containers and MinIO settings), so
+   neither store is written while the copy runs;
+2. recreates `minio` under the `legacy-minio` profile WITHOUT its host port (`127.0.0.1:9000` becomes SeaweedFS's) and
+   starts `seaweedfs`;
+3. runs `object-store-migrate` (`scripts/object-store-copy.ts --adopt-unchecksummed`, MinIO root -> SeaweedFS admin): a
+   MIRROR, so every `tenant-*` / `chartwarden-*` object is re-put WITH its SHA-256 and read back, and anything a
+   failed earlier attempt left in SeaweedFS is removed (the app never writes SeaweedFS before this pass succeeds). A
+   generic copier (`mc mirror`, rclone) would drop the stored checksum and leave every upload unverifiable;
+4. only after that pass succeeds: writes `.object-store-cutover` and stops `minio`. Migrations, `up` and smoke follow;
+   if one of them fails, the previous release comes back on SeaweedFS (it already holds everything).
+
+If steps 1-3 fail, `deploy.sh` puts the old world back (SeaweedFS stopped, MinIO recreated ON `127.0.0.1:9000`, the
+stopped api/worker started unchanged) and fails with no schema change; the next deploy retries from the start. If that
+undo itself fails (it says so with `!!`), bring MinIO back on its port by hand:
+
+```sh
+printf 'services:\n  minio:\n    ports: ["127.0.0.1:9000:9000"]\n' | docker compose --env-file .env.production \
+  -f compose.yml -f - --profile legacy-minio up -d --force-recreate --wait minio
+docker compose --env-file .env.production -f compose.yml stop seaweedfs
+docker start $(docker compose --env-file .env.production -f compose.yml ps -aq api worker)   # not `compose start`: it would start seaweedfs
+```
+
+A retry's mirror refuses to delete more than max(10, 10%) of a bucket (or all of it). If MinIO really is the truth
+for that bucket (for example the api removed its last object after a failed attempt), name it for one deploy with
+`OBJECT_STORE_MIGRATE_ALLOW_MASS_DELETE=<bucket>[,...]` in the deploy environment, then remove it. A deploy killed
+inside the window (cancelled run, dropped ssh) runs the same undo from its EXIT trap; still, do not push to `main`
+while the cutover deploy runs (a new run cancels it). The cutover is recorded twice, in `.object-store-cutover` and
+in the `seaweedfs-config` volume (`cutover-done`), so losing the marker file never re-mirrors a stale MinIO. If a
+migration then halts the deploy for an operator (exit 75), the api and worker are STOPPED, not running: recreate them
+(`up -d --no-deps --force-recreate api worker web`), never `start` them (they still point at MinIO).
+
+Rollback inside a deploy stays on SeaweedFS (it reuses the new `compose.yml` with the previous images, and the app
+works with any S3 store). Do NOT redeploy a pre-cutover commit afterwards: its `compose.yml` brings back MinIO on
+`127.0.0.1:9000` with stale data. Always include `-f compose.backup.yml` when re-running `object-store-provision` by
+hand on a host with backups configured, or the backup sidecar's reader is dropped at SeaweedFS's next restart. Keep the `*_minio-data` volume until a backup snapshot of the SeaweedFS store has
+succeeded and the access-log, upload and download paths are confirmed, then remove it with
+`docker volume rm <prefix>_minio-data` (and `preflight.sh` stops checking it once it is gone).
+
+## Object store: second copy (`compose.object-copy.yml`, `replica/`)
+
+A RustFS on ANOTHER host holds a second copy of every `tenant-*` / `chartwarden-*` object, synced by `object-copy`
+(`scripts/object-store-copy.ts --every`, default hourly). It is a SYNC, not an archive: an erasure on the primary
+reaches the copy on the next run, so the off-site Object Lock backup stays the archive. Deletions are guarded: a bucket
+whose source is empty, or a run deleting more than max(10, 10%) of a bucket, is refused and paged (a primary
+re-provisioned empty after a loss cannot wipe the copy); name a bucket in `ALLOW_MASS_DELETE` to let one through.
+
+On the replica host (`deploy/production/replica/`):
+
+```sh
+# .env (0600): RUSTFS_ROOT_USER, RUSTFS_ROOT_PASSWORD, COPY_TARGET_ACCESS_KEY, COPY_TARGET_SECRET_KEY
+chmod 0644 copy-target-policy.json             # the rc image runs as uid 100
+docker compose up -d rustfs && docker compose run --rm rustfs-provision
+```
+
+Front RustFS (`127.0.0.1:9000`) with host Nginx + TLS and allow only the primary's address in the firewall: the copy
+carries PHI between hosts, and the job refuses a plain `http://` target.
+
+On the primary, set in `.env.production`: `OBJECT_COPY_SOURCE_ACCESS_KEY` / `OBJECT_COPY_SOURCE_SECRET_KEY` (new values: the
+read-only SeaweedFS key, created by `object-store-provision` on the next deploy), `OBJECT_COPY_TARGET_ENDPOINT`
+(`https://...`), `OBJECT_COPY_TARGET_ACCESS_KEY` / `OBJECT_COPY_TARGET_SECRET_KEY` (the replica's copy key), optionally
+`OBJECT_COPY_INTERVAL_S`; `OPS_ALERT_WEBHOOK_URL` must be https. Deploy, then:
+
+```sh
+docker compose --env-file .env.production -f compose.yml -f compose.object-copy.yml up -d object-copy
+docker compose --env-file .env.production -f compose.yml -f compose.object-copy.yml logs -f object-copy  # one JSON summary per run
+```
+
+Each failed run posts `object_copy.failed` to `OPS_ALERT_WEBHOOK_URL` (counts and bucket/key ids, never content); the
+container turns unhealthy when no run has been clean for three intervals. Restore from the copy into a primary with
+`--restore` (never deletes): run `scripts/object-store-copy.ts --restore` with `SOURCE_S3_*` = the replica and
+`TARGET_S3_*` = the primary's admin, then the `tenant-buckets` backfill (the copy carries objects, not bucket
+versioning or expiry rules).
 
 ## Backups and restore (`compose.backup.yml`, `backup/`, #857)
 
-Coordinated, encrypted, off-site backups of Postgres (pgBackRest, WAL archiving / PITR) and every MinIO bucket
+Coordinated, encrypted, off-site backups of Postgres (pgBackRest, WAL archiving / PITR) and every object-store bucket
 (versioned SSE-C mirror to an object-locked bucket), tied together by a per-snapshot marker (DB LSN + object
 manifest with sha256). Design, variables, key management and RPO/RTO: `docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md`
 §4.8; operating loop and alerts: `CHARTWARDEN_OPS_RUNBOOK_v0.1.md` §5.7. `deploy.yml` ships `compose.backup.yml` and
@@ -147,7 +240,8 @@ cd /opt/chartwarden    # after setting the BACKUP_* ids in .env.production and t
 install -d -m 0700 -o 999 -g 999 secrets   # one file per secret, mode 0400, owner 999 (the image's postgres user)
 dc() { docker compose --env-file .env.production -f compose.yml -f compose.backup.yml "$@"; }
 dc build postgres                      # chartwarden-backup:local (pgvector/pgvector:pg18 + pgBackRest + mc)
-dc run --rm minio-backup-provision     # read-only MinIO account for the backup
+dc run --rm object-store-provision     # adds the backup's read-only SeaweedFS key (reader-policy.json)
+docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate --wait seaweedfs  # reload identities
 dc up -d postgres backup               # recreates postgres once (same volume) with archive_mode=on
 dc logs -f backup                      # the first snapshot takes a full base backup
 ```
@@ -286,7 +380,7 @@ Scope: the snippet gates the port-80 vhosts, in front of any certbot HTTP-to-HTT
 first and then sees the 503. Webhook senders (Twilio, Postmark, ...) get the 503 and must retry; nothing queues them.
 `bootstrap-vps.sh` installs `nginx/chartwarden-maintenance.conf` to `/etc/nginx/snippets/`; the frontend, backend and
 tenant vhosts include it (on a host that predates this, re-copy the vhosts and snippet, then
-`nginx -t && systemctl reload nginx`). MinIO's storage vhost is not covered.
+`nginx -t && systemctl reload nginx`). The storage vhost is not covered.
 **Turn maintenance off before re-running `deploy.sh`**: its smoke tier 3 probes the public URLs and would see the 503.
 Decision: `deploy.sh` never enables maintenance by itself. A halt is, by design, a state where the running app may
 still be serving clinicians, and flipping it on automatically would cause the outage the hold exists to avoid.
@@ -311,10 +405,15 @@ arch:compose-policy` (part of `arch:fitness`) fails on any literal image without
 |---|---|---|
 | postgres | `pgvector/pgvector:pg18` | PostgreSQL 18 (same digest as `backup/Dockerfile`) |
 | valkey | `valkey/valkey:8-alpine` | Valkey 8.x |
-| minio, minio-provision | `cgr.dev/chainguard/minio:latest` | MinIO `RELEASE.2026-10-23T20-06-51Z` |
+| seaweedfs | `chrislusf/seaweedfs:4.52` | SeaweedFS 4.52 (pinned 2026-11-05) |
+| fluent-bit | `fluent/fluent-bit:5.1.5` | Fluent Bit 5.1.5 (pinned 2026-11-05) |
+| minio (legacy profile, cutover only) | `cgr.dev/chainguard/minio:latest` | MinIO `RELEASE.2026-10-23T20-06-51Z` |
 | clamav | `clamav/clamav-debian:1.4` | ClamAV 1.4.x |
 
-MinIO: `minio/minio` is no longer published to Docker Hub, so the server is Chainguard's build (it ships `minio`,
+SeaweedFS: `test:object-store:conformance:live` and `test:object-store:resilience:live` (CI job
+`object-store-conformance-live`) run against the same image and the same `object-store/` files; re-run them on a bump.
+
+MinIO (legacy, read once by the cutover): `minio/minio` is no longer published to Docker Hub, so the server is Chainguard's build (it ships `minio`,
 `mc`, `sh` and `bash`, but no `curl`; the healthcheck therefore probes `/minio/health/ready` over bash `/dev/tcp`
 and sends `Host: localhost`, which MinIO requires for this HTTP/1.0 request).
 It defaults to uid 65532, but the existing `minio-data` volume is root-owned, so the service sets `user: "0:0"`.
@@ -344,9 +443,10 @@ values**; tune them from `docker stats` and OOM events (`docker inspect -f '{{.S
 | docling-worker | 2g | 512m | 2 |
 | api / worker | 1536m each | 512m each | 2 each |
 | valkey | 1g | 128m | 1 |
-| minio | 1g | 256m | 2 |
+| seaweedfs | 1g | 256m | 2 |
+| fluent-bit | 128m | none | 0.25 |
 | web | 128m | 32m | 0.5 |
-| one-shots (migrate, provision, minio-provision, tenant-buckets, seed-runner, hl7-listener) | 128m-1g | none | 0.5-2 |
+| one-shots (migrate, provision, object-store-provision, object-store-migrate, tenant-buckets, seed-runner, hl7-listener) | 128m-1g | none | 0.5-2 |
 
 Long-running limits sum to about 15 GiB (memory limits are ceilings, not a simultaneous allocation) and
 reservations to about 5 GiB, which leaves headroom for the OS, host Nginx and Docker on 16 GiB. CPU limits are

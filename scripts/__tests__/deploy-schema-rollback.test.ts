@@ -60,6 +60,10 @@ case "$*" in
     if [ -n "\${STUB_SLEEP:-}" ]; then touch "$STUB_STATE/hanging"; sleep "$STUB_SLEEP"; fi
     exit "\${STUB_PROVISION_EXIT:-0}" ;;
   *"--force-recreate api worker web docling-worker"*) exit "\${STUB_UP_EXIT:-0}" ;;
+  *"volume ls"*) [ -z "\${STUB_MINIO_VOLUME:-}" ] || echo "\$STUB_MINIO_VOLUME" ;;
+  *"--entrypoint sh object-store-provision"*) if [ -n "\${STUB_CUTOVER_RECORDED:-}" ]; then echo recorded; else echo absent; fi ;;
+  *"run --rm --no-deps object-store-migrate"*) exit "\${STUB_COPY_EXIT:-0}" ;;
+  *"ps -aq api worker"*) printf 'cid-api\\ncid-worker\\n' ;;
 esac
 exit 0
 `;
@@ -99,6 +103,12 @@ interface Scenario {
   readonly hangProvisionSeconds?: number;
   /** smoke.sh makes the deploy dir read-only, so the EXIT-trap cleanup fails. */
   readonly lockDir?: boolean;
+  /** The host still has a MinIO volume (the one-time SeaweedFS cutover is due unless recorded). */
+  readonly legacyMinio?: boolean;
+  /** The seaweedfs-config volume records a completed cutover (the marker file itself is absent). */
+  readonly cutoverRecorded?: boolean;
+  /** Exit status of the MinIO -> SeaweedFS mirror pass. */
+  readonly copyExit?: number;
   /**
    * Webhook URL: "env" = process environment, "file" = `.deploy-alert.env`, "legacy-env-file" = `.env.production`
    * (which deploy.sh must NOT honour: compose injects that file into containers). Absent = unset.
@@ -122,6 +132,8 @@ interface Outcome {
   readonly curlArgs: string;
   /** The -K config curl read on stdin. */
   readonly curlStdin: string;
+  /** `.object-store-cutover` exists after the run. */
+  readonly cutoverMarker: boolean;
 }
 
 const readIfExists = (p: string): string => (existsSync(p) ? readFileSync(p, "utf8") : "");
@@ -146,6 +158,9 @@ function prepare(s: Scenario): Prepared {
   );
   chmodSync(join(dir, "smoke.sh"), 0o755);
   writeFileSync(join(dir, "compose.yml"), "services: {}\n");
+  mkdirSync(join(dir, "object-store"));
+  writeFileSync(join(dir, "object-store", "audit.json"), "{}\n");
+  writeFileSync(join(dir, "object-store", "fluent-bit.yaml"), "service: {}\n");
   writeFileSync(
     join(dir, ".env.production"),
     [
@@ -190,6 +205,9 @@ function prepare(s: Scenario): Prepared {
       STUB_UP_EXIT: String(s.upExit ?? 0),
       STUB_LEDGER_FAIL: s.ledgerFail ?? "",
       STUB_CURL_EXIT: String(s.alert?.curlExit ?? 0),
+      STUB_MINIO_VOLUME: s.legacyMinio ? "wardenx_minio-data" : "",
+      STUB_CUTOVER_RECORDED: s.cutoverRecorded ? "1" : "",
+      STUB_COPY_EXIT: String(s.copyExit ?? 0),
       STUB_SLEEP: s.hangProvisionSeconds ? String(s.hangProvisionSeconds) : "",
       ...(s.alert?.via === "env" && s.alert.url ? { DEPLOY_ALERT_WEBHOOK_URL: s.alert.url } : {}),
     },
@@ -212,6 +230,7 @@ function collect(p: Prepared, code: number, out: string): Outcome {
       : null,
     curlArgs: readIfExists(join(state, "curl.args")),
     curlStdin: readIfExists(join(state, "curl.stdin")),
+    cutoverMarker: existsSync(join(dir, ".object-store-cutover")),
   };
 }
 
@@ -269,6 +288,47 @@ describe.skipIf(BUN === "")("deploy.sh rollback decision under injected failures
     const o = deploy({ applied: ["1291_m1_drop_legacy.sql"] });
     expect(o.code, o.out).toBe(0);
     expect(oldRestarts(o)).toBe(0);
+  });
+
+  describe("one-time SeaweedFS cutover", () => {
+    const index = (o: Outcome, needle: string): number => o.calls.findIndex((c) => c.includes(needle));
+
+    it("a failed mirror undoes the cutover (MinIO back on its port, the stopped api/worker started) before any migration", () => {
+      const o = deploy({ legacyMinio: true, copyExit: 1 });
+      expect(o.code, o.out).toBe(1);
+      expect(o.cutoverMarker).toBe(false);
+      const stop = index(o, "stop api worker");
+      const copy = index(o, "object-store-migrate");
+      expect(stop).toBeGreaterThan(-1);
+      expect(copy).toBeGreaterThan(stop);
+      expect(index(o, "stop seaweedfs")).toBeGreaterThan(copy);
+      expect(index(o, "-f - --profile legacy-minio up")).toBeGreaterThan(copy);
+      expect(index(o, "start cid-api cid-worker")).toBeGreaterThan(copy);
+      expect(o.calls.some((c) => c.includes("scripts/db/migrate.ts"))).toBe(false);
+      expect(oldRestarts(o)).toBe(0); // the stopped containers come back unchanged, not recreated
+    });
+
+    it("a failure after the cutover recreates the previous release (on SeaweedFS), never leaves the api stopped", () => {
+      const o = deploy({ legacyMinio: true, migrateExit: 1 });
+      expect(o.code, o.out).toBe(1);
+      expect(o.cutoverMarker).toBe(true);
+      expect(o.calls.some((c) => c.includes("--entrypoint touch object-store-provision /config/cutover-done"))).toBe(true);
+      expect(oldRestarts(o), o.out).toBe(1);
+    });
+
+    it("an operator hold after the cutover says the api is STOPPED and how to bring it back", () => {
+      const o = deploy({ legacyMinio: true, applied: ["1291_m1_drop_legacy.sql"], provisionExit: 1 });
+      expectHeld(o);
+      expect(o.out).toContain("THE APP IS DOWN");
+    });
+
+    it("a cutover recorded in the volume is never re-run when the marker file is lost", () => {
+      const o = deploy({ legacyMinio: true, cutoverRecorded: true });
+      expect(o.code, o.out).toBe(0);
+      expect(o.cutoverMarker).toBe(true);
+      expect(o.calls.some((c) => c.includes("stop api worker"))).toBe(false);
+      expect(o.calls.some((c) => c.includes("object-store-migrate"))).toBe(false);
+    });
   });
 
   it("failure with no migrations applied -> restores and restarts the previous release", () => {

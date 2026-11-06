@@ -59,104 +59,173 @@ services:
       timeout: 5s
       retries: 12
 
-  minio:
-    image: cgr.dev/chainguard/minio:latest@sha256:e70b2b1e74d79457f808710483bd726ff364529ca30736eaa15a6ab547d3a5a7
+  # ADR-0050 D6 (amendment 2026-11-05) — the object store is SeaweedFS (all-in-one `weed server -s3`). Only the S3
+  # gateway listens on the compose network (8333); master, volume and filer bind to the container's loopback, so no
+  # other container can reach the filer's unauthenticated HTTP/gRPC API (a direct path to every object that skips
+  # S3 auth). The S3 gateway's own gRPC port (18333) stays reachable but refuses non-local callers when no signing
+  # key is configured (s3api checkAdminAuth). 127.0.0.1:9000 is the host-Nginx upstream, unchanged from MinIO.
+  # One volume per tenant bucket (growth 1, not SeaweedFS's default 7) keeps file handles bounded as tenants grow.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.52@sha256:57877e32bb90073b37dc109b438ba66e84fd5ed9ced5f5c04f56444ef243ce59
     mem_limit: 1g
     cpus: 2
     mem_reservation: 256m
     restart: unless-stopped
+    command:
+      - server
+      - -dir=/data
+      - -ip=127.0.0.1
+      - -ip.bind=127.0.0.1
+      - -volume.max=0
+      - -master.volumeSizeLimitMB=1024
+      - -s3
+      - -s3.ip.bind=0.0.0.0
+      - -s3.port=8333
+      - -s3.port.iceberg=0
+      - -s3.port.lance=0
+      - -s3.config=/config/s3.json
+      - -s3.auditLogConfig=/etc/seaweedfs/audit.json
+    environment:
+      WEED_MASTER_VOLUME_GROWTH_COPY_1: "1"
+    volumes:
+      - seaweedfs-data:/data
+      - seaweedfs-config:/config:ro
+      - ./object-store/audit.json:/etc/seaweedfs/audit.json:ro
+    # Reachable only by host Nginx (STORAGE_PUBLIC_ORIGIN, presigned URLs).
+    ports:
+      - "127.0.0.1:9000:8333"
+    healthcheck:
+      # /healthz answers 200 once the gateway can reach its filer.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    # No depends_on on object-store-provision: an `up` of an overlay service (object-copy) must not re-render s3.json
+    # without the overlay-only identities (the backup reader). deploy.sh provisions first; with no s3.json SeaweedFS
+    # refuses to start (fails closed, never anonymous).
+    networks: [default, audit]
+
+  # GAP-139 — the api and worker hold a SCOPED key, never the store's admin. This one-shot renders SeaweedFS's
+  # identity file (s3.json) with scripts/storage/seaweedfs-identities.ts:
+  #   admin   MINIO_ROOT_USER / MINIO_ROOT_PASSWORD   operators and the one-time MinIO migration only
+  #   app     MINIO_APP_ACCESS_KEY / _SECRET_KEY       deploy/production/object-store/app-policy.json and nothing else:
+  #           object + bucket calls on `tenant-*` / `chartwarden-*`, lifecycle on `tenant-*`; no bucket delete, no
+  #           versioning or policy change (the legacy SeaweedFS `Admin:tenant-*` grant allowed both)
+  #   readers reader-policy.json (list + get): the backup sidecar (compose.backup.yml) and the second copy
+  #           (compose.object-copy.yml), each only when configured
+  # Never name a backup or audit bucket `chartwarden-*`: the app account can delete there. A new adapter call needs
+  # its action added to app-policy.json deliberately; `test:object-store:conformance:live` runs against that file.
+  # SeaweedFS reads s3.json at start only, so deploy.sh recreates `seaweedfs` when this prints "s3.json changed"
+  # (a secret rotation is one deploy). No network: it reads env and the image's policy files and writes one file.
+  object-store-provision:
+    image: ${CHARTWARDEN_IMAGE:?set immutable GHCR image in .env.production}
+    pull_policy: always
+    mem_limit: 256m
+    cpus: 0.5
+    restart: "no"
+    user: "0:0"
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    # DAC_READ_SEARCH: reads Docker secret files owned by other uids (the backup reader's, compose.backup.yml), 0400.
+    # CHOWN: hands s3.json (0600) to SeaweedFS's runtime uid; its entrypoint drops root to `seaweed` (1000) first.
+    cap_add: [DAC_READ_SEARCH, CHOWN]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp
+    command: ["bun", "scripts/storage/seaweedfs-identities.ts", "/config/s3.json"]
+    environment:
+      S3_CONFIG_OWNER: "1000:1000"
+      SEAWEEDFS_ADMIN_ACCESS_KEY: ${MINIO_ROOT_USER:?set in .env.production}
+      SEAWEEDFS_ADMIN_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set in .env.production}
+      SEAWEEDFS_APP_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set in .env.production}
+      SEAWEEDFS_APP_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
+      # The second copy's read-only key (compose.object-copy.yml); skipped while unset.
+      SEAWEEDFS_READER_COPY_ACCESS_KEY: ${OBJECT_COPY_SOURCE_ACCESS_KEY:-}
+      SEAWEEDFS_READER_COPY_SECRET_KEY: ${OBJECT_COPY_SOURCE_SECRET_KEY:-}
+    volumes:
+      - seaweedfs-config:/config
+
+  # GAP-141 — download CONFIRMATION for signed URLs. SeaweedFS's audit log (one record per S3 call, cluster-wide: no
+  # per-bucket notification to configure for the dynamic `tenant-*` buckets) speaks the Fluent forward protocol;
+  # Fluent Bit posts each batch as JSON to the api's access-log webhook with its bearer. The api keeps only
+  # successful object GETs on tenant buckets and records them as `signed_url_consumed`. Best-effort (an audit gap is
+  # accepted for this stream): SeaweedFS logs asynchronously, so a down Fluent Bit never blocks an S3 request.
+  # Its forward input (24224, no auth) is on the `audit` network alone, shared only with seaweedfs and api: no other
+  # container can inject records that Fluent Bit would post with the webhook bearer.
+  fluent-bit:
+    image: fluent/fluent-bit:5.1.5@sha256:2740f387f6e68fab66d28e4fa6a853387b9cab6ffb4cb78958f69bba4eb0e7b4
+    mem_limit: 128m
+    cpus: 0.25
+    restart: unless-stopped
+    command: ["-c", "/fluent-bit/etc/fluent-bit.yaml"]
+    networks: [audit]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      AUDIT_SINK_HOST: api
+      AUDIT_SINK_PORT: "3000"
+      AUDIT_SINK_PATH: /api/v1/webhooks/minio/access-log
+      AUDIT_SINK_TOKEN: ${MINIO_ACCESS_LOG_WEBHOOK_TOKEN:?set in .env.production}
+    volumes:
+      - ./object-store/fluent-bit.yaml:/fluent-bit/etc/fluent-bit.yaml:ro
+
+  # LEGACY (profile `legacy-minio`): the MinIO this host ran before the SeaweedFS cutover. Started only by deploy.sh's
+  # one-time `object-store-migrate` step, which copies every object into SeaweedFS with its SHA-256; deploy.sh stops
+  # it once the copy is complete. Its volume stays until an operator removes it (deploy/production/README.md,
+  # "Object store: the SeaweedFS cutover"). Publishes no port: 127.0.0.1:9000 now belongs to SeaweedFS.
+  minio:
+    profiles: ["legacy-minio"]
+    image: cgr.dev/chainguard/minio:latest@sha256:e70b2b1e74d79457f808710483bd726ff364529ca30736eaa15a6ab547d3a5a7
+    mem_limit: 1g
+    cpus: 2
+    restart: "no"
     command: server /data --console-address ":9001"
-    # #855: MinIO no longer publishes minio/minio to Docker Hub, so this is Chainguard's build (nonroot uid 65532 by
-    # default). The existing minio-data volume was written by the old image as root, so keep root to avoid a chown
-    # migration on the live host; move to 65532 only together with a chown of the volume (see README, image updates).
+    # #855: the volume was written by the old minio/minio image as root; keep root so it needs no chown.
     user: "0:0"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set in .env.production}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set in .env.production}
-      # GAP-141 — download CONFIRMATION for signed URLs. MinIO's audit webhook posts one record per S3 API call to
-      # the api over the compose network (cluster-wide: no per-bucket notification to configure for the dynamic
-      # `tenant-*` buckets); the api keeps only successful GetObject calls on tenant buckets and records them as
-      # `signed_url_consumed` in document_access_log. Delivery is best-effort (an audit gap is accepted for this
-      # stream); the endpoint answers 503 until MINIO_ACCESS_LOG_WEBHOOK_TOKEN is set (deploy.sh generates it).
-      MINIO_AUDIT_WEBHOOK_ENABLE_chartwarden: "on"
-      MINIO_AUDIT_WEBHOOK_ENDPOINT_chartwarden: http://api:3000/api/v1/webhooks/minio/access-log
-      MINIO_AUDIT_WEBHOOK_AUTH_TOKEN_chartwarden: ${MINIO_ACCESS_LOG_WEBHOOK_TOKEN:?set in .env.production}
     volumes:
       - minio-data:/data
-    # Port 9000 is reachable only by host Nginx. Do not publish 9001: the admin console is not
-    # part of the public application surface.
-    ports:
-      - "127.0.0.1:9000:9000"
     healthcheck:
       # The Chainguard image has bash but no curl/wget: probe /minio/health/ready over bash's /dev/tcp.
-      # MinIO rejects the HTTP/1.0 request without a Host header.
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /minio/health/ready HTTP/1.0\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && read -r status <&3 && case \"$$status\" in *' 200 '*) exit 0;; esac; exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
 
-  # GAP-139 — the api and worker used to authenticate to the object store AS THE MINIO ROOT ACCOUNT, so a
-  # compromised app process held full administrative control of every tenant bucket, the policy store and
-  # the IAM store. This one-shot creates a scoped service account instead: object + bucket operations on
-  # the per-tenant `tenant-*` buckets and the `chartwarden-*` platform/readiness buckets (the legacy `wardenx-*` prefix was dropped in bucket rename step 3), and NOTHING administrative. Never name a backup or audit bucket `chartwarden-*`: the app account can delete there. Do not recreate a `wardenx-*` bucket: the app account has no access to that prefix.
-  # The action list is the audited set of S3 calls the object-store adapter makes (HEAD/PUT bucket, HEAD/PUT/GET
-  # object, presigned GET, `?versions` list + versioned DELETE for the D12 shred, the readiness HEAD, and the bucket
-  # lifecycle GET/PUT of `ensurePrefixExpiry`, which expires the M25 `m25-835/` PHI staging prefix; without it that
-  # call answered 403, was logged and skipped, and staged 835s never expired). The adapter uses no multipart upload,
-  # retention, legal-hold or versioning-configuration call, so none is granted; a new call needs its action added
-  # here deliberately. Lifecycle is granted on `tenant-*` only (`ensurePrefixExpiry` never touches `chartwarden-*`).
-  # CI runs `test:object-store:conformance:live` against SeaweedFS, not against this policy; re-run it against a
-  # MinIO provisioned from this policy by hand after changing it. It is
-  # idempotent (policy create overwrites, user add re-sets the secret) and reruns on every deploy, so
-  # rotating MINIO_APP_SECRET_KEY in .env.production is one deploy.
-  minio-provision:
-    # Reuse the running server's image; the Chainguard build includes /usr/bin/mc and /bin/sh.
-    image: cgr.dev/chainguard/minio:latest@sha256:e70b2b1e74d79457f808710483bd726ff364529ca30736eaa15a6ab547d3a5a7
-    mem_limit: 128m
-    cpus: 0.5
+  # LEGACY (profile `legacy-minio`): the one-time MinIO -> SeaweedFS copy (scripts/object-store-copy.ts). A generic
+  # S3 copier would drop every object's stored SHA-256 and leave all uploads unverifiable; this re-puts each object
+  # with it and reads it back. A MIRROR (deletes target keys MinIO lacks, within the mass-delete guard): deploy.sh runs
+  # it with the api/worker stopped, so nothing writes either store, and a retry cleans up after a failed attempt.
+  # SeaweedFS is never written by the app before this pass succeeds. `--adopt-unchecksummed`: an object MinIO
+  # holds without a checksum (the adapter always sends one, so none should exist) gets the SHA-256 of its bytes.
+  object-store-migrate:
+    profiles: ["legacy-minio"]
+    image: ${CHARTWARDEN_IMAGE:?set immutable GHCR image in .env.production}
+    pull_policy: always
+    mem_limit: 1g
+    cpus: 1
     restart: "no"
+    command: ["bun", "run", "scripts/object-store-copy.ts", "--adopt-unchecksummed"]
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      MINIO_APP_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set in .env.production}
-      MINIO_APP_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
-      # Name of the IAM policy. The old `wardenx-app` policy stays attached to its account until the late cleanup
-      # step (Step F), so a rollback keeps working.
-      CHARTWARDEN_MINIO_POLICY: ${CHARTWARDEN_MINIO_POLICY:-chartwarden-app}
-      # Runs as the image's nonroot uid, whose $HOME may not be writable; keep mc's config under /tmp.
-      MC_CONFIG_DIR: /tmp/.mc
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        set -eu
-        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null
-        cat > /tmp/app-policy.json <<'POLICY'
-        {
-          "Version": "2012-10-17",
-          "Statement": [
-            {
-              "Effect": "Allow",
-              "Action": ["s3:CreateBucket", "s3:ListBucket", "s3:GetBucketLocation", "s3:ListBucketVersions"],
-              "Resource": ["arn:aws:s3:::tenant-*", "arn:aws:s3:::chartwarden-*"]
-            },
-            {
-              "Effect": "Allow",
-              "Action": ["s3:GetLifecycleConfiguration", "s3:PutLifecycleConfiguration"],
-              "Resource": ["arn:aws:s3:::tenant-*"]
-            },
-            {
-              "Effect": "Allow",
-              "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:GetObjectVersion", "s3:DeleteObjectVersion"],
-              "Resource": ["arn:aws:s3:::tenant-*/*", "arn:aws:s3:::chartwarden-*/*"]
-            }
-          ]
-        }
-        POLICY
-        mc admin policy create local "$${CHARTWARDEN_MINIO_POLICY}" /tmp/app-policy.json
-        mc admin user add local "$$MINIO_APP_ACCESS_KEY" "$$MINIO_APP_SECRET_KEY"
-        mc admin policy attach local "$${CHARTWARDEN_MINIO_POLICY}" --user "$$MINIO_APP_ACCESS_KEY"
+      SOURCE_S3_ENDPOINT: http://minio:9000
+      SOURCE_S3_ACCESS_KEY: ${MINIO_ROOT_USER:?set in .env.production}
+      SOURCE_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set in .env.production}
+      # A retry that must remove more than max(10, 10%) of a bucket (or all of it) is refused; an operator names the
+      # bucket(s) here for one run (README, cutover), after checking that MinIO is really the truth for them.
+      ALLOW_MASS_DELETE: ${OBJECT_STORE_MIGRATE_ALLOW_MASS_DELETE:-}
+      TARGET_S3_ENDPOINT: http://seaweedfs:8333
+      TARGET_S3_ACCESS_KEY: ${MINIO_ROOT_USER:?set in .env.production}
+      TARGET_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set in .env.production}
     depends_on:
       minio:
+        condition: service_healthy
+      seaweedfs:
         condition: service_healthy
 
   # GAP-138 — DocLens stage 2 (OCR + layout). Without this service DOCLING_WORKER_URL was unset in
@@ -264,7 +333,7 @@ services:
     image: clamav/clamav-debian:1.4@sha256:03a2f641117f0a8c908bac65a63c5e1e4695badc52a340c9d30397d7cebb9154
     restart: unless-stopped
     # clamd loads the whole signature set (a reload briefly doubles it): bound it so a scan flood or a bad update
-    # cannot starve postgres/minio/api on the same host.
+    # cannot starve postgres/seaweedfs/api on the same host.
     mem_limit: 4g
     mem_reservation: 1g
     cpus: 2
@@ -291,7 +360,7 @@ services:
     command: ["bun", "run", "scripts/backfill-tenant-buckets.ts"]
     environment:
       DATABASE_ADMIN_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
-      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ENDPOINT: http://seaweedfs:8333
       MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set in .env.production}
       MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
       MINIO_REGION: us-east-1
@@ -312,16 +381,16 @@ services:
       DATABASE_URL: postgresql://chartwarden_app:${CHARTWARDEN_APP_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       DATABASE_DESTRUCTION_URL: postgresql://chartwarden_destruction_login:${CHARTWARDEN_DESTRUCTION_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
-      # GAP-141 — the bearer MinIO's audit webhook presents to /api/v1/webhooks/minio/access-log.
+      # GAP-141 — the bearer Fluent Bit presents to /api/v1/webhooks/minio/access-log (SeaweedFS's audit log).
       MINIO_ACCESS_LOG_WEBHOOK_TOKEN: ${MINIO_ACCESS_LOG_WEBHOOK_TOKEN:?set in .env.production}
       # M36 WP 1.5 — the ClamAV sidecar above. The builtin scanner is refused unless ALLOW_BUILTIN_ATTACHMENT_SCANNER=1.
       MESSAGING_ATTACHMENT_SCANNER: clamd
       CLAMD_HOST: clamav
       CLAMD_PORT: "3310"
       REDIS_URL: redis://valkey:6379
-      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ENDPOINT: http://seaweedfs:8333
       MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
-      # GAP-139 — the scoped service account `minio-provision` creates, NOT the MinIO root account.
+      # GAP-139 — the scoped app key (object-store-provision, app-policy.json), NOT the store's admin key.
       MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set in .env.production}
       MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
       MINIO_REGION: us-east-1
@@ -346,17 +415,15 @@ services:
         target: /run/cw-rust
         volume: { nocopy: true }
     # M36: clamd is reachable only over the dedicated `scan` network (joined by clamav, api and worker alone), so a
-    # compromised sidecar (postgres, minio, docling, ...) cannot reach it and clamd cannot reach them.
-    networks: [default, scan]
+    # compromised sidecar (postgres, seaweedfs, docling, ...) cannot reach it and clamd cannot reach them.
+    networks: [default, scan, audit]
     depends_on:
       provision:
         condition: service_completed_successfully
       valkey:
         condition: service_healthy
-      minio:
+      seaweedfs:
         condition: service_healthy
-      minio-provision:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "bun", "-e", "process.exit((await fetch('http://localhost:3000/ready')).ok ? 0 : 1)"]
       interval: 15s
@@ -389,9 +456,9 @@ services:
       CLAMD_HOST: clamav
       CLAMD_PORT: "3310"
       REDIS_URL: redis://valkey:6379
-      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ENDPOINT: http://seaweedfs:8333
       MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
-      # GAP-139 — the scoped service account `minio-provision` creates, NOT the MinIO root account.
+      # GAP-139 — the scoped app key (object-store-provision, app-policy.json), NOT the store's admin key.
       MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set in .env.production}
       MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
       MINIO_REGION: us-east-1
@@ -399,17 +466,15 @@ services:
       DOCLING_WORKER_URL: http://docling-worker:8000
       DOCLING_WORKER_TOKEN: ${DOCLING_WORKER_TOKEN:?set in .env.production}
     # M36: clamd is reachable only over the dedicated `scan` network (joined by clamav, api and worker alone), so a
-    # compromised sidecar (postgres, minio, docling, ...) cannot reach it and clamd cannot reach them.
+    # compromised sidecar (postgres, seaweedfs, docling, ...) cannot reach it and clamd cannot reach them.
     networks: [default, scan]
     depends_on:
       provision:
         condition: service_completed_successfully
       valkey:
         condition: service_healthy
-      minio:
+      seaweedfs:
         condition: service_healthy
-      minio-provision:
-        condition: service_completed_successfully
     # F-038/#98 — the worker had no healthcheck, so `docker compose ps` reported it "running" the instant
     # the process started and a worker that booted then died left the deploy green while every background
     # job silently stopped. It publishes no port (it serves no public traffic), so the check runs inside
@@ -455,7 +520,7 @@ services:
       DATABASE_PLATFORM_URL: postgresql://chartwarden_platform_login:${CHARTWARDEN_PLATFORM_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       DATABASE_DESTRUCTION_URL: postgresql://chartwarden_destruction_login:${CHARTWARDEN_DESTRUCTION_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       REDIS_URL: redis://valkey:6379
-      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ENDPOINT: http://seaweedfs:8333
       MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
       MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set in .env.production}
       MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
@@ -548,6 +613,9 @@ services:
     restart: "no"
 
 networks:
+  # Fluent Bit's unauthenticated forward input: seaweedfs (sender), fluent-bit, api (the webhook it posts to) only.
+  audit:
+    internal: true
   # Dedicated clamd network (api, worker, clamav only). Not `internal`: freshclam must reach the signature mirrors.
   scan:
   # CW-RUST-M02: the Rust API's only network, shared with postgres alone. `internal`: no route out of the host.
@@ -571,7 +639,13 @@ volumes:
     name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_postgres-data
   valkey-data:
     name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_valkey-data
+  # LEGACY: the pre-cutover MinIO data (read once by object-store-migrate; removed by an operator afterwards).
   minio-data:
     name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_minio-data
+  seaweedfs-data:
+    name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_seaweedfs-data
+  # s3.json (identities + secrets): written only by object-store-provision, mounted read-only by seaweedfs.
+  seaweedfs-config:
+    name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_seaweedfs-config
   clamav-data:
     name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_clamav-data
