@@ -1397,6 +1397,10 @@ jobs:
           - { name: "M34 onboarding data", scripts: "test:m34:onboarding-data:live" }
           # ADR-0108 D8 - census pull: active-only, add-on orgs only, idempotent rerun, pseudonyms only, two-org RLS, reconcile drift.
           - { name: "M35 claims-billing census", scripts: "test:m35:claims-billing-census:live" }
+          # Slice 2 (tenant pricing) - the plan editor (a published version is frozen by the database), onboarding step 2 settling plan_contract
+          # through the wizard, the active-staff / daily-census / net-collections meters on seeded data, the greater-of statement, a final month
+          # frozen, tenant isolation as the real chartwarden_app and the provisioned platform carrier's exact grants.
+          - { name: "M35 tenant pricing", scripts: "test:m35:tenant-pricing:live" }
           # GAP-057 - M34's two recipient resolvers registered on the real emitter; platform-owner reader.
           - { name: "M34 alert resolvers", scripts: "test:m34:alert-resolvers:live" }
           # GAP-050: M33 scheduled-report create/update/resume over the real `cron-parser` adapter —

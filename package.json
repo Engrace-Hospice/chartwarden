@@ -244,6 +244,7 @@
     "test:m35:claims-billing-addon:live": "vitest run apps/backend/__tests__/m35-claims-billing-addon.live.test.ts",
     "test:m34:onboarding-data:live": "vitest run apps/backend/__tests__/m34-onboarding-data.live.test.ts",
     "test:m35:claims-billing-census:live": "vitest run apps/backend/__tests__/m35-claims-billing-census.live.test.ts",
+    "test:m35:tenant-pricing:live": "vitest run apps/backend/__tests__/m35-tenant-pricing.live.test.ts",
     "test:claims-billing:worker-hold:live": "vitest run apps/backend/__tests__/claims-billing-worker-hold.live.test.ts",
     "test:m34:alert-resolvers:live": "vitest run apps/backend/__tests__/m34-alert-resolvers.live.test.ts",
     "test:m13:admission-discharged-cascade:live": "vitest run apps/backend/__tests__/m13-admission-discharged-cascade.live.test.ts",
