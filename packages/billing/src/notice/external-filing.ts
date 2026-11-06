@@ -121,8 +121,8 @@ export type ExternalFilingWithdrawalPlan =
       /** The `recordedAt` of the record withdrawn (what the operator pinned: the audit row names it). */
       readonly withdrawnRecordedAt: string;
       /**
-       * The breach stamp on the notice was written by the withdrawn record itself (a LATE record stamps `windowBreachedAt = filedOn`):
-       * the caller clears it with the record. A stamp the watchdog wrote stays.
+       * The breach stamp on the notice was written by the withdrawn record itself (a LATE record stamps `windowBreachedAt = filedOn`
+       * and sets `externalFilingSetBreach`): the caller clears it with the record. A stamp the watchdog wrote stays.
        */
       readonly clearBreach: boolean;
     }
@@ -145,8 +145,8 @@ export interface ExternalFilingWithdrawalInput {
   readonly filedExternallyRecordedAt: string | null;
   /** The `recordedAt` the operator read (the route's `If-Match`); null when the request named none. */
   readonly expectedRecordedAt: string | null;
-  readonly windowTargetAt: IsoDate;
-  readonly windowBreachedAt: IsoDate | null;
+  /** The record itself wrote the breach stamp (`external_filing_set_breach`): set exactly when a late record stamped. */
+  readonly externalFilingSetBreach: boolean;
 }
 
 /**
@@ -154,9 +154,12 @@ export interface ExternalFilingWithdrawalInput {
  * and a cancel refuses). It applies to the record the operator READ or to nothing: a record withdrawn and re-recorded since has a
  * new `recordedAt`, and withdrawing that one unseen is a 409. PURE: the caller clears the marker and the three filed columns
  * together (the table's CHECK moves them as one). A breach stamp the watchdog wrote stays (what ChartWarden observed); one the
- * withdrawn LATE record wrote itself (`stampBreach`: the stamp IS its filed date, and that date is after the due day) goes with
- * it, or re-recording the true on-time date would read as contradicting a breach nobody observed, and the stamp would hide the
- * notice from the window watch for good. A notice that really is overdue is re-stamped by that watch on its next tick.
+ * withdrawn LATE record wrote itself (`stampBreach`, kept on the row as `externalFilingSetBreach`) goes with it, or re-recording
+ * the true on-time date would read as contradicting a breach nobody observed, and the stamp would hide the notice from the window
+ * watch for good. A notice that really is overdue is re-stamped by that watch on its next tick.
+ *
+ * Whose stamp it is comes from that flag, never from the dates: a tenant filing exactly one day late records the very day the
+ * watchdog's first tick stamps (target + 1), so a stamp equal to the filed date can be either writer's.
  */
 export function planExternalFilingWithdrawal(
   input: ExternalFilingWithdrawalInput,
@@ -194,13 +197,10 @@ export function planExternalFilingWithdrawal(
       currentRecordedAt: input.filedExternallyRecordedAt,
     };
   }
-  const wroteItsOwnBreach =
-    input.windowBreachedAt === input.filedExternallyOn &&
-    toEpochDay(input.filedExternallyOn) > toEpochDay(input.windowTargetAt);
   return {
     kind: "withdraw",
     withdrawnFiledOn: input.filedExternallyOn,
     withdrawnRecordedAt: input.filedExternallyRecordedAt,
-    clearBreach: wroteItsOwnBreach,
+    clearBreach: input.externalFilingSetBreach,
   };
 }

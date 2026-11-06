@@ -64,6 +64,7 @@ export type ExternalFilingPatch = Pick<
   | "filedExternallyOn"
   | "filedExternallyRecordedAt"
   | "filedExternallyByMembershipId"
+  | "externalFilingSetBreach"
   | "windowBreachedAt"
 >;
 
@@ -277,12 +278,13 @@ const NOTR_OPS: KindOps<repositories.NotrRecord> = {
   aggregateKind: "notr_record",
 };
 
-/** Clears the marker and the three filed columns together (the table's CHECK moves them as one). */
+/** Clears the marker, the three filed columns and the stamp-owner flag together (the table's CHECKs move them as one). */
 const WITHDRAW_PATCH: ExternalFilingPatch = {
   externalFilingStatus: null,
   filedExternallyOn: null,
   filedExternallyRecordedAt: null,
   filedExternallyByMembershipId: null,
+  externalFilingSetBreach: false,
 };
 
 /**
@@ -320,8 +322,7 @@ export async function withdrawExternalNoticeFiling(
     filedExternallyOn: notice.filedExternallyOn,
     filedExternallyRecordedAt: notice.filedExternallyRecordedAt?.toISOString() ?? null,
     expectedRecordedAt: input.expectedRecordedAt,
-    windowTargetAt: notice.windowTargetAt,
-    windowBreachedAt: notice.windowBreachedAt,
+    externalFilingSetBreach: notice.externalFilingSetBreach,
   });
   if (plan.kind === "refuse") {
     // The retry's If-Match rides in the envelope's details (a timestamp, no id or free text) so the operator can read it.
@@ -413,8 +414,10 @@ export function buildExternalNoticeFilingService(
           filedExternallyRecordedAt: at,
           filedExternallyByMembershipId: actor.membershipId,
           // The breach on record: the watchdog stops scanning a filed notice, so it would never stamp this one. A stamp the watchdog
-          // already set is NEVER touched (it is what ChartWarden observed; the tenant's date does not outrank it).
-          ...(plan.stampBreach ? { windowBreachedAt: filedOn } : {}),
+          // already set is NEVER touched (it is what ChartWarden observed; the tenant's date does not outrank it). The record says
+          // it wrote the stamp it writes (`externalFilingSetBreach`): a withdrawal clears only a stamp the record owns, and the
+          // dates cannot tell the owners apart (a one-day-late filing carries the day the watchdog stamps).
+          ...(plan.stampBreach ? { windowBreachedAt: filedOn, externalFilingSetBreach: true } : {}),
         });
         if (announce && ports.outbox) {
           // Ids and dates only (no patient, no free text). Same transaction: the fact and its announcement commit together.

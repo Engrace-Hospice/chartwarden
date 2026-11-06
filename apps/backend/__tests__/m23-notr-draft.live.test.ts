@@ -583,7 +583,8 @@ describe.skipIf(!DB_URL)(
       (
         await admin.query(
           `SELECT state, version, external_filing_status, filed_externally_on::text AS filed_on,
-                  filed_externally_by_membership_id AS by, window_breached_at::text AS breached
+                  filed_externally_by_membership_id AS by, window_breached_at::text AS breached,
+                  external_filing_set_breach AS set_breach
              FROM notr_record WHERE id=$1`,
           [id],
         )
@@ -629,6 +630,33 @@ describe.skipIf(!DB_URL)(
          filed_externally_by_membership_id='${USER}'`,
       );
       expect(await notrRow(id)).toMatchObject({ external_filing_status: "filed", by: USER });
+    });
+
+    it("migration 1353: external_filing_set_breach is NOT NULL, false by default, and can only be true on a notice recorded as filed", async () => {
+      const id = await seedNotr(ORG_A);
+      expect(await notrRow(id)).toMatchObject({ set_breach: false });
+      const set = (sql: string) => admin.query(`UPDATE notr_record SET ${sql} WHERE id=$1`, [id]);
+      await expect(set("external_filing_set_breach=NULL")).rejects.toMatchObject({
+        code: "23502",
+      });
+      await expect(set("external_filing_set_breach=true")).rejects.toMatchObject({
+        code: "23514",
+      });
+      await set("external_filing_status='pending'");
+      await expect(set("external_filing_set_breach=true")).rejects.toMatchObject({
+        code: "23514",
+      });
+      await set(
+        `external_filing_status='filed', filed_externally_on=CURRENT_DATE, filed_externally_recorded_at=now(),
+         filed_externally_by_membership_id='${USER}', external_filing_set_breach=true`,
+      );
+      expect(await notrRow(id)).toMatchObject({ set_breach: true });
+      // leaving `filed` without clearing the flag is refused: a withdrawal resets both together
+      await expect(
+        set(
+          "external_filing_status=NULL, filed_externally_on=NULL, filed_externally_recorded_at=NULL, filed_externally_by_membership_id=NULL",
+        ),
+      ).rejects.toMatchObject({ code: "23514" });
     });
 
     it("the deadline tracker keeps counting for a parked or unmarked NOTR of an outside org, and drops one recorded as filed", async () => {
@@ -698,6 +726,7 @@ describe.skipIf(!DB_URL)(
         filed_on: filedOn,
         by: USER,
         breached: filedOn,
+        set_breach: true, // the record wrote the stamp itself, and says so (a withdrawal reads it)
       });
       // Round 2, Q4: a LATE filing is published (real catalog-validating publisher, same transaction) and reaches the alert + ops sink.
       const { rows: lateEvents } = await admin.query(
@@ -797,6 +826,7 @@ describe.skipIf(!DB_URL)(
       expect(await notrRow(late)).toMatchObject({
         external_filing_status: "filed",
         breached: stamp,
+        set_breach: false, // the watchdog's stamp: the record never claims it
       });
     }, 60_000);
 

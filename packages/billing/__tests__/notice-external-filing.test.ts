@@ -148,8 +148,7 @@ describe("planExternalFilingWithdrawal", () => {
     filedExternallyOn: "2026-11-04",
     filedExternallyRecordedAt: RECORDED,
     expectedRecordedAt: RECORDED,
-    windowTargetAt: "2026-11-06",
-    windowBreachedAt: null,
+    externalFilingSetBreach: false,
   };
 
   it("withdraws the record the operator read, and says which filed date it withdrew", () => {
@@ -161,14 +160,15 @@ describe("planExternalFilingWithdrawal", () => {
     });
   });
 
-  // A LATE record stamps `window_breached_at = filedOn` itself. Withdrawing that record must take its own stamp back (the notice was
-  // never filed late: it was never filed), or re-recording the true on-time date reads as contradicting a breach nobody observed.
-  it("clears the breach stamp the withdrawn LATE record wrote itself (stamp = its filed date, after the due date)", () => {
+  // A LATE record stamps `window_breached_at = filedOn` itself and says so (`externalFilingSetBreach`). Withdrawing that record must
+  // take its own stamp back (the notice was never filed late: it was never filed), or re-recording the true on-time date reads as
+  // contradicting a breach nobody observed.
+  it("clears the breach stamp the withdrawn LATE record wrote itself (the record's own flag says so)", () => {
     expect(
       planExternalFilingWithdrawal({
         ...filed,
         filedExternallyOn: "2026-11-08",
-        windowBreachedAt: "2026-11-08",
+        externalFilingSetBreach: true,
       }),
     ).toEqual({
       kind: "withdraw",
@@ -178,13 +178,13 @@ describe("planExternalFilingWithdrawal", () => {
     });
   });
 
-  it.each([
-    ["a stamp the watchdog set on another day", "2026-11-08", "2026-11-09"],
-    ["an on-time record over a watchdog stamp", "2026-11-04", "2026-11-07"],
-    ["an on-time record whose date happens to equal the stamp", "2026-11-06", "2026-11-06"],
-  ] as const)("keeps %s", (_label, filedExternallyOn, windowBreachedAt) => {
+  // The stamp's OWNER is recorded, not inferred from dates: a tenant that files exactly one day late records filedOn = target + 1,
+  // the very day the watchdog stamps (`medicareReceiptDay(now)` on its first tick after the due day). The dates cannot tell the two
+  // writers apart; only the record's own flag can. Here the watchdog stamped 2026-11-07 first (target 2026-11-06) and the tenant
+  // then recorded 2026-11-07: the flag is false, so the stamp stays whatever the dates say.
+  it("keeps a watchdog stamp that happens to equal the record's late filed date (the watchdog stamped first, the record never wrote it)", () => {
     expect(
-      planExternalFilingWithdrawal({ ...filed, filedExternallyOn, windowBreachedAt }),
+      planExternalFilingWithdrawal({ ...filed, filedExternallyOn: "2026-11-07" }),
     ).toMatchObject({ kind: "withdraw", clearBreach: false });
   });
 
