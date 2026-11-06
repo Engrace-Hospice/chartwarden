@@ -318,6 +318,9 @@ export function buildDrizzlePlatformService(deps: {
    *  implementation is bound in the composition root and passed in here rather than constructed
    *  locally; omitted, the three admin routes keep the fail-closed stub below. */
   featureFlags?: FeatureFlagAdminPort;
+  /** The onboarding advance pass, run for a tenant after a BAA write (post-commit, best effort). Omitted: the sweep only. */
+  advanceOnboarding?: DrizzleTenantPlatformDeps["advanceOnboarding"];
+  warn?: DrizzleTenantPlatformDeps["warn"];
 }): ReturnType<typeof createDrizzleTenantPlatformBackend> {
   const outbox: OutboxPublishPort = deps.outbox ?? {
     async publish(_tx, input) {
@@ -428,6 +431,8 @@ export function buildDrizzlePlatformService(deps: {
       now: () => new Date(),
     },
     platformJobId: M34_PLATFORM_JOB_ID,
+    ...(deps.advanceOnboarding ? { advanceOnboarding: deps.advanceOnboarding } : {}),
+    ...(deps.warn ? { warn: deps.warn } : {}),
   };
   return createDrizzleTenantPlatformBackend(drizzleDeps);
 }

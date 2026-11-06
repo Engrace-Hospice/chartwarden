@@ -261,8 +261,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     macFeedConfigured: buildMacFeedConfiguredReader(buildDrizzleOrgMacJurisdictionReader(app.db)),
   });
   const advancer = () => createOnboardingAdvancer({ db: app.db, outbox, alerts, facts: facts() });
-  const backend = () =>
+  const backend = (opts: Pick<DrizzleTenantPlatformDeps, "advanceOnboarding" | "warn"> = {}) =>
     createDrizzleTenantPlatformBackend({
+      ...opts,
       platformDb: platform.db,
       enqueue: { enqueue: async (q, k) => ({ jobId: `${q}-${k}` }) },
       legalHoldClear: async () => true,
@@ -1461,6 +1462,187 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         { status: "pending" },
       );
       expect(landed?.status).toBe("pending");
+    });
+  });
+  // ── the Docker-stack smoke-test gaps (slice 1 fixes) ───────────────────────────────────────────────────────
+  describe("smoke-test gaps: BAA register writes on the real platform carrier", () => {
+    const ORG_S = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb01";
+    const T_S = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb02";
+    // A second tenant for the advance-pass tests: the first test ends its BAA `terminated`, which would govern here.
+    const ORG_S2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb03";
+    const T_S2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb04";
+
+    beforeAll(async () => {
+      for (const [org, tenant, slug] of [
+        [ORG_S, T_S, "wiz-s"],
+        [ORG_S2, T_S2, "wiz-s2"],
+      ] as const) {
+        await admin.query(
+          "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
+          [org, slug],
+        );
+        await admin.query(
+          "INSERT INTO tenant_account (id, organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,'onboarding',$3,'b@x.test','p@x.test')",
+          [tenant, org, slug],
+        );
+        await admin.query(
+          `INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key)
+           SELECT $1, $2, key FROM onboarding_task_template WHERE retired_at IS NULL`,
+          [org, tenant],
+        );
+      }
+    }, 60_000);
+
+    const baaRow = async (id: string) =>
+      (await admin.query("SELECT * FROM platform_tenant_baa_record WHERE id=$1", [id])).rows[0];
+
+    it("creates and updates a BAA record on the real platform carrier (the register was a 42501 before)", async () => {
+      const created = await backend().service.createBaaRecord(OPS_USER, {
+        tenantAccountId: T_S,
+        addendumVersion: "v1",
+        baaStatus: "executed",
+        executedOn: "2026-10-01",
+        effectiveOn: "2026-10-01",
+        expiresOn: "2028-10-01",
+        breachNotificationContactEmail: "privacy@wiz-s.test",
+        breachNotificationContactPhone: null,
+      });
+      expect(await baaRow(created.id)).toMatchObject({
+        organization_id: ORG_S,
+        tenant_account_id: T_S,
+        baa_status: "executed",
+        breach_notification_contact_email: "privacy@wiz-s.test",
+      });
+
+      const updated = await backend().service.updateBaaRecord(created.id, OPS_USER, {
+        baaStatus: "terminated",
+        breachNotificationContactEmail: "privacy2@wiz-s.test",
+      });
+      expect(updated.baaStatus).toBe("terminated");
+      expect(await baaRow(created.id)).toMatchObject({
+        baa_status: "terminated",
+        breach_notification_contact_email: "privacy2@wiz-s.test",
+      });
+    });
+
+    it("migration 1332 alone grants the same (a database where the carrier already exists when it lands)", async () => {
+      const can = async (priv: string, column?: string) =>
+        (
+          await admin.query(
+            column
+              ? "SELECT has_column_privilege('chartwarden_platform','platform_tenant_baa_record',$1,'UPDATE') AS ok"
+              : "SELECT has_table_privilege('chartwarden_platform','platform_tenant_baa_record',$1) AS ok",
+            [column ?? priv],
+          )
+        ).rows[0].ok as boolean;
+      await admin.query(
+        "REVOKE INSERT, UPDATE ON platform_tenant_baa_record FROM chartwarden_platform",
+      );
+      expect(await can("INSERT")).toBe(false);
+      expect(await can("UPDATE", "baa_status")).toBe(false);
+
+      await apply(sqlFiles().filter((f) => f.startsWith("1332_")));
+
+      expect(await can("INSERT")).toBe(true);
+      for (const column of [
+        "baa_status",
+        "executed_on",
+        "effective_on",
+        "expires_on",
+        "breach_notification_contact_email",
+        "breach_notification_contact_phone",
+        "document_id",
+      ]) {
+        expect(await can("UPDATE", column), column).toBe(true);
+      }
+      for (const column of ["attested_at", "organization_id", "tenant_account_id"]) {
+        expect(await can("UPDATE", column), column).toBe(false);
+      }
+    });
+
+    it("a BAA write runs the advance pass for that tenant at once: the blocked step settles without waiting for the sweep", async () => {
+      await attestPlatform(T_S2, "wiz-s2", "account_created", "organisation confirmed");
+      await attestPlatform(T_S2, "wiz-s2", "plan_contract", "order form countersigned");
+      await advancer()({ tenantAccountId: T_S2, orgId: ORG_S2 });
+      expect(await statusOf(T_S2, "baa_executed")).toBe("blocked"); // no BAA yet: an auto step blocks
+
+      const advanced: string[] = [];
+      const warned: string[] = [];
+      await backend({
+        warn: (message, context) => warned.push(`${message} ${JSON.stringify(context)}`),
+        advanceOnboarding: async (tenant) => {
+          advanced.push(tenant.tenantAccountId);
+          await advancer()({
+            tenantAccountId: tenant.tenantAccountId,
+            orgId: tenant.organizationId,
+          });
+        },
+      }).service.createBaaRecord(OPS_USER, {
+        tenantAccountId: T_S2,
+        addendumVersion: "v-advance",
+        baaStatus: "executed",
+        executedOn: "2026-10-01",
+        effectiveOn: "2026-10-01",
+        expiresOn: "2028-10-01",
+        breachNotificationContactEmail: null,
+        breachNotificationContactPhone: null,
+      });
+
+      expect(warned).toEqual([]);
+      expect(advanced).toEqual([T_S2]);
+      expect(await statusOf(T_S2, "baa_executed")).toBe("done");
+      expect(await statusOf(T_S2, "provisioning_complete")).toBe("done");
+    });
+
+    it("an advance failure after a BAA write is logged, never thrown: the write stays", async () => {
+      const warnings: string[] = [];
+      const created = await backend({
+        advanceOnboarding: async () => {
+          throw new Error("advance pass unavailable");
+        },
+        warn: (message) => warnings.push(message),
+      }).service.createBaaRecord(OPS_USER, {
+        tenantAccountId: T_S2,
+        addendumVersion: "v-advance-fails",
+        baaStatus: "pending",
+        executedOn: null,
+        effectiveOn: null,
+        expiresOn: null,
+        breachNotificationContactEmail: null,
+        breachNotificationContactPhone: null,
+      });
+      expect(await baaRow(created.id)).toMatchObject({ baa_status: "pending" });
+      expect(warnings).toHaveLength(1);
+    });
+
+    it("the grant is narrow: the platform login cannot rewrite the tenant, the version or the officer's attestation", async () => {
+      const row = (
+        await admin.query(
+          `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status)
+           VALUES ($1,$2,'v-narrow','pending') RETURNING id`,
+          [ORG_S, T_S],
+        )
+      ).rows[0];
+      const login = new Client({
+        connectionString: urlAs("chartwarden_platform_login", PLATFORM_PASSWORD),
+      });
+      await login.connect();
+      try {
+        for (const set of [
+          "attested_at = now()",
+          `compliance_officer_attestation_membership_id = '${OPS_MEMBERSHIP}'`,
+          `organization_id = '${ORG_A}'`,
+          "addendum_version = 'v9'",
+          "subcontractor_disclosure_set = '[]'::jsonb",
+        ]) {
+          await expect(
+            login.query(`UPDATE platform_tenant_baa_record SET ${set} WHERE id = $1`, [row.id]),
+            set,
+          ).rejects.toMatchObject({ code: "42501" });
+        }
+      } finally {
+        await login.end();
+      }
     });
   });
 });
