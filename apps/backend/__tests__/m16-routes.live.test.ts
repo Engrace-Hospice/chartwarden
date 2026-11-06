@@ -52,6 +52,7 @@ import { createBereavementCipher } from "../src/modules/16-bereavement/bereaveme
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/events-by-m16";
 import { M16_PERMISSION_KEY_LIST } from "../src/modules/16-bereavement/permission-keys";
 import {
+  buildDrizzleM16DraftService,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
 } from "../src/modules/16-bereavement/routes/index";
@@ -101,6 +102,8 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
   let planId = "";
   let planB = "";
   const contacts: Record<string, string> = {};
+  /** ADR-0109 D5 — the admission the pre-death draft is recorded against (M6's reader is a named double). */
+  const draftAdmission = { admissionId: randomUUID(), patientId: randomUUID() };
 
   async function seedActor(key: string, org: string, roles: string): Promise<void> {
     const user = (
@@ -245,9 +248,45 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     registerAbacRegistry();
     const volunteerOk = async ({ volunteerMembershipId }: { volunteerMembershipId: string }) =>
       volunteerMembershipId === actors.volunteer?.membership;
+    // ADR-0109 D5 — `bereavement_pre_death_assessor` over named doubles for the two seams it reads: M6's admission
+    // (patient + siting) and M5's care team (only the assigned counselor's USER sits on this patient's team).
+    const admissionReader = {
+      async getAdmissionPatientCare(_org: string, admissionId: string) {
+        return admissionId === draftAdmission.admissionId
+          ? {
+              admissionId,
+              patientId: draftAdmission.patientId,
+              status: "active",
+              otherAdmissionUnderCare: false,
+            }
+          : null;
+      },
+      async getAdmissionSiting(org: string, admissionId: string) {
+        return admissionId === draftAdmission.admissionId
+          ? {
+              admissionId,
+              organizationId: org,
+              providerEntityId: pe[org] ?? null,
+              locationId: null,
+              admissionAt: null,
+              activatedAt: null,
+            }
+          : null;
+      },
+    };
     registerBereavementAbacPredicates({
       resolver: buildDrizzleBereavementAbacResolver(handle.db, { roleGrants: permissions.store }),
       volunteerGatesSatisfied: volunteerOk,
+      preDeathAssessor: {
+        async patientOfAdmission(org, admissionId) {
+          return (
+            (await admissionReader.getAdmissionPatientCare(org, admissionId))?.patientId ?? null
+          );
+        },
+        async isOnCareTeam(_org, patientId, userId) {
+          return patientId === draftAdmission.patientId && userId === actors.counselor?.user;
+        },
+      },
     });
     registerSeam("VolunteerComplianceProvider", {
       async effectiveStatusFor(_org: string, membershipId: string) {
@@ -265,6 +304,9 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
     mountM16Routes(app, {
       readService,
+      draftService: buildDrizzleM16DraftService(handle.db, {
+        admissions: () => admissionReader as never,
+      }),
       writeService: buildDrizzleM16WriteService(handle.db, readService, {
         outbox: outbox as never,
         cipher: createBereavementCipher({
@@ -303,7 +345,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     };
   };
   const call = (
-    method: "GET" | "POST" | "PATCH",
+    method: "GET" | "POST" | "PATCH" | "PUT",
     url: string,
     as: string,
     payload?: unknown,
@@ -1277,6 +1319,164 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect(await status("bereavement_outreach", b.pastDue)).toBe("cancelled");
     expect(await status("bereavement_assessment_task", b.pastDueTask)).toBe("cancelled");
     expect(await status("bereavement_assessment_task", b.futureTask)).toBe("scheduled");
+  });
+
+  it("pre-death draft: the care-team counselor records it (If-Match 0, SUD forced unknown); a stale write 412s; others 404; a plan locks it (ADR-0109 D5)", async () => {
+    const url = `/api/v1/bereavement/pre-death-assessments/${draftAdmission.admissionId}`;
+    const factors = {
+      ambivalent_relationship: true,
+      sudden_unexpected_death: "unknown",
+      prior_unresolved_loss: false,
+      preexisting_mental_health: true,
+      social_isolation: false,
+      financial_strain: "unknown",
+      primary_caregiver_role: true,
+      active_substance_use: true,
+    };
+    const rowOf = async () =>
+      (
+        await admin.query(
+          "SELECT factors_jsonb, version, last_edited_discipline, last_edited_by_membership_id, carried_score_id FROM bereavement_risk_assessment_draft WHERE admission_id=$1",
+          [draftAdmission.admissionId],
+        )
+      ).rows[0] as
+        | {
+            factors_jsonb: Record<string, boolean | string>;
+            version: number;
+            last_edited_discipline: string;
+            last_edited_by_membership_id: string;
+            carried_score_id: string | null;
+          }
+        | undefined;
+
+    const empty = await call("GET", url, "counselor");
+    expect(empty.statusCode).toBe(200);
+    expect(empty.json()).toMatchObject({ exists: false, version: 0, locked: false });
+    expect(await rowOf()).toBeUndefined();
+
+    // If-Match is required, and a first write names version 0.
+    expect((await call("PUT", url, "counselor", { factors })).statusCode).toBe(428);
+    const saved = await call("PUT", url, "counselor", { factors }, { "if-match": '"0"' });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({ exists: true, version: 1, locked: false });
+    // The Part 2 slot is forced `unknown` for a writer the consent gate does not clear, and the reader is told why.
+    expect(saved.json().factors).toMatchObject({
+      ambivalent_relationship: true,
+      prior_unresolved_loss: false,
+      preexisting_mental_health: true,
+      active_substance_use: "unknown",
+    });
+    expect(saved.json().redactedCategories).toEqual(["sud"]);
+    const row = await rowOf();
+    expect(row).toMatchObject({
+      version: 1,
+      last_edited_discipline: "bereavement_counselor",
+      last_edited_by_membership_id: actors.counselor?.membership,
+      carried_score_id: null,
+    });
+    expect(row?.factors_jsonb.activeSubstanceUse).toBe("unknown");
+    expect(row?.factors_jsonb.ambivalentRelationship).toBe(true);
+
+    // A write that read version 0 after version 1 landed is refused; the current version succeeds.
+    expect(
+      (await call("PUT", url, "counselor", { factors }, { "if-match": '"0"' })).statusCode,
+    ).toBe(412);
+    expect(
+      (await call("PUT", url, "counselor", { factors }, { "if-match": '"1"' })).statusCode,
+    ).toBe(200);
+
+    // Not on the care team (counselor2), a volunteer and an unknown admission are all invisible: 404.
+    for (const as of ["counselor2", "volunteer"]) {
+      expect((await call("GET", url, as)).statusCode).toBe(404);
+      expect((await call("PUT", url, as, { factors }, { "if-match": '"2"' })).statusCode).toBe(404);
+    }
+    expect(
+      (await call("GET", `/api/v1/bereavement/pre-death-assessments/${randomUUID()}`, "don"))
+        .statusCode,
+    ).toBe(404);
+    // Oversight reads it without a seat.
+    expect((await call("GET", url, "don")).statusCode).toBe(200);
+    // The death opens a plan for the admission: the draft locks (409), in the writing transaction.
+    const draftPlan = (
+      await admin.query(
+        `INSERT INTO bereavement_plan (organization_id, patient_id, admission_id, provider_entity_id, status, death_date)
+         VALUES ($1,$2,$3,$4,'eligible', CURRENT_DATE - 1) RETURNING id`,
+        [ORG_A, draftAdmission.patientId, draftAdmission.admissionId, pe[ORG_A]],
+      )
+    ).rows[0].id as string;
+    const locked = await call("PUT", url, "counselor", { factors }, { "if-match": '"2"' });
+    expect(locked.statusCode).toBe(409);
+    expect(JSON.stringify(locked.json())).toContain("DRAFT_LOCKED");
+    expect((await call("GET", url, "counselor")).json().locked).toBe(true);
+
+    // Seeding the plan carries the draft into the INITIAL score: stated factors merged, the draft stamped.
+    // (held by counselor2, so the dashboard case below still sees exactly the first counselor's one plan)
+    const assign = await call(
+      "POST",
+      `/api/v1/bereavement/plans/${draftPlan}/assign-counselor`,
+      "don",
+      {
+        counselorUserId: actors.counselor2?.membership,
+      },
+    );
+    expect(assign.statusCode).toBe(200);
+    const seeded = await call(
+      "POST",
+      `/api/v1/bereavement/plans/${draftPlan}/seed-roster-and-schedule`,
+      "don",
+      {
+        seedFromCaregivers: false,
+        additionalContacts: [{ displayName: "Dana Spouse", relationshipCode: "spouse" }],
+      },
+    );
+    expect(seeded.statusCode).toBe(200);
+    const initial = (
+      await admin.query(
+        `SELECT id, risk_factors_jsonb FROM bereavement_risk_score
+          WHERE plan_id=$1 AND bereaved_contact_id IS NULL ORDER BY assessed_at LIMIT 1`,
+        [draftPlan],
+      )
+    ).rows[0] as {
+      id: string;
+      risk_factors_jsonb: {
+        factors: Record<string, boolean | string>;
+        manualFactors: Record<string, boolean | string>;
+      };
+    };
+    expect(initial.risk_factors_jsonb.manualFactors).toMatchObject({
+      ambivalentRelationship: true,
+      priorUnresolvedLoss: false,
+      preExistingMentalHealth: true,
+      socialIsolation: false,
+      primaryCaregiverRole: true,
+    });
+    // The Part 2 slot was never accepted (the draft stored it `unknown`), so it is not carried either.
+    expect(initial.risk_factors_jsonb.manualFactors.activeSubstanceUse).toBeUndefined();
+    expect(initial.risk_factors_jsonb.factors).toMatchObject({
+      ambivalentRelationship: true,
+      priorUnresolvedLoss: false,
+      preExistingMentalHealth: true,
+      primaryCaregiverRole: true,
+    });
+    const carried = await rowOf();
+    expect(carried?.carried_score_id).toBe(initial.id);
+    expect(
+      (
+        await admin.query(
+          "SELECT carried_at FROM bereavement_risk_assessment_draft WHERE admission_id=$1",
+          [draftAdmission.admissionId],
+        )
+      ).rows[0].carried_at,
+    ).not.toBeNull();
+    // The initial score is the AUTOMATIC one: it completes no assessment checkpoint.
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM bereavement_assessment_task WHERE plan_id=$1 AND status='completed'",
+          [draftPlan],
+        )
+      ).rows[0].n,
+    ).toBe(0);
   });
 
   it("dashboards: the counselor sees her caseload; the supervisor board needs oversight", async () => {

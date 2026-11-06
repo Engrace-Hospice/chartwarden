@@ -79,6 +79,8 @@ export const M16_ERROR_STATUS = {
   ASSESSMENT_TASK_NOT_FOUND: 404,
   ASSESSMENT_TASK_NOT_OPEN: 409,
   ASSESSMENT_TASK_CONTACT_MISMATCH: 422,
+  // ADR-0109 D5 — the pre-death draft is writable only while no plan exists for the admission.
+  DRAFT_LOCKED: 409,
   // Optimistic concurrency (§2.5)
   STALE_VERSION: 412,
   // Structural — an event dispatched from a state that does not accept it (§2.2–§2.4 graphs).

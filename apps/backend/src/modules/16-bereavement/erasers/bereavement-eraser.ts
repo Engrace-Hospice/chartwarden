@@ -31,6 +31,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { DataEraser } from "@chartwarden/types";
 import { eq, inArray, lt, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
+import { EMPTY_DRAFT_FACTORS } from "../lifecycle/pre-death-draft";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -48,6 +49,8 @@ export interface BereavementEraseCounts {
   readonly anniversaryReminders: number;
   /** `bereavement_assessment_task` rows deleted (ADR-0109 D3). */
   readonly assessmentTasks: number;
+  /** `bereavement_risk_assessment_draft` rows deleted (ADR-0109 D5 — keyed on the patient, not on a plan). */
+  readonly assessmentDrafts: number;
   /** `bereaved_contact` rows deleted. */
   readonly contacts: number;
   /** `bereavement_plan` roots tombstoned (rows PRESERVED for FK integrity — not part of the tally). */
@@ -110,6 +113,7 @@ export async function eraseBereavementRecord(
     counts.outreach +
     counts.anniversaryReminders +
     counts.assessmentTasks +
+    counts.assessmentDrafts +
     counts.contacts;
   return { erased, shredded, counts };
 }
@@ -121,6 +125,7 @@ const ZERO: BereavementEraseCounts = {
   outreach: 0,
   anniversaryReminders: 0,
   assessmentTasks: 0,
+  assessmentDrafts: 0,
   contacts: 0,
   plansTombstoned: 0,
   closuresShredded: 0,
@@ -172,6 +177,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
   const OPT_OUT = schema.bereavementOptOut;
   const REMINDER = schema.bereavementAnniversaryReminder;
   const TASK = schema.bereavementAssessmentTask;
+  const DRAFT = schema.bereavementRiskAssessmentDraft;
   const CLOSURE = schema.bereavementPlanClosure;
 
   /** The decedent's plan-root ids — every child table is keyed on `plan_id`, not on the patient. */
@@ -190,8 +196,14 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
 
     async shredPhiColumns(organizationId, patientId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        // ADR-0109 D5 — a pre-death draft exists BEFORE any plan, so it is shredded whether or not a plan was ever opened.
+        const drafts = await tx
+          .update(DRAFT)
+          .set({ factorsJsonb: EMPTY_DRAFT_FACTORS })
+          .where(eq(DRAFT.patientId, patientId))
+          .returning({ id: DRAFT.id });
         const planIds = await planIdsFor(tx, patientId);
-        if (planIds.length === 0) return 0;
+        if (planIds.length === 0) return drafts.length;
 
         const contacts = await tx
           .update(CONTACT)
@@ -244,6 +256,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
           .returning({ id: PLAN.id });
 
         return (
+          drafts.length +
           contacts.length +
           logs.length +
           scores.length +
@@ -256,11 +269,16 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
 
     async erasePatientRecords(organizationId, patientId, retentionAsOf) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const planIds = await planIdsFor(tx, patientId);
-        if (planIds.length === 0) return ZERO;
-        const boundary = new Date(retentionAsOf);
         const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
           (await run()).length;
+        // The draft names a risk score (RESTRICT), so it goes before the ledger — and it is deleted even when the
+        // decedent never had a plan (it is keyed on the patient).
+        const assessmentDrafts = await del(() =>
+          tx.delete(DRAFT).where(eq(DRAFT.patientId, patientId)).returning({ id: DRAFT.id }),
+        );
+        const planIds = await planIdsFor(tx, patientId);
+        if (planIds.length === 0) return { ...ZERO, assessmentDrafts };
+        const boundary = new Date(retentionAsOf);
 
         // FK order: contact_log → assessment_task (names a risk score) → risk_score / opt_out → outreach →
         // anniversary_reminder → contact.
@@ -319,6 +337,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
           outreach,
           anniversaryReminders,
           assessmentTasks,
+          assessmentDrafts,
           contacts,
           plansTombstoned: tombstoned.length,
           closuresShredded: closures.length,

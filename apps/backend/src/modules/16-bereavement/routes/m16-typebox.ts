@@ -428,6 +428,13 @@ export const RegenerateScheduleBody = Type.Object({
   fromAt: Type.Optional(Instant),
 });
 
+/** Routes 35 / 36 — the pre-death draft is addressed by ADMISSION (it exists before any bereavement plan). */
+export const AdmissionParams = Type.Object({ admissionId: Uuid });
+
+/** Route 36 — the pre-death draft: the whole eight-factor vector, tri-state, NO free text (ADR-0109 D5). A PUT replaces
+ *  it; the substance-use slot is forced `unknown` server-side unless the writer is cleared for 42 CFR Part 2 content. */
+export const PreDeathDraftBody = Type.Object({ factors: RiskFactorsTriStateSchema });
+
 /** Route 28 — §4.2 `RiskFactorsInput` verbatim (the eight factors + the screen totals), plus the D8 override fields §7.3
  *  requires and the ADR-0109 D3 assessment checkpoint this human-appended score completes. `factors` is honored: it merges
  *  into the score with "true wins" (it never lowers a derived `true`). `notes` is accepted and not stored. */
@@ -729,6 +736,20 @@ export const BereavementAssessmentTaskViewResponseSchema = Type.Object({
 /** Route 37 — the plan's checkpoints; empty (the category named) when D10 withheld clinical content. */
 export const BereavementAssessmentTaskListResponseSchema = Type.Object({
   items: Type.Array(BereavementAssessmentTaskViewResponseSchema),
+  redactedCategories: Type.Array(RedactedCategory),
+});
+
+/** Routes 35 / 36 — the pre-death draft as the web reads it (wire keys, the same shape the PUT body carries). */
+export const PreDeathDraftViewResponseSchema = Type.Object({
+  admissionId: Str,
+  exists: Bool,
+  factors: RiskFactorsTriStateSchema,
+  lastEditedDiscipline: Nullable(Str),
+  lastEditedAt: Nullable(Str),
+  carriedScoreId: Nullable(Str),
+  carriedAt: Nullable(Str),
+  locked: Bool,
+  version: Int,
   redactedCategories: Type.Array(RedactedCategory),
 });
 

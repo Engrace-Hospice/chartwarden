@@ -29,6 +29,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import { factorsToWire } from "@chartwarden/bereavement";
 import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -38,9 +39,15 @@ import {
   type BereavementAbacResolver,
   type BereavementPlanAbacFacts,
   M16_PERMISSION_KEY_LIST,
+  type PreDeathAssessorProbe,
   buildBereavementAbacPredicates,
   mountM16Routes,
 } from "../src/modules/16-bereavement/index";
+import { BereavementStateError } from "../src/modules/16-bereavement/lifecycle/index";
+import type {
+  M16DraftService,
+  PreDeathDraftView,
+} from "../src/modules/16-bereavement/routes/draft-service";
 import type {
   BereavedContactRowView,
   BereavementAssessmentTaskView,
@@ -92,6 +99,19 @@ const VOLUNTEER_ID = "44444444-4444-4444-8444-444444444444";
 const SUPERVISOR_ID = "55555555-5555-4555-8555-555555555555";
 const NO_PERMS_ID = "66666666-6666-4666-8666-666666666666";
 const EXTERNAL_RESOURCE = "77777777-7777-4777-8777-777777777777";
+/** ADR-0109 D5 — the pre-death draft is addressed by admission; one resolves to a patient, one does not exist. */
+const ADMISSION_ID = "10000000-0000-4000-8000-000000000001";
+const UNKNOWN_ADMISSION = "10000000-0000-4000-8000-0000000000ff";
+const DRAFT_PATIENT = "10000000-0000-4000-8000-0000000000aa";
+/** The care team of `DRAFT_PATIENT`: only the plan counselor's user sits on it. */
+const ASSESSOR_PROBE: PreDeathAssessorProbe = {
+  async patientOfAdmission(_org, admissionId) {
+    return admissionId === UNKNOWN_ADMISSION ? null : DRAFT_PATIENT;
+  },
+  async isOnCareTeam(_org, _patient, userId) {
+    return userId === "counselor_user";
+  },
+};
 
 // ── internal fake-backend record shapes (deliberately loose on enum-ish fields — cast `as never` at the
 // DTO boundary, the same convention `bereavement-authz.test.ts`'s `planFacts()` helper already uses) ─────
@@ -814,15 +834,72 @@ function createFakeBackend() {
     },
   };
 
+  // ── the pre-death draft (ADR-0109 D5): an in-memory stand-in that applies the same version / lock contract ──
+  const drafts = new Map<string, { factors: PreDeathDraftView["factors"]; version: number }>();
+  const lockedAdmissions = new Set<string>();
+  const draftWrites: Array<{ admissionId: string; membershipId: string; expectedVersion: number }> =
+    [];
+  const draftView = (admissionId: string): PreDeathDraftView => {
+    const row = drafts.get(admissionId);
+    return {
+      admissionId,
+      exists: row !== undefined,
+      factors:
+        row?.factors ??
+        ({
+          ambivalent_relationship: "unknown",
+          sudden_unexpected_death: "unknown",
+          prior_unresolved_loss: "unknown",
+          preexisting_mental_health: "unknown",
+          social_isolation: "unknown",
+          financial_strain: "unknown",
+          primary_caregiver_role: "unknown",
+          active_substance_use: "unknown",
+        } as const),
+      lastEditedDiscipline: row === undefined ? null : "medical_social_worker",
+      lastEditedAt: row === undefined ? null : (NOW as never),
+      carriedScoreId: null,
+      carriedAt: null,
+      locked: lockedAdmissions.has(admissionId),
+      version: row?.version ?? 0,
+      redactedCategories: ["sud"],
+    };
+  };
+  const draftService: M16DraftService = {
+    async getDraft(_actor, admissionId) {
+      return admissionId === UNKNOWN_ADMISSION ? null : draftView(admissionId);
+    },
+    async putDraft(actor, admissionId, input) {
+      if (admissionId === UNKNOWN_ADMISSION) throw new NotFoundError("admission not found");
+      if (lockedAdmissions.has(admissionId)) {
+        throw new BereavementStateError("DRAFT_LOCKED", "a plan already exists");
+      }
+      const held = drafts.get(admissionId)?.version ?? 0;
+      if (input.expectedVersion !== held) {
+        throw new BereavementStateError("STALE_VERSION", "the draft has moved on");
+      }
+      draftWrites.push({
+        admissionId,
+        membershipId: actor.membershipId,
+        expectedVersion: input.expectedVersion,
+      });
+      drafts.set(admissionId, { factors: factorsToWire(input.factors), version: held + 1 });
+      return draftView(admissionId);
+    },
+  };
+
   return {
     readService,
     writeService,
+    draftService,
     resolver,
     seedPlan,
     seedContact,
     seedOutreach,
     assessmentTasks,
     recomputeInputs,
+    lockedAdmissions,
+    draftWrites,
   };
 }
 
@@ -856,6 +933,19 @@ function makeServer(): { app: ReturnType<typeof buildServer>; backend: FakeBacke
         },
       ],
     },
+    // Holders of every key whose DISCIPLINE or care-team seat the predicate (not RBAC) is what refuses.
+    ...["offteam_msw_user", "volunteer_user"].map((userId) => ({
+      orgId: ORG,
+      userId,
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M16_PERMISSION_KEY_LIST],
+        },
+      ],
+    })),
   ]);
   registerEffectivePermissionResolver(grantStore.store);
 
@@ -868,13 +958,18 @@ function makeServer(): { app: ReturnType<typeof buildServer>; backend: FakeBacke
     resolver: backend.resolver,
     volunteerGatesSatisfied: async ({ volunteerMembershipId }) =>
       volunteerMembershipId === VOLUNTEER_ID,
+    preDeathAssessor: ASSESSOR_PROBE,
   });
   for (const [name, predicate] of Object.entries(predicates)) reg.register(name, predicate);
   reg.register("step_up_recent", async () => true);
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  mountM16Routes(app, { readService: backend.readService, writeService: backend.writeService });
+  mountM16Routes(app, {
+    readService: backend.readService,
+    writeService: backend.writeService,
+    draftService: backend.draftService,
+  });
   return { app, backend };
 }
 
@@ -889,6 +984,18 @@ const SUPERVISOR = {
   "x-test-org": ORG,
   "x-test-roles": "clinical_supervisor",
   "x-test-membership": SUPERVISOR_ID,
+};
+const OFFTEAM_MSW = {
+  "x-test-user": "offteam_msw_user",
+  "x-test-org": ORG,
+  "x-test-roles": "msw",
+  "x-test-membership": "77777777-7777-4777-8777-77777777aaaa",
+};
+const VOLUNTEER = {
+  "x-test-user": "volunteer_user",
+  "x-test-org": ORG,
+  "x-test-roles": "bereavement_volunteer",
+  "x-test-membership": VOLUNTEER_ID,
 };
 const NO_PERMS = {
   "x-test-user": "noperm_user",
@@ -1509,6 +1616,145 @@ describe("M16 §4.1 route 37 — GET /plans/:planId/assessment-tasks", () => {
     const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
     const res = await app.inject({ method: "GET", url: url(plan.planId), headers: NO_PERMS });
     expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+});
+
+// ── routes 35 / 36 — the pre-death risk-assessment draft (ADR-0109 D5) ──────────────────────────────────
+
+describe("M16 §4.1 routes 35 / 36 — pre-death risk-assessment draft", () => {
+  const url = (admission = ADMISSION_ID) =>
+    `/api/v1/bereavement/pre-death-assessments/${admission}`;
+  const put = (
+    app: ReturnType<typeof buildServer>,
+    headers: Record<string, string>,
+    payload: unknown = { factors: EIGHT_FACTORS },
+    admission = ADMISSION_ID,
+  ) => app.inject({ method: "PUT", url: url(admission), headers, payload: payload as object });
+
+  it("the care-team counselor reads an empty draft, writes it (If-Match 0), and reads it back at version 1", async () => {
+    const { app, backend } = makeServer();
+    const empty = await app.inject({ method: "GET", url: url(), headers: COUNSELOR });
+    expect(empty.statusCode).toBe(200);
+    expect(empty.json()).toMatchObject({ exists: false, version: 0, locked: false });
+
+    const saved = await put(app, { ...COUNSELOR, "idempotency-key": "d-1", "if-match": '"0"' });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({ exists: true, version: 1 });
+    expect(saved.json().factors.ambivalent_relationship).toBe(true);
+    expect(backend.draftWrites).toEqual([
+      { admissionId: ADMISSION_ID, membershipId: COUNSELOR_ID, expectedVersion: 0 },
+    ]);
+
+    const second = await put(app, { ...COUNSELOR, "idempotency-key": "d-2", "if-match": '"1"' });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().version).toBe(2);
+    await app.close();
+  });
+
+  it("requires If-Match on the PUT (428) and an Idempotency-Key (400)", async () => {
+    const { app } = makeServer();
+    expect((await put(app, { ...COUNSELOR, "idempotency-key": "d-3" })).statusCode).toBe(428);
+    expect((await put(app, { ...COUNSELOR, "if-match": '"0"' })).statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("a stale If-Match is refused 412", async () => {
+    const { app } = makeServer();
+    await put(app, { ...COUNSELOR, "idempotency-key": "d-4", "if-match": '"0"' });
+    const stale = await put(app, { ...COUNSELOR, "idempotency-key": "d-5", "if-match": '"0"' });
+    expect(stale.statusCode).toBe(412);
+    await app.close();
+  });
+
+  it("is refused 409 DRAFT_LOCKED once a plan exists for the admission", async () => {
+    const { app, backend } = makeServer();
+    backend.lockedAdmissions.add(ADMISSION_ID);
+    const locked = await put(app, { ...COUNSELOR, "idempotency-key": "d-6", "if-match": '"0"' });
+    expect(locked.statusCode).toBe(409);
+    expect(locked.json().error?.code ?? locked.json().code).toBe("DRAFT_LOCKED");
+    // Reading a locked draft is still allowed: it is a closed record, not a hidden one.
+    const read = await app.inject({ method: "GET", url: url(), headers: COUNSELOR });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().locked).toBe(true);
+    await app.close();
+  });
+
+  it.each([
+    ["a missing factor", { factors: { ambivalent_relationship: true } }],
+    ["a non tri-state factor", { factors: { ...EIGHT_FACTORS, social_isolation: "sometimes" } }],
+    ["no factors object", {}],
+  ])("rejects %s with a TypeBox 422", async (_name, payload) => {
+    const { app, backend } = makeServer();
+    const res = await put(
+      app,
+      { ...COUNSELOR, "idempotency-key": "d-7", "if-match": '"0"' },
+      payload,
+    );
+    expect(res.statusCode).toBe(422);
+    expect(backend.draftWrites).toHaveLength(0);
+    await app.close();
+  });
+
+  it("rejects a non-uuid admission id with 422", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/bereavement/pre-death-assessments/not-a-uuid",
+      headers: COUNSELOR,
+    });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("oversight reads and writes without a care-team seat", async () => {
+    const { app } = makeServer();
+    expect((await app.inject({ method: "GET", url: url(), headers: SUPERVISOR })).statusCode).toBe(
+      200,
+    );
+    const saved = await put(app, { ...SUPERVISOR, "idempotency-key": "d-8", "if-match": '"0"' });
+    expect(saved.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("an MSW who is NOT on the care team, and a volunteer, are denied (404 — the admission is not theirs to know)", async () => {
+    const { app } = makeServer();
+    for (const [i, who] of [OFFTEAM_MSW, VOLUNTEER].entries()) {
+      expect((await app.inject({ method: "GET", url: url(), headers: who })).statusCode).toBe(404);
+      expect(
+        (await put(app, { ...who, "idempotency-key": `d-9-${i}`, "if-match": '"0"' })).statusCode,
+      ).toBe(404);
+    }
+    await app.close();
+  });
+
+  it("a portal session is denied even with the staff roles", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: url(),
+      headers: {
+        ...COUNSELOR,
+        "x-test-session-class": "bereaved_portal",
+        "x-test-portal-account": "acct-1",
+      },
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("an unknown admission is a 404, and a caller without the key is a 403", async () => {
+    const { app } = makeServer();
+    expect(
+      (await app.inject({ method: "GET", url: url(UNKNOWN_ADMISSION), headers: SUPERVISOR }))
+        .statusCode,
+    ).toBe(404);
+    expect((await app.inject({ method: "GET", url: url(), headers: NO_PERMS })).statusCode).toBe(
+      403,
+    );
+    expect(
+      (await put(app, { ...NO_PERMS, "idempotency-key": "d-10", "if-match": '"0"' })).statusCode,
+    ).toBe(403);
     await app.close();
   });
 });

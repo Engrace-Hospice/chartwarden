@@ -60,6 +60,7 @@ type SeedIds = {
   gateOverride: string;
   idgRiskFlag: string;
   assessmentTask: string;
+  assessmentDraft: string;
 };
 
 /** The 9 manifest-owned M16 tables, each with the seeded row the isolation case looks for. */
@@ -75,6 +76,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "tenant_bereavement_external_source_gate_override", key: "gateOverride" },
   { table: "bereavement_idg_risk_flag", key: "idgRiskFlag" },
   { table: "bereavement_assessment_task", key: "assessmentTask" },
+  { table: "bereavement_risk_assessment_draft", key: "assessmentDraft" },
 ];
 
 describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -240,6 +242,15 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
         [org, pe, location, plan, contact],
       )
     ).rows[0].id as string;
+    // A pre-death draft keys on the ADMISSION and exists before any plan (no FK to one).
+    const assessmentDraft = (
+      await db.query(
+        `INSERT INTO bereavement_risk_assessment_draft (organization_id, provider_entity_id, location_id,
+           patient_id, admission_id, last_edited_by_membership_id, last_edited_discipline)
+         VALUES ($1,$2,$3,$4,$5,$6,'medical_social_worker') RETURNING id`,
+        [org, pe, location, patient, `6666666${n}-6666-4666-8666-666666666666`, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
     return {
       pe,
       location,
@@ -254,6 +265,7 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       gateOverride,
       idgRiskFlag,
       assessmentTask,
+      assessmentDraft,
     };
   }
 
@@ -287,6 +299,7 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       "0102_bereavement_m16_rls_audit_triggers.sql",
       "0168_idg_downstream_consumer_projections.sql",
       "1342_m16_assessment_task.sql",
+      "1343_m16_risk_assessment_draft.sql",
     ]
       .map((file) => readFileSync(join(MIGRATIONS_DIR, file), "utf8"))
       .join("\n");
@@ -437,6 +450,54 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
         ),
       ),
     ).rejects.toThrow(/berv_assessment_task_contact_kind_uniq/);
+  });
+
+  it("a pre-death draft defaults to eight unknowns, pins its key set and is one per admission", async () => {
+    const defaults = await db.query(
+      "SELECT factors_jsonb FROM bereavement_risk_assessment_draft WHERE id=$1",
+      [a.assessmentDraft],
+    );
+    expect(Object.keys(defaults.rows[0].factors_jsonb).sort()).toEqual(
+      [
+        "activeSubstanceUse",
+        "ambivalentRelationship",
+        "financialStrain",
+        "preExistingMentalHealth",
+        "priorUnresolvedLoss",
+        "primaryCaregiverRole",
+        "socialIsolation",
+        "suddenUnexpectedDeath",
+      ].sort(),
+    );
+    expect(Object.values(defaults.rows[0].factors_jsonb)).toEqual(Array(8).fill("unknown"));
+    // a vector that drops a key (or is not an object) is refused by the CHECK
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          "UPDATE bereavement_risk_assessment_draft SET factors_jsonb = '{\"financialStrain\": true}'::jsonb WHERE id=$1",
+          [a.assessmentDraft],
+        ),
+      ),
+    ).rejects.toThrow(/berv_assessment_draft_factors_chk/);
+    // a draft is carried with BOTH the score and the instant, or neither
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query("UPDATE bereavement_risk_assessment_draft SET carried_at = now() WHERE id=$1", [
+          a.assessmentDraft,
+        ]),
+      ),
+    ).rejects.toThrow(/berv_assessment_draft_carried_chk/);
+    // one draft per (organization, admission)
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO bereavement_risk_assessment_draft (organization_id, provider_entity_id, patient_id,
+             admission_id, last_edited_by_membership_id, last_edited_discipline)
+           VALUES ($1,$2,$3,'66666661-6666-4666-8666-666666666666',$4,'chaplain')`,
+          [ORG_A, a.pe, "44444441-4444-4444-4444-444444444444", MEMBERSHIP],
+        ),
+      ),
+    ).rejects.toThrow(/berv_assessment_draft_admission_uniq/);
   });
 
   it("chartwarden_app holds no DELETE on the M16 tables — destruction runs through the eraser (§8.5)", async () => {

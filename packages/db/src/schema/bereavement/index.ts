@@ -45,3 +45,4 @@ export * from "./tenant-external-source-gate-overrides"; // tenant_bereavement_e
 export * from "./bereavement-idg-risk-flags"; // bereavement_idg_risk_flag
 export * from "./bereavement-cop-opt-out-credits"; // bereavement_cop_opt_out_credit (F-206, #248)
 export * from "./bereavement-assessment-tasks"; // bereavement_assessment_task (ADR-0109 D3, migration 1342)
+export * from "./bereavement-risk-assessment-drafts"; // bereavement_risk_assessment_draft (ADR-0109 D5, migration 1343)

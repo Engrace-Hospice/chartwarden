@@ -157,6 +157,8 @@ const MODULES: ReadonlyArray<{
       "packages/db/migrations/0338_m16_early_close_pending_request.sql",
       // ADR-0109 D3 — the assessment-task ledger (no free text, so an empty scrub list).
       "packages/db/migrations/1342_m16_assessment_task.sql",
+      // ADR-0109 D5 — the pre-death risk-assessment draft (eight tri-state values, no free text).
+      "packages/db/migrations/1343_m16_risk_assessment_draft.sql",
     ],
   },
   {

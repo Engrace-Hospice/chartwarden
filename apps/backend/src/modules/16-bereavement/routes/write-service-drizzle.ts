@@ -79,6 +79,7 @@ import {
   checkExternalSourceFirstContactGate,
   checkOutreachKindAllowed,
   checkVersion,
+  draftFactorsAsManual,
   generateOutreachSchedule,
   planScheduleTopUp,
   stickyManualFactorsOf,
@@ -228,6 +229,7 @@ export function buildDrizzleM16WriteService(
   const REMINDER = schema.bereavementAnniversaryReminder;
   const TASK = schema.bereavementAssessmentTask;
   const IDG_FLAG = schema.bereavementIdgRiskFlags;
+  const DRAFT = schema.bereavementRiskAssessmentDraft;
 
   const outbox = deps.outbox ?? NOOP_OUTBOX;
   const alerts = deps.alerts;
@@ -1366,9 +1368,38 @@ export function buildDrizzleM16WriteService(
 
         const existing = await tx.select().from(CONTACT).where(eq(CONTACT.planId, plan.id));
 
+        // ADR-0109 D5 — the pre-death draft for this admission (if any) is carried into the initial score: its stated
+        // factors merge "true wins" with the derived ones, and the draft is stamped with the score that consumed it.
+        const [draft] =
+          existing.length > 0
+            ? await tx.select().from(DRAFT).where(eq(DRAFT.admissionId, plan.admissionId)).limit(1)
+            : [];
+        const carried = draft === undefined ? undefined : draftFactorsAsManual(draft.factorsJsonb);
+
         // §2.2 guard — the initial deterministic score must exist before the cadence can be generated.
         const initialScore =
-          existing.length > 0 ? await appendScore(tx, actor, plan, null, {}, "initial") : null;
+          existing.length > 0
+            ? await appendScore(
+                tx,
+                actor,
+                plan,
+                null,
+                {},
+                "initial",
+                carried === undefined ? {} : { carriedManualFactors: carried },
+              )
+            : null;
+        if (draft !== undefined && initialScore !== null && draft.carriedScoreId === null) {
+          await tx
+            .update(DRAFT)
+            .set({
+              carriedScoreId: initialScore.scoreId,
+              carriedAt: new Date(at),
+              version: draft.version + 1,
+              updatedAt: new Date(at),
+            })
+            .where(and(eq(DRAFT.id, draft.id), isNull(DRAFT.carriedScoreId)));
+        }
         const tier = initialScore?.tier ?? "low";
         const marks = anniversaryMarksForTier(tier);
 

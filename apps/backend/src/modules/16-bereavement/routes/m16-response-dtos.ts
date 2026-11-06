@@ -9,6 +9,7 @@
 // tsc still type-checks this file (it is inside the module's compilation), so the pins are enforced.
 import type { Static } from "@sinclair/typebox";
 import type { CursorPage } from "./concurrency";
+import type { PreDeathDraftView as SvcPreDeathDraftView } from "./draft-service";
 import type {
   BereavedContactRowViewResponseSchema,
   BereavementAssessmentTaskListResponseSchema,
@@ -23,6 +24,7 @@ import type {
   BereavementRiskScoreViewResponseSchema,
   CounselorDashboardViewResponseSchema,
   PlanActivationViewResponseSchema,
+  PreDeathDraftViewResponseSchema,
   ScheduleRegenerationViewResponseSchema,
   SupervisorDashboardViewResponseSchema,
 } from "./m16-typebox";
@@ -104,4 +106,8 @@ type _RiskScorePage = Conforms<
 type _AssessmentTasks = Conforms<
   Static<typeof BereavementAssessmentTaskListResponseSchema>,
   SvcBereavementAssessmentTaskList
+>;
+type _PreDeathDraft = Conforms<
+  Static<typeof PreDeathDraftViewResponseSchema>,
+  SvcPreDeathDraftView
 >;
