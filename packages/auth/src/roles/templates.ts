@@ -175,6 +175,8 @@ export const PLATFORM_ONBOARDING_DATA_KEYS = [
   "tenant_clearinghouse.read_platform",
   "tenant_clearinghouse.write_platform",
   "tenant_clearinghouse.verify_baa_platform",
+  // Owner decision 2026-11-06: an operator withdraws a tenant's mistaken "filed outside ChartWarden" NOE/NOTR record (migration 1355).
+  "tenant_notice_filing.withdraw_platform",
 ] as const;
 const PLATFORM_ONBOARDING_DATA_ROLES: readonly PlatformOpsRoleKey[] = ["platform_ops"];
 
