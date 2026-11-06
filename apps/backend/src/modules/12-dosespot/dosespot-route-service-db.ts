@@ -86,6 +86,7 @@ import {
   mdmIdAlreadyEnrolled,
   namedPrescriberNotEnrolled,
   prescriberEligible,
+  prescriberVendorLinked,
   signerStanding,
 } from "./prescriber-eligibility";
 import {
@@ -1592,6 +1593,18 @@ export function createDbDoseSpotBackend(
       try {
         return await withOrg(organizationId, async (tx) => {
           const at = new Date();
+          // A re-link to another physician record must not carry the old vendor identity along: a row already linked to a DoseSpot
+          // clinician is refused (the clinician was created under the OLD NPI), and any NPI left on an unlinked row is cleared.
+          const [existing] = await tx
+            .select({ mdmId: DP.externalPhysicianMdmId, vendorId: DP.dosespotPrescriberId })
+            .from(DP)
+            .where(and(eq(DP.organizationId, organizationId), eq(DP.membershipId, membershipId)))
+            .for("update");
+          const relinking =
+            existing !== undefined &&
+            Boolean(externalPhysicianMdmId) &&
+            existing.mdmId !== externalPhysicianMdmId;
+          if (relinking && existing?.vendorId != null) throw prescriberVendorLinked();
           const row = firstOrThrow(
             await tx
               .insert(DP)
@@ -1607,6 +1620,7 @@ export function createDbDoseSpotBackend(
                 set: {
                   deaAuthorizedSchedules: deaAuthorizedSchedules as string[],
                   ...(externalPhysicianMdmId ? { externalPhysicianMdmId } : {}),
+                  ...(relinking ? { npi: null } : {}),
                   enrolledAt: at,
                   revokedAt: null,
                   revocationReason: null,

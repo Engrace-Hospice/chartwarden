@@ -749,6 +749,42 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     });
   });
 
+  it("the roster refuses to RE-LINK a row already linked to a DoseSpot clinician (409), never carries the old vendor identity to another physician, and clears a stale NPI", async () => {
+    const member = member2Of[ORG_A] as string;
+    const mdmA = "99999999-0000-4000-8000-00000000000a";
+    const mdmB = "99999999-0000-4000-8000-00000000000b";
+    const rowOf = async () =>
+      (
+        await admin.query(
+          "SELECT external_physician_mdm_id AS mdm, dosespot_prescriber_id AS vendor, npi FROM dosespot_prescriber WHERE membership_id=$1",
+          [member],
+        )
+      ).rows[0];
+    await svc.enrollPrescriber(ORG_A, member, [], mdmA);
+    // the vendor enrolment ran under physician A's NPI (synthetic)
+    await admin.query(
+      "UPDATE dosespot_prescriber SET dosespot_prescriber_id='901', npi='1234567893' WHERE membership_id=$1",
+      [member],
+    );
+    // pointing the row at physician B would keep clinician 901 and A's NPI for B: refused, and nothing moves
+    await expect(svc.enrollPrescriber(ORG_A, member, [], mdmB)).rejects.toMatchObject({
+      code: "DOSESPOT_PRESCRIBER_VENDOR_LINKED",
+      statusCode: 409,
+    });
+    expect(await rowOf()).toEqual({ mdm: mdmA, vendor: "901", npi: "1234567893" });
+    // the SAME physician (a re-enrol after a revoke) is the same person: the vendor link legitimately stays
+    await svc.revokePrescriber(ORG_A, member, "on leave");
+    await svc.enrollPrescriber(ORG_A, member, [], mdmA);
+    expect(await rowOf()).toEqual({ mdm: mdmA, vendor: "901", npi: "1234567893" });
+    // a row with NO vendor link but a stale NPI loses that NPI when it is re-linked to another physician
+    await admin.query(
+      "UPDATE dosespot_prescriber SET dosespot_prescriber_id=NULL WHERE membership_id=$1",
+      [member],
+    );
+    await svc.enrollPrescriber(ORG_A, member, [], mdmB);
+    expect(await rowOf()).toEqual({ mdm: mdmB, vendor: null, npi: null });
+  });
+
   it("verbal: an LPN recorder is refused VERBAL_RECORDER_NOT_ELIGIBLE and a claimed discipline the actor lacks is 422", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     await svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);
