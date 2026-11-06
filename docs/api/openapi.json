@@ -3792,6 +3792,10 @@
                               {
                                 "const": "enterprise",
                                 "type": "string"
+                              },
+                              {
+                                "const": "census_banded",
+                                "type": "string"
                               }
                             ]
                           },
@@ -3969,6 +3973,10 @@
                             },
                             {
                               "const": "enterprise",
+                              "type": "string"
+                            },
+                            {
+                              "const": "census_banded",
                               "type": "string"
                             }
                           ]
@@ -4232,6 +4240,10 @@
                             {
                               "const": "enterprise",
                               "type": "string"
+                            },
+                            {
+                              "const": "census_banded",
+                              "type": "string"
                             }
                           ]
                         },
@@ -4417,6 +4429,10 @@
                             },
                             {
                               "const": "enterprise",
+                              "type": "string"
+                            },
+                            {
+                              "const": "census_banded",
                               "type": "string"
                             }
                           ]
@@ -4634,6 +4650,10 @@
                             {
                               "const": "enterprise",
                               "type": "string"
+                            },
+                            {
+                              "const": "census_banded",
+                              "type": "string"
                             }
                           ]
                         },
@@ -4821,6 +4841,10 @@
                             },
                             {
                               "const": "enterprise",
+                              "type": "string"
+                            },
+                            {
+                              "const": "census_banded",
                               "type": "string"
                             }
                           ]
@@ -5173,6 +5197,2048 @@
                     "minimum": 1,
                     "maximum": 100,
                     "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/pricing/defaults": {
+      "get": {
+        "operationId": "getApiAdminPricingDefaults",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Default census band thresholds (a form's starting point, never a price)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "bandThresholds",
+                    "currencyCode"
+                  ],
+                  "properties": {
+                    "bandThresholds": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    },
+                    "currencyCode": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/pricing/plans": {
+      "get": {
+        "operationId": "getApiAdminPricingPlans",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "List every census-banded plan version (drafts and archived included)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "familySlug",
+                      "version",
+                      "slug",
+                      "name",
+                      "description",
+                      "status",
+                      "offered",
+                      "currencyCode",
+                      "perUserPriceCents",
+                      "bands",
+                      "billingSoftwareBps",
+                      "managedBillingBps",
+                      "contractTermMonths",
+                      "implementationFeeCents",
+                      "minimumMonthlyCents",
+                      "supersedesPlanId",
+                      "publishedAt",
+                      "archivedAt",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "familySlug": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "integer"
+                      },
+                      "slug": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "draft",
+                            "type": "string"
+                          },
+                          {
+                            "const": "published",
+                            "type": "string"
+                          },
+                          {
+                            "const": "archived",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "offered": {
+                        "type": "boolean"
+                      },
+                      "currencyCode": {
+                        "type": "string"
+                      },
+                      "perUserPriceCents": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "bands": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "minAdc",
+                            "maxAdc",
+                            "monthlyFeeCents"
+                          ],
+                          "properties": {
+                            "minAdc": {
+                              "type": "integer"
+                            },
+                            "maxAdc": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "monthlyFeeCents": {
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      },
+                      "billingSoftwareBps": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "managedBillingBps": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "contractTermMonths": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "implementationFeeCents": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "minimumMonthlyCents": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "supersedesPlanId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "publishedAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "archivedAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "createdAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiAdminPricingPlans",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Create a draft plan (version 1 of a new family)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "familySlug",
+                    "version",
+                    "slug",
+                    "name",
+                    "description",
+                    "status",
+                    "offered",
+                    "currencyCode",
+                    "perUserPriceCents",
+                    "bands",
+                    "billingSoftwareBps",
+                    "managedBillingBps",
+                    "contractTermMonths",
+                    "implementationFeeCents",
+                    "minimumMonthlyCents",
+                    "supersedesPlanId",
+                    "publishedAt",
+                    "archivedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "familySlug": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "published",
+                          "type": "string"
+                        },
+                        {
+                          "const": "archived",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "offered": {
+                      "type": "boolean"
+                    },
+                    "currencyCode": {
+                      "type": "string"
+                    },
+                    "perUserPriceCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "bands": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "minAdc",
+                          "maxAdc",
+                          "monthlyFeeCents"
+                        ],
+                        "properties": {
+                          "minAdc": {
+                            "type": "integer"
+                          },
+                          "maxAdc": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "monthlyFeeCents": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "billingSoftwareBps": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "managedBillingBps": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contractTermMonths": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "implementationFeeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "minimumMonthlyCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersedesPlanId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "publishedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "archivedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "familySlug",
+                  "name",
+                  "perUserPriceCents",
+                  "bands",
+                  "billingSoftwareBps",
+                  "managedBillingBps",
+                  "contractTermMonths",
+                  "implementationFeeCents",
+                  "minimumMonthlyCents",
+                  "reason"
+                ],
+                "properties": {
+                  "familySlug": {
+                    "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                    "minLength": 3,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "description": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "currencyCode": {
+                    "pattern": "^[A-Z]{3}$",
+                    "type": "string"
+                  },
+                  "perUserPriceCents": {
+                    "minimum": 0,
+                    "maximum": 100000000000,
+                    "type": "integer"
+                  },
+                  "bands": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "minAdc",
+                        "monthlyFeeCents"
+                      ],
+                      "properties": {
+                        "minAdc": {
+                          "minimum": 0,
+                          "maximum": 100000,
+                          "type": "integer"
+                        },
+                        "monthlyFeeCents": {
+                          "minimum": 0,
+                          "maximum": 100000000000,
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  },
+                  "billingSoftwareBps": {
+                    "minimum": 0,
+                    "maximum": 10000,
+                    "type": "integer"
+                  },
+                  "managedBillingBps": {
+                    "minimum": 0,
+                    "maximum": 10000,
+                    "type": "integer"
+                  },
+                  "contractTermMonths": {
+                    "minimum": 1,
+                    "maximum": 120,
+                    "type": "integer"
+                  },
+                  "implementationFeeCents": {
+                    "minimum": 0,
+                    "maximum": 100000000000,
+                    "type": "integer"
+                  },
+                  "minimumMonthlyCents": {
+                    "anyOf": [
+                      {
+                        "minimum": 0,
+                        "maximum": 100000000000,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/pricing/plans/{id}": {
+      "get": {
+        "operationId": "getApiAdminPricingPlansById",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Read one census-banded plan version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "familySlug",
+                    "version",
+                    "slug",
+                    "name",
+                    "description",
+                    "status",
+                    "offered",
+                    "currencyCode",
+                    "perUserPriceCents",
+                    "bands",
+                    "billingSoftwareBps",
+                    "managedBillingBps",
+                    "contractTermMonths",
+                    "implementationFeeCents",
+                    "minimumMonthlyCents",
+                    "supersedesPlanId",
+                    "publishedAt",
+                    "archivedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "familySlug": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "published",
+                          "type": "string"
+                        },
+                        {
+                          "const": "archived",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "offered": {
+                      "type": "boolean"
+                    },
+                    "currencyCode": {
+                      "type": "string"
+                    },
+                    "perUserPriceCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "bands": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "minAdc",
+                          "maxAdc",
+                          "monthlyFeeCents"
+                        ],
+                        "properties": {
+                          "minAdc": {
+                            "type": "integer"
+                          },
+                          "maxAdc": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "monthlyFeeCents": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "billingSoftwareBps": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "managedBillingBps": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contractTermMonths": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "implementationFeeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "minimumMonthlyCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersedesPlanId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "publishedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "archivedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiAdminPricingPlansById",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Replace a draft plan's prices and bands",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "familySlug",
+                    "version",
+                    "slug",
+                    "name",
+                    "description",
+                    "status",
+                    "offered",
+                    "currencyCode",
+                    "perUserPriceCents",
+                    "bands",
+                    "billingSoftwareBps",
+                    "managedBillingBps",
+                    "contractTermMonths",
+                    "implementationFeeCents",
+                    "minimumMonthlyCents",
+                    "supersedesPlanId",
+                    "publishedAt",
+                    "archivedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "familySlug": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "published",
+                          "type": "string"
+                        },
+                        {
+                          "const": "archived",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "offered": {
+                      "type": "boolean"
+                    },
+                    "currencyCode": {
+                      "type": "string"
+                    },
+                    "perUserPriceCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "bands": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "minAdc",
+                          "maxAdc",
+                          "monthlyFeeCents"
+                        ],
+                        "properties": {
+                          "minAdc": {
+                            "type": "integer"
+                          },
+                          "maxAdc": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "monthlyFeeCents": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "billingSoftwareBps": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "managedBillingBps": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contractTermMonths": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "implementationFeeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "minimumMonthlyCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersedesPlanId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "publishedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "archivedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "name",
+                  "perUserPriceCents",
+                  "bands",
+                  "billingSoftwareBps",
+                  "managedBillingBps",
+                  "contractTermMonths",
+                  "implementationFeeCents",
+                  "minimumMonthlyCents",
+                  "reason"
+                ],
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "description": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "currencyCode": {
+                    "pattern": "^[A-Z]{3}$",
+                    "type": "string"
+                  },
+                  "perUserPriceCents": {
+                    "minimum": 0,
+                    "maximum": 100000000000,
+                    "type": "integer"
+                  },
+                  "bands": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "minAdc",
+                        "monthlyFeeCents"
+                      ],
+                      "properties": {
+                        "minAdc": {
+                          "minimum": 0,
+                          "maximum": 100000,
+                          "type": "integer"
+                        },
+                        "monthlyFeeCents": {
+                          "minimum": 0,
+                          "maximum": 100000000000,
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  },
+                  "billingSoftwareBps": {
+                    "minimum": 0,
+                    "maximum": 10000,
+                    "type": "integer"
+                  },
+                  "managedBillingBps": {
+                    "minimum": 0,
+                    "maximum": 10000,
+                    "type": "integer"
+                  },
+                  "contractTermMonths": {
+                    "minimum": 1,
+                    "maximum": 120,
+                    "type": "integer"
+                  },
+                  "implementationFeeCents": {
+                    "minimum": 0,
+                    "maximum": 100000000000,
+                    "type": "integer"
+                  },
+                  "minimumMonthlyCents": {
+                    "anyOf": [
+                      {
+                        "minimum": 0,
+                        "maximum": 100000000000,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/pricing/plans/{id}/archive": {
+      "post": {
+        "operationId": "postApiAdminPricingPlansByIdArchive",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Archive a published plan; subscriptions on it keep their price",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "familySlug",
+                    "version",
+                    "slug",
+                    "name",
+                    "description",
+                    "status",
+                    "offered",
+                    "currencyCode",
+                    "perUserPriceCents",
+                    "bands",
+                    "billingSoftwareBps",
+                    "managedBillingBps",
+                    "contractTermMonths",
+                    "implementationFeeCents",
+                    "minimumMonthlyCents",
+                    "supersedesPlanId",
+                    "publishedAt",
+                    "archivedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "familySlug": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "published",
+                          "type": "string"
+                        },
+                        {
+                          "const": "archived",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "offered": {
+                      "type": "boolean"
+                    },
+                    "currencyCode": {
+                      "type": "string"
+                    },
+                    "perUserPriceCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "bands": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "minAdc",
+                          "maxAdc",
+                          "monthlyFeeCents"
+                        ],
+                        "properties": {
+                          "minAdc": {
+                            "type": "integer"
+                          },
+                          "maxAdc": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "monthlyFeeCents": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "billingSoftwareBps": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "managedBillingBps": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contractTermMonths": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "implementationFeeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "minimumMonthlyCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersedesPlanId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "publishedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "archivedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/pricing/plans/{id}/new-version": {
+      "post": {
+        "operationId": "postApiAdminPricingPlansByIdNewversion",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Copy a published or archived plan into a new draft version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "familySlug",
+                    "version",
+                    "slug",
+                    "name",
+                    "description",
+                    "status",
+                    "offered",
+                    "currencyCode",
+                    "perUserPriceCents",
+                    "bands",
+                    "billingSoftwareBps",
+                    "managedBillingBps",
+                    "contractTermMonths",
+                    "implementationFeeCents",
+                    "minimumMonthlyCents",
+                    "supersedesPlanId",
+                    "publishedAt",
+                    "archivedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "familySlug": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "published",
+                          "type": "string"
+                        },
+                        {
+                          "const": "archived",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "offered": {
+                      "type": "boolean"
+                    },
+                    "currencyCode": {
+                      "type": "string"
+                    },
+                    "perUserPriceCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "bands": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "minAdc",
+                          "maxAdc",
+                          "monthlyFeeCents"
+                        ],
+                        "properties": {
+                          "minAdc": {
+                            "type": "integer"
+                          },
+                          "maxAdc": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "monthlyFeeCents": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "billingSoftwareBps": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "managedBillingBps": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contractTermMonths": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "implementationFeeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "minimumMonthlyCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersedesPlanId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "publishedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "archivedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/pricing/plans/{id}/publish": {
+      "post": {
+        "operationId": "postApiAdminPricingPlansByIdPublish",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Publish a draft plan; its prices are frozen from then on",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "familySlug",
+                    "version",
+                    "slug",
+                    "name",
+                    "description",
+                    "status",
+                    "offered",
+                    "currencyCode",
+                    "perUserPriceCents",
+                    "bands",
+                    "billingSoftwareBps",
+                    "managedBillingBps",
+                    "contractTermMonths",
+                    "implementationFeeCents",
+                    "minimumMonthlyCents",
+                    "supersedesPlanId",
+                    "publishedAt",
+                    "archivedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "familySlug": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "published",
+                          "type": "string"
+                        },
+                        {
+                          "const": "archived",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "offered": {
+                      "type": "boolean"
+                    },
+                    "currencyCode": {
+                      "type": "string"
+                    },
+                    "perUserPriceCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "bands": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "minAdc",
+                          "maxAdc",
+                          "monthlyFeeCents"
+                        ],
+                        "properties": {
+                          "minAdc": {
+                            "type": "integer"
+                          },
+                          "maxAdc": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "monthlyFeeCents": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "billingSoftwareBps": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "managedBillingBps": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "contractTermMonths": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "implementationFeeCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "minimumMonthlyCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersedesPlanId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "publishedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "archivedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
                   }
                 }
               }
@@ -7491,6 +9557,10 @@
                                   {
                                     "const": "enterprise",
                                     "type": "string"
+                                  },
+                                  {
+                                    "const": "census_banded",
+                                    "type": "string"
                                   }
                                 ]
                               },
@@ -7770,6 +9840,10 @@
                             },
                             {
                               "const": "enterprise",
+                              "type": "string"
+                            },
+                            {
+                              "const": "census_banded",
                               "type": "string"
                             }
                           ]
@@ -8607,6 +10681,10 @@
                             {
                               "const": "enterprise",
                               "type": "string"
+                            },
+                            {
+                              "const": "census_banded",
+                              "type": "string"
                             }
                           ]
                         },
@@ -8870,6 +10948,10 @@
                             },
                             {
                               "const": "enterprise",
+                              "type": "string"
+                            },
+                            {
+                              "const": "census_banded",
                               "type": "string"
                             }
                           ]
@@ -9150,6 +11232,10 @@
                             },
                             {
                               "const": "enterprise",
+                              "type": "string"
+                            },
+                            {
+                              "const": "census_banded",
                               "type": "string"
                             }
                           ]
@@ -251605,6 +253691,10 @@
                           {
                             "const": "enterprise",
                             "type": "string"
+                          },
+                          {
+                            "const": "census_banded",
+                            "type": "string"
                           }
                         ]
                       },
@@ -253481,6 +255571,511 @@
                   "reason": {
                     "minLength": 1,
                     "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/pricing/plans": {
+      "get": {
+        "operationId": "getApiV1PlatformPricingPlans",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "The published, current plan versions an operator may sign",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "familySlug",
+                      "version",
+                      "slug",
+                      "name",
+                      "description",
+                      "status",
+                      "offered",
+                      "currencyCode",
+                      "perUserPriceCents",
+                      "bands",
+                      "billingSoftwareBps",
+                      "managedBillingBps",
+                      "contractTermMonths",
+                      "implementationFeeCents",
+                      "minimumMonthlyCents",
+                      "supersedesPlanId",
+                      "publishedAt",
+                      "archivedAt",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "familySlug": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "integer"
+                      },
+                      "slug": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "draft",
+                            "type": "string"
+                          },
+                          {
+                            "const": "published",
+                            "type": "string"
+                          },
+                          {
+                            "const": "archived",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "offered": {
+                        "type": "boolean"
+                      },
+                      "currencyCode": {
+                        "type": "string"
+                      },
+                      "perUserPriceCents": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "bands": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "minAdc",
+                            "maxAdc",
+                            "monthlyFeeCents"
+                          ],
+                          "properties": {
+                            "minAdc": {
+                              "type": "integer"
+                            },
+                            "maxAdc": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "monthlyFeeCents": {
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      },
+                      "billingSoftwareBps": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "managedBillingBps": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "contractTermMonths": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "implementationFeeCents": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "minimumMonthlyCents": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "supersedesPlanId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "publishedAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "archivedAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "createdAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/pricing/preview": {
+      "post": {
+        "operationId": "postApiV1PlatformPricingPreview",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Price a plan for entered staff, census, collections and billing service mode (no write)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "plan",
+                    "inputs",
+                    "platformFee",
+                    "billing",
+                    "minimumAdjustmentCents",
+                    "monthlyCents",
+                    "implementationFeeCents",
+                    "firstMonthCents",
+                    "contractTermMonths"
+                  ],
+                  "properties": {
+                    "plan": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "slug",
+                        "name",
+                        "version",
+                        "status",
+                        "currencyCode"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "published",
+                              "type": "string"
+                            },
+                            {
+                              "const": "archived",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "currencyCode": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "inputs": {
+                      "type": "object",
+                      "required": [
+                        "staffCount",
+                        "averageDailyCensus",
+                        "expectedNetCollectionsCents",
+                        "billingServiceMode"
+                      ],
+                      "properties": {
+                        "staffCount": {
+                          "type": "integer"
+                        },
+                        "averageDailyCensus": {
+                          "type": "number"
+                        },
+                        "expectedNetCollectionsCents": {
+                          "type": "integer"
+                        },
+                        "billingServiceMode": {
+                          "anyOf": [
+                            {
+                              "const": "none",
+                              "type": "string"
+                            },
+                            {
+                              "const": "billing_software",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_billing",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "platformFee": {
+                      "type": "object",
+                      "required": [
+                        "perUserSubtotalCents",
+                        "bandFeeCents",
+                        "bandMinAdc",
+                        "bandMaxAdc",
+                        "feeCents",
+                        "basis"
+                      ],
+                      "properties": {
+                        "perUserSubtotalCents": {
+                          "type": "integer"
+                        },
+                        "bandFeeCents": {
+                          "type": "integer"
+                        },
+                        "bandMinAdc": {
+                          "type": "integer"
+                        },
+                        "bandMaxAdc": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "feeCents": {
+                          "type": "integer"
+                        },
+                        "basis": {
+                          "anyOf": [
+                            {
+                              "const": "per_user",
+                              "type": "string"
+                            },
+                            {
+                              "const": "census_band",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "billing": {
+                      "type": "object",
+                      "required": [
+                        "mode",
+                        "bps",
+                        "feeCents"
+                      ],
+                      "properties": {
+                        "mode": {
+                          "anyOf": [
+                            {
+                              "const": "none",
+                              "type": "string"
+                            },
+                            {
+                              "const": "billing_software",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_billing",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "bps": {
+                          "type": "integer"
+                        },
+                        "feeCents": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "minimumAdjustmentCents": {
+                      "type": "integer"
+                    },
+                    "monthlyCents": {
+                      "type": "integer"
+                    },
+                    "implementationFeeCents": {
+                      "type": "integer"
+                    },
+                    "firstMonthCents": {
+                      "type": "integer"
+                    },
+                    "contractTermMonths": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "planId",
+                  "staffCount",
+                  "averageDailyCensus",
+                  "expectedNetCollectionsCents",
+                  "billingServiceMode"
+                ],
+                "properties": {
+                  "planId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "staffCount": {
+                    "minimum": 0,
+                    "maximum": 1000000,
+                    "type": "integer"
+                  },
+                  "averageDailyCensus": {
+                    "minimum": 0,
+                    "maximum": 100000,
+                    "type": "number"
+                  },
+                  "expectedNetCollectionsCents": {
+                    "minimum": 0,
+                    "maximum": 100000000000,
+                    "type": "integer"
+                  },
+                  "billingServiceMode": {
+                    "anyOf": [
+                      {
+                        "const": "none",
+                        "type": "string"
+                      },
+                      {
+                        "const": "billing_software",
+                        "type": "string"
+                      },
+                      {
+                        "const": "managed_billing",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }
@@ -261343,6 +263938,945 @@
                         "type": "boolean"
                       }
                     }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/subscription": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantsByOrgSlugSubscription",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "A tenant's signed contract and statements (platform)",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "contract",
+                    "statements"
+                  ],
+                  "properties": {
+                    "contract": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "subscriptionId",
+                            "plan",
+                            "billingServiceMode",
+                            "billingBps",
+                            "contractStartOn",
+                            "contractTermMonths",
+                            "contractEndsOn",
+                            "perUserPriceCents",
+                            "bands",
+                            "billingSoftwareBps",
+                            "managedBillingBps",
+                            "implementationFeeCents",
+                            "minimumMonthlyCents",
+                            "signedByMembershipId",
+                            "signedReason",
+                            "orderFormRef"
+                          ],
+                          "properties": {
+                            "subscriptionId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "plan": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "slug",
+                                "name",
+                                "version",
+                                "currencyCode"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "slug": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "version": {
+                                  "type": "integer"
+                                },
+                                "currencyCode": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            "billingServiceMode": {
+                              "anyOf": [
+                                {
+                                  "const": "none",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "billing_software",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "managed_billing",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "billingBps": {
+                              "type": "integer"
+                            },
+                            "contractStartOn": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "contractTermMonths": {
+                              "type": "integer"
+                            },
+                            "contractEndsOn": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "perUserPriceCents": {
+                              "type": "integer"
+                            },
+                            "bands": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "minAdc",
+                                  "maxAdc",
+                                  "monthlyFeeCents"
+                                ],
+                                "properties": {
+                                  "minAdc": {
+                                    "type": "integer"
+                                  },
+                                  "maxAdc": {
+                                    "anyOf": [
+                                      {
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "monthlyFeeCents": {
+                                    "type": "integer"
+                                  }
+                                }
+                              }
+                            },
+                            "billingSoftwareBps": {
+                              "type": "integer"
+                            },
+                            "managedBillingBps": {
+                              "type": "integer"
+                            },
+                            "implementationFeeCents": {
+                              "type": "integer"
+                            },
+                            "minimumMonthlyCents": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "signedByMembershipId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "signedReason": {
+                              "type": "string"
+                            },
+                            "orderFormRef": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "statements": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "periodYearMonth",
+                          "periodStart",
+                          "periodEnd",
+                          "status",
+                          "currencyCode",
+                          "inputs",
+                          "terms",
+                          "platformFee",
+                          "billingFeeCents",
+                          "oneTimeFeeCents",
+                          "minimumAdjustmentCents",
+                          "totalCents",
+                          "computedAt",
+                          "finalizedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "periodYearMonth": {
+                            "type": "string"
+                          },
+                          "periodStart": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "periodEnd": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "draft",
+                                "type": "string"
+                              },
+                              {
+                                "const": "final",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "currencyCode": {
+                            "type": "string"
+                          },
+                          "inputs": {
+                            "type": "object",
+                            "required": [
+                              "staffCount",
+                              "staffCountBasis",
+                              "averageDailyCensus",
+                              "adcDaysObserved",
+                              "adcDaysInPeriod",
+                              "billingServiceMode",
+                              "netCollectionsCents",
+                              "netCollectionsRemittanceCount",
+                              "netCollectionsPendingCount"
+                            ],
+                            "properties": {
+                              "staffCount": {
+                                "type": "integer"
+                              },
+                              "staffCountBasis": {
+                                "anyOf": [
+                                  {
+                                    "const": "identity_filtered",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "ledger_unfiltered",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "averageDailyCensus": {
+                                "type": "number"
+                              },
+                              "adcDaysObserved": {
+                                "type": "integer"
+                              },
+                              "adcDaysInPeriod": {
+                                "type": "integer"
+                              },
+                              "billingServiceMode": {
+                                "anyOf": [
+                                  {
+                                    "const": "none",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "billing_software",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "managed_billing",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "netCollectionsCents": {
+                                "type": "integer"
+                              },
+                              "netCollectionsRemittanceCount": {
+                                "type": "integer"
+                              },
+                              "netCollectionsPendingCount": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          "terms": {
+                            "type": "object",
+                            "required": [
+                              "perUserPriceCents",
+                              "bandMinAdc",
+                              "bandFeeCents",
+                              "billingBps",
+                              "minimumMonthlyCents"
+                            ],
+                            "properties": {
+                              "perUserPriceCents": {
+                                "type": "integer"
+                              },
+                              "bandMinAdc": {
+                                "type": "integer"
+                              },
+                              "bandFeeCents": {
+                                "type": "integer"
+                              },
+                              "billingBps": {
+                                "type": "integer"
+                              },
+                              "minimumMonthlyCents": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "platformFee": {
+                            "type": "object",
+                            "required": [
+                              "perUserSubtotalCents",
+                              "bandFeeCents",
+                              "feeCents",
+                              "basis"
+                            ],
+                            "properties": {
+                              "perUserSubtotalCents": {
+                                "type": "integer"
+                              },
+                              "bandFeeCents": {
+                                "type": "integer"
+                              },
+                              "feeCents": {
+                                "type": "integer"
+                              },
+                              "basis": {
+                                "anyOf": [
+                                  {
+                                    "const": "per_user",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "census_band",
+                                    "type": "string"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "billingFeeCents": {
+                            "type": "integer"
+                          },
+                          "oneTimeFeeCents": {
+                            "type": "integer"
+                          },
+                          "minimumAdjustmentCents": {
+                            "type": "integer"
+                          },
+                          "totalCents": {
+                            "type": "integer"
+                          },
+                          "computedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "finalizedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugSubscription",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Onboarding step 2: sign the tenant onto a plan version and settle the plan_contract step",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "contract",
+                    "resumed",
+                    "planContractStep"
+                  ],
+                  "properties": {
+                    "contract": {
+                      "type": "object",
+                      "required": [
+                        "subscriptionId",
+                        "plan",
+                        "billingServiceMode",
+                        "billingBps",
+                        "contractStartOn",
+                        "contractTermMonths",
+                        "contractEndsOn",
+                        "perUserPriceCents",
+                        "bands",
+                        "billingSoftwareBps",
+                        "managedBillingBps",
+                        "implementationFeeCents",
+                        "minimumMonthlyCents",
+                        "signedByMembershipId",
+                        "signedReason",
+                        "orderFormRef"
+                      ],
+                      "properties": {
+                        "subscriptionId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "plan": {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "slug",
+                            "name",
+                            "version",
+                            "currencyCode"
+                          ],
+                          "properties": {
+                            "id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "slug": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "version": {
+                              "type": "integer"
+                            },
+                            "currencyCode": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "billingServiceMode": {
+                          "anyOf": [
+                            {
+                              "const": "none",
+                              "type": "string"
+                            },
+                            {
+                              "const": "billing_software",
+                              "type": "string"
+                            },
+                            {
+                              "const": "managed_billing",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "billingBps": {
+                          "type": "integer"
+                        },
+                        "contractStartOn": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "contractTermMonths": {
+                          "type": "integer"
+                        },
+                        "contractEndsOn": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "perUserPriceCents": {
+                          "type": "integer"
+                        },
+                        "bands": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "minAdc",
+                              "maxAdc",
+                              "monthlyFeeCents"
+                            ],
+                            "properties": {
+                              "minAdc": {
+                                "type": "integer"
+                              },
+                              "maxAdc": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "monthlyFeeCents": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "billingSoftwareBps": {
+                          "type": "integer"
+                        },
+                        "managedBillingBps": {
+                          "type": "integer"
+                        },
+                        "implementationFeeCents": {
+                          "type": "integer"
+                        },
+                        "minimumMonthlyCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "signedByMembershipId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "signedReason": {
+                          "type": "string"
+                        },
+                        "orderFormRef": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "resumed": {
+                      "type": "boolean"
+                    },
+                    "planContractStep": {
+                      "type": "object",
+                      "required": [
+                        "status"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "settled",
+                              "type": "string"
+                            },
+                            {
+                              "const": "already_settled",
+                              "type": "string"
+                            },
+                            {
+                              "const": "pending",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "planSlug",
+                  "billingServiceMode",
+                  "reason"
+                ],
+                "properties": {
+                  "planSlug": {
+                    "minLength": 3,
+                    "maxLength": 80,
+                    "type": "string"
+                  },
+                  "billingServiceMode": {
+                    "anyOf": [
+                      {
+                        "const": "none",
+                        "type": "string"
+                      },
+                      {
+                        "const": "billing_software",
+                        "type": "string"
+                      },
+                      {
+                        "const": "managed_billing",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "orderFormRef": {
+                    "anyOf": [
+                      {
+                        "maxLength": 600,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/subscription/billing-service-mode": {
+      "put": {
+        "operationId": "putApiV1PlatformTenantsByOrgSlugSubscriptionBillingservicemode",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Change a tenant's billing service mode (none, billing_software, managed_billing)",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "subscriptionId",
+                    "plan",
+                    "billingServiceMode",
+                    "billingBps",
+                    "contractStartOn",
+                    "contractTermMonths",
+                    "contractEndsOn",
+                    "perUserPriceCents",
+                    "bands",
+                    "billingSoftwareBps",
+                    "managedBillingBps",
+                    "implementationFeeCents",
+                    "minimumMonthlyCents",
+                    "signedByMembershipId",
+                    "signedReason",
+                    "orderFormRef"
+                  ],
+                  "properties": {
+                    "subscriptionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "plan": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "slug",
+                        "name",
+                        "version",
+                        "currencyCode"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "currencyCode": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "billingServiceMode": {
+                      "anyOf": [
+                        {
+                          "const": "none",
+                          "type": "string"
+                        },
+                        {
+                          "const": "billing_software",
+                          "type": "string"
+                        },
+                        {
+                          "const": "managed_billing",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "billingBps": {
+                      "type": "integer"
+                    },
+                    "contractStartOn": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "contractTermMonths": {
+                      "type": "integer"
+                    },
+                    "contractEndsOn": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "perUserPriceCents": {
+                      "type": "integer"
+                    },
+                    "bands": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "minAdc",
+                          "maxAdc",
+                          "monthlyFeeCents"
+                        ],
+                        "properties": {
+                          "minAdc": {
+                            "type": "integer"
+                          },
+                          "maxAdc": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "monthlyFeeCents": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "billingSoftwareBps": {
+                      "type": "integer"
+                    },
+                    "managedBillingBps": {
+                      "type": "integer"
+                    },
+                    "implementationFeeCents": {
+                      "type": "integer"
+                    },
+                    "minimumMonthlyCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signedByMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "signedReason": {
+                      "type": "string"
+                    },
+                    "orderFormRef": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "billingServiceMode",
+                  "reason"
+                ],
+                "properties": {
+                  "billingServiceMode": {
+                    "anyOf": [
+                      {
+                        "const": "none",
+                        "type": "string"
+                      },
+                      {
+                        "const": "billing_software",
+                        "type": "string"
+                      },
+                      {
+                        "const": "managed_billing",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
                   }
                 }
               }
@@ -306510,6 +310044,397 @@
                         {
                           "const": "resolved",
                           "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/subscription/pricing": {
+      "get": {
+        "operationId": "getApiV1SubscriptionPricing",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "The tenant's own plan terms and latest statement (read-only)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "contract",
+                    "latestStatement"
+                  ],
+                  "properties": {
+                    "contract": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "subscriptionId",
+                            "plan",
+                            "billingServiceMode",
+                            "billingBps",
+                            "contractStartOn",
+                            "contractTermMonths",
+                            "contractEndsOn",
+                            "perUserPriceCents",
+                            "bands",
+                            "billingSoftwareBps",
+                            "managedBillingBps",
+                            "implementationFeeCents",
+                            "minimumMonthlyCents"
+                          ],
+                          "properties": {
+                            "subscriptionId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "plan": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "slug",
+                                "name",
+                                "version",
+                                "currencyCode"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "slug": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "version": {
+                                  "type": "integer"
+                                },
+                                "currencyCode": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            "billingServiceMode": {
+                              "anyOf": [
+                                {
+                                  "const": "none",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "billing_software",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "managed_billing",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "billingBps": {
+                              "type": "integer"
+                            },
+                            "contractStartOn": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "contractTermMonths": {
+                              "type": "integer"
+                            },
+                            "contractEndsOn": {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            "perUserPriceCents": {
+                              "type": "integer"
+                            },
+                            "bands": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "minAdc",
+                                  "maxAdc",
+                                  "monthlyFeeCents"
+                                ],
+                                "properties": {
+                                  "minAdc": {
+                                    "type": "integer"
+                                  },
+                                  "maxAdc": {
+                                    "anyOf": [
+                                      {
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "monthlyFeeCents": {
+                                    "type": "integer"
+                                  }
+                                }
+                              }
+                            },
+                            "billingSoftwareBps": {
+                              "type": "integer"
+                            },
+                            "managedBillingBps": {
+                              "type": "integer"
+                            },
+                            "implementationFeeCents": {
+                              "type": "integer"
+                            },
+                            "minimumMonthlyCents": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestStatement": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "periodYearMonth",
+                            "periodStart",
+                            "periodEnd",
+                            "status",
+                            "currencyCode",
+                            "inputs",
+                            "terms",
+                            "platformFee",
+                            "billingFeeCents",
+                            "oneTimeFeeCents",
+                            "minimumAdjustmentCents",
+                            "totalCents",
+                            "computedAt",
+                            "finalizedAt"
+                          ],
+                          "properties": {
+                            "id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "periodYearMonth": {
+                              "type": "string"
+                            },
+                            "periodStart": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "periodEnd": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "final",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "currencyCode": {
+                              "type": "string"
+                            },
+                            "inputs": {
+                              "type": "object",
+                              "required": [
+                                "staffCount",
+                                "staffCountBasis",
+                                "averageDailyCensus",
+                                "adcDaysObserved",
+                                "adcDaysInPeriod",
+                                "billingServiceMode",
+                                "netCollectionsCents",
+                                "netCollectionsRemittanceCount",
+                                "netCollectionsPendingCount"
+                              ],
+                              "properties": {
+                                "staffCount": {
+                                  "type": "integer"
+                                },
+                                "staffCountBasis": {
+                                  "anyOf": [
+                                    {
+                                      "const": "identity_filtered",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ledger_unfiltered",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "averageDailyCensus": {
+                                  "type": "number"
+                                },
+                                "adcDaysObserved": {
+                                  "type": "integer"
+                                },
+                                "adcDaysInPeriod": {
+                                  "type": "integer"
+                                },
+                                "billingServiceMode": {
+                                  "anyOf": [
+                                    {
+                                      "const": "none",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "billing_software",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "managed_billing",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "netCollectionsCents": {
+                                  "type": "integer"
+                                },
+                                "netCollectionsRemittanceCount": {
+                                  "type": "integer"
+                                },
+                                "netCollectionsPendingCount": {
+                                  "type": "integer"
+                                }
+                              }
+                            },
+                            "terms": {
+                              "type": "object",
+                              "required": [
+                                "perUserPriceCents",
+                                "bandMinAdc",
+                                "bandFeeCents",
+                                "billingBps",
+                                "minimumMonthlyCents"
+                              ],
+                              "properties": {
+                                "perUserPriceCents": {
+                                  "type": "integer"
+                                },
+                                "bandMinAdc": {
+                                  "type": "integer"
+                                },
+                                "bandFeeCents": {
+                                  "type": "integer"
+                                },
+                                "billingBps": {
+                                  "type": "integer"
+                                },
+                                "minimumMonthlyCents": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "platformFee": {
+                              "type": "object",
+                              "required": [
+                                "perUserSubtotalCents",
+                                "bandFeeCents",
+                                "feeCents",
+                                "basis"
+                              ],
+                              "properties": {
+                                "perUserSubtotalCents": {
+                                  "type": "integer"
+                                },
+                                "bandFeeCents": {
+                                  "type": "integer"
+                                },
+                                "feeCents": {
+                                  "type": "integer"
+                                },
+                                "basis": {
+                                  "anyOf": [
+                                    {
+                                      "const": "per_user",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "census_band",
+                                      "type": "string"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "billingFeeCents": {
+                              "type": "integer"
+                            },
+                            "oneTimeFeeCents": {
+                              "type": "integer"
+                            },
+                            "minimumAdjustmentCents": {
+                              "type": "integer"
+                            },
+                            "totalCents": {
+                              "type": "integer"
+                            },
+                            "computedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "finalizedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     }

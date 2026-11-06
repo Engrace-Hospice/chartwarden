@@ -571,6 +571,110 @@ export interface paths {
         patch: operations["patchApiAdminPlansByIdMetersByMeterId"];
         trace?: never;
     };
+    "/api/admin/pricing/defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Default census band thresholds (a form's starting point, never a price) */
+        get: operations["getApiAdminPricingDefaults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/pricing/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List every census-banded plan version (drafts and archived included) */
+        get: operations["getApiAdminPricingPlans"];
+        put?: never;
+        /** Create a draft plan (version 1 of a new family) */
+        post: operations["postApiAdminPricingPlans"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/pricing/plans/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one census-banded plan version */
+        get: operations["getApiAdminPricingPlansById"];
+        /** Replace a draft plan's prices and bands */
+        put: operations["putApiAdminPricingPlansById"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/pricing/plans/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive a published plan; subscriptions on it keep their price */
+        post: operations["postApiAdminPricingPlansByIdArchive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/pricing/plans/{id}/new-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Copy a published or archived plan into a new draft version */
+        post: operations["postApiAdminPricingPlansByIdNewversion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/pricing/plans/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish a draft plan; its prices are frozen from then on */
+        post: operations["postApiAdminPricingPlansByIdPublish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/promos": {
         parameters: {
             query?: never;
@@ -21800,6 +21904,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/pricing/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The published, current plan versions an operator may sign */
+        get: operations["getApiV1PlatformPricingPlans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/pricing/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Price a plan for entered staff, census, collections and billing service mode (no write) */
+        post: operations["postApiV1PlatformPricingPreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/signup-intents": {
         parameters: {
             query?: never;
@@ -22396,6 +22534,41 @@ export interface paths {
         put?: never;
         /** Apply a lifecycle status transition (eleven-state machine; step-up). onboarding → active is refused 409 GO_LIVE_TWO_PARTY_REQUIRED: go live through the compliance officer's attestation and POST /go-live/approve */
         post: operations["postApiV1PlatformTenantsByOrgSlugStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's signed contract and statements (platform) */
+        get: operations["getApiV1PlatformTenantsByOrgSlugSubscription"];
+        put?: never;
+        /** Onboarding step 2: sign the tenant onto a plan version and settle the plan_contract step */
+        post: operations["postApiV1PlatformTenantsByOrgSlugSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/subscription/billing-service-mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a tenant's billing service mode (none, billing_software, managed_billing) */
+        put: operations["putApiV1PlatformTenantsByOrgSlugSubscriptionBillingservicemode"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -27324,6 +27497,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/subscription/pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's own plan terms and latest statement (read-only) */
+        get: operations["getApiV1SubscriptionPricing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/subscription/resume": {
         parameters: {
             query?: never;
@@ -31369,7 +31559,7 @@ export interface operations {
                         slug: string;
                         name: string;
                         description: string | null;
-                        tier: "starter" | "professional" | "enterprise";
+                        tier: "starter" | "professional" | "enterprise" | "census_banded";
                         cadence: "monthly" | "annual";
                         basePriceCents: number;
                         currencyCode: string;
@@ -31427,7 +31617,7 @@ export interface operations {
                         slug: string;
                         name: string;
                         description: string | null;
-                        tier: "starter" | "professional" | "enterprise";
+                        tier: "starter" | "professional" | "enterprise" | "census_banded";
                         cadence: "monthly" | "annual";
                         basePriceCents: number;
                         currencyCode: string;
@@ -31474,7 +31664,7 @@ export interface operations {
                         slug: string;
                         name: string;
                         description: string | null;
-                        tier: "starter" | "professional" | "enterprise";
+                        tier: "starter" | "professional" | "enterprise" | "census_banded";
                         cadence: "monthly" | "annual";
                         basePriceCents: number;
                         currencyCode: string;
@@ -31530,7 +31720,7 @@ export interface operations {
                         slug: string;
                         name: string;
                         description: string | null;
-                        tier: "starter" | "professional" | "enterprise";
+                        tier: "starter" | "professional" | "enterprise" | "census_banded";
                         cadence: "monthly" | "annual";
                         basePriceCents: number;
                         currencyCode: string;
@@ -31577,7 +31767,7 @@ export interface operations {
                         slug: string;
                         name: string;
                         description: string | null;
-                        tier: "starter" | "professional" | "enterprise";
+                        tier: "starter" | "professional" | "enterprise" | "census_banded";
                         cadence: "monthly" | "annual";
                         basePriceCents: number;
                         currencyCode: string;
@@ -31624,7 +31814,7 @@ export interface operations {
                         slug: string;
                         name: string;
                         description: string | null;
-                        tier: "starter" | "professional" | "enterprise";
+                        tier: "starter" | "professional" | "enterprise" | "census_banded";
                         cadence: "monthly" | "annual";
                         basePriceCents: number;
                         currencyCode: string;
@@ -31733,6 +31923,470 @@ export interface operations {
                         overageUnitPriceCents: number;
                         billingAggregation: string;
                         warningThresholdPercent: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminPricingDefaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        bandThresholds: number[];
+                        currencyCode: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminPricingPlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminPricingPlans: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    familySlug: string;
+                    name: string;
+                    description?: string | null;
+                    currencyCode?: string;
+                    perUserPriceCents: number;
+                    bands: {
+                        minAdc: number;
+                        monthlyFeeCents: number;
+                    }[];
+                    billingSoftwareBps: number;
+                    managedBillingBps: number;
+                    contractTermMonths: number;
+                    implementationFeeCents: number;
+                    minimumMonthlyCents: number | null;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminPricingPlansById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiAdminPricingPlansById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    description?: string | null;
+                    currencyCode?: string;
+                    perUserPriceCents: number;
+                    bands: {
+                        minAdc: number;
+                        monthlyFeeCents: number;
+                    }[];
+                    billingSoftwareBps: number;
+                    managedBillingBps: number;
+                    contractTermMonths: number;
+                    implementationFeeCents: number;
+                    minimumMonthlyCents: number | null;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminPricingPlansByIdArchive: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminPricingPlansByIdNewversion: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminPricingPlansByIdPublish: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
                     };
                 };
             };
@@ -32345,7 +32999,7 @@ export interface operations {
                             defaultPaymentMethodExpiresAt: string | null;
                             dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
                         } & {
-                            planTier: "starter" | "professional" | "enterprise";
+                            planTier: "starter" | "professional" | "enterprise" | "census_banded";
                             stripeSubscriptionId: string | null;
                             /** Format: date-time */
                             startedAt: string;
@@ -32395,7 +33049,7 @@ export interface operations {
                         defaultPaymentMethodExpiresAt: string | null;
                         dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
                     } & {
-                        planTier: "starter" | "professional" | "enterprise";
+                        planTier: "starter" | "professional" | "enterprise" | "census_banded";
                         stripeSubscriptionId: string | null;
                         /** Format: date-time */
                         startedAt: string;
@@ -32622,7 +33276,7 @@ export interface operations {
                         defaultPaymentMethodExpiresAt: string | null;
                         dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
                     } & {
-                        planTier: "starter" | "professional" | "enterprise";
+                        planTier: "starter" | "professional" | "enterprise" | "census_banded";
                         stripeSubscriptionId: string | null;
                         /** Format: date-time */
                         startedAt: string;
@@ -32676,7 +33330,7 @@ export interface operations {
                         defaultPaymentMethodExpiresAt: string | null;
                         dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
                     } & {
-                        planTier: "starter" | "professional" | "enterprise";
+                        planTier: "starter" | "professional" | "enterprise" | "census_banded";
                         stripeSubscriptionId: string | null;
                         /** Format: date-time */
                         startedAt: string;
@@ -32723,7 +33377,7 @@ export interface operations {
                         defaultPaymentMethodExpiresAt: string | null;
                         dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
                     } & {
-                        planTier: "starter" | "professional" | "enterprise";
+                        planTier: "starter" | "professional" | "enterprise" | "census_banded";
                         stripeSubscriptionId: string | null;
                         /** Format: date-time */
                         startedAt: string;
@@ -95702,7 +96356,7 @@ export interface operations {
                         slug: string;
                         name: string;
                         description: string | null;
-                        tier: "starter" | "professional" | "enterprise";
+                        tier: "starter" | "professional" | "enterprise" | "census_banded";
                         cadence: "monthly" | "annual";
                         basePriceCents: number;
                         currencyCode: string;
@@ -96231,6 +96885,124 @@ export interface operations {
                     "application/json": {
                         status: "created" | "active" | "suspended" | "closed";
                         sessionsRevoked: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformPricingPlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        familySlug: string;
+                        version: number;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        status: "draft" | "published" | "archived";
+                        offered: boolean;
+                        currencyCode: string;
+                        perUserPriceCents: number | null;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number | null;
+                        managedBillingBps: number | null;
+                        contractTermMonths: number | null;
+                        implementationFeeCents: number | null;
+                        minimumMonthlyCents: number | null;
+                        supersedesPlanId: string | null;
+                        publishedAt: string | null;
+                        archivedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformPricingPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    planId: string;
+                    staffCount: number;
+                    averageDailyCensus: number;
+                    expectedNetCollectionsCents: number;
+                    billingServiceMode: "none" | "billing_software" | "managed_billing";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        plan: {
+                            /** Format: uuid */
+                            id: string;
+                            slug: string;
+                            name: string;
+                            version: number;
+                            status: "draft" | "published" | "archived";
+                            currencyCode: string;
+                        };
+                        inputs: {
+                            staffCount: number;
+                            averageDailyCensus: number;
+                            expectedNetCollectionsCents: number;
+                            billingServiceMode: "none" | "billing_software" | "managed_billing";
+                        };
+                        platformFee: {
+                            perUserSubtotalCents: number;
+                            bandFeeCents: number;
+                            bandMinAdc: number;
+                            bandMaxAdc: number | null;
+                            feeCents: number;
+                            basis: "per_user" | "census_band";
+                        };
+                        billing: {
+                            mode: "none" | "billing_software" | "managed_billing";
+                            bps: number;
+                            feeCents: number;
+                        };
+                        minimumAdjustmentCents: number;
+                        monthlyCents: number;
+                        implementationFeeCents: number;
+                        firstMonthCents: number;
+                        contractTermMonths: number;
                     };
                 };
             };
@@ -98250,6 +99022,247 @@ export interface operations {
                     "application/json": {
                         tenantAccountId: string;
                         status: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contract: {
+                            /** Format: uuid */
+                            subscriptionId: string;
+                            plan: {
+                                /** Format: uuid */
+                                id: string;
+                                slug: string;
+                                name: string;
+                                version: number;
+                                currencyCode: string;
+                            };
+                            billingServiceMode: "none" | "billing_software" | "managed_billing";
+                            billingBps: number;
+                            /** Format: date */
+                            contractStartOn: string;
+                            contractTermMonths: number;
+                            /** Format: date */
+                            contractEndsOn: string;
+                            perUserPriceCents: number;
+                            bands: {
+                                minAdc: number;
+                                maxAdc: number | null;
+                                monthlyFeeCents: number;
+                            }[];
+                            billingSoftwareBps: number;
+                            managedBillingBps: number;
+                            implementationFeeCents: number;
+                            minimumMonthlyCents: number | null;
+                            /** Format: uuid */
+                            signedByMembershipId: string;
+                            signedReason: string;
+                            orderFormRef: string | null;
+                        } | null;
+                        statements: {
+                            /** Format: uuid */
+                            id: string;
+                            periodYearMonth: string;
+                            /** Format: date-time */
+                            periodStart: string;
+                            /** Format: date-time */
+                            periodEnd: string;
+                            status: "draft" | "final";
+                            currencyCode: string;
+                            inputs: {
+                                staffCount: number;
+                                staffCountBasis: "identity_filtered" | "ledger_unfiltered";
+                                averageDailyCensus: number;
+                                adcDaysObserved: number;
+                                adcDaysInPeriod: number;
+                                billingServiceMode: "none" | "billing_software" | "managed_billing";
+                                netCollectionsCents: number;
+                                netCollectionsRemittanceCount: number;
+                                netCollectionsPendingCount: number;
+                            };
+                            terms: {
+                                perUserPriceCents: number;
+                                bandMinAdc: number;
+                                bandFeeCents: number;
+                                billingBps: number;
+                                minimumMonthlyCents: number | null;
+                            };
+                            platformFee: {
+                                perUserSubtotalCents: number;
+                                bandFeeCents: number;
+                                feeCents: number;
+                                basis: "per_user" | "census_band";
+                            };
+                            billingFeeCents: number;
+                            oneTimeFeeCents: number;
+                            minimumAdjustmentCents: number;
+                            totalCents: number;
+                            /** Format: date-time */
+                            computedAt: string;
+                            finalizedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugSubscription: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    planSlug: string;
+                    billingServiceMode: "none" | "billing_software" | "managed_billing";
+                    orderFormRef?: string | null;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contract: {
+                            /** Format: uuid */
+                            subscriptionId: string;
+                            plan: {
+                                /** Format: uuid */
+                                id: string;
+                                slug: string;
+                                name: string;
+                                version: number;
+                                currencyCode: string;
+                            };
+                            billingServiceMode: "none" | "billing_software" | "managed_billing";
+                            billingBps: number;
+                            /** Format: date */
+                            contractStartOn: string;
+                            contractTermMonths: number;
+                            /** Format: date */
+                            contractEndsOn: string;
+                            perUserPriceCents: number;
+                            bands: {
+                                minAdc: number;
+                                maxAdc: number | null;
+                                monthlyFeeCents: number;
+                            }[];
+                            billingSoftwareBps: number;
+                            managedBillingBps: number;
+                            implementationFeeCents: number;
+                            minimumMonthlyCents: number | null;
+                            /** Format: uuid */
+                            signedByMembershipId: string;
+                            signedReason: string;
+                            orderFormRef: string | null;
+                        };
+                        resumed: boolean;
+                        planContractStep: {
+                            status: "settled" | "already_settled" | "pending";
+                            reason?: string;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1PlatformTenantsByOrgSlugSubscriptionBillingservicemode: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    billingServiceMode: "none" | "billing_software" | "managed_billing";
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        subscriptionId: string;
+                        plan: {
+                            /** Format: uuid */
+                            id: string;
+                            slug: string;
+                            name: string;
+                            version: number;
+                            currencyCode: string;
+                        };
+                        billingServiceMode: "none" | "billing_software" | "managed_billing";
+                        billingBps: number;
+                        /** Format: date */
+                        contractStartOn: string;
+                        contractTermMonths: number;
+                        /** Format: date */
+                        contractEndsOn: string;
+                        perUserPriceCents: number;
+                        bands: {
+                            minAdc: number;
+                            maxAdc: number | null;
+                            monthlyFeeCents: number;
+                        }[];
+                        billingSoftwareBps: number;
+                        managedBillingBps: number;
+                        implementationFeeCents: number;
+                        minimumMonthlyCents: number | null;
+                        /** Format: uuid */
+                        signedByMembershipId: string;
+                        signedReason: string;
+                        orderFormRef: string | null;
                     };
                 };
             };
@@ -111691,6 +112704,100 @@ export interface operations {
                         defaultPaymentMethodBrand: string | null;
                         defaultPaymentMethodExpiresAt: string | null;
                         dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1SubscriptionPricing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        contract: {
+                            /** Format: uuid */
+                            subscriptionId: string;
+                            plan: {
+                                /** Format: uuid */
+                                id: string;
+                                slug: string;
+                                name: string;
+                                version: number;
+                                currencyCode: string;
+                            };
+                            billingServiceMode: "none" | "billing_software" | "managed_billing";
+                            billingBps: number;
+                            /** Format: date */
+                            contractStartOn: string;
+                            contractTermMonths: number;
+                            /** Format: date */
+                            contractEndsOn: string;
+                            perUserPriceCents: number;
+                            bands: {
+                                minAdc: number;
+                                maxAdc: number | null;
+                                monthlyFeeCents: number;
+                            }[];
+                            billingSoftwareBps: number;
+                            managedBillingBps: number;
+                            implementationFeeCents: number;
+                            minimumMonthlyCents: number | null;
+                        } | null;
+                        latestStatement: {
+                            /** Format: uuid */
+                            id: string;
+                            periodYearMonth: string;
+                            /** Format: date-time */
+                            periodStart: string;
+                            /** Format: date-time */
+                            periodEnd: string;
+                            status: "draft" | "final";
+                            currencyCode: string;
+                            inputs: {
+                                staffCount: number;
+                                staffCountBasis: "identity_filtered" | "ledger_unfiltered";
+                                averageDailyCensus: number;
+                                adcDaysObserved: number;
+                                adcDaysInPeriod: number;
+                                billingServiceMode: "none" | "billing_software" | "managed_billing";
+                                netCollectionsCents: number;
+                                netCollectionsRemittanceCount: number;
+                                netCollectionsPendingCount: number;
+                            };
+                            terms: {
+                                perUserPriceCents: number;
+                                bandMinAdc: number;
+                                bandFeeCents: number;
+                                billingBps: number;
+                                minimumMonthlyCents: number | null;
+                            };
+                            platformFee: {
+                                perUserSubtotalCents: number;
+                                bandFeeCents: number;
+                                feeCents: number;
+                                basis: "per_user" | "census_band";
+                            };
+                            billingFeeCents: number;
+                            oneTimeFeeCents: number;
+                            minimumAdjustmentCents: number;
+                            totalCents: number;
+                            /** Format: date-time */
+                            computedAt: string;
+                            finalizedAt: string | null;
+                        } | null;
                     };
                 };
             };

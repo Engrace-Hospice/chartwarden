@@ -15,6 +15,52 @@ from-status.
   `409 TENANT_STATUS_CHANGED` when another transition changed the tenant's status while the request was waiting. Nothing is
   written; reload the tenant and retry.
 
+## 2026-11-05 — Tenant pricing: census-banded plans, a signed contract, and a monthly statement
+
+**Why.** The flat starter / professional / enterprise tiers are retired. A tenant now signs a *census-banded* plan version at
+onboarding step 2: the monthly platform fee is the **greater of** (active staff accounts x the per-user price) and the flat fee of the
+average-daily-census band the tenant falls in, plus a percentage of net collections when the tenant bills through ChartWarden. Every
+price is a column on a plan version and a published version is frozen, so a tenant keeps the price it signed. Money is integer cents,
+rates are basis points.
+
+### 1. What changes for existing clients
+
+- `tier` on plan and subscription responses can now be `census_banded` (the three old values stay readable on existing rows).
+- `GET /api/v1/plans` (the tenant catalog) never lists a `census_banded` plan, and the retired flat plans are no longer offered.
+- `POST /api/v1/subscription` and `PATCH /api/v1/subscription` answer `403 PLAN_ASSIGNED_BY_OPERATIONS` for a `census_banded` plan, and for a
+  tenant that is on one: a contracted plan is assigned by ChartWarden operations.
+- `POST /api/admin/plans` no longer accepts `tier: census_banded` and `POST /api/admin/plans/{id}/activate` refuses such a plan: use the
+  pricing plan editor below.
+
+### 2. New routes
+
+| Route | Who | Guards |
+|---|---|---|
+| `GET /api/admin/pricing/defaults`, `GET /api/admin/pricing/plans[/{id}]` | platform billing roles | `plan.admin.read` |
+| `POST /api/admin/pricing/plans` (draft), `PUT .../{id}` (replace a draft), `POST .../{id}/publish`, `/new-version`, `/archive` | platform billing roles | `plan.admin.write`, step-up, no AI actor, `Idempotency-Key`, body `reason` |
+| `GET /api/v1/platform/pricing/plans`, `POST /api/v1/platform/pricing/preview` | platform ops and billing roles | `subscription.pricing_read_platform` |
+| `GET /api/v1/platform/tenants/{orgSlug}/subscription` | platform ops and billing roles | `subscription.pricing_read_platform` |
+| `POST /api/v1/platform/tenants/{orgSlug}/subscription` | `platform_ops` only | `subscription.onboard_platform`, `tenant_lifecycle_platform_ops`, step-up, no AI actor, `Idempotency-Key`, body `reason` |
+| `PUT /api/v1/platform/tenants/{orgSlug}/subscription/billing-service-mode` | `platform_ops` only | same |
+| `GET /api/v1/subscription/pricing` | the tenant | `subscription.read` (read-only) |
+
+`POST .../subscription` signs the tenant onto a published plan version in one transaction (subscription, contract, `m35.subscription.created`,
+audit row) and then settles the wizard's `plan_contract` step through the wizard. It refuses while an earlier step is unsettled
+(`409 ONBOARDING_STEP_OUT_OF_ORDER`) or once the tenant is live (`409 TENANT_NOT_ONBOARDING`). The response carries
+`planContractStep.status`: `settled`, `already_settled`, or `pending` (the subscription exists but the step could not be settled; repeat the
+same POST to resume, nothing is duplicated).
+
+`billingServiceMode` is `none` (the tenant bills outside ChartWarden, no percentage), `billing_software` or `managed_billing`.
+
+### 3. The statement
+
+One statement per subscription per UTC month, `draft` while the month is open and `final` once it is closed (five days after month end, so
+late-posted remittances dated inside the month still count). It shows both sides of the greater-of rule, the meters it used (active staff
+accounts, average daily census with its days observed, net collections with its remittance and pending counts) and the total. The tenant reads
+its latest statement on `GET /api/v1/subscription/pricing`; it never carries the ChartWarden operator who signed the contract.
+
+---
+
 ## 2026-11-05 — Onboarding wizard v2, pre-PR review fixes (go-live integrity)
 
 **Why.** The pre-PR review found ways one operator could open a tenant, or approve a go-live on data nobody had checked. These
