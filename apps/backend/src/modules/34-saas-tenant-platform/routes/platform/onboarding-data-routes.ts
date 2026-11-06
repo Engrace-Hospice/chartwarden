@@ -418,27 +418,38 @@ export function registerOnboardingDataRoutes(
   // reopens the prior election its record closed). Not gated on the tenant's onboarding status. Pinned: `If-Match` is the record's
   // `externalFiling.recordedAt` (see requiredRecordedAtPin); a record that changed since is a 409. The audit row names the operator,
   // the tenant, the reason and the filed date withdrawn.
-  const withdrawExternalFiling = (kind: "noe" | "notr") => async (request: FastifyRequest) => {
-    const op = operatorOf(request);
-    const { orgSlug, id } = idParamsOf(request);
-    const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
-    return service.withdrawNoticeExternalFiling(
-      op,
-      orgSlug,
-      kind,
-      id,
-      reason,
-      requiredRecordedAtPin(request, "filing record"),
-    );
-  };
   app.post(
     "/api/v1/platform/tenants/:orgSlug/noe-records/:id/withdraw-external-filing",
     { preHandler: [...NOTICE_WITHDRAW] },
-    withdrawExternalFiling("noe"),
+    async (request) => {
+      const op = operatorOf(request);
+      const { orgSlug, id } = idParamsOf(request);
+      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+      return service.withdrawNoticeExternalFiling(
+        op,
+        orgSlug,
+        "noe",
+        id,
+        reason,
+        requiredRecordedAtPin(request, "filing record"),
+      );
+    },
   );
   app.post(
     "/api/v1/platform/tenants/:orgSlug/notr-records/:id/withdraw-external-filing",
     { preHandler: [...NOTICE_WITHDRAW] },
-    withdrawExternalFiling("notr"),
+    async (request) => {
+      const op = operatorOf(request);
+      const { orgSlug, id } = idParamsOf(request);
+      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+      return service.withdrawNoticeExternalFiling(
+        op,
+        orgSlug,
+        "notr",
+        id,
+        reason,
+        requiredRecordedAtPin(request, "filing record"),
+      );
+    },
   );
 }
