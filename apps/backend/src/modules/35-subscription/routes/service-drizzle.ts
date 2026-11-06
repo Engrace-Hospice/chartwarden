@@ -141,6 +141,14 @@ function refuseContractedPlan(
   }
 }
 
+/**
+ * What a tenant can SELECT is never a contracted plan: asking for one answers exactly what asking for a plan that does not exist
+ * answers (404), so a probe cannot tell the census_banded slugs from nothing.
+ */
+function hideContractedPlan(plan: { readonly tier: string }): void {
+  if (plan.tier === "census_banded") throw new NotFoundError("plan not found or inactive");
+}
+
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 const isoReq = (d: Date): string => d.toISOString();
 const dateOnly = (d: Date | null | undefined): string | null =>
@@ -728,7 +736,7 @@ export function buildDrizzleM35RouteService(
           .where(and(eq(PL.slug, args.planSlug), eq(PL.isActive, true)))
           .limit(1);
         if (!plan) throw new NotFoundError("plan not found or inactive");
-        refuseContractedPlan(plan, "a tenant cannot select this plan");
+        hideContractedPlan(plan);
         // GAP-060 - a supplied payment method must be an ACTIVE one of THIS org (the column is a bare uuid
         // with no FK, so nothing else stops another tenant's, or a random, id landing here).
         if (args.paymentMethodId) {
@@ -812,7 +820,7 @@ export function buildDrizzleM35RouteService(
           .limit(1);
         if (!toPlan) throw new NotFoundError("target plan not found or inactive");
         refuseContractedPlan(fromPlan, "a tenant cannot change away from its contracted plan");
-        refuseContractedPlan(toPlan, "a tenant cannot select this plan");
+        hideContractedPlan(toPlan);
         // §4.8 plan_change_within_period_grace re-asserted server-side: outside the 7-day grace, only a
         // platform_admin may pass `always_invoice`. A tenant self-service change is never platform_admin.
         if (args.prorationBehavior === "always_invoice") {
@@ -861,6 +869,9 @@ export function buildDrizzleM35RouteService(
           .orderBy(desc(S.startedAt))
           .limit(1);
         if (!sub) throw new NotFoundError("no subscription for org");
+        // A contracted subscription is ended by ChartWarden operations (its contract has a term and bills by the days live), never by the tenant.
+        const plan = await loadPlan(tx, sub.planId);
+        refuseContractedPlan(plan, "a tenant cannot cancel a contracted subscription");
         const at = now();
         await tx
           .update(S)
@@ -880,7 +891,6 @@ export function buildDrizzleM35RouteService(
           "subscription",
           sub.id,
         );
-        const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
         return subscriptionView(
           { ...sub, cancelAtPeriodEnd: true, canceledAt: at },
@@ -1207,6 +1217,7 @@ export function buildDrizzleM35RouteService(
         const [plan] = await tx.select().from(PL).where(eq(PL.id, planId)).limit(1);
         if (!plan) throw new NotFoundError("plan not found");
         refuseContractedPlan(plan, "use the pricing plan editor");
+        if (plan.deprecatedAt) throw new ConflictError("a retired plan cannot be edited");
         if (plan.isActive) throw new ConflictError("only a draft plan may be edited");
         const [updated] = await tx
           .update(PL)
@@ -1226,7 +1237,11 @@ export function buildDrizzleM35RouteService(
 
     async adminActivatePlan(_actor, planId) {
       return platform(async (tx) => {
-        refuseContractedPlan(await loadPlan(tx, planId), "use the pricing plan editor to publish");
+        const plan = await loadPlan(tx, planId);
+        if (!plan) throw new NotFoundError("plan not found");
+        refuseContractedPlan(plan, "use the pricing plan editor to publish");
+        // A retired flat plan stays retired: it is not offered again, and it is not repriced (adminUpdatePlan refuses it too).
+        if (plan.deprecatedAt) throw new ConflictError("a retired plan cannot be offered again");
         const [updated] = await tx
           .update(PL)
           .set({ isActive: true, updatedAt: now() })
@@ -1240,6 +1255,8 @@ export function buildDrizzleM35RouteService(
 
     async adminDeprecatePlan(_actor, planId) {
       return platform(async (tx) => {
+        // Archiving a census_banded plan has its own audited, reasoned route (the pricing plan editor).
+        refuseContractedPlan(await loadPlan(tx, planId), "use the pricing plan editor to archive");
         const [updated] = await tx
           .update(PL)
           .set({ isActive: false, deprecatedAt: now(), updatedAt: now() })
@@ -1253,8 +1270,10 @@ export function buildDrizzleM35RouteService(
 
     async adminAddMeter(_actor, planId, args: AddMeterArgs) {
       return platform(async (tx) => {
-        const [plan] = await tx.select({ id: PL.id }).from(PL).where(eq(PL.id, planId)).limit(1);
+        const [plan] = await tx.select().from(PL).where(eq(PL.id, planId)).limit(1);
         if (!plan) throw new NotFoundError("plan not found");
+        // A contracted plan carries no usage meters: its price is the plan editor's, frozen per version.
+        refuseContractedPlan(plan, "use the pricing plan editor");
         const [meter] = await tx
           .insert(PMTR)
           .values({
