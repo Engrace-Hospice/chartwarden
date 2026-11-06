@@ -8,6 +8,7 @@
 // store is supplied by the M1 backend bootstrap (M1-T10) and the HTTP middleware that
 // wraps this helper is wired there too.
 import { createHash } from "node:crypto";
+import { ConflictError, IdempotencyConflictError } from "@chartwarden/types";
 
 /** SHA-256 hex of (organization_id, key, body) — the request fingerprint (SEC-025 / F13). */
 export function computeIdempotencyHash(organizationId: string, key: string, body: unknown): string {
@@ -45,20 +46,44 @@ export interface IdempotencyStore {
   complete(organizationId: string, key: string, response: IdempotentResponse): Promise<void>;
 }
 
-/** Thrown when an idempotency key is reused with a DIFFERENT request body (SEC-025). */
-export class IdempotencyConflictError extends Error {
+/** The one `Idempotency-Key`-reused-with-a-different-body error (409 IDEMPOTENCY_CONFLICT, SEC-025). */
+export { IdempotencyConflictError };
+
+/** Thrown when a duplicate arrives while the first request is still in flight (F15) — 409 CONFLICT. */
+export class IdempotencyInFlightError extends ConflictError {
   constructor(readonly key: string) {
-    super(`idempotency_conflict: key '${key}' was already used with a different request body`);
-    this.name = "IdempotencyConflictError";
+    super("Idempotency-Key request is still being processed");
+    this.name = "IdempotencyInFlightError";
   }
 }
 
-/** Thrown when a duplicate arrives while the first request is still in flight (F15). */
-export class IdempotencyInFlightError extends Error {
-  constructor(readonly key: string) {
-    super(`idempotency_in_flight: key '${key}' is still being processed by an earlier request`);
-    this.name = "IdempotencyInFlightError";
-  }
+/** Replay a stored record: its response when complete; a conflict on a different body; in flight otherwise. */
+function replay(record: IdempotencyRecord, key: string, requestHash: string): IdempotentResponse {
+  if (record.requestHash !== requestHash) throw new IdempotencyConflictError();
+  if (record.state === "complete") return record.response;
+  throw new IdempotencyInFlightError(key);
+}
+
+/**
+ * Claim `(organizationId, key)` for a request fingerprinted `requestHash`. Resolves `null` when THIS caller
+ * now owns the key and must run the handler (then `store.complete` it); otherwise resolves the cached
+ * response to replay. Throws {@link IdempotencyConflictError} for a different body and
+ * {@link IdempotencyInFlightError} while the first request is still pending. The claim (`putPending`) is the
+ * serialization point (GAP-007): a caller that loses it never runs the handler — it reloads the winner's
+ * record, and a record that vanished in between is reported in flight so the client retries.
+ */
+export async function claimIdempotencyKey(
+  store: IdempotencyStore,
+  organizationId: string,
+  key: string,
+  requestHash: string,
+): Promise<IdempotentResponse | null> {
+  const existing = await store.load(organizationId, key);
+  if (existing) return replay(existing, key, requestHash);
+  if (await store.putPending(organizationId, key, requestHash)) return null;
+  const winner = await store.load(organizationId, key);
+  if (winner) return replay(winner, key, requestHash);
+  throw new IdempotencyInFlightError(key);
 }
 
 /**
@@ -66,7 +91,7 @@ export class IdempotencyInFlightError extends Error {
  * `pending` lock, runs the handler, stores and returns the response. A later call with
  * the SAME body replays the cached response; with a DIFFERENT body it throws
  * IdempotencyConflictError; while the first is still `pending` it throws
- * IdempotencyInFlightError (the caller maps that to HTTP 409).
+ * IdempotencyInFlightError.
  */
 export async function runIdempotent(
   store: IdempotencyStore,
@@ -76,21 +101,8 @@ export async function runIdempotent(
   handler: () => Promise<IdempotentResponse>,
 ): Promise<IdempotentResponse> {
   const requestHash = computeIdempotencyHash(organizationId, key, body);
-
-  const existing = await store.load(organizationId, key);
-  if (existing) {
-    if (existing.requestHash !== requestHash) throw new IdempotencyConflictError(key);
-    if (existing.state === "complete") return existing.response;
-    throw new IdempotencyInFlightError(key);
-  }
-
-  if (!(await store.putPending(organizationId, key, requestHash))) {
-    // Lost the claim to a concurrent duplicate: never run the handler. Reload the winner's record.
-    const winner = await store.load(organizationId, key);
-    if (winner && winner.requestHash !== requestHash) throw new IdempotencyConflictError(key);
-    if (winner?.state === "complete") return winner.response;
-    throw new IdempotencyInFlightError(key);
-  }
+  const cached = await claimIdempotencyKey(store, organizationId, key, requestHash);
+  if (cached) return cached;
   const response = await handler();
   await store.complete(organizationId, key, response);
   return response;

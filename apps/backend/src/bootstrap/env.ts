@@ -25,6 +25,20 @@ export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = [
   "claimmd",
 ];
 
+/**
+ * The cursor-signing key `buildServer` hands the route kit. Production fails closed when it is missing (the
+ * strength rule is `assertProductionEnv`'s); dev/test return undefined and the kit signs with a process-local
+ * random key.
+ */
+export function cursorSigningKeyFrom(env: EnvLike): string | undefined {
+  const key = env.CURSOR_SIGNING_KEY?.trim();
+  if (key) return key;
+  if (env.NODE_ENV === "production") {
+    throw new Error("CURSOR_SIGNING_KEY is required in production (pagination cursors are signed)");
+  }
+  return undefined;
+}
+
 /** One unmet production requirement. */
 export interface EnvProblem {
   readonly key: string;
@@ -344,10 +358,9 @@ const REQUIREMENTS: readonly Requirement[] = [
     },
   },
   {
-    // TASK-010/SEC-005 — the shared cursor-signing secret M19/M20 concurrency.ts fall back to (each also
-    // accepts a module-specific M19_/M20_CURSOR_SIGNING_KEY override). Unset, cursors are signed with a
-    // process-local random key and stop verifying across a restart/redeploy — safe, but an avoidable
-    // re-page for every caller in production.
+    // TASK-010/SEC-005 — the secret every pagination cursor is HMAC-signed with (the route kit,
+    // `@chartwarden/shared/route-kit`, configured by `buildServer` via `cursorSigningKeyFrom`). Production
+    // refuses to boot without it; dev/test sign with a process-local random key instead.
     key: "CURSOR_SIGNING_KEY",
     rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
   },
