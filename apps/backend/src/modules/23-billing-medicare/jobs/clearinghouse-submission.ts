@@ -15,7 +15,9 @@ import type {
 } from "@chartwarden/x12-837-client";
 import {
   CH,
+  bindingForOrg,
   compareStediClaimJsonToX12,
+  isPerOrgBinding,
   routeAckEvent,
   scopeKey,
 } from "@chartwarden/x12-837-client";
@@ -70,11 +72,43 @@ export async function priorClaimAttempt(
   );
 }
 
-/** The vendor the workers must use, or null for the legacy ports. */
+/** The vendor the workers must use, or null for the legacy ports. A per-organization binding is resolved with {@link transportForOrg}. */
 export function activeTransport(deps: {
   readonly transport?: M23TransportDeps;
 }): M23TransportDeps | null {
   return deps.transport?.binding.vendor ? deps.transport : null;
+}
+
+/** True when each organization has its own clearinghouse (tenant clearinghouses); the legacy ports are then never a fallback. */
+export function hasPerOrgTransport(deps: { readonly transport?: M23TransportDeps }): boolean {
+  return deps.transport !== undefined && isPerOrgBinding(deps.transport.binding);
+}
+
+/**
+ * The transport that serves `organizationId`: null for the legacy ports (no transport injected, or one platform binding
+ * with no vendor), else the injected deps with THAT organization's binding in place. With per-organization bindings it is
+ * never null: an organization with no live clearinghouse gets an UNBOUND binding (`vendor` null, every call answers
+ * CH_NOT_WIRED), never the legacy MAC portal, so nothing is sent through an account that is not the organization's own.
+ */
+export async function transportForOrg(
+  deps: { readonly transport?: M23TransportDeps },
+  organizationId: string,
+): Promise<M23TransportDeps | null> {
+  const t = deps.transport;
+  if (!t) return null;
+  if (!isPerOrgBinding(t.binding)) return t.binding.vendor ? t : null;
+  return { ...t, binding: await bindingForOrg(t.binding, organizationId) };
+}
+
+/** Refuse, with the port's own code, to send for an organization whose resolved binding is unbound. */
+export function assertOrgBound(transport: M23TransportDeps, what: string): void {
+  if (transport.binding.vendor === null) {
+    throw failure(
+      what,
+      CH.NOT_WIRED,
+      "no clearinghouse is active for this organization; choose and activate one first",
+    );
+  }
 }
 
 /** Every legacy upload kind has a port kind (the 8xC/8xD transfer notice is `transfer_notice`, ADR-0053 amendment). */
@@ -128,6 +162,22 @@ function payloadFor(
     );
   }
   return { format: "json", document: input.stediJson };
+}
+
+/**
+ * `MacPortalPort.upload` when each organization has its own clearinghouse: the organization's transport is resolved per
+ * call, and an organization with none fails closed (never the legacy portal).
+ */
+export function transportUploadPerOrg(deps: {
+  readonly transport?: M23TransportDeps;
+}): TransportUpload {
+  return async (input) => {
+    const transport = await transportForOrg(deps, input.organizationId);
+    if (!transport)
+      throw failure(input.kind, CH.NOT_WIRED, "no clearinghouse transport is injected");
+    assertOrgBound(transport, input.kind);
+    return transportUpload(transport)(input);
+  };
 }
 
 /**

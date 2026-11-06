@@ -15,6 +15,8 @@ export type {
   VendorSessionBinder,
   BillingStatusProvider,
   ClaimsBillingEntitlementReader,
+  SubscriptionWorkBlockReader,
+  TenantClearinghouseReader,
   ExternalInterfaceMetricsProvider,
   IpuAdmissionReader,
   IpuBedAssignmentProvider,

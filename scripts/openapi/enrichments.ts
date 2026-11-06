@@ -440,6 +440,7 @@ import {
   NoeListQuerySchema,
   NotrListQuerySchema,
   OverrideValidationResultBodySchema,
+  RecordExternalFilingBodySchema,
   RuleConfigListQuerySchema,
   UpdateRuleConfigBodySchema,
   UpsertMacCredentialBodySchema,
@@ -13044,6 +13045,19 @@ const M23NoticeAckAndCorrection = {
     Type.Object({ noticeId: Type.String(), state: M23NoticeState }),
     Type.Null(),
   ]),
+  // A tenant that bills outside ChartWarden files the notice itself (owner decision D4): parked = "file with your biller",
+  // recorded = the date the tenant filed. Null on ChartWarden's own path.
+  externalFiling: Type.Union([
+    Type.Object({
+      status: Type.Union([
+        Type.Literal("filed_externally_pending"),
+        Type.Literal("filed_externally"),
+      ]),
+      filedOn: Type.Union([Type.String(), Type.Null()]),
+      recordedAt: Type.Union([Type.String(), Type.Null()]),
+    }),
+    Type.Null(),
+  ]),
 };
 const M23NoeView = Type.Object({
   ...M23NoticeAckAndCorrection,
@@ -13528,6 +13542,20 @@ Object.assign(ROUTE_ENRICHMENTS, {
     headers: IDEMPOTENCY_KEY_HEADER,
     response: Type.Object({ created: Type.Boolean(), notice: M23NotrView }),
     status: 201,
+  },
+  "POST /api/v1/noe-records/:id/record-external-filing": {
+    summary:
+      "Record the date an organization that bills outside ChartWarden filed the NOE itself (step-up; 200, idempotent for the same date, 409 for another). Nothing is transmitted; the notice leaves the deadline tracker",
+    body: RecordExternalFilingBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23NoeView,
+  },
+  "POST /api/v1/notr-records/:id/record-external-filing": {
+    summary:
+      "Record the date an organization that bills outside ChartWarden filed the NOTR itself (step-up; 200, idempotent for the same date, 409 for another). Nothing is transmitted; the notice leaves the deadline tracker",
+    body: RecordExternalFilingBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23NotrView,
   },
 });
 
@@ -15331,5 +15359,129 @@ Object.assign(ROUTE_ENRICHMENTS, {
     headers: IDEMPOTENCY_KEY_HEADER,
     status: 201,
     response: M34OnboardingMedicaidCredentialIdSchema,
+  },
+});
+
+// ── ADR-0053 amendment 2026-11-06: the tenant's clearinghouse choice (M23 tenant routes + the M34 platform copy) ──
+import {
+  ClearinghouseConfigViewSchema as M23ClearinghouseConfigViewSchema,
+  PutClearinghouseBodySchema as M23PutClearinghouseBodySchema,
+  RecordBaaBodySchema as M23RecordBaaBodySchema,
+  VerifyClearinghouseBodySchema as M23VerifyClearinghouseBodySchema,
+  VerifyClearinghouseResponseSchema as M23VerifyClearinghouseResponseSchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/typebox";
+import {
+  OnboardingClearinghousePutRequest as M34OnboardingClearinghousePutRequest,
+  OnboardingClearinghouseVerifyRequest as M34OnboardingClearinghouseVerifyRequest,
+  OnboardingClearinghouseVerifyResponseSchema as M34OnboardingClearinghouseVerifyResponseSchema,
+  OnboardingClearinghouseViewSchema as M34OnboardingClearinghouseViewSchema,
+  OnboardingNoticeWithdrawalViewSchema as M34OnboardingNoticeWithdrawalViewSchema,
+  OnboardingReasonSchema as M34OnboardingReasonSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-typebox";
+
+const CLEARINGHOUSE_IF_MATCH_HEADERS = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  "If-Match": {
+    required: false,
+    description:
+      "The config's current integer version; required to change an existing config, absent on a first choice.",
+  },
+};
+const M34_CLEARINGHOUSE_WRITE_NOTE =
+  "tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused";
+const M34_CLEARINGHOUSE_BAA_NOTE =
+  "tenant_clearinghouse.verify_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. NOT limited to an onboarding tenant (a live tenant that changed vendor needs it too); an AI actor is refused";
+const M34_NOTICE_WITHDRAW_NOTE =
+  "tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp the watchdog set is kept, the stamp a withdrawn LATE record wrote itself is cleared with it, and a NOTR's prior-election closure goes with the record";
+const M34_NOTICE_WITHDRAW_HEADERS = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  "If-Match": {
+    required: true,
+    description:
+      "The `externalFiling.recordedAt` (UTC ISO timestamp) of the filing record the operator read from the notice; a record withdrawn and re-recorded since is refused with 409 NOTICE_FILING_RECORD_CHANGED, and a request without it with 428 IF_MATCH_REQUIRED; both put the record's current recordedAt in the error details (field currentRecordedAt), so the operator can retry.",
+  },
+};
+const CLEARINGHOUSE_CHOICE_NOTE =
+  "stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work";
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/tenant/clearinghouse": {
+    summary: `The organization's clearinghouse choice, masked (hasSecret; the credential is never returned; baa shows the tenant-held vendor BAA and whether an operator verified it) — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.clearinghouse.read (org-level)`,
+    response: M23ClearinghouseConfigViewSchema,
+  },
+  "PUT /api/v1/tenant/clearinghouse": {
+    summary: `Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) once a production submission exists, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); test mode is refused on a production deployment (422) — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
+    body: M23PutClearinghouseBodySchema,
+    headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
+    status: 201,
+    response: M23ClearinghouseConfigViewSchema,
+  },
+  "POST /api/v1/tenant/clearinghouse/baa": {
+    summary:
+      "Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+    body: M23RecordBaaBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23ClearinghouseConfigViewSchema,
+  },
+  "POST /api/v1/tenant/clearinghouse/verify": {
+    summary:
+      "Verify the vendor connection: a no-PHI connection test where the vendor has a safe probe (Claim.MD), an attestation with an evidence note and the confirmation that it names no patient information where it has none (Stedi). The vendor probe runs with no transaction open (409 CLEARINGHOUSE_CHANGED_DURING_VERIFY if the config moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome and leaves the config at draft. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required",
+    body: M23VerifyClearinghouseBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23VerifyClearinghouseResponseSchema,
+  },
+  "POST /api/v1/tenant/clearinghouse/activate": {
+    summary:
+      "Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification, 409 CLEARINGHOUSE_BAA_NOT_VERIFIED until an operator verified the vendor BAA; idempotent once active). billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23ClearinghouseConfigViewSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/clearinghouse": {
+    summary:
+      "A tenant's clearinghouse choice, masked (hasSecret; the credential is never returned) — platform ops; read is audited",
+    response: M34OnboardingClearinghouseViewSchema,
+  },
+  "PUT /api/v1/platform/tenants/:orgSlug/clearinghouse": {
+    summary: `Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key — ${CLEARINGHOUSE_CHOICE_NOTE}. ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
+    body: M34OnboardingClearinghousePutRequest,
+    headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
+    status: 201,
+    response: M34OnboardingClearinghouseViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/verify": {
+    summary: `Verify a tenant's clearinghouse connection (a no-PHI connection test for Claim.MD, an attestation with evidence for Stedi). ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
+    body: M34OnboardingClearinghouseVerifyRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingClearinghouseVerifyResponseSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/baa/verify": {
+    summary: `Verify the vendor BAA the tenant recorded for its own clearinghouse account (409 CLEARINGHOUSE_BAA_NOT_RECORDED if it has not; idempotent). Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; the audit row names the document reference and effective date verified. ${M34_CLEARINGHOUSE_BAA_NOTE}`,
+    body: M34OnboardingReasonSchema,
+    headers: {
+      ...IDEMPOTENCY_KEY_HEADER,
+      "If-Match": {
+        required: true,
+        description:
+          "The `baa.recordedAt` (UTC ISO timestamp) of the BAA record the operator read from the clearinghouse view; a changed record is refused with 409 CLEARINGHOUSE_BAA_CHANGED.",
+      },
+    },
+    response: M34OnboardingClearinghouseViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/noe-records/:id/withdraw-external-filing": {
+    summary: `Withdraw the "filed outside ChartWarden" record of a tenant's NOE (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match, 428 IF_MATCH_REQUIRED for none; the last two carry the record's current recordedAt in the error details as {field: "currentRecordedAt", message: <timestamp>}, the value to retry with). ${M34_NOTICE_WITHDRAW_NOTE}`,
+    body: M34OnboardingReasonSchema,
+    headers: M34_NOTICE_WITHDRAW_HEADERS,
+    response: M34OnboardingNoticeWithdrawalViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/notr-records/:id/withdraw-external-filing": {
+    summary: `Withdraw the "filed outside ChartWarden" record of a tenant's NOTR, which reopens the prior election that record closed (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match, 428 IF_MATCH_REQUIRED for none; the last two carry the record's current recordedAt in the error details as {field: "currentRecordedAt", message: <timestamp>}, the value to retry with). ${M34_NOTICE_WITHDRAW_NOTE}`,
+    body: M34OnboardingReasonSchema,
+    headers: M34_NOTICE_WITHDRAW_HEADERS,
+    response: M34OnboardingNoticeWithdrawalViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/activate": {
+    summary: `Activate a tenant's verified clearinghouse config; settles wizard step 7 once every earlier step allows it. ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
+    body: M34OnboardingReasonSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingClearinghouseViewSchema,
   },
 });

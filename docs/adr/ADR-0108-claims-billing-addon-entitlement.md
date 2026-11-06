@@ -31,3 +31,29 @@ Claims billing (claim assembly and submission, eligibility checks, DDE work, reo
 - The census adds one paged M5 read every 6 hours per add-on org; an org that never held the add-on costs nothing.
 - Adding a mutating route to M23, M24, M25 or M41 now needs a route-class rule, or the classification test fails.
 - Until Stripe wiring lands, the add-on price is informational and the count is shown but never billed.
+
+## Amendment 2026-11-06 — repurposed: the gate follows the tenant's clearinghouse choice; no add-on, no fee
+
+**Decision (product owner, 2026-11-05).** There is no separate claims-billing fee. A tenant may START new claims and eligibility
+work exactly when it has chosen `stedi` or `claimmd` and that config is `active` (ADR-0053 amendment 2026-11-06); `outside`,
+nothing chosen, and a `draft` or `verified` config are refused. The carve-outs (NOE / NOTR / transfer notices, voids, in-flight
+work, reads and configuration), D5's list of blocked work, D6's `CLAIMS_BILLING_ENFORCEMENT=off|shadow|enforce` semantics and
+D7's mount-boundary gate, worker hold and void exemption are unchanged. The default stays `shadow` (owner decision, 2026-11-05); a production boot that runs any mode but `enforce` logs a warning saying so (the deploy env files are not touched here).
+
+**What changed.** D1-D3 (the add-on, its grant and its entitlement rule) no longer decide anything. The `ClaimsBillingEntitlementReader`
+seam is now owned and registered by M23 and decides from `TenantClearinghouseReader` (D4): `{ entitled: true }` for an active
+transmitting config, else `clearinghouse_not_chosen`, `clearinghouse_outside` or `clearinghouse_not_active`. The refused request
+is still 402 `CLAIMS_BILLING_ADDON_REQUIRED` (the code keeps its historical name so the shipped client keeps working; renaming
+it belongs with the UI slice) with the reason as the detail code. An organization named in `CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS`
+that has no row is entitled (the platform vendor serves it). `GET /api/v1/billing/status` `claimsBilling.entitled` / `reason`
+come from the same decision, so the notice says what the gate does.
+
+**The subscription still blocks (owner decision D1, 2026-11-06).** A suspended, paused or canceled ChartWarden subscription still refuses NEW claims and
+eligibility work, whatever the clearinghouse says: the refused request is the same 402 with the detail code `subscription_suspended`, `subscription_paused` or
+`subscription_canceled`. M23's entitlement decision reads it through the `SubscriptionWorkBlockReader` seam (owner M35, which reuses the D3 status rule; an org with no subscription row is not
+blocked) and asks it first, then the clearinghouse. NOE / NOTR, voids and in-flight work keep running, as before. A failed read of either fails the gate closed.
+
+**Kept, expand-only.** The `addon` and `subscription_addon` tables, their grant / cancel routes, the `m35.claims_billing_addon.*`
+events and D8's census pull (`patient_active_period`, `billing_addon_patient`, the sweep) are untouched: the census stays
+because pricing reuses it as a meter. Granting the add-on now changes nothing the gate sees; the census sweep still selects
+orgs by a live add-on row, which slice 2 (pricing) re-points. Retiring the grant routes is slice 2's call.

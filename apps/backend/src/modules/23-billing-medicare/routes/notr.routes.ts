@@ -11,6 +11,10 @@
 // CORRECT (migration 0378) drafts a corrected NOTR for a REJECTED one — a new linked DRAFT (`corrects_notice_id`),
 // gated like filing it (`billing.notr.submit` + provider scope + AI-block + `Idempotency-Key`; the step-up stays on
 // submit). CMS Pub. 100-04 ch. 11 §20.1.2; M23 §2.2 "corrected NOTR is its own row".
+//
+// RECORD-EXTERNAL-FILING (owner decision D4) — an organization that bills outside ChartWarden files its NOTR itself: submit PARKS
+// the notice (nothing queued or sent) and `POST /:id/record-external-filing` records the date the tenant filed it. Guarded like
+// submit (same permission, provider scope, step-up, AI-block, Idempotency-Key); 200, idempotent for the same date.
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import {
@@ -18,6 +22,7 @@ import {
   CorrectNoticeBodySchema,
   NotrIdParamsSchema,
   NotrListQuerySchema,
+  RecordExternalFilingBodySchema,
   parse,
 } from "./billing-typebox";
 import { requireIdempotencyKey } from "./concurrency";
@@ -92,6 +97,20 @@ export function registerNotrRoutes(app: FastifyInstance, deps: NotrRouteDeps): v
       const { id } = parse(NotrIdParamsSchema, request.params);
       const res = await writeService.submitNotr(actor, id);
       return reply.code(202).send(res);
+    },
+  );
+
+  // POST /notr-records/:id/record-external-filing — an org that bills outside ChartWarden records the date it filed this NOTR
+  // itself (owner decision D4). ChartWarden transmits nothing; the notice leaves the deadline tracker. 200, idempotent for the same
+  // date, 409 for another. Guarded exactly like submit (the same permission, provider scope, step-up, AI-block, Idempotency-Key).
+  app.post(
+    "/api/v1/notr-records/:id/record-external-filing",
+    { preHandler: [SUBMIT, SUBMIT_ABAC, SUBMIT_STEPUP, NO_AI, IDEMPOTENT] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(NotrIdParamsSchema, request.params);
+      const body = parse(RecordExternalFilingBodySchema, request.body);
+      return writeService.recordNotrExternalFiling(actor, id, body);
     },
   );
 

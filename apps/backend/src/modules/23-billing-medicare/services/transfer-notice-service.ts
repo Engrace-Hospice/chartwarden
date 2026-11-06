@@ -35,6 +35,7 @@ import {
   type WriteOutboxPort,
   assertNotAiActor,
 } from "./claim-state-service";
+import { type BillsOutsidePort, orgBillsOutside } from "./external-notice-filing";
 
 type Notice = repositories.TransferNoticeRecord;
 
@@ -127,6 +128,11 @@ export interface TransferNoticeServicePorts {
   readonly outbox?: WriteOutboxPort;
   /** The submission job gate (`buildM23OutboxBackedSubmissionGate`); absent ⇒ submit refused 503. */
   readonly jobs?: JobEnqueuePort;
+  /**
+   * Whether the org bills outside ChartWarden (the composition root binds it over `TenantClearinghouseReader`). Such an org files
+   * its transfer notices itself, so submit refuses with a typed 409 instead of queueing a job nothing would send.
+   */
+  readonly billsOutside?: BillsOutsidePort;
   /** M6's org-explicit transfer-in facts — refreshes our admission date + physicians before a filing. */
   readonly transferInFacts?: TransferInFactsResolver;
   readonly now?: () => Date;
@@ -496,6 +502,14 @@ export function buildTransferNoticeService(
 
     async submit(actor, transferNoticeId, args) {
       assertNotAiActor(actor);
+      // Read before anything is touched (the seam opens its own connection; a failed read is a typed 503, never a guess).
+      if (await orgBillsOutside(ports.billsOutside, actor.organizationId)) {
+        throw new ChartWardenError(
+          "CLAIMS_FILE_WITH_YOUR_BILLER",
+          "this organization bills outside ChartWarden: file the transfer notice with your biller; ChartWarden does not transmit it",
+          409,
+        );
+      }
       const jobs = ports.jobs;
       if (!jobs) {
         throw new ChartWardenError(

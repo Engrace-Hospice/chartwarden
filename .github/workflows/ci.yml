@@ -1395,6 +1395,8 @@ jobs:
           - { name: "M35 claims-billing add-on", scripts: "test:m35:claims-billing-addon:live" }
           # M34 - a platform operator enters a tenant's provider entity / location / MAC credential on its behalf: rows land in the target org under its RLS (real chartwarden_app), operator-attributed + audited with a reason, refused unless the tenant is provisioning/onboarding, no step-up / AI actor / missing reason refused, EIN + MAC secret never returned.
           - { name: "M34 onboarding data", scripts: "test:m34:onboarding-data:live" }
+          # ADR-0053 amendment 2026-11-06 - each tenant's own clearinghouse: sealed credential never returned (table, responses, audit), RLS isolation as the real chartwarden_app, per-org transport resolution against the real table, the claims-billing gate per choice, the platform write lane (audited, onboarding-only) settling wizard step 7, vendor lock once a production submission exists and a switch refused while claims are queued, the tenant-held vendor BAA (tenant records, operator verifies, the table CHECK and activation refuse active without it), rotation back to draft with the claim job held, the audit trigger's secret_changed flag and the field-level audit row, the org-level permission pair (an entity-scoped MAC-key holder refused).
+          - { name: "M23 tenant clearinghouse", scripts: "test:m23:tenant-clearinghouse:live" }
           # ADR-0108 D8 - census pull: active-only, add-on orgs only, idempotent rerun, pseudonyms only, two-org RLS, reconcile drift.
           - { name: "M35 claims-billing census", scripts: "test:m35:claims-billing-census:live" }
           # GAP-057 - M34's two recipient resolvers registered on the real emitter; platform-owner reader.

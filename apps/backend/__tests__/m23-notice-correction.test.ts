@@ -97,13 +97,16 @@ const catalogAccepts = (e: Published) => {
   return Value.Check(def.payloadSchema as never, e.payload);
 };
 
-function service(published: Published[]) {
+function service(published: Published[], at = new Date("2026-10-06T12:00:00.000Z")) {
   return buildNoticeCorrectionService({} as never, {
     outbox: { publish: async (_tx, e) => void published.push(e as Published) },
     ccnFor: async () => "H00001",
-    now: () => new Date("2026-10-06T12:00:00.000Z"),
+    now: () => at,
   });
 }
+
+/** 21:30 on 2026-10-06 in the Eastern (CMS) day, which is already 2026-10-07 in UTC. */
+const EASTERN_EVENING = new Date("2026-10-07T01:30:00.000Z");
 
 const rejectedNoe = (over: Row = {}): Row => ({
   id: "noe-rejected",
@@ -264,6 +267,24 @@ describe("corrected NOE", () => {
     ).rejects.toMatchObject({ statusCode: 422 });
   });
 
+  // Round 3, L5: "today" for the future-date check is the Eastern (CMS) day, like every other date rule of this round. In the Eastern
+  // evening the UTC day is already tomorrow, and the UTC day let a date through that has not happened yet at CMS.
+  it("judges 'in the future' on the Eastern day: in the Eastern evening tomorrow's UTC date is still the future", async () => {
+    fakes.noes.set("noe-rejected", rejectedNoe());
+    await expect(
+      service([], EASTERN_EVENING).correctNoe(actor, "noe-rejected", {
+        reason: REASON,
+        correctedDate: "2026-10-07",
+      }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+    // the Eastern day itself is today, not the future
+    const res = await service([], EASTERN_EVENING).correctNoe(actor, "noe-rejected", {
+      reason: REASON,
+      correctedDate: "2026-10-06",
+    });
+    expect(res.record).toMatchObject({ electionEffectiveDate: "2026-10-06" });
+  });
+
   it("another organization's NOE is not found (404), and nothing is written", async () => {
     fakes.noes.set("noe-rejected", rejectedNoe({ organizationId: OTHER_ORG }));
     await expect(
@@ -305,6 +326,21 @@ describe("corrected NOTR", () => {
     correctsNoticeId: null,
     version: 2,
     ...over,
+  });
+
+  it("judges 'in the future' on the Eastern day: in the Eastern evening tomorrow's UTC date is still the future", async () => {
+    fakes.notrs.set("notr-rejected", rejectedNotr());
+    await expect(
+      service([], EASTERN_EVENING).correctNotr(actor, "notr-rejected", {
+        reason: REASON,
+        correctedDate: "2026-10-07",
+      }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+    const res = await service([], EASTERN_EVENING).correctNotr(actor, "notr-rejected", {
+      reason: REASON,
+      correctedDate: "2026-10-06",
+    });
+    expect(res.record).toMatchObject({ effectiveEndDate: "2026-10-06" });
   });
 
   it("copies the terminating event and end date into a linked DRAFT; announces it", async () => {

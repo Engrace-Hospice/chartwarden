@@ -672,8 +672,16 @@ export interface PatientCounterProvider {
 /** The add-on slug / entitlement key (migration 1321 seeds the one `addon` row). */
 export const CLAIMS_BILLING_ADDON_SLUG = "claims_billing";
 
-/** Why an org is NOT entitled to start new claims-billing work (ADR-0108 D3). */
+/**
+ * Why an org is NOT entitled to start new claims-billing work. The three `clearinghouse_*` reasons are the live ones
+ * (ADR-0108 repurposed, ADR-0053 amendment 2026-11-06: the entitlement follows the org's clearinghouse choice, with no
+ * add-on and no fee). The add-on reasons (ADR-0108 D3) are no longer produced by the gate; they stay in the union so the
+ * add-on admin surface and its stored history keep type-checking (expand-only).
+ */
 export type ClaimsBillingDenyReason =
+  | "clearinghouse_not_chosen"
+  | "clearinghouse_outside"
+  | "clearinghouse_not_active"
   | "never_purchased"
   | "lapsed"
   | "subscription_suspended"
@@ -688,12 +696,36 @@ export type ClaimsBillingEntitlement =
 export type SubscriptionAddonStatus = "trialing" | "active" | "canceled";
 
 /**
- * ADR-0108 — the claims-billing entitlement read (owner M35). Entitled = a trialing/active, not-ended
- * `subscription_addon` row AND a base subscription in trialing/active/past_due/at_risk. No cache: every call reads
- * the database (the gate memoises per request). Throws when the read fails; a new-work caller fails CLOSED on it.
+ * ADR-0108 (repurposed) — the claims-billing entitlement read (owner M23). Entitled = the org chose `stedi` or `claimmd`
+ * and that config is `active`; `outside` and "nothing chosen" are refused (a `draft` / `verified` config is not active
+ * yet). No cache: every call reads the database (the gate memoises per request). Throws when the read fails; a new-work
+ * caller fails CLOSED on it.
  */
 export interface ClaimsBillingEntitlementReader {
   entitlementForOrg(organizationId: OrgId): Promise<ClaimsBillingEntitlement>;
+}
+
+/**
+ * Owner decision D1 (2026-11-06) — a suspended, paused or canceled ChartWarden subscription still blocks NEW claims and
+ * eligibility work, whatever the tenant's clearinghouse says (the add-on is gone; the subscription is not). The reasons are the
+ * same strings the gate's 402 carries ({@link ClaimsBillingDenyReason}).
+ */
+export type SubscriptionWorkBlockReason =
+  | "subscription_suspended"
+  | "subscription_paused"
+  | "subscription_canceled";
+
+export type SubscriptionWorkBlock =
+  | { readonly blocked: false }
+  | { readonly blocked: true; readonly reason: SubscriptionWorkBlockReason };
+
+/**
+ * The seam (owner M35) through which M23's claims-billing decision reads the org's subscription: `blocked` for a suspended,
+ * paused or canceled one; not blocked for trialing / active / past_due / at_risk, and for an org with no subscription row
+ * (nothing suspended it). No cache. Throws when the read fails; the gate then fails CLOSED.
+ */
+export interface SubscriptionWorkBlockReader {
+  blockForOrg(organizationId: OrgId): Promise<SubscriptionWorkBlock>;
 }
 
 /** §4.5 platform-shared revenue metrics (consumed by M33 for the platform-ops revenue dashboard). */

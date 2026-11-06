@@ -11,6 +11,7 @@
 // service emits the `*_requested` outbox row + records the submission attempt; the worker uploads and emits
 // the terminal `submitted`/`accepted`/`rejected`).
 import type { repositories } from "@chartwarden/billing";
+import type { BillsOutsidePort } from "../services/external-notice-filing";
 import type { PriorLiveEndedStayPort } from "../services/prior-election-closure";
 import type { M23WriteActor } from "./actor";
 import type {
@@ -146,6 +147,12 @@ export interface M23WriteServicePorts {
    */
   readonly priorLiveEndedStay?: PriorLiveEndedStayPort;
   /**
+   * Whether the organization bills outside ChartWarden (owner decision D4). When it does, `submitNoe` / `submitNotr` PARK the
+   * notice for the tenant to file itself (nothing queued, sent or announced) and the tenant records the date it filed. Bound at
+   * the composition root over `TenantClearinghouseReader`; absent = nobody bills outside. A read that throws fails closed (503).
+   */
+  readonly billsOutside?: BillsOutsidePort;
+  /**
    * GAP-144 (spec #36) — the MAC sandbox probe behind `POST /billing/mac-credentials/:providerEntityId/test`.
    * Absent (no launch gateway configured) the route answers a typed 503 rather than a fabricated "ok".
    */
@@ -195,9 +202,12 @@ export interface ClaimSubmissionAcceptedView {
   readonly claimControlNumber: string;
 }
 export interface NoticeSubmissionAcceptedView {
-  readonly submissionId: string;
-  readonly jobId: string;
+  /** Null when the notice was parked (the organization bills outside ChartWarden): nothing was queued. */
+  readonly submissionId: string | null;
+  readonly jobId: string | null;
   readonly kind: Extract<ClaimSubmissionKind, "noe" | "notr">;
+  /** `pending` when parked for the tenant to file with its biller; absent when ChartWarden queued the filing. */
+  readonly externalFiling?: "pending";
 }
 export interface EligibilityCheckAcceptedView {
   readonly jobId: string;
@@ -312,6 +322,10 @@ export interface CancelNotrArgs {
   /** The §2.2 guard fact: the terminating m6 event was reversed (else the cancel is refused). */
   readonly terminatingEventReversed: boolean;
 }
+/** The date (`YYYY-MM-DD`) an organization that bills outside ChartWarden filed its NOE / NOTR itself. No free text. */
+export interface RecordExternalFilingArgs {
+  readonly filedOn: string;
+}
 
 /**
  * File a corrected NOE / NOTR for a rejected one (ch. 11 §20.1.1 / §20.1.2): the biller's reason (20–2000 chars)
@@ -397,6 +411,20 @@ export interface M23WriteRouteService {
   cancelNoe(actor: M23WriteActor, noeId: string, args: CancelNoeArgs): Promise<NoeView>;
   submitNotr(actor: M23WriteActor, notrId: string): Promise<NoticeSubmissionAcceptedView>;
   cancelNotr(actor: M23WriteActor, notrId: string, args: CancelNotrArgs): Promise<NotrView>;
+  /**
+   * An organization that bills outside ChartWarden records the date it filed the NOE / NOTR itself (owner decision D4):
+   * idempotent for the same date, 409 for a different one. Nothing is transmitted.
+   */
+  recordNoeExternalFiling(
+    actor: M23WriteActor,
+    noeId: string,
+    args: RecordExternalFilingArgs,
+  ): Promise<NoeView>;
+  recordNotrExternalFiling(
+    actor: M23WriteActor,
+    notrId: string,
+    args: RecordExternalFilingArgs,
+  ): Promise<NotrView>;
   /** Draft the corrected NOE for a rejected one (idempotent: replays the correction in progress). */
   correctNoe(
     actor: M23WriteActor,

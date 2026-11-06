@@ -23,5 +23,9 @@ acks → 835 → posting → denials → NOTR).
 | [`DDE_STEDI_PROMPT_ASSESSMENT.md`](./DDE_STEDI_PROMPT_ASSESSMENT.md) | The prompt the assessment answered. |
 | [`DDE_STEDI_REVIEW_20261008.md`](./DDE_STEDI_REVIEW_20261008.md) | Review that fed ADR-0052. |
 
+Per-tenant clearinghouse (2026-11-06): each tenant chooses `stedi`, `claimmd` or `outside` with its own sealed credential;
+see the amendment of the same date in ADR-0053. The vendor connection test is the Claim.MD `uploadlist` probe (no PHI); Stedi has
+no safe probe, so its verification is an attestation with evidence.
+
 Decisions: [ADR-0052](../../adr/ADR-0052-dde-work-queue.md) (DDE work queue); ADR-0053 (clearinghouse
 transport port) is the first item of the plan.

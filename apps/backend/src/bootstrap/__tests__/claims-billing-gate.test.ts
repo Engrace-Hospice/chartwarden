@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   CLAIMS_BILLING_HOLD_MS,
   assertClaimsBillingSeamBound,
+  claimsBillingEnforcementBootWarning,
   claimsBillingPreHandler,
   configureClaimsBillingGate,
   holdUnlessClaimsBillingEntitled,
@@ -285,5 +286,24 @@ describe("holdUnlessClaimsBillingEntitled (workers: hold, don't fail)", () => {
     bindReader({ entitled: false, reason: "lapsed" });
     await holdUnlessClaimsBillingEntitled(j, "tok", ORG, "claim.submit");
     expect(j.moves).toEqual([]);
+  });
+});
+
+// Owner decision (round 2, Q2): the shadow default stays; a production deployment running anything but enforce says so at boot.
+describe("claimsBillingEnforcementBootWarning", () => {
+  it("warns on a production deployment in shadow or off, naming the mode and the variable", () => {
+    for (const mode of ["shadow", "off"] as const) {
+      const warning = claimsBillingEnforcementBootWarning(mode, "production");
+      expect(warning, mode).toContain(mode);
+      expect(warning, mode).toContain("CLAIMS_BILLING_ENFORCEMENT");
+    }
+  });
+
+  it("is silent for enforce in production, and outside production whatever the mode", () => {
+    expect(claimsBillingEnforcementBootWarning("enforce", "production")).toBeNull();
+    for (const env of ["development", "test", undefined]) {
+      expect(claimsBillingEnforcementBootWarning("shadow", env)).toBeNull();
+      expect(claimsBillingEnforcementBootWarning("off", env)).toBeNull();
+    }
   });
 });

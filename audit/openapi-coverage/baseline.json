@@ -107,7 +107,7 @@
       "mutatingNoBody": 0
     },
     "23-billing-medicare": {
-      "routes": 101,
+      "routes": 108,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -147,7 +147,7 @@
       "mutatingNoBody": 0
     },
     "31-portal": {
-      "routes": 65,
+      "routes": 67,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -162,7 +162,7 @@
       "mutatingNoBody": 0
     },
     "34-saas-tenant-platform": {
-      "routes": 58,
+      "routes": 87,
       "deficit": 0,
       "mutatingNoBody": 0
     },

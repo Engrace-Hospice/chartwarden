@@ -9,7 +9,9 @@ import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { type ValidAckEvent, validateAckEvent } from "../domain/ack-event";
 import { transitionForAck } from "../domain/ack-transition";
 import type { CommercialContextPort } from "../eligibility/service";
+import { withOrgBinding } from "../services/org-binding";
 import type { CommercialOutboxPort, CommercialTx } from "../services/types";
+import type { UnboundAlertPort } from "./unbound-alert";
 
 /** A sent claim older than this is no longer polled for; a held answer past it is asked about once (claim status), then abandoned. */
 export const ACK_POLL_MAX_AGE_DAYS = 45;
@@ -31,12 +33,16 @@ export interface AckCursorStore {
   advance(key: AckCursorKey, expectedVersion: number, next: string | null): Promise<boolean>;
 }
 
+/** `vendor` null = unbound. `forOrg` = per-organization (see services/org-binding.ts): resolve before acting for an organization. */
+export interface AckBinding {
+  readonly vendor: string | null;
+  readonly transport: Pick<ClearinghouseTransport, "fetchAcknowledgments" | "fetchClaimStatus">;
+  readonly forOrg?: (organizationId: string) => Promise<AckBinding>;
+}
+
 export interface AckWorkerDeps {
   readonly db: DbClient;
-  readonly binding: {
-    readonly vendor: string | null;
-    readonly transport: Pick<ClearinghouseTransport, "fetchAcknowledgments" | "fetchClaimStatus">;
-  };
+  readonly binding: AckBinding;
   readonly contexts: CommercialContextPort;
   readonly cursors: AckCursorStore;
   readonly outbox: CommercialOutboxPort;
@@ -51,6 +57,8 @@ export interface AckWorkerDeps {
   readonly activeOrgs: {
     listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
   };
+  /** One alert per org per window when an org awaits acknowledgments and has no live clearinghouse (the tick still carries on). */
+  readonly alerts?: UnboundAlertPort;
   readonly now?: () => Date;
   /** PHI-free log sink (ids, codes and counts only). */
   readonly log?: (event: {
@@ -319,10 +327,11 @@ export async function applyValidEvent(
  * event id changes nothing.
  */
 export async function applyAckEvent(
-  deps: AckApplyDeps,
+  rawDeps: AckApplyDeps,
   scope: Scope,
   raw: unknown,
 ): Promise<ApplyOutcome> {
+  const deps = await withOrgBinding(rawDeps, scope.organizationId, rawDeps.log);
   const checked = validateAckEvent(raw);
   if (!checked.ok) {
     const eventId = checked.eventId ?? derivedEventId(raw);

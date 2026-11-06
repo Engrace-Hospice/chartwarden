@@ -28,10 +28,16 @@ import {
 } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
+import type { OnboardingClearinghousePort } from "../../../../bootstrap/onboarding-clearinghouse-port";
 import type {
   OnboardingCredentialPort,
   OnboardingWriteScope,
 } from "../../../../bootstrap/onboarding-credential-port";
+import type {
+  OnboardingNoticeKind,
+  OnboardingNoticePort,
+  OnboardingNoticeView,
+} from "../../../../bootstrap/onboarding-notice-port";
 import { createDrizzleSiteAdminRepository } from "../../../../bootstrap/site-admin-repository";
 import {
   type SiteWriteDeps,
@@ -93,6 +99,47 @@ export interface OnboardingDataService {
     reason: string,
     expectedVersion: number | undefined,
   ): Promise<unknown>;
+  /** The tenant's clearinghouse choice, masked (`hasSecret`, never the credential). One audited read. */
+  getClearinghouse(op: OnboardingOperator, orgSlug: string): Promise<unknown>;
+  putClearinghouse(
+    op: OnboardingOperator,
+    orgSlug: string,
+    fields: OnboardingFields,
+    reason: string,
+    expectedVersion: number | undefined,
+  ): Promise<{ readonly created: boolean; readonly view: unknown }>;
+  verifyClearinghouse(
+    op: OnboardingOperator,
+    orgSlug: string,
+    fields: OnboardingFields,
+    reason: string,
+  ): Promise<{ readonly config: unknown; readonly test: unknown }>;
+  activateClearinghouse(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
+  /**
+   * The operator verifies the vendor BAA the tenant recorded. NOT gated on the tenant's onboarding status: a live tenant that
+   * changed vendor or re-recorded its BAA needs this too.
+   */
+  /** `expected` is the `baa.recordedAt` the operator read: a record that changed since is a 409, not a verification. */
+  verifyClearinghouseBaa(
+    op: OnboardingOperator,
+    orgSlug: string,
+    reason: string,
+    expected: { readonly recordedAt: string },
+  ): Promise<unknown>;
+  /**
+   * The operator withdraws the tenant's "filed outside ChartWarden" record of one NOE / NOTR: the notice returns to its pre-record
+   * state (a watchdog's breach stamp stays; the one a withdrawn LATE record wrote itself is cleared with it). NOT gated on the
+   * tenant's onboarding status. `expected` is the `externalFiling.recordedAt` the operator read (null: the request named none): a
+   * record that changed since is a 409 and none named is a 428, both carrying the current `recordedAt` in the error details.
+   */
+  withdrawNoticeExternalFiling(
+    op: OnboardingOperator,
+    orgSlug: string,
+    kind: OnboardingNoticeKind,
+    noticeId: string,
+    reason: string,
+    expected: { readonly recordedAt: string | null },
+  ): Promise<OnboardingNoticeView>;
   listMedicaidCredentials(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
   upsertMedicaidCredential(
     op: OnboardingOperator,
@@ -125,6 +172,15 @@ export interface OnboardingDataDeps {
   readonly advance?: (tenant: { tenantAccountId: string; organizationId: string }) => Promise<void>;
   /** `err` carries the raw error for the redacting logger (a database error holds bound values). */
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
+  /** M23's clearinghouse adapter (ADR-0053 amendment 2026-11-06); unbound -> the clearinghouse routes answer 503. */
+  readonly clearinghouse?: OnboardingClearinghousePort;
+  /** M23's notice adapter (an operator withdraws a tenant's external-filing record); unbound -> that route answers 503. */
+  readonly notices?: OnboardingNoticePort;
+  /**
+   * Runs the onboarding advance pass for the tenant after a clearinghouse change COMMITS, so wizard step 7
+   * (`clearinghouse_selected`) settles at once. Best effort: a failure is the caller's to log and never fails the write.
+   */
+  readonly settleOnboarding?: (organizationId: string) => Promise<void>;
   readonly logError?: (cause: unknown, context: { organizationId: string }) => void;
   /** Cause logging for a failed-attempt audit row that could not be written (the original error still reaches the caller). */
   readonly logAuditError?: (cause: unknown, context: { organizationId: string }) => void;
@@ -187,6 +243,8 @@ interface WriteResult<T> {
   readonly value: T;
   readonly resourceId: string;
   readonly changedFields?: readonly string[];
+  /** Non-sensitive facts for the audit row (counts, codes, kinds). */
+  readonly detail?: Readonly<Record<string, string | number | boolean>>;
 }
 
 type WriteOutcome<T> = { readonly refusedStatus: string } | { readonly value: T };
@@ -195,6 +253,8 @@ interface WriteSpec {
   readonly event: OnboardingAuditEvent;
   readonly resourceKind: string;
   readonly reason: string;
+  /** True for a write a LIVE tenant needs too (the BAA verification): the shared lock and the audit row stay, the status gate goes. */
+  readonly anyTenantStatus?: boolean;
 }
 
 const scopeOf = (op: OnboardingOperator, organizationId: string): OnboardingWriteScope => ({
@@ -289,7 +349,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             .limit(1);
           if (!account) throw new NotFoundError("tenant");
           tenantAccountId = account.id;
-          if (!ONBOARDING_WRITABLE_STATUSES.has(account.status)) {
+          if (!spec.anyTenantStatus && !ONBOARDING_WRITABLE_STATUSES.has(account.status)) {
             await recordOnboardingAudit(tx, op, target, {
               eventType: EVENTS.writeRefused,
               resourceKind: spec.resourceKind,
@@ -314,6 +374,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             outcome: "success",
             reason: spec.reason,
             ...(done.changedFields ? { changedFields: done.changedFields } : {}),
+            ...(done.detail ? { detail: done.detail } : {}),
           });
           return { value: done.value };
         },
@@ -425,6 +486,45 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       },
     );
 
+  /** The bound clearinghouse adapter, or a typed 503 (the credential lanes' posture). */
+  function clearinghousePort(): OnboardingClearinghousePort {
+    if (!deps.clearinghouse) {
+      throw new ChartWardenError(
+        "ONBOARDING_CLEARINGHOUSE_UNBOUND",
+        "the clearinghouse adapter is not bound in this deployment",
+        503,
+      );
+    }
+    return deps.clearinghouse;
+  }
+
+  function noticePort(): OnboardingNoticePort {
+    if (!deps.notices) {
+      throw new ChartWardenError(
+        "ONBOARDING_NOTICES_UNBOUND",
+        "the notice adapter is not bound in this deployment",
+        503,
+      );
+    }
+    return deps.notices;
+  }
+
+  /** Post-commit, best effort: the advance pass that settles wizard step 7. A failure is warned (like `settleAfterWrite`) and never thrown. */
+  async function settleStepAfter<T>(organizationId: string, result: T): Promise<T> {
+    if (!deps.settleOnboarding) return result;
+    try {
+      await deps.settleOnboarding(organizationId);
+    } catch (cause) {
+      deps.warn?.("m34.onboarding data: onboarding settle after a clearinghouse change failed", {
+        organizationId,
+        err: cause,
+      });
+    }
+    return result;
+  }
+
+  const CLEARINGHOUSE_KIND = "tenant_clearinghouse_config";
+
   return {
     listProviderEntities: (op, orgSlug) =>
       read(op, orgSlug, "provider_entity", async (t) => ({
@@ -497,6 +597,129 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     listMacCredentials: (op, orgSlug) => listCredentials(op, orgSlug, MAC_LANE),
     upsertMacCredential: (op, orgSlug, fields, reason, expectedVersion) =>
       upsertCredential(op, orgSlug, MAC_LANE, fields, reason, expectedVersion),
+    getClearinghouse: async (op, orgSlug) => {
+      const { items } = await read(op, orgSlug, CLEARINGHOUSE_KIND, async (t) => ({
+        items: [await clearinghousePort().get(scopeOf(op, t.organizationId))],
+      }));
+      return items[0];
+    },
+
+    putClearinghouse: async (op, orgSlug, fields, reason, expectedVersion) => {
+      let organizationId = "";
+      const result = await write(
+        op,
+        orgSlug,
+        { event: EVENTS.clearinghouseSet, resourceKind: CLEARINGHOUSE_KIND, reason },
+        async (tx, t) => {
+          organizationId = t.organizationId;
+          const done = await clearinghousePort().put(
+            tx,
+            scopeOf(op, t.organizationId),
+            fields,
+            expectedVersion,
+          );
+          return {
+            value: { created: done.created === true, view: done.view },
+            resourceId: done.resourceId,
+            ...(done.changedFields ? { changedFields: done.changedFields } : {}),
+          };
+        },
+      );
+      return settleStepAfter(organizationId, result);
+    },
+
+    verifyClearinghouse: async (op, orgSlug, fields, reason) => {
+      // The vendor probe is a network call: it runs with NO transaction open (and no row lock held). Step 1 reads and unseals
+      // the credential on its own short read, step 2 is the probe, step 3 is the audited write transaction, which
+      // compare-and-sets on the version step 1 read (409 when the config moved meanwhile).
+      // ponytail: the tenant-status gate is inside `write`, so a verify against a tenant that is no longer onboarding probes
+      // the vendor once and is then refused (audited); the probe holds no PHI and no lock, so the waste is one vendor call.
+      const target = await targetOf(orgSlug);
+      const scope = scopeOf(op, target.organizationId);
+      const port = clearinghousePort();
+      const plan = await port.prepareVerify(scope, fields);
+      const outcome = await port.runProbe(plan);
+      let organizationId = "";
+      const result = await write(
+        op,
+        orgSlug,
+        { event: EVENTS.clearinghouseVerified, resourceKind: CLEARINGHOUSE_KIND, reason },
+        async (tx, t) => {
+          organizationId = t.organizationId;
+          const done = await port.completeVerify(tx, scope, plan, outcome);
+          return {
+            value: { config: done.view, test: done.test ?? null },
+            resourceId: done.resourceId,
+            ...(done.detail ? { detail: done.detail } : {}),
+          };
+        },
+      );
+      return settleStepAfter(organizationId, result);
+    },
+
+    activateClearinghouse: async (op, orgSlug, reason) => {
+      let organizationId = "";
+      const view = await write(
+        op,
+        orgSlug,
+        { event: EVENTS.clearinghouseActivated, resourceKind: CLEARINGHOUSE_KIND, reason },
+        async (tx, t) => {
+          organizationId = t.organizationId;
+          const done = await clearinghousePort().activate(tx, scopeOf(op, t.organizationId));
+          return { value: done.view, resourceId: done.resourceId };
+        },
+      );
+      return settleStepAfter(organizationId, view);
+    },
+
+    verifyClearinghouseBaa: (op, orgSlug, reason, expected) =>
+      write(
+        op,
+        orgSlug,
+        {
+          event: EVENTS.clearinghouseBaaVerified,
+          resourceKind: CLEARINGHOUSE_KIND,
+          reason,
+          anyTenantStatus: true,
+        },
+        async (tx, t) => {
+          const done = await clearinghousePort().verifyBaa(
+            tx,
+            scopeOf(op, t.organizationId),
+            expected,
+          );
+          return {
+            value: done.view,
+            resourceId: done.resourceId,
+            ...(done.detail ? { detail: done.detail } : {}),
+          };
+        },
+      ),
+
+    withdrawNoticeExternalFiling: (op, orgSlug, kind, noticeId, reason, expected) =>
+      write(
+        op,
+        orgSlug,
+        {
+          event: EVENTS.noticeExternalFilingWithdrawn,
+          resourceKind: kind === "noe" ? "noe_record" : "notr_record",
+          reason,
+          anyTenantStatus: true,
+        },
+        async (tx, t) => {
+          const done = await noticePort().withdrawExternalFiling(
+            tx,
+            scopeOf(op, t.organizationId),
+            {
+              kind,
+              noticeId,
+              expectedRecordedAt: expected.recordedAt,
+            },
+          );
+          return { value: done.view, resourceId: done.resourceId, detail: done.detail };
+        },
+      ),
+
     listMedicaidCredentials: (op, orgSlug) => listCredentials(op, orgSlug, MEDICAID_LANE),
     upsertMedicaidCredential: (op, orgSlug, fields, reason) =>
       upsertCredential(op, orgSlug, MEDICAID_LANE, fields, reason),

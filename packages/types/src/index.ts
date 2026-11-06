@@ -42,6 +42,7 @@ export * from "./doclens-clinical-writeback";
 export * from "./patient-code-status";
 export * from "./portal";
 export * from "./subscription-billing";
+export * from "./tenant-clearinghouse";
 export * from "./inpatient";
 export * from "./screen-registry";
 export * from "./errors";

@@ -173,11 +173,13 @@ import {
   sessionContextResolverDenyStub,
   signedEncountersReaderDenyStub,
   subscriptionStateProviderDenyStub,
+  subscriptionWorkBlockReaderDenyStub,
   supervisorReaderDenyStub,
   supervisoryCadencePlanReaderDenyStub,
   supervisoryCadenceReaderDenyStub,
   supplyCostProviderDenyStub,
   supplyFulfillmentProviderDenyStub,
+  tenantClearinghouseReaderDenyStub,
   tenantOrgCreationProviderDenyStub,
   terminologyProviderDenyStub,
   triageCallMetricsProviderDenyStub,
@@ -738,12 +740,28 @@ export const REQUIRED_SEAMS = [
     phi: false,
     denyStub: patientCounterProviderDenyStub,
   },
-  // ADR-0108 — the claims-billing add-on entitlement (owner M35). Aggregate org metadata, no patient row → phi:false.
+  // ADR-0108, repurposed (ADR-0053 amendment 2026-11-06): may this org start NEW claims-billing work. Owner M23: it is
+  // decided from the org's clearinghouse choice, with no add-on and no fee. Aggregate org metadata → phi:false.
   {
     key: "ClaimsBillingEntitlementReader",
-    ownerModule: 35,
+    ownerModule: 23,
     phi: false,
     denyStub: claimsBillingEntitlementReaderDenyStub,
+  },
+  // Owner decision D1 (2026-11-06): a suspended / paused / canceled subscription still blocks NEW claims work; M23's
+  // claims-billing decision reads it. Aggregate subscription status → phi:false.
+  {
+    key: "SubscriptionWorkBlockReader",
+    ownerModule: 35,
+    phi: false,
+    denyStub: subscriptionWorkBlockReaderDenyStub,
+  },
+  // ADR-0053 amendment 2026-11-06 — the clearinghouse the org chose (stedi | claimmd | outside); M35 pricing reads it.
+  {
+    key: "TenantClearinghouseReader",
+    ownerModule: 23,
+    phi: false,
+    denyStub: tenantClearinghouseReaderDenyStub,
   },
   {
     key: "RevenueMetricsProvider",

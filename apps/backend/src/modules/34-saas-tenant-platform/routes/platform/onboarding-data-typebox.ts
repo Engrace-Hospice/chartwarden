@@ -179,3 +179,117 @@ export const OnboardingMedicaidCredentialViewSchema = Type.Object({
 export const OnboardingMedicaidCredentialListSchema = Type.Object({
   items: Type.Array(OnboardingMedicaidCredentialViewSchema),
 });
+
+/**
+ * The tenant's clearinghouse choice (ADR-0053 amendment 2026-11-06). The body is M23's (`PutClearinghouseBodySchema`, which
+ * M34 may not import); M23 re-validates it with that schema (unknown keys refused). `secret` is write-only: sealed under the
+ * tenant's own key and never returned.
+ */
+export const OnboardingClearinghousePutRequest = Type.Composite([
+  Type.Object({
+    vendor: Type.Union([Type.Literal("stedi"), Type.Literal("claimmd"), Type.Literal("outside")]),
+    mode: Type.Optional(Type.Union([Type.Literal("test"), Type.Literal("production")])),
+    secret: Type.Optional(
+      Type.String({
+        minLength: 8,
+        maxLength: 512,
+        description:
+          "The vendor credential (the Stedi API key, or the Claim.MD account key). Write-only: sealed under the tenant's own key and never returned. Required with a first choice and whenever vendor or mode changes.",
+      }),
+    ),
+  }),
+  OnboardingReasonSchema,
+]);
+
+export const OnboardingClearinghouseVerifyRequest = Type.Composite([
+  Type.Object({
+    evidenceNote: Type.Optional(
+      Type.String({
+        maxLength: 2000,
+        description:
+          "Required where the vendor has no safe connection test (Stedi): what was checked and by whom (8-500 characters; no patient information).",
+      }),
+    ),
+    confirmNoPatientInformation: Type.Optional(
+      Type.Boolean({
+        description:
+          "Required, and must be true, with an evidence note: the operator confirms the note names no patient information.",
+      }),
+    ),
+  }),
+  OnboardingReasonSchema,
+]);
+
+const ClearinghouseOutcome = Type.Union([
+  Type.Literal("ok"),
+  Type.Literal("credential_rejected"),
+  Type.Literal("unreachable"),
+]);
+
+export const OnboardingClearinghouseViewSchema = Type.Object({
+  vendor: Nullable(
+    Type.Union([
+      Type.Literal("stedi"),
+      Type.Literal("claimmd"),
+      Type.Literal("outside"),
+      Type.Literal("direct_mac"),
+      Type.Literal("in_memory"),
+    ]),
+  ),
+  mode: Nullable(Type.Union([Type.Literal("test"), Type.Literal("production")])),
+  status: Nullable(
+    Type.Union([Type.Literal("draft"), Type.Literal("verified"), Type.Literal("active")]),
+  ),
+  source: Type.Union([Type.Literal("tenant"), Type.Literal("platform_env"), Type.Literal("none")]),
+  hasSecret: Type.Boolean({ description: "The credential itself is never projected." }),
+  verifiableBy: Nullable(
+    Type.Union([Type.Literal("connection_test"), Type.Literal("attestation")]),
+  ),
+  verification: Nullable(
+    Type.Object({
+      kind: Type.Union([Type.Literal("connection_test"), Type.Literal("attested")]),
+      evidence: Nullable(Type.String()),
+      verifiedAt: Iso,
+    }),
+  ),
+  lastTest: Nullable(Type.Object({ outcome: ClearinghouseOutcome, at: Iso })),
+  baaRequired: Type.Boolean({
+    description:
+      "True for a tenant-held vendor account: its BAA must be recorded by the tenant and verified by a platform operator before the config may go active.",
+  }),
+  baa: Nullable(
+    Type.Object({
+      heldBy: Type.Literal("tenant"),
+      effectiveDate: Type.String({ format: "date" }),
+      documentRef: Type.String(),
+      recordedAt: Iso,
+      verified: Nullable(Type.Object({ at: Iso })),
+    }),
+  ),
+  activatedAt: Nullable(Iso),
+  version: Nullable(Type.Integer()),
+  updatedAt: Nullable(Iso),
+});
+
+export const OnboardingClearinghouseVerifyResponseSchema = Type.Object({
+  config: OnboardingClearinghouseViewSchema,
+  test: Nullable(Type.Object({ outcome: ClearinghouseOutcome })),
+});
+
+/** The notice after an operator withdrew its external-filing record: ids, a state and dates only (no patient, no admission). */
+export const OnboardingNoticeWithdrawalViewSchema = Type.Object({
+  noticeKind: Type.Union([Type.Literal("noe"), Type.Literal("notr")]),
+  noticeId: Type.String({ format: "uuid" }),
+  state: Type.String({ description: "The notice's own state, unchanged by the withdrawal." }),
+  windowTargetAt: Type.String({ format: "date" }),
+  windowBreachedAt: Nullable(
+    Type.String({
+      format: "date",
+      description:
+        "The deadline watchdog's breach stamp is kept by a withdrawal; the stamp the withdrawn LATE record wrote itself is cleared with it (null here).",
+    }),
+  ),
+  externalFiling: Type.Null({
+    description: "The record is gone: the notice is back to its pre-record state.",
+  }),
+});

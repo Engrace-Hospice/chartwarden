@@ -25,6 +25,24 @@ export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = [
   "claimmd",
 ];
 
+/**
+ * ADR-0053 amendment 2026-11-06 - each TENANT chooses its clearinghouse (stedi | claimmd | outside) with its own credential.
+ * The platform's env binding above now serves ONLY the organizations named here (comma-separated organization uuids) when
+ * they have no tenant config of their own: the demo tenant. Unset = no organization is served by the platform env vendor.
+ * Naming organizations with no CLEARINGHOUSE_VENDOR bound is refused at boot.
+ */
+export const CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV = "CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS";
+const ORG_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * True when the value is a comma-separated list of organization uuids: a blank value names no organization, but a blank ENTRY
+ * (`,,`, a trailing comma) is a typo and is refused. The one definition: boot parsing (`parseFallbackOrgIds`) uses it too.
+ */
+export function isOrgIdList(raw: string): boolean {
+  if (raw.trim().length === 0) return true;
+  return raw.split(",").every((id) => ORG_ID_SHAPE.test(id.trim()));
+}
+
 /** ADR-0108 D6 — the claims-billing add-on enforcement mode (the gate lives in ./claims-billing-gate.ts). */
 export const CLAIMS_BILLING_ENFORCEMENT_ENV = "CLAIMS_BILLING_ENFORCEMENT";
 export const CLAIMS_BILLING_ENFORCEMENT_MODES = ["off", "shadow", "enforce"] as const;
@@ -578,6 +596,20 @@ export function collectEnvProblems(env: EnvLike): EnvProblem[] {
       key: CLEARINGHOUSE_VENDOR_ENV,
       problem: `must be one of ${PRODUCTION_CLEARINGHOUSE_VENDORS.join(", ")} (or unset)`,
     });
+  }
+  const fallbackOrgIds = env[CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV]?.trim();
+  if (fallbackOrgIds) {
+    if (!isOrgIdList(fallbackOrgIds)) {
+      problems.push({
+        key: CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV,
+        problem: "must be a comma-separated list of organization uuids",
+      });
+    } else if (!clearinghouseVendor) {
+      problems.push({
+        key: CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV,
+        problem: `names organizations but ${CLEARINGHOUSE_VENDOR_ENV} is not set`,
+      });
+    }
   }
   for (const { key, rule, when } of REQUIREMENTS) {
     if (when && !when(env)) continue;
