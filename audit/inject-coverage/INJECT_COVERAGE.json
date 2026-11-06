@@ -552,10 +552,12 @@
       "routes": 80,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-data-routes.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-wizard-routes.test.ts",
         "apps/backend/__tests__/m34-ops-routes-inject.test.ts",
+        "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/saas-tenant-platform-inject.test.ts"
       ],
       "directRoutesReferenced": 79

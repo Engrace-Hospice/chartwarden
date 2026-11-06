@@ -6,6 +6,37 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-05 — Onboarding wizard v2, pre-PR review fixes (go-live integrity)
+
+**Why.** The pre-PR review found ways one operator could open a tenant, or approve a go-live on data nobody had checked. These
+change what the existing routes refuse.
+
+- `POST /api/v1/platform/organizations/{organizationId}/status` with `event: "activate"` is refused
+  `409 GO_LIVE_TWO_PARTY_REQUIRED` while the organization's tenant is provisioning or onboarding. The organization opens only
+  through go-live approval; once the tenant is `active` the same call (a manual retry) is accepted.
+- `POST /api/v1/platform/tenants/{orgSlug}/go-live/approve` is **repeatable**: once the tenant is active with an approved
+  attestation, repeating it skips the guards and only finishes the organization's activation. A failed first activation now
+  answers `503 ORGANIZATION_ACTIVATION_FAILED` (it was a 500) and says to repeat the approval; the daily onboarding sweep also
+  opens any organization still `created` whose tenant is active. `409 GO_LIVE_APPROVER_WROTE_BAA` refuses an approver who
+  recorded or last changed the governing BAA record.
+- **Platform staff cannot be the compliance officer or the go-live attester.** `PUT .../compliance-officer` (both surfaces) and
+  `POST /api/v1/tenant/go-live/attest` answer `422 COMPLIANCE_OFFICER_PLATFORM_STAFF` for a member whose user is the acting
+  operator, is bound to `platform_alert_audience` in the tenant, or holds a platform role at home; an attestation whose attester
+  became staff is `409 GO_LIVE_ATTESTATION_STALE` with detail `attester_platform_staff` at approval.
+- **A pending attestation does not survive a data change.** Any write to the onboarding data (provider entities, locations, MAC
+  and Medicaid credentials, the org profile, the platform BAA register) revokes a pending go-live attestation in the same
+  transaction (`revokeReason`: "onboarding data changed after attestation"); the go-live step returns to pending and the officer
+  attests again.
+- `POST /api/v1/platform/baa-register` takes an optional `documentId`; an `executed` BAA needs one on create and on update
+  (`422 BAA_DOCUMENT_REQUIRED`). A duplicate attestation or duplicate (tenant, addendum) BAA record is `409`, not `500`.
+- The platform operator's `reason` on onboarding-data writes is screened for patient identifiers like every wizard free text
+  (`422 EVIDENCE_LOOKS_LIKE_PHI`), and a write now runs the onboarding advance after it commits.
+- A session on an organization that is not `active` (created, suspended, closed or unknown) is confined to an exact list of
+  onboarding routes; every other route answers `403 ORGANIZATION_ONBOARDING`, including the tenant DSAR / export downloads,
+  support-consent grants, the care-team staff list, member credentials and direct user provisioning.
+
+---
+
 ## 2026-11-05 — Onboarding wizard v2: ordered steps, attestation with evidence, two-party go-live
 
 **Why.** Tenant onboarding is now an ordered wizard that the server enforces. A step can only be started, completed, attested
