@@ -39,6 +39,10 @@ export interface OnboardingContext {
   // ── mac_configured ───────────────────────────────────────────────────────────────────────────
   /** Medicare MAC submitter feed configured (Phase 1: platform-ops attestation; M29 ExternalFeed later). */
   readonly macFeedConfigured: boolean;
+  // ── clearinghouse_selected ───────────────────────────────────────────────────────────────────
+  /** The tenant chose how its claims leave ChartWarden and it is settled: `outside`, or stedi / claimmd in `active` status
+   *  (ADR-0053 amendment 2026-11-06; M23 owns the choice, M34 reads it through a port). */
+  readonly clearinghouseSettled: boolean;
   // ── dosespot_kickoff_initiated ───────────────────────────────────────────────────────────────
   /** DoseSpot clinic-registration row recorded (M12; Phase 1 attestation). */
   readonly dosespotKickoffRecorded: boolean;

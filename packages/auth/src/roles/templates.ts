@@ -160,7 +160,7 @@ export const M34_PLATFORM_OPS_ONBOARDING_KEYS = [
 ] as const;
 
 /**
- * The platform onboarding-data pair (M34 `/api/v1/platform/tenants/:orgSlug/{provider-entities,locations,mac-credentials}`):
+ * The platform onboarding-data keys (M34 `/api/v1/platform/tenants/:orgSlug/{provider-entities,locations,mac-credentials}`):
  * operators fill in a tenant's provider entities, service locations and MAC credentials on its behalf while it is
  * still onboarding. The routes also gate on the `tenant_lifecycle_platform_ops` predicate, which admits the EXACT
  * `platform_ops` role only (a `platform_admin` / `platform_owner` is denied by it), a fresh step-up and a recorded
@@ -170,6 +170,10 @@ export const M34_PLATFORM_OPS_ONBOARDING_KEYS = [
 export const PLATFORM_ONBOARDING_DATA_KEYS = [
   "tenant_onboarding_data.read_platform",
   "tenant_onboarding_data.write_platform",
+  // ADR-0053 amendment 2026-11-06: the tenant's clearinghouse choice (`/platform/tenants/:orgSlug/clearinghouse`) is
+  // onboarding data entered on its behalf, with the same predicate, step-up and reason.
+  "tenant_clearinghouse.read_platform",
+  "tenant_clearinghouse.write_platform",
 ] as const;
 const PLATFORM_ONBOARDING_DATA_ROLES: readonly PlatformOpsRoleKey[] = ["platform_ops"];
 

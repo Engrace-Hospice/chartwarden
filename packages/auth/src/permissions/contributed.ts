@@ -3009,6 +3009,20 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // --- the tenant's clearinghouse choice (ADR-0053 amendment 2026-11-06): vendor, mode and sealed credential ---
+  // platform-ops only, step-up, reason-recorded, accepted only while the tenant is provisioning / onboarding.
+  "tenant_clearinghouse.read_platform": {
+    resource: "tenant_clearinghouse",
+    action: "read_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant_clearinghouse.write_platform": {
+    resource: "tenant_clearinghouse",
+    action: "write_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M34 contributed permission keys. */

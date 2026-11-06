@@ -87,6 +87,7 @@ function metContext(overrides: Partial<OnboardingContext> = {}): OnboardingConte
     locationCount: 3,
     providerEntities: [pe("pe-1", "012345"), pe("pe-2", "678901")],
     macFeedConfigured: true,
+    clearinghouseSettled: true,
     dosespotKickoffRecorded: true,
     xeroConnected: true,
     gustoConnected: true,
