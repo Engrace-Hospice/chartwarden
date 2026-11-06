@@ -211,4 +211,37 @@ describe("ProviderEntityPanel: coming back from Re-verify", () => {
     expect(path).toBe(PATCH);
     expect(init.params.path).toEqual({ orgSlug: ORG_SLUG, id: "pe-1" });
   });
+
+  it("restores a CREATE as a create: a POST to the collection with the CCN typed before, the EIN entered again, never a PATCH of the entity on file now", async () => {
+    mount([], { POST: { [LIST]: () => refused(403, "STEP_UP_REQUIRED") } });
+    await screen.findByText(/No provider entity yet/);
+    fireEvent.click(screen.getByRole("button", { name: "Add provider entity" }));
+    fillNew();
+    fireEvent.click(screen.getByRole("button", { name: "Save provider entity" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), {
+      target: { value: "Customer asked support to enter it" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    cleanup();
+
+    // an entity exists when the operator comes back: the resumed form is still the create
+    const { client } = mount([ENTITY], { POST: { [LIST]: () => ok(ENTITY, 201) } });
+    expect(((await screen.findByLabelText("CCN")) as HTMLInputElement).value).toBe("444444");
+    fireEvent.change(screen.getByLabelText(/^EIN/), { target: { value: "12-3456789" } }); // never stashed
+    fireEvent.click(screen.getByRole("button", { name: "Save provider entity" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), {
+      target: { value: "Customer asked support to enter it" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    expect(client.PATCH).not.toHaveBeenCalled();
+    const [path, init] = client.POST.mock.calls[0] as [string, { body: Record<string, unknown> }];
+    expect(path).toBe(LIST);
+    expect(init.body).toMatchObject({
+      ccn: "444444",
+      legalName: "Beta Hospice of the Valley",
+      taxId: "12-3456789",
+    });
+  });
 });

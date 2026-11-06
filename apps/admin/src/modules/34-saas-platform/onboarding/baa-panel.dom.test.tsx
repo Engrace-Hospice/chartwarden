@@ -205,4 +205,33 @@ describe("BaaPanel: coming back from Re-verify", () => {
     expect(client.POST).not.toHaveBeenCalled();
     expect(client.PATCH.mock.calls[0]?.[0]).toBe(ONE);
   });
+
+  it("restores a CREATE as a create: a POST of the same new addendum, never a PATCH of the record on file now", async () => {
+    mount([], { POST: { [REGISTER]: () => refused(403, "STEP_UP_REQUIRED") } });
+    await screen.findByText(/No BAA on record/);
+    fireEvent.click(screen.getByRole("button", { name: "Record BAA" }));
+    fireEvent.change(screen.getByLabelText("Addendum version"), { target: { value: "v2" } });
+    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "executed" } });
+    fireEvent.change(screen.getByLabelText(/^Signed document id/), { target: { value: DOC } });
+    fireEvent.click(screen.getByRole("button", { name: "Save BAA" }));
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    cleanup();
+
+    // a record exists when the operator comes back: the resumed form is still the create, with what was typed
+    const { client } = mount([record()], { POST: { [REGISTER]: () => ok(record(), 201) } });
+    expect(((await screen.findByLabelText("Addendum version")) as HTMLInputElement).value).toBe(
+      "v2",
+    );
+    expect(screen.getByRole("heading", { name: "Record a BAA" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save BAA" }));
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    expect(client.PATCH).not.toHaveBeenCalled();
+    const [path, init] = client.POST.mock.calls[0] as [string, { body: Record<string, unknown> }];
+    expect(path).toBe(REGISTER);
+    expect(init.body).toMatchObject({
+      addendumVersion: "v2",
+      baaStatus: "executed",
+      documentId: DOC,
+    });
+  });
 });

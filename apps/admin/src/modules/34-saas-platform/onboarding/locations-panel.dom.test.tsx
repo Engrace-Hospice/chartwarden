@@ -196,4 +196,46 @@ describe("LocationsPanel: coming back from Re-verify", () => {
     expect(path).toBe(LOCATION);
     expect(init.params.path).toEqual({ orgSlug: ORG_SLUG, id: "loc-1" });
   });
+
+  it("restores a CREATE as a create: a POST to the collection for the same provider entity, never a PATCH of some other location", async () => {
+    mount([], { POST: { [LOCATIONS]: () => refused(403, "STEP_UP_REQUIRED") } });
+    await screen.findByText(/No location yet/);
+    fireEvent.click(screen.getByRole("button", { name: "Add location" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Main office" } });
+    fireEvent.change(screen.getByLabelText("Address line 1"), {
+      target: { value: "1 Valley Way" },
+    });
+    fireEvent.change(screen.getByLabelText("City"), { target: { value: "Reno" } });
+    fireEvent.change(screen.getByLabelText("State"), { target: { value: "nv" } });
+    fireEvent.change(screen.getByLabelText("ZIP code"), { target: { value: "89501" } });
+    fireEvent.change(screen.getByLabelText(/^Time zone/), {
+      target: { value: "America/Los_Angeles" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save location" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), {
+      target: { value: "Customer listed their sites on the kickoff call" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    cleanup();
+
+    // an existing location is on file when the operator comes back: the resumed form is still the create
+    const { client } = mount([LOC], { POST: { [LOCATIONS]: () => ok(LOC, 201) } });
+    expect(((await screen.findByLabelText("Name")) as HTMLInputElement).value).toBe("Main office");
+    expect(screen.getByLabelText("Provider entity")).toBeTruthy(); // a create picks the entity
+    fireEvent.click(screen.getByRole("button", { name: "Save location" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), {
+      target: { value: "Customer listed their sites on the kickoff call" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    expect(client.PATCH).not.toHaveBeenCalled();
+    const [path, init] = client.POST.mock.calls[0] as [
+      string,
+      { params: { path: unknown }; body: Record<string, unknown> },
+    ];
+    expect(path).toBe(LOCATIONS);
+    expect(init.params.path).toEqual({ orgSlug: ORG_SLUG });
+    expect(init.body).toMatchObject({ providerEntityId: "pe-1", name: "Main office" });
+  });
 });
