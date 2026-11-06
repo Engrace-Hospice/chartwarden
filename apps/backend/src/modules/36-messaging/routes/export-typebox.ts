@@ -67,7 +67,7 @@ const SummaryShape = {
   failureCode: NullableString,
 } as const;
 
-export const ExportSummaryResponseSchema = Type.Object(SummaryShape);
+const ExportSummaryResponseSchema = Type.Object(SummaryShape);
 export const ExportListResponseSchema = Type.Object({
   jobs: Type.Array(ExportSummaryResponseSchema),
 });

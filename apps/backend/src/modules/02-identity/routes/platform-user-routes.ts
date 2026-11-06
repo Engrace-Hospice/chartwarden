@@ -1,3 +1,5 @@
+import type { AuditContext } from "@chartwarden/audit";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/02-identity/routes/platform-user-routes.ts — the §4.7 `user.deactivate`
 // "platform_ops (any)" grant, as its own PLATFORM route:
 //
@@ -25,14 +27,11 @@
 // minted since is still cut), no second audit row or event. No per-org `m2.membership.revoked` events: each
 // would need that org's outbox RLS context (the port fails closed on a foreign org) and nothing consumes
 // them; the revoked ids ride on the audit row instead.
-import type { AuditContext } from "@chartwarden/audit";
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { auditUserDeactivated } from "../audit/identity-audit";
 import type { IdentityRouteDeps } from "../identity-ports";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const PERMISSION_KEY = "user.deactivate";
 const ABAC_PREDICATE = "user_lifecycle_platform_ops";

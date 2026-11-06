@@ -47,10 +47,6 @@ export interface ClaimStayEndFactsPort {
 }
 
 export type ClaimAttentionFlag = "missing_discharge_details" | "tob_changed";
-export const CLAIM_ATTENTION_FLAGS: readonly ClaimAttentionFlag[] = [
-  "missing_discharge_details",
-  "tob_changed",
-];
 export type TobChangeRemedy = "revalidate" | "await_acknowledgment" | "replace" | "manual";
 
 export interface ClaimAttentionView {

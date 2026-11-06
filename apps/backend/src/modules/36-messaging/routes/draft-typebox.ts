@@ -11,7 +11,7 @@ const RootId = Type.String({ pattern: UUID_PATTERN });
 
 /** An in-progress SBAR form: plain section text. The service re-checks bounds (422); the schema rejects extra keys. */
 const SbarSection = Type.String({ maxLength: SBAR_MAX_SECTION_CHARS });
-export const DraftSbarSchema = Type.Object(
+const DraftSbarSchema = Type.Object(
   {
     urgencyHint: Type.Union([
       Type.Literal("routine"),
@@ -55,7 +55,7 @@ export const SaveDraftBodySchema = Type.Object({
   baseRevision: Type.Integer({ minimum: 0, maximum: 2_000_000_000 }),
 });
 
-export const DraftViewSchema = Type.Object({
+const DraftViewSchema = Type.Object({
   channelId: Type.String(),
   parentMessageId: Type.Union([Type.String(), Type.Null()]),
   body: Type.String(),

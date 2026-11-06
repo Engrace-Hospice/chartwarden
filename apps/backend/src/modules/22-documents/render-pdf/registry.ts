@@ -15,7 +15,6 @@ import { buildGenericPayloadDoc } from "./generic-payload-doc";
 import { buildIdgMinutesDoc } from "./idg-minutes-doc";
 import { buildIdgPacketDoc } from "./idg-packet-doc";
 import { renderDocModelToPdf } from "./pdf-writer";
-import { isRec } from "./shared";
 import {
   buildTriageSummaryAttendingDoc,
   buildTriageSummaryCaregiverDoc,
@@ -60,12 +59,9 @@ export function renderPdfForTemplate(
   defaultTitle: string,
   registry: PdfRendererRegistry = DEFAULT_PDF_RENDERERS,
 ): Uint8Array {
-  // A legacy id-only M6 event drained under the explicit fallback flag has no typed content to draw a form from.
-  const legacy = isRec(payload) && payload.legacyUntyped === true;
-  const build =
-    Object.hasOwn(registry, templateKey) && !legacy
-      ? registry[templateKey]
-      : buildGenericPayloadDoc(defaultTitle);
+  const build = Object.hasOwn(registry, templateKey)
+    ? registry[templateKey]
+    : buildGenericPayloadDoc(defaultTitle);
   return renderDocModelToPdf((build ?? buildGenericPayloadDoc(defaultTitle))(payload));
 }
 

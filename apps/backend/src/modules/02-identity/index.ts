@@ -68,8 +68,6 @@ export {
   createElevatedApprovalReader,
   createElevatedApprovalService,
   createInMemoryElevatedApprovalStore,
-  getElevatedApprovalReader,
-  registerElevatedApprovalSeam,
 } from "./elevated-approvals";
 export {
   type ResolvedStepUpPolicy,
@@ -643,10 +641,6 @@ export {
 
 export { createValkeyStepUpChallengeStore } from "./step-up-challenge-valkey";
 
-export {
-  createProductionStepUpVerifier,
-  type StepUpVerifierOptions,
-} from "./step-up-verifier";
 export { createPortalInviteeUserPort } from "./portal-invitee-user";
 
 // GAP-115 — the org-admin surface's published types (the cipher port the composition root binds).

@@ -23,7 +23,7 @@ const R = schema.messageExternalShareReads;
 const CH = schema.channels;
 
 /** Shares listed at once. */
-export const EXTERNAL_SHARE_LIST_LIMIT = 100;
+const EXTERNAL_SHARE_LIST_LIMIT = 100;
 
 export interface ShareRow {
   readonly id: string;

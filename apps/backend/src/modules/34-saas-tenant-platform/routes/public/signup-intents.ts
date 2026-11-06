@@ -36,13 +36,11 @@ import {
 /** A preHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
-/** The capability flag that unlocks self-serve signup (D14) — Phase 3, default OFF for the platform. */
-export const SELF_SERVE_SIGNUP_FLAG = "m34.self_serve_signup" as const;
 /** The error code the public routes return when the flag is OFF (the Phase-1 platform default). */
-export const SIGNUP_DISABLED_CODE = "SIGNUP_DISABLED" as const;
+const SIGNUP_DISABLED_CODE = "SIGNUP_DISABLED" as const;
 
 /** 503 SIGNUP_DISABLED — self-serve signup is OFF (Phase-1 deny-default; the body is never reached). */
-export function signupDisabled(): ChartWardenError {
+function signupDisabled(): ChartWardenError {
   return new ChartWardenError(SIGNUP_DISABLED_CODE, "self-serve signup is not enabled", 503);
 }
 

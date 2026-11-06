@@ -12,6 +12,7 @@
 // match-review rows.
 import { audit } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
+import { decodeCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { NotFoundError, ValidationError } from "@chartwarden/types";
 import { ChartWardenError } from "@chartwarden/types";
@@ -113,18 +114,11 @@ function toView(r: {
   };
 }
 
-/** Opaque ascending cursor over (lastName, firstName, id). */
-function encode(v: PatientView): string {
-  return Buffer.from(JSON.stringify([v.lastName, v.firstName, v.id]), "utf8").toString("base64url");
-}
-function decode(cursor: string): [string, string, string] | null {
-  try {
-    const a = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
-    return Array.isArray(a) && a.length === 3 ? (a as [string, string, string]) : null;
-  } catch {
-    return null;
-  }
-}
+/** The signed keyset payload: the (lastName, firstName, id) of the last row of the previous page. */
+type PatientCursor = [string, string, string];
+
+const isPatientCursor = (value: unknown): value is PatientCursor =>
+  Array.isArray(value) && value.length === 3 && value.every((v) => typeof v === "string");
 
 /** Build the production PatientRouteService — reads + writes are real Drizzle over the patient tables. */
 const NOOP_OUTBOX: M5OutboxPort = { publish: async () => undefined };
@@ -144,7 +138,7 @@ export function createDbPatientRouteService(
     scope: readonly string[] | null,
   ) => {
     const limit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(query.limit ?? DEFAULT_LIMIT)));
-    const c = query.cursor ? decode(query.cursor) : null;
+    const c = decodeCursor(organizationId, query.cursor, isPatientCursor);
     // §7.5 (F-096) — the caseload narrowing, IN THE SQL. `scope === null` is the org-wide reader; a
     // named set becomes `patient.id = ANY(:ids)`, which is the filter the spec asks for by name.
     //
@@ -184,7 +178,9 @@ export function createDbPatientRouteService(
       const views = rows.map(toView);
       if (views.length > limit) {
         const page = views.slice(0, limit);
-        return { items: page, nextCursor: encode(page[page.length - 1]!) };
+        const last = page[page.length - 1]!;
+        const anchor: PatientCursor = [last.lastName, last.firstName, last.id];
+        return { items: page, nextCursor: encodeCursor(organizationId, anchor) };
       }
       return { items: views, nextCursor: null };
     });

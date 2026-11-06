@@ -47,7 +47,7 @@ export const CAHPS_PENDING_CONFIGURATION = "pending_secure_configuration";
 
 /** CMS-supported CAHPS-Hospice survey languages (ISO-639-1): English, Spanish, Chinese, Russian, Portuguese,
  *  Vietnamese, Polish. A caregiver whose filed language is outside the set is a CMS exclusion. */
-export const CAHPS_SUPPORTED_LANGUAGES: ReadonlySet<string> = new Set([
+const CAHPS_SUPPORTED_LANGUAGES: ReadonlySet<string> = new Set([
   "en",
   "es",
   "zh",
@@ -128,7 +128,7 @@ const inOrg = <T>(db: DbClient, organizationId: string, fn: (tx: Tx) => Promise<
   withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, (tx) => fn(tx as Tx));
 
 /** ISO-639 → the two-letter primary subtag, lowercased; null when nothing usable. */
-export function normalizeLanguage(code: string | null): string | null {
+function normalizeLanguage(code: string | null): string | null {
   const t = code?.trim().toLowerCase();
   if (!t) return null;
   return t.slice(0, 2);

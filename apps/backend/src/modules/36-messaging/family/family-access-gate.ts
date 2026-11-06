@@ -6,8 +6,8 @@
 import { partnerAccessAvailability } from "../external-share/external-share-proxy";
 
 /** The environment variable that holds the per-deployment code pepper. */
-export const FAMILY_CODE_PEPPER_ENV = "MESSAGING_FAMILY_CODE_PEPPER";
-export const FAMILY_CODE_PEPPER_MIN_LENGTH = 32;
+const FAMILY_CODE_PEPPER_ENV = "MESSAGING_FAMILY_CODE_PEPPER";
+const FAMILY_CODE_PEPPER_MIN_LENGTH = 32;
 
 export interface FamilyAccessAvailability {
   readonly available: boolean;

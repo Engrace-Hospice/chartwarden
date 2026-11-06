@@ -26,7 +26,7 @@ export const M30_QUEUES = {
 export type M30QueueName = (typeof M30_QUEUES)[keyof typeof M30_QUEUES];
 
 /** The §4.8 dead-letter queue names (one per queue; Ops drains via M1 `m1.queue.dlq_drain`). */
-export const M30_DLQ = {
+const M30_DLQ = {
   measureRecompute: "m30.measure_recompute.dlq",
   cahpsExport: "m30.cahps_export.dlq",
   outbreakDetection: "m30.outbreak_detection.dlq",
@@ -98,42 +98,6 @@ export const M30_JOB_SCHEDULES = {
 } as const;
 
 // ── §4.8 idempotency keys (the BullMQ jobId / §2.6 dedup oracles) ───────────────────────────────────────
-
-/** `m30.measure_recompute` jobId — `(orgId, measureCode, periodEnd, computeVersion)` (§4.8 / V-8). */
-export function measureRecomputeJobId(input: {
-  organizationId: string;
-  measureCode: string;
-  periodEnd: string;
-  computeVersion: string;
-}): string {
-  return `measure_recompute:${input.organizationId}:${input.measureCode}:${input.periodEnd}:${input.computeVersion}`;
-}
-
-/** `m30.cahps_export` jobId — `(orgId, samplePeriod.start, samplePeriod.end, vendorBindingId)` (§4.8). */
-export function cahpsExportJobId(input: {
-  organizationId: string;
-  samplePeriodStart: string;
-  samplePeriodEnd: string;
-  vendorBindingId: string;
-}): string {
-  return `cahps_export:${input.organizationId}:${input.samplePeriodStart}:${input.samplePeriodEnd}:${input.vendorBindingId}`;
-}
-
-/** `m30.outbreak_detection` jobId — `(orgId, surveillanceEventId)` (§4.8). */
-export function outbreakDetectionJobId(input: {
-  organizationId: string;
-  surveillanceEventId: string;
-}): string {
-  return `outbreak_detection:${input.organizationId}:${input.surveillanceEventId}`;
-}
-
-/** `m30.risk_register_refresh` jobId — `(orgId, dateBucket)` (the day collapses repeat refreshes, §4.8). */
-export function riskRegisterRefreshJobId(input: {
-  organizationId: string;
-  dateBucket: string;
-}): string {
-  return `risk_register_refresh:${input.organizationId}:${input.dateBucket}`;
-}
 
 // ── the per-queue tenancy envelope the live wiring runs each processor inside ────────────────────────────
 

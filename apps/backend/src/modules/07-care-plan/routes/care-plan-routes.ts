@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/07-care-plan/routes/care-plan-routes.ts — M7-T05 the §4.1 route inventory
 // behind the REAL Authorization Contract (`requirePermission` from @chartwarden/auth, M3) on the §4.5 keys
 // M7 contributes to M3's catalog (M7_CONTRIBUTED_PERMISSIONS). Org binding is server-side
@@ -7,7 +8,7 @@
 // §4.1.1 (M07-F09) — the three PATCH routes additionally carry `requireIdempotencyKey` + `requireIfMatch`
 // pre-handlers (./concurrency.ts). `Idempotency-Key` presence is enforced here; the replay/body-mismatch
 // caching is the M1 platform middleware (applyIdempotency, mounted globally). `If-Match` carries the row
-// version the client read; the service raises 412 STALE_VERSION on skew (§7.7).
+// version the client read; the service raises 409 STALE_VERSION on skew (§7.7).
 //
 // GAP-012 (2026-08-09): the §4 ABAC composition is wired here — `caseload_or_scope` on every
 // patient/plan-scoped route (via `SCOPE`/`SCOPE_BY_QUERY_PATIENT` below), `signer_role_match` on the
@@ -16,8 +17,14 @@
 // discipline being authored). `dpoa_active`/`sud_disclosure_allowed` stay as the existing
 // `dpoaConsentActive`/`sudDisclosureAllowed` closures below (per-element data-shaping, not a route
 // gate; wiring their real seam-backed implementations at boot is GAP-013, a separate finding).
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import { UnauthorizedError } from "@chartwarden/types";
+import {
+  type PreHandler,
+  actorOf,
+  ifMatchVersionOf,
+  requireIdempotencyKey,
+  requireIfMatch,
+} from "@chartwarden/shared/route-kit";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { InterventionDiscipline } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
@@ -43,12 +50,6 @@ import {
   SignVersionSchema,
   parse,
 } from "./care-plan-typebox";
-import {
-  type PreHandler,
-  ifMatchVersionOf,
-  requireIdempotencyKey,
-  requireIfMatch,
-} from "./concurrency";
 import type { CarePlanRouteService, CarePlanSignActor } from "./service";
 
 export interface CarePlanRouteDeps {
@@ -73,12 +74,6 @@ export interface CarePlanRouteDeps {
      *  recipients), and an unnamed actor against a restricted release is redacted. */
     membershipId: string | null;
   }) => Promise<boolean>;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 // Static permission guards (§4.5).
@@ -140,7 +135,9 @@ const planIdOf = (request: FastifyRequest): string =>
 function signingActorOf(request: FastifyRequest): CarePlanSignActor {
   const ctx = request.context;
   const membershipId = membershipIdOf(ctx);
-  if (!ctx?.userId || !membershipId) throw new UnauthorizedError();
+  if (!ctx?.userId) throw new UnauthorizedError();
+  if (!membershipId)
+    throw new ForbiddenError("an active membership is required to sign a care plan");
   return { userId: ctx.userId, membershipId, roles: ctx.roles ?? [] };
 }
 

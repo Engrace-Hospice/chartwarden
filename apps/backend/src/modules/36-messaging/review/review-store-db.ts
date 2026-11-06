@@ -102,10 +102,7 @@ export function clampReviewLimit(limit: number): number {
   return Math.min(Math.max(Math.trunc(limit) || REVIEW_LIST_DEFAULT, 1), REVIEW_LIST_MAX);
 }
 
-export async function queueReviewItems(
-  tx: Tx,
-  input: QueueReviewInput,
-): Promise<{ inserted: number }> {
+async function queueReviewItems(tx: Tx, input: QueueReviewInput): Promise<{ inserted: number }> {
   if (input.items.length === 0) return { inserted: 0 };
   const rows = await tx
     .insert(R)

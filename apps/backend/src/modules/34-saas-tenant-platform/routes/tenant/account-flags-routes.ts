@@ -23,7 +23,7 @@ export interface TenantAccountFlagsRouteDeps {
   readonly service: TenantAccountFlagsService;
 }
 
-export const TenantFlagKeyParamsSchema = Type.Object({
+const TenantFlagKeyParamsSchema = Type.Object({
   flagKey: Type.String({ minLength: 1, maxLength: 128 }),
 });
 

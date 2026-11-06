@@ -9,22 +9,6 @@
 // the pure planner; the route inserts the returned `NewSraFinding` payloads inside the open-cycle tx.
 import type { schema } from "@chartwarden/db";
 
-/**
- * The finding statuses considered OPEN for cycle-seed purposes — everything except the two resolved
- * terminal-ish states (`mitigated`, `accepted_risk`). A frozen set mirrored from `m30_sra_finding_status`.
- */
-export const OPEN_SRA_FINDING_STATUSES: ReadonlyArray<schema.SraFinding["status"]> = [
-  "identified",
-  "analyzed",
-  "mitigation_planned",
-  "mitigation_in_progress",
-];
-
-/** Whether a finding is still open (and therefore carried forward into a new cycle). */
-export function isOpenFinding(finding: schema.SraFinding): boolean {
-  return OPEN_SRA_FINDING_STATUSES.includes(finding.status);
-}
-
 /** The inputs to {@link seedFindingsFromPriorCycle}. */
 export interface SeedFindingsInput {
   /** All findings from the prior (closing) cycle. */
@@ -35,33 +19,4 @@ export interface SeedFindingsInput {
   readonly organizationId: string;
   /** The starting `finding_number` for the new cycle (default 1; per-cycle unique, V-13 sibling). */
   readonly startNumber?: number;
-}
-
-/**
- * Plan the carry-forward of a prior cycle's open findings into a new cycle (§7.4). Pure: returns the
- * ordered `NewSraFinding` insert payloads (provenance-stamped via `carriedFromPriorCycleId`, renumbered
- * from `startNumber`), preserving each finding's narrative, 5×5 scores, asset category, and in-flight
- * status. The prior findings are ordered by their original `findingNumber` so the new numbering is
- * deterministic. Closed (`mitigated` / `accepted_risk`) findings are not seeded.
- */
-export function seedFindingsFromPriorCycle(input: SeedFindingsInput): schema.NewSraFinding[] {
-  const start = input.startNumber ?? 1;
-  const open = input.priorFindings
-    .filter(isOpenFinding)
-    .slice()
-    .sort((a, b) => a.findingNumber - b.findingNumber);
-
-  return open.map((prior, index) => ({
-    sraCycleId: input.newCycleId,
-    organizationId: input.organizationId,
-    findingNumber: start + index,
-    threatDescription: prior.threatDescription,
-    vulnerabilityDescription: prior.vulnerabilityDescription,
-    impactDescription: prior.impactDescription,
-    affectedAssetCategory: prior.affectedAssetCategory,
-    inherent5x5Score: prior.inherent5x5Score,
-    residual5x5Score: prior.residual5x5Score,
-    status: prior.status,
-    carriedFromPriorCycleId: prior.id,
-  }));
 }

@@ -12,7 +12,7 @@ export const M36_HANDOFF_EVENTS = {
   unaccepted: "m36.handoff.unaccepted",
 } as const;
 
-export const HANDOFF_AGGREGATE_KIND = "clinical_handoff";
+const HANDOFF_AGGREGATE_KIND = "clinical_handoff";
 
 export type HandoffEventFacts =
   | {

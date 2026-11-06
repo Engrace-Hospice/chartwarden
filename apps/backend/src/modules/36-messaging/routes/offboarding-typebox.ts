@@ -12,7 +12,7 @@ export const OffboardingParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const OffboardingItemSchema = Type.Object({
+const OffboardingItemSchema = Type.Object({
   key: literals(OFFBOARDING_ITEM_KEYS),
   state: literals(OFFBOARDING_ITEM_STATES),
   count: Type.Integer({ minimum: 0 }),

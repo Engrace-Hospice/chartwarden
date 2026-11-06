@@ -15,9 +15,9 @@ export const FUZZY_DEDUP_KINDS = ["physician", "facility"] as const;
 export type FuzzyDedupKind = (typeof FUZZY_DEDUP_KINDS)[number];
 
 /** Minimum pg_trgm similarity for a pair to be proposed (the function clamps to [0.5, 1.0]). */
-export const FUZZY_DEDUP_THRESHOLD = 0.85;
+const FUZZY_DEDUP_THRESHOLD = 0.85;
 /** Max proposals per kind per run, so a first run on a dirty directory cannot flood the queue. */
-export const FUZZY_DEDUP_RUN_LIMIT = 200;
+const FUZZY_DEDUP_RUN_LIMIT = 200;
 
 export interface FuzzyDedupDeps extends PlatformOpsDeps {
   readonly now?: () => Date;

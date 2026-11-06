@@ -38,6 +38,7 @@
  * full writeup of each one.
  */
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { M6_AUDIT_DENYLIST } from "../packages/types/src/admission";
 import { M32_AUDIT_DENYLIST } from "../packages/types/src/ai-platform";
 import { M9_AUDIT_DENYLIST } from "../packages/types/src/assessment";
@@ -59,191 +60,95 @@ import { M31_AUDIT_DENYLIST } from "../packages/types/src/portal";
 import { M20_AUDIT_DENYLIST } from "../packages/types/src/safety";
 import { M17_AUDIT_DENYLIST } from "../packages/types/src/scheduling";
 import { M21_AUDIT_DENYLIST } from "../packages/types/src/supplies";
+import { MIGRATIONS_DIR, listMigrations } from "./lib/gate-scan";
 
 const MODULES: ReadonlyArray<{
   readonly mod: string;
   readonly denylist: Readonly<Record<string, readonly string[]>>;
-  /** One or more migration files, in order. Later files' `CREATE OR REPLACE FUNCTION
-   *  audit_phi_write_<table>()` wins over an earlier file's definition of the SAME function — the
-   *  forward-fix-migration pattern (never edit an already-shipped migration; ship a new one that
-   *  redefines the trigger). Most modules need only their original RLS/audit migration; a module
-   *  gets a second entry here only when a later migration patches one of its triggers. */
-  readonly migrations: readonly string[];
 }> = [
   {
     mod: "M6",
     denylist: M6_AUDIT_DENYLIST,
-    migrations: [
-      "packages/db/migrations/0027_admission_m6_rls_audit_triggers.sql",
-      // FY2027 — `election_addendum`'s own table + trigger (42 CFR 418.24(c)).
-      "packages/db/migrations/0381_m6_election_addendum.sql",
-      // Milestone 10a — NOMNC delivery / BFCC-QIO expedited review tables + triggers.
-      "packages/db/migrations/1230_m6_nomnc_expedited_review.sql",
-    ],
   },
   {
     mod: "M7",
     denylist: M7_AUDIT_DENYLIST,
-    migrations: [
-      "packages/db/migrations/0029_care_plan_m7_rls_audit_triggers.sql",
-      // TASK-063 follow-up: redacts care_plan_version.state_snapshot (was the one KNOWN_UNRESOLVED_DISAGREEMENTS entry).
-      "packages/db/migrations/0163_care_plan_version_state_snapshot_redaction.sql",
-    ],
   },
   {
     mod: "M8",
     denylist: M8_AUDIT_DENYLIST,
-    migrations: [
-      "packages/db/migrations/0031_encounters_m8_rls_audit_triggers.sql",
-      // WP 3.7: the addendum trigger also scrubs the promotion body hash.
-      "packages/db/migrations/1102_m36_m8_m14_chart_promotion.sql",
-    ],
   },
   {
     mod: "M9",
     denylist: M9_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0033_assessment_m9_rls_audit_triggers.sql"],
   },
   {
     mod: "M10",
     denylist: M10_AUDIT_DENYLIST,
-    migrations: [
-      "packages/db/migrations/0035_hope_m10_rls_audit_triggers.sql",
-      "packages/db/migrations/0234_hope_submission_result_event_audit.sql",
-    ],
   },
   {
     mod: "M11",
     denylist: M11_AUDIT_DENYLIST,
-    migrations: [
-      "packages/db/migrations/0037_orders_m11_rls_audit_triggers.sql",
-      "packages/db/migrations/0168_idg_downstream_consumer_projections.sql",
-    ],
   },
   {
     mod: "M12",
     denylist: M12_AUDIT_DENYLIST,
-    migrations: [
-      "packages/db/migrations/0039_dosespot_m12_rls_audit_triggers.sql",
-      "packages/db/migrations/0303_m12_dosespot_history_dispense_patient_sync.sql",
-      "packages/db/migrations/0168_idg_downstream_consumer_projections.sql",
-    ],
   },
   {
     mod: "M13",
     denylist: M13_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0041_emar_m13_rls_audit_triggers.sql"],
   },
   {
     mod: "M14",
     denylist: M14_AUDIT_DENYLIST,
-    migrations: [
-      "packages/db/migrations/0043_idg_m14_rls_audit_triggers.sql",
-      // WP 3.7: the agenda-item trigger also scrubs the promotion body hash.
-      "packages/db/migrations/1102_m36_m8_m14_chart_promotion.sql",
-    ],
   },
   {
     mod: "M15",
     denylist: M15_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0099_discipline_plans_m15_rls_audit_triggers.sql"],
   },
   {
     mod: "M16",
     denylist: M16_AUDIT_DENYLIST,
-    migrations: [
-      "packages/db/migrations/0102_bereavement_m16_rls_audit_triggers.sql",
-      "packages/db/migrations/0168_idg_downstream_consumer_projections.sql",
-      "packages/db/migrations/0338_m16_early_close_pending_request.sql",
-      // ADR-0109 D3 — the assessment-task ledger (no free text, so an empty scrub list).
-      "packages/db/migrations/1342_m16_assessment_task.sql",
-      // ADR-0109 D5 — the pre-death risk-assessment draft (eight tri-state values, no free text).
-      "packages/db/migrations/1343_m16_risk_assessment_draft.sql",
-      // ADR-0109 D6 — the physician condolence letter (the decline reason is prose and is scrubbed).
-      "packages/db/migrations/1345_m16_physician_letter.sql",
-      // ADR-0109 D10 — the mailing program (the agency-authored wording of config and run is prose and is scrubbed).
-      "packages/db/migrations/1374_m16_mailings.sql",
-    ],
   },
   {
     mod: "M17",
     denylist: M17_AUDIT_DENYLIST,
-    migrations: [
-      "packages/db/migrations/0045_scheduling_m17_rls_audit_triggers.sql",
-      "packages/db/migrations/0269_m17_evv_missing_resolution.sql",
-    ],
   },
   {
     mod: "M18",
     denylist: M18_AUDIT_DENYLIST,
-    migrations: [
-      "packages/db/migrations/0047_evv_m18_rls_audit_triggers.sql",
-      "packages/db/migrations/0169_evv_visit_registration.sql",
-    ],
   },
   {
     mod: "M19",
     denylist: M19_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0108_oncall_m19_rls_audit_triggers.sql"],
   },
   {
     mod: "M20",
     denylist: M20_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0111_field_safety_m20_rls_audit_triggers.sql"],
   },
   {
     mod: "M21",
     denylist: M21_AUDIT_DENYLIST,
-    migrations: [
-      "packages/db/migrations/0106_supplies_m21_rls_audit_triggers.sql",
-      // F-193 (#248) — extends supply_request's denylist with caregiver_signature_evidence_jsonb.
-      "packages/db/migrations/0268_m21_caregiver_signature_capture.sql",
-      // F-233 (#248) — `supply_request_pharmacy_dispense` (structural, empty denylist).
-      "packages/db/migrations/0306_m21_supply_request_pharmacy_dispense.sql",
-    ],
   },
   {
     mod: "M22",
     denylist: M22_AUDIT_DENYLIST,
-    migrations: [
-      "packages/db/migrations/0049_documents_m22_rls_audit_triggers.sql",
-      "packages/db/migrations/0170_document_verified_upload.sql",
-      "packages/db/migrations/0308_m22_doclens_review_sud_state.sql",
-      "packages/db/migrations/0309_m22_doclens_packet_segments_coding_flags.sql",
-      "packages/db/migrations/0312_m22_doclens_referral_link_identity_relink.sql",
-      // F-238 — `intake_records_request` (recipient + free text denylisted).
-      "packages/db/migrations/0313_m22_intake_records_request.sql",
-      // F-238 — `intake_records_request_fax` (destination number + failure text denylisted).
-      "packages/db/migrations/0315_m22_intake_records_request_fax.sql",
-    ],
   },
   {
     mod: "M28",
     denylist: M28_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0137_fhir_gateway_m28_rls_audit_triggers.sql"],
   },
   {
     mod: "M29",
     denylist: M29_AUDIT_DENYLIST,
-    migrations: [
-      "packages/db/migrations/0148_external_interfaces_m29_rls_audit_triggers.sql",
-      // TASK-063 follow-up: row-conditional SUD redaction on lab_observation_value.observation_value.
-      "packages/db/migrations/0164_lab_observation_value_sud_redaction.sql",
-    ],
   },
   {
     mod: "M31",
     denylist: M31_AUDIT_DENYLIST,
-    migrations: [
-      "packages/db/migrations/0139_portal_m31_rls_audit_triggers.sql",
-      // #117: adds status_change_reason_cipher (the suspend/reinstate reason) to portal_account's scrub set.
-      "packages/db/migrations/0228_portal_m31_status_change_reason.sql",
-    ],
   },
   {
     mod: "M32",
     denylist: M32_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0116_ai_platform_m32_rls_audit_triggers.sql"],
   },
 ];
 
@@ -296,7 +201,7 @@ const CONDITIONAL_REDACTIONS: ReadonlyArray<{
  *  identifier limit — e.g. `audit_phi_write_ckit_template_medication()` triggers on the real table
  *  `comfort_kit_template_medication`), so the trigger's `ON <table>` is the only reliable table name.
  *  `paths` are applied IN ORDER so a later file's `CREATE OR REPLACE FUNCTION` for the SAME table
- *  overrides an earlier file's (the forward-fix-migration pattern — see the `MODULES` comment). */
+ *  overrides an earlier file's (the forward-fix-migration pattern — see `triggerMigrationsFor`). */
 function parseMigrations(paths: readonly string[]): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   for (const path of paths) {
@@ -377,11 +282,28 @@ function verifyNestedPaths(
   return missing;
 }
 
+/** Each migration's `audit_phi_write_*()` trigger tables, in apply order. */
+const TRIGGER_TABLES_BY_MIGRATION = listMigrations().map((file) => {
+  const path = join(MIGRATIONS_DIR, file);
+  return { path, tables: Object.keys(parseMigrations([path])) };
+});
+
+/** Every migration that defines an audit trigger on one of `tables`, in apply order — so a later
+ *  file's `CREATE OR REPLACE FUNCTION audit_phi_write_<table>()` wins over an earlier one for the SAME
+ *  table (the forward-fix-migration pattern: never edit a shipped migration, ship one that redefines
+ *  the trigger). */
+function triggerMigrationsFor(tables: readonly string[]): string[] {
+  return TRIGGER_TABLES_BY_MIGRATION.filter((m) => m.tables.some((t) => tables.includes(t))).map(
+    (m) => m.path,
+  );
+}
+
 const violations: string[] = [];
 let tablesChecked = 0;
 let nestedPathEntriesVerified = 0;
 
-for (const { mod, denylist, migrations } of MODULES) {
+for (const { mod, denylist } of MODULES) {
+  const migrations = triggerMigrationsFor(Object.keys(denylist));
   const migCols = parseMigrations(migrations);
   const migrationLabel = migrations.join(", ");
   for (const [table, cols] of Object.entries(denylist)) {

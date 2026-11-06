@@ -31,8 +31,8 @@ export type TaskActor =
   | { readonly kind: "user"; readonly userId: string }
   | { readonly kind: "system" };
 
-export const TASK_LIST_DEFAULT_LIMIT = 50;
-export const TASK_LIST_MAX_LIMIT = 100;
+const TASK_LIST_DEFAULT_LIMIT = 50;
+const TASK_LIST_MAX_LIMIT = 100;
 
 /** The row is not in a state this action may start from (a closed task, or a repeat by the wrong actor). */
 export class TaskStateConflict extends Error {

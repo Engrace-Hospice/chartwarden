@@ -41,7 +41,7 @@ if (!FormatRegistry.Has("date")) {
 // --- shared shapes (§4.2) ---------------------------------------------------------------------
 
 /** The closed `:system` enum — every Phase-1 code system, `cpt` deliberately absent (§7.8). */
-export const CodeSystemIdSchema = Type.Union(CODE_SYSTEM_IDS.map((id) => Type.Literal(id)));
+const CodeSystemIdSchema = Type.Union(CODE_SYSTEM_IDS.map((id) => Type.Literal(id)));
 
 /** As-of selector shared by every version-aware read (§2.1); default is "today" in the handler. */
 const AsOfQuery = Type.Optional(Type.String({ format: "date" }));
@@ -147,7 +147,7 @@ const DeprecationMappingKindSchema = Type.Union([
 ]);
 
 /** §4.5 `DeprecationMappingResponse` — a deprecated code's successor mapping. */
-export const DeprecationMappingResponseSchema = Type.Object({
+const DeprecationMappingResponseSchema = Type.Object({
   deprecatedCode: Type.String(),
   deprecationEffective: Type.String(),
   successorCodes: Type.Array(Type.String()),
@@ -180,7 +180,7 @@ export const ConceptResponseSchema = Type.Object({
 });
 
 /** A single (system, code) expansion member (§4.5 `ExpansionMember`). */
-export const ExpansionMemberResponseSchema = Type.Object({
+const ExpansionMemberResponseSchema = Type.Object({
   systemId: CodeSystemIdSchema,
   code: Type.String(),
   display: Type.String(),
@@ -218,7 +218,7 @@ export const ValueSetCatalogQuerySchema = Type.Object({
     Type.Union([Type.Literal("platform"), Type.Literal("hospice"), Type.Literal("hqrp")]),
   ),
 });
-export const ValueSetCatalogEntrySchema = Type.Object({
+const ValueSetCatalogEntrySchema = Type.Object({
   id: Type.String(),
   name: Type.String(),
   description: Type.Union([Type.String(), Type.Null()]),
@@ -235,7 +235,7 @@ export const RemediationQuerySchema = Type.Object({
   system: Type.Optional(CodeSystemIdSchema),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
 });
-export const RemediationLineSchema = Type.Object({
+const RemediationLineSchema = Type.Object({
   systemId: CodeSystemIdSchema,
   deprecatedCode: Type.String(),
   deprecationEffective: Type.String(),
@@ -267,7 +267,7 @@ export const AdminVersionsQuerySchema = Type.Object({
   system: Type.Optional(CodeSystemIdSchema),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
 });
-export const AdminVersionEntrySchema = Type.Object({
+const AdminVersionEntrySchema = Type.Object({
   logId: Type.String(),
   systemId: CodeSystemIdSchema,
   versionId: Type.Union([Type.String(), Type.Null()]),
@@ -353,7 +353,7 @@ export const AdminAttestationParamsSchema = Type.Object({
     pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
   }),
 });
-export const AdminAttestationEntrySchema = Type.Object({
+const AdminAttestationEntrySchema = Type.Object({
   id: Type.String(),
   systemId: CodeSystemIdSchema,
   licensee: Type.String(),
@@ -392,7 +392,7 @@ export const AdminExtensionsQuerySchema = Type.Object({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
   cursor: Type.Optional(Type.String()),
 });
-export const AdminExtensionEntrySchema = Type.Object({
+const AdminExtensionEntrySchema = Type.Object({
   extensionId: Type.String(),
   valueSetId: Type.String(),
   organizationId: Type.String(),

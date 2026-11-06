@@ -21,9 +21,6 @@
 import type { RuleDef } from "./types";
 import { skipResult } from "./types";
 
-/** The rule-set version draft suggestions are stamped under until the platform team promotes them. */
-export const RULE_SUGGESTION_SET_VERSION = 1;
-
 /**
  * Normalize a raw MAC rejection code into a deterministic, anonymized rule-code suffix: lowercased, with
  * any non-alphanumeric run collapsed to a single underscore and edges trimmed. Same input always yields

@@ -47,19 +47,6 @@ export function isValidUsageQuantity(quantity: number): boolean {
   return Number.isInteger(quantity) && quantity > 0;
 }
 
-/** §2.3 `refund.amount_cents > 0` (CHECK) AND `refund.amount_cents <= invoice.amount_paid_cents`
- *  (application-level join check). */
-export function isValidRefundAmount(input: {
-  amountCents: number;
-  amountPaidCents: number;
-}): boolean {
-  return (
-    Number.isInteger(input.amountCents) &&
-    input.amountCents > 0 &&
-    input.amountCents <= input.amountPaidCents
-  );
-}
-
 /** The refund statuses whose amount is already spoken for against the invoice (GAP-061): a pending, approved
  *  or executed refund consumes refundable headroom; a denied or failed one does not. */
 const REFUND_COMMITTED_STATUSES: readonly string[] = ["requested", "approved", "executed_success"];

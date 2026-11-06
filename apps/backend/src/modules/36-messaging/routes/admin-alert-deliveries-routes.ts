@@ -55,7 +55,7 @@ export const AlertDeliveriesQuerySchema = Type.Object(
   { additionalProperties: false },
 );
 
-export const AlertDeliveryRowSchema = Type.Object({
+const AlertDeliveryRowSchema = Type.Object({
   deliveryId: Type.String(),
   organizationId: Type.String(),
   alertId: Type.String(),

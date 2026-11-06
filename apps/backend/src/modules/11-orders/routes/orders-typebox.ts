@@ -1,3 +1,4 @@
+import "@chartwarden/shared/route-kit";
 import { ORDER_KINDS } from "@chartwarden/types";
 import type { OrderKind } from "@chartwarden/types";
 import { ValidationError } from "@chartwarden/types";
@@ -11,7 +12,6 @@ import { ValidationError } from "@chartwarden/types";
 // discontinuation reason) are pinned here so the route → pure `@chartwarden/orders` machine flow is wired
 // end-to-end. Unions mirror the canonical `@chartwarden/types` order vocabularies (single source).
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   OrderDetailView as ServiceOrderDetailView,
@@ -22,20 +22,10 @@ import type {
   VerbalPolicyView as ServiceVerbalPolicyView,
 } from "./service";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
 // `recertification.periodEndDate` (packages/orders/src/kinds.ts) is `format: "date"` and this file never
 // registered it — every other format M11's own kinds use was covered, so nothing surfaced it until F-120's
 // live test signed one outside the full app's boot order (where M9/M17/M19/M20/… always register "date"
 // first). The same idempotent guard the other nine modules already carry.
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
-}
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 

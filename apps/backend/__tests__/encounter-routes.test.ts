@@ -6,7 +6,7 @@
 // encounter backend. The REAL Authorization Contract gates every route on the §4.5 keys; a header-auth
 // shim populates request.context. The §4.6 predicate M8 owns is registered into the shared ABAC registry
 // over the slice's resolver. Covers: RBAC gating (2xx with key, 403 without), cross-tenant 404, the
-// finalize→sign happy path, the §7.7 If-Match version race (412 VERSION_MISMATCH), and the cosigner
+// finalize→sign happy path, the §7.7 If-Match version race (409 STALE_VERSION), and the cosigner
 // predicate (RN ∧ not-self-author).
 import {
   M3_INTRINSIC_PREDICATES,
@@ -572,7 +572,7 @@ describe("GAP-014 — override routes compose D13 step-up and caseload scope", (
 });
 
 describe("M8-T09 — §7.7 optimistic concurrency on selections PATCH", () => {
-  it("428 without If-Match; 412 VERSION_MISMATCH on a stale version", async () => {
+  it("428 without If-Match; 409 STALE_VERSION on a stale version", async () => {
     const { app } = makeServer();
     const draft = await app.inject({
       method: "POST",
@@ -613,8 +613,8 @@ describe("M8-T09 — §7.7 optimistic concurrency on selections PATCH", () => {
       headers: { ...RN, "if-match": "0" },
       payload: { sections: [] },
     });
-    expect(stale.statusCode).toBe(412);
-    expect(stale.json().error.code).toBe("VERSION_MISMATCH");
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json().error.code).toBe("STALE_VERSION");
   });
 });
 

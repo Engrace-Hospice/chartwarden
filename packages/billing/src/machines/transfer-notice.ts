@@ -44,13 +44,6 @@ export const TRANSFER_NOTICE_TRANSITIONS: readonly TransferNoticeTransition[] = 
   { from: "ack_pending", event: "ack_277ca_rejected", to: "ack_rejected" },
 ] as const;
 
-/** `ack_accepted` (success), `ack_rejected` (a redraft is its own row) and `cancelled` have no outbound edge. */
-export const TRANSFER_NOTICE_TERMINAL_STATES: readonly NoticeState[] = [
-  "ack_accepted",
-  "ack_rejected",
-  "cancelled",
-] as const;
-
 export function isTerminal(state: NoticeState): boolean {
   return !TRANSFER_NOTICE_TRANSITIONS.some((t) => t.from === state);
 }

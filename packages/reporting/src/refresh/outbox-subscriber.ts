@@ -34,7 +34,7 @@ export interface UpstreamOutboxEvent {
  * for an unknown topic OR a nightly-covered `[]` topic, in which case the subscriber enqueues nothing. This
  * is the function the §4.5 `outbox.subscription-fanout.test.ts` asserts against the documented catalog.
  */
-export function plannedMvKeysForEvent(eventName: string): readonly string[] {
+function plannedMvKeysForEvent(eventName: string): readonly string[] {
   return mvKeysForTopic(eventName);
 }
 
@@ -79,7 +79,7 @@ export async function handleUpstreamInvalidation(
 
 /** The shared consumer name every incremental-invalidation binding registers under. Consumer dedup is keyed
  *  `(eventId, consumerName)` per the M1 outbox-consumer pattern (the M22/M34 `consumerName` precedent). */
-export const M33_MV_REFRESH_CONSUMER_NAME = "m33.mv-refresh-invalidator" as const;
+const M33_MV_REFRESH_CONSUMER_NAME = "m33.mv-refresh-invalidator" as const;
 
 /** One forward-declared `{ eventName, consumerName }` binding (the M22 `bindings.ts` / M34 subscription
  *  shape) the boot dispatcher wires once the live transactional-outbox dispatcher accessor lands (P2C). */

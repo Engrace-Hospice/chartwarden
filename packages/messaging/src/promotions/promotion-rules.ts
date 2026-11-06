@@ -131,8 +131,3 @@ export function promotionActorRole(
 ): ChartPromotionRole {
   return row.requestedByUserId === userId ? "requester" : "other";
 }
-
-/** The status active (still awaiting a reviewer) vs closed, for the requester's list. */
-export function isActivePromotionStatus(status: ChartPromotionStatus): boolean {
-  return status === "proposed";
-}

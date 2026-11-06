@@ -19,7 +19,7 @@ const OPEN = [...ACK_OPEN_STATUSES];
 const LIST_LIMIT = 100;
 
 /** A Postgres error (or one wrapped by the driver) that carries SQLSTATE 23514 and the trigger's marker text. */
-export function isTriggerRefusal(err: unknown, marker: string): boolean {
+function isTriggerRefusal(err: unknown, marker: string): boolean {
   let current: unknown = err;
   for (let depth = 0; depth < 4 && current && typeof current === "object"; depth += 1) {
     const e = current as { code?: unknown; message?: unknown; cause?: unknown };

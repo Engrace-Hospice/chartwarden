@@ -24,7 +24,6 @@ type ReqBody<Op> = Op extends { requestBody?: infer RB } ? Json<RB> : never;
 export type HeldPage = Ok200<operations["getApiV1OrdersHeldtransmissions"]>;
 export type HeldItem = HeldPage["items"][number];
 export type HeldOrderDetail = Ok200<operations["getApiV1OrdersById"]>;
-export type RecoveryRequest = NonNullable<HeldOrderDetail["pendingRecovery"]>;
 export type TransmissionAttestation = HeldOrderDetail["transmissionAttestations"][number];
 export type RecoverBody = ReqBody<operations["postApiV1OrdersByIdRecovertransmission"]>;
 export type Attestation = RecoverBody["attestation"];

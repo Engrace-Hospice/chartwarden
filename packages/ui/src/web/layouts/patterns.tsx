@@ -11,7 +11,7 @@ import { cardSurface, ghostBorder, t } from "../theme/tokens";
 
 const fillColumn = { display: "flex", flexDirection: "column" as const, minHeight: 0, flex: 1 };
 const splitRow = { display: "flex", minHeight: 0, flex: 1, overflow: "hidden" };
-// A right-hand context rail. Sized like the `18rem` rails ConversationView/AdminSplitLayout use, but
+// A right-hand context rail. Sized like the `18rem` rails AdminSplitLayout uses, but
 // with `flexShrink: 0` doing the real work: an aside is an unsized flex sibling otherwise, so long
 // prose inside it (M15's §5.1 volunteer-ratio bands/numerator explainers) grows the rail until the
 // `flex: 1` workspace beside it collapses to a sliver. The trailing padding is the right gutter the
@@ -22,8 +22,8 @@ const asideRail = {
   overflow: "auto",
   padding: "1rem 1.5rem 1rem 0",
 };
-// The same starvation bug in the OTHER optional side regions (WorkQueue `detail`, DetailPage `aside`,
-// ConversationView `detail`) — but those cannot take `asideRail`'s fixed width, because their callers
+// The same starvation bug in the OTHER optional side regions (WorkQueue `detail`, DetailPage `aside`)
+// — but those cannot take `asideRail`'s fixed width, because their callers
 // usually pass an ALREADY-sized child: `RightDetailPanel` is 24rem/flexShrink-0, and M23's
 // sequestration-policy + eligibility-center asides are 22rem. A fixed outer rail would fight those.
 // So this only puts a ceiling on the unsized case: a self-sizing child up to 24rem is untouched,
@@ -330,59 +330,6 @@ export function PatientWorkspaceLayout({
           {rail}
         </aside>
       ) : null}
-    </div>
-  );
-}
-
-/** Conversation View — a conversation List | the active Message Thread (+ composer) | right detail. */
-export interface ConversationViewProps {
-  list: ReactNode;
-  children: ReactNode;
-  detail?: ReactNode;
-}
-export function ConversationView({ list, children, detail }: ConversationViewProps): JSX.Element {
-  return (
-    <div className="wx-conversation" style={fillColumn}>
-      {/* One bordered card (list | thread), inset by the page gutter like the redesigned list tables. */}
-      <div
-        style={{
-          ...splitRow,
-          margin: `0 ${t.space5} ${t.space5}`,
-          border: `1px solid ${t.cardBorder}`,
-          borderRadius: t.radiusLg,
-          background: t.surfaceLowest,
-          overflow: "hidden",
-        }}
-      >
-        <div
-          className="wx-conversation-list"
-          style={{
-            width: "18rem",
-            flexShrink: 0,
-            borderRight: `1px solid ${t.cardBorder}`,
-            overflow: "auto",
-          }}
-        >
-          {list}
-        </div>
-        <div
-          className="wx-conversation-thread"
-          style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
-        >
-          {children}
-        </div>
-        {detail ? (
-          <section
-            className="wx-context-rail"
-            style={contextRailBounds}
-            aria-label="Details"
-            // biome-ignore lint/a11y/noNoninteractiveTabindex: Scrollable details need keyboard focus.
-            tabIndex={0}
-          >
-            {detail}
-          </section>
-        ) : null}
-      </div>
     </div>
   );
 }
