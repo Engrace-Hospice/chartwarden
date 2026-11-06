@@ -15,6 +15,95 @@ from-status.
   `409 TENANT_STATUS_CHANGED` when another transition changed the tenant's status while the request was waiting. Nothing is
   written; reload the tenant and retry.
 
+## 2026-11-05 — Tenant pricing: census-banded plans, a signed contract, and a monthly statement
+
+**Why.** The flat starter / professional / enterprise tiers are retired. A tenant now signs a *census-banded* plan version at
+onboarding step 2: the monthly platform fee is the **greater of** (active staff accounts x the per-user price) and the flat fee of the
+average-daily-census band the tenant falls in, plus a percentage of net collections when the tenant bills through ChartWarden. The default
+bands are five: 0-9, 10-16, 17-25, 26-29 and 30+ patients (`GET /api/admin/pricing/defaults` returns `[0, 10, 17, 26, 30]`). Every
+price is a column on a plan version and a published version is frozen, so a tenant keeps the price it signed. Money is integer cents,
+rates are basis points.
+
+### 1. What changes for existing clients
+
+- `tier` on plan and subscription responses can now be `census_banded` (the three old values stay readable on existing rows).
+- `GET /api/v1/plans` (the tenant catalog) never lists a `census_banded` plan, and the retired flat plans are no longer offered.
+- `POST /api/v1/subscription` and `PATCH /api/v1/subscription` answer `404` for a `census_banded` slug (exactly what a plan that does not
+  exist answers), and `403 PLAN_ASSIGNED_BY_OPERATIONS` for a tenant that is already on one; so does `POST /api/v1/subscription/cancel`: a
+  contracted plan is assigned and ended by ChartWarden operations.
+- `POST /api/admin/subscriptions/{id}/pause`, `/resume` and `/cancel` now check the subscription's status under a row lock and answer
+  `409` with a stable code instead of acting on any status: `SUBSCRIPTION_NOT_PAUSED` (resume of a subscription that is not paused),
+  `SUBSCRIPTION_CANCELED` (pause or cancel of a canceled subscription: it is final), `SUBSCRIPTION_ALREADY_PAUSED` (pause of a paused
+  one). A refused request writes nothing. They answer `503 AUDIT_UNBOUND` when the platform audit writer is not bound.
+- `POST /api/admin/plans` no longer accepts `tier: census_banded`; `activate`, `deprecate` and `meters` on such a plan answer
+  `403 PLAN_ASSIGNED_BY_OPERATIONS` (use the pricing plan editor below), and the legacy edit and activate answer `409` for a retired flat plan.
+
+### 2. New routes
+
+| Route | Who | Guards |
+|---|---|---|
+| `GET /api/admin/pricing/defaults`, `GET /api/admin/pricing/plans[/{id}]` | platform billing roles | `plan.admin.read` |
+| `POST /api/admin/pricing/plans` (draft), `PUT .../{id}` (replace a draft), `POST .../{id}/publish`, `/new-version`, `/archive` | platform billing roles | `plan.admin.write`, step-up, no AI actor, `Idempotency-Key`, body `reason` |
+| `GET /api/v1/platform/pricing/plans`, `POST /api/v1/platform/pricing/preview` | platform ops and billing roles | `subscription.pricing_read_platform` |
+| `GET /api/v1/platform/tenants/{orgSlug}/subscription` | platform ops and billing roles | `subscription.pricing_read_platform` |
+| `POST /api/v1/platform/tenants/{orgSlug}/subscription` | `platform_ops` only | `subscription.onboard_platform`, `tenant_lifecycle_platform_ops`, step-up, no AI actor, `Idempotency-Key`, body `reason` |
+| `PUT /api/v1/platform/tenants/{orgSlug}/subscription/billing-service-mode` | `platform_ops` only | same |
+| `GET /api/v1/subscription/pricing` | the tenant | `subscription.read` (read-only) |
+
+`POST .../subscription` signs the tenant onto a published plan version in one transaction (subscription, contract, `m35.subscription.created`,
+audit row) and then settles the wizard's `plan_contract` step through the wizard. It refuses while an earlier step is unsettled
+(`409 ONBOARDING_STEP_OUT_OF_ORDER`) or once the tenant is live (`409 TENANT_NOT_ONBOARDING`). The response carries
+`planContractStep.status`: `settled`, `already_settled`, or `pending` (the subscription exists but the step could not be settled; repeat the
+same POST to resume, nothing is duplicated).
+
+`billingServiceMode` is `none` (the tenant bills outside ChartWarden, no percentage), `billing_software` or `managed_billing`. The mode is an
+effective-dated history: a change takes effect from the **1st of the next month** (the contract view shows it as `pendingBillingServiceMode`), and
+immediately only while the tenant is still onboarding with no statement yet. A statement prices with the mode in force for its period, and a
+month that is already final can never be re-dated. `GET .../subscription` writes a read-audit row naming the operator.
+
+### 3. The statement
+
+One statement per subscription per UTC month, `draft` while the month is open and `final` once it is closed (five days after month end, so
+late-posted remittances dated inside the month still count). It shows both sides of the greater-of rule, the meters it used (active staff
+accounts, average daily census with its days observed, net collections with its remittance and pending counts) and the total. The tenant reads
+its latest statement on `GET /api/v1/subscription/pricing`; it never carries the ChartWarden operator who signed the contract.
+
+- **Charged from go-live, by days.** The platform fee and the plan minimum are charged by `inputs.daysLive / inputs.adcDaysInPeriod`: the
+  subscription's live days in the month, the go-live day (and a cancel day) counting in full, half up to the cent. A go-live on the 1st is a whole
+  month; mid-month it is a part. The implementation fee is not prorated. The billing percentage is on what was collected, so it is naturally partial.
+- **The minimum floors the platform fee only.** `minimumAdjustmentCents` lifts the (prorated) platform fee to the (prorated) plan minimum; the billing
+  fee is added on top.
+- **Late money is never lost.** A remittance dated inside a closed month that posts after the month finalized is billed on the next open
+  statement as a `priorPeriodLines` entry stored with its source month and that month's own rate (`priorPeriodFeeCents`), and never re-bills the
+  closed month. After a subscription ended, a settlement statement (`daysLive` 0) carries it.
+- **`needsReview`** marks a statement an operator should look at: its staff count fell back to the unfiltered ledger, or a remittance of the month had
+  not posted when it closed. Statements finalize on schedule either way.
+- **A canceled or paused subscription** is billed for the days it was live; a month already closed finalizes whatever the subscription has become.
+- New fields on the statement and contract views: `inputs.daysLive`, `priorPeriodLines`, `priorPeriodFeeCents`, `needsReview`,
+  `pendingBillingServiceMode`; the price preview takes an optional `plannedGoLiveOn` and returns `firstMonthDaysLive` / `firstMonthDaysInPeriod`.
+
+### 4. Later changes to the same release
+
+- `POST /api/v1/subscription/resume` and `POST /api/v1/subscription` answer `403 PLAN_ASSIGNED_BY_OPERATIONS` for a tenant that holds a
+  contracted subscription (resuming one, or starting another beside a paused one): a contracted subscription is paused and resumed by ChartWarden
+  operations. A pause that was left open (the subscription was resumed by a path that wrote no history row) now closes at the subscription's last
+  write instead of billing nothing for ever.
+- `POST /api/v1/roles` answers `422 RESERVED_ROLE` for the key `external_auditor` (whatever the category): that role is created by the system on the
+  first auditor redemption, and an auditor is only ever attached to it. The database refuses the same for any other writer.
+- A platform operator's pause, resume and cancel of a subscription no longer write the operator into the tenant-readable state history (or its
+  audit copy); they write a platform-scoped audit row (`m35.subscription.platform_paused|resumed|canceled`) that names the operator and the tenant.
+- The onboarding evidence note for step 2 (tenant-readable) no longer carries the order-form reference.
+- A settlement statement (`daysLive` 0, carrying late money after a cancel or pause) now finalizes after its grace like any other, and prior-period
+  money rides the EARLIEST open statement only (a later draft does not carry it again).
+- A closed month with no census day is recorded once per subscription-month for review (platform-only) instead of being logged every hour.
+- The staff count excludes an auditor or platform operator by what they WERE when they signed in (recorded in the staff ledger), not by their roles at
+  statement time, so changing a member's roles afterwards cannot move them on or off the bill.
+- The band is chosen on the exact mean (patient-days against threshold x days), not the rounded ADC shown.
+- A published plan version and a final statement cannot be deleted; a tenant reads its contract's identity and start only (not who signed, why, or the
+  order form).
+
+---
+
 ## 2026-11-05 — Onboarding wizard v2, pre-PR review fixes (go-live integrity)
 
 **Why.** The pre-PR review found ways one operator could open a tenant, or approve a go-live on data nobody had checked. These

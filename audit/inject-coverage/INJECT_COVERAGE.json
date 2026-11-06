@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1925,
-    "coveredRoutes": 1925,
-    "directRoutesReferenced": 1755
+    "routes": 1939,
+    "coveredRoutes": 1939,
+    "directRoutesReferenced": 1769
   },
   "modules": [
     {
@@ -564,14 +564,15 @@
     },
     {
       "module": "35-subscription",
-      "routes": 58,
+      "routes": 72,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m23-npi-verification-routes.test.ts",
+        "apps/backend/__tests__/m35-pricing-routes.test.ts",
         "apps/backend/__tests__/m35-stripe-webhook-route.test.ts",
         "apps/backend/__tests__/subscription-inject.test.ts"
       ],
-      "directRoutesReferenced": 58
+      "directRoutesReferenced": 72
     },
     {
       "module": "36-messaging",

@@ -278,6 +278,36 @@ controls:
       - file: apps/backend/__tests__/onboarding-org-gate.test.ts
       - file: apps/backend/__tests__/onboarding-org-gate-routes.test.ts
 
+  - id: CW-AC-18
+    title: >-
+      Tenant pricing is platform-controlled: plans, contracts, the billing mode and statement reviews are written only by platform operators (platform credential, the M35 pricing keys, a fresh step-up, a human (non-AI) actor, an Idempotency-Key). The platform carrier's grants are column-level: INSERT on contract, billing-mode history and statement review, and on `subscription` UPDATE of exactly status, paused_at, paused_until, canceled_at, cancel_at_period_end and updated_at (never organization, plan, period, trial, dunning or Stripe columns, never DELETE). Admin pause, resume and cancel read the subscription FOR UPDATE in the write transaction and refuse a transition its status does not allow (409 SUBSCRIPTION_NOT_PAUSED, SUBSCRIPTION_CANCELED, SUBSCRIPTION_ALREADY_PAUSED, nothing written, audited or announced), and refuse to run without the audit writer (503 AUDIT_UNBOUND). The operator is named only in the platform audit row, never in tenant-readable subscription history. Tenants read their contract by column (signer, signing reason and order form withheld); contract and billing-mode history cannot be deleted; a billing-mode change takes effect immediately only while the tenant is not live and has no statement, otherwise on the 1st of the next month.
+    hipaa: ["164.312(a)(1)", "164.312(b)", "164.308(a)(4)"]
+    soc2: ["CC6.1", "CC6.3", "CC8.1", "PI1.3"]
+    status: implemented
+    evidence:
+      - script: test:m35:tenant-pricing:live
+      - script: test:rls:live:m35
+      - ci: "M35 tenant pricing"
+      - file: packages/db/migrations/1362_m35_subscription_contract_statement.sql
+      - file: packages/db/migrations/1363_m35_tenant_pricing_permissions.sql
+      - file: packages/db/migrations/1364_m35_tenant_pricing_platform_grants.sql
+      - file: scripts/db/provision-runtime-roles.ts
+      - file: apps/backend/src/modules/35-subscription/routes/admin-transition.ts
+      - file: apps/backend/__tests__/m35-tenant-pricing.live.test.ts
+
+  - id: CW-AC-19
+    title: >-
+      Auditors are never billed or provisioned as staff: the role key external_auditor is reserved for the system auditor role (a tenant role under that key is refused with 422 RESERVED_ROLE at the route and by a trigger in the database), so a real auditor always lands on the system role; the staff meter excludes auditors, family-portal users and support sessions as decided when each sign-in is observed (non_staff_observed), and a month that spans a pseudonym-key rotation counts its busiest single epoch and flags the statement needs_review.
+    hipaa: ["164.308(a)(4)(ii)(B)", "164.308(a)(3)(ii)(A)"]
+    soc2: ["CC6.2", "CC6.3", "PI1.3"]
+    status: implemented
+    evidence:
+      - script: test:m35:tenant-pricing:live
+      - ci: "M35 tenant pricing"
+      - file: packages/db/migrations/1365_m3_system_managed_role_key.sql
+      - file: packages/db/migrations/1366_m35_user_active_period_non_staff_observed.sql
+      - file: apps/backend/src/modules/03-authorization/routes/authz-routes.ts
+
   - id: CW-AU-01
     title: Audit controls — PHI reads and writes leave an integrity-checked trail
     hipaa: ["164.312(b)", "164.312(c)(1)"]
