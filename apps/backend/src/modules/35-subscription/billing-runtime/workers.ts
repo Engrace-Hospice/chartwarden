@@ -4,7 +4,11 @@
 // composition root only with a Valkey connection (constructing a Worker opens it - never at import, never in
 // tests) and only when the platform pool exists (the org enumerator and the platform-only tables need it).
 // Every queue is a repeatable SWEEP over durable rows, not a per-request job: a lost job loses nothing.
+import type { PseudonymKeyProvider } from "@chartwarden/subscription-billing";
+import type { NetCollectionsReader, PatientCensusReader } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import { listContractedOrgIds, recordDailyCensusForOrg } from "../pricing/census-daily";
+import { type StatementStripePort, runStatementsForOrg } from "../pricing/statement-service";
 import { type CensusDeps, aggregateAddonForOrg, runPatientCensusForOrg } from "./census";
 import {
   type M35JobDeps,
@@ -32,6 +36,8 @@ export const M35_QUEUES = {
   refundExecutor: "m35.refund-executor",
   // ADR-0108 D8 — the claims-billing add-on census pull (M5 PatientCensusReader → patient_active_period).
   patientCensus: "m35.patient-census",
+  // Slice 2 — the monthly statement of every org on a census_banded contract (draft while the month is open, final after).
+  pricingStatement: "m35.pricing-statement",
 } as const;
 
 /** Cron patterns (UTC). Sweeps that wait on Stripe-driven state run often; calendar jobs run once. */
@@ -44,6 +50,7 @@ export const M35_SCHEDULES = {
   webhookHandler: "* * * * *",
   refundExecutor: "*/5 * * * *",
   patientCensus: "0 */6 * * *",
+  pricingStatement: "30 * * * *",
 } as const;
 
 export interface M35WorkerDeps {
@@ -55,6 +62,17 @@ export interface M35WorkerDeps {
   readonly refunds?: RefundExecutorDeps;
   /** ADR-0108 — present when the pseudonym key provider is bound; without it no census runs (nothing is counted). */
   readonly census?: Pick<CensusDeps, "census" | "keyProvider">;
+  /**
+   * Slice 2 (tenant pricing) - present when the pseudonym key ring is bound. Rides the SAME census sweep for the daily active-patient
+   * count behind the average daily census, and runs the hourly statement sweep over the staff ledger, that count and the M25 net
+   * collections seam. Without it no statement is computed (a statement needs all three meters; none is ever guessed).
+   */
+  readonly pricing?: {
+    readonly census: Pick<PatientCensusReader, "activePatientCount">;
+    readonly keyProvider: PseudonymKeyProvider;
+    readonly netCollections: NetCollectionsReader;
+    readonly stripe?: StatementStripePort;
+  };
 }
 
 /** One Worker per bound queue. */
@@ -111,14 +129,60 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
       ...(jobs.now ? { now: jobs.now } : {}),
       ...(jobs.log ? { log: jobs.log } : {}),
     };
+    const pricing = deps.pricing;
     workers.push(
-      worker(M35_QUEUES.patientCensus, () =>
-        runM35Fanout(
+      worker(M35_QUEUES.patientCensus, async () => {
+        // Slice 2 asks ONCE who is contracted (one audited platform call per sweep, not one per org).
+        const contracted = pricing
+          ? await listContractedOrgIds(jobs.platformRunner)
+          : new Set<string>();
+        await runM35Fanout(
           jobs,
-          (o) => runPatientCensusForOrg(census, o).then(() => undefined),
+          async (o) => {
+            await runPatientCensusForOrg(census, o);
+            // The same sweep, the same reader: one active-patient count per contracted org per UTC day for the ADC.
+            if (pricing && contracted.has(o)) {
+              await recordDailyCensusForOrg(
+                {
+                  platformRunner: jobs.platformRunner,
+                  census: pricing.census,
+                  ...(jobs.now ? { now: jobs.now } : {}),
+                },
+                o,
+              );
+            }
+          },
           "patient_census",
-        ),
-      ),
+        );
+      }),
+    );
+  }
+  if (deps.pricing) {
+    const pricing = deps.pricing;
+    workers.push(
+      worker(M35_QUEUES.pricingStatement, async () => {
+        const contracted = await listContractedOrgIds(jobs.platformRunner);
+        await runM35Fanout(
+          {
+            ...jobs,
+            listOrgs: async () =>
+              (await jobs.listOrgs()).filter((o) => contracted.has(o.organizationId)),
+          },
+          (o) =>
+            runStatementsForOrg(
+              {
+                platformRunner: jobs.platformRunner,
+                keyProvider: pricing.keyProvider,
+                netCollections: pricing.netCollections,
+                ...(pricing.stripe ? { stripe: pricing.stripe } : {}),
+                ...(jobs.now ? { now: jobs.now } : {}),
+                ...(jobs.log ? { log: jobs.log } : {}),
+              },
+              o,
+            ).then(() => undefined),
+          "pricing_statement",
+        );
+      }),
     );
   }
   return workers;
@@ -127,7 +191,12 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
 /** Register the repeatable triggers for the queues {@link registerM35Workers} constructs. */
 export async function scheduleM35Jobs(
   connection: ConnectionOptions,
-  opts: { webhookHandler: boolean; refundExecutor: boolean; patientCensus?: boolean },
+  opts: {
+    webhookHandler: boolean;
+    refundExecutor: boolean;
+    patientCensus?: boolean;
+    pricingStatement?: boolean;
+  },
 ): Promise<Queue[]> {
   const specs: Array<{ name: string; pattern: string }> = [
     { name: M35_QUEUES.dunningEngine, pattern: M35_SCHEDULES.dunningEngine },
@@ -143,6 +212,9 @@ export async function scheduleM35Jobs(
       : []),
     ...(opts.patientCensus
       ? [{ name: M35_QUEUES.patientCensus, pattern: M35_SCHEDULES.patientCensus }]
+      : []),
+    ...(opts.pricingStatement
+      ? [{ name: M35_QUEUES.pricingStatement, pattern: M35_SCHEDULES.pricingStatement }]
       : []),
   ];
   const queues: Queue[] = [];

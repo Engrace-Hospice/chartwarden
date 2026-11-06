@@ -1,6 +1,6 @@
 // apps/backend/src/modules/35-subscription/permission-keys.ts — M35 (§4.7 / §6).
 //
-// The twenty-six permission keys Module 35 (Subscription Billing) registers into Module 3's catalog —
+// The twenty-eight permission keys Module 35 (Subscription Billing) registers into Module 3's catalog —
 // the §4.7 cross-module handshake (mirrored from `M35_CONTRIBUTED_PERMISSIONS` in `@chartwarden/auth`). M3 must
 // include these before M35's subscription / payment-method / invoice / usage (tenant) and plan / refund /
 // promo / revenue / dunning / stripe (platform-ops) routes can be authorized; every route gates on
@@ -42,4 +42,6 @@ export const M35_STEP_UP_PERMISSION_KEYS: readonly M35ContributedPermissionKey[]
   "promo.admin.revoke",
   "revenue.admin.write",
   "stripe.admin.replay",
+  // Slice 2: signing a tenant onto a plan at onboarding step 2 / changing its billing service mode.
+  "subscription.onboard_platform",
 ];

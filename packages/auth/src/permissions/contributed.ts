@@ -6422,6 +6422,22 @@ export const M35_CONTRIBUTED_PERMISSIONS = {
     category: "billing_admin",
     abac: "platform_billing_scope",
   },
+  // ── slice 2 (tenant pricing): the onboarding contract. `category: "platform"` (not `billing_admin`), like the M34 onboarding keys. ──
+  // Create a tenant's subscription at onboarding step 2 and change its billing service mode. Only the `platform_ops` role carries it
+  // (migration 1343), because `tenant_lifecycle_platform_ops` admits that role alone.
+  "subscription.onboard_platform": {
+    resource: "subscription",
+    action: "onboard_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // The read-only pricing surface: offered plans, the price preview, a tenant's contract and statements.
+  "subscription.pricing_read_platform": {
+    resource: "subscription",
+    action: "pricing_read_platform",
+    category: "platform",
+    abac: "platform_billing_scope",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 export type M35ContributedPermissionKey = keyof typeof M35_CONTRIBUTED_PERMISSIONS;

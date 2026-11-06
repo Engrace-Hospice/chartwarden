@@ -7,6 +7,7 @@
 // re-exported so a route test can mount one group over a fresh in-memory backend.
 import type { FastifyInstance } from "fastify";
 import type { AddonService } from "../addon/addon-service";
+import { type PricingRouteDeps, registerPricingRoutes } from "../pricing/pricing.routes";
 import { registerAddonRoutes } from "./addon.routes";
 import { type AdminRouteDeps, registerAdminRoutes } from "./admin.routes";
 import type { M35RouteService } from "./service";
@@ -28,6 +29,8 @@ export interface M35MountDeps {
   readonly webhook?: WebhookRouteDeps;
   /** ADR-0108 — the claims-billing add-on service (admin grant/cancel + the tenant billing-status posture). */
   readonly addons?: AddonService;
+  /** Slice 2 — the plan editor, the onboarding contract and the tenant's own pricing read. Absent => none of those routes mount. */
+  readonly pricing?: PricingRouteDeps;
 }
 
 /**
@@ -46,5 +49,6 @@ export function mountM35Routes(app: FastifyInstance, deps: M35MountDeps): void {
   registerTenantRoutes(app, tenant);
   registerAdminRoutes(app, admin);
   if (deps.addons) registerAddonRoutes(app, { addons: deps.addons });
+  if (deps.pricing) registerPricingRoutes(app, deps.pricing);
   registerWebhookRoutes(app, deps.webhook ?? {});
 }

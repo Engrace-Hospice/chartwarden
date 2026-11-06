@@ -124,6 +124,23 @@ export interface M35RouteServiceDeps {
   readonly now?: () => Date;
 }
 
+/**
+ * A census_banded plan is a CONTRACT a ChartWarden operator signs at onboarding (slice 2): its price is negotiated and frozen per
+ * version, so a tenant can neither pick one nor move onto or off one by itself, and the legacy flat-tier editor cannot touch one.
+ */
+function refuseContractedPlan(
+  plan: { readonly tier: string } | null | undefined,
+  what: string,
+): void {
+  if (plan?.tier === "census_banded") {
+    throw new ChartWardenError(
+      "PLAN_ASSIGNED_BY_OPERATIONS",
+      `${what}: a contracted plan is assigned by ChartWarden operations`,
+      403,
+    );
+  }
+}
+
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 const isoReq = (d: Date): string => d.toISOString();
 const dateOnly = (d: Date | null | undefined): string | null =>
@@ -483,7 +500,7 @@ export function buildDrizzleM35RouteService(
       const plans = await db
         .select()
         .from(PL)
-        .where(eq(PL.isActive, true))
+        .where(and(eq(PL.isActive, true), ne(PL.tier, "census_banded")))
         .orderBy(PL.basePriceCents);
       const out: PlanCatalogView[] = [];
       for (const plan of plans) {
@@ -711,6 +728,7 @@ export function buildDrizzleM35RouteService(
           .where(and(eq(PL.slug, args.planSlug), eq(PL.isActive, true)))
           .limit(1);
         if (!plan) throw new NotFoundError("plan not found or inactive");
+        refuseContractedPlan(plan, "a tenant cannot select this plan");
         // GAP-060 - a supplied payment method must be an ACTIVE one of THIS org (the column is a bare uuid
         // with no FK, so nothing else stops another tenant's, or a random, id landing here).
         if (args.paymentMethodId) {
@@ -793,6 +811,8 @@ export function buildDrizzleM35RouteService(
           .where(and(eq(PL.slug, args.newPlanSlug), eq(PL.isActive, true)))
           .limit(1);
         if (!toPlan) throw new NotFoundError("target plan not found or inactive");
+        refuseContractedPlan(fromPlan, "a tenant cannot change away from its contracted plan");
+        refuseContractedPlan(toPlan, "a tenant cannot select this plan");
         // §4.8 plan_change_within_period_grace re-asserted server-side: outside the 7-day grace, only a
         // platform_admin may pass `always_invoice`. A tenant self-service change is never platform_admin.
         if (args.prorationBehavior === "always_invoice") {
@@ -1186,6 +1206,7 @@ export function buildDrizzleM35RouteService(
       return platform(async (tx) => {
         const [plan] = await tx.select().from(PL).where(eq(PL.id, planId)).limit(1);
         if (!plan) throw new NotFoundError("plan not found");
+        refuseContractedPlan(plan, "use the pricing plan editor");
         if (plan.isActive) throw new ConflictError("only a draft plan may be edited");
         const [updated] = await tx
           .update(PL)
@@ -1205,6 +1226,7 @@ export function buildDrizzleM35RouteService(
 
     async adminActivatePlan(_actor, planId) {
       return platform(async (tx) => {
+        refuseContractedPlan(await loadPlan(tx, planId), "use the pricing plan editor to publish");
         const [updated] = await tx
           .update(PL)
           .set({ isActive: true, updatedAt: now() })
