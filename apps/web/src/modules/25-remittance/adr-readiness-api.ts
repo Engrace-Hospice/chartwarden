@@ -13,7 +13,6 @@ type ReqBody<Op> = Op extends { requestBody?: infer RB } ? Json<RB> : never;
 export type AdrReadinessView = Ok<operations["getApiV1AdrsByIdReadiness"]>;
 export type ReadinessReview = NonNullable<AdrReadinessView["review"]>;
 export type ReadinessFinding = ReadinessReview["findings"][number];
-export type ReadinessKeyGap = AdrReadinessView["gaps"]["keys"][number];
 export type ReadinessRequestResult = Created<operations["postApiV1AdrsByIdReadinessReviews"]>;
 export type ReadinessDisposition = ReqBody<
   operations["postApiV1AdrsByIdReadinessFindingsByFindingIdDisposition"]

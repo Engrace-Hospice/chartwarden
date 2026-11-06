@@ -146,8 +146,6 @@ export type ReconciliationLineKind = ReqBody<
 >["lineKind"];
 /** The body of the record route — assembled by the ceremony, sent verbatim. */
 export type RecordAdministrationBody = ReqBody<operations["postApiV1Administrations"]>;
-/** §2.9 BCMA — the optional bedside scan. The server re-derives the canonical `barcodeMatchResult`. */
-export type BarcodeScan = NonNullable<RecordAdministrationBody["barcodeScan"]>;
 
 // ── request helpers ────────────────────────────────────────────────────────────────────────────────────
 

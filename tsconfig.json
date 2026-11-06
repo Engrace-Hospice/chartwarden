@@ -18,9 +18,6 @@
       "path": "./apps/web"
     },
     {
-      "path": "./packages/admin-ui-shell"
-    },
-    {
       "path": "./packages/ai-platform"
     },
     {

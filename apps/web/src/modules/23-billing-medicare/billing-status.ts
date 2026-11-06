@@ -195,11 +195,6 @@ export function eligibilityOutcomeTone(outcome: string): StatusTone {
   return ELIGIBILITY_OUTCOME_TONE[outcome] ?? "neutral";
 }
 
-/** Resolve a NOE/NOTR filing-window tier to its tone, defaulting to neutral. */
-export function windowTierTierTone(tier: string): StatusTone {
-  return WINDOW_TIER_TONE[tier] ?? "neutral";
-}
-
 /** Resolve a NOE/NOTR record state to its tone, defaulting to neutral. */
 export function noeNotrStateTone(state: string): StatusTone {
   return NOE_NOTR_STATE_TONE[state] ?? "neutral";

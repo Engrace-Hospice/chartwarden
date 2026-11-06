@@ -18,7 +18,6 @@ export interface LogRow {
 
 /** Batches the user must still upload to the CMS portal and/or record a result for. */
 export const AWAITING_STATUSES = ["exported", "submitted_pending_result"] as const;
-export const REJECTED_STATUSES = ["rejected", "partially_accepted"] as const;
 
 export interface SubmissionKpis {
   awaitingConfirmation: number;

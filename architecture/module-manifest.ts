@@ -1278,7 +1278,6 @@ export const MODULES: ModuleDef[] = [
     name: "SaaS Tenant Platform",
     codePaths: [
       "packages/saas-tenant-platform",
-      "packages/admin-ui-shell",
       "apps/admin/src/shell",
       "apps/backend/src/modules/34-saas-tenant-platform",
       "apps/web/src/modules/34-saas",

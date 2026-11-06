@@ -25,7 +25,8 @@ import type { DataTableColumn } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { STATUS_TONE, ageFromDob, statusLabel } from "./patient-status";
+import { PATIENT_STATUS_TONE, patientStatusLabel } from "../../shell/patient-context";
+import { ageFromDob } from "./patient-status";
 
 interface PatientSummary {
   id: string;
@@ -412,8 +413,8 @@ const CENSUS_COLUMNS: readonly DataTableColumn<PatientSummary>[] = [
     header: "Status",
     cell: (patient) => (
       <StatusPill
-        label={statusLabel(patient.status)}
-        tone={STATUS_TONE[patient.status] ?? "neutral"}
+        label={patientStatusLabel(patient.status)}
+        tone={PATIENT_STATUS_TONE[patient.status] ?? "neutral"}
       />
     ),
   },
@@ -461,8 +462,8 @@ function PatientQuickSummary({
     <RightDetailPanel title={`${patient.lastName}, ${patient.firstName}`} onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
         <StatusPill
-          label={statusLabel(patient.status)}
-          tone={STATUS_TONE[patient.status] ?? "neutral"}
+          label={patientStatusLabel(patient.status)}
+          tone={PATIENT_STATUS_TONE[patient.status] ?? "neutral"}
         />
 
         <Field label="DOB / Age">
@@ -490,7 +491,7 @@ function PatientQuickSummary({
               {flags.map((f) => (
                 <ConsentBadge
                   key={f}
-                  label={statusLabel(f)}
+                  label={patientStatusLabel(f)}
                   authority="Disclosure consent on file"
                 />
               ))}

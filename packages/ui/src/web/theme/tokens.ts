@@ -16,7 +16,7 @@ export const t = {
   accent: "var(--color-accent)",
   accentTint: "var(--color-accent-tint)",
 
-  // Semantic status (also mirrored as the statusColors triad in core/theme/colors.ts)
+  // Semantic status
   success: "var(--color-success)",
   warning: "var(--color-warning)",
   error: "var(--color-error)",

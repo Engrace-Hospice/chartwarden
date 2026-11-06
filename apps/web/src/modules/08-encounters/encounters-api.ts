@@ -68,8 +68,6 @@ export type EvvReconcileBody = ReqBody<operations["postApiV1EncountersByEncounte
 export type EncounterType = CreateEncounterBody["encounterType"];
 /** The §2.2 authoring disciplines. */
 export type EncounterDiscipline = CreateEncounterBody["discipline"];
-/** The mileage provenance the server accepts (`odometer` | `route_calc` | `manual_override`). */
-export type MileageSource = CaptureMileageBody["source"];
 
 // ── §2.2 the (encounter type × discipline) matrix, and the caller's own half of it (F-083) ────────────
 //
@@ -196,28 +194,6 @@ export async function loadSelections(
     params: { path: { encounterId } },
   });
   return (data ?? null) as SelectionsView | null;
-}
-
-/** Every vitals set on the encounter, newest capture first (#92). */
-export async function loadVitals(
-  client: ApiClient,
-  encounterId: string,
-): Promise<VitalsListView | null> {
-  const { data } = await client.GET("/api/v1/encounters/{encounterId}/vitals", {
-    params: { path: { encounterId } },
-  });
-  return (data ?? null) as VitalsListView | null;
-}
-
-/** The encounter's mileage row, or null when none was recorded (F-063). */
-export async function loadMileage(
-  client: ApiClient,
-  encounterId: string,
-): Promise<MileageView | null> {
-  const { data } = await client.GET("/api/v1/encounters/{encounterId}/mileage", {
-    params: { path: { encounterId } },
-  });
-  return (data ?? null) as MileageView | null;
 }
 
 // ── authoring writes ───────────────────────────────────────────────────────────────────────────────────

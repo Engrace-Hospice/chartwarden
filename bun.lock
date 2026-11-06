@@ -38,7 +38,6 @@
       "name": "@chartwarden/admin",
       "version": "0.0.0",
       "dependencies": {
-        "@chartwarden/admin-ui-shell": "workspace:*",
         "@chartwarden/types": "workspace:*",
         "@chartwarden/ui": "workspace:*",
         "@fontsource-variable/inter": "^5.2.8",
@@ -128,17 +127,6 @@
         "storybook": "^10.6.3",
         "tailwindcss": "^4",
         "vite": "^6.4.5",
-      },
-    },
-    "packages/admin-ui-shell": {
-      "name": "@chartwarden/admin-ui-shell",
-      "version": "0.0.0",
-      "dependencies": {
-        "@chartwarden/ui": "workspace:*",
-        "react": "^18.3.1",
-      },
-      "devDependencies": {
-        "@types/react": "^18.3.0",
       },
     },
     "packages/ai-platform": {
@@ -585,8 +573,6 @@
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@1.9.4", "", { "os": "win32", "cpu": "x64" }, "sha512-8Y5wMhVIPaWe6jw2H+KlEm4wP/f7EW3810ZLmDlrEEy5KvBsb9ECEfu/kMWD484ijfQ8+nIi0giMgu9g1UAuuA=="],
 
     "@chartwarden/admin": ["@chartwarden/admin@workspace:apps/admin"],
-
-    "@chartwarden/admin-ui-shell": ["@chartwarden/admin-ui-shell@workspace:packages/admin-ui-shell"],
 
     "@chartwarden/ai-platform": ["@chartwarden/ai-platform@workspace:packages/ai-platform"],
 

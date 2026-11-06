@@ -6,7 +6,6 @@ import type { StatusTone } from "@chartwarden/ui";
 import type { DdeItem } from "./dde-queue-model";
 import { errorCode, errorMessage } from "./dde-queue-model";
 
-export type SubmissionMode = "manual" | "provider";
 export type ProviderState = "not_found" | "received" | "accepted" | "returned" | "rejected";
 
 /** The badge on a queue row: who keyed it, or "Not sent" while no submission mode is recorded (text, not colour). */

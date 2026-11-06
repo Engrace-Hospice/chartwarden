@@ -37,10 +37,7 @@ const REPO_ROOT =
 const SCAN_DIRS = ["apps/web/src", "packages/ui/src/web"];
 
 // Token-definition files where raw color values legitimately live (exempt from rule 1).
-const ALLOW = new Set([
-  "packages/ui/src/web/theme/tokens.ts",
-  "packages/ui/src/web/theme/tailwind.config.ts",
-]);
+const ALLOW = new Set(["packages/ui/src/web/theme/tokens.ts"]);
 
 const HEX = /#[0-9a-fA-F]{3,8}\b/;
 const RGB = /\brgba?\(/;
@@ -98,7 +95,7 @@ const colorsPath = "packages/ui/src/core/theme/colors.ts";
 const css = readFileSync(join(REPO_ROOT, cssPath), "utf8");
 const themeBlock = css.slice(css.indexOf("@theme"), css.indexOf("}", css.indexOf("@theme")));
 const colorsSrc = readFileSync(join(REPO_ROOT, colorsPath), "utf8");
-// brandColors hex values (skip the statusColors triad — those are not part of @theme by design).
+// brandColors hex values.
 const brandSeg = colorsSrc.slice(colorsSrc.indexOf("brandColors"));
 for (const m of brandSeg.matchAll(/"(#[0-9a-fA-F]{3,8})"/g)) {
   const hex = m[1]!;

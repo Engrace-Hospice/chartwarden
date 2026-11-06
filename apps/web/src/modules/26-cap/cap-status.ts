@@ -33,14 +33,6 @@ export const SETTLEMENT_STATUS_TONE: Record<string, StatusTone> = {
   final: "neutral",
 };
 
-/** cap_psr_recon status → tone. open/investigating are the worklist signals. */
-export const PSR_RECON_TONE: Record<string, StatusTone> = {
-  open: "warning",
-  investigating: "progress",
-  resolved: "success",
-  accepted: "neutral",
-};
-
 /** Resolve a wire enum through a tone map, defaulting to neutral (use `?` not `&&` — empty string is valid). */
 export function toneOf(
   map: Record<string, StatusTone>,

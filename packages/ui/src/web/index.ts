@@ -44,8 +44,6 @@ export { classifyRead, settleRead } from "./components/read-status";
 export type { NotFoundMeaning, ReadStatus } from "./components/read-status";
 export { LoadingSpinner } from "./components/loading-spinner";
 export type { LoadingSpinnerProps } from "./components/loading-spinner";
-export { MetricCard } from "./components/metric-card";
-export type { MetricCardProps, MetricTone } from "./components/metric-card";
 export { FormSection } from "./components/form-section";
 export type { FormSectionProps } from "./components/form-section";
 export { SelectField, TextAreaField, TextField } from "./components/fields";
@@ -55,10 +53,10 @@ export type {
   TextAreaFieldProps,
   TextFieldProps,
 } from "./components/fields";
-export { NavGroup, NavLink, groupByNavGroup } from "./components/nav-link";
+export { NavLink } from "./components/nav-link";
 export { CountBadge, FlagChip, InfoRows, Panel } from "./components/panel";
 export type { InfoRow, PanelProps } from "./components/panel";
-export type { NavGroupProps, NavLinkProps } from "./components/nav-link";
+export type { NavLinkProps } from "./components/nav-link";
 export { StepUpCard, safeReturnTo } from "./components/step-up-card";
 export type { StepUpCardProps } from "./components/step-up-card";
 export {
@@ -149,9 +147,6 @@ export { STALE_SELECTION_MESSAGE, useStaleSelection } from "./hooks/use-stale-se
 export type { StaleSelectionOptions } from "./hooks/use-stale-selection";
 export type { ToastContextValue, ToastOptions, ToastTone } from "./system/toast";
 
-// Theme — web-only Tailwind seed (consumes core color tokens)
-export { sharedTailwindConfig } from "./theme/tailwind.config";
-export type { SharedTailwindConfig } from "./theme/tailwind.config";
 // Theme — Lantern token pointers (CSS-var references) + No-Line helpers (R0.2, DESIGN.md §2/§3/§10)
 // `tint` is exported (F-077) because it was not: the care-plan guard chip hand-rolled
 // `color-mix(… 14% …)` at a call site that could not import the 12% helper, and that 2-point

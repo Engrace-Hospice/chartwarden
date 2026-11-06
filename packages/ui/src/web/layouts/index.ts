@@ -20,7 +20,6 @@ export {
   AdminSplitLayout,
   CenteredCardLayout,
   CenteredStatusLayout,
-  ConversationView,
   DashboardLayout,
   DetailPageLayout,
   PatientWorkspaceLayout,
@@ -31,31 +30,9 @@ export type {
   AdminSplitLayoutProps,
   CenteredCardLayoutProps,
   CenteredStatusLayoutProps,
-  ConversationViewProps,
   DashboardLayoutProps,
   DetailPageLayoutProps,
   PatientWorkspaceLayoutProps,
   StepperWorkflowLayoutProps,
   WorkQueueLayoutProps,
 } from "./patterns";
-// Domain Tier-2 patterns (R0.4) — for the built modules that need them now.
-export {
-  AdminHierarchyLayout,
-  AdminSettingsLayout,
-  DocumentViewerLayout,
-  GatedActionFlowLayout,
-  MarGridLayout,
-  PortalDashboardLayout,
-  SchedulingCalendarLayout,
-  StatusBoardLayout,
-} from "./domain-patterns";
-export type {
-  AdminHierarchyLayoutProps,
-  AdminSettingsLayoutProps,
-  DocumentViewerLayoutProps,
-  GatedActionFlowLayoutProps,
-  MarGridLayoutProps,
-  PortalDashboardLayoutProps,
-  SchedulingCalendarLayoutProps,
-  StatusBoardLayoutProps,
-} from "./domain-patterns";
