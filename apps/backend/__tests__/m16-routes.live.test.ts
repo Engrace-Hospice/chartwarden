@@ -117,13 +117,18 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     actors[key] = { user, org, roles, membership };
   }
 
-  /** An `eligible` plan (what M6's intake consumer opens), or an already-`active` one for another org. */
+  /**
+   * An `eligible` plan (what M6's intake consumer opens), or an already-`active` one for another org. The death is
+   * YESTERDAY: since ADR-0110 D2 the condolence letter is due on day 2, so an older death would materialize it
+   * already past due, and the cancel-future assertions below (opt-out, pause) are about rows still ahead of `now`.
+   * (Not today: the late-attempt case backdates a `due_at` by a day, which the ceiling CHECK keeps >= the anchor.)
+   */
   async function seedPlan(org: string, activeCounselor?: string): Promise<string> {
     const { rows } = await admin.query(
       `INSERT INTO bereavement_plan
          (organization_id, patient_id, admission_id, provider_entity_id, status, death_date,
           assigned_counselor_user_id, opened_at)
-       VALUES ($1,$2,$3,$4,$5, CURRENT_DATE - 3, $6, $7) RETURNING id`,
+       VALUES ($1,$2,$3,$4,$5, CURRENT_DATE - 1, $6, $7) RETURNING id`,
       [
         org,
         randomUUID(),

@@ -3,7 +3,11 @@
 //
 // The pure M16 bereavement domain core (no DB — every fact is injected) plus the seam-consuming death-fact
 // resolver, exercised against registered fake M6 / M5 seams.
-import { BEREAVEMENT_CADENCE_FLOOR, OUTREACH_MODALITY_RANK } from "@chartwarden/bereavement";
+import {
+  BEREAVEMENT_CADENCE_FLOOR,
+  type BereavementCadenceMark,
+  OUTREACH_MODALITY_RANK,
+} from "@chartwarden/bereavement";
 import type { BereavementExternalSourceMetadata } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
@@ -37,6 +41,7 @@ import {
   intakeBereavementPlan,
   isPlanClosed,
   planArchivesAt,
+  planScheduleTopUp,
   resolveOutreachKind,
   transitionBereavedContact,
   transitionBereavementOutreach,
@@ -753,21 +758,30 @@ describe("D4 outreach schedule generation", () => {
     const rows = generateOutreachSchedule(DEATH_DATE, { riskTier: "low" });
     expect(rows.map((r) => r.mark)).toEqual([
       "condolence_letter",
-      "one_month",
+      "initial_outreach",
       "three_month",
       "six_month",
+      "nine_month",
       "anniversary",
+      "anniversary_call",
+      "closeout_letter",
     ]);
-    // day 7 from a 2026-03-01 death.
-    expect(rows[0]?.dueAt).toBe("2026-03-08T00:00:00.000Z");
+    // day 2 from a 2026-03-01 death (ADR-0110 D2: the condolence letter moved from day 7 to day 2).
+    expect(rows[0]?.dueAt).toBe("2026-03-03T00:00:00.000Z");
     // The late grace is 7 days past due, and the denormalized anchor is the death instant itself.
-    expect(rows[0]?.lateGraceUntil).toBe("2026-03-15T00:00:00.000Z");
+    expect(rows[0]?.lateGraceUntil).toBe("2026-03-10T00:00:00.000Z");
     expect(rows[0]?.deathAnchorAt).toBe("2026-03-01T00:00:00.000Z");
 
-    // Cumulative: high keeps moderate's 9-month contact (the D4-over-§7.4 reading from M16-T01).
+    // Cumulative: every tier keeps the 9-month contact (it is in the universal floor now).
     const high = generateOutreachSchedule(DEATH_DATE, { riskTier: "high" });
     expect(high.map((r) => r.mark)).toContain("nine_month");
     expect(high.length).toBe(BEREAVEMENT_CADENCE_FLOOR.high.length);
+    expect([
+      generateOutreachSchedule(DEATH_DATE, { riskTier: "low" }).length,
+      generateOutreachSchedule(DEATH_DATE, { riskTier: "moderate" }).length,
+      high.length,
+      generateOutreachSchedule(DEATH_DATE, { riskTier: "complicated" }).length,
+    ]).toEqual([8, 9, 11, 12]);
   });
 
   it("a regeneration is FORWARD-only — a touchpoint whose date passed is gone, not backdated", () => {
@@ -776,7 +790,14 @@ describe("D4 outreach schedule generation", () => {
       { riskTier: "low" },
       { fromIso: "2026-05-01T00:00:00.000Z" },
     );
-    expect(rows.map((r) => r.mark)).toEqual(["three_month", "six_month", "anniversary"]);
+    expect(rows.map((r) => r.mark)).toEqual([
+      "three_month",
+      "six_month",
+      "nine_month",
+      "anniversary",
+      "anniversary_call",
+      "closeout_letter",
+    ]);
   });
 
   it("nothing is generated past the §2.5 window + grace ceiling", () => {
@@ -792,11 +813,11 @@ describe("D4 outreach schedule generation", () => {
       riskTier: "low",
       allowedKinds: ["sympathy_letter", "anniversary_letter"],
     });
-    // Same five obligations, none lost to the preference.
+    // Same eight obligations, none lost to the preference.
     expect(rows.length).toBe(BEREAVEMENT_CADENCE_FLOOR.low.length);
-    const oneMonth = rows.find((r) => r.mark === "one_month");
-    expect(oneMonth?.kind).not.toBe("phone_call");
-    expect(oneMonth?.preferenceSubstituted).toBe(true);
+    const initial = rows.find((r) => r.mark === "initial_outreach");
+    expect(initial?.kind).not.toBe("phone_call");
+    expect(initial?.preferenceSubstituted).toBe(true);
   });
 
   it("resolveOutreachKind prefers the closest allowed kind at-or-above the floor, else the highest", () => {
@@ -836,10 +857,10 @@ describe("D4 outreach schedule generation", () => {
           {
             tenantItems: [
               {
-                mark: "one_month",
-                offsetDays: 30,
+                mark: "initial_outreach",
+                offsetDays: 28,
                 kind: "phone_call",
-                anniversaryMark: "one_month",
+                anniversaryMark: null,
               },
             ],
           },
@@ -849,14 +870,88 @@ describe("D4 outreach schedule generation", () => {
   });
 
   it("anniversary marks are derived from the tier's own cadence, not hard-coded", () => {
-    expect(anniversaryMarksForTier("low")).toEqual([
-      "one_month",
-      "three_month",
-      "six_month",
-      "anniversary",
-    ]);
-    expect(anniversaryMarksForTier("moderate")).toContain("nine_month_high_risk_only");
-    expect(anniversaryMarksForTier("low")).not.toContain("nine_month_high_risk_only");
+    // ADR-0110 D2: the same four milestone reminders for EVERY tier (no `one_month` — the day-28
+    // initial outreach is not an anniversary milestone; `nine_month_high_risk_only` is the legacy name).
+    for (const tier of ["low", "moderate", "high", "complicated"] as const) {
+      expect(anniversaryMarksForTier(tier)).toEqual([
+        "three_month",
+        "six_month",
+        "nine_month_high_risk_only",
+        "anniversary",
+      ]);
+    }
+  });
+
+  describe("planScheduleTopUp — the forward-only, never-cancelling tier-change top-up", () => {
+    const marksOf = (tier: "low" | "moderate" | "high" | "complicated"): BereavementCadenceMark[] =>
+      BEREAVEMENT_CADENCE_FLOOR[tier].map((i) => i.mark);
+
+    it("adds only the floor contacts the new tier has and the plan does not, still in the future", () => {
+      // Day 40 (2026-04-10): low -> high. week_1 (d7) and week_2 (d14) are past; two_month (d60) is not.
+      const rows = planScheduleTopUp(
+        DEATH_DATE,
+        { riskTier: "high" },
+        marksOf("low"),
+        "2026-04-10T00:00:00.000Z",
+      );
+      expect(rows.map((r) => r.mark)).toEqual(["two_month"]);
+      expect(rows[0]?.dueAt).toBe("2026-04-30T00:00:00.000Z");
+    });
+
+    it("adds week_2 on a move to moderate while it is still ahead", () => {
+      const rows = planScheduleTopUp(
+        DEATH_DATE,
+        { riskTier: "moderate" },
+        marksOf("low"),
+        "2026-03-05T00:00:00.000Z",
+      );
+      expect(rows.map((r) => r.mark)).toEqual(["week_2"]);
+    });
+
+    it("returns nothing when the plan already holds every floor mark (idempotent)", () => {
+      expect(
+        planScheduleTopUp(
+          DEATH_DATE,
+          { riskTier: "high" },
+          marksOf("high"),
+          "2026-03-01T00:00:00.000Z",
+        ),
+      ).toEqual([]);
+    });
+
+    it("never re-adds a mark the plan has, whatever its modality, and never lowers the schedule", () => {
+      // The plan holds a phone week_1 from the high tier; complicated wants an in-person week_1. The mark
+      // exists, so the top-up leaves that row alone (no modality rewrite, no cancel).
+      const rows = planScheduleTopUp(
+        DEATH_DATE,
+        { riskTier: "complicated" },
+        marksOf("high"),
+        "2026-03-01T00:00:00.000Z",
+      );
+      expect(rows.map((r) => r.mark)).toEqual(["immediate_screen"]);
+    });
+
+    it("a move DOWN adds nothing: a lower tier's floor is a subset of what the plan already holds", () => {
+      expect(
+        planScheduleTopUp(
+          DEATH_DATE,
+          { riskTier: "low" },
+          marksOf("high"),
+          "2026-03-01T00:00:00.000Z",
+        ),
+      ).toEqual([]);
+    });
+
+    it("honors the survivor's stated modality like the initial schedule", () => {
+      const rows = planScheduleTopUp(
+        DEATH_DATE,
+        { riskTier: "high", allowedKinds: ["sympathy_letter"] },
+        marksOf("low"),
+        "2026-04-10T00:00:00.000Z",
+      );
+      expect(rows[0]?.kind).toBe("sympathy_letter");
+      expect(rows[0]?.preferenceSubstituted).toBe(true);
+    });
   });
 
   it("planArchivesAt is death + 396 days (D4)", () => {

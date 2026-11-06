@@ -165,10 +165,33 @@ export function generateOutreachSchedule(
 }
 
 /**
+ * ADR-0110 D4 — the floor contacts a TIER CHANGE adds to a live schedule. Pure and forward-only, and it only
+ * ever ADDS: it returns the new tier's floor items (materialized exactly like the initial schedule: same
+ * due dates, same survivor modality resolution) whose mark the plan does not hold yet and whose due date is
+ * not before `fromIso`. It never cancels, moves or re-modalizes an existing row, so a family that moves from
+ * high back to low keeps every contact it was already given.
+ *
+ * `existingMarks` is the caller's judgement of what the plan already holds: the marks of every non-cancelled
+ * row (`cadence_mark`, or `inferLegacyMark` for a row written before the column).
+ */
+export function planScheduleTopUp(
+  deathDate: string,
+  contact: OutreachScheduleContact,
+  existingMarks: Iterable<BereavementCadenceMark>,
+  fromIso: IsoInstant,
+): ReadonlyArray<PlannedOutreach> {
+  const held = new Set(existingMarks);
+  return generateOutreachSchedule(deathDate, contact, { fromIso }).filter(
+    (row) => !held.has(row.mark),
+  );
+}
+
+/**
  * The `bereavement_anniversary_reminder` marks a plan seeds at open (§2.2 `seedRosterAndSchedule`). Derived
- * from the tier's cadence rather than hard-coded, so an elevated-risk plan gets the
- * `nine_month_high_risk_only` row and a low-risk plan does not — a hard-coded list would seed a reminder
- * for a touchpoint the cadence never scheduled, and the §4.9 lookahead cron would alert on a phantom.
+ * from the tier's cadence rather than hard-coded, so a reminder exists only for a touchpoint the cadence
+ * actually schedules — a hard-coded list would seed a reminder for a contact the cadence never made, and the
+ * §4.9 lookahead cron would alert on a phantom. Since ADR-0110 D2 every tier schedules the same four
+ * milestones (3, 6, 9 months and the anniversary).
  */
 export function anniversaryMarksForTier(
   tier: BereavementRiskTier,
