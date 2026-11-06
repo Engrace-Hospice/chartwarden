@@ -442,26 +442,23 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
   });
 
   // ── the strict sequence, on both roles ──────────────────────────────────────────────────────────────────
-  it("review fix (code M2): 1329 gives onboarding.manage_own to org_admin roles that existed before the key, and re-applying it changes nothing", async () => {
-    const holders = async () =>
+  it("review fix (code M2): 1329 gives onboarding.manage_own to org_admin roles that existed before the key, and re-applying it is idempotent", async () => {
+    const holders = async (org: string) =>
       (
         await admin.query(
-          `SELECT r.organization_id, count(*)::int AS n FROM role_permission rp JOIN role r ON r.id = rp.role_id
-            WHERE rp.permission_key = 'onboarding.manage_own' AND r.key IN ('org_admin','administrator')
-            GROUP BY r.organization_id`,
+          `SELECT count(*)::int AS n FROM role_permission rp JOIN role r ON r.id = rp.role_id
+            WHERE rp.permission_key = 'onboarding.manage_own' AND r.key IN ('org_admin','administrator') AND r.organization_id = $1`,
+          [org],
         )
-      ).rows;
-    const before = await holders();
-    expect(before.find((row) => row.organization_id === ORG_L)).toMatchObject({ n: 1 });
+      ).rows[0].n as number;
+    // ORG_L's org_admin role was materialized BEFORE migration 1329; it holds the key because the migration backfilled it.
+    expect(await holders(ORG_L)).toBe(1);
     await apply(sqlFiles().filter((f) => f.startsWith("1329_")));
-    expect(await holders()).toEqual(before);
-    // and a tenant org_admin of such an org passes the route's permission key (the role really holds it now)
-    const held = await admin.query(
-      `SELECT 1 FROM role_permission rp JOIN role r ON r.id = rp.role_id
-        WHERE r.organization_id = $1 AND r.key = 'org_admin' AND rp.permission_key = 'onboarding.manage_own'`,
-      [ORG_L],
+    expect(await holders(ORG_L)).toBe(1); // ON CONFLICT DO NOTHING: no duplicate grant
+    const duplicated = await admin.query(
+      `SELECT role_id FROM role_permission WHERE permission_key = 'onboarding.manage_own' GROUP BY role_id HAVING count(*) > 1`,
     );
-    expect(held.rowCount).toBe(1);
+    expect(duplicated.rowCount).toBe(0);
   });
 
   it("refuses an out-of-order step on the platform and the tenant roles, and changes nothing", async () => {

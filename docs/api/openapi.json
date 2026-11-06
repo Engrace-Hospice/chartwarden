@@ -252060,6 +252060,10 @@
                   "breachNotificationContactPhone": {
                     "maxLength": 64,
                     "type": "string"
+                  },
+                  "documentId": {
+                    "format": "uuid",
+                    "type": "string"
                   }
                 }
               }

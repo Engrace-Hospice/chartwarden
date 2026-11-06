@@ -90668,6 +90668,8 @@ export interface operations {
                     /** Format: email */
                     breachNotificationContactEmail?: string;
                     breachNotificationContactPhone?: string;
+                    /** Format: uuid */
+                    documentId?: string;
                 };
             };
         };
