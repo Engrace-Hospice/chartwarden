@@ -107,7 +107,10 @@ export interface ReviewTarget {
 
 export type ReviewOutcome =
   | { readonly ok: true; readonly request: StaffSignatureRequestView }
-  | { readonly ok: false; readonly reason: "not_found" | "not_pending_review" };
+  | {
+      readonly ok: false;
+      readonly reason: "not_found" | "not_pending_review" | "copy_changed";
+    };
 
 export interface CreateSignatureRequestInput {
   readonly patientId: string;
@@ -142,11 +145,15 @@ export interface StaffSignatureStore {
     reason: VoidReason,
   ): Promise<VoidOutcome>;
   loadForReview(organizationId: string, requestId: string): Promise<ReviewTarget | null>;
-  /** uploaded_pending_review -> pending: the copy is refused and the patient may sign electronically or upload another. */
+  /**
+   * uploaded_pending_review -> pending: the copy is refused and the patient may sign electronically or upload another.
+   * Refuses only the copy the reviewer was shown (`reviewedDocumentId`); a copy replaced meanwhile answers `copy_changed`.
+   */
   rejectUpload(
     organizationId: string,
     requestId: string,
     reviewerId: string,
+    reviewedDocumentId: string,
   ): Promise<ReviewOutcome>;
   /** uploaded_pending_review -> signed, once the authoritative record exists (`targetRef`). Evidence is the review itself. */
   markAccepted(
@@ -154,6 +161,7 @@ export interface StaffSignatureStore {
     requestId: string,
     input: {
       readonly reviewerId: string;
+      readonly uploadId: string;
       readonly targetRef: string;
       readonly signerGrantKind: string;
       readonly signerRole: schema.PortalSignerRole;
@@ -345,7 +353,7 @@ export function buildStaffSignatureStore(
       });
     },
 
-    async rejectUpload(organizationId, requestId, reviewerId) {
+    async rejectUpload(organizationId, requestId, reviewerId, reviewedDocumentId) {
       return withOrgContext(db, ctx(organizationId, reviewerId), async (tx) => {
         // Lock the request and read the copy being refused before the link is cleared.
         const [current] = await tx
@@ -354,6 +362,16 @@ export function buildStaffSignatureStore(
           .where(and(eq(SR.id, requestId), eq(SR.status, "uploaded_pending_review")))
           .for("update")
           .limit(1);
+        // Only the copy the reviewer was shown may be refused: one replaced meanwhile has not been looked at.
+        if (current?.uploadId) {
+          const [copy] = await tx
+            .select({ documentId: UP.documentId })
+            .from(UP)
+            .where(eq(UP.id, current.uploadId))
+            .limit(1);
+          if (copy?.documentId !== reviewedDocumentId)
+            return { ok: false, reason: "copy_changed" } as const;
+        }
         const [row] = await tx
           .update(SR)
           .set({
@@ -405,9 +423,25 @@ export function buildStaffSignatureStore(
             signerGrantKind: input.signerGrantKind,
             signerRole: input.signerRole,
           })
-          .where(and(eq(SR.id, requestId), eq(SR.status, "uploaded_pending_review")))
+          .where(
+            and(
+              eq(SR.id, requestId),
+              eq(SR.status, "uploaded_pending_review"),
+              eq(SR.uploadedDocumentUploadId, input.uploadId),
+            ),
+          )
           .returning();
-        if (!row) return reviewMiss(asDb(tx), requestId);
+        if (!row) {
+          // A retry, or a second reviewer, that lands on the SAME consent already recorded: the same answer, nothing re-emitted.
+          const [current] = await tx.select().from(SR).where(eq(SR.id, requestId)).limit(1);
+          if (current?.status === "signed" && current.targetRef === input.targetRef) {
+            return {
+              ok: true,
+              request: (await toStaffViews(asDb(tx), [current]))[0] as StaffSignatureRequestView,
+            } as const;
+          }
+          return reviewMiss(asDb(tx), requestId);
+        }
         const common = { requestId: row.id, patientId: row.patientId, docKind: row.docKind };
         const aggregate = { kind: "portal_signature_request", id: row.id } as const;
         await events?.emitInTx(tx, organizationId, "m31.signature_request.reviewed", aggregate, {

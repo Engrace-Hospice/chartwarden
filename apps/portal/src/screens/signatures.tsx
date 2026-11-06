@@ -85,9 +85,28 @@ function refusalMessage(res: { error?: unknown }, fallbackStatus?: number): stri
   return "We could not complete that right now. Please try again in a moment.";
 }
 
-/** A 4xx is a definitive answer (the attempt is over); network failures and 5xx may have landed, so a retry reuses the key. */
+/** Refusals that name one field: the message sits on that field (aria-describedby) and focus moves there. */
+const FIELD_IDS = {
+  name: "signatures-name",
+  relationship: "signatures-relationship",
+  unableReason: "signatures-unable-reason",
+} as const;
+type SignField = keyof typeof FIELD_IDS;
+const FIELD_OF_CODE: Readonly<Record<string, SignField>> = {
+  SIGNER_NAME_REQUIRED: "name",
+  RELATIONSHIP_REQUIRED: "relationship",
+  PATIENT_UNABLE_REASON_REQUIRED: "unableReason",
+};
+const CODE_FIELD_ID = "signatures-code";
+
+/** A 4xx is a refusal of this attempt (the wording and upload state follow it). */
 const isDefinitive = (status: number | undefined): boolean =>
   status !== undefined && status >= 400 && status < 500;
+/**
+ * Any HTTP answer ends the attempt's key: the server records every response (5xx included) under its Idempotency-Key and replays it, so
+ * a retry under the same key would replay the failure. Only a thrown network error, which may still have landed, keeps the key.
+ */
+const isAnswered = (status: number | undefined): boolean => status !== undefined;
 
 interface DialogProps {
   requestId: string;
@@ -114,9 +133,18 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
   const [message, setMessage] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [uploadStep, setUploadStep] = useState<string | null>(null);
+  const [fieldError, setFieldError] = useState<{ field: SignField; text: string } | null>(null);
+  /** Where focus goes after an attempt ends; a fresh object each time so the same target is focused again. */
+  const [focusRequest, setFocusRequest] = useState<{ id: string } | null>(null);
   const attemptKey = useRef<string | null>(null);
   const attachKey = useRef<string | null>(null);
   const resumeUpload = useRef<string | null>(null);
+  /** Mirrors `resumeUpload` for the button label: a ref read during render only updates by accident. */
+  const [resumable, setResumable] = useState(false);
+  const setResume = (uploadId: string | null): void => {
+    resumeUpload.current = uploadId;
+    setResumable(uploadId !== null);
+  };
   /** The upload id whose `upload-complete` succeeded; a retry resumes from the first step that has not. */
   const completedUpload = useRef<string | null>(null);
   const live = useRef(true);
@@ -127,6 +155,15 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
       live.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (focusRequest) document.getElementById(focusRequest.id)?.focus();
+  }, [focusRequest]);
+  /** Any change to what is signed starts a new attempt: the same key with a different body would be refused or replayed. */
+  const edited = (): void => {
+    attemptKey.current = null;
+    setFieldError(null);
+  };
 
   useEffect(() => {
     let current = true;
@@ -152,8 +189,11 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
   const sign = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (!canSubmit) return;
+    document.getElementById(CODE_FIELD_ID)?.focus();
     setBusy(true);
     setMessage(null);
+    setFieldError(null);
+    setFocusRequest(null);
     attemptKey.current ??= newKey();
     try {
       const step = await client.POST("/api/v1/portal/sessions/step-up", {
@@ -180,12 +220,14 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
       if (!live.current) return;
       if ("error" in res && res.error) {
         const refusedCode = errorCode(res);
-        if (
-          refusedCode === "RELATIONSHIP_REQUIRED" ||
-          refusedCode === "PATIENT_UNABLE_REASON_REQUIRED"
-        )
-          setBehalfOpen(true);
-        if (isDefinitive(statusOf(res))) attemptKey.current = null;
+        if (isAnswered(statusOf(res))) attemptKey.current = null;
+        const field = refusedCode ? FIELD_OF_CODE[refusedCode] : undefined;
+        if (field) {
+          if (field !== "name") setBehalfOpen(true);
+          setFieldError({ field, text: refusalMessage(res, statusOf(res)) });
+          setFocusRequest({ id: FIELD_IDS[field] });
+          return;
+        }
         setMessage(refusalMessage(res, statusOf(res)));
         return;
       }
@@ -197,6 +239,7 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
       if (live.current) {
         setCode("");
         setBusy(false);
+        setFocusRequest((current) => current ?? { id: CODE_FIELD_ID });
       }
     }
   };
@@ -204,7 +247,7 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
   const chooseFile = (event: ChangeEvent<HTMLInputElement>): void => {
     const selected = event.target.files?.[0] ?? null;
     event.target.value = "";
-    resumeUpload.current = null;
+    setResume(null);
     completedUpload.current = null;
     attachKey.current = null;
     setMessage(null);
@@ -231,24 +274,26 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
     } as never);
     if (!live.current) return false;
     if ("error" in res && res.error) {
+      if (isAnswered(statusOf(res))) attachKey.current = null;
       if (isDefinitive(statusOf(res))) {
-        attachKey.current = null;
-        resumeUpload.current = null;
+        setResume(null);
         completedUpload.current = null;
       }
       setMessage(refusalMessage(res, statusOf(res)));
       return false;
     }
     attachKey.current = null;
-    resumeUpload.current = null;
+    setResume(null);
     completedUpload.current = null;
     return true;
   };
 
   const sendCopy = async (): Promise<void> => {
     if (busy || !file || !TOTP.test(code.trim())) return;
+    document.getElementById(CODE_FIELD_ID)?.focus();
     setBusy(true);
     setMessage(null);
+    setFocusRequest(null);
     try {
       if (!resumeUpload.current) {
         completedUpload.current = null;
@@ -276,7 +321,7 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
           setMessage("The file could not be sent. Check your connection and try again.");
           return;
         }
-        resumeUpload.current = uploadId;
+        setResume(uploadId);
       }
       const uploadId = resumeUpload.current as string;
       if (completedUpload.current !== uploadId) {
@@ -310,6 +355,7 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
         setUploadStep(null);
         setCode("");
         setBusy(false);
+        setFocusRequest({ id: CODE_FIELD_ID });
       }
     }
   };
@@ -326,11 +372,13 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
         <header>
           <h2>{detail ? docName(detail.docKind) : "Document to sign"}</h2>
         </header>
+        {/* One polite live region, mounted with the dialog, so a changed step is announced. */}
+        <output className="wx-signatures-step">
+          {!detail && !loadFailed ? "Loading…" : (uploadStep ?? "")}
+        </output>
         {loadFailed ? (
           <p role="alert">{readError(undefined)}</p>
-        ) : !detail ? (
-          <output>Loading…</output>
-        ) : (
+        ) : !detail ? null : (
           <>
             <form className="wx-signatures-form" onSubmit={(event) => void sign(event)}>
               {hasText ? (
@@ -343,12 +391,14 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
                   </section>
                   <p className="wx-signatures-attestation">{detail.attestationText}</p>
                   <TextField
+                    id={FIELD_IDS.name}
                     label="Your full name"
                     value={name}
                     autoComplete="off"
-                    disabled={busy}
+                    readOnly={busy}
+                    error={fieldError?.field === "name" ? fieldError.text : undefined}
                     onChange={(event) => {
-                      attemptKey.current = null;
+                      edited();
                       setName(event.target.value);
                     }}
                   />
@@ -359,19 +409,26 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
                   >
                     <summary>Signing for someone else?</summary>
                     <TextField
+                      id={FIELD_IDS.relationship}
                       label="How are you related to the patient?"
                       value={relationship}
-                      disabled={busy}
+                      readOnly={busy}
+                      error={fieldError?.field === "relationship" ? fieldError.text : undefined}
                       onChange={(event) => {
-                        attemptKey.current = null;
+                        edited();
                         setRelationship(event.target.value);
                       }}
                     />
                     <TextAreaField
+                      id={FIELD_IDS.unableReason}
                       label="Why is the patient not able to sign?"
                       value={unableReason}
-                      disabled={busy}
-                      onChange={(event) => setUnableReason(event.target.value)}
+                      readOnly={busy}
+                      error={fieldError?.field === "unableReason" ? fieldError.text : undefined}
+                      onChange={(event) => {
+                        edited();
+                        setUnableReason(event.target.value);
+                      }}
                     />
                   </details>
                   <label className="wx-signatures-check">
@@ -379,7 +436,10 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
                       type="checkbox"
                       checked={attested}
                       disabled={busy}
-                      onChange={(event) => setAttested(event.target.checked)}
+                      onChange={(event) => {
+                        edited();
+                        setAttested(event.target.checked);
+                      }}
                     />
                     <span>I agree to the statement above.</span>
                   </label>
@@ -391,11 +451,12 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
                 </p>
               )}
               <TextField
+                id={CODE_FIELD_ID}
                 label="6-digit code from your authenticator app"
                 value={code}
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                disabled={busy}
+                readOnly={busy}
                 onChange={(event) => setCode(event.target.value)}
               />
               {message ? (
@@ -424,14 +485,13 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
                 onChange={chooseFile}
               />
               {file ? <p>{file.name}</p> : null}
-              {uploadStep ? <output>{uploadStep}</output> : null}
               <Button
                 tone="secondary"
                 disabled={!file || busy || !TOTP.test(code.trim())}
                 loading={busy && uploadStep !== null}
                 onClick={() => void sendCopy()}
               >
-                {resumeUpload.current ? "Retry sending" : "Send signed copy"}
+                {resumable ? "Retry sending" : "Send signed copy"}
               </Button>
             </section>
           </>
@@ -450,7 +510,13 @@ function SignaturesForPatient(): JSX.Element {
   const client = useApiClient();
   const [state, setState] = useState<ListState>({ status: "loading", items: [] });
   const [openId, setOpenId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  /** An object, so a second finish with the same words still moves focus. */
+  const [notice, setNotice] = useState<{ text: string } | null>(null);
+  const noticeRef = useRef<HTMLOutputElement>(null);
+  // After a finish the dialog's trigger row turns "Signed" and its button goes away, so focus lands on the notice instead of <body>.
+  useEffect(() => {
+    if (notice) noticeRef.current?.focus();
+  }, [notice]);
 
   const load = useCallback(async (): Promise<void> => {
     const res = await client.GET("/api/v1/portal/signature-requests", {});
@@ -464,18 +530,22 @@ function SignaturesForPatient(): JSX.Element {
 
   const finished = (message: string): void => {
     setOpenId(null);
-    setNotice(message);
+    setNotice({ text: message });
     void load().catch(() => setState({ status: "error", items: [] }));
   };
 
   return (
     <PortalPage title="Documents to sign" subtitle="Forms your care team has asked you to sign.">
-      {notice ? (
-        <output className="wx-signatures-notice">
-          <Glyph name="check-circle" size={20} aria-hidden="true" /> {notice}
-        </output>
-      ) : null}
-      {state.status === "loading" ? <output>Loading…</output> : null}
+      {/* One polite live region, mounted with the page, so the notice and loading text are announced when they change. */}
+      <output ref={noticeRef} tabIndex={-1} className={notice ? "wx-signatures-notice" : undefined}>
+        {notice ? (
+          <>
+            <Glyph name="check-circle" size={20} aria-hidden="true" /> {notice.text}
+          </>
+        ) : state.status === "loading" ? (
+          "Loading…"
+        ) : null}
+      </output>
       {state.status === "error" ? (
         <p role="alert">
           {readError(undefined)}{" "}

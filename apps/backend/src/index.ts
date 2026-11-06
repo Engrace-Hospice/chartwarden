@@ -264,6 +264,8 @@ import { buildDrizzleRemittanceCursorStore } from "./modules/25-remittance/inges
 import { partnerAccessAvailability } from "./modules/36-messaging/external-share/external-share-proxy";
 import { familyAccessAvailability } from "./modules/36-messaging/family/family-access-gate";
 
+/** ADR-0107: a "pending legal review" signing template (Consent to Treat today) is never sent, signed, accepted or reminded unless this is set on purpose (refused at a production boot by env.ts). Read once so the route, reminder and push re-check agree. */
+const PORTAL_ALLOW_UNREVIEWED_TEMPLATES = process.env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES === "true";
 /** The @chartwarden/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
 /** The platform-job id M34's tenant-shred identity-subject read runs under (same M36 D9 rule, own audit trail). */
@@ -5560,7 +5562,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               };
             })(),
             // ── end WP 6.10 alarm ingest mount
-            // ADR-0107 (PROPOSED) - group tags (@role, @care-team, @on-call); off unless the tenant flag `messaging.group_tags` is on.
+            // ADR-0108 (PROPOSED) - group tags (@role, @care-team, @on-call); off unless the tenant flag `messaging.group_tags` is on.
             groupTags: { flags: featureFlagReader },
             // WP 5.8 (ADR-0087, PROPOSED) - break-glass read grants; honoured only while the tenant flag `messaging.break_glass` is on.
             breakGlass: {
@@ -6802,11 +6804,17 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               },
               agencyName: async (organizationId) =>
                 (await siteDisplayForOrg(dbHandle.db, organizationId, [])).organizationName,
-              // A "pending legal review" template (Consent to Treat today) is never signable unless this is set on purpose.
-              allowUnreviewedTemplates: process.env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES === "true",
+              allowUnreviewedTemplates: PORTAL_ALLOW_UNREVIEWED_TEMPLATES,
               staff: {
                 store: buildStaffSignatureStore(dbHandle.db, m31Events ?? undefined),
                 uploadedCopyConsent: (input) => portalConsentSigner.acceptUploadedCopy(input),
+                revokeUploadedCopyConsent: (input) => portalConsentSigner.revokeUploadedCopy(input),
+                revokeUploadedCopyOrphans: async (input) => {
+                  await portalConsentSigner.revokeUploadedCopyOrphans({
+                    ...input,
+                    keepDocumentId: null,
+                  });
+                },
                 patientSite: async (organizationId, patientId) => {
                   const patient = await getSeam("PatientReader").findById({
                     organizationId,
@@ -8971,7 +8979,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         db: dbHandle.db,
         events: m31Events,
         activeOrgs: m31ActiveOrgs,
-        allowUnreviewedTemplates: process.env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES === "true",
+        allowUnreviewedTemplates: PORTAL_ALLOW_UNREVIEWED_TEMPLATES,
         warn: (message, context) => app.log.warn(context, message),
       });
       app.addHook("onClose", async () => {
@@ -11879,7 +11887,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM31SignatureRequestPushConsumer({
             alerts: getSeam("AlertEmitter") as AlertEmitter,
             stillPending: (organizationId, requestId) =>
-              signatureRequestStillPending(dbHandle.db, organizationId, requestId),
+              signatureRequestStillPending(
+                dbHandle.db,
+                organizationId,
+                requestId,
+                PORTAL_ALLOW_UNREVIEWED_TEMPLATES,
+              ),
             recipients: (organizationId, patientId, docKind) =>
               signatureRecipientUserIds(dbHandle.db, organizationId, patientId, docKind),
           }),

@@ -1,4 +1,4 @@
-// apps/backend/src/modules/36-messaging/group-tags/group-tags.ts - ADR-0107 (PROPOSED): resolve `@role`, `@care-team` and `@on-call` to people at send.
+// apps/backend/src/modules/36-messaging/group-tags/group-tags.ts - ADR-0108 (PROPOSED): resolve `@role`, `@care-team` and `@on-call` to people at send.
 // Called from the send transaction in messaging-route-service-db.ts (the only importer). Reads: role, membership_role, membership, channel_member
 // (active members) and, for on_call, the guarded EscalationRouter seam. Writes nothing itself: it returns who each tag meant, and the caller freezes
 // that in message_group_tag_recipient in the same transaction.
@@ -201,7 +201,7 @@ export interface GroupTagCandidate {
 }
 
 /**
- * The picker's group entries for one conversation (flag off => none). Labels only: who is behind a tag is never shown here (ADR-0107 D8). Roles
+ * The picker's group entries for one conversation (flag off => none). Labels only: who is behind a tag is never shown here (ADR-0108 D8). Roles
  * are offered only when an active member of the conversation holds them; team and on-call only in a care-team conversation.
  */
 export async function groupTagCandidates(

@@ -87,7 +87,7 @@ function mount(opts: {
 /** Accept asks for confirmation first: click the row's Accept, then confirm in the dialog. */
 async function confirmAccept(): Promise<void> {
   fireEvent.click(await screen.findByRole("button", { name: /^Accept the signed copy/ }));
-  const dialog = await screen.findByRole("dialog", { name: "Accept signed copy" });
+  const dialog = await screen.findByRole("alertdialog", { name: "Accept signed copy" });
   fireEvent.click(within(dialog).getByRole("button", { name: "Accept signed copy" }));
 }
 
@@ -98,6 +98,10 @@ const deferred = <T,>() => {
   });
   return { promise, resolve };
 };
+
+/** The text an alertdialog's aria-describedby points at. */
+const describedText = (dialog: HTMLElement) =>
+  document.getElementById(dialog.getAttribute("aria-describedby") ?? "")?.textContent ?? "";
 
 describe("PatientSignatures", () => {
   it("lists requests with status, reminders and signer role, and never shows signer text", async () => {
@@ -184,7 +188,9 @@ describe("PatientSignatures", () => {
   it("withdraws an open request with the chosen coded reason", async () => {
     const { post } = mount({ items: [row({ id: "w-1" })] });
     fireEvent.click(await screen.findByRole("button", { name: /^Withdraw/ }));
-    const dialog = await screen.findByRole("dialog");
+    // A destructive confirmation is an alertdialog, and a screen reader hears its consequence.
+    const dialog = await screen.findByRole("alertdialog", { name: "Withdraw request" });
+    expect(describedText(dialog)).toMatch(/cannot be undone/);
     fireEvent.change(within(dialog).getByLabelText("Reason"), {
       target: { value: "patient_declined" },
     });
@@ -196,20 +202,45 @@ describe("PatientSignatures", () => {
     expect(init.body).toEqual({ reason: "patient_declined" });
   });
 
+  it("starts each withdrawal from the default reason, never the last row's choice", async () => {
+    mount({ items: [row({ id: "w-1" }), row({ id: "w-2" })] });
+    const [first, second] = await screen.findAllByRole("button", { name: /^Withdraw/ });
+    fireEvent.click(first as HTMLElement);
+    let dialog = await screen.findByRole("alertdialog", { name: "Withdraw request" });
+    fireEvent.change(within(dialog).getByLabelText("Reason"), {
+      target: { value: "patient_declined" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep request" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    fireEvent.click(second as HTMLElement);
+    dialog = await screen.findByRole("alertdialog", { name: "Withdraw request" });
+    expect((within(dialog).getByLabelText("Reason") as HTMLSelectElement).value).toBe(
+      "sent_in_error",
+    );
+  });
+
   it("accepts and rejects an uploaded copy, and links to the uploaded document", async () => {
     const { post } = mount({
       items: [row({ id: "u-1", status: "uploaded_pending_review", uploadedDocumentId: "doc-9" })],
     });
+    // WCAG 2.5.3: the accessible name starts with the visible text, so "click Open uploaded copy" works by voice.
     const link = (await screen.findByRole("link", {
-      name: /^Open the uploaded copy/,
+      name: /^Open uploaded copy/,
     })) as HTMLAnchorElement;
+    expect(link.getAttribute("aria-label")?.startsWith(link.textContent?.trim() ?? "-")).toBe(true);
     expect(link.getAttribute("href")).toBe("/documents/doc-9/versions");
     await confirmAccept();
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
-    expect((post.mock.calls[0]?.[1] as { body: unknown }).body).toEqual({ decision: "accepted" });
+    expect((post.mock.calls[0]?.[1] as { body: unknown }).body).toEqual({
+      decision: "accepted",
+      uploadedDocumentId: "doc-9",
+    });
     fireEvent.click(await screen.findByRole("button", { name: /^Reject/ }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
-    expect((post.mock.calls[1]?.[1] as { body: unknown }).body).toEqual({ decision: "rejected" });
+    expect((post.mock.calls[1]?.[1] as { body: unknown }).body).toEqual({
+      decision: "rejected",
+      uploadedDocumentId: "doc-9",
+    });
   });
 
   it("sends the reviewer to step-up when accepting needs a fresh second factor, then back here", async () => {
@@ -219,6 +250,21 @@ describe("PatientSignatures", () => {
     });
     await confirmAccept();
     expect(await screen.findByText("step-up /patients/p-1/signatures")).toBeTruthy();
+  });
+
+  it("says the copy changed and reloads the list when a different copy is waiting now", async () => {
+    const { get } = mount({
+      items: [row({ id: "u-1", status: "uploaded_pending_review", uploadedDocumentId: "doc-9" })],
+      post: () => ({ error: { error: { code: "UPLOADED_COPY_CHANGED", message: "x" } } }),
+    });
+    await confirmAccept();
+    expect(
+      await screen.findByText(/A different copy was uploaded since this list was loaded/),
+    ).toBeTruthy();
+    // The first load plus the reload after the refusal.
+    await waitFor(() =>
+      expect(get.mock.calls.filter(([url]) => url === BASE).length).toBeGreaterThanOrEqual(2),
+    );
   });
 
   it("explains the M06 refusal when an election or notice copy is accepted here", async () => {
@@ -252,10 +298,11 @@ describe("PatientSignatures", () => {
   it("asks for confirmation before accepting, and Cancel sends nothing", async () => {
     const { post } = mount({ items: [row({ id: "u-1", status: "uploaded_pending_review" })] });
     fireEvent.click(await screen.findByRole("button", { name: /^Accept the signed copy/ }));
-    const dialog = await screen.findByRole("dialog", { name: "Accept signed copy" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Accept signed copy" });
     expect(within(dialog).getByText(/cannot be undone/)).toBeTruthy();
+    expect(describedText(dialog)).toMatch(/cannot be undone/);
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(post).not.toHaveBeenCalled();
   });
 
