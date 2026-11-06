@@ -194,6 +194,9 @@ succeeded and the access-log, upload and download paths are confirmed, then remo
 
 ## Object store: second copy (`compose.object-copy.yml`, `replica/`)
 
+**Not enabled in production yet** (compliance/controls.yaml): before starting `object-copy`, record the replica host's
+provider and BAA (CW-BA-01), its disk encryption (CW-AC-05), and make a D12 shred reach the copy (CW-DS-01).
+
 A RustFS on ANOTHER host holds a second copy of every `tenant-*` / `chartwarden-*` object, synced by `object-copy`
 (`scripts/object-store-copy.ts --every`, default hourly). It is a SYNC, not an archive: an erasure on the primary
 reaches the copy on the next run, so the off-site Object Lock backup stays the archive. Deletions are guarded: a bucket
