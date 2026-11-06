@@ -1,3 +1,4 @@
+import { COSIGN_REQUIRED_CLOSURE_REASONS } from "@chartwarden/bereavement";
 // apps/backend/src/modules/16-bereavement/erasers/bereavement-eraser.ts — M16-T06, the
 // `bereavement_record` data eraser (M16 spec §8.5; M4 destruction-cert workflow).
 //
@@ -34,6 +35,9 @@ import { registerEraser } from "../../../bootstrap/index";
 import { EMPTY_DRAFT_FACTORS } from "../lifecycle/pre-death-draft";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+
+/** What replaces a narrative that a CHECK constraint forbids from being NULL (at least 40 characters, free of any survivor's words). */
+const DESTROYED_NARRATIVE = "[narrative destroyed under a destruction certificate]";
 
 /** The per-table counts a bereavement-record destruction removed (recorded on the cert, §8.5). */
 export interface BereavementEraseCounts {
@@ -262,7 +266,9 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
           .set({
             pauseReasonRedacted: null,
             ipocBereavementIntentSummaryRedacted: null,
-            earlyCloseNarrativeRedacted: null,
+            // A pending early-close request is all-or-none (`berv_plan_early_close_request_all_or_none`): a NULL narrative beside a
+            // reason would violate the CHECK and abort the destruction, so the narrative is overwritten, not nulled, while one is pending.
+            earlyCloseNarrativeRedacted: sql`CASE WHEN ${PLAN.earlyCloseReason} IS NULL THEN NULL ELSE ${DESTROYED_NARRATIVE} END`,
           })
           .where(inArray(PLAN.id, planIds))
           .returning({ id: PLAN.id });
@@ -329,7 +335,14 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
         // The closure row SURVIVES with its narrative already shredded — the §7.15 survey record.
         const closures = await tx
           .update(CLOSURE)
-          .set({ reasonNarrativeRedacted: null })
+          // The five early-close reasons carry a 40-character narrative floor (`berv_closure_early_requires_narrative`): the narrative is
+          // overwritten with a fixed placeholder for them and nulled for every other reason, so the row survives its own CHECK.
+          .set({
+            reasonNarrativeRedacted: sql`CASE WHEN ${CLOSURE.reason} IN (${sql.join(
+              COSIGN_REQUIRED_CLOSURE_REASONS.map((reason) => sql`${reason}`),
+              sql`, `,
+            )}) THEN ${DESTROYED_NARRATIVE} ELSE NULL END`,
+          })
           .where(inArray(CLOSURE.planId, planIds))
           .returning({ id: CLOSURE.id });
 
