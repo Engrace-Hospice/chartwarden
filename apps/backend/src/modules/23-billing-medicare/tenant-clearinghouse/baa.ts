@@ -25,8 +25,14 @@ export interface BaaView {
   readonly verified: { readonly at: string } | null;
 }
 
+/** The record an operator verifies: named by the `recordedAt` the view showed (the verify route's `If-Match`). */
+export interface BaaPin {
+  readonly recordedAt: string;
+}
+
 /** The BAA columns a vendor change voids (the record and its verification): a new vendor is a new agreement. */
 export const BAA_CLEARED = {
+  baaVendor: null,
   baaEffectiveDate: null,
   baaDocumentRef: null,
   baaRecordedAt: null,
@@ -93,6 +99,10 @@ export const sameBaa = (
   row.baaRecordedAt !== null &&
   row.baaEffectiveDate === next.effectiveDate &&
   row.baaDocumentRef === next.documentRef;
+
+/** The stored record is the very one the operator looked at (a changed record gets a new `recordedAt`). */
+export const baaMatchesPin = (row: ConfigRow, pin: BaaPin): boolean =>
+  row.baaRecordedAt !== null && row.baaRecordedAt.toISOString() === pin.recordedAt;
 
 export function baaViewOf(row: ConfigRow): BaaView | null {
   if (!row.baaRecordedAt || !row.baaEffectiveDate || !row.baaDocumentRef) return null;

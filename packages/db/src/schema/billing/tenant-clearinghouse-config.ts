@@ -29,6 +29,7 @@ export const tenantClearinghouseConfig = pgTable(
     activatedAt: timestamp("activated_at", { withTimezone: true }),
     activatedByMembershipId: uuid("activated_by_membership_id"),
     // The tenant-held vendor BAA: the tenant records it, a platform operator verifies it, and only then may the config go active.
+    baaVendor: text("baa_vendor"),
     baaEffectiveDate: date("baa_effective_date"),
     baaDocumentRef: text("baa_document_ref"),
     baaRecordedAt: timestamp("baa_recorded_at", { withTimezone: true }),

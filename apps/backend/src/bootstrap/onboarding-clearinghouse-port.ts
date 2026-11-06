@@ -52,8 +52,15 @@ export interface OnboardingClearinghousePort {
     outcome: unknown,
   ): Promise<OnboardingClearinghouseResult>;
   activate(tx: DbClient, scope: OnboardingWriteScope): Promise<OnboardingClearinghouseResult>;
-  /** The operator verifies the vendor BAA the tenant recorded (activation refuses until then). */
-  verifyBaa(tx: DbClient, scope: OnboardingWriteScope): Promise<OnboardingClearinghouseResult>;
+  /**
+   * The operator verifies the vendor BAA the tenant recorded (activation refuses until then). `expected.recordedAt` names the record
+   * the operator read; it is compared under the row lock, and a record that changed since is a 409.
+   */
+  verifyBaa(
+    tx: DbClient,
+    scope: OnboardingWriteScope,
+    expected: { readonly recordedAt: string },
+  ): Promise<OnboardingClearinghouseResult>;
 }
 
 /** What `prepareVerify` read. Opaque to the platform: it only carries it from step 1 to step 3. */

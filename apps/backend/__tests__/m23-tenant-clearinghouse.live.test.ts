@@ -507,7 +507,37 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       422,
     );
     // A platform operator verifies it: allowed for an ACTIVE tenant too (ORG_A is live), audited with operator, org and reason.
-    const verified = await platformCall("POST", "ch-a", "/baa/verify", { reason: REASON });
+    // Round 2, M1: the verification is pinned (If-Match) to the record the operator read; it is required, and a record swapped by the
+    // tenant after that read is a 409 that verifies nothing.
+    const pin = (record.json() as { baa: { recordedAt: string } }).baa.recordedAt;
+    const unpinned = await platformCall("POST", "ch-a", "/baa/verify", { reason: REASON });
+    expect(unpinned.statusCode).toBe(428);
+    expect(errorCode(unpinned)).toBe("IF_MATCH_REQUIRED");
+    const swapped = await tenantCall("POST", ORG_A, "/baa", {
+      ...BAA,
+      documentRef: "Claim.MD BAA, a different agreement, contract folder 9",
+    });
+    expect(swapped.statusCode, swapped.body).toBe(200);
+    const stale = await platformCall(
+      "POST",
+      "ch-a",
+      "/baa/verify",
+      { reason: REASON },
+      { "if-match": `"${pin}"` },
+    );
+    expect(stale.statusCode, stale.body).toBe(409);
+    expect(errorCode(stale)).toBe("CLEARINGHOUSE_BAA_CHANGED");
+    expect(
+      (await tenantCall("GET", ORG_A, "")).json() as { baa: { verified: unknown } },
+    ).toMatchObject({ baa: { verified: null } });
+    const livePin = (swapped.json() as { baa: { recordedAt: string } }).baa.recordedAt;
+    const verified = await platformCall(
+      "POST",
+      "ch-a",
+      "/baa/verify",
+      { reason: REASON },
+      { "if-match": `"${livePin}"` },
+    );
     expect(verified.statusCode, verified.body).toBe(200);
     expect(verified.json()).toMatchObject({ baa: { verified: { at: expect.any(String) } } });
     const [baaAudit] = await q<{ actor_user_id: string; context: Record<string, unknown> }>(
@@ -515,7 +545,14 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_A],
     );
     expect(baaAudit?.actor_user_id).toBe(OPERATOR);
-    expect(baaAudit?.context).toMatchObject({ reason: REASON, targetOrganizationId: ORG_A });
+    expect(baaAudit?.context).toMatchObject({
+      reason: REASON,
+      targetOrganizationId: ORG_A,
+      // the audit row names the record that was verified (a screened reference and a date, never patient data)
+      baaDocumentRef: "Claim.MD BAA, a different agreement, contract folder 9",
+      baaEffectiveDate: BAA.effectiveDate,
+      baaRecordedAt: livePin,
+    });
 
     const activate = await tenantCall("POST", ORG_A, "/activate", {});
     expect(activate.statusCode, activate.body).toBe(200);
@@ -647,11 +684,45 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     await expect(
       q(
         `INSERT INTO tenant_clearinghouse_config ${columns},
-           baa_effective_date, baa_document_ref, baa_recorded_at, baa_recorded_by_membership_id)
-         VALUES ($1,'stedi','test','active',$2,1,'attested',now(),$3,now(),$3,$3,'2026-01-01','BAA ref',now(),$3)`,
+           baa_vendor, baa_effective_date, baa_document_ref, baa_recorded_at, baa_recorded_by_membership_id)
+         VALUES ($1,'stedi','test','active',$2,1,'attested',now(),$3,now(),$3,$3,'stedi','2026-01-01','BAA ref',now(),$3)`,
         [ORG_D, sealed, MEMBERSHIP],
       ),
     ).rejects.toThrow(/tenant_clearinghouse_config_active_baa_ck/);
+    // round 2, L1: an active config resting on a VERIFIED BAA of ANOTHER vendor (a Claim.MD BAA under a Stedi config)
+    await expect(
+      q(
+        `INSERT INTO tenant_clearinghouse_config ${columns},
+           baa_vendor, baa_effective_date, baa_document_ref, baa_recorded_at, baa_recorded_by_membership_id,
+           baa_verified_at, baa_verified_by_membership_id)
+         VALUES ($1,'stedi','test','active',$2,1,'attested',now(),$3,now(),$3,$3,'claimmd','2026-01-01','BAA ref',now(),$3,now(),$3)`,
+        [ORG_D, sealed, MEMBERSHIP],
+      ),
+    ).rejects.toThrow(/tenant_clearinghouse_config_active_baa_ck/);
+    // ... the same row on its OWN vendor's verified BAA is allowed (so the refusal above is the vendor, not the shape)
+    await q(
+      `INSERT INTO tenant_clearinghouse_config ${columns},
+         baa_vendor, baa_effective_date, baa_document_ref, baa_recorded_at, baa_recorded_by_membership_id,
+         baa_verified_at, baa_verified_by_membership_id)
+       VALUES ($1,'stedi','test','active',$2,1,'attested',now(),$3,now(),$3,$3,'stedi','2026-01-01','BAA ref',now(),$3,now(),$3)`,
+      [ORG_D, sealed, MEMBERSHIP],
+    );
+    await q("DELETE FROM tenant_clearinghouse_config WHERE organization_id=$1", [ORG_D]);
+    // a BAA vendor that is no vendor, and a vendor with no record behind it
+    await expect(
+      q(
+        `INSERT INTO tenant_clearinghouse_config (organization_id, vendor, mode, status, baa_vendor, baa_effective_date, baa_document_ref,
+           baa_recorded_at, baa_recorded_by_membership_id, set_by_membership_id)
+         VALUES ($1,'stedi','test','draft','outside','2026-01-01','BAA ref',now(),$2,$2)`,
+        [ORG_D, MEMBERSHIP],
+      ),
+    ).rejects.toThrow(/tenant_clearinghouse_config_baa_vendor_ck/);
+    await expect(
+      q(
+        "INSERT INTO tenant_clearinghouse_config (organization_id, vendor, mode, status, baa_vendor, set_by_membership_id) VALUES ($1,'stedi','test','draft','stedi',$2)",
+        [ORG_D, MEMBERSHIP],
+      ),
+    ).rejects.toThrow(/tenant_clearinghouse_config_baa_record_ck/);
     // a BAA record with a missing part
     await expect(
       q(
@@ -672,8 +743,9 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     await q(
       `INSERT INTO tenant_clearinghouse_config (organization_id, vendor, mode, status, secret_cipher, secret_dek_version,
          verification_kind, verified_at, verified_by_membership_id, activated_at, activated_by_membership_id, set_by_membership_id,
-         baa_effective_date, baa_document_ref, baa_recorded_at, baa_recorded_by_membership_id, baa_verified_at, baa_verified_by_membership_id)
-       VALUES ($1,'stedi','production','active',$2,1,'attested',now(),$3,now(),$3,$3,'2026-01-01','Stedi BAA ref',now(),$3,now(),$3)`,
+         baa_vendor, baa_effective_date, baa_document_ref, baa_recorded_at, baa_recorded_by_membership_id, baa_verified_at,
+         baa_verified_by_membership_id)
+       VALUES ($1,'stedi','production','active',$2,1,'attested',now(),$3,now(),$3,$3,'stedi','2026-01-01','Stedi BAA ref',now(),$3,now(),$3)`,
       [
         ORG_G,
         (await cipher.encrypt(ORG_G, KEY_G, { vendor: "stedi", mode: "production" })).cipher,
@@ -872,9 +944,20 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     expect(early.statusCode).toBe(409);
     expect(errorCode(early)).toBe("CLEARINGHOUSE_BAA_NOT_VERIFIED");
     expect((await tenantCall("POST", ORG_B, "/baa", BAA)).statusCode).toBe(200);
-    expect((await platformCall("POST", "ch-b", "/baa/verify", { reason: REASON })).statusCode).toBe(
-      200,
-    );
+    const recordedB = (await tenantCall("GET", ORG_B, "")).json() as {
+      baa: { recordedAt: string };
+    };
+    expect(
+      (
+        await platformCall(
+          "POST",
+          "ch-b",
+          "/baa/verify",
+          { reason: REASON },
+          { "if-match": `"${recordedB.baa.recordedAt}"` },
+        )
+      ).statusCode,
+    ).toBe(200);
     const activate = await platformCall("POST", "ch-b", "/activate", { reason: REASON });
     expect(activate.statusCode, activate.body).toBe(200);
     expect((await step7(ORG_B))[0]?.status).toBe("done"); // the real advance pass settled it

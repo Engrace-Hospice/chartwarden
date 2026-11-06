@@ -162,6 +162,41 @@ function optionalIfMatch(request: FastifyRequest): number | undefined {
   return parsed;
 }
 
+const BAA_PIN_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+/**
+ * The REQUIRED `If-Match` of the BAA verification: the `baa.recordedAt` the operator read, a UTC ISO timestamp (quoted, weak-prefixed
+ * or bare). The verification applies to that record or to nothing, so a tenant that swaps its BAA between the operator's read and click
+ * cannot get the new document verified unseen (re-review M1).
+ */
+function requiredBaaPin(request: FastifyRequest): { readonly recordedAt: string } {
+  const raw = request.headers["if-match"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== "string" || value.length === 0) {
+    throw new ChartWardenError(
+      "IF_MATCH_REQUIRED",
+      "an If-Match header naming the BAA record's recordedAt is required on this route",
+      428,
+    );
+  }
+  const recordedAt = value
+    .trim()
+    .replace(/^W\//, "")
+    .replace(/^"(.*)"$/, "$1");
+  const real = BAA_PIN_ISO.test(recordedAt) && new Date(recordedAt).toISOString() === recordedAt;
+  if (!real) {
+    throw new ValidationError("request validation failed", [
+      {
+        field: "If-Match",
+        code: "INVALID",
+        message:
+          "If-Match must be the BAA record's recordedAt, a UTC timestamp such as 2026-11-05T21:30:00.123Z",
+      },
+    ]);
+  }
+  return { recordedAt };
+}
+
 export function registerOnboardingDataRoutes(
   app: FastifyInstance,
   deps: OnboardingDataRouteDeps,
@@ -338,14 +373,15 @@ export function registerOnboardingDataRoutes(
   );
 
   // POST baa/verify — the operator verifies the vendor BAA the tenant recorded for its own account. Not gated on the tenant's
-  // onboarding status (a live tenant that changed vendor needs it too); the audit row names the operator, the org and the reason.
+  // onboarding status (a live tenant that changed vendor needs it too); the audit row names the operator, the org, the reason and the
+  // record verified. `If-Match` is the record's recordedAt (see requiredBaaPin): verifying a record the operator did not read is a 409.
   app.post(
     "/api/v1/platform/tenants/:orgSlug/clearinghouse/baa/verify",
     { preHandler: [...CLEARINGHOUSE_VERIFY_BAA] },
     async (request) => {
       const op = operatorOf(request);
       const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
-      return service.verifyClearinghouseBaa(op, slugOf(request), reason);
+      return service.verifyClearinghouseBaa(op, slugOf(request), reason, requiredBaaPin(request));
     },
   );
 }

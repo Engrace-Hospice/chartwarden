@@ -13,8 +13,10 @@
 --             (`secret_changed` in the audit context: the scrubbed before/after cannot show a swap).
 --   baa_*     the tenant-held vendor BAA. A tenant that brings its own Stedi / Claim.MD account holds its own BAA with that
 --             vendor: the TENANT records it (effective date + a screened document reference, never patient data), and a platform
---             operator VERIFIES the record (`baa_verified_*`) before the config may go `active` (the CHECK below). A change of
---             vendor voids both the record and the verification; a same-vendor key rotation keeps them.
+--             operator VERIFIES the record (`baa_verified_*`) before the config may go `active` (the CHECK below). `baa_vendor`
+--             names the vendor the record was made for, and an `active` config must rest on a BAA for ITS vendor (a CHECK, so
+--             no write path can leave a Stedi BAA under a Claim.MD config). A change of vendor voids the record, its vendor and
+--             the verification; a same-vendor key rotation keeps them (the BAA is with the vendor, not with a key).
 --   verification_*  how `verified` was reached: `connection_test` (a no-PHI vendor call) or `attested` (the operator's own
 --             evidence note; used where the vendor has no safe probe). The evidence is a short note, never patient data.
 --
@@ -41,6 +43,7 @@ CREATE TABLE IF NOT EXISTS "tenant_clearinghouse_config" (
   "last_test_outcome" text,
   "activated_at" timestamptz,
   "activated_by_membership_id" uuid,
+  "baa_vendor" text,
   "baa_effective_date" date,
   "baa_document_ref" text,
   "baa_recorded_at" timestamptz,
@@ -77,11 +80,13 @@ CREATE TABLE IF NOT EXISTS "tenant_clearinghouse_config" (
   -- The BAA record is all-or-nothing, its verification needs the record, and a live (`active`) transmitting config has a
   -- VERIFIED BAA: a tenant-held vendor account never carries claims on an unverified BAA.
   CONSTRAINT "tenant_clearinghouse_config_baa_record_ck" CHECK (
-    ("baa_recorded_at" IS NULL AND "baa_effective_date" IS NULL AND "baa_document_ref" IS NULL
+    ("baa_recorded_at" IS NULL AND "baa_vendor" IS NULL AND "baa_effective_date" IS NULL AND "baa_document_ref" IS NULL
        AND "baa_recorded_by_membership_id" IS NULL)
-    OR ("baa_recorded_at" IS NOT NULL AND "baa_effective_date" IS NOT NULL AND "baa_document_ref" IS NOT NULL
-       AND "baa_recorded_by_membership_id" IS NOT NULL)
+    OR ("baa_recorded_at" IS NOT NULL AND "baa_vendor" IS NOT NULL AND "baa_effective_date" IS NOT NULL
+       AND "baa_document_ref" IS NOT NULL AND "baa_recorded_by_membership_id" IS NOT NULL)
   ),
+  CONSTRAINT "tenant_clearinghouse_config_baa_vendor_ck" CHECK (
+    "baa_vendor" IS NULL OR "baa_vendor" IN ('stedi', 'claimmd')),
   CONSTRAINT "tenant_clearinghouse_config_baa_ref_ck" CHECK (
     "baa_document_ref" IS NULL OR char_length(btrim("baa_document_ref")) BETWEEN 3 AND 200),
   CONSTRAINT "tenant_clearinghouse_config_baa_verified_ck" CHECK (
@@ -89,7 +94,7 @@ CREATE TABLE IF NOT EXISTS "tenant_clearinghouse_config" (
     OR ("baa_verified_at" IS NOT NULL AND "baa_verified_by_membership_id" IS NOT NULL AND "baa_recorded_at" IS NOT NULL)
   ),
   CONSTRAINT "tenant_clearinghouse_config_active_baa_ck" CHECK (
-    "vendor" = 'outside' OR "status" <> 'active' OR "baa_verified_at" IS NOT NULL),
+    "vendor" = 'outside' OR "status" <> 'active' OR ("baa_verified_at" IS NOT NULL AND "baa_vendor" = "vendor")),
   CONSTRAINT "tenant_clearinghouse_config_verification_kind_ck" CHECK (
     "verification_kind" IS NULL OR "verification_kind" IN ('connection_test', 'attested')),
   CONSTRAINT "tenant_clearinghouse_config_evidence_ck" CHECK (
@@ -108,7 +113,7 @@ GRANT SELECT, INSERT ON "tenant_clearinghouse_config" TO chartwarden_app;--> sta
 -- UPDATE is column-level: the organization and the row id can never be rewritten.
 GRANT UPDATE ("vendor", "mode", "status", "secret_cipher", "secret_dek_version", "verification_kind", "verification_evidence",
   "verified_at", "verified_by_membership_id", "last_test_at", "last_test_outcome", "activated_at", "activated_by_membership_id",
-  "baa_effective_date", "baa_document_ref", "baa_recorded_at", "baa_recorded_by_membership_id", "baa_verified_at",
+  "baa_vendor", "baa_effective_date", "baa_document_ref", "baa_recorded_at", "baa_recorded_by_membership_id", "baa_verified_at",
   "baa_verified_by_membership_id", "set_by_membership_id", "version", "updated_at") ON "tenant_clearinghouse_config" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "tenant_clearinghouse_config" TO chartwarden_admin;--> statement-breakpoint
 

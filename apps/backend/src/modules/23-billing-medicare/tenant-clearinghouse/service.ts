@@ -31,8 +31,10 @@ import type { ConnectionProbeOutcome } from "@chartwarden/x12-837-client";
 import {
   BAA_CLEARED,
   BAA_VERIFICATION_CLEARED,
+  type BaaPin,
   type BaaView,
   type RecordBaaInput,
+  baaMatchesPin,
   baaViewOf,
   normalizeBaaInput,
   sameBaa,
@@ -42,7 +44,7 @@ import { isUniqueViolation } from "./config-store";
 import { invalid, screenedText } from "./screening";
 import type { ClearinghouseSecretCipher } from "./secret-cipher";
 
-export type { RecordBaaInput } from "./baa";
+export type { BaaPin, RecordBaaInput } from "./baa";
 
 export const EVIDENCE_MIN = 8;
 export const EVIDENCE_MAX = 500;
@@ -164,7 +166,15 @@ export interface TenantClearinghouseService {
     input: RecordBaaInput,
   ): Promise<{ readonly view: ClearinghouseConfigView; readonly changedFields: readonly string[] }>;
   /** The platform operator verifies the tenant's recorded BAA. */
-  verifyBaa(store: ConfigStore, actor: ClearinghouseActor): Promise<ClearinghouseConfigView>;
+  /**
+   * `expected.recordedAt` is the `baa.recordedAt` of the record the operator READ: the verification applies to that record or
+   * to nothing (409 CLEARINGHOUSE_BAA_CHANGED when the tenant has since recorded another).
+   */
+  verifyBaa(
+    store: ConfigStore,
+    actor: ClearinghouseActor,
+    expected: BaaPin,
+  ): Promise<ClearinghouseConfigView>;
   /** Step 1: read-only, no lock. */
   prepareVerify(
     store: ConfigStore,
@@ -554,6 +564,8 @@ export function createTenantClearinghouseService(
         return { view: viewOf(row, actor.organizationId), changedFields: [] };
       }
       const saved = await save(store, row, {
+        // the vendor the record is for: the table keeps a live config on a BAA for ITS vendor (requireVendorAccount: not `outside`)
+        baaVendor: row.vendor,
         baaEffectiveDate: record.effectiveDate,
         baaDocumentRef: record.documentRef,
         baaRecordedAt: now(),
@@ -568,13 +580,19 @@ export function createTenantClearinghouseService(
       return { view: viewOf(saved, actor.organizationId), changedFields: ["baa"] };
     },
 
-    async verifyBaa(store, actor) {
+    async verifyBaa(store, actor, expected) {
       const row = await lockedRow(store, actor.organizationId);
       requireVendorAccount(row);
       if (!row.baaRecordedAt) {
         throw conflict(
           "CLEARINGHOUSE_BAA_NOT_RECORDED",
           "the tenant has not recorded its vendor BAA yet",
+        );
+      }
+      if (!baaMatchesPin(row, expected)) {
+        throw conflict(
+          "CLEARINGHOUSE_BAA_CHANGED",
+          "the tenant's BAA record changed since it was read; read it again and verify what it now says",
         );
       }
       if (row.baaVerifiedAt) return viewOf(row, actor.organizationId); // idempotent
