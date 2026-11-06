@@ -22,6 +22,7 @@
 //   • the §7.13 gate REDACTS on an M39 outage and never discloses, and a bereavement volunteer never sees
 //     clinical risk content (D10);
 //   • the §8.5 eraser shreds BEFORE it deletes, and a second erase reports zero.
+import { readFileSync } from "node:fs";
 import { M16_CONTRIBUTED_PERMISSIONS, allPermissionMirrorRows } from "@chartwarden/auth";
 import type { AbacContext } from "@chartwarden/auth";
 import { ForbiddenError, NotFoundError } from "@chartwarden/types";
@@ -29,6 +30,7 @@ import type { IsoInstant } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/events-by-m16";
 import {
+  BEREAVEMENT_OVERSIGHT_ROLES,
   type BereavementAbacResolver,
   M16_ABAC_PREDICATES,
   M16_PERMISSION_KEY_LIST,
@@ -355,6 +357,30 @@ describe("M16-T06 §4.8 — oversight and portal-self", () => {
     ).toBe(true);
     expect(
       await predicates.org_scope_bereavement_oversight!(ctx({ roles: ["chaplain"] }), {}),
+    ).toBe(false);
+  });
+
+  it("oversight admits the coordinator under the key migration 1234 grants to, and no other spelling", async () => {
+    // The role key a migration grants to is the only key tenants' membership_role rows can carry; the
+    // predicate must read that exact spelling (a different one made the coordinator invisible to oversight).
+    const migration = readFileSync(
+      new URL("../../../packages/db/migrations/1234_m36_family_messaging.sql", import.meta.url),
+      "utf8",
+    );
+    expect(migration).toContain("'bereavement_coordinator'");
+    expect(BEREAVEMENT_OVERSIGHT_ROLES).toContain("bereavement_coordinator");
+    expect(BEREAVEMENT_OVERSIGHT_ROLES).not.toContain("bereavement_program_coordinator");
+    expect(
+      await predicates.org_scope_bereavement_oversight!(
+        ctx({ roles: ["bereavement_coordinator"] }),
+        {},
+      ),
+    ).toBe(true);
+    expect(
+      await predicates.org_scope_bereavement_oversight!(
+        ctx({ roles: ["bereavement_program_coordinator"] }),
+        {},
+      ),
     ).toBe(false);
   });
 
