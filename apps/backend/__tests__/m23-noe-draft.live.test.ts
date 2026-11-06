@@ -1412,7 +1412,12 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     // the org switches to outside before the job runs: the worker pre-flight parks the notice and closes ITS attempt
     await parkNoticeForExternalFiling(
       { db: handle.db as never },
-      { organizationId: ORG_A, kind: "noe", noticeId: id, submissionId: first.submissionId },
+      {
+        organizationId: ORG_A,
+        kind: "noe",
+        noticeId: id,
+        submissionId: first.submissionId as string,
+      },
     );
     expect(await noeRow(id)).toMatchObject({ state: "READY", external_filing_status: "pending" });
     expect(await attemptsOf(id)).toMatchObject([
@@ -1464,7 +1469,12 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
       if (org === "outside") {
         await parkNoticeForExternalFiling(
           { db: handle.db as never },
-          { organizationId: ORG_A, kind: "noe", noticeId: id, submissionId: queued.submissionId },
+          {
+            organizationId: ORG_A,
+            kind: "noe",
+            noticeId: id,
+            submissionId: queued.submissionId as string,
+          },
         );
       } else {
         await withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, (tx) =>
