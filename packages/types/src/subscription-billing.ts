@@ -710,6 +710,43 @@ export interface ClaimsBillingEntitlementReader {
   entitlementForOrg(organizationId: OrgId): Promise<ClaimsBillingEntitlement>;
 }
 
+/**
+ * Slice 2 (tenant pricing) — the billing service mode of an organisation's subscription (owner M35). `null` = the org has
+ * no contracted (census_banded) subscription. A small read so another module can enforce a rule that depends on it
+ * (slice 3: a tenant that bills outside ChartWarden must be on `none`). Reads the database every call (no cache); throws
+ * when the read fails, and a caller that must not guess fails closed.
+ */
+export interface BillingServiceModeReader {
+  billingServiceModeForOrg(organizationId: OrgId): Promise<BillingServiceMode | null>;
+}
+
+/**
+ * Slice 2 (tenant pricing) — one organisation's NET COLLECTIONS for a period (owner M25 remittance), the meter the
+ * billing-service percentage is charged on. Integer cents.
+ *   netCents          = the sum of `remittance_advice.total_payment_amount` (835 BPR02) over remittances of the org
+ *                       with a posted or partially posted parse state whose payment date (BPR16, the EFT effective /
+ *                       check issue date: `production_date`) falls in [periodStart, periodEnd). BPR02 is itself
+ *                       `sum(CLP04 claim payments, reversals negative) - PLB provider-level adjustments`, so claim
+ *                       reversals, overpayment recoveries and takebacks that arrive on an 835 are already netted.
+ *   remittanceCount   = how many remittances that sum covers.
+ *   pendingCount      = remittances with a payment date in the period that are NOT yet posted (queued, parsing, parsed
+ *                       or failed): money that arrived and is not in `netCents` yet. A draft statement picks them up
+ *                       once they post; a closed month with pending > 0 is a data-quality flag, not a silent zero.
+ * Aggregate dollars only: no patient row, claim id or MBI crosses.
+ */
+export interface NetCollections {
+  readonly netCents: number;
+  readonly remittanceCount: number;
+  readonly pendingCount: number;
+}
+
+export interface NetCollectionsReader {
+  netCollectionsForPeriod(
+    organizationId: OrgId,
+    period: { readonly periodStart: Date; readonly periodEnd: Date },
+  ): Promise<NetCollections>;
+}
+
 /** §4.5 platform-shared revenue metrics (consumed by M33 for the platform-ops revenue dashboard). */
 export interface RevenueMetricsProvider {
   currentMonthMrrCents(): Promise<number>;
