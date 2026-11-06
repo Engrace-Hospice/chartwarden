@@ -13,6 +13,20 @@ export interface PortalStaffSigningDeps {
   readonly store: StaffSignatureStore;
   /** M39 seam: record an ACCEPTED uploaded paper copy as a consent (uploaded signed PDF; the reviewer is creator and signer). */
   readonly uploadedCopyConsent: AcceptUploadedCopyDeps["consent"];
+  /** M39 seam: revoke a consent an accept signed but could not record (the request changed meanwhile). */
+  readonly revokeUploadedCopyConsent: AcceptUploadedCopyDeps["revokeConsent"];
+  /**
+   * M39 seam: revoke the uploaded-copy consents a request left active (an accept that signed in M39 but failed before M31 recorded it).
+   * Called once a reject or void has committed, so a refused or withdrawn copy never keeps an active consent.
+   */
+  readonly revokeUploadedCopyOrphans: (input: {
+    readonly organizationId: string;
+    readonly patientId: string;
+    readonly requestId: string;
+    readonly reviewerUserId: string;
+    /** A reject revokes only the copy it refused; a void (terminal) revokes every copy's. */
+    readonly onlyDocumentId?: string;
+  }) => Promise<void>;
   /** The patient's agency and service location (M5's reader). null when the patient is unknown or has no agency: a request is never created unsited. */
   readonly patientSite: (
     organizationId: string,

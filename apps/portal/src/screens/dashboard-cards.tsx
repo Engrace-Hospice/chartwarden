@@ -316,18 +316,16 @@ export function NeedHelpCard({ messagesTo }: { messagesTo: string }): JSX.Elemen
         <Glyph name="phone" size={26} />
         <div>
           <h2 id="family-help-heading">Need help now?</h2>
-          <p>Call your hospice care team anytime, 24/7, using the number they gave you.</p>
+          <p>
+            Call your hospice care team using the number they gave you. Messages are not for
+            emergencies.
+          </p>
         </div>
       </div>
       <Link className="wx-family-help__action" to={messagesTo}>
         <Glyph name="mail" size={18} />
         Send a message
       </Link>
-      <p className="wx-family-help__emergency">
-        <Glyph name="alert-circle" size={18} />
-        In an emergency, call 911.
-      </p>
-      <p className="wx-family-help__note">Portal messages are not for emergencies.</p>
     </section>
   );
 }

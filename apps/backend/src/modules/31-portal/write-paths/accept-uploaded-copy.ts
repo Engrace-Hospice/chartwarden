@@ -17,6 +17,7 @@ export type AcceptDenyCode =
   | "m06_document_recorded_in_admission"
   | "template_pending_legal_review"
   | "uploaded_copy_missing"
+  | "uploaded_copy_changed"
   | "uploader_grant_missing"
   | "uploader_not_authorized"
   | "dpoa_consent_not_active";
@@ -27,6 +28,7 @@ export interface AcceptReviewTarget {
   readonly docKind: schema.PortalSignatureDocKind;
   readonly templateVersion: string;
   readonly status: schema.PortalSignatureStatus;
+  readonly uploadId: string | null;
   readonly documentId: string | null;
   readonly uploaderGrant: {
     readonly grantKind: string;
@@ -52,6 +54,14 @@ export interface AcceptUploadedCopyDeps {
     reviewerUserId: string;
     uploadedPdfDocumentId: string;
   }) => Promise<{ recordId: string }>;
+  /** M39: revoke a consent this accept signed but could not record (the request changed meanwhile), so no orphan stays active. */
+  readonly revokeConsent: (input: {
+    organizationId: string;
+    consentId: string;
+    reviewerUserId: string;
+    /** The uploaded copy's M22 document, the same evidence the consent was recorded from (M39 requires evidence for a staff revocation). */
+    evidenceDocumentId: string;
+  }) => Promise<void>;
   readonly readConsent: (
     organizationId: string,
     consentId: string,
@@ -61,6 +71,8 @@ export interface AcceptUploadedCopyDeps {
     requestId: string,
     input: {
       reviewerId: string;
+      /** The copy this accept reviewed: a request whose copy was rejected and replaced meanwhile is not signed with it. */
+      uploadId: string;
       targetRef: string;
       signerGrantKind: string;
       signerRole: schema.PortalSignerRole;
@@ -76,7 +88,13 @@ const deny = (code: AcceptDenyCode): AcceptOutcome => ({ ok: false, code });
 
 export async function acceptUploadedCopy(
   deps: AcceptUploadedCopyDeps,
-  input: { organizationId: string; requestId: string; reviewerUserId: string },
+  input: {
+    organizationId: string;
+    requestId: string;
+    reviewerUserId: string;
+    /** The M22 document the reviewer was shown: a copy replaced since then is never accepted unseen. */
+    reviewedDocumentId: string;
+  },
 ): Promise<AcceptOutcome> {
   const { organizationId, requestId, reviewerUserId } = input;
   const target = await deps.loadForReview(organizationId, requestId);
@@ -90,7 +108,8 @@ export async function acceptUploadedCopy(
     "template_pending_legal_review"
   )
     return deny("template_pending_legal_review");
-  if (!target.documentId) return deny("uploaded_copy_missing");
+  if (!target.uploadId || !target.documentId) return deny("uploaded_copy_missing");
+  if (target.documentId !== input.reviewedDocumentId) return deny("uploaded_copy_changed");
   if (!target.uploaderGrant) return deny("uploader_grant_missing");
 
   const grantKind = target.uploaderGrant.grantKind as PortalSigningGrantKind;
@@ -127,9 +146,22 @@ export async function acceptUploadedCopy(
   });
   const marked = await deps.markAccepted(organizationId, requestId, {
     reviewerId: reviewerUserId,
+    uploadId: target.uploadId,
     targetRef: signed.recordId,
     signerGrantKind: grantKind,
     signerRole: decision.signerRole,
   });
-  return marked.ok ? { ok: true } : deny("request_not_pending_review");
+  if (marked.ok) return { ok: true };
+  // The request was voided, rejected or accepted with another consent while M39 signed this one (two transactions, D2): revoke it, so a
+  // consent never stays active without the request that justifies it. A retry landing on the same consent is `ok` above, never revoked.
+  // Another reviewer (or a reject's sweep) may revoke the same consent first; the revoke port treats losing that race as done, not a 500.
+  const current = await deps.readConsent(organizationId, signed.recordId);
+  if (current?.status !== "active") return deny("request_not_pending_review");
+  await deps.revokeConsent({
+    organizationId,
+    consentId: signed.recordId,
+    reviewerUserId,
+    evidenceDocumentId: target.documentId,
+  });
+  return deny("request_not_pending_review");
 }

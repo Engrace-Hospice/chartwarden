@@ -32415,6 +32415,8 @@ export interface operations {
             content: {
                 "application/json": {
                     decision: "accepted" | "rejected";
+                    /** Format: uuid */
+                    uploadedDocumentId: string;
                 };
             };
         };
