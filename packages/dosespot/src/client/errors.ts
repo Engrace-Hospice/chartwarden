@@ -87,3 +87,28 @@ export class NotEnabledError extends DegradedError {
 export function isNotEnabledError(value: unknown): value is NotEnabledError {
   return value instanceof NotEnabledError;
 }
+
+/**
+ * The org's config could not be READ or OPENED at the moment of the call: a database lookup failed, the tenant key ring or the KEK was
+ * unavailable, or the sealed credential would not open. Nothing was sent to DoseSpot. It is a RETRYABLE {@link DegradedError}, so the BullMQ
+ * layer retries a job, and a worker holding queued work treats it like {@link NotEnabledError}: the order WAITS with no retry spent (a
+ * platform fault must not exhaust a tenant's orders). The original fault is kept on `cause` for the worker's log; it is never put in the
+ * customer message (a database error holds bound values).
+ */
+export class ConfigUnavailableError extends DegradedError {
+  constructor(
+    integration: "dosespot",
+    operation: DoseSpotOperation,
+    customerMessage: string,
+    correlationId: string,
+    cause?: unknown,
+  ) {
+    super(integration, operation, true, customerMessage, correlationId);
+    this.name = "ConfigUnavailableError";
+    if (cause !== undefined) this.cause = cause;
+  }
+}
+
+export function isConfigUnavailableError(value: unknown): value is ConfigUnavailableError {
+  return value instanceof ConfigUnavailableError;
+}

@@ -38,6 +38,7 @@ import type {
 } from "./contract";
 import { DOSESPOT_ENDPOINTS, type DoseSpotEndpoint, TOKEN_ENDPOINT, buildPath } from "./endpoints";
 import {
+  ConfigUnavailableError,
   DegradedError,
   type DoseSpotOperation,
   NotEnabledError,
@@ -62,6 +63,7 @@ import type {
   DoseSpotTenantConfig,
   DoseSpotTenantConfigResolver,
 } from "./tenant-config";
+import { evictOtherGenerations, tokenCacheKey } from "./token-cache";
 import { buildTokenRequest } from "./token-request";
 
 /** Minimal fetch surface (the global `fetch` satisfies it; tests inject a recorded fake). */
@@ -98,8 +100,15 @@ export interface HttpDoseSpotClientDeps {
   }) => void;
 }
 
-const DEFAULT_TIMEOUT_MS = 15_000;
+/** The hard timeout of ONE DoseSpot request. The enrolment's claim window is sized from it. */
+export const DOSESPOT_REQUEST_TIMEOUT_MS = 15_000;
 const TOKEN_REFRESH_SKEW_MS = 60_000;
+/**
+ * Endpoints that are NEVER re-sent inside one call. `addClinician` creates a clinician and carries no idempotency key (DoseSpot's own
+ * dedupe by NPI is unverified), so a 5xx or a timeout, which may well mean the clinician WAS created, is ONE attempt and then a retryable
+ * degraded error; the enrolment's claim decides when a second attempt is allowed. Calls that carry an `Idempotency-Key` keep their retries.
+ */
+const NO_IN_CALL_RETRY: ReadonlySet<keyof typeof DOSESPOT_ENDPOINTS> = new Set(["addClinician"]);
 const UNSUPPORTED_MESSAGE =
   "This operation is not available against the verified DoseSpot API surface; it requires DoseSpot sandbox verification before it can be enabled.";
 
@@ -120,7 +129,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
   const now = deps.now ?? (() => new Date());
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const newCorrelationId = deps.newCorrelationId ?? randomUUID;
-  const timeoutMs = deps.requestTimeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = deps.requestTimeoutMs ?? DOSESPOT_REQUEST_TIMEOUT_MS;
 
   const tokens = new Map<string, CachedToken>();
   const breakers = new Map<string, BreakerSnapshot>();
@@ -133,6 +142,16 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     correlationId: string,
   ) => new DegradedError("dosespot", op, retryable, message, correlationId);
 
+  /** A resolver fault (database, key ring, KEK, credential): a retryable degraded error naming nothing of the cause, which rides on `cause`. */
+  const configUnavailable = (op: DoseSpotOperation, correlationId: string, cause: unknown) =>
+    new ConfigUnavailableError(
+      "dosespot",
+      op,
+      "E-prescribe is temporarily unavailable for this organization; the request will retry automatically.",
+      correlationId,
+      cause,
+    );
+
   /**
    * The tenant's config for `purpose`, or a non-retryable denial. The resolver is awaited on EVERY call (a database-backed one
    * re-reads the row), so a deactivation or rotation takes effect on the very next call. A resolver that THROWS (a sealed
@@ -144,7 +163,12 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     correlationId: string,
     purpose: DoseSpotConfigPurpose = "operate",
   ): Promise<DoseSpotTenantConfig> {
-    const cfg = await deps.resolver.configFor(orgId, purpose);
+    let cfg: DoseSpotTenantConfig | null;
+    try {
+      cfg = await deps.resolver.configFor(orgId, purpose);
+    } catch (cause) {
+      throw configUnavailable(op, correlationId, cause);
+    }
     if (cfg === null) {
       throw new NotEnabledError(
         "dosespot",
@@ -182,10 +206,6 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
       clearTimeout(timer);
     }
   }
-
-  /** A token belongs to ONE credential generation: a rotated config (new `version`) never reuses the old key's token. */
-  const tokenKey = (orgId: string, clinicianId: string, cfg: DoseSpotTenantConfig): string =>
-    `${orgId}|${clinicianId}|${cfg.version ?? 0}`;
 
   async function mintToken(
     op: DoseSpotOperation,
@@ -225,7 +245,9 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     }
     const expiresIn = Number(pick(parsed, "expires_in"));
     const ttlMs = (Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : 600) * 1000;
-    tokens.set(tokenKey(orgId, clinicianId, cfg), {
+    const key = tokenCacheKey(orgId, clinicianId, cfg.version);
+    evictOtherGenerations(tokens, orgId, clinicianId, key);
+    tokens.set(key, {
       token: accessToken,
       expiresAtMs: now().getTime() + ttlMs,
     });
@@ -240,7 +262,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     correlationId: string,
     forceFresh: boolean,
   ): Promise<string> {
-    const cached = tokens.get(tokenKey(orgId, clinicianId, cfg));
+    const cached = tokens.get(tokenCacheKey(orgId, clinicianId, cfg.version));
     if (!forceFresh && cached && cached.expiresAtMs - TOKEN_REFRESH_SKEW_MS > now().getTime()) {
       return cached.token;
     }
@@ -277,7 +299,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         body === undefined ? undefined : JSON.stringify(body),
       );
       if (res.status === 401 && auth === 0) {
-        tokens.delete(tokenKey(orgId, clinicianId, cfg));
+        tokens.delete(tokenCacheKey(orgId, clinicianId, cfg.version));
         forceFresh = true;
         continue;
       }
@@ -339,7 +361,8 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     if (!gate.allowed) throw openCircuitError(op, correlationId);
     const path = buildPath(endpoint.path, params);
     const delays = computeBackoffDelays();
-    for (let i = 0; i < DOSESPOT_RETRY_CONFIG.maxAttempts; i += 1) {
+    const maxAttempts = NO_IN_CALL_RETRY.has(name) ? 1 : DOSESPOT_RETRY_CONFIG.maxAttempts;
+    for (let i = 0; i < maxAttempts; i += 1) {
       try {
         const out = await attempt(
           op,
@@ -356,7 +379,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         return out;
       } catch (err) {
         if (!isRetryableError(err)) throw err; // permanent: does not count against the breaker
-        if (i < DOSESPOT_RETRY_CONFIG.maxAttempts - 1) {
+        if (i < maxAttempts - 1) {
           await sleep(delays[i] ?? DOSESPOT_RETRY_CONFIG.baseDelayMs);
           continue;
         }
@@ -373,7 +396,14 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
   }
 
   const unsupported = async (op: DoseSpotOperation, orgId: string): Promise<never> => {
-    throw (await deps.resolver.configFor(orgId)) === null
+    const correlationId = newCorrelationId();
+    let cfg: DoseSpotTenantConfig | null;
+    try {
+      cfg = await deps.resolver.configFor(orgId);
+    } catch (cause) {
+      throw configUnavailable(op, correlationId, cause);
+    }
+    throw cfg === null
       ? new NotEnabledError(
           "dosespot",
           op,

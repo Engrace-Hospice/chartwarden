@@ -20,6 +20,7 @@ import { schema } from "@chartwarden/db";
 import {
   type DoseSpotNewRxPayload,
   RX_TRANSMISSION_MAX_RETRIES,
+  isConfigUnavailableError,
   isDegradedError,
   isNotEnabledError,
   planTransmissionFailure,
@@ -216,7 +217,10 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
     };
   } catch (error) {
     // an open circuit, or a registration that stopped being live since this batch was claimed: the order WAITS (no retry spent)
-    if (isCircuitOpenError(error) || isNotEnabledError(error)) return { kind: "outage" };
+    // A resolver / key-ring / KEK / credential / database fault (`ConfigUnavailableError`) is the platform's, not the order's: it waits too.
+    if (isCircuitOpenError(error) || isNotEnabledError(error) || isConfigUnavailableError(error)) {
+      return { kind: "outage" };
+    }
     return {
       kind: "failure",
       errorClass: errorClassOf(error),

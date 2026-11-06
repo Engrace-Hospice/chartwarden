@@ -5,6 +5,7 @@
 // sandbox verification recorded in docs/history).
 import { describe, expect, it } from "vitest";
 import {
+  ConfigUnavailableError,
   DegradedError,
   type DoseSpotFetch,
   type DoseSpotTenantConfig,
@@ -13,6 +14,7 @@ import {
   createEnvTenantConfigResolver,
   createHttpDoseSpotClient,
   createUnboundTenantConfigResolver,
+  isConfigUnavailableError,
   isNotEnabledError,
   parseTenantConfig,
   phaseOfStatus,
@@ -338,8 +340,10 @@ describe("a database-backed resolver (slice 4)", () => {
     expect(s.purposes[0]).toBe("setup");
   });
 
-  it("lets an unreadable-credential error from the resolver propagate unchanged (never 'not configured')", async () => {
-    const boom = new Error("credential unreadable");
+  it("a resolver fault (key ring, KEK, credential, database) is a retryable ConfigUnavailableError, never 'not configured' and never a bare error", async () => {
+    const boom = Object.assign(new Error("credential unreadable"), {
+      code: "DOSESPOT_CREDENTIAL_UNREADABLE",
+    });
     const r: DoseSpotTenantConfigResolver = {
       isConfigured: () => true,
       isConfiguredFor: async () => true,
@@ -349,8 +353,56 @@ describe("a database-backed resolver (slice 4)", () => {
       configuredOrganizationIds: () => [],
     };
     const { c, calls } = clientOver(r, {});
-    await expect(c.getPrescriptionStatus(ORG, "501", "77")).rejects.toBe(boom);
+    const err = await c.getPrescriptionStatus(ORG, "501", "77").catch((e) => e);
+    expect(err).toBeInstanceOf(ConfigUnavailableError);
+    expect(isConfigUnavailableError(err)).toBe(true);
+    expect(err).toBeInstanceOf(DegradedError);
+    expect(isNotEnabledError(err)).toBe(false);
+    expect(err.retryable).toBe(true);
+    expect(err.cause).toBe(boom); // kept for the worker's log, never put in the customer message
+    expect(err.customerMessage).not.toContain("credential unreadable");
     expect(calls).toHaveLength(0);
+    // the same through an operation that only asks the resolver whether the tenant is configured
+    const unsupported = await c
+      .lookupRxBenefit(ORG, { dosespotPatientId: "501", rxnormRxcui: "1" })
+      .catch((e) => e);
+    expect(isConfigUnavailableError(unsupported)).toBe(true);
+  });
+
+  it("never re-POSTs a clinician in-call: addClinician has no idempotency key, so a 5xx is ONE attempt and a retryable degraded error", async () => {
+    let posts = 0;
+    const { c } = clientOver(swappable(cfg(1)).r, {
+      "POST /connect/token": TOKEN_OK,
+      "POST /api/clinicians": () => {
+        posts += 1;
+        return { status: 503 };
+      },
+    });
+    const err = await c
+      .enrollPrescriber(ORG, {
+        membershipId: "m1",
+        firstName: "A",
+        lastName: "B",
+        npi: "1234567893",
+        epcsRequested: false,
+      })
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(DegradedError);
+    expect(err.retryable).toBe(true);
+    expect(posts).toBe(1);
+  });
+
+  it("still retries the calls that carry an idempotency key (a 5xx on a status read is attempted three times)", async () => {
+    let gets = 0;
+    const { c } = clientOver(swappable(cfg(1)).r, {
+      "POST /connect/token": TOKEN_OK,
+      "GET /api/patients/501/prescriptions": () => {
+        gets += 1;
+        return { status: 503 };
+      },
+    });
+    await c.getPrescriptionStatus(ORG, "501", "77").catch(() => undefined);
+    expect(gets).toBe(3);
   });
 });
 

@@ -4,9 +4,11 @@
 // The live HTTP transport (`http.ts`) binds at boot with the per-tenant clinic credentials; until then the
 // deny-stub keeps the draft/queue path (D11) functional. Re-exports the whole client surface.
 export {
+  ConfigUnavailableError,
   DegradedError,
   NotEnabledError,
   RetryableError,
+  isConfigUnavailableError,
   isDegradedError,
   isNotEnabledError,
   isRetryableError,
@@ -89,6 +91,7 @@ export {
 } from "./probe";
 export { WIRE_FIELD_MAPPING_VERIFIED, phaseOfStatus, sigDirections } from "./mappers";
 export {
+  DOSESPOT_REQUEST_TIMEOUT_MS,
   createHttpDoseSpotClient,
   type DoseSpotFetch,
   type HttpDoseSpotClientDeps,
