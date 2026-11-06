@@ -15,10 +15,10 @@
 // plugins land — each is appended below with the SAME split-service signature.
 import type { FastifyInstance } from "fastify";
 
+import { registerTenantClearinghouseRoutes } from "../tenant-clearinghouse/routes";
 import { registerClaimsRoutes } from "./claims.routes";
 import { registerClearinghouseAttemptRoutes } from "./clearinghouse-attempt.routes";
 import { registerDdeProviderStatusRoutes } from "./dde-provider-status.routes";
-import { registerTenantClearinghouseRoutes } from "../tenant-clearinghouse/routes";
 import { registerDdeQueueRoutes } from "./dde-queue.routes";
 import { registerEdiProfileRoutes } from "./edi-profile.routes";
 import { registerEligibilityRoutes } from "./eligibility.routes";

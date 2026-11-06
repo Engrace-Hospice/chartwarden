@@ -12,7 +12,8 @@ const txReturning = (row: Partial<ConfigRow> | null): DbClient =>
   }) as unknown as DbClient;
 
 describe("organization EDI route key", () => {
-  const lookup = (org: string) => (org === ORG ? ({ vendor: "stedi", mode: "test" } as const) : null);
+  const lookup = (org: string) =>
+    org === ORG ? ({ vendor: "stedi", mode: "test" } as const) : null;
   const reader = buildOrgRouteKeyReader(lookup);
 
   it("is the vendor of the org's own active config", async () => {

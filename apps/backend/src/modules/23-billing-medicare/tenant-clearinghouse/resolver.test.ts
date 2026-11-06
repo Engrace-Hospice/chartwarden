@@ -1,6 +1,10 @@
 import { randomBytes } from "node:crypto";
 import type { DbClient } from "@chartwarden/db";
-import { InMemoryAttemptStore, NOT_WIRED_TRANSPORT, UNBOUND_BINDING } from "@chartwarden/x12-837-client";
+import {
+  InMemoryAttemptStore,
+  NOT_WIRED_TRANSPORT,
+  UNBOUND_BINDING,
+} from "@chartwarden/x12-837-client";
 import type { ClearinghouseBinding } from "@chartwarden/x12-837-client";
 import { createInMemoryHarness } from "@chartwarden/x12-837-client/testing";
 import { describe, expect, it } from "vitest";

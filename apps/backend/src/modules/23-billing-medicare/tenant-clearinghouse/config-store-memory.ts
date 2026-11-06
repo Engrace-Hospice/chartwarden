@@ -2,7 +2,7 @@
 // the suites that exercise the clearinghouse rules and routes without a database (the wizard-store-memory precedent). It
 // mirrors the migration's compare-and-set on `version`; it does NOT mirror RLS (one instance is one tenant's world per org id).
 import { randomUUID } from "node:crypto";
-import { type ConfigPatch, type ConfigRow, type ConfigStore, type NewConfigRow } from "./config-store";
+import type { ConfigPatch, ConfigRow, ConfigStore, NewConfigRow } from "./config-store";
 
 export interface InMemoryConfigStore extends ConfigStore {
   /** Test control: pretend the org has (or no longer has) a production submission in flight. */

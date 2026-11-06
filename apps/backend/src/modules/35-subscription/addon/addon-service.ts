@@ -350,7 +350,9 @@ export function buildDrizzleAddonService(db: DbClient, deps: AddonServiceDeps = 
         },
       );
       // The decision is the gate's own (M23, from the org's clearinghouse choice): the notice must say what the gate does.
-      const decision = await getSeam("ClaimsBillingEntitlementReader").entitlementForOrg(organizationId);
+      const decision = await getSeam("ClaimsBillingEntitlementReader").entitlementForOrg(
+        organizationId,
+      );
       return {
         entitled: decision.entitled,
         status: latest?.status ?? "none",

@@ -43,7 +43,11 @@ export function registerTenantClearinghouseRoutes(
     "/api/v1/tenant/clearinghouse",
     {
       preHandler: [READ],
-      config: { auditRead: { none: "clearinghouse choice and status (never the credential) — no patient data" } },
+      config: {
+        auditRead: {
+          none: "clearinghouse choice and status (never the credential) — no patient data",
+        },
+      },
     },
     async (request) => service.get(actorOf(request)),
   );

@@ -5,15 +5,19 @@
 import type { DbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
-import {
-  type OnboardingClearinghousePort,
-  type OnboardingClearinghouseResult,
-  type OnboardingWriteScope,
+import type {
+  OnboardingClearinghousePort,
+  OnboardingClearinghouseResult,
+  OnboardingWriteScope,
 } from "../../../bootstrap/onboarding-clearinghouse-port";
 import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
 import { parse } from "../routes/billing-typebox";
 import { createDrizzleConfigStore } from "./config-store";
-import type { ClearinghouseActor, ClearinghouseConfigView, TenantClearinghouseService } from "./service";
+import type {
+  ClearinghouseActor,
+  ClearinghouseConfigView,
+  TenantClearinghouseService,
+} from "./service";
 import { PutClearinghouseBodySchema, VerifyClearinghouseBodySchema } from "./typebox";
 
 const actorFor = (scope: OnboardingWriteScope): ClearinghouseActor => ({
@@ -32,7 +36,11 @@ export function buildTenantClearinghouseOnboardingPort(deps: {
   async function resourceIdOf(tx: DbClient, organizationId: string): Promise<string> {
     const row = await createDrizzleConfigStore(tx).find(organizationId);
     if (!row) {
-      throw new ChartWardenError("INTERNAL_ERROR", "the clearinghouse config vanished after its write", 500);
+      throw new ChartWardenError(
+        "INTERNAL_ERROR",
+        "the clearinghouse config vanished after its write",
+        500,
+      );
     }
     return row.id;
   }
@@ -70,7 +78,11 @@ export function buildTenantClearinghouseOnboardingPort(deps: {
     async verify(tx, scope, body) {
       await assertTxScopedToOrg(tx, scope.organizationId);
       const input = parse(VerifyClearinghouseBodySchema, body);
-      const { view, test } = await service.verify(createDrizzleConfigStore(tx), actorFor(scope), input);
+      const { view, test } = await service.verify(
+        createDrizzleConfigStore(tx),
+        actorFor(scope),
+        input,
+      );
       return withId(tx, scope, view, {
         test,
         detail: {

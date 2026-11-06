@@ -133,7 +133,6 @@ import type {
   VisitReader,
   VolunteerComplianceProvider,
 } from "./scheduling";
-import type { TenantClearinghouseReader } from "./tenant-clearinghouse";
 import type {
   AITokenMeterProvider,
   BillingServiceModeReader,
@@ -153,6 +152,7 @@ import type {
   SupplyCostProvider,
   SupplyFulfillmentProvider,
 } from "./supplies";
+import type { TenantClearinghouseReader } from "./tenant-clearinghouse";
 
 /** Opaque tenant scope every seam call carries (resolved by withOrgContext). */
 export interface OrgScope {

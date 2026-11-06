@@ -36,7 +36,11 @@ export const isUniqueViolation = (err: unknown): boolean => {
 export function createDrizzleConfigStore(tx: DbClient): ConfigStore {
   return {
     async findForUpdate(organizationId) {
-      const [row] = await tx.select().from(C).where(eq(C.organizationId, organizationId)).for("update");
+      const [row] = await tx
+        .select()
+        .from(C)
+        .where(eq(C.organizationId, organizationId))
+        .for("update");
       return row ?? null;
     },
     async find(organizationId) {

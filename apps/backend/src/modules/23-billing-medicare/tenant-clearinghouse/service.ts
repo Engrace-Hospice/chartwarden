@@ -299,13 +299,13 @@ export function createTenantClearinghouseService(
     };
   }
 
-  async function save(
-    store: ConfigStore,
-    row: ConfigRow,
-    patch: ConfigPatch,
-  ): Promise<ConfigRow> {
-    const updated = await store.update(row.organizationId, row.version, { ...patch, updatedAt: now() });
-    if (!updated) throw versionConflict("the clearinghouse config changed while it was being updated");
+  async function save(store: ConfigStore, row: ConfigRow, patch: ConfigPatch): Promise<ConfigRow> {
+    const updated = await store.update(row.organizationId, row.version, {
+      ...patch,
+      updatedAt: now(),
+    });
+    if (!updated)
+      throw versionConflict("the clearinghouse config changed while it was being updated");
     return updated;
   }
 
@@ -360,7 +360,11 @@ export function createTenantClearinghouseService(
         }
       }
       if (expectedVersion === undefined) {
-        throw new ChartWardenError("IF_MATCH_REQUIRED", "an If-Match header is required on this route", 428);
+        throw new ChartWardenError(
+          "IF_MATCH_REQUIRED",
+          "an If-Match header is required on this route",
+          428,
+        );
       }
       if (expectedVersion !== existing.version) {
         throw versionConflict("the clearinghouse config changed since it was read");
@@ -370,7 +374,11 @@ export function createTenantClearinghouseService(
       if (!retargeted && input.secret === undefined) {
         return { created: false, view: viewOf(existing, organizationId) }; // nothing changes
       }
-      if (retargeted && existing.vendor !== "outside" && (await store.hasProductionAttempts(organizationId))) {
+      if (
+        retargeted &&
+        existing.vendor !== "outside" &&
+        (await store.hasProductionAttempts(organizationId))
+      ) {
         throw conflict(
           "CLEARINGHOUSE_VENDOR_LOCKED",
           "this organization has production submissions in flight; its vendor and mode cannot change until an operator migrates them",

@@ -33,7 +33,9 @@ describe("clearinghouse secret cipher", () => {
     await expect(other.decrypt(ORG_A, ctx, sealed)).rejects.toThrow(/did not open/);
     const bytes = Buffer.from(sealed, "base64");
     bytes[bytes.length - 1] = (bytes[bytes.length - 1] ?? 0) ^ 0xff;
-    await expect(cipher.decrypt(ORG_A, ctx, bytes.toString("base64"))).rejects.toThrow(/did not open/);
+    await expect(cipher.decrypt(ORG_A, ctx, bytes.toString("base64"))).rejects.toThrow(
+      /did not open/,
+    );
     await expect(cipher.decrypt(ORG_A, ctx, "AA==")).rejects.toThrow(/did not open/);
   });
 

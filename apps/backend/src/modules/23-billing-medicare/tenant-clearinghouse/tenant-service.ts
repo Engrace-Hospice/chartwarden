@@ -75,7 +75,9 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
       return then(actor.organizationId, result);
     },
     async activate(actor) {
-      const view = await inOrg(actor, (tx) => service.activate(createDrizzleConfigStore(tx), actor));
+      const view = await inOrg(actor, (tx) =>
+        service.activate(createDrizzleConfigStore(tx), actor),
+      );
       return then(actor.organizationId, view);
     },
   };
