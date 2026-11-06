@@ -17,9 +17,13 @@
 // row pointing back through `replaces_template_id` and closes the predecessor's effective window. That is
 // why its body is the full new definition: a dispatch from three months ago must still resolve the recipe
 // it actually used (§7.2's survey reconstruction).
+import {
+  actorOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+  writeActorOf,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import { P } from "./guards";
 import {
   CreateSupplyItemBody,

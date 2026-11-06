@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionMedicationOrder } from "@chartwarden/dosespot";
 // apps/backend/src/modules/12-dosespot/consumers/bindings.ts — the live `OutboxConsumerBinding` for M12's
 // §2.2 D13 discharge cascade (F-102 / #103).
 //
@@ -33,8 +35,7 @@
 // `userId` is empty — §3.3, a system transition records no actor. The read and the write are M12-owned
 // tables inside one `withOrgContext`. The consumed event name is a STRING literal and no M6 schema is
 // imported, so this adds no `dependsOn` edge.
-import { type DbClient, schema } from "@chartwarden/db";
-import { transitionMedicationOrder } from "@chartwarden/dosespot";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { MedicationOrderStatus } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
@@ -46,9 +47,6 @@ import {
 } from "./admission-discharged-cascade";
 
 const MO = schema.medicationOrders;
-
-/** §3.3 — a consumer-driven write names no acting membership. */
-const CONSUMER_USER_ID = "";
 
 /** The event M12's discharge cascade consumes, and the `(eventId, consumerName)` receipt identity. */
 export const M12_DISCHARGE_CASCADE_CONSUMER = {

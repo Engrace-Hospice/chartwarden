@@ -23,7 +23,7 @@ export const M19_ERROR_STATUS = {
   /** `closed` / `abandoned` — no command advances out of them (§2.2.1). */
   TRIAGE_CALL_TERMINAL: 409,
   /** §2.5 — optimistic concurrency on `triage_call` / `triage_escalation`. */
-  STALE_VERSION: 412,
+  STALE_VERSION: 409,
   /** §2.2.1 — `markAbandoned(reason)` with nothing to record. "The caller hung up" is the one fact the
    *  abandoned row exists to carry; without it the row says a call happened and nothing else. */
   ABANDON_REASON_REQUIRED: 422,
@@ -174,7 +174,7 @@ export const M19_ERROR_STATUS = {
   /** §2.2.2 — `completed` / `cancelled`; no command advances out of either. */
   SHIFT_TERMINAL: 409,
   /** §2.5 — optimistic concurrency on `on_call_shift`. */
-  SHIFT_STALE_VERSION: 412,
+  SHIFT_STALE_VERSION: 409,
   /** §2.2.2 / §4.8 — the shift-open cron opens shifts whose `shift_starts_at <= now()`. Activating before
    *  the window begins would enter a CoP 418.100(c)(2) coverage claim for hours nobody agreed to cover. */
   SHIFT_NOT_YET_STARTED: 409,

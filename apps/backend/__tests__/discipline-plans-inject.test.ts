@@ -36,6 +36,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import { toCursorPage } from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -47,7 +48,6 @@ import {
   buildDisciplinePlanAbacPredicates,
   mountM15Routes,
 } from "../src/modules/15-discipline-care-plans/index";
-import { toCursorPage } from "../src/modules/15-discipline-care-plans/routes/index";
 import type {
   AideSupervisoryVisitView,
   DisciplineAssessmentView,
@@ -360,7 +360,7 @@ function createM15Backend(): {
   const readService: M15ReadService = {
     async listPlans() {
       const rows = [...plans.values()];
-      return toCursorPage(rows, 25, (r) => ({ a: r.updatedAt, id: r.planId }), toListItem);
+      return toCursorPage(ORG, rows, 25, (r) => ({ a: r.updatedAt, id: r.planId }), toListItem);
     },
     async getPlan(_actor, planId) {
       const row = plans.get(planId);
@@ -397,6 +397,7 @@ function createM15Backend(): {
       if (!plans.has(planId)) return null;
       const rows = [...versions.values()].filter((v) => v.planId === planId);
       return toCursorPage(
+        ORG,
         rows,
         20,
         (r) => ({ a: String(r.sequence).padStart(6, "0"), id: r.versionId }),
@@ -410,6 +411,7 @@ function createM15Backend(): {
     async listVolunteerGates() {
       const rows = [...gates.values()];
       return toCursorPage(
+        ORG,
         rows,
         25,
         (r) => ({ a: r.validFrom, id: r.gateId }),
@@ -436,6 +438,7 @@ function createM15Backend(): {
           .map(stripPlan),
       };
       return toCursorPage(
+        ORG,
         [view],
         50,
         () => ({ a: "0", id: row.planId }),
@@ -469,6 +472,7 @@ function createM15Backend(): {
         gateEngaged: false,
       };
       return toCursorPage(
+        ORG,
         [cadenceRow],
         50,
         () => ({ a: "0", id: row.planId }),

@@ -36,7 +36,7 @@ import {
   markReceivedOnArrival,
   recordsRequestConflicts,
 } from "../records-request/inbound-match";
-import { type CursorPage, paginate } from "../routes/concurrency";
+import { type CursorPage, paginate } from "../routes/pagination";
 import {
   type BatchIdentityStatus,
   type IdentityTargetPorts,
@@ -448,7 +448,7 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           review: r.review,
         });
       }
-      return paginate(items, q.cursor, q.limit);
+      return paginate(organizationId, items, q.cursor, q.limit);
     },
 
     async getWorkspace(organizationId, batchId, viewerMembershipId, sudAccess) {

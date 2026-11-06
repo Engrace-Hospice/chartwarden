@@ -1,3 +1,4 @@
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/20-field-safety/consumers/bindings.ts — the live `OutboxConsumerBinding`s for
 // M20's §4.8 visit consumers (F-043 / #103).
 //
@@ -42,7 +43,7 @@
 // are what stop a decider that later declares an outbox event or a new effect kind from having it silently
 // dropped by a consumer that only knew about mutations. `decideVisitNoShow` already declares two, and they
 // are the §4.9 warn-severity supervisor inquiry — the one thing this whole surface exists to raise.
-import type { DbClient } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type {
   IsoInstant,
@@ -69,9 +70,6 @@ import {
   scheduleRowsForVisit,
 } from "./schedule-store";
 import { visitAnchorsFrom } from "./seam-context";
-
-/** §3.3 — a consumer-driven write names no acting membership. */
-const CONSUMER_USER_ID = "";
 
 /** How far ahead (one year) a decedent's upcoming visits are resolved — wider than any scheduling horizon. */
 const UPCOMING_HORIZON_HOURS = 24 * 365;

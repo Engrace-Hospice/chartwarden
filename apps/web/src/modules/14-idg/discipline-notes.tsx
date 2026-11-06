@@ -5,7 +5,7 @@
 // must be on the agenda/packets; a non-coordinator may write only a discipline they are recorded present
 // for and edit only their own notes. This panel never pre-decides those — it defaults the discipline to the
 // caller's own roster row, shows the composer as read-only once the meeting is not live (that one is a
-// display of state the page already holds), and renders the server's 403/422/412 next to the composer.
+// display of state the page already holds), and renders the server's 403/422/409 next to the composer.
 //
 // LIVE POLL SAFETY: the parent re-reads the notes list on every 10s poll and hands it down as a prop. Every
 // draft (composer text per scope+discipline, and the open inline edit) lives in THIS component's state, so a
@@ -77,7 +77,7 @@ interface EditState {
   readonly baseReason: string;
   readonly busy: boolean;
   readonly error: string | null;
-  /** After a 412: the text the other writer saved, so it can be compared before saving again. */
+  /** After a stale-version 409: the text the other writer saved, so it can be compared before saving again. */
   readonly latest: string | null;
 }
 
@@ -242,7 +242,7 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
       await onReload();
       return;
     }
-    if (res.status === 412) {
+    if (res.code === "STALE_VERSION") {
       // Someone else saved first: pick up their version, keep this draft, let the writer decide.
       const fresh = await onReload();
       const row = fresh?.find((n) => n.id === edit.id);

@@ -25,6 +25,9 @@ import {
   registerSchedulingRoutes,
 } from "../src/modules/17-scheduling/index";
 
+/** A fresh Idempotency-Key — every M17/M18 mutating route requires one (ADR-0021). */
+const idem = () => ({ "idempotency-key": randomUUID() });
+
 const ORG = "org_a";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
 const ADMISSION = "22222222-2222-4222-8222-222222222222";
@@ -146,7 +149,13 @@ describe.each(["start", "arrive"] as const)("GAP-050 — POST /visits/:id/%s", (
     id: string,
     headers: Record<string, string>,
     payload: Record<string, unknown>,
-  ) => app.inject({ method: "POST", url: `/api/v1/visits/${id}/${action}`, headers, payload });
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/visits/${id}/${action}`,
+      headers: { ...headers, ...idem() },
+      payload,
+    });
 
   it("rejects an empty body with 422 (no EVV-present shortcut)", async () => {
     const { app, visitId } = await makeServer();
@@ -193,7 +202,7 @@ describe("GAP-050 — success path and service layer", () => {
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/visits/${visitId}/start`,
-      headers: as(RN),
+      headers: { ...as(RN), ...idem() },
       payload: { evvMissingReason: REASON },
     });
     expect(res.statusCode).toBe(200);

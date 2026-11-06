@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionMedicationOrder } from "@chartwarden/dosespot";
 // apps/backend/src/modules/12-dosespot/consumers/reconciliation-discontinue-binding.ts — the live
 // `OutboxConsumerBinding` for M12's §2.8 D17 reconciliation "discontinue" handshake (F-155/F-161, #248).
 //
@@ -22,8 +24,7 @@
 // both M12-owned (`medication_order`) inside one `withOrgContext`; no cross-module seam read is needed
 // (`medicationOrderId` is already the M12 primary key on the wire). The consumed event name is a STRING
 // literal and no M13 schema is imported, so this adds no `dependsOn` edge.
-import { type DbClient, schema } from "@chartwarden/db";
-import { transitionMedicationOrder } from "@chartwarden/dosespot";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { MedicationOrderStatus } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
@@ -35,9 +36,6 @@ import {
 } from "./reconciliation-discontinue";
 
 const MO = schema.medicationOrders;
-
-/** §3.3 — a consumer-driven write names no acting membership. */
-const CONSUMER_USER_ID = "";
 
 /** The event M12's reconciliation-discontinue consumer subscribes to, and the `(eventId, consumerName)`
  *  receipt identity. */

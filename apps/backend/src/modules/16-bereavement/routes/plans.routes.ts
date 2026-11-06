@@ -1,3 +1,4 @@
+import { factorsFromWire } from "@chartwarden/bereavement";
 // apps/backend/src/modules/16-bereavement/routes/plans.routes.ts — M16 (§4.1) routes 1–10, 27–29, 33:
 // the bereavement-plan read surface, the assignment + activation ladder, the pause/resume/close lifecycle,
 // the schedule regeneration, the risk recompute + history, and the D18-gated counselor first contact.
@@ -11,12 +12,16 @@
 // moments the plan is `eligible` or `initiating`, and §4.8 pins the window predicate to {active, paused}.
 // See `./guards.ts` for the full reasoning — it is the difference between a working assignment flow and a
 // permanent 403.
-import { factorsFromWire } from "@chartwarden/bereavement";
+import {
+  ifMatchVersionOf,
+  optionalIfMatchVersionOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 import type { Static } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import {
   ABAC_DISCIPLINE_COUNSELOR,
   ABAC_OVERSIGHT,
@@ -116,7 +121,7 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const body = parse(AssignCounselorBody, request.body);
       return writeService.assignCounselor(writeActorOf(request), planId, {
         ...body,
-        expectedVersion: ifMatchVersion(request),
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -137,7 +142,7 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const body = parse(AssignVolunteerBody, request.body);
       return writeService.assignVolunteer(writeActorOf(request), planId, {
         ...body,
-        expectedVersion: ifMatchVersion(request),
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -158,7 +163,7 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const body = parse(SeedRosterAndScheduleBody, request.body);
       return writeService.seedRosterAndSchedule(writeActorOf(request), planId, {
         ...body,
-        expectedVersion: ifMatchVersion(request),
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -178,7 +183,7 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const body = parse(PausePlanBody, request.body);
       return writeService.pausePlan(writeActorOf(request), planId, {
         ...body,
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -198,7 +203,7 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const { planId } = parse(PlanParams, request.params);
       parse(ResumePlanBody, request.body);
       return writeService.resumePlan(writeActorOf(request), planId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -220,7 +225,7 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const body = parse(CloseEarlyBody, request.body);
       return writeService.closeEarly(writeActorOf(request), planId, {
         ...body,
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -242,7 +247,7 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const body = parse(CosignCloseBody, request.body);
       return writeService.cosignClose(writeActorOf(request), planId, {
         ...body,
-        expectedVersion: ifMatchVersion(request),
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -300,7 +305,7 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
       const body = parse(RegenerateScheduleBody, request.body);
       return writeService.regenerateSchedule(writeActorOf(request), planId, {
         ...body,
-        expectedVersion: ifMatchVersion(request),
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );

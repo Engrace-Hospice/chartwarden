@@ -1,3 +1,10 @@
+import {
+  type GuardRequest,
+  requireAbac,
+  requirePermission,
+  requireStepUp,
+  resolveActorPermissions,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/22-documents/routes/documents-routes.ts — M22-T07 the §4.1 route inventory
 // (33 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth,
 // M3) on the §4.6 keys M22 registers into M3's catalog (M22_CONTRIBUTED_PERMISSIONS). Org binding is
@@ -8,12 +15,13 @@
 // optimistic concurrency (§2.5 → 412). The §4.7 predicates M22 owns gate the PHI-content + review +
 // publish + mutate routes via `requireAbac`.
 import {
-  type GuardRequest,
-  requireAbac,
-  requirePermission,
-  requireStepUp,
-  resolveActorPermissions,
-} from "@chartwarden/auth";
+  type PreHandler,
+  ifMatchVersionOf,
+  rejectAiActor,
+  requireIdempotencyKey,
+  requireIfMatch,
+  writeActorOf,
+} from "@chartwarden/shared/route-kit";
 import {
   ChartWardenError,
   DegradedError,
@@ -34,12 +42,6 @@ import {
   RECORDS_REQUEST_FILEABLE,
   type RecordsRequestService,
 } from "../records-request/records-request-service";
-import {
-  ifMatchVersionOf,
-  rejectAiActor,
-  requireIdempotencyKey,
-  requireIfMatch,
-} from "./concurrency";
 import {
   AbandonReviewRequest,
   AddTagRequest,
@@ -92,9 +94,6 @@ import { decodeBase64Content } from "./server-upload";
 import type { DocumentRouteService, DocumentWriteActor, WriteBasis } from "./service";
 import { type SignedUrlService, isExternalDisclosure } from "./signed-url-service";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface DocumentRouteDeps {
   service: DocumentRouteService;
   signedUrl: SignedUrlService;
@@ -126,16 +125,8 @@ function actorOf(request: FastifyRequest): {
   actor: DocumentWriteActor;
   roles: readonly string[];
 } {
-  const ctx = request.context;
-  const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || !ctx.userId || typeof membershipId !== "string") {
-    throw new UnauthorizedError();
-  }
-  return {
-    organizationId: ctx.organizationId,
-    actor: { userId: ctx.userId, membershipId },
-    roles: ctx.roles,
-  };
+  const { organizationId, userId, membershipId, roles } = writeActorOf(request);
+  return { organizationId, actor: { userId, membershipId }, roles };
 }
 
 const docIdOf = (request: FastifyRequest): string => parse(DocumentParamsSchema, request.params).id;
@@ -157,7 +148,9 @@ const INTAKE_READ = P("intake.read");
 const INTAKE_CONFIRM = P("intake.confirm_classification");
 const INTAKE_REVIEW = P("intake.review");
 const INTAKE_DISCARD = P("intake.discard_batch");
-const REJECT_AI = rejectAiActor() as PreHandler;
+const REJECT_AI = rejectAiActor(
+  "AI principals cannot commit a WardenLens extraction review",
+) as PreHandler;
 const IDEMPOTENT = requireIdempotencyKey() as PreHandler;
 
 // §4.7 ABAC guards M22 owns (target = request.params → `id`).

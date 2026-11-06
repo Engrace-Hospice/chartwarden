@@ -1,3 +1,4 @@
+import type { CursorPage } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/16-bereavement/routes/m16-response-dtos.ts
 // Compile-time conformance pins for the M16 §4.2 response DTOs.
 //
@@ -8,7 +9,6 @@
 // typebox would form a `typebox ↔ read-service` import cycle that `arch:boundaries` (no-circular) rejects.
 // tsc still type-checks this file (it is inside the module's compilation), so the pins are enforced.
 import type { Static } from "@sinclair/typebox";
-import type { CursorPage } from "./concurrency";
 import type { PreDeathDraftView as SvcPreDeathDraftView } from "./draft-service";
 import type { PhysicianLetterView as SvcPhysicianLetterView } from "./letter-service";
 import type {

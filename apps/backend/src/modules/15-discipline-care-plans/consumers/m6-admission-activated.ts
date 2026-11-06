@@ -1,3 +1,8 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import {
+  BOOTSTRAP_ON_ADMISSION_ACTIVATED,
+  requiredSignersFor,
+} from "@chartwarden/discipline-plans";
 // apps/backend/src/modules/15-discipline-care-plans/consumers/m6-admission-activated.ts — the §1.1 D10
 // plan-stub bootstrap, and the WRITE PATH M15 has never had (F-103 / #103).
 //
@@ -41,20 +46,13 @@
 // An admission with no location is a THROW, not a skip. The row is retried and eventually dead-lettered,
 // which is visible; silently creating nothing would be a CoP clock that never starts and a queue nobody
 // is watching — the exact failure this file exists to end.
-import { type DbClient, schema } from "@chartwarden/db";
-import {
-  BOOTSTRAP_ON_ADMISSION_ACTIVATED,
-  requiredSignersFor,
-} from "@chartwarden/discipline-plans";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { DisciplinePlanKind } from "@chartwarden/types";
 import { bootstrapDisciplinePlan } from "../lifecycle/index";
 import type { WriteOutboxPort } from "../routes/write-service";
 
 const PLAN = schema.disciplineCarePlan;
-
-/** §3.3 — a consumer-driven write names no acting membership. */
-const CONSUMER_USER_ID = "";
 
 /** The event M15 bootstraps from, and the `(eventId, consumerName)` receipt identity. */
 export const M15_PLAN_BOOTSTRAP_CONSUMER = {

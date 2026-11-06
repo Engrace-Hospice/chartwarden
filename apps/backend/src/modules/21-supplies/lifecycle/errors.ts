@@ -140,9 +140,6 @@ export const M21_ERROR_STATUS = {
   /** §2.1 — the dispatch's originating `supply_request` carries no `deliveryAddress` snapshot to reuse
    *  (an IPU-room deployment has none); `comfort_kit_replenish`'s schema requires one unconditionally. */
   M21_REPLENISHMENT_ADDRESS_UNRESOLVED: 422,
-
-  // ── Optimistic concurrency (§7.2 / §7.3 / §7.4) ────────────────────────────────────────────────────
-  M21_STALE_VERSION: 412,
 } as const;
 
 /** A machine-readable M21 domain failure code (§7 / §2.10). */

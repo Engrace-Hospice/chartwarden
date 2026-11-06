@@ -9722,7 +9722,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Update tenant administration policy",
+        "summary": "Update tenant administration policy; Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -10069,7 +10069,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Update the controlled-substance refill policy (tighten-only, 21 CFR 1306.22)",
+        "summary": "Update the controlled-substance refill policy (tighten-only, 21 CFR 1306.22); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -10198,7 +10198,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Enroll a prescriber into DoseSpot",
+        "summary": "Enroll a prescriber into DoseSpot; Idempotency-Key required",
         "parameters": [
           {
             "name": "membershipId",
@@ -10267,7 +10267,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Revoke a prescriber",
+        "summary": "Revoke a prescriber; Idempotency-Key required",
         "parameters": [
           {
             "name": "membershipId",
@@ -13497,7 +13497,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Update the refill-inbox SLA policy (tighten-only)",
+        "summary": "Update the refill-inbox SLA policy (tighten-only); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -15871,7 +15871,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Record a clinician administration (five-rights; administering_clinician_eligible ABAC)",
+        "summary": "Record a clinician administration (five-rights; administering_clinician_eligible ABAC); Idempotency-Key required",
         "parameters": [
           {
             "name": "x-witness-attestation",
@@ -16619,7 +16619,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "RN acknowledges a caregiver-attested row (caregiver_attested_review_required ABAC)",
+        "summary": "RN acknowledges a caregiver-attested row (caregiver_attested_review_required ABAC); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -16909,7 +16909,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Correct a committed administration (supersede)",
+        "summary": "Correct a committed administration (supersede); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -17212,7 +17212,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "RN disputes a caregiver-attested row",
+        "summary": "RN disputes a caregiver-attested row; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -17506,7 +17506,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Administrative hard-void (recorded in error)",
+        "summary": "Administrative hard-void (recorded in error); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -17800,7 +17800,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Record a caregiver-attested administration via the M31 portal (D10)",
+        "summary": "Record a caregiver-attested administration via the M31 portal (D10); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "201": {
@@ -18300,7 +18300,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Bulk offline-queue sync from device (D18)",
+        "summary": "Bulk offline-queue sync from device (D18); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "201": {
@@ -18792,7 +18792,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Record a refusal (administering_clinician_eligible ABAC)",
+        "summary": "Record a refusal (administering_clinician_eligible ABAC); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "201": {
@@ -19111,7 +19111,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Mint a single-use controlled-substance witness-attestation token (D7)",
+        "summary": "Mint a single-use controlled-substance witness-attestation token (D7); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "201": {
@@ -51545,7 +51545,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Upsert a membership's weekly availability",
+        "summary": "Upsert a membership's weekly availability; Idempotency-Key required",
         "parameters": [
           {
             "name": "membershipId",
@@ -104193,7 +104193,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Manual return acknowledgment (Phase-1 fallback)",
+        "summary": "Manual return acknowledgment (Phase-1 fallback); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -128610,7 +128610,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -130693,7 +130693,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -130977,7 +130977,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -139420,7 +139420,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Operator-initiated cancel (from a non-terminal status)",
+        "summary": "Operator-initiated cancel (from a non-terminal status); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -139548,7 +139548,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Operator-initiated resubmit (from rejected/timeout)",
+        "summary": "Operator-initiated resubmit (from rejected/timeout); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -139672,7 +139672,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Record a check-in (§4.7 capture predicates gate)",
+        "summary": "Record a check-in (§4.7 capture predicates gate); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -139853,7 +139853,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Record a check-out",
+        "summary": "Record a check-out; Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -140211,7 +140211,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Approve a pending device",
+        "summary": "Approve a pending device; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -140302,7 +140302,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Reject a pending device",
+        "summary": "Reject a pending device; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -140412,7 +140412,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Retire a device",
+        "summary": "Retire a device; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -140518,7 +140518,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Suspend a device",
+        "summary": "Suspend a device; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -140628,7 +140628,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Clinician self-registers a device (-> pending_approval)",
+        "summary": "Clinician self-registers a device (-> pending_approval); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -141122,7 +141122,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Correction-of-record (Clinical Supervisor+, fresh step-up)",
+        "summary": "Correction-of-record (Clinical Supervisor+, fresh step-up); Idempotency-Key required",
         "parameters": [
           {
             "name": "eventId",
@@ -141459,7 +141459,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Create/replace a per-address override (reason >=30 chars)",
+        "summary": "Create/replace a per-address override (reason >=30 chars); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -141566,7 +141566,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Edit tenant tighten-only policy",
+        "summary": "Edit tenant tighten-only policy; Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -141868,7 +141868,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Assigned clinician self-attests (reason >=40; D6 <=24h)",
+        "summary": "Assigned clinician self-attests (reason >=40; D6 <=24h); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -142001,7 +142001,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Supervisor override (step-up; reason >=60; D6 <=7d)",
+        "summary": "Supervisor override (step-up; reason >=60; D6 <=7d); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -144940,7 +144940,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -160494,7 +160494,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -160691,7 +160691,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -160971,7 +160971,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -161596,6 +161596,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -162166,7 +162167,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -162560,7 +162561,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -183376,7 +183377,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Record a reconciliation decision on a medication-history record (never mints a medication order; F-238)",
+        "summary": "Record a reconciliation decision on a medication-history record (never mints a medication order; F-238); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -183979,7 +183980,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Create a medication-order draft (prescriber_eligible ABAC)",
+        "summary": "Create a medication-order draft (prescriber_eligible ABAC); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "201": {
@@ -185022,7 +185023,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Edit a medication-order draft",
+        "summary": "Edit a medication-order draft; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -185083,7 +185084,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Complete a medication order (no-refills-no-renewal)",
+        "summary": "Complete a medication order (no-refills-no-renewal); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -185129,7 +185130,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Issue a corrected replacement order (prescriber_eligible ABAC)",
+        "summary": "Issue a corrected replacement order (prescriber_eligible ABAC); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -185288,7 +185289,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Attach a cosignature (no self-cosign)",
+        "summary": "Attach a cosignature (no self-cosign); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -185355,7 +185356,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination (reason required when not covered; emits m12.medication_order.coverage_determination_changed)",
+        "summary": "COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination (reason required when not covered; emits m12.medication_order.coverage_determination_changed); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -185859,7 +185860,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Discontinue a medication order",
+        "summary": "Discontinue a medication order; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -185929,7 +185930,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "File a clinician-initiated medication-error report against an order (F-205, #248)",
+        "summary": "File a clinician-initiated medication-error report against an order (F-205, #248); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -186009,7 +186010,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Move a draft to pending_signature",
+        "summary": "Move a draft to pending_signature; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -186063,7 +186064,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Retransmit a transmission_failed order (mints a corrected order)",
+        "summary": "Retransmit a transmission_failed order (mints a corrected order); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -186108,7 +186109,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Standard sign a medication order",
+        "summary": "Standard sign a medication order; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -186157,7 +186158,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Complete an EPCS controlled-substance sign (second factor)",
+        "summary": "Complete an EPCS controlled-substance sign (second factor); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -186239,7 +186240,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Initiate an EPCS controlled-substance sign (2FA nonce; dea_schedule_authorized ABAC)",
+        "summary": "Initiate an EPCS controlled-substance sign (2FA nonce; dea_schedule_authorized ABAC); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -186389,7 +186390,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Record a medication order as verbal",
+        "summary": "Record a medication order as verbal; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -186866,7 +186867,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "GAP-093: grant a clinical-license/certification credential (201)",
+        "summary": "GAP-093: grant a clinical-license/certification credential (201); Idempotency-Key required",
         "parameters": [
           {
             "name": "membershipId",
@@ -187111,7 +187112,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "GAP-093: revoke a credential (204)",
+        "summary": "GAP-093: revoke a credential (204); Idempotency-Key required",
         "parameters": [
           {
             "name": "membershipId",
@@ -222446,7 +222447,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Case manager acknowledges a missed dose",
+        "summary": "Case manager acknowledges a missed dose; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -226038,7 +226039,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "GAP-029: add an on-call rotation entry (201)",
+        "summary": "GAP-029: add an on-call rotation entry (201); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -226181,7 +226182,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "GAP-029: cancel an on-call rotation entry (204)",
+        "summary": "GAP-029: cancel an on-call rotation entry (204); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -228493,7 +228494,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "On-demand route optimisation (degraded when flag OFF)",
+        "summary": "On-demand route optimisation (degraded when flag OFF); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -251304,7 +251305,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Enqueue a DoseSpot MedHx refresh",
+        "summary": "Enqueue a DoseSpot MedHx refresh; Idempotency-Key required",
         "parameters": [
           {
             "name": "patientId",
@@ -274295,7 +274296,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Add a caregiver-reported home-med line",
+        "summary": "Add a caregiver-reported home-med line; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -274481,7 +274482,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Record a per-line reconciliation decision (reconciliation_authoring_eligible ABAC)",
+        "summary": "Record a per-line reconciliation decision (reconciliation_authoring_eligible ABAC); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -274802,7 +274803,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Update a per-line decision before finalization",
+        "summary": "Update a per-line decision before finalization; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -275015,7 +275016,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Finalize the worksheet (emits m13.reconciliation.completed)",
+        "summary": "Finalize the worksheet (emits m13.reconciliation.completed); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -275193,7 +275194,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Void a reconciliation worksheet",
+        "summary": "Void a reconciliation worksheet; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -275565,7 +275566,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Create a recurring policy (validates RRULE subset; 201)",
+        "summary": "Create a recurring policy (validates RRULE subset; 201); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -275934,7 +275935,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Discontinue a recurring policy (cascade-cancels future)",
+        "summary": "Discontinue a recurring policy (cascade-cancels future); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -280591,7 +280592,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Approve a refill (mints a new medication order)",
+        "summary": "Approve a refill (mints a new medication order); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -280665,7 +280666,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Deny a refill request",
+        "summary": "Deny a refill request; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -291587,7 +291588,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Cached RxBenefit coverage lookup",
+        "summary": "Cached RxBenefit coverage lookup; Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -292397,6 +292398,15 @@
         "summary": "The clinician's own day: obligations + posted check-ins",
         "parameters": [
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -292404,15 +292414,6 @@
               "minimum": 1,
               "maximum": 100,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 512,
-              "type": "string"
             }
           },
           {
@@ -293521,6 +293522,15 @@
         "summary": "The advisory polygons in force — `includeExpired` defaults FALSE so the pre-visit advisory never surfaces a polygon retired last winter; the editor asks for history explicitly (§4.1 #23)",
         "parameters": [
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -293528,15 +293538,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 512,
-              "type": "string"
             }
           },
           {
@@ -294180,6 +294181,15 @@
         "summary": "The review queue (narrowed to own incidents without oversight)",
         "parameters": [
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -294187,15 +294197,6 @@
               "minimum": 1,
               "maximum": 100,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 512,
-              "type": "string"
             }
           },
           {
@@ -299724,6 +299725,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -299731,15 +299741,6 @@
               "minimum": 1,
               "maximum": 500,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 512,
-              "type": "string"
             }
           },
           {
@@ -300697,6 +300698,15 @@
         "summary": "Who watches whom (§2.2.5 / D8) — dashboard VISIBILITY is RBAC+ABAC and deliberately independent: a supervisor may SEE a board she is not paged for, and D8 exists because the inverse (visible to everyone, paged by nobody) is the §7.8 failure (§4.1 #20)",
         "parameters": [
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -300704,15 +300714,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 512,
-              "type": "string"
             }
           },
           {
@@ -301513,7 +301514,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Record an intentional hold before the grace window expires",
+        "summary": "Record an intentional hold before the grace window expires; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -327806,7 +327807,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Request PTO (201)",
+        "summary": "Request PTO (201); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -327966,7 +327967,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Approve PTO (triggers reassignment scan)",
+        "summary": "Approve PTO (triggers reassignment scan); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -328088,7 +328089,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Cancel own pre-start PTO",
+        "summary": "Cancel own pre-start PTO; Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -328210,7 +328211,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Deny PTO (reason)",
+        "summary": "Deny PTO (reason); Idempotency-Key required",
         "parameters": [
           {
             "name": "id",
@@ -348140,7 +348141,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Dismiss a scheduler proposal",
+        "summary": "Dismiss a scheduler proposal; Idempotency-Key required",
         "parameters": [
           {
             "name": "proposalId",
@@ -348336,7 +348337,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Publish a proposal as a real visit (201)",
+        "summary": "Publish a proposal as a real visit (201); Idempotency-Key required",
         "parameters": [
           {
             "name": "proposalId",
@@ -348868,7 +348869,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Manual visit create (runs the D8 pre-schedule gate)",
+        "summary": "Manual visit create (runs the D8 pre-schedule gate); Idempotency-Key required",
         "parameters": [],
         "responses": {
           "200": {
@@ -349507,7 +349508,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Edit times / discipline / assignment (reruns D8 gate)",
+        "summary": "Edit times / discipline / assignment (reruns D8 gate); Idempotency-Key required",
         "parameters": [
           {
             "name": "visitId",
@@ -349862,7 +349863,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Record arrival/check-in (EVV-missing path; step-up-fresh)",
+        "summary": "Record arrival/check-in (EVV-missing path; step-up-fresh); Idempotency-Key required",
         "parameters": [
           {
             "name": "visitId",
@@ -350129,7 +350130,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Cancel a visit (reason + reason code)",
+        "summary": "Cancel a visit (reason + reason code); Idempotency-Key required",
         "parameters": [
           {
             "name": "visitId",
@@ -350402,7 +350403,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Mark no-show (triggers reassign-or-followup)",
+        "summary": "Mark no-show (triggers reassign-or-followup); Idempotency-Key required",
         "parameters": [
           {
             "name": "visitId",
@@ -350669,7 +350670,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Reassign-only (reruns the D8 gate)",
+        "summary": "Reassign-only (reruns the D8 gate); Idempotency-Key required",
         "parameters": [
           {
             "name": "visitId",
@@ -350939,7 +350940,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Reschedule (returns the newly-created visit, 201)",
+        "summary": "Reschedule (returns the newly-created visit, 201); Idempotency-Key required",
         "parameters": [
           {
             "name": "visitId",
@@ -351442,7 +351443,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Self-attest start (EVV-missing path; step-up-fresh)",
+        "summary": "Self-attest start (EVV-missing path; step-up-fresh); Idempotency-Key required",
         "parameters": [
           {
             "name": "visitId",

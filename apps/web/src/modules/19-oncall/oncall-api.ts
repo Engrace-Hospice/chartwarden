@@ -13,7 +13,7 @@
 //
 //   • ADR-0021 — a mutating route requires an `Idempotency-Key`. Every helper mints a fresh one per attempt.
 //   • §2.5 — a state transition requires `If-Match`, and M19's ETag is the row's INTEGER `version`, not a
-//     timestamp (unlike M21's `updated_at`). A 412 means the row moved under you — reload, never retry
+//     timestamp (unlike M21's `updated_at`). A 409 STALE_VERSION means the row moved under you — reload, never retry
 //     blind. §2.5's own case is the ordinary one: a supervisor reading the call while the RN answers
 //     question 4, whose disposition would otherwise silently overwrite two answers.
 //   • §4.1.1 — offset pagination is REFUSED (400) on every PHI list; the cursor is opaque and HMAC-SIGNED,
@@ -280,7 +280,7 @@ export function writeHeaders(version?: number | null): Record<string, string> {
  * Turn a failed response into the sentence a clinician at 2 a.m. can act on.
  *
  * The server's problem+json body is the source of truth; the status-derived fallbacks name the contracts a
- * screen can actually violate (412 = the row moved, 428 = a blind write, 422 = a stale/forged cursor or an
+ * screen can actually violate (409 STALE_VERSION = the row moved, 428 = a blind write, 422 = a stale/forged cursor or an
  * invalid body, 403 = a §4.7 predicate refused) rather than a generic failure. A 404 is deliberately
  * ambiguous — "absent OR out of your reach" — and the copy says so instead of guessing.
  */
@@ -290,7 +290,7 @@ export function errorMessage(error: unknown, fallback: string): string {
   if (serverMessage) return serverMessage;
   if (body?.detail) return body.detail;
   if (body?.title) return body.title;
-  if (body?.status === 412)
+  if (body?.code === "STALE_VERSION" || body?.code === "SHIFT_STALE_VERSION")
     return "This call changed while you were working on it. Reload and re-apply your edit — do not retry blind.";
   if (body?.status === 428)
     return "This edit is missing its version stamp. Reload the record and try again.";

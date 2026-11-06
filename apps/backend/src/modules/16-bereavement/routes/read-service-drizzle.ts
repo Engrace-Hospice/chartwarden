@@ -24,6 +24,14 @@ import {
   isWithinOptOutRescindWindow,
 } from "@chartwarden/bereavement";
 import { type DbClient, schema } from "@chartwarden/db";
+import {
+  type CursorPage,
+  type PageSizePolicy,
+  clampLimit,
+  decodeCursor,
+  isKeysetCursor,
+  toCursorPage,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   BereavementExternalSourceMetadata,
@@ -43,14 +51,6 @@ import { decodeCareGoals } from "../care-goals";
 import { COP_DENOMINATOR_STATUSES, COP_NUMERATOR_STATUSES } from "../seams/store";
 import type { M16ReadActor } from "./actor";
 import {
-  type CursorPage,
-  M16_PAGE_SIZES,
-  type PageSizePolicy,
-  clampLimit,
-  decodeCursor,
-  toCursorPage,
-} from "./concurrency";
-import {
   type BereavementDisclosureDecision,
   type BereavementDisclosurePort,
   isBereavementVolunteer,
@@ -64,6 +64,7 @@ import type {
   RiskScoreListQuery,
   SupervisorDashboardQuery,
 } from "./m16-typebox";
+import { M16_PAGE_SIZES } from "./pagination";
 import type {
   BereavedContactRowView,
   BereavementAssessmentTaskView,
@@ -288,7 +289,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
     // ── 1 — plan worklist (keyset on `updated_at DESC, id DESC`) ─────────────────────────────────────
     async listPlans(actor, query: PlanListQuery) {
       const limit = pageLimit(query.limit, M16_PAGE_SIZES.plans);
-      const cursor = decodeCursor(query.cursor);
+      const cursor = decodeCursor(actor.organizationId, query.cursor, isKeysetCursor);
       const asOf = now();
       // §4.1 — "counselor caseload by default". A caller WITHOUT oversight sees only the plans they hold,
       // and the narrowing is a SQL predicate rather than a post-filter, so the page size is honest.
@@ -355,6 +356,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
       const clinicalRiskAllowed = !isBereavementVolunteer(actor);
 
       return toCursorPage(
+        actor.organizationId,
         rows,
         limit,
         (r) => ({ a: iso(r.updatedAt), id: r.id }),
@@ -541,7 +543,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
       const plan = await loadReachablePlan(actor, planId);
       if (plan === null) return null;
       const limit = pageLimit(query.limit, M16_PAGE_SIZES.outreach);
-      const cursor = decodeCursor(query.cursor);
+      const cursor = decodeCursor(actor.organizationId, query.cursor, isKeysetCursor);
       const rows = await withOrgContext(db, scope(actor), async (tx) => {
         const filters = [
           eq(OUTREACH.planId, planId),
@@ -564,7 +566,13 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
           .orderBy(asc(OUTREACH.dueAt), asc(OUTREACH.id))
           .limit(limit + 1);
       });
-      return toCursorPage(rows, limit, (r) => ({ a: iso(r.dueAt), id: r.id }), toOutreachRow);
+      return toCursorPage(
+        actor.organizationId,
+        rows,
+        limit,
+        (r) => ({ a: iso(r.dueAt), id: r.id }),
+        toOutreachRow,
+      );
     },
 
     // ── 29 — the append-only score ledger (keyset on `assessed_at DESC, id DESC`) ────────────────────
@@ -573,7 +581,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
       if (plan === null) return null;
       const gate = await resolveBereavementDisclosure(actor, plan.patientId, disclosurePort);
       const limit = pageLimit(query.limit, M16_PAGE_SIZES.riskScores);
-      const cursor = decodeCursor(query.cursor);
+      const cursor = decodeCursor(actor.organizationId, query.cursor, isKeysetCursor);
       const rows = await withOrgContext(db, scope(actor), async (tx) => {
         const filters = [
           eq(SCORE.planId, planId),
@@ -594,6 +602,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
       });
 
       return toCursorPage(
+        actor.organizationId,
         rows,
         limit,
         (r) => ({ a: iso(r.assessedAt), id: r.id }),
