@@ -6,6 +6,15 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-06 — Tenant lifecycle transitions refuse a stale status
+
+**Why.** Two operator transitions racing on one tenant were last-writer-wins, and the status ledger recorded the wrong
+from-status.
+
+- `POST /api/v1/platform/tenants/{orgSlug}/status` and `POST /api/v1/platform/tenants/{orgSlug}/offboard` answer
+  `409 TENANT_STATUS_CHANGED` when another transition changed the tenant's status while the request was waiting. Nothing is
+  written; reload the tenant and retry.
+
 ## 2026-11-05 — Onboarding wizard v2, pre-PR review fixes (go-live integrity)
 
 **Why.** The pre-PR review found ways one operator could open a tenant, or approve a go-live on data nobody had checked. These
