@@ -147,7 +147,7 @@
       "mutatingNoBody": 0
     },
     "31-portal": {
-      "routes": 65,
+      "routes": 67,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -162,12 +162,12 @@
       "mutatingNoBody": 0
     },
     "34-saas-tenant-platform": {
-      "routes": 58,
+      "routes": 80,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "35-subscription": {
-      "routes": 58,
+      "routes": 72,
       "deficit": 0,
       "mutatingNoBody": 1
     },
