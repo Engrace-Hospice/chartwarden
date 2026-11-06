@@ -251,7 +251,10 @@ export {
   CLEARINGHOUSE_VENDOR_ENV,
   NOT_WIRED_TRANSPORT,
   PRODUCTION_CLEARINGHOUSE_VENDORS,
+  UNBOUND_BINDING,
   bindClearinghouseTransport,
+  bindingForOrg,
+  isPerOrgBinding,
   parseClearinghouseVendor,
 } from "./clearinghouse/transport-registry";
 export {
@@ -317,6 +320,11 @@ export type {
   DdeConformanceScript,
   DdeHarness,
 } from "./dde/conformance";
+export {
+  CLAIMMD_PROBE_DAY,
+  probeClaimMdAccountKey,
+  type ConnectionProbeOutcome,
+} from "./clearinghouse/claimmd-probe";
 export { InMemoryAttemptStore, PlatformControlNumberTaken } from "./clearinghouse/attempt-store";
 export type {
   AttemptResolution,
