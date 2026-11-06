@@ -563,7 +563,7 @@ controls:
       - file: apps/backend/src/modules/16-bereavement/erasers/bereavement-eraser.ts
 
   - id: CW-BR-10
-    title: The rendered bereavement mailing batch PDF (every recipient's name and address, org-level, retention class bereavement) and its superseded versions have no purge or eraser path — the bereavement_record eraser deletes a decedent's mailing items and contact rows but cannot reach the patient-less PDF, and a regenerate detaches the old PDF from the run but leaves it stored
+    title: The rendered bereavement mailing batch PDFs (every recipient's name and address, org-level, retention class bereavement; one document per render attempt) have no purge or eraser path — the bereavement_record eraser deletes a decedent's mailing items and contact rows but cannot reach a patient-less PDF, and a regenerate detaches the old PDF from the run but leaves it stored, as is the unreferenced PDF of a render attempt that lost the run's compare-and-set or abandoned its claim
     hipaa: ["164.310(d)(2)(i)"]
     soc2: ["CC6.5", "C1.2"]
     status: partial
