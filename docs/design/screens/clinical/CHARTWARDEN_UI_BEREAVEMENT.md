@@ -184,3 +184,65 @@ the platform provides the layout, the agency provides the words.
 - **Contact detail** gains a `Program activity` card: the contact's touchpoints and program activities (mailings), newest first
   with "Load more". A mailing is labelled as an activity and satisfies no cadence item. A bereavement volunteer sees when each touchpoint
   happened but not its outcome (what happened on a call is clinical): the outcome reads `Not shown to you`. A 403 renders nothing.
+
+## Support Groups
+
+ADR-0109 D10 (PR 3). Support groups are for program families only (an active plan and contact, no full or paused opt-out); a
+group is recurring or drop-in, in person or virtual, facilitated by bereavement staff or by a bereavement volunteer. Attending a
+session is recorded on the family's timeline as a program activity; it satisfies no cadence item.
+
+- **Support groups** (`/bereavement/groups`, `bereavement.group.read`): the groups list, newest first, with a status filter (`draft`,
+  `open`, `completed`, `cancelled`), format, modality, enrolled count and next session. `New group` (oversight) opens the form: name,
+  description, format; for a recurring group the first date, start time, duration, every 1 to 4 weeks and the number of meetings, in
+  the group's timezone (sessions keep their local time across daylight-saving changes); modality with a venue or a secure `https`
+  meeting link; facilitator (staff or volunteer), co-facilitator, capacity, enrollment required.
+- **Group detail** (`/bereavement/groups/:groupId`): the details, with `Edit`, `Open` (a recurring group's meetings are created; a
+  volunteer-led group opens only while the volunteer meets the volunteer requirements, otherwise the server's reason is shown),
+  `Mark completed` and `Cancel` (live enrollments end and future meetings are cancelled). Actions are offered to oversight and the
+  group's staff facilitator; a volunteer facilitator sees no management action.
+  - **Sessions**: every meeting by start time, its state and attendee count; `Add session` and `Cancel` for managers; `Record
+    attendance` on a session that has started (choose the enrolled families who came; a retry never double-records).
+  - **Roster** (`bereavement.group.run`): the live program families. A volunteer facilitator sees the family member's name, the
+    enrollment state and sessions attended; the relationship reads `Not shown to you`. A family that opted out or whose plan closed
+    drops off the roster.
+- **Contact detail** gains a `Support groups` panel: the contact's enrollments (live and past) with `Withdraw` (requested by the family
+  or removed by staff), and `Enroll` into an open group. Shown to the family's counselor and oversight only; otherwise nothing renders.
+
+## Memorial Services
+
+ADR-0109 D10 (PR 3). A memorial service invites the families of deaths within its invitation window (default 12 months before the
+service). Families answer by phone (staff record it) or in the bereaved portal.
+
+- **Memorial services** (`/bereavement/memorials`, `bereavement.memorial.rsvp`): the services list, newest first, with status and the
+  RSVP counts. `New service` (oversight): title, description, start and end, in person (venue) or virtual (secure link), capacity,
+  RSVP-by date and the invitation window (1 to 13 months).
+- **Service detail** (`/bereavement/memorials/:serviceId`): `Edit` (the window is fixed once published), `Publish` (invites every
+  program family whose decedent died within the window, sorted into `Mailed` and `Portal only` delivery: a family that stopped mailings
+  or has no address on file is still invited, without a letter), `Mark held` (once it has started) and `Cancel` (an invitation mailing
+  that has not gone out is cancelled with it). When the service has letter invitees, an `Invitation mailing` link opens the mailing run,
+  where oversight writes the invitation wording (none ships) and generates, downloads and confirms it like any other run.
+  - **Invitations** (oversight only): each family member, relationship, delivery, answer, guests and when it was answered, and once
+    the service has started `Attended` / `Did not attend` (attended is final and lands on the family's timeline).
+- **Contact detail** gains a `Memorial invitations` panel: the contact's invitations with `Record phone RSVP` (yes with 0 to 10 guests, no,
+  maybe) for a call. Over capacity the server's reason is shown. Shown to the family's counselor and oversight only.
+
+## Grief Library
+
+ADR-0109 D10 (PR 3). The agency's own grief library is curated by oversight and read by families in the portal only.
+
+- **Grief library** (`/bereavement/library`, `bereavement.library.read`, oversight): every item with title, category, kind, status and
+  sort order. `Upload item` sends the file through the documents upload (PDF, PNG or JPEG up to 25 MB; MP4 video up to 500 MB), then
+  registers it with a title, summary, category, an optional PDF transcript and its order. `Publish` puts an item in the portal,
+  `Archive` takes it out; `Preview` opens a short-lived link to the file (or the transcript) in a new tab; the access is recorded.
+
+## Bereaved Portal: Memorial Services and Grief Library
+
+The family's `Bereavement support` page (portal) gains two sections, each hidden when the server answers that it is not available to
+the account:
+
+- **Memorial services**: the family's own invitations to published services (title, date and time, place or `Online`), with an RSVP
+  form (`Yes` with a number of guests, `No`, `Maybe`) while replies are open. After the RSVP-by date, or once the service has started,
+  the form is replaced by `Replies for this service are closed.` A virtual service's `Join online` link appears once the family has said
+  yes.
+- **Grief library**: the published items, each opened through a freshly minted link; a video plays in the page, and a transcript link is
+  offered when there is one.
