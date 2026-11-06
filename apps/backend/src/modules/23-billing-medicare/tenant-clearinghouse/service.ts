@@ -20,6 +20,7 @@
 //
 // The credential is write-only: no view carries it (a `hasSecret` flag is derived). Nothing here logs or audits a value; the
 // row's M4 write-audit trigger records that the secret changed, never what it was.
+import { medicareReceiptDay } from "@chartwarden/billing";
 import {
   ChartWardenError,
   type TenantClearinghouseMode,
@@ -245,8 +246,6 @@ export function normalizeEvidence(raw: unknown): string {
 }
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
-const dayOf = (d: Date): string => d.toISOString().slice(0, 10);
-
 /** What a put changed, by field name. */
 function changedFieldsOf(existing: ConfigRow | null, input: PutClearinghouseInput): string[] {
   const changed: string[] = [];
@@ -566,7 +565,7 @@ export function createTenantClearinghouseService(
     },
 
     async recordBaa(store, actor, input) {
-      const record = normalizeBaaInput(input, dayOf(now()));
+      const record = normalizeBaaInput(input, medicareReceiptDay(now()));
       const row = await lockedRow(store, actor.organizationId);
       requireVendorAccount(row);
       if (sameBaa(row, record)) {
