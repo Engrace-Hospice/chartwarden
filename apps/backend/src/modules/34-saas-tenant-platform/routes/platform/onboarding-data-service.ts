@@ -28,6 +28,7 @@ import {
 } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
+import type { OnboardingBillingModePort } from "../../../../bootstrap/onboarding-billing-mode-port";
 import type { OnboardingClearinghousePort } from "../../../../bootstrap/onboarding-clearinghouse-port";
 import type {
   OnboardingCredentialPort,
@@ -49,6 +50,10 @@ import {
   updateProviderEntityForOrg,
 } from "../../../02-identity/org-admin-site-service";
 import { voidPendingGoLiveForDataChange } from "../../onboarding/go-live-void";
+import {
+  type ClearinghouseSwitchPlan,
+  planClearinghouseSwitch,
+} from "./onboarding-clearinghouse-switch";
 import {
   ONBOARDING_DATA_AUDIT_EVENTS as EVENTS,
   type OnboardingAuditEvent,
@@ -189,6 +194,12 @@ export interface OnboardingDataDeps {
   readonly clearinghouse?: OnboardingClearinghousePort;
   /** M23's notice adapter (an operator withdraws a tenant's external-filing record); unbound -> that route answers 503. */
   readonly notices?: OnboardingNoticePort;
+  /**
+   * M35's billing mode adapter. A contracted tenant that bills outside ChartWarden is on mode none, so the operator's switch to a vendor
+   * names the mode (set before the vendor, put back if the vendor change fails). Unbound (a deployment without pricing) -> no tenant has a
+   * contract, and a billing mode in the body is refused.
+   */
+  readonly billingMode?: OnboardingBillingModePort;
   /**
    * Runs the onboarding advance pass for the tenant after a clearinghouse change COMMITS, so wizard step 7
    * (`clearinghouse_selected`) settles at once. Best effort: a failure is the caller's to log and never fails the write.
@@ -502,6 +513,46 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       },
     );
 
+  /**
+   * What an operator's clearinghouse write needs beyond the vendor: only a vendor write (or a write that names a billing mode) reads the
+   * tenant's current choice, and only the switch OUT of outside for a contracted tenant carries a mode.
+   */
+  async function planSwitch(
+    op: OnboardingOperator,
+    orgSlug: string,
+    fields: OnboardingFields,
+  ): Promise<ClearinghouseSwitchPlan & { readonly organizationId: string }> {
+    if (fields.vendor === "outside" && fields.billingServiceMode === undefined) {
+      return { body: fields, billingServiceMode: null, organizationId: "" };
+    }
+    const target = await targetOf(orgSlug);
+    const plan = await planClearinghouseSwitch(
+      {
+        clearinghouse: clearinghousePort(),
+        ...(deps.billingMode ? { billingMode: deps.billingMode } : {}),
+      },
+      scopeOf(op, target.organizationId),
+      fields,
+    );
+    return { ...plan, organizationId: target.organizationId };
+  }
+
+  /** The vendor change failed after the mode was set: the tenant, still outside, goes back to none (best effort, loudly warned). */
+  async function restoreNoneAfterFailedSwitch(
+    mode: ClearinghouseSwitchPlan["billingServiceMode"],
+    organizationId: string,
+  ): Promise<void> {
+    if (mode === null || mode === "none" || !deps.billingMode) return;
+    try {
+      await deps.billingMode.restoreNone(organizationId);
+    } catch (cause) {
+      deps.warn?.(
+        "m34.onboarding data: putting the billing mode back to none after a failed switch also failed; the hourly pricing sweep corrects it",
+        { organizationId, err: cause },
+      );
+    }
+  }
+
   /** The bound clearinghouse adapter, or a typed 503 (the credential lanes' posture). */
   function clearinghousePort(): OnboardingClearinghousePort {
     if (!deps.clearinghouse) {
@@ -621,26 +672,43 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     },
 
     putClearinghouse: async (op, orgSlug, fields, reason, expectedVersion) => {
-      let organizationId = "";
-      const result = await write(
-        op,
-        orgSlug,
-        { event: EVENTS.clearinghouseSet, resourceKind: CLEARINGHOUSE_KIND, reason },
-        async (tx, t) => {
-          organizationId = t.organizationId;
-          const done = await clearinghousePort().put(
-            tx,
-            scopeOf(op, t.organizationId),
-            fields,
-            expectedVersion,
-          );
-          return {
-            value: { created: done.created === true, view: done.view },
-            resourceId: done.resourceId,
-            ...(done.changedFields ? { changedFields: done.changedFields } : {}),
-          };
-        },
-      );
+      // Leaving `outside` for a vendor while the tenant has a contract also sets the billing mode: BEFORE the vendor, so a failure never
+      // leaves a vendor without its mode, and put back to none if the vendor change then fails.
+      const switchPlan = await planSwitch(op, orgSlug, fields);
+      if (switchPlan.billingServiceMode !== null && deps.billingMode) {
+        await deps.billingMode.setModeLeavingOutside(
+          op,
+          orgSlug,
+          switchPlan.billingServiceMode,
+          reason,
+        );
+      }
+      let organizationId = switchPlan.organizationId;
+      let result: { created: boolean; view: unknown };
+      try {
+        result = await write(
+          op,
+          orgSlug,
+          { event: EVENTS.clearinghouseSet, resourceKind: CLEARINGHOUSE_KIND, reason },
+          async (tx, t) => {
+            organizationId = t.organizationId;
+            const done = await clearinghousePort().put(
+              tx,
+              scopeOf(op, t.organizationId),
+              switchPlan.body,
+              expectedVersion,
+            );
+            return {
+              value: { created: done.created === true, view: done.view },
+              resourceId: done.resourceId,
+              ...(done.changedFields ? { changedFields: done.changedFields } : {}),
+            };
+          },
+        );
+      } catch (err) {
+        await restoreNoneAfterFailedSwitch(switchPlan.billingServiceMode, organizationId);
+        throw err;
+      }
       return settleStepAfter(organizationId, result);
     },
 

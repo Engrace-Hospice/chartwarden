@@ -3283,7 +3283,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: M35PlatformContractDto,
     headers: IDEMPOTENCY_KEY_HEADER,
     summary:
-      "Change a tenant's billing service mode (none, billing_software, managed_billing); it takes effect from the 1st of the next month, immediately only while onboarding with no statement yet",
+      "Change a tenant's billing service mode (none, billing_software, managed_billing); it takes effect from the 1st of the next month, immediately only while onboarding with no statement yet. A tenant that bills outside ChartWarden stays on none: any other mode for it is a 409 BILLING_MODE_REQUIRES_NONE_WHILE_OUTSIDE (the operator names the mode when switching it to a clearinghouse instead)",
   },
   "GET /api/v1/subscription/pricing": {
     response: M35TenantPricingDto,
@@ -15516,7 +15516,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M23ClearinghouseConfigViewSchema,
   },
   "PUT /api/v1/tenant/clearinghouse": {
-    summary: `Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) once a production submission exists, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); test mode is refused on a production deployment (422) — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
+    summary: `Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) once a production submission exists, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a tenant that bills outside ChartWarden cannot leave outside on its own while it has a pricing contract (409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR: the switch also sets its billing mode, which only a platform operator does); test mode is refused on a production deployment (422) — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
     body: M23PutClearinghouseBodySchema,
     headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
     status: 201,
@@ -15548,7 +15548,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34OnboardingClearinghouseViewSchema,
   },
   "PUT /api/v1/platform/tenants/:orgSlug/clearinghouse": {
-    summary: `Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key — ${CLEARINGHOUSE_CHOICE_NOTE}. ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
+    summary: `Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key — ${CLEARINGHOUSE_CHOICE_NOTE}. Moving a tenant that has a contract OUT of outside to a vendor requires \`billingServiceMode\` (422 BILLING_SERVICE_MODE_REQUIRED): the mode is set first through the pricing path and put back if the vendor change fails; the field is refused (422 BILLING_SERVICE_MODE_NOT_APPLICABLE) on any other write. ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
     body: M34OnboardingClearinghousePutRequest,
     headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
     status: 201,

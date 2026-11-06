@@ -96,8 +96,11 @@ import { M35_OUTBOX_EVENTS } from "../src/modules/35-subscription/events-by-m35"
 import {
   type ContractService,
   buildContractService,
+  orgHasLiveContract,
+  readBillingServiceMode,
 } from "../src/modules/35-subscription/pricing/contract-service";
 import { SYSTEM_TRIGGER, modeTriggerOf } from "../src/modules/35-subscription/pricing/mode-trigger";
+import { buildOnboardingBillingModePort } from "../src/modules/35-subscription/pricing/onboarding-billing-mode-port";
 import {
   type PricingPlanService,
   buildPricingPlanService,
@@ -129,6 +132,8 @@ const ORG_F = "f6000000-0000-4000-8000-0000000000f6"; // onboarding: chooses out
 const ORG_G = "a7000000-0000-4000-8000-0000000000a7"; // stedi, active
 const ORG_H = "a8000000-0000-4000-8000-0000000000a8"; // only the operator's list of external filings reads it (nothing else seeds here)
 const ORG_I = "a9000000-0000-4000-8000-0000000000a9"; // a live tenant with a signed contract: its own outside choice sets billing mode none
+const ORG_J = "aa000000-0000-4000-8000-0000000000aa"; // onboarding with a signed contract: an operator moves it out of outside
+const ORG_K = "ab000000-0000-4000-8000-0000000000ab"; // live, no contract: its own switch out of outside is allowed
 const OPERATOR = "c9000000-0000-4000-8000-0000000000c9";
 const MEMBERSHIP = "e9000000-0000-4000-8000-0000000000e9";
 const TENANT_ADMIN = "7a000000-0000-4000-8000-0000000000a7";
@@ -259,6 +264,8 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_G, "ch-g"],
       [ORG_H, "ch-h"],
       [ORG_I, "ch-i"],
+      [ORG_J, "ch-j"],
+      [ORG_K, "ch-k"],
     ] as const) {
       await admin.query(
         "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -282,6 +289,8 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_F, "onboarding"],
       [ORG_H, "active"],
       [ORG_I, "onboarding"],
+      [ORG_J, "onboarding"],
+      [ORG_K, "active"],
     ] as const) {
       await admin.query(
         "INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,$3,'b@x.test','p@x.test')",
@@ -289,7 +298,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       );
     }
     // Wizard tasks for the two onboarding tenants; steps 1-6 are done so step 7 (clearinghouse_selected) is the one in play.
-    for (const org of [ORG_B, ORG_F]) {
+    for (const org of [ORG_B, ORG_F, ORG_J]) {
       await admin.query(
         `INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key)
          SELECT $1, (SELECT id FROM tenant_account WHERE organization_id=$1), key FROM onboarding_task_template WHERE retired_at IS NULL`,
@@ -405,6 +414,10 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       },
       audit: m35Audit,
       onboarding: buildPricingOnboardingPort({ wizard: wizardDouble as never }),
+      // The same binding the composition root makes: the real choice, read when asked.
+      billsOutside: async (organizationId) =>
+        (await getSeam("TenantClearinghouseReader").choiceForOrg(organizationId)).vendor ===
+        "outside",
     });
     const settleOnboarding = createSettleOnboardingForOrg({
       db: tenantPool.db,
@@ -434,6 +447,9 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
           ? await countQueuedCommercialSubmissionsOn(tx, organizationId)
           : await countQueuedCommercialSubmissions(tenantPool.db, organizationId),
       }),
+      // The tenant's own switch out of outside is refused while a pricing contract exists (the real read, on the service's own tx).
+      hasPricingContract: async (organizationId, tx) =>
+        tx ? orgHasLiveContract(tx, organizationId) : contracts.hasLiveContract(organizationId),
       // The Claim.MD connection test is a mock: no network. It records what it was handed.
       probes: {
         claimmd: async (secret, mode) => {
@@ -451,6 +467,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       }),
       clearinghouse: buildTenantClearinghouseOnboardingPort({ db: tenantPool.db, service }),
       notices: buildExternalNoticeOnboardingPort(),
+      billingMode: buildOnboardingBillingModePort(() => contracts),
       settleOnboarding,
     });
 
@@ -477,7 +494,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
             },
           ],
         },
-        ...[ORG_A, ORG_B, ORG_G, ORG_I].map((orgId) => ({
+        ...[ORG_A, ORG_B, ORG_G, ORG_I, ORG_K].map((orgId) => ({
           orgId,
           userId: TENANT_ADMIN,
           grants: [
@@ -1675,7 +1692,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
   // ── slice 5: a tenant that chooses `outside` pays no billing percentage, and the mode change is attributed ──────────────────────
   // The tenant's own PUT runs the post-commit settle, which reaches the pricing contract service. That write is the system's (no
   // operator), but a person set it off: its audit row names the tenant actor and the request's correlation id.
-  describe("a tenant's own outside choice sets the billing mode to none, attributed to it", () => {
+  describe("outside billing and the billing mode: the system sets none (attributed), and leaving outside is the operator's", () => {
     const bypassRows = async () =>
       Number(
         (
@@ -1685,14 +1702,17 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         )[0]?.n,
       );
 
-    it("names the tenant administrator and the request's correlation id on the audit row, and a repeat leaves nothing behind", async () => {
-      const operator = {
-        organizationId: PLATFORM_ORG,
-        userId: OPERATOR,
-        roles: ["platform_ops"],
-        membershipId: MEMBERSHIP,
-        stepUpRecent: true,
-      };
+    const operator = {
+      organizationId: PLATFORM_ORG,
+      userId: OPERATOR,
+      roles: ["platform_ops"],
+      membershipId: MEMBERSHIP,
+      stepUpRecent: true,
+    };
+    // One published plan shared by the stories below (a plan family can only be published once per version).
+    let planSlugMemo: string | undefined;
+    const publishedPlanSlug = async (): Promise<string> => {
+      if (planSlugMemo) return planSlugMemo;
       const draft = await plans.create(
         operator,
         {
@@ -1712,8 +1732,13 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         "price list for the attribution story",
       );
       const published = await plans.publish(operator, draft.id, "approved by the owner");
+      planSlugMemo = published.slug;
+      return published.slug;
+    };
+
+    it("names the tenant administrator and the request's correlation id on the audit row, and a repeat leaves nothing behind", async () => {
       await contracts.createForTenant(operator, "ch-i", {
-        planSlug: published.slug,
+        planSlug: await publishedPlanSlug(),
         billingServiceMode: "billing_software",
         orderFormRef: "OF-ATTRIBUTION-1",
         reason: "order form signed by the customer's administrator",
@@ -1773,6 +1798,179 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         changed: false,
       });
       expect(await bypassRows()).toBe(before);
+    });
+
+    // ── leaving outside: the tenant's own switch is refused while a contract exists; an operator's switch sets the mode with it ──────
+    const configOf = async (slug: string) =>
+      (await platformCall("GET", slug, "")).json() as {
+        vendor: string | null;
+        version: number | null;
+      };
+    const modeAudits = (org: string) =>
+      q<{ context: Record<string, string | null> }>(
+        `SELECT context FROM audit_event
+          WHERE event_type='m35.subscription.billing_service_mode_changed' AND context->>'organizationId'=$1 ORDER BY created_at`,
+        [org],
+      );
+    const VENDOR_KEY = "fake-claimmd-key-J#live-1";
+    const inForce = (org: string) => readBillingServiceMode(tenantPool.db, org);
+
+    it("refuses a LIVE tenant's own switch out of outside while it has a contract (409), and changes nothing", async () => {
+      const before = await tenantCall("GET", ORG_I, "");
+      const version = (before.json() as { version: number }).version;
+      expect((before.json() as { vendor: string }).vendor).toBe("outside");
+
+      const res = await tenantCall(
+        "PUT",
+        ORG_I,
+        "",
+        { vendor: "claimmd", mode: "production", secret: VENDOR_KEY },
+        { "if-match": String(version) },
+      );
+
+      expect(res.statusCode, res.body).toBe(409);
+      expect(errorCode(res)).toBe("CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR");
+      const after = (await tenantCall("GET", ORG_I, "")).json() as { vendor: string };
+      expect(after.vendor).toBe("outside");
+    });
+
+    it("lets a live tenant WITH NO CONTRACT switch out of outside on its own (there is no billing mode to set)", async () => {
+      const first = await tenantCall("PUT", ORG_K, "", { vendor: "outside" });
+      expect(first.statusCode, first.body).toBe(201);
+      const version = (first.json() as { version: number }).version;
+      const res = await tenantCall(
+        "PUT",
+        ORG_K,
+        "",
+        { vendor: "claimmd", mode: "production", secret: VENDOR_KEY },
+        { "if-match": String(version) },
+      );
+      expect(res.statusCode, res.body).toBe(200);
+      expect((res.json() as { vendor: string }).vendor).toBe("claimmd");
+    });
+
+    it("refuses an operator's plain mode write on an outside tenant (409), so the sweep can never silently undo it; none stays allowed", async () => {
+      await contracts.createForTenant(operator, "ch-j", {
+        planSlug: await publishedPlanSlug(),
+        billingServiceMode: "billing_software",
+        orderFormRef: "OF-LEAVING-1",
+        reason: "order form signed by the customer's administrator",
+      });
+      const chose = await platformCall("PUT", "ch-j", "", { vendor: "outside", reason: REASON });
+      expect(chose.statusCode, chose.body).toBe(201);
+      // what the wizard's post-commit sync does for an outside tenant
+      await contracts.setModeNoneForOutsideBilling(ORG_J, SYSTEM_TRIGGER);
+      expect(await inForce(ORG_J)).toBe("none");
+
+      const refused = await contracts
+        .setBillingServiceMode(operator, "ch-j", "billing_software", "the customer wants billing")
+        .catch((e: unknown) => e);
+      expect(refused).toMatchObject({
+        code: "BILLING_MODE_REQUIRES_NONE_WHILE_OUTSIDE",
+        statusCode: 409,
+      });
+      expect(await inForce(ORG_J)).toBe("none");
+      await expect(
+        contracts.setBillingServiceMode(operator, "ch-j", "none", "keeping it unbilled"),
+      ).resolves.toBeDefined();
+    });
+
+    it("an operator's switch out of outside needs the billing mode named (422) while the tenant has a contract: nothing changes", async () => {
+      const { version } = await configOf("ch-j");
+      const res = await platformCall(
+        "PUT",
+        "ch-j",
+        "",
+        { vendor: "claimmd", mode: "production", secret: VENDOR_KEY, reason: REASON },
+        { "if-match": String(version) },
+      );
+      expect(res.statusCode, res.body).toBe(422);
+      expect(res.json().error.details).toEqual([
+        expect.objectContaining({
+          field: "billingServiceMode",
+          code: "BILLING_SERVICE_MODE_REQUIRED",
+        }),
+      ]);
+      expect((await configOf("ch-j")).vendor).toBe("outside");
+      expect(await inForce(ORG_J)).toBe("none");
+    });
+
+    it("a vendor change that FAILS after the mode was set puts the mode back to none: no mode is left on a tenant that is still outside", async () => {
+      const { version } = await configOf("ch-j");
+      const res = await platformCall(
+        "PUT",
+        "ch-j",
+        "",
+        {
+          vendor: "claimmd",
+          mode: "production",
+          // passes the route's shape but is refused by the service (whitespace): the failure comes AFTER the mode write
+          secret: "a key with spaces in it",
+          billingServiceMode: "managed_billing",
+          reason: REASON,
+        },
+        { "if-match": String(version) },
+      );
+      expect(res.statusCode, res.body).toBe(422);
+      expect((await configOf("ch-j")).vendor).toBe("outside");
+      expect(await inForce(ORG_J)).toBe("none");
+      const audits = await modeAudits(ORG_J);
+      // the mode was set to managed_billing by the operator, then put back by the system
+      expect(audits.map((a) => a.context.to).slice(-2)).toEqual(["managed_billing", "none"]);
+      expect(audits.at(-2)?.context).toMatchObject({ operatorUserId: OPERATOR });
+      expect(audits.at(-1)?.context).toMatchObject({ operatorUserId: "system" });
+    });
+
+    it("an operator's switch out of outside with the billing mode lands BOTH: the vendor and the mode, the mode audited as the operator's", async () => {
+      const { version } = await configOf("ch-j");
+      const res = await platformCall(
+        "PUT",
+        "ch-j",
+        "",
+        {
+          vendor: "claimmd",
+          mode: "production",
+          secret: VENDOR_KEY,
+          billingServiceMode: "managed_billing",
+          reason: REASON,
+        },
+        { "if-match": String(version) },
+      );
+      expect(res.statusCode, res.body).toBe(200);
+      expect((res.json() as { vendor: string }).vendor).toBe("claimmd");
+      expect(await inForce(ORG_J)).toBe("managed_billing");
+      const last = (await modeAudits(ORG_J)).at(-1);
+      expect(last?.context).toMatchObject({
+        from: "none",
+        to: "managed_billing",
+        operatorUserId: OPERATOR,
+      });
+      expect(last?.context.reason).toBe(REASON);
+      // the credential never reached the pricing side or any audit row
+      expect(JSON.stringify(await modeAudits(ORG_J))).not.toContain(VENDOR_KEY);
+    });
+
+    it("refuses a billing mode on a write that is not a contracted tenant's switch out of outside (422), never silently ignoring it", async () => {
+      // ORG_J is a vendor tenant now
+      const { version } = await configOf("ch-j");
+      const res = await platformCall(
+        "PUT",
+        "ch-j",
+        "",
+        {
+          vendor: "claimmd",
+          mode: "production",
+          secret: `${VENDOR_KEY}-rotated`,
+          billingServiceMode: "none",
+          reason: REASON,
+        },
+        { "if-match": String(version) },
+      );
+      expect(res.statusCode, res.body).toBe(422);
+      expect(res.json().error.details[0]).toMatchObject({
+        code: "BILLING_SERVICE_MODE_NOT_APPLICABLE",
+      });
+      expect(await inForce(ORG_J)).toBe("managed_billing");
     });
   });
 });

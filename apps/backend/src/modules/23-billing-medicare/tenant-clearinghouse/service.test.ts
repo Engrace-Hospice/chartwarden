@@ -396,6 +396,75 @@ describe("tenant clearinghouse service: choosing", () => {
     ).toBe("no error");
   });
 
+  // Owner decision (slice 5): a tenant that bills outside ChartWarden is on billing mode none. Switching to a vendor means choosing the
+  // billing mode the vendor billing calls for, which only a platform operator may do (the tenant's own lane cannot set it).
+  describe("leaving `outside` while the org has a pricing contract", () => {
+    async function outsideOrg(hasContract: (org: string) => Promise<boolean>) {
+      const store = createInMemoryConfigStore();
+      const service = createTenantClearinghouseService({
+        cipher: buildClearinghouseSecretCipher(randomBytes(32)),
+        probes: {},
+        hasPricingContract: (org) => hasContract(org),
+      });
+      const chosen = await service.put(store, ACTOR, { vendor: "outside" }, undefined);
+      return { store, service, version: chosen.view.version as number };
+    }
+    const toVendor = { vendor: "claimmd", mode: "production", secret: FAKE_KEY } as const;
+
+    it("refuses the tenant's own switch with a typed 409, and changes nothing", async () => {
+      const { store, service, version } = await outsideOrg(async () => true);
+      const err = await service.put(store, ACTOR, toVendor, version).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ChartWardenError);
+      expect(err).toMatchObject({
+        code: "CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR",
+        statusCode: 409,
+      });
+      expect((await service.view(store, ORG)).vendor).toBe("outside");
+    });
+
+    it("lets a platform operator make the switch (the operator's flow sets the billing mode with it)", async () => {
+      const { store, service, version } = await outsideOrg(async () => true);
+      expect(await codeOf(service.put(store, OPERATOR, toVendor, version))).toBe("no error");
+      expect((await service.view(store, ORG)).vendor).toBe("claimmd");
+    });
+
+    it("lets a tenant with NO contract switch (there is no billing mode to set)", async () => {
+      const { store, service, version } = await outsideOrg(async () => false);
+      expect(await codeOf(service.put(store, ACTOR, toVendor, version))).toBe("no error");
+    });
+
+    it("does not stand in the way of a tenant that stays outside, or of a first choice", async () => {
+      const store = createInMemoryConfigStore();
+      const service = createTenantClearinghouseService({
+        cipher: buildClearinghouseSecretCipher(randomBytes(32)),
+        probes: {},
+        hasPricingContract: async () => true,
+      });
+      expect(await codeOf(service.put(store, ACTOR, toVendor, undefined))).toBe("no error");
+    });
+
+    it("answers 503, not a guess, when the contract cannot be read (a switch that cannot be judged is not allowed)", async () => {
+      const { store, service, version } = await outsideOrg(async () => {
+        throw new Error("pricing read failed");
+      });
+      const err = await service.put(store, ACTOR, toVendor, version).catch((e: unknown) => e);
+      expect(err).toMatchObject({ code: "CLEARINGHOUSE_CONTRACT_UNAVAILABLE", statusCode: 503 });
+      expect((await service.view(store, ORG)).vendor).toBe("outside");
+    });
+
+    it("asks nothing where pricing is not bound (a deployment without it has no contracts)", async () => {
+      const store = createInMemoryConfigStore();
+      const service = createTenantClearinghouseService({
+        cipher: buildClearinghouseSecretCipher(randomBytes(32)),
+        probes: {},
+      });
+      const chosen = await service.put(store, ACTOR, { vendor: "outside" }, undefined);
+      expect(await codeOf(service.put(store, ACTOR, toVendor, chosen.view.version as number))).toBe(
+        "no error",
+      );
+    });
+  });
+
   it("counts waiting work only for an ACTIVE config: a draft or verified one cannot drain it, so refusing the switch would strand the tenant (re-review M3)", async () => {
     const waiting = { claims: 3, commercialSubmissions: 2 };
     const service = createTenantClearinghouseService({

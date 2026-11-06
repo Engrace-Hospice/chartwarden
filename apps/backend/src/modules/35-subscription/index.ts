@@ -116,6 +116,7 @@ export {
   type PlatformContractView,
   type TenantPricingView,
   buildContractService,
+  orgHasLiveContract,
   readBillingServiceMode,
 } from "./pricing/contract-service";
 export { type PricingRouteDeps, registerPricingRoutes } from "./pricing/pricing.routes";
@@ -125,6 +126,7 @@ export {
   buildPricingPlanService,
 } from "./pricing/plan-service";
 export { SYSTEM_TRIGGER, modeTriggerOf } from "./pricing/mode-trigger";
+export { buildOnboardingBillingModePort } from "./pricing/onboarding-billing-mode-port";
 export {
   type ModeTrigger,
   type OnboardingPricingPort,

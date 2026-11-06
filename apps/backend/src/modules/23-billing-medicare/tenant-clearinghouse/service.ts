@@ -138,6 +138,13 @@ export interface TenantClearinghouseServiceDeps {
    * transmits through the new vendor (or parks for `outside`), and holding a switch could cost the 5-day filing deadline.
    */
   readonly waitingWork?: (organizationId: string, tx: ConfigStore["tx"]) => Promise<WaitingWork>;
+  /**
+   * Whether the org holds a live pricing contract (M35; absent = a deployment without pricing, so none). A tenant that bills outside
+   * ChartWarden is on billing mode none, so leaving `outside` also means choosing the billing mode the vendor billing calls for: only a
+   * platform operator may do that (the operator's flow sets the mode with the vendor), so the tenant's own switch is refused while a
+   * contract exists. `tx` is the store's open transaction (undefined for the in-memory store): read on it, not on a second connection.
+   */
+  readonly hasPricingContract?: (organizationId: string, tx: ConfigStore["tx"]) => Promise<boolean>;
 }
 
 /** What `prepareVerify` read: everything `completeVerify` needs, so no store call is open while the vendor is called. */
@@ -482,9 +489,15 @@ export function createTenantClearinghouseService(
   async function assertSwitchAllowed(
     store: ConfigStore,
     existing: ConfigRow,
-    organizationId: string,
+    actor: ClearinghouseActor,
   ): Promise<void> {
-    if (existing.vendor === "outside") return; // nothing was ever sent through a vendor
+    const { organizationId } = actor;
+    if (existing.vendor === "outside") {
+      // Nothing was ever sent through a vendor, so no queue or production lock applies; but the tenant's own lane may not leave outside
+      // while a pricing contract exists: the mode that follows is the operator's to set.
+      if (actor.lane !== "platform") await refuseOutsideSwitchWithContract(store, organizationId);
+      return;
+    }
     if (await store.hasProductionAttempts(organizationId)) {
       throw conflict(
         "CLEARINGHOUSE_VENDOR_LOCKED",
@@ -512,6 +525,29 @@ export function createTenantClearinghouseService(
     }
   }
 
+  async function refuseOutsideSwitchWithContract(
+    store: ConfigStore,
+    organizationId: string,
+  ): Promise<void> {
+    if (!deps.hasPricingContract) return;
+    let hasContract: boolean;
+    try {
+      hasContract = await deps.hasPricingContract(organizationId, store.tx);
+    } catch {
+      // A switch that cannot be judged is not allowed: answering "no contract" could put a vendor in front of billing mode none.
+      throw new ChartWardenError(
+        "CLEARINGHOUSE_CONTRACT_UNAVAILABLE",
+        "this organization's contract could not be read, so the switch away from outside ChartWarden was not made",
+        503,
+      );
+    }
+    if (!hasContract) return;
+    throw conflict(
+      "CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR",
+      "this organization bills outside ChartWarden and has a contract, so moving to a clearinghouse also sets its billing service mode: ask ChartWarden support to make the switch",
+    );
+  }
+
   async function changeExisting(
     store: ConfigStore,
     actor: ClearinghouseActor,
@@ -535,7 +571,7 @@ export function createTenantClearinghouseService(
     if (!retargeted && input.secret === undefined) {
       return { created: false, view: viewOf(existing, organizationId), changedFields: [] }; // nothing changes
     }
-    if (retargeted) await assertSwitchAllowed(store, existing, organizationId);
+    if (retargeted) await assertSwitchAllowed(store, existing, actor);
     if (retargeted && input.vendor !== "outside" && input.secret === undefined) {
       throw invalid(
         "secret",

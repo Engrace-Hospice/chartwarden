@@ -21194,7 +21194,7 @@ export interface paths {
         };
         /** A tenant's clearinghouse choice, masked (hasSecret; the credential is never returned) — platform ops; read is audited */
         get: operations["getApiV1PlatformTenantsByOrgSlugClearinghouse"];
-        /** Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        /** Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. Moving a tenant that has a contract OUT of outside to a vendor requires `billingServiceMode` (422 BILLING_SERVICE_MODE_REQUIRED): the mode is set first through the pricing path and put back if the vendor change fails; the field is refused (422 BILLING_SERVICE_MODE_NOT_APPLICABLE) on any other write. tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
         put: operations["putApiV1PlatformTenantsByOrgSlugClearinghouse"];
         post?: never;
         delete?: never;
@@ -21709,7 +21709,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Change a tenant's billing service mode (none, billing_software, managed_billing); it takes effect from the 1st of the next month, immediately only while onboarding with no statement yet */
+        /** Change a tenant's billing service mode (none, billing_software, managed_billing); it takes effect from the 1st of the next month, immediately only while onboarding with no statement yet. A tenant that bills outside ChartWarden stays on none: any other mode for it is a 409 BILLING_MODE_REQUIRES_NONE_WHILE_OUTSIDE (the operator names the mode when switching it to a clearinghouse instead) */
         put: operations["putApiV1PlatformTenantsByOrgSlugSubscriptionBillingservicemode"];
         post?: never;
         delete?: never;
@@ -27234,7 +27234,7 @@ export interface paths {
         };
         /** The organization's clearinghouse choice, masked (hasSecret; the credential is never returned; baa shows the tenant-held vendor BAA and whether an operator verified it) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.read (org-level) */
         get: operations["getApiV1TenantClearinghouse"];
-        /** Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) once a production submission exists, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); test mode is refused on a production deployment (422) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        /** Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) once a production submission exists, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a tenant that bills outside ChartWarden cannot leave outside on its own while it has a pricing contract (409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR: the switch also sets its billing mode, which only a platform operator does); test mode is refused on a production deployment (422) — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused */
         put: operations["putApiV1TenantClearinghouse"];
         post?: never;
         delete?: never;
@@ -93063,6 +93063,8 @@ export interface operations {
                     mode?: "test" | "production";
                     /** @description The vendor credential (the Stedi API key, or the Claim.MD account key). Write-only: sealed under the tenant's own key and never returned. Required with a first choice and whenever vendor or mode changes. */
                     secret?: string;
+                    /** @description The billing service mode the tenant's contract takes when it LEAVES `outside` for a vendor (a tenant that bills outside is on none, and only an operator may switch it). Required for exactly that switch while the tenant has a contract (422 BILLING_SERVICE_MODE_REQUIRED), set before the vendor and put back if the vendor change fails, dated like any mode change; `none` is the explicit choice to keep it. Refused (422 BILLING_SERVICE_MODE_NOT_APPLICABLE) on any other write. */
+                    billingServiceMode?: "none" | "billing_software" | "managed_billing";
                     /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
                     reason: string;
                 };

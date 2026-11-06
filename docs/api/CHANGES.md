@@ -6,6 +6,24 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-06 — Leaving "bills outside ChartWarden" is a platform operator's switch
+
+**Why.** A tenant that bills outside ChartWarden is on billing service mode `none` (the system sets it). Moving it to a clearinghouse also
+means choosing the billing mode the vendor billing calls for, which only an operator may do.
+
+- `PUT /api/v1/tenant/clearinghouse` that moves an organization from `outside` to a vendor now answers
+  `409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR` while the organization has a pricing contract (`503
+  CLEARINGHOUSE_CONTRACT_UNAVAILABLE` if the contract cannot be read). An organization with no contract can still switch.
+- `PUT /api/v1/platform/tenants/{orgSlug}/clearinghouse` takes an optional `billingServiceMode` (`none`, `billing_software`,
+  `managed_billing`). It is required (`422 BILLING_SERVICE_MODE_REQUIRED`, field `billingServiceMode`) when a tenant with a contract
+  leaves `outside` for a vendor, and refused (`422 BILLING_SERVICE_MODE_NOT_APPLICABLE`) on any other write. The mode is set first,
+  through the pricing path (dated like any mode change, audited as the operator), then the vendor; if the vendor change fails the mode is
+  put back to `none`.
+- `PUT /api/v1/platform/tenants/{orgSlug}/subscription/billing-service-mode` for a tenant that bills outside ChartWarden now answers
+  `409 BILLING_MODE_REQUIRES_NONE_WHILE_OUTSIDE` for any mode but `none`.
+
+---
+
 ## 2026-11-06 — Admin console reads for the tenant onboarding wizard
 
 **Why.** The platform-ops console now runs tenant onboarding as one ordered wizard. It needs a few reads and one relaxed field.

@@ -216,6 +216,15 @@ export const OnboardingClearinghousePutRequest = Type.Composite([
           "The vendor credential (the Stedi API key, or the Claim.MD account key). Write-only: sealed under the tenant's own key and never returned. Required with a first choice and whenever vendor or mode changes.",
       }),
     ),
+    billingServiceMode: Type.Optional(
+      Type.Union(
+        [Type.Literal("none"), Type.Literal("billing_software"), Type.Literal("managed_billing")],
+        {
+          description:
+            "The billing service mode the tenant's contract takes when it LEAVES `outside` for a vendor (a tenant that bills outside is on none, and only an operator may switch it). Required for exactly that switch while the tenant has a contract (422 BILLING_SERVICE_MODE_REQUIRED), set before the vendor and put back if the vendor change fails, dated like any mode change; `none` is the explicit choice to keep it. Refused (422 BILLING_SERVICE_MODE_NOT_APPLICABLE) on any other write.",
+        },
+      ),
+    ),
   }),
   OnboardingReasonSchema,
 ]);

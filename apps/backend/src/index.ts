@@ -1629,7 +1629,6 @@ import {
   M35_JOBS_PLATFORM_JOB_ID,
   M35_OUTBOX_EVENTS,
   type PlatformRunner,
-  SYSTEM_TRIGGER,
   buildContractService,
   buildDrizzleAddonService,
   buildDrizzleM35RouteService,
@@ -1637,12 +1636,14 @@ import {
   buildM35PatientActivePeriodConsumer,
   buildM35SessionCreatedConsumer,
   buildM35WebhookIngest,
+  buildOnboardingBillingModePort,
   buildPlatformAuditPort,
   buildPricingPlanService,
   createDrizzlePseudonymKeyProvider,
   loadM35StripeConfig,
   modeTriggerOf,
   mountM35Routes,
+  orgHasLiveContract,
   registerM35AbacPredicates,
   registerM35Seams,
   registerM35Workers,
@@ -6039,6 +6040,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 ? await countQueuedCommercialSubmissionsOn(tx, organizationId)
                 : await countQueuedCommercialSubmissions(dbHandle.db, organizationId),
             }),
+            // A tenant that bills outside ChartWarden is on billing mode none; leaving outside also sets the billing mode, which only an
+            // operator may (their flow names it). So the tenant's own switch is refused while a contract exists. Read on the service's open
+            // transaction (a contract read under the tenant's own RLS), and the pricing service is resolved when USED (it is built later).
+            hasPricingContract: async (organizationId, tx) =>
+              tx
+                ? orgHasLiveContract(tx, organizationId)
+                : pricingContracts.get().hasLiveContract(organizationId),
           });
           const m34PlatformBackend = buildDrizzlePlatformService({
             advanceOnboarding: async ({ tenantAccountId, organizationId }) => {
@@ -6224,6 +6232,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 }),
                 // An operator withdraws a tenant's "filed outside ChartWarden" NOE / NOTR record (M23's own rule, on the caller's tx).
                 notices: buildExternalNoticeOnboardingPort(),
+                // The operator's switch out of `outside` names the billing mode: M35 sets it before the vendor (put back if that fails).
+                billingMode: buildOnboardingBillingModePort(() => pricingContracts.get()),
                 settleOnboarding: settleOnboardingForOrg,
                 macCredentials: buildMacOnboardingCredentialPort({
                   writeService: buildDrizzleM23WriteService(dbHandle.db, {
@@ -6478,6 +6488,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 outbox: m35OutboxPublisher,
                 audit: m35PricingAudit,
                 onboarding: buildPricingOnboardingPort({ wizard: m34Onboarding.wizard }),
+                // "Outside means none": an operator's other mode on an outside tenant is refused, and the system's change re-asks after its lock.
+                billsOutside: m23BillsOutside,
                 log: (message, detail) => app.log.warn(detail, message),
               });
               pricingContracts.bind(contracts);

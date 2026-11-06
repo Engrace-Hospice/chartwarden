@@ -133,12 +133,21 @@ export interface ContractService {
     orgSlug: string,
     input: CreateContractInput,
   ): Promise<CreateContractResult>;
+  /**
+   * An operator's change of the billing service mode. A tenant that bills outside ChartWarden is on `none` and stays there (the
+   * invariant the system's outside-means-none sync and sweep rely on): any other mode for it is a 409 BILLING_MODE_REQUIRES_NONE_WHILE_OUTSIDE,
+   * so a sweep can never silently undo what an operator set. The one exception is the operator's own switch OUT of outside, which sets
+   * the mode first, then the vendor (`opts.leavingOutside`, passed only by that flow).
+   */
   setBillingServiceMode(
     actor: M35WriteActor,
     orgSlug: string,
     mode: BillingServiceMode,
     reason: unknown,
+    opts?: { readonly leavingOutside?: boolean },
   ): Promise<PlatformContractView>;
+  /** Whether the org holds a live (billable now) contract, read on the tenant pool. Where there is none, no billing mode is ever invented. */
+  hasLiveContract(organizationId: string): Promise<boolean>;
   /**
    * Slice 5: a tenant that bills outside ChartWarden pays no billing percentage. Sets the org's billing service mode to `none` as a
    * SYSTEM action (no operator), dated like any mode change: at once while the tenant is onboarding with nothing billed, else from
@@ -164,6 +173,12 @@ export interface ContractServiceDeps {
   readonly outbox?: WriteOutboxPort;
   readonly audit?: PlatformAuditPort;
   readonly onboarding?: OnboardingPricingPort;
+  /**
+   * Whether the org's clearinghouse is `outside`, read lazily by the composition root over M23's choice. It guards the invariant "outside
+   * means billing mode none" (an operator's other mode is refused) and is re-asked INSIDE the write of the system's outside-means-none
+   * change, after the lock, so a switch to a vendor that landed meanwhile is never overwritten. Absent = nothing is checked.
+   */
+  readonly billsOutside?: (organizationId: string) => Promise<boolean>;
   readonly now?: () => Date;
   readonly log?: (message: string, detail: Record<string, unknown>) => void;
 }
@@ -290,6 +305,34 @@ async function loadContract(
   if (!record) return null;
   const history = (await loadModeHistory(tx, [record.contract.id])).get(record.contract.id) ?? [];
   return { record, bands: await loadBands(tx, record.plan.id), history };
+}
+
+/**
+ * Serialise the writers of one subscription's billing mode (an operator's change, the system's outside-means-none sync, the sweep) on its
+ * row, and read the mode history AFTER the lock: what is judged is what is current, not what was read before another writer committed.
+ */
+async function lockSubscriptionAndReloadHistory(
+  tx: WriteTx,
+  found: LoadedContract,
+): Promise<LoadedContract> {
+  await tx
+    .select({ id: SUB.id })
+    .from(SUB)
+    .where(eq(SUB.id, found.record.sub.id))
+    .for("update")
+    .limit(1);
+  const history =
+    (await loadModeHistory(tx, [found.record.contract.id])).get(found.record.contract.id) ?? [];
+  return { ...found, history };
+}
+
+/** Whether the org has a live (billable now) contract, on the given org-scoped or platform transaction. */
+export async function orgHasLiveContract(
+  tx: WriteTx,
+  organizationId: string,
+  at: Date = new Date(),
+): Promise<boolean> {
+  return (await selectNewestContract(tx, "live", at, organizationId)) !== null;
 }
 
 /**
@@ -601,7 +644,7 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
       };
     },
 
-    async setBillingServiceMode(actor, orgSlug, mode, reasonRaw) {
+    async setBillingServiceMode(actor, orgSlug, mode, reasonRaw, opts = {}) {
       const reason = normalizeReason(reasonRaw);
       const audit = requireAuditPort(deps.audit);
       const onboarding = requireOnboardingPort(deps.onboarding);
@@ -610,9 +653,22 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         if (!tenant) throw new NotFoundError("tenant");
         const at = now();
         const today = utcDateOf(at);
-        const found = await loadContract(tx, "live", at, tenant.organizationId);
-        if (!found) throw new NotFoundError("this organization has no contracted subscription");
+        const loaded = await loadContract(tx, "live", at, tenant.organizationId);
+        if (!loaded) throw new NotFoundError("this organization has no contracted subscription");
+        const found = await lockSubscriptionAndReloadHistory(tx, loaded);
         const { record } = found;
+        // "Outside means none" is the invariant: a billing mode on a tenant that bills outside would be undone by the next sync or sweep.
+        if (
+          mode !== "none" &&
+          !opts.leavingOutside &&
+          (await deps.billsOutside?.(tenant.organizationId))
+        ) {
+          throw new ChartWardenError(
+            "BILLING_MODE_REQUIRES_NONE_WHILE_OUTSIDE",
+            "this tenant bills outside ChartWarden, so its billing service mode is none; switch its clearinghouse to a vendor first (the operator sets the mode in that same step)",
+            409,
+          );
+        }
         const current = modeInForceOn(found.history, today);
         const pending = pendingModeAfter(found.history, today);
         // A request for the mode that will be in force anyway is a no-op; anything else is a new dated row (it supersedes a pending one).
@@ -671,8 +727,13 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         if (!tenant) return { changed: false };
         const at = now();
         const today = utcDateOf(at);
-        const found = await loadContract(tx, "live", at, tenant.organizationId);
-        if (!found) return { changed: false }; // a mode is never invented for a tenant that has no contract
+        const loaded = await loadContract(tx, "live", at, tenant.organizationId);
+        if (!loaded) return { changed: false }; // a mode is never invented for a tenant that has no contract
+        const found = await lockSubscriptionAndReloadHistory(tx, loaded);
+        // Asked AGAIN here, after the lock: a switch to a vendor (with the operator's mode) that landed since the caller decided must
+        // never be overwritten with none.
+        if (deps.billsOutside && !(await deps.billsOutside(organizationId)))
+          return { changed: false };
         const current = modeInForceOn(found.history, today);
         const pending = pendingModeAfter(found.history, today);
         if ((pending?.billingServiceMode ?? current) === "none") return { changed: false };
@@ -697,6 +758,13 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         });
         return { changed: true };
       });
+    },
+
+    async hasLiveContract(organizationId) {
+      const at = now();
+      return withOrgContext(deps.db, systemOrgContext(organizationId), (scoped) =>
+        orgHasLiveContract(scoped as unknown as WriteTx, organizationId, at),
+      );
     },
 
     async platformView(actor, orgSlug) {
