@@ -159,6 +159,11 @@ export interface BereavementClosureView {
   readonly cosignedAt: IsoInstant | null;
   readonly stats: M16OutreachStats;
   readonly bereavementSummaryDocumentId: DocumentId | null;
+  /**
+   * ADR-0109 D9 — the M22 render of the INTERNAL discharge summary, once rendered. Null until then, and null for any reader who may not
+   * open it: M22 admits only the scope-bypass roles and bereavement oversight to an internal document, so the id is shown only to them.
+   */
+  readonly dischargeSummaryDocumentId: DocumentId | null;
 }
 
 /** Route 19 — one scheduled or historical touchpoint. */

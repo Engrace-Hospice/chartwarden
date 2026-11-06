@@ -527,6 +527,9 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
             contactsOptedOutCount: row.contactsOptedOutCount,
           },
           bereavementSummaryDocumentId: row.bereavementSummaryDocumentId ?? null,
+          dischargeSummaryDocumentId: hasOversight(actor)
+            ? (row.dischargeSummaryDocumentId ?? null)
+            : null,
         };
         return view;
       });

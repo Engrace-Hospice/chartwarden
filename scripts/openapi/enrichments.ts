@@ -263,6 +263,7 @@ import {
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M16-T07
 // web screens call the surface these type.
 import {
+  ApproveLetterBody as M16ApproveLetterBody,
   AssignCounselorBody as M16AssignCounselorBody,
   AssignVolunteerBody as M16AssignVolunteerBody,
   CancelOutreachBody as M16CancelOutreachBody,
@@ -273,6 +274,7 @@ import {
   CosignCloseBody as M16CosignCloseBody,
   CounselorDashboardQuerySchema as M16CounselorDashboardQuerySchema,
   CreateContactBody as M16CreateContactBody,
+  DeclineLetterBody as M16DeclineLetterBody,
   DismissUnreachableProposalBody as M16DismissUnreachableProposalBody,
   FlagComplicatedGriefBody as M16FlagComplicatedGriefBody,
   InitiateContactBody as M16InitiateContactBody,
@@ -284,6 +286,7 @@ import {
   OutreachListQuerySchema as M16OutreachListQuerySchema,
   OutreachOutcomeBody as M16OutreachOutcomeBody,
   PausePlanBody as M16PausePlanBody,
+  PhysicianLetterListQuerySchema as M16PhysicianLetterListQuerySchema,
   PlanListQuerySchema as M16PlanListQuerySchema,
   PreDeathDraftBody as M16PreDeathDraftBody,
   RecomputeRiskBody as M16RecomputeRiskBody,
@@ -1103,6 +1106,8 @@ import {
   CounselorDashboardViewResponseSchema as M16CounselorDashboardResponse,
   BereavementOutreachPageResponseSchema as M16OutreachPageResponse,
   BereavementOutreachRowViewResponseSchema as M16OutreachRowResponse,
+  PhysicianLetterPageResponseSchema as M16PhysicianLetterPageResponse,
+  PhysicianLetterViewResponseSchema as M16PhysicianLetterResponse,
   PlanActivationViewResponseSchema as M16PlanActivationResponse,
   BereavementPlanDetailResponseSchema as M16PlanDetailResponse,
   BereavementPlanPageResponseSchema as M16PlanPageResponse,
@@ -7799,7 +7804,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/bereavement/plans/:planId/closure": {
     summary:
-      "The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it (§4.1 #10)",
+      "The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it; `dischargeSummaryDocumentId` (the internal discharge summary, once rendered) is shown to oversight only (§4.1 #10, ADR-0109 D9)",
     response: M16ClosureResponse,
   },
   "GET /api/v1/bereavement/plans/:planId/outreach": {
@@ -7846,6 +7851,31 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Record the pre-death risk-assessment draft — replaces the whole eight-factor vector; `If-Match` (0 for the first write) and `Idempotency-Key` required; the substance-use slot is stored `unknown` unless the writer is cleared for 42 CFR Part 2; 409 `DRAFT_LOCKED` once a bereavement plan exists (ADR-0109 D5, #36)",
     body: M16PreDeathDraftBody,
     response: M16PreDeathDraftResponse,
+  },
+
+  // ── physician-letter.routes.ts (ADR-0109 D6) ──
+  "GET /api/v1/bereavement/physician-letters": {
+    summary:
+      "The physician condolence-letter review queue (`?status=`), oldest due first, cursor-paginated; bereavement oversight only (ADR-0109 D6, #38)",
+    query: M16PhysicianLetterListQuerySchema,
+    response: M16PhysicianLetterPageResponse,
+  },
+  "GET /api/v1/bereavement/plans/:planId/physician-letter": {
+    summary:
+      "The plan's physician condolence letter; 404 for a plan that has none; bereavement oversight only (ADR-0109 D6, #38)",
+    response: M16PhysicianLetterResponse,
+  },
+  "POST /api/v1/bereavement/physician-letters/:letterId/approve": {
+    summary:
+      "Approve a pending letter and request its render in the same transaction — an optional personal note (at most 1000 characters, sealed at rest) and, when the care team resolved no attending, the internal clinician who should receive it (an active member of the organization); `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #39)",
+    body: M16ApproveLetterBody,
+    response: M16PhysicianLetterResponse,
+  },
+  "POST /api/v1/bereavement/physician-letters/:letterId/decline": {
+    summary:
+      "Decline a pending letter with a documented reason of at least 20 characters; `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #40)",
+    body: M16DeclineLetterBody,
+    response: M16PhysicianLetterResponse,
   },
 
   // ── contacts.routes.ts ──

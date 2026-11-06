@@ -5091,6 +5091,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bereavement/physician-letters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The physician condolence-letter review queue (`?status=`), oldest due first, cursor-paginated; bereavement oversight only (ADR-0109 D6, #38) */
+        get: operations["getApiV1BereavementPhysicianletters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/physician-letters/{letterId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a pending letter and request its render in the same transaction — an optional personal note (at most 1000 characters, sealed at rest) and, when the care team resolved no attending, the internal clinician who should receive it (an active member of the organization); `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #39) */
+        post: operations["postApiV1BereavementPhysicianlettersByLetterIdApprove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/physician-letters/{letterId}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline a pending letter with a documented reason of at least 20 characters; `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #40) */
+        post: operations["postApiV1BereavementPhysicianlettersByLetterIdDecline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bereavement/plans": {
         parameters: {
             query?: never;
@@ -5200,7 +5251,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it (§4.1 #10) */
+        /** The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it; `dischargeSummaryDocumentId` (the internal discharge summary, once rendered) is shown to oversight only (§4.1 #10, ADR-0109 D9) */
         get: operations["getApiV1BereavementPlansByPlanIdClosure"];
         put?: never;
         post?: never;
@@ -5289,6 +5340,23 @@ export interface paths {
         put?: never;
         /** Pause the plan — cancels every future-dated touchpoint; a recorded reason is mandatory, because a pause without one is a lapse (§4.1 #6) */
         post: operations["postApiV1BereavementPlansByPlanIdPause"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/plans/{planId}/physician-letter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The plan's physician condolence letter; 404 for a plan that has none; bereavement oversight only (ADR-0109 D6, #38) */
+        get: operations["getApiV1BereavementPlansByPlanIdPhysicianletter"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -43001,6 +43069,138 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BereavementPhysicianletters: {
+        parameters: {
+            query?: {
+                status?: "pending_review" | "approved" | "rendered" | "declined";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            letterId: string;
+                            planId: string;
+                            patientId: string;
+                            status: "pending_review" | "approved" | "rendered" | "declined";
+                            dueAt: string;
+                            createdAt: string;
+                            attendingUserId: string | null;
+                            hasPersonalNote: boolean;
+                            declineReason: string | null;
+                            reviewedAt: string | null;
+                            renderedDocumentId: string | null;
+                            version: number;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementPhysicianlettersByLetterIdApprove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                letterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    personalNote?: string;
+                    /** Format: uuid */
+                    attendingUserId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        letterId: string;
+                        planId: string;
+                        patientId: string;
+                        status: "pending_review" | "approved" | "rendered" | "declined";
+                        dueAt: string;
+                        createdAt: string;
+                        attendingUserId: string | null;
+                        hasPersonalNote: boolean;
+                        declineReason: string | null;
+                        reviewedAt: string | null;
+                        renderedDocumentId: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementPhysicianlettersByLetterIdDecline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                letterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        letterId: string;
+                        planId: string;
+                        patientId: string;
+                        status: "pending_review" | "approved" | "rendered" | "declined";
+                        dueAt: string;
+                        createdAt: string;
+                        attendingUserId: string | null;
+                        hasPersonalNote: boolean;
+                        declineReason: string | null;
+                        reviewedAt: string | null;
+                        renderedDocumentId: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BereavementPlans: {
         parameters: {
             query?: {
@@ -43526,6 +43726,7 @@ export interface operations {
                             contactsOptedOutCount: number;
                         };
                         bereavementSummaryDocumentId: string | null;
+                        dischargeSummaryDocumentId: string | null;
                     };
                 };
             };
@@ -43635,6 +43836,7 @@ export interface operations {
                             contactsOptedOutCount: number;
                         };
                         bereavementSummaryDocumentId: string | null;
+                        dischargeSummaryDocumentId: string | null;
                     };
                 };
             };
@@ -43839,6 +44041,43 @@ export interface operations {
                         version: number;
                         updatedAt: string;
                         redactedCategories: ("sud" | "clinical_risk")[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementPlansByPlanIdPhysicianletter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        letterId: string;
+                        planId: string;
+                        patientId: string;
+                        status: "pending_review" | "approved" | "rendered" | "declined";
+                        dueAt: string;
+                        createdAt: string;
+                        attendingUserId: string | null;
+                        hasPersonalNote: boolean;
+                        declineReason: string | null;
+                        reviewedAt: string | null;
+                        renderedDocumentId: string | null;
+                        version: number;
                     };
                 };
             };

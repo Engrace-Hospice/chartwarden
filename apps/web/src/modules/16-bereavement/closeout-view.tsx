@@ -63,6 +63,28 @@ import {
   primaryButtonStyle,
 } from "./bereavement-ui";
 
+/**
+ * ADR-0109 D9 — the internal discharge summary (offered versus delivered, for an auditor). Module 22 opens it to oversight and
+ * compliance only, so the closure route sends the document id to those readers and `null` to everyone else: no id, no link, and
+ * no hint that one exists. Until M22 has rendered it the id is `null` for oversight too, which reads "not yet rendered".
+ */
+function DischargeSummaryLink({ documentId }: { documentId: string | null }): JSX.Element {
+  return documentId ? (
+    <Link
+      to={`/documents/${encodeURIComponent(documentId)}/versions`}
+      style={ghostButtonStyle}
+      aria-label="Print the internal discharge summary"
+    >
+      Print discharge summary
+    </Link>
+  ) : (
+    <span style={mutedStyle}>
+      The internal discharge summary is not available yet. It is rendered by Module 22 after the
+      plan closes and is shown to oversight and compliance only.
+    </span>
+  );
+}
+
 export function BereavementCloseoutView(): JSX.Element {
   const client = useApiClient();
   const { planId } = useParams<{ planId: string }>();
@@ -176,6 +198,7 @@ export function BereavementCloseoutView(): JSX.Element {
               mono
             />
           </SummaryGrid>
+          <DischargeSummaryLink documentId={closure.dischargeSummaryDocumentId} />
           {closure.reason === "thirteen_month_completion" ? (
             <span style={mutedStyle}>
               The 13-month obligation was met in full. Every other closure reason ended the program

@@ -124,7 +124,7 @@ describe.skipIf(!DB_URL)(
 
     async function closureRow(planId: string) {
       const { rows } = await admin.query(
-        `SELECT reason, close_kind, closed_by_user_id, cosigned_by_user_id
+        `SELECT id, reason, close_kind, closed_by_user_id, cosigned_by_user_id
          FROM bereavement_plan_closure WHERE plan_id = $1`,
         [planId],
       );
@@ -240,6 +240,13 @@ describe.skipIf(!DB_URL)(
       expect(events).toHaveLength(1);
       expect(events[0].payload).toMatchObject({ patientId });
 
+      // ADR-0109 D9 — a pre-death SKIP closes a plan that never had a roster or a schedule: no discharge summary is requested.
+      expect(
+        (await outboxRows(ORG_A, "m16.bereavement.document_requested")).filter(
+          (e) => e.payload.planId === planId,
+        ),
+      ).toHaveLength(0);
+
       // F-206 (#248) — the CoP-satisfied credit row is recorded, keyed on this event's own id.
       const credits = await copOptOutCreditRows(ORG_A, sourceEventId);
       expect(credits).toHaveLength(1);
@@ -284,6 +291,25 @@ describe.skipIf(!DB_URL)(
       expect(closure.cosigned_by_user_id).toBeNull(); // D7 does not apply — §2.6 cosign-exempt
 
       expect(await outreachStatuses(planId)).toEqual(["cancelled"]);
+
+      // ADR-0109 D9 — the post-creation cascade is a closure writer: it requests the internal discharge summary against its
+      // closure, after the future outreach was cancelled (so the summary states the final state).
+      const requested = (await outboxRows(ORG_A, "m16.bereavement.document_requested")).filter(
+        (e) => e.payload.planId === planId,
+      );
+      expect(requested).toHaveLength(1);
+      expect(requested[0]?.payload).toMatchObject({
+        documentKind: "discharge_summary",
+        aggregateId: closure.id,
+        templateKey: "bereavement_discharge_summary_internal",
+        payloadJsonb: { closureReason: "patient_opt_out_post_creation", closeKind: "cascade" },
+      });
+      const summary = (requested[0]?.payload.payloadJsonb ?? {}) as {
+        contacts?: Array<{ touchpoints: Array<{ status: string }> }>;
+        totals?: Record<string, number>;
+      };
+      expect(summary.totals?.cancelled).toBeGreaterThan(0);
+      expect(summary.totals?.outstanding).toBe(0);
 
       const events = await outboxRows(ORG_A, "m16.bereavement.plan_closed_early");
       expect(events).toHaveLength(1);

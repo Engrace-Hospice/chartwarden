@@ -42,6 +42,7 @@ import {
   transitionBereavementOutreach,
   transitionBereavementPlan,
 } from "../lifecycle/index";
+import { requestDischargeSummary } from "../render-payloads/index";
 import { runEffects } from "../routes/effects-runner";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
 import {
@@ -251,19 +252,38 @@ async function closeOnePlan(
     contactsOptedOutCount: contacts?.optedOut ?? 0,
   };
 
-  await tx.insert(CLOSURE).values({
-    organizationId: plan.organizationId,
-    providerEntityId: plan.providerEntityId,
-    locationId: plan.locationId,
-    planId: plan.id,
-    reason: "thirteen_month_completion",
-    closedAt: now,
-    closedByUserId: null,
-    closeKind: "auto",
-    outreachCompletedCount: stats.completedCount,
-    outreachMissedCount: stats.missedCount,
-    contactsActiveCount: stats.contactsActiveCount,
-    contactsOptedOutCount: stats.contactsOptedOutCount,
+  const [closure] = await tx
+    .insert(CLOSURE)
+    .values({
+      organizationId: plan.organizationId,
+      providerEntityId: plan.providerEntityId,
+      locationId: plan.locationId,
+      planId: plan.id,
+      reason: "thirteen_month_completion",
+      closedAt: now,
+      closedByUserId: null,
+      closeKind: "auto",
+      outreachCompletedCount: stats.completedCount,
+      outreachMissedCount: stats.missedCount,
+      contactsActiveCount: stats.contactsActiveCount,
+      contactsOptedOutCount: stats.contactsOptedOutCount,
+    })
+    .returning({ id: CLOSURE.id });
+  if (!closure) throw new Error("m16: the 13-month closure insert returned no row");
+  // ADR-0109 D9 — the internal discharge summary, requested on the closure's own transaction (future outreach is already cancelled).
+  await requestDischargeSummary(tx, deps.outbox, {
+    plan: {
+      id: plan.id,
+      organizationId: plan.organizationId,
+      patientId: plan.patientId,
+      deathDate: plan.deathDate,
+    },
+    closure: {
+      id: closure.id,
+      reason: "thirteen_month_completion",
+      closeKind: "auto",
+      closedAt: now,
+    },
   });
 
   await runEffects(tx, transition.effects, {

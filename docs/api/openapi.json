@@ -58936,6 +58936,513 @@
         }
       }
     },
+    "/api/v1/bereavement/physician-letters": {
+      "get": {
+        "operationId": "getApiV1BereavementPhysicianletters",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "The physician condolence-letter review queue (`?status=`), oldest due first, cursor-paginated; bereavement oversight only (ADR-0109 D6, #38)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "pending_review",
+                  "type": "string"
+                },
+                {
+                  "const": "approved",
+                  "type": "string"
+                },
+                {
+                  "const": "rendered",
+                  "type": "string"
+                },
+                {
+                  "const": "declined",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "next_cursor",
+                    "has_more"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "letterId",
+                          "planId",
+                          "patientId",
+                          "status",
+                          "dueAt",
+                          "createdAt",
+                          "attendingUserId",
+                          "hasPersonalNote",
+                          "declineReason",
+                          "reviewedAt",
+                          "renderedDocumentId",
+                          "version"
+                        ],
+                        "properties": {
+                          "letterId": {
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending_review",
+                                "type": "string"
+                              },
+                              {
+                                "const": "approved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rendered",
+                                "type": "string"
+                              },
+                              {
+                                "const": "declined",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "dueAt": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "attendingUserId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "hasPersonalNote": {
+                            "type": "boolean"
+                          },
+                          "declineReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reviewedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "renderedDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "next_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    },
+                    "total_count": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/physician-letters/{letterId}/approve": {
+      "post": {
+        "operationId": "postApiV1BereavementPhysicianlettersByLetterIdApprove",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "Approve a pending letter and request its render in the same transaction — an optional personal note (at most 1000 characters, sealed at rest) and, when the care team resolved no attending, the internal clinician who should receive it (an active member of the organization); `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #39)",
+        "parameters": [
+          {
+            "name": "letterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "letterId",
+                    "planId",
+                    "patientId",
+                    "status",
+                    "dueAt",
+                    "createdAt",
+                    "attendingUserId",
+                    "hasPersonalNote",
+                    "declineReason",
+                    "reviewedAt",
+                    "renderedDocumentId",
+                    "version"
+                  ],
+                  "properties": {
+                    "letterId": {
+                      "type": "string"
+                    },
+                    "planId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rendered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "declined",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "attendingUserId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasPersonalNote": {
+                      "type": "boolean"
+                    },
+                    "declineReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reviewedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "renderedDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "personalNote": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "attendingUserId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/physician-letters/{letterId}/decline": {
+      "post": {
+        "operationId": "postApiV1BereavementPhysicianlettersByLetterIdDecline",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "Decline a pending letter with a documented reason of at least 20 characters; `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #40)",
+        "parameters": [
+          {
+            "name": "letterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "letterId",
+                    "planId",
+                    "patientId",
+                    "status",
+                    "dueAt",
+                    "createdAt",
+                    "attendingUserId",
+                    "hasPersonalNote",
+                    "declineReason",
+                    "reviewedAt",
+                    "renderedDocumentId",
+                    "version"
+                  ],
+                  "properties": {
+                    "letterId": {
+                      "type": "string"
+                    },
+                    "planId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rendered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "declined",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "attendingUserId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasPersonalNote": {
+                      "type": "boolean"
+                    },
+                    "declineReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reviewedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "renderedDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 20,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/bereavement/plans": {
       "get": {
         "operationId": "getApiV1BereavementPlans",
@@ -62522,7 +63029,7 @@
         "tags": [
           "16-bereavement"
         ],
-        "summary": "The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it (§4.1 #10)",
+        "summary": "The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it; `dischargeSummaryDocumentId` (the internal discharge summary, once rendered) is shown to oversight only (§4.1 #10, ADR-0109 D9)",
         "parameters": [
           {
             "name": "planId",
@@ -62550,7 +63057,8 @@
                     "cosignedByUserId",
                     "cosignedAt",
                     "stats",
-                    "bereavementSummaryDocumentId"
+                    "bereavementSummaryDocumentId",
+                    "dischargeSummaryDocumentId"
                   ],
                   "properties": {
                     "closureId": {
@@ -62659,6 +63167,16 @@
                       }
                     },
                     "bereavementSummaryDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dischargeSummaryDocumentId": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -63208,7 +63726,8 @@
                     "cosignedByUserId",
                     "cosignedAt",
                     "stats",
-                    "bereavementSummaryDocumentId"
+                    "bereavementSummaryDocumentId",
+                    "dischargeSummaryDocumentId"
                   ],
                   "properties": {
                     "closureId": {
@@ -63317,6 +63836,16 @@
                       }
                     },
                     "bereavementSummaryDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dischargeSummaryDocumentId": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -64853,6 +65382,140 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/physician-letter": {
+      "get": {
+        "operationId": "getApiV1BereavementPlansByPlanIdPhysicianletter",
+        "tags": [
+          "16-bereavement"
+        ],
+        "summary": "The plan's physician condolence letter; 404 for a plan that has none; bereavement oversight only (ADR-0109 D6, #38)",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "letterId",
+                    "planId",
+                    "patientId",
+                    "status",
+                    "dueAt",
+                    "createdAt",
+                    "attendingUserId",
+                    "hasPersonalNote",
+                    "declineReason",
+                    "reviewedAt",
+                    "renderedDocumentId",
+                    "version"
+                  ],
+                  "properties": {
+                    "letterId": {
+                      "type": "string"
+                    },
+                    "planId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rendered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "declined",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "attendingUserId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasPersonalNote": {
+                      "type": "boolean"
+                    },
+                    "declineReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reviewedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "renderedDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

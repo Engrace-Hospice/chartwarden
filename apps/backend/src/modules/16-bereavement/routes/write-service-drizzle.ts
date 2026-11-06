@@ -91,6 +91,7 @@ import {
   transitionBereavementPlan,
   verifySourceEncounter,
 } from "../lifecycle/index";
+import { requestDischargeSummary } from "../render-payloads/index";
 import { scoreBereavementRisk } from "../risk/index";
 import { planCaregiverSeeds } from "../roster-seed";
 import { getBereavementEncounterReader, getVolunteerComplianceProvider } from "../seams/index";
@@ -546,6 +547,8 @@ export function buildDrizzleM16WriteService(
       contactsOptedOutCount: r.contactsOptedOutCount,
     },
     bereavementSummaryDocumentId: r.bereavementSummaryDocumentId ?? null,
+    // The render is requested on this very transaction; it cannot have landed yet (the read route fills it in for oversight).
+    dischargeSummaryDocumentId: null,
   });
 
   /** The effect-runner context every transition shares. */
@@ -1729,6 +1732,21 @@ export function buildDrizzleM16WriteService(
           })
           .returning();
         if (!closure) throw new Error("m16: the closure insert returned no row");
+        // ADR-0109 D9 — the internal discharge summary, on the closure's own transaction (future outreach is already cancelled).
+        await requestDischargeSummary(tx, outbox, {
+          plan: {
+            id: plan.id,
+            organizationId: plan.organizationId,
+            patientId: plan.patientId,
+            deathDate: plan.deathDate,
+          },
+          closure: {
+            id: closure.id,
+            reason: closure.reason,
+            closeKind: "manual",
+            closedAt: closure.closedAt,
+          },
+        });
         await patchPlan(tx, plan, transition.to, patch, at);
         await tx
           .update(PLAN)
