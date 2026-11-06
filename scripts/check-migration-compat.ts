@@ -28,9 +28,10 @@
  * Deploy use:  bun run scripts/check-migration-compat.ts --classify <file.sql>...
  *   exits 0 only if EVERY named file is declared `expand` AND passes the heuristic; 1 otherwise.
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { listMigrations, stripSqlComments } from "./lib/gate-scan";
 
 const ROOT =
   process.env.CHARTWARDEN_FITNESS_ROOT ?? join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -66,10 +67,6 @@ export function parseDeclaration(sql: string): CompatReport["declared"] {
   if (found.length > 1) return `invalid:${found.join(",")}`;
   const value = found[0] as string;
   return value === "expand" || value === "contract" ? value : `invalid:${value}`;
-}
-
-function stripComments(sql: string): string {
-  return sql.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/--[^\n]*/g, " ");
 }
 
 /** Split on commas that are not inside parentheses (ALTER TABLE clause lists). */
@@ -125,7 +122,7 @@ function defaultedColumns(statements: readonly string[]): Set<string> {
 /** Every obviously contracting statement in `sql`, as short human-readable findings. */
 export function findContractingDdl(sql: string): string[] {
   // Dollar-quote delimiters split too, so a function/DO body's statements are judged on their own.
-  const statements = stripComments(sql)
+  const statements = stripSqlComments(sql)
     .split(/;|\$[A-Za-z_]*\$/)
     .map((s) => s.replace(/\s+/g, " ").trim().toUpperCase())
     .filter(Boolean);
@@ -258,9 +255,7 @@ function classify(files: readonly string[]): number {
 function main(): never {
   const args = process.argv.slice(2);
   if (args[0] === "--classify") process.exit(classify(args.slice(1)));
-  const files = readdirSync(MIGRATIONS_DIR)
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
+  const files = listMigrations(MIGRATIONS_DIR);
   const errors = files.flatMap((f) => gateErrors(f, readSql(f)));
   const checked = files.filter((f) => (ordinalOf(f) ?? 0) >= COMPAT_DECLARATION_FROM).length;
   if (errors.length > 0) {

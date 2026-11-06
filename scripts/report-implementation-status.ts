@@ -23,9 +23,10 @@
  *
  * Writes audit/implementation-status/IMPLEMENTATION_STATUS.md (+ .json).
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { MODULES } from "../architecture/module-manifest";
+import { parsePgTables, walkFiles } from "./lib/gate-scan";
 import { ROUTE_ENRICHMENTS } from "./openapi/enrichments";
 import { routeKey, scanRoutes } from "./openapi/scan-routes";
 import { createdTablesIn } from "./status-matrix-heuristics";
@@ -42,28 +43,8 @@ const pad = (id: number) => String(id).padStart(2, "0");
 const M = (id: number) => `M${pad(id)}`;
 
 // ---- recursive file walk (skips heavy/irrelevant dirs) ----------------------
-const SKIP = new Set(["node_modules", "dist", ".git", ".turbo"]);
-function walk(dir: string, out: string[] = []): string[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(join(ROOT, dir));
-  } catch {
-    return out;
-  }
-  for (const e of entries) {
-    if (SKIP.has(e)) continue;
-    const rel = join(dir, e);
-    let st: ReturnType<typeof statSync>;
-    try {
-      st = statSync(join(ROOT, rel));
-    } catch {
-      continue;
-    }
-    if (st.isDirectory()) walk(rel, out);
-    else out.push(rel);
-  }
-  return out;
-}
+const walk = (dir: string): string[] =>
+  walkFiles(dir, { base: ROOT, skipDirs: ["node_modules", "dist", ".git", ".turbo"] });
 const read = (rel: string) => {
   try {
     return readFileSync(join(ROOT, rel), "utf8");
@@ -77,12 +58,10 @@ const owned = new Map<string, number>(); // table -> owner module id
 for (const m of mods) for (const t of m.ownedTables ?? []) owned.set(t, m.id);
 
 // pgTable defs across the Drizzle schema corpus: table -> file
-const pgTableRe = /export\s+const\s+\w+\s*=\s*pgTable\(\s*['"]([\w]+)['"]/g;
 const schemaTables = new Map<string, string>();
 for (const f of walk("packages/db/src/schema")) {
   if (!f.endsWith(".ts")) continue;
-  const src = read(f);
-  for (let m = pgTableRe.exec(src); m; m = pgTableRe.exec(src)) schemaTables.set(m[1]!, f);
+  for (const { sqlName } of parsePgTables(read(f))) schemaTables.set(sqlName, f);
 }
 
 // CREATE TABLE in migration SQL: set of migrated table names. Skip partition children
