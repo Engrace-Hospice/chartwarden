@@ -9,7 +9,7 @@ export interface ClaimMdProtectedPayloadCipher {
 
 export function createClaimMdProtectedPayloadCipher(
   keys: ClaimMdPayloadKeyRing,
-  purpose: "claimmd-response:v1" | "claimmd-era:v1",
+  purpose: "claimmd-response:v1" | "claimmd-era:v1" | "claimmd-era-resolution:v1" | "claimmd-era-stage:v1",
   maxBytes = 32 * 1024 * 1024,
 ): ClaimMdProtectedPayloadCipher {
   const key = keys.byId.get(keys.activeId);

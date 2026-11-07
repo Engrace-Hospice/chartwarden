@@ -61,6 +61,7 @@ export interface ReceiveAdviceInput {
 export type ReceiveAdviceResult =
   | { readonly outcome: "queued"; readonly adviceId: string }
   | { readonly outcome: "duplicate"; readonly existingAdviceId: string }
+  | { readonly outcome: "review_required"; readonly stageId: string; readonly reason: "CLAIMMD_ERA_STAGE_MATCH" }
   | {
       readonly outcome: "malformed";
       readonly reason: string;

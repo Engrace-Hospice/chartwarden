@@ -32,9 +32,15 @@ describe("BIL-1.4 payee routing", () => {
 });
 
 describe("BIL-1.4 independent runtime gates", () => {
-  it("defaults off and requires capture before delivery", () => {
-    expect(claimMdEraRuntimeConfig({})).toEqual({ captureEnabled: false, deliveryEnabled: false, autoPostEnabled: false });
-    expect(() => claimMdEraRuntimeConfig({ CLAIMMD_ERA_M25_DELIVERY_ENABLED: "true" })).toThrow();
+  it("defaults all independent stages off and never infers one flag from another", () => {
+    expect(claimMdEraRuntimeConfig({})).toEqual({ captureEnabled: false, deliveryEnabled: false,
+      ownershipResolutionEnabled: false, autoPostEnabled: false });
+    expect(claimMdEraRuntimeConfig({ CLAIMMD_ERA_OWNERSHIP_RESOLUTION_ENABLED: "true" }).ownershipResolutionEnabled).toBe(true);
+    expect(claimMdEraRuntimeConfig({ CLAIMMD_ERA_M25_DELIVERY_ENABLED: "true" })).toMatchObject({ deliveryEnabled: true,
+      captureEnabled: false, ownershipResolutionEnabled: false, autoPostEnabled: false });
+    expect(claimMdEraRuntimeConfig({ CLAIMMD_ERA_CAPTURE_ENABLED: "true" })).toMatchObject({ captureEnabled: true,
+      deliveryEnabled: false, ownershipResolutionEnabled: false });
+    expect(claimMdEraRuntimeConfig({ CLAIMMD_ERA_M25_DELIVERY_ENABLED: "TRUE" }).deliveryEnabled).toBe(false);
     expect(() => claimMdEraRuntimeConfig({ CLAIMMD_ERA_AUTO_POST_ENABLED: "true" })).toThrow();
   });
   it("cuts off only the legacy Claim.MD reader when the new capture/delivery is enabled", () => {

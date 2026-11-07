@@ -111,6 +111,9 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
             .code(409)
             .send({ outcome: result.outcome, existingAdviceId: result.existingAdviceId });
         }
+        if (result.outcome === "review_required") {
+          return reply.code(409).send({ outcome: result.outcome, stageId: result.stageId, reason: result.reason });
+        }
         return reply.code(202).send({ outcome: result.outcome, adviceId: result.adviceId });
       },
     );

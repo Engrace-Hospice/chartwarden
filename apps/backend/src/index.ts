@@ -1054,9 +1054,13 @@ import { createClaimMdAckDispatcher } from "./modules/23-billing-medicare/claimm
 import { startClaimMdAckWorker } from "./modules/23-billing-medicare/claimmd-ack/worker";
 import { createClaimMdAccountEraReader, type ClaimMdEraUsage } from "@chartwarden/x12-837-client";
 import { claimMdEraRuntimeConfig, shouldRunLegacyClaimMdEraPull } from "./modules/25-remittance/ingest/claimmd-era-config";
-import { createClaimMdEraStore, CLAIMMD_ERA_CAPTURE_JOB_ID } from "./modules/25-remittance/ingest/claimmd-era-store";
+import { createClaimMdEraStore, CLAIMMD_ERA_CAPTURE_JOB_ID, CLAIMMD_ERA_DELIVERY_JOB_ID } from "./modules/25-remittance/ingest/claimmd-era-store";
 import { createClaimMdEraCapture } from "./modules/25-remittance/ingest/claimmd-era-capture";
 import { startClaimMdEraCaptureWorker } from "./modules/25-remittance/ingest/claimmd-era-worker";
+import { createClaimMdEraDeliveryService } from "./modules/25-remittance/ingest/claimmd-era-delivery";
+import { startClaimMdEraDeliveryWorker } from "./modules/25-remittance/ingest/claimmd-era-delivery-worker";
+import { createClaimMdEraResolver, type ClaimMdEraEvidenceReader } from "./modules/25-remittance/ingest/claimmd-era-resolution";
+import { createClaimMdEraResolutionWorker, CLAIMMD_ERA_RESOLUTION_JOB_ID, startClaimMdEraResolutionWorker } from "./modules/25-remittance/ingest/claimmd-era-resolution-worker";
 import {
   bindPlatformClearinghouse,
   describeClearinghouseBinding,
@@ -1142,6 +1146,7 @@ import {
   registerM23PortalHealthWorker,
   registerM23PublishedSeams,
   registerM23WatchCronWorkers,
+  readClaimMdEraSubmissionFacts,
   scheduleDdeAgingAlert,
   scheduleDdeDailyChange,
   scheduleM23Jobs,
@@ -4299,8 +4304,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const claimMdAckExecutionMode = claimMdAckMode(process.env);
   const claimMdEraConfig = claimMdEraRuntimeConfig(process.env);
   let claimMdEraCapture: ReturnType<typeof createClaimMdEraCapture> | undefined;
-  if (claimMdEraConfig.deliveryEnabled)
-    throw new Error("Claim.MD ERA M25 delivery is not available until BIL-1.4 M25 staging is certified");
+  let claimMdEraStore: ReturnType<typeof createClaimMdEraStore> | undefined;
+  let claimMdEraResolutionWorker: ReturnType<typeof createClaimMdEraResolutionWorker> | undefined;
+  let claimMdEraDelivery: ReturnType<typeof createClaimMdEraDeliveryService> | undefined;
   if (claimMdEraConfig.captureEnabled) {
     const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
     const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
@@ -4312,6 +4318,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       throw new Error("Claim.MD ERA capture requires worker role, Claim.MD account configuration, platform/tenant DB, keyring, and shared rate limiter");
     registerPlatformJob(CLAIMMD_ERA_CAPTURE_JOB_ID);
     const store = createClaimMdEraStore({ platformDb: platformDbHandle.db, auditBypass: m34PlatformBypassAuditor, keyRing });
+    claimMdEraStore = store;
     const reader = createClaimMdAccountEraReader({ accounts: { [accountReference]: { [usage as ClaimMdEraUsage]: accountKey } }, counter: rateLimitStore });
     claimMdEraCapture = createClaimMdEraCapture({ store, reader, log: (summary) => app.log.info(summary, "Claim.MD ERA capture tick") });
     await withPlatformContext(platformDbHandle.db, { jobId: CLAIMMD_ERA_CAPTURE_JOB_ID,
@@ -4323,6 +4330,59 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           eq(schema.claimmdEraStreams.usage, usage), eq(schema.claimmdEraStreams.streamKind, "eras"))).limit(1);
       if (!stream) throw new Error("Claim.MD ERA stream is not operator-bootstrapped");
     });
+  }
+  if (claimMdEraConfig.ownershipResolutionEnabled) {
+    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
+    const keyRing = claimMdInboxKeyRingFromEnv(process.env);
+    if (role === "api" || !dbHandle || !platformDbHandle || !accountReference || !/^[A-Za-z0-9._:-]{1,128}$/.test(accountReference) ||
+        (usage !== "test" && usage !== "production") || !keyRing)
+      throw new Error("Claim.MD ERA ownership resolution requires worker role, account/environment, platform/tenant DB, and source keyring");
+    registerPlatformJob(CLAIMMD_ERA_RESOLUTION_JOB_ID);
+    const store = claimMdEraStore ?? createClaimMdEraStore({ platformDb: platformDbHandle.db,
+      auditBypass: m34PlatformBypassAuditor, keyRing });
+    claimMdEraStore = store;
+    const tenantKeys = getTenantKeyProvider();
+    const evidenceCipher = createClaimMdEvidenceCipher({
+      dekForOrg: (organizationId) => tenantKeys.dekForOrg(organizationId),
+      dekForOrgVersion: (organizationId, version) => tenantKeys.dekForOrgVersion(organizationId, version),
+    });
+    const evidenceReader: ClaimMdEraEvidenceReader = { read: (query) => readClaimMdEraSubmissionFacts({ ...query,
+      openTin: (fact) => evidenceCipher.open({ evidenceId: fact.id, organizationId: fact.organizationId,
+        providerEntityId: fact.providerEntityId, attemptKey: fact.attemptKey, sealed: fact.sealed }) }) };
+    const resolver = createClaimMdEraResolver({ store, accountReference,
+      usage: usage as "test" | "production", evidenceReader, siteReader: buildFoundationSiteReader(),
+      commercialSubmissionReader: readClaimMdCommercialSubmissionFacts,
+      readSnapshot: (fn) => withPlatformContext(platformDbHandle.db, { jobId: CLAIMMD_ERA_RESOLUTION_JOB_ID,
+        reason: "Claim.MD ERA ownership resolution: immutable submission and M1 provider evidence", crossTenant: true },
+        m34PlatformBypassAuditor, fn, { isolation: "repeatable read" }) });
+    claimMdEraResolutionWorker = createClaimMdEraResolutionWorker({ store, resolver, accountReference,
+      usage: usage as "test" | "production", log: (summary) => app.log.info(summary, "Claim.MD ERA ownership resolution tick") });
+    await withPlatformContext(platformDbHandle.db, { jobId: CLAIMMD_ERA_RESOLUTION_JOB_ID,
+      reason: "Claim.MD ERA ownership resolution schema and privilege preflight", crossTenant: true }, m34PlatformBypassAuditor, async (tx) => {
+      await tx.select({ id: schema.claimmdEraResolution.id }).from(schema.claimmdEraResolution).limit(0);
+      await tx.select({ id: schema.claimmdEraResolutionHistory.id }).from(schema.claimmdEraResolutionHistory).limit(0);
+    });
+  }
+  if (claimMdEraConfig.deliveryEnabled) {
+    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
+    const keyRing = claimMdInboxKeyRingFromEnv(process.env);
+    if (role === "api" || !dbHandle || !platformDbHandle || !accountReference ||
+        !/^[A-Za-z0-9._:-]{1,128}$/.test(accountReference) || (usage !== "test" && usage !== "production") || !keyRing)
+      throw new Error("Claim.MD ERA M25 delivery requires worker role, account/environment, tenant/platform DB, and source keyring");
+    registerPlatformJob(CLAIMMD_ERA_DELIVERY_JOB_ID);
+    const store = claimMdEraStore ?? createClaimMdEraStore({ platformDb: platformDbHandle.db,
+      auditBypass: m34PlatformBypassAuditor, keyRing });
+    claimMdEraStore = store;
+    claimMdEraDelivery = createClaimMdEraDeliveryService({ store, tenantDb: dbHandle.db,
+      siteReader: buildFoundationSiteReader(), keyRing, accountReference, usage });
+    await withPlatformContext(platformDbHandle.db, { jobId: CLAIMMD_ERA_DELIVERY_JOB_ID,
+      reason: "Claim.MD ERA delivery central ledger privilege preflight", crossTenant: true }, m34PlatformBypassAuditor, async (tx) => {
+      await tx.select({ id: schema.claimmdEraDelivery.id }).from(schema.claimmdEraDelivery).limit(0);
+      await tx.select({ id: schema.claimmdEraDeliveryHistory.id }).from(schema.claimmdEraDeliveryHistory).limit(0);
+    });
+    await dbHandle.db.select({ id: schema.claimmdEraM25Stage.id }).from(schema.claimmdEraM25Stage).limit(0);
   }
   let claimMdAckDispatcher: ReturnType<typeof createClaimMdAckDispatcher> | undefined;
   if (claimMdAckExecutionMode !== "off" && role !== "api") {
@@ -7745,6 +7805,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       log: (summary) => app.log.info(summary, "Claim.MD ERA account capture tick") });
     app.addHook("onClose", async () => stop());
     app.log.info({ enabled: true, intervalMs: 60_000, automaticPosting: false }, "Claim.MD ERA capture worker started");
+  }
+  if (claimMdEraResolutionWorker) {
+    const stop = startClaimMdEraResolutionWorker({ runOnce: claimMdEraResolutionWorker.runOnce,
+      logError: () => app.log.error({ code: "CLAIMMD_ERA_RESOLUTION_TICK_FAILED" }, "Claim.MD ERA ownership resolution tick failed") });
+    app.addHook("onClose", async () => stop());
+    app.log.info({ enabled: true, intervalMs: 60_000, posting: false }, "Claim.MD ERA ownership resolution worker started");
+  }
+  if (claimMdEraDelivery) {
+    const stop = startClaimMdEraDeliveryWorker({ runOnce: () => claimMdEraDelivery!.runOnce(),
+      logError: () => app.log.error({ code: "CLAIMMD_ERA_DELIVERY_TICK_FAILED" }, "Claim.MD ERA M25 delivery tick failed") });
+    app.addHook("onClose", async () => stop());
+    app.log.info({ enabled: true, intervalMs: 60_000, posting: false }, "Claim.MD ERA M25 delivery worker started");
   }
 
   // ── worker-runner section (the M4-T11 BullMQ worker-construction precedent) ──────────────────────────

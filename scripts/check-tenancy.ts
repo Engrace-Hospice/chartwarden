@@ -129,6 +129,10 @@ const NON_ORG_SCOPED = new Set<string>([
   // BIL-1.4: the central Claim.MD ERA cursor and encrypted source inbox are account-wide; tenant roles have no grants.
   "claimmd_era_stream",
   "claimmd_era_inbox",
+  "claimmd_era_resolution",
+  "claimmd_era_resolution_history",
+  "claimmd_era_delivery",
+  "claimmd_era_delivery_history",
   // M38 Terminology (§3.7): platform-shared canonical reference. Read-all `USING(true)`;
   // writes only via the `terminology_loader` role (no org column by design). The one
   // org-scoped M38 table, value_set_tenant_extension, is intentionally NOT listed here —

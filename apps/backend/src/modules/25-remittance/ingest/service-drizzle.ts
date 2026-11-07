@@ -8,7 +8,7 @@ import {
   parseX12TransactionSetControlNumbers,
 } from "@chartwarden/x12-835-client";
 import type { ParsedClaim835, ParsedRemittanceAdvice } from "@chartwarden/x12-835-client";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { autoMatch, classifyPostingOutcome, effectiveCategory, routeAdjustment } from "../domain";
 import type { DenialCategory } from "../domain";
 import type { WriteOutboxPort } from "../routes/write-service";
@@ -25,8 +25,10 @@ import type {
   X12835WorkerClient,
 } from "./service";
 import { DENY_TERMINOLOGY, NO_CLAIM_MATCH_CANDIDATES } from "./service";
+import { claimMdEraM25SerializationKey } from "./claimmd-era-duplicate";
 
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
+const CLAIMMD_ERA_STAGE = schema.claimmdEraM25Stage;
 const DENIAL_CATEGORIES: ReadonlySet<string> = new Set([
   "denial",
   "reduction",
@@ -141,7 +143,7 @@ function money(n: number): string {
  * value that is not date-led is parsed as an instant.
  */
 /** Order-independent digest of a set's claim payments; two files with the same digest pay the same claims the same way. */
-function contentDigestOf(parsed: ParsedRemittanceAdvice): string {
+export function m25ContentDigestOf(parsed: ParsedRemittanceAdvice): string {
   const rows = parsed.claims
     .map((c) =>
       [
@@ -619,7 +621,25 @@ export function buildDrizzleM25IngestService(
     // The payment itself is identified by TRN02 + payer + payee + amount: the same payment is never posted twice.
     // Same-file sets are excluded (their sha matches) - they are separate payments sharing a file.
     const trace = parsed.checkOrEftTraceNumber;
-    const digest = contentDigestOf(parsed);
+    const digest = m25ContentDigestOf(parsed);
+    const serializationKey = claimMdEraM25SerializationKey({ organizationId: actor.organizationId,
+      providerEntityId: input.providerEntityId, paymentTrace: trace ?? null,
+      interchangeControlNumber: parsed.interchangeControlNumber,
+      transactionSetControlNumber: parsed.transactionSetControlNumber });
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${serializationKey}, 1))`);
+    // A verified Claim.MD ERA may already occupy the non-posting staging boundary. If it won
+    // the shared identity lock first, refuse legacy intake before creating an advice/event that
+    // could reach postAdvice. The new stage remains available for review and no posting occurs.
+    const stagedIdentity = await tx.select({ id: CLAIMMD_ERA_STAGE.id }).from(CLAIMMD_ERA_STAGE).where(and(
+      eq(CLAIMMD_ERA_STAGE.organizationId, actor.organizationId),
+      eq(CLAIMMD_ERA_STAGE.providerEntityId, input.providerEntityId),
+      or(and(eq(CLAIMMD_ERA_STAGE.interchangeControlNumber, parsed.interchangeControlNumber),
+        eq(CLAIMMD_ERA_STAGE.transactionSetControlNumber, parsed.transactionSetControlNumber)),
+      ...(trace ? [eq(CLAIMMD_ERA_STAGE.paymentTraceDigest,
+        createHash("sha256").update(trace, "utf8").digest("hex"))] : [])),
+    )).limit(1);
+    if (stagedIdentity[0]) return { outcome: "review_required", stageId: stagedIdentity[0].id,
+      reason: "CLAIMMD_ERA_STAGE_MATCH" };
     if (trace) {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.organizationId}|${input.providerEntityId}|${input.payerId}|${trace}`}, 0))`,

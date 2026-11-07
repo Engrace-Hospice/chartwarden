@@ -230,6 +230,17 @@ describe.skipIf(!DB_URL)(
       } finally { await db.query("RESET ROLE"); }
       await expect(withOrg(ORG_A, () => db.query("SELECT id FROM claimmd_era_stream"))).rejects.toThrow();
       await expect(withOrg(ORG_A, () => db.query("SELECT id FROM claimmd_era_inbox"))).rejects.toThrow();
+      await expect(withOrg(ORG_A, () => db.query("SELECT id FROM claimmd_era_resolution"))).rejects.toThrow();
+      await expect(withOrg(ORG_A, () => db.query("SELECT id FROM claimmd_era_resolution_history"))).rejects.toThrow();
+      await expect(withOrg(ORG_A, () => db.query("SELECT id FROM claimmd_era_delivery"))).rejects.toThrow();
+      await expect(withOrg(ORG_A, () => db.query("SELECT id FROM claimmd_era_delivery_history"))).rejects.toThrow();
+      await db.query("SET ROLE claimmd_capture");
+      try {
+        await db.query("SELECT id FROM claimmd_era_resolution LIMIT 0");
+        await db.query("SELECT id FROM claimmd_era_resolution_history LIMIT 0");
+        await db.query("SELECT id FROM claimmd_era_delivery LIMIT 0");
+        await db.query("SELECT id FROM claimmd_era_delivery_history LIMIT 0");
+      } finally { await db.query("RESET ROLE"); }
     });
 
     it("Claim.MD staging is visible only in its owner tenant and rejects a cross-tenant write", async () => {
