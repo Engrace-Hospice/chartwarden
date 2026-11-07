@@ -408,7 +408,7 @@ arch:compose-policy` (part of `arch:fitness`) fails on any literal image without
 
 | Service | Image | Version at pin time (2026-10-27) |
 |---|---|---|
-| postgres | `pgvector/pgvector:pg18` | PostgreSQL 18 (same digest as `backup/Dockerfile`) |
+| postgres | `pgvector/pgvector:pg18-bookworm` | PostgreSQL 18.6, Debian 12 / glibc 2.36 (same digest as `backup/Dockerfile`) |
 | valkey | `valkey/valkey:8-alpine` | Valkey 8.x |
 | seaweedfs | `chrislusf/seaweedfs:4.52` | SeaweedFS 4.52 (pinned 2026-11-05) |
 | fluent-bit | `fluent/fluent-bit:5.1.5` | Fluent Bit 5.1.5 (pinned 2026-11-05) |
@@ -429,7 +429,9 @@ registry you control (e.g. GHCR) before relying on it for disaster recovery.
 **Updating an image**
 1. Resolve the new digest: `docker buildx imagetools inspect <repo:tag>` (the top-level `Digest:` is the index digest).
 2. Edit `compose.yml` (tag and digest together) and the version table above; if it is postgres, update
-   `backup/Dockerfile` to the same digest.
+   `backup/Dockerfile` to the same digest. Keep the `-bookworm` suffix: a different Debian release changes glibc,
+   whose collation orders every text index, so it is a REINDEX migration, not a digest bump. `deploy.sh` never
+   recreates postgres; apply a new digest with `docker compose --env-file .env.production -f compose.yml up -d --wait postgres`.
 3. Restore-test: run the restore drill (`docs/runbooks/m36-restore-drill.md`; for postgres/minio also restore the
    previous backup onto the new image) and `smoke.sh` against a staging stack.
 4. `bun run arch:compose-policy`, then ship through the normal PR/deploy path. Rollback is the previous digest.
