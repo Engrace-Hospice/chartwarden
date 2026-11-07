@@ -2,8 +2,8 @@
 // The operator records it (status, dates, the signed document's id); the platform settles the step at once when the latest record is
 // executed, has its document and has more than 90 days left (the same facts the go-live guard judges). The operator who records the BAA
 // cannot also approve go-live (four eyes), so the panel says so before anyone is surprised at the last step.
-// The signed PDF lives in the document store; a platform operator holds no upload permission there, so the panel takes the document's
-// id (the agreement is uploaded and its id handed over by whoever holds it).
+// The operator uploads the signed agreement here (its own permission, a fresh step-up and a reason): the platform files it with the
+// tenant's documents and answers its id, which the BAA record then carries.
 import {
   Button,
   type Fact,
@@ -17,6 +17,7 @@ import {
 } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
+import { BaaDocumentField } from "./baa-document-field";
 import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
@@ -46,7 +47,6 @@ type Errors = Partial<Record<keyof Form, string>>;
 /** The go-live guard: an executed BAA must have more than this many days left. */
 const MIN_DAYS_LEFT = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATUS_OPTIONS = [
   { value: "pending", label: "Pending" },
   { value: "executed", label: "Executed" },
@@ -97,10 +97,8 @@ function validate(form: Form, creating: boolean): Errors {
   const errors: Errors = {};
   if (creating && form.addendumVersion.trim() === "")
     errors.addendumVersion = "Enter the addendum version, for example v1.";
-  if (form.baaStatus === "executed" && !UUID.test(form.documentId.trim())) {
-    errors.documentId = "An executed BAA needs the document id of the signed agreement.";
-  } else if (form.documentId.trim() !== "" && !UUID.test(form.documentId.trim())) {
-    errors.documentId = "The document id is a UUID.";
+  if (form.baaStatus === "executed" && form.documentId.trim() === "") {
+    errors.documentId = "An executed BAA needs the signed agreement: upload it first.";
   }
   return errors;
 }
@@ -128,6 +126,7 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   );
   const [form, setForm] = useState<Form>(restored?.form ?? BLANK);
   const [errors, setErrors] = useState<Errors>({});
+  const [uploadedName, setUploadedName] = useState<string | null>(null);
   const write = useOpsWrite();
   const items = list.data?.items ?? [];
 
@@ -137,6 +136,7 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   function open(record: BaaRecord | null): void {
     write.clear();
     setErrors({});
+    setUploadedName(null);
     setForm(
       record
         ? {
@@ -285,14 +285,21 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
               value={form.expiresOn}
               onChange={set("expiresOn")}
             />
-            <TextField
-              label="Signed document id"
-              hint="The document id of the signed agreement. Required when the status is executed."
-              value={form.documentId}
-              onChange={set("documentId")}
-              error={fieldError("documentId")}
-            />
           </div>
+          <BaaDocumentField
+            orgSlug={orgSlug}
+            linked={form.documentId.trim() !== ""}
+            uploadedName={uploadedName}
+            error={fieldError("documentId")}
+            onUploaded={(documentId, fileName) => {
+              setForm((f) => ({ ...f, documentId }));
+              setErrors((e) => ({ ...e, documentId: undefined }));
+              setUploadedName(fileName);
+            }}
+            onReverify={() =>
+              stashStepUpDraft(draftKey(orgSlug), { form, id: editing?.id ?? null })
+            }
+          />
           {write.failure ? (
             <FailureNotice
               failure={write.failure}

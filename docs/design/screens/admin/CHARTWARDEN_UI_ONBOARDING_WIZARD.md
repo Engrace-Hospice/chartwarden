@@ -55,7 +55,7 @@ Below 768px the rail becomes a horizontal scroller above the step. A step is a d
 |---|------|-------|---------|
 | 1 | Organisation (display name, time zone) | Operator | attested with evidence |
 | 2 | Plan and contract (census-banded plan, billing service) | Operator | signing the contract |
-| 3 | BAA (record, document, dates) | Operator | automatic: latest BAA executed, document linked, more than 90 days left |
+| 3 | BAA (record, signed agreement upload, dates) | Operator | automatic: latest BAA executed, document linked, more than 90 days left |
 | 4 | Provisioning | Operator | automatic: the platform builds the tenant |
 | 5 | Provider entity and NPI (CCN, NPI, EIN) | Operator or tenant | attested with evidence |
 | 6 | Locations (at least one primary) | Tenant admin | automatic once a primary location exists, else attested |
@@ -74,6 +74,22 @@ editable; editing it while a go-live attestation is pending voids that attestati
 
 A step is **skipped** only where it does not apply: MAC, payer enrollment, DoseSpot and sample data. Every other
 step is settled by evidence or by its own facts.
+
+### Step 3: BAA, the signed agreement
+
+The operator records the BAA (addendum version, status, dates) and uploads the signed agreement in the same form. The form has a file chooser
+("Signed agreement", PDF, JPEG, PNG, TIFF or Word, at most 25 MB) in place of the document id the step used to take. The panel refuses a file of
+another type, an empty one and an oversized one before any request; the server checks again and its word counts. Choosing a file does not send
+it: "Upload agreement" asks for a reason (a fresh step-up, an Idempotency-Key, a reason, an operator that is not an AI principal), then the platform
+files the document with the tenant's own documents under the one BAA kind and answers its id, and the form says "Uploaded <file>. Save the BAA to
+link it to this record." Saving the BAA then records it with that id, as before; an executed BAA without a document is refused in the form
+("upload it first"). A record that already has a document says so and keeps it unless a file is chosen to replace it.
+
+The upload is its own permission (not the general documents upload: it files this one kind for the tenant in the path, and reads or lists no
+document), held by `platform_ops` alone, and is accepted only while the tenant is provisioning or onboarding. It counts as a data write: a pending
+go-live attestation is voided by it. A step-up that has gone stale offers Re-verify; the typed form comes back, the chosen file does not (it cannot
+survive leaving the page), so the file is chosen again. A server refusal of the file (type or content mismatch, size, a scanner verdict, no object
+store) is shown in the reason prompt, which stays open, and nothing is linked.
 
 ### Step 7: Billing: clearinghouse
 
@@ -176,6 +192,7 @@ A credential update is pinned to the version the operator read (If-Match); a sta
 - Skip a step that does not apply (reason)
 - Re-open a settled step to edit (reason; refused while a go-live attestation is pending)
 - Save a step's data (provider entity, location, MAC credential, BAA, organisation profile)
+- Upload the signed BAA for the tenant (a reason; the document id then goes on the BAA record)
 - Sign the contract; change the billing service
 - Assign the compliance officer
 - Approve go-live; revoke a go-live attestation
