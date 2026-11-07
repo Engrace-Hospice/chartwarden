@@ -350,6 +350,25 @@ controls:
       - file: packages/db/migrations/1355_m34_tenant_notice_filing_permission.sql
       - file: apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-routes.ts
 
+  - id: CW-AC-22
+    title: >-
+      A platform operator can upload a tenant's signed BAA and file nothing else in the tenant's documents. The key tenant_baa_document.upload_platform (platform_ops alone; it is not documents.upload, and the role holds no documents.* key) opens one route, POST /api/v1/platform/tenants/:orgSlug/baa-document, behind the tenant_lifecycle_platform_ops predicate, a fresh step-up, a human (non-AI) actor, an Idempotency-Key and a required reason that is screened for a patient identifier. The body is the bytes, their type and the reason; it names no kind, patient or title, and the route files exactly one kind (tenant_baa), which the generic upload route refuses (422). The file passes the documents pipeline's own gate (size at most 25 MiB, type allowlist, magic bytes, a server-computed SHA-256, the malware scan where one is bound) and is filed on the target tenant's own RLS scope (app.org_id) in its own bucket, only while the tenant is provisioning or onboarding (409 otherwise, audited). The route reads and lists no document: the generic document reads stay 403 for the role. The platform audit row names the operator, the tenant, the reason, the document id and the digest (never the bytes), the document's own write-audit trigger attributes the insert to the operator, and a failure after the object was stored rolls the rows back and removes the object.
+    hipaa: ["164.312(a)(1)", "164.312(b)", "164.308(a)(4)", "164.308(b)(1)"]
+    soc2: ["CC6.1", "CC6.3", "CC9.2"]
+    status: partial
+    evidence:
+      - script: test:m34:baa-document:live
+      - ci: "M34 BAA document upload"
+      - file: packages/db/migrations/1367_m22_document_aggregate_type_tenant_baa.sql
+      - file: packages/db/migrations/1368_m34_tenant_baa_document_permission.sql
+      - file: apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-baa-document.ts
+      - file: apps/backend/src/modules/22-documents/onboarding-baa-document-port.ts
+      - file: apps/backend/__tests__/m34-baa-document-upload.live.test.ts
+    gap:
+      reason: No malware scanner implementation exists in this repo, so the upload is content-verified (type, magic bytes, size, SHA-256) but not virus-scanned unless one is bound; with DOCUMENT_UPLOAD_SCAN_REQUIRED=true an unbound scanner refuses the upload (503) instead, and unset (the default) an unscanned file is stored. This is the posture of every other M22 upload; the BAA upload inherits it and adds no scanner of its own.
+      owner: engineering
+      review_by: 2027-01-31
+
   - id: CW-AU-01
     title: Audit controls — PHI reads and writes leave an integrity-checked trail
     hipaa: ["164.312(b)", "164.312(c)(1)"]
