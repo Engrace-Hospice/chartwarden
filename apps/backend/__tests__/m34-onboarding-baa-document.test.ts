@@ -308,7 +308,7 @@ const resolveTenant = async (slug: string) =>
 
 function stubDb(
   tenantStatus: string | null,
-  options: { failInserts?: boolean; failCommit?: boolean } = {},
+  options: { failInserts?: boolean; failCommit?: boolean | Error } = {},
 ) {
   const inserts: InsertedRow[] = [];
   const select = () => ({
@@ -337,7 +337,10 @@ function stubDb(
     select,
     transaction: async (fn: (t: typeof tx) => Promise<unknown>) => {
       const result = await fn(tx);
-      if (options.failCommit) throw new Error("commit failed"); // the callback finished, the COMMIT then failed
+      if (options.failCommit) {
+        // the callback finished, the COMMIT then failed
+        throw options.failCommit instanceof Error ? options.failCommit : new Error("commit failed");
+      }
       return result;
     },
   };
@@ -522,6 +525,22 @@ describe("service: uploadBaaDocument", () => {
     expect(warned).toHaveLength(1);
     expect(warned[0]?.message).toContain("commit failed after the document was filed");
     expect(warned[0]?.context).toMatchObject({ documentId: DOCUMENT_ID });
+  });
+
+  it("DISCARDS the stored object when the COMMIT fails with a SQLSTATE: the database answered no and rolled back", async () => {
+    const refused = Object.assign(new Error("could not serialize access"), {
+      code: "40001",
+      severity: "ERROR",
+    });
+    const { db } = stubDb("onboarding", { failCommit: refused });
+    const { port, discard } = fakePort();
+    const service = buildDrizzleOnboardingDataService({ db, resolveTenant, baaDocuments: port });
+
+    await expect(service.uploadBaaDocument(OPERATOR, "tenant-b", INPUT, REASON)).rejects.toThrow(
+      "could not serialize",
+    );
+
+    expect(discard).toHaveBeenCalledOnce();
   });
 
   it("discards nothing when the file itself was refused (nothing was stored)", async () => {

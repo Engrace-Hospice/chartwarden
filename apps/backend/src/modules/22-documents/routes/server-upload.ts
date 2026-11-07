@@ -20,6 +20,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { DocumentAggregateType, OrgId } from "@chartwarden/types";
 import { ChartWardenError, DegradedError, NotFoundError } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { databaseAnsweredInChain } from "../../../bootstrap/redact-database-error";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";
 import { assertKindWritable } from "./immutable-kinds";
@@ -32,8 +33,8 @@ import type {
 import { MAX_DOCUMENT_UPLOAD_BYTES, type ReferralAccessReader } from "./verified-upload";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-/** The default wait for a put made while the caller holds a transaction (see `heldPutTimeoutMs`). */
-const HELD_PUT_TIMEOUT_MS = 30_000;
+/** The default wait for a call made while the caller holds a transaction (see `heldTimeoutMs`). */
+const HELD_TIMEOUT_MS = 30_000;
 const ALLOWED_MIME_TYPES = [
   "application/pdf",
   "image/jpeg",
@@ -62,6 +63,8 @@ export interface DocumentContentScanner {
   scan(input: {
     readonly bytes: Uint8Array;
     readonly mimeType: string;
+    /** Aborts the scan where the caller holds a transaction (a scanner that cannot abort may ignore it: the caller stops waiting). */
+    readonly signal?: AbortSignal;
   }): Promise<ContentScanVerdict>;
 }
 
@@ -78,11 +81,12 @@ export interface ServerUploadDeps {
   readonly scanRequired?: boolean;
   readonly logger?: UploadLogger;
   /**
-   * How long `createDocumentOn` waits for the object store's put (default 30 s). That upload runs while the CALLER holds a transaction
-   * (and, for the onboarding writes, the shared onboarding advisory lock), so a store that never answers must not hold them for long:
-   * the put is aborted, the object is cleaned up best effort, and the upload is a 503 `document-storage`.
+   * How long `createDocumentOn` waits, for EACH of the things it does that leave the process while the CALLER holds a transaction (and,
+   * for the onboarding writes, the shared onboarding advisory lock): the malware scan, the object store's put, and the clean-up of an
+   * object after a failure (default 30 s each). A store or scanner that never answers must not hold the transaction and the lock: the
+   * call is abandoned, a put is cleaned up best effort, and the upload is a 503 (`document-storage` / `document-scanner`).
    */
-  readonly heldPutTimeoutMs?: number;
+  readonly heldTimeoutMs?: number;
   readonly now?: () => Date;
   readonly randomId?: () => string;
 }
@@ -179,6 +183,28 @@ export function decodeBase64Content(contentBase64: string): Uint8Array {
   return new Uint8Array(Buffer.from(contentBase64, "base64"));
 }
 
+const scanTimedOut = () =>
+  new DegradedError("document-scanner", "the malware scanner did not answer in time");
+
+/** `work`, unless `signal` aborts first (then `onAbort()` is thrown): the caller stops waiting for something that cannot be aborted. */
+function raceAbort<T>(work: Promise<T>, signal: AbortSignal, onAbort: () => Error): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(onAbort());
+    if (signal.aborted) return abort();
+    signal.addEventListener("abort", abort, { once: true });
+    work.then(
+      (value) => {
+        signal.removeEventListener("abort", abort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      },
+    );
+  });
+}
+
 export function createServerUploadService(deps: ServerUploadDeps): ServerUploadService {
   const now = deps.now ?? (() => new Date());
   const randomId = deps.randomId ?? randomUUID;
@@ -200,7 +226,11 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     return deps.objects;
   }
 
-  async function assertScanned(content: UploadedContent, verified: VerifiedContent) {
+  async function assertScanned(
+    content: UploadedContent,
+    verified: VerifiedContent,
+    timeoutMs?: number,
+  ) {
     if (!deps.scanner) {
       if (deps.scanRequired) {
         throw new DegradedError(
@@ -210,7 +240,14 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
       }
       return;
     }
-    const result = await deps.scanner.scan({ bytes: content.bytes, mimeType: verified.mimeType });
+    const scanner = deps.scanner;
+    const signal = timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs);
+    const scan = scanner.scan({
+      bytes: content.bytes,
+      mimeType: verified.mimeType,
+      ...(signal ? { signal } : {}),
+    });
+    const result = signal ? await raceAbort(scan, signal, scanTimedOut) : await scan;
     if (result.verdict !== "clean") {
       throw new ChartWardenError(
         "UPLOAD_REJECTED",
@@ -292,7 +329,8 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
    * Store the object, run `commit`, and destroy the object if the commit certainly failed (nothing references it). `commitMayHaveLanded`
    * tells a failure of the COMMIT ITSELF (the callback finished, the commit then failed: the rows may be there) from one inside the
    * callback (rolled back): after an ambiguous commit failure the object is kept and the failure logged, because destroying the file
-   * of a document that did commit would lose it. `putTimeoutMs` aborts a put that never answers (the caller holds a transaction).
+   * of a document that did commit would lose it. `heldTimeoutMs` aborts a put (and bounds its clean-up) that never answers while the
+   * caller holds a transaction.
    */
   async function storeThenCommit(
     organizationId: OrgId,
@@ -300,12 +338,12 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     content: UploadedContent,
     verified: VerifiedContent,
     commit: () => Promise<CommittedUpload>,
-    options: { readonly putTimeoutMs?: number; readonly commitMayHaveLanded?: () => boolean } = {},
+    options: { readonly heldTimeoutMs?: number; readonly commitMayHaveLanded?: () => boolean } = {},
   ): Promise<CommittedUpload> {
     const objects = requireStore();
     const bucket = deriveTenantBucket(organizationId);
     const signal =
-      options.putTimeoutMs === undefined ? undefined : AbortSignal.timeout(options.putTimeoutMs);
+      options.heldTimeoutMs === undefined ? undefined : AbortSignal.timeout(options.heldTimeoutMs);
     let stored: { readonly sha256Hex: string };
     try {
       stored = await objects.putObject({
@@ -317,11 +355,11 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
       });
     } catch (error) {
       if (!signal?.aborted) throw error;
-      await destroyQuietly(organizationId, objectKey); // a put that timed out may still have landed
+      await destroyQuietly(organizationId, objectKey, options.heldTimeoutMs); // a put that timed out may still have landed
       throw new DegradedError("document-storage", "the object store did not answer in time");
     }
     if (stored.sha256Hex !== verified.sha256Hex) {
-      await destroyQuietly(organizationId, objectKey);
+      await destroyQuietly(organizationId, objectKey, options.heldTimeoutMs);
       throw new ChartWardenError(
         "UPLOAD_INTEGRITY_MISMATCH",
         "stored object does not match the verified checksum",
@@ -331,24 +369,32 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     try {
       return await commit();
     } catch (error) {
-      if (options.commitMayHaveLanded?.()) {
+      // Ambiguous only when the callback finished and the failure is NOT an answer from the database: a SQLSTATE means the database said
+      // no and rolled back, so the object points at nothing; a socket or connection loss leaves it unknown whether the commit landed.
+      if (options.commitMayHaveLanded?.() && !databaseAnsweredInChain(error)) {
         deps.logger?.warn(
           { organizationId, objectKey },
           "m22 upload: the commit failed after the rows were written, so the object is kept (the commit may have landed); an orphan sweep, not this path, removes it if it did not",
         );
       } else {
-        await destroyQuietly(organizationId, objectKey);
+        await destroyQuietly(organizationId, objectKey, options.heldTimeoutMs);
       }
       throw error;
     }
   }
 
-  async function destroyQuietly(organizationId: OrgId, objectKey: string): Promise<void> {
+  /** Remove the object best effort. `boundMs`: on a path where the caller holds a transaction, the delete is aborted after that long. */
+  async function destroyQuietly(
+    organizationId: OrgId,
+    objectKey: string,
+    boundMs?: number,
+  ): Promise<void> {
     try {
       await requireStore().destroyAllVersions({
         bucket: deriveTenantBucket(organizationId),
         objectKey,
         organizationId,
+        ...(boundMs === undefined ? {} : { signal: AbortSignal.timeout(boundMs) }),
       });
     } catch {
       deps.logger?.warn(
@@ -394,12 +440,12 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     actor: DocumentWriteActor,
     args: UploadDocumentArgs,
     scope: <T>(fn: (tx: DbClient) => Promise<T>) => Promise<T>,
-    options: { readonly putTimeoutMs?: number } = {},
+    options: { readonly heldTimeoutMs?: number } = {},
   ): Promise<CommittedUpload & VerifiedContent & { readonly objectKey: string }> {
     requireStore();
     const verified = verifyUploadContent(args.content);
     await assertReferralAccess(organizationId, actor.userId, args.aggregateType, args.aggregateId);
-    await assertScanned(args.content, verified);
+    await assertScanned(args.content, verified, options.heldTimeoutMs);
     const objectKey = objectKeyFor(args.aggregateType);
     let bodyDone = false;
     const committed = await storeThenCommit(
@@ -470,8 +516,9 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     },
 
     async createDocumentOn(tx, organizationId, actor, args) {
+      const heldTimeoutMs = deps.heldTimeoutMs ?? HELD_TIMEOUT_MS;
       const filed = await fileDocument(organizationId, actor, args, (fn) => fn(tx), {
-        putTimeoutMs: deps.heldPutTimeoutMs ?? HELD_PUT_TIMEOUT_MS,
+        heldTimeoutMs,
       });
       return {
         documentId: filed.documentId,
@@ -480,7 +527,7 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
         mimeType: filed.mimeType,
         byteSize: filed.byteSize,
         sha256Hex: filed.sha256Hex,
-        discard: () => destroyQuietly(organizationId, filed.objectKey),
+        discard: () => destroyQuietly(organizationId, filed.objectKey, heldTimeoutMs),
       };
     },
 

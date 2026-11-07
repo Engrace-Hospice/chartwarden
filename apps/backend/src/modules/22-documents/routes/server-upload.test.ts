@@ -15,12 +15,13 @@ import {
 vi.mock("@chartwarden/tenancy", () => ({
   // `failCommit` models a COMMIT that fails after the callback finished: the rows may or may not be there.
   withOrgContext: async (
-    db: { tx: unknown; failCommit?: boolean },
+    db: { tx: unknown; failCommit?: boolean | Error },
     _ctx: unknown,
     fn: (tx: unknown) => unknown,
   ) => {
     const result = await fn(db.tx);
-    if (db.failCommit) throw new Error("commit failed");
+    if (db.failCommit)
+      throw db.failCommit instanceof Error ? db.failCommit : new Error("commit failed");
     return result;
   },
 }));
@@ -46,7 +47,7 @@ const ARGS = {
 
 /** A tx that records inserts per table and answers selects from `selects` in order. */
 function fakeDb(
-  opts: { failInsertOn?: unknown; selects?: unknown[][]; failCommit?: boolean } = {},
+  opts: { failInsertOn?: unknown; selects?: unknown[][]; failCommit?: boolean | Error } = {},
 ) {
   const inserts: { table: unknown; values: Record<string, unknown> }[] = [];
   const updates: Record<string, unknown>[] = [];
@@ -75,7 +76,7 @@ function fakeDb(
       },
     }),
   };
-  const failCommit = opts.failCommit === true;
+  const failCommit = opts.failCommit ?? false;
   return { db: { tx, failCommit } as unknown as DbClient, inserts, updates };
 }
 
@@ -237,17 +238,23 @@ describe("createServerUploadService: the put and the commit while the caller hol
   /** A store whose put never answers until it is aborted: what a hung object store looks like to a caller holding a transaction. */
   function hangingStore() {
     const destroyed: string[] = [];
+    const destroySignals: (AbortSignal | undefined)[] = [];
     const base = createInMemoryObjectStore();
     return {
       destroyed,
+      destroySignals,
       store: {
         ...base.store,
         putObject: ({ signal }: { signal?: AbortSignal }) =>
           new Promise<never>((_resolve, reject) => {
             signal?.addEventListener("abort", () => reject(new Error("aborted")));
           }),
-        destroyAllVersions: async ({ objectKey }: { objectKey: string }) => {
+        destroyAllVersions: async ({
+          objectKey,
+          signal,
+        }: { objectKey: string; signal?: AbortSignal }) => {
           destroyed.push(objectKey);
+          destroySignals.push(signal);
         },
       } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"],
     };
@@ -256,11 +263,11 @@ describe("createServerUploadService: the put and the commit while the caller hol
   it("aborts a put that never answers and answers 503 document-storage, writing no row (createDocumentOn)", async () => {
     const { db, inserts } = fakeDb();
     const { tx } = db as unknown as { tx: DbClient };
-    const { store, destroyed } = hangingStore();
+    const { store, destroyed, destroySignals } = hangingStore();
     const svc = createServerUploadService({
       db: {} as DbClient,
       objects: store,
-      heldPutTimeoutMs: 25,
+      heldTimeoutMs: 25,
     });
 
     await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
@@ -269,9 +276,76 @@ describe("createServerUploadService: the put and the commit while the caller hol
 
     expect(inserts).toHaveLength(0);
     expect(destroyed).toHaveLength(1); // a put that timed out may still have landed: cleaned up best effort
+    // ... and that clean-up is bounded too: the caller still holds its transaction while it runs
+    expect(destroySignals[0]).toBeInstanceOf(AbortSignal);
   });
 
-  it("keeps the object, and logs it, when the COMMIT itself fails after the rows were written (the document may exist)", async () => {
+  it("bounds the clean-up after an integrity mismatch and the discard() the same way, and a generic upload (no transaction held) stays unbounded", async () => {
+    const signals: (AbortSignal | undefined)[] = [];
+    const base = createInMemoryObjectStore();
+    const lyingStore = {
+      ...base.store,
+      putObject: async () => ({ sha256Hex: "f".repeat(64) }), // the store reports a digest that is not the verified one
+      destroyAllVersions: async ({ signal }: { signal?: AbortSignal }) => {
+        signals.push(signal);
+      },
+    } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"];
+    const { db } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const held = createServerUploadService({ db: {} as DbClient, objects: lyingStore });
+    await expect(held.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
+      code: "UPLOAD_INTEGRITY_MISMATCH",
+    });
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+
+    const honest = createServerUploadService({
+      db: {} as DbClient,
+      objects: {
+        ...base.store,
+        destroyAllVersions: async ({ signal }: { signal?: AbortSignal }) => {
+          signals.push(signal);
+        },
+      } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"],
+    });
+    const filed = await honest.createDocumentOn(tx, ORG, ACTOR, ARGS);
+    await filed.discard();
+    expect(signals[1]).toBeInstanceOf(AbortSignal);
+
+    // the generic upload opens its own transaction AFTER the put and holds none during it: nothing to bound
+    const generic = createServerUploadService({
+      db: fakeDb({ failInsertOn: schema.documentVersions }).db,
+      objects: {
+        ...base.store,
+        destroyAllVersions: async ({ signal }: { signal?: AbortSignal }) => {
+          signals.push(signal);
+        },
+      } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"],
+    });
+    await expect(generic.createDocument(ORG, ACTOR, ARGS)).rejects.toThrow("boom");
+    expect(signals[2]).toBeUndefined();
+  });
+
+  it("stops waiting for a scanner that never answers while the transaction is held: 503 document-scanner, nothing stored, no row", async () => {
+    const { db, inserts } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const mem = createInMemoryObjectStore();
+    const scanner: DocumentContentScanner = { scan: () => new Promise(() => undefined) };
+    const svc = createServerUploadService({
+      db: {} as DbClient,
+      objects: mem.store,
+      scanner,
+      heldTimeoutMs: 25,
+    });
+
+    await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
+      statusCode: 503,
+    });
+
+    expect(mem.objects.size).toBe(0);
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("keeps the object, and logs it, when the COMMIT itself fails after the rows were written WITHOUT an answer from the database (the document may exist)", async () => {
     const { db } = fakeDb({ failCommit: true });
     const mem = createInMemoryObjectStore();
     const warn = vi.fn();
@@ -281,6 +355,46 @@ describe("createServerUploadService: the put and the commit while the caller hol
 
     expect(mem.objects.size).toBe(1);
     expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it("removes the object when the COMMIT fails WITH a SQLSTATE: the database answered no and rolled back, so the object points at nothing", async () => {
+    const refused = Object.assign(new Error("could not serialize access"), {
+      code: "40001",
+      severity: "ERROR",
+    });
+    const { db } = fakeDb({ failCommit: refused });
+    const mem = createInMemoryObjectStore();
+    const warn = vi.fn();
+    const svc = createServerUploadService({ db, objects: mem.store, logger: { warn } });
+
+    await expect(svc.createDocument(ORG, ACTOR, ARGS)).rejects.toThrow("could not serialize");
+
+    expect(mem.objects.size).toBe(0);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("finds the SQLSTATE on the cause of a wrapped error (a driver wrapper), and a Node EPIPE is not a SQLSTATE", async () => {
+    const wrapped = Object.assign(new Error("Failed query"), {
+      cause: Object.assign(new Error("deadlock detected"), { code: "40P01", severity: "ERROR" }),
+    });
+    const a = createInMemoryObjectStore();
+    await expect(
+      createServerUploadService({
+        db: fakeDb({ failCommit: wrapped }).db,
+        objects: a.store,
+      }).createDocument(ORG, ACTOR, ARGS),
+    ).rejects.toThrow("Failed query");
+    expect(a.objects.size).toBe(0); // the database answered: rolled back
+
+    const b = createInMemoryObjectStore();
+    const epipe = Object.assign(new Error("write EPIPE"), { code: "EPIPE" }); // five uppercase characters, but not the database
+    await expect(
+      createServerUploadService({
+        db: fakeDb({ failCommit: epipe }).db,
+        objects: b.store,
+      }).createDocument(ORG, ACTOR, ARGS),
+    ).rejects.toThrow("EPIPE");
+    expect(b.objects.size).toBe(1); // the connection died: the commit may have landed
   });
 
   it("still removes the object when the failure was inside the transaction (rolled back)", async () => {

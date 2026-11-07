@@ -97,6 +97,17 @@ export function hasDatabaseErrorInChain(err: unknown, depth = 0): boolean {
 }
 
 /**
+ * True if `err` or anything on its `cause` chain is a `pg` DatabaseError: the DATABASE ANSWERED, with a SQLSTATE. A failure of a COMMIT
+ * that carries one is a definite answer (the transaction was rolled back); one that does not (a socket reset, a lost connection, a
+ * timeout) leaves it unknown whether the commit landed. Bounded, so a cycle terminates.
+ */
+export function databaseAnsweredInChain(err: unknown, depth = 0): boolean {
+  if (depth > 5 || !(err instanceof Error)) return false;
+  if (isPgDatabaseError(err)) return true;
+  return databaseAnsweredInChain(asDict(err).cause, depth + 1);
+}
+
+/**
  * Replace every single-quoted literal in a SQL statement with a placeholder.
  *
  * Drizzle parameterises, so a statement normally reaches here with `$1`-style placeholders and no

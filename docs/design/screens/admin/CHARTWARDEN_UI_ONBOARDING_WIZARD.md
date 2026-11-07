@@ -93,8 +93,11 @@ store) is shown in the reason prompt, which stays open, and nothing is linked.
 
 **Open items (step 3).** An object the store holds for a document whose commit did NOT land is never deleted by the upload itself:
 after a COMMIT that may have succeeded the object is kept and the failure logged, because deleting the file of a document that exists
-would lose the signed agreement. A sweep that reclaims such an orphan (an object in a tenant bucket that no `document_version` row names)
-is not built; there is no ADR for the BAA upload yet, so this is recorded here until the decision gets its number.
+would lose the signed agreement. "May have succeeded" means the commit failed without the database answering (no SQLSTATE: a socket or
+connection loss); a failure the database answered (a SQLSTATE) is a definite rollback and the object is removed. The generic
+`createDocument` and `createVersion` paths of every tenant upload share this rule (it is the documents module's, not the BAA's). A sweep
+that reclaims an orphan (an object in a tenant bucket that no `document_version` row names) is not built; there is no ADR for the BAA
+upload yet, so this is recorded here until the decision gets its number.
 
 ### Step 7: Billing: clearinghouse
 

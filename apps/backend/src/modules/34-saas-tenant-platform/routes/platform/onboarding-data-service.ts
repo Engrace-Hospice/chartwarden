@@ -45,6 +45,7 @@ import type {
   OnboardingNoticePort,
   OnboardingNoticeView,
 } from "../../../../bootstrap/onboarding-notice-port";
+import { databaseAnsweredInChain } from "../../../../bootstrap/redact-database-error";
 import { createDrizzleSiteAdminRepository } from "../../../../bootstrap/site-admin-repository";
 import {
   type SiteWriteDeps,
@@ -415,7 +416,9 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
         },
       );
     } catch (err) {
-      await spec.onFailure?.({ commitReached: bodyFinished });
+      // The COMMIT may have landed only when the callback finished and the failure is not an answer from the database (a SQLSTATE means
+      // the database said no and rolled back); a socket or connection loss leaves it unknown.
+      await spec.onFailure?.({ commitReached: bodyFinished && !databaseAnsweredInChain(err) });
       await recordFailedWrite(op, target, spec, err);
       throw err;
     }
