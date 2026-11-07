@@ -15,6 +15,13 @@ export type { OnboardingWriteScope } from "./onboarding-credential-port";
 /** The one document kind this seam files (the `document_aggregate_type` value, migration 1367). */
 export const TENANT_BAA_DOCUMENT_KIND = "tenant_baa";
 
+/**
+ * The largest signed agreement the operator's upload takes, in decoded bytes: 10 MiB, well under the general documents cap (25 MiB). A
+ * signed BAA is a few pages; the route's body limit and its base64 bound derive from this one figure, and the adapter enforces it on
+ * the decoded bytes.
+ */
+export const TENANT_BAA_MAX_BYTES = 10 * 1024 * 1024;
+
 /** The document as the platform sees it: its id (what the BAA register row links) and what the server verified about the bytes. */
 export interface OnboardingBaaDocument {
   readonly documentId: string;

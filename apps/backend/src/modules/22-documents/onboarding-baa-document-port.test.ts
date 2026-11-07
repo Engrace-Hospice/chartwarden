@@ -117,6 +117,17 @@ describe("buildTenantBaaDocumentOnboardingPort", () => {
     expect(createDocumentOn).not.toHaveBeenCalled();
   });
 
+  it("refuses a file over 10 MiB decoded with 422 UPLOAD_SIZE_INVALID, before it stores anything", async () => {
+    const { uploads, createDocumentOn } = fakeUploads();
+    const port = buildTenantBaaDocumentOnboardingPort(uploads);
+    const big = Buffer.alloc(10 * 1024 * 1024 + 1).toString("base64");
+
+    await expect(
+      port.upload(txScopedTo(ORG), SCOPE, { contentBase64: big, mimeType: "application/pdf" }),
+    ).rejects.toMatchObject({ statusCode: 422, code: "UPLOAD_SIZE_INVALID" });
+    expect(createDocumentOn).not.toHaveBeenCalled();
+  });
+
   it("hands the caller the way to take the object back out", async () => {
     const { uploads, discard } = fakeUploads();
     const port = buildTenantBaaDocumentOnboardingPort(uploads);

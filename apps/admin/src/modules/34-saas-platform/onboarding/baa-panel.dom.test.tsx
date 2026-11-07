@@ -319,9 +319,9 @@ describe("BaaPanel: uploading the signed agreement", () => {
     choose(new File([], "empty.pdf", { type: "application/pdf" }));
     expect(await screen.findByText(/file is empty/i)).toBeTruthy();
     const big = new File([new Uint8Array(1)], "big.pdf", { type: "application/pdf" });
-    Object.defineProperty(big, "size", { value: 25 * 1024 * 1024 + 1 });
+    Object.defineProperty(big, "size", { value: 10 * 1024 * 1024 + 1 });
     choose(big);
-    expect(await screen.findByText(/at most 25 MB/i)).toBeTruthy();
+    expect(await screen.findByText(/at most 10 MB/i)).toBeTruthy();
     expect(
       (screen.getByRole("button", { name: "Upload agreement" }) as HTMLButtonElement).disabled,
     ).toBe(true);

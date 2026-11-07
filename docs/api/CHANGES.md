@@ -14,13 +14,18 @@ its full description there. Newest first.
   naming a document kind, patient or title is a `422`). Headers: `Idempotency-Key` (required) and a fresh step-up. It answers
   `{ documentId, mimeType, byteSize, sha256Hex }`; link `documentId` on the BAA register row (`POST /api/v1/platform/baa-register` or
   `PATCH /api/v1/platform/baa-register/{id}`) as before.
-- The file goes through the documents pipeline: at most 25 MiB decoded (`422 UPLOAD_SIZE_INVALID`), a type allowlist (`415`), magic
+- The file goes through the documents pipeline: at most 10 MiB decoded (`422 UPLOAD_SIZE_INVALID`; a declared Content-Length over the limit is `413 BAA_UPLOAD_TOO_LARGE`, refused before the body is read), a type allowlist (`415`), magic
   bytes (`415 UPLOAD_CONTENT_MISMATCH`), not base64 (`422`), a scanner refusal (`422 UPLOAD_REJECTED`), no object store configured
   (`503`). The size and digest are the server's.
 - New permission `tenant_baa_document.upload_platform`, held by `platform_ops` only. It is not `documents.upload`: it files one document
   kind (`tenant_baa`) for the tenant in the path, and reads or lists no document. Only while the tenant is `provisioning` or `onboarding`
   (`409 TENANT_NOT_ONBOARDING` otherwise). A successful upload voids a pending go-live attestation, like any other onboarding data write.
-- The `tenant_baa` kind is not accepted by `POST /api/v1/documents`.
+- The `tenant_baa` kind is not accepted by `POST /api/v1/documents`, and a `tenant_baa` document takes no new version, metadata edit, link or
+  tag from any generic documents route (`409 DOCUMENT_IMMUTABLE`).
+- `POST /api/v1/platform/baa-register` and `PATCH /api/v1/platform/baa-register/{id}` now require `documentId` to be a signed BAA filed for
+  the record's own tenant (the document `tenant_baa` kind, in that organization): another tenant's document, a document of another kind or an
+  unknown id is `422 BAA_DOCUMENT_INVALID` (field `documentId`); no document adapter bound is `503 BAA_DOCUMENTS_UNBOUND`. Wizard step 3
+  settles only on a governing BAA whose document verifies the same way.
 
 ---
 

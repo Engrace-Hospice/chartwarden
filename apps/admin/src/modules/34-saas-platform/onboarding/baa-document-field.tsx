@@ -1,5 +1,5 @@
 // apps/admin/src/modules/34-saas-platform/onboarding — step 3, the signed agreement: the operator chooses the file, the panel checks what it
-// can before any request (a type, not empty, at most 25 MB: the server checks again, and it is the server's word that counts), and the
+// can before any request (a type, not empty, at most 10 MB: the server checks again, and it is the server's word that counts), and the
 // upload goes through the reason prompt (a fresh step-up, a reason, an Idempotency-Key) to the platform route, which files it with the
 // tenant's documents under its one BAA kind. The panel then records the BAA with the document id that came back.
 // A chosen file cannot survive a Re-verify (the page is left): the typed form is stashed, the file is chosen again.
@@ -9,8 +9,8 @@ import type { JSX } from "react";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { useOpsWrite } from "./use-ops-write";
 
-/** The documents pipeline's own cap; the server enforces it on the decoded bytes. */
-export const BAA_FILE_MAX_BYTES = 25 * 1024 * 1024;
+/** The signed agreement's cap (the route's own, below the documents pipeline's); the server enforces it on the decoded bytes. */
+export const BAA_FILE_MAX_BYTES = 10 * 1024 * 1024;
 type AgreementMime =
   | "application/pdf"
   | "image/jpeg"
@@ -53,7 +53,7 @@ export function agreementProblem(file: { name: string; type: string; size: numbe
   | null {
   if (agreementMimeType(file) === null) return "Choose a PDF, JPEG, PNG, TIFF or Word file.";
   if (file.size === 0) return "That file is empty.";
-  if (file.size > BAA_FILE_MAX_BYTES) return "The file can be at most 25 MB.";
+  if (file.size > BAA_FILE_MAX_BYTES) return "The file can be at most 10 MB.";
   return null;
 }
 
@@ -142,7 +142,7 @@ export function BaaDocumentField({
         type="file"
         label="Signed agreement"
         accept={ACCEPT}
-        hint="PDF, JPEG, PNG, TIFF or Word, at most 25 MB. Required when the status is executed."
+        hint="PDF, JPEG, PNG, TIFF or Word, at most 10 MB. Required when the status is executed."
         error={fileError ?? error}
         onChange={(e) => void choose(e.target.files?.[0] ?? null)}
       />

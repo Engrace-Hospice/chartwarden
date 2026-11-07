@@ -13,6 +13,7 @@
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { TENANT_BAA_MAX_BYTES } from "../../../../bootstrap/onboarding-baa-document-port";
 import { rejectAiActor } from "../../../../bootstrap/reject-ai-actor";
 import type { OnboardingDataService, OnboardingOperator } from "./onboarding-data-service";
 import {
@@ -111,6 +112,21 @@ const NOTICE_WITHDRAW: readonly PreHandler[] = [
   rejectAiActor(),
   requireIdempotencyKey,
 ];
+
+/**
+ * Refuses a declared Content-Length over the route's limit before the body is read or parsed (an `onRequest` hook, which runs ahead of
+ * parsing), with the route's own typed 413. A body that declares no length is still bounded by `bodyLimit` while it streams.
+ */
+const refuseOversizedBaaUpload: PreHandler = async (request) => {
+  const declared = Number(request.headers["content-length"]);
+  if (Number.isFinite(declared) && declared > BAA_UPLOAD_BODY_LIMIT_BYTES) {
+    throw new ChartWardenError(
+      "BAA_UPLOAD_TOO_LARGE",
+      `the signed agreement can be at most ${TENANT_BAA_MAX_BYTES / (1024 * 1024)} MiB`,
+      413,
+    );
+  }
+};
 
 const BAA_DOCUMENT_UPLOAD: readonly PreHandler[] = [
   P(BAA_DOCUMENT_UPLOAD_KEY),
@@ -449,7 +465,11 @@ export function registerOnboardingDataRoutes(
   // tenant is provisioning or onboarding (409 otherwise). The body is the bytes, their type and the reason, nothing else.
   app.post(
     "/api/v1/platform/tenants/:orgSlug/baa-document",
-    { preHandler: [...BAA_DOCUMENT_UPLOAD], bodyLimit: BAA_UPLOAD_BODY_LIMIT_BYTES },
+    {
+      onRequest: [refuseOversizedBaaUpload],
+      preHandler: [...BAA_DOCUMENT_UPLOAD],
+      bodyLimit: BAA_UPLOAD_BODY_LIMIT_BYTES,
+    },
     async (request, reply) => {
       const op = operatorOf(request);
       const {

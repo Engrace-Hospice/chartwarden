@@ -78,7 +78,7 @@ step is settled by evidence or by its own facts.
 ### Step 3: BAA, the signed agreement
 
 The operator records the BAA (addendum version, status, dates) and uploads the signed agreement in the same form. The form has a file chooser
-("Signed agreement", PDF, JPEG, PNG, TIFF or Word, at most 25 MB) in place of the document id the step used to take. The panel refuses a file of
+("Signed agreement", PDF, JPEG, PNG, TIFF or Word, at most 10 MB) in place of the document id the step used to take. The panel refuses a file of
 another type, an empty one and an oversized one before any request; the server checks again and its word counts. Choosing a file does not send
 it: "Upload agreement" asks for a reason (a fresh step-up, an Idempotency-Key, a reason, an operator that is not an AI principal), then the platform
 files the document with the tenant's own documents under the one BAA kind and answers its id, and the form says "Uploaded <file>. Save the BAA to

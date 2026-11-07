@@ -9,12 +9,13 @@
 // FAIL CLOSED like every M22 upload: no object store configured (`MINIO_*` unset) answers a typed 503 and nothing is stored; with
 // `DOCUMENT_UPLOAD_SCAN_REQUIRED=true` an unbound scanner does too.
 import { type DbClient, schema } from "@chartwarden/db";
-import type { OrgId } from "@chartwarden/types";
+import { ChartWardenError, type OrgId } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import {
   type OnboardingBaaDocumentPort,
   type OnboardingBaaDocumentRef,
   TENANT_BAA_DOCUMENT_KIND,
+  TENANT_BAA_MAX_BYTES,
 } from "../../bootstrap/onboarding-baa-document-port";
 import { assertTxScopedToOrg } from "../../bootstrap/onboarding-credential-port";
 import {
@@ -55,6 +56,14 @@ export function buildTenantBaaDocumentOnboardingPort(
     async upload(tx, scope, input) {
       await assertTxScopedToOrg(tx, scope.organizationId);
       const bytes = decodeBase64Content(input.contentBase64);
+      // The operator's upload is capped below the general documents limit: a signed BAA is a few pages.
+      if (bytes.byteLength > TENANT_BAA_MAX_BYTES) {
+        throw new ChartWardenError(
+          "UPLOAD_SIZE_INVALID",
+          `the signed agreement can be at most ${TENANT_BAA_MAX_BYTES / (1024 * 1024)} MiB`,
+          422,
+        );
+      }
       const filed = await uploads.createDocumentOn(
         tx,
         scope.organizationId as OrgId,

@@ -241,17 +241,35 @@ describe("POST baa-document: the reason and the body", () => {
     await app.close();
   });
 
-  it("refuses a body over the upload limit before it is parsed (413)", async () => {
+  it("refuses a body over the 10 MiB limit (413), by its declared Content-Length before it is read, with the route's own typed error", async () => {
+    const calls: UploadCall[] = [];
+    const app = makeServer(calls);
+    // 11 MiB of bytes as base64: over the limit, and as a tenant admin who would be refused 403 once the body was read.
+    const res = await app.inject({
+      method: "POST",
+      url: URL,
+      headers: { ...fresh(), "content-type": "application/json" },
+      payload: JSON.stringify({
+        ...BODY,
+        contentBase64: "A".repeat(Math.ceil((11 * 1024 * 1024 * 4) / 3)),
+      }),
+    });
+    expect(res.statusCode).toBe(413);
+    expect(res.json().error?.code ?? res.json().code).toBe("BAA_UPLOAD_TOO_LARGE");
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("takes a file just under the limit", async () => {
     const calls: UploadCall[] = [];
     const app = makeServer(calls);
     const res = await app.inject({
       method: "POST",
       url: URL,
       headers: fresh(),
-      payload: { ...BODY, contentBase64: "A".repeat(Math.ceil((26 * 1024 * 1024 * 4) / 3)) },
+      payload: { ...BODY, contentBase64: "A".repeat(Math.ceil((10 * 1024 * 1024 * 4) / 3)) },
     });
-    expect(res.statusCode).toBe(413);
-    expect(calls).toEqual([]);
+    expect(res.statusCode, res.body.slice(0, 200)).toBe(201);
     await app.close();
   });
 });

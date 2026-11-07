@@ -6,6 +6,7 @@
 // Drizzle import.
 import { EXTERNAL_NOTICE_FILING_LIST_CAP } from "@chartwarden/types";
 import { type TSchema, Type } from "@sinclair/typebox";
+import { TENANT_BAA_MAX_BYTES } from "../../../../bootstrap/onboarding-baa-document-port";
 import {
   LocationDetailSchema,
   ProviderEntityDetailSchema,
@@ -357,11 +358,10 @@ export const OnboardingNoticeFilingListSchema = Type.Object({
 });
 
 /**
- * The upload cap, the documents pipeline's own (25 MiB of bytes, base64-expanded 4/3 and padded). M22 enforces the real limit on the
- * decoded bytes; this bounds the text before it is parsed. M34 may not import M22, so the figure is repeated here.
+ * The upload cap: `TENANT_BAA_MAX_BYTES` of decoded bytes (10 MiB), base64-expanded 4/3 and padded. M22 enforces the real limit on the
+ * decoded bytes; this bounds the text before it is parsed.
  */
-const BAA_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
-const BAA_UPLOAD_MAX_BASE64_CHARS = Math.ceil(BAA_UPLOAD_MAX_BYTES / 3) * 4;
+const BAA_UPLOAD_MAX_BASE64_CHARS = Math.ceil(TENANT_BAA_MAX_BYTES / 3) * 4;
 /** The route-level body limit: the base64 text plus the JSON envelope (`reason`, `mimeType`). */
 export const BAA_UPLOAD_BODY_LIMIT_BYTES = BAA_UPLOAD_MAX_BASE64_CHARS + 64 * 1024;
 const BAA_UPLOAD_MIME_TYPES = [
@@ -382,7 +382,7 @@ export const OnboardingBaaDocumentUploadRequest = Type.Object(
       minLength: 4,
       maxLength: BAA_UPLOAD_MAX_BASE64_CHARS,
       description:
-        "The signed agreement, base64 (at most 25 MiB decoded). The server checks the size, the type allowlist, the magic bytes and, where one is bound, the malware scan; it recomputes the digest.",
+        "The signed agreement, base64 (at most 10 MiB decoded). The server checks the size, the type allowlist, the magic bytes and, where one is bound, the malware scan; it recomputes the digest.",
     }),
     mimeType: Type.Union(BAA_UPLOAD_MIME_TYPES.map((m) => Type.Literal(m))),
     reason: OnboardingReasonSchema.properties.reason,
