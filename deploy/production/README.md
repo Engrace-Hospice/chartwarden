@@ -422,7 +422,8 @@ Range partitions need nothing more: every range partition key is a date or times
 
 **Bumping it.** Refresh the base digest and the package pins in the Dockerfile (its header says how), open a PR (the
 `Postgres image smoke and CVE scan` job in `pr-image-gate.yml` builds, starts and scans it), merge, run
-`gh workflow run postgres-image.yml`, and pin the digest the run prints in `compose.yml` and as the base of `backup/Dockerfile`.
+`gh workflow run postgres-image.yml`, and pin the digest the run prints in `compose.yml`. `backup/Dockerfile` cannot just take it as a base (it installs
+pgBackRest with apt and execs Debian's entrypoint): it needs its own Wolfi port, proven by `backup:restore-drill`, first.
 Apply with a fresh pgBackRest backup first, then `docker compose ... up -d --wait postgres` (`deploy.sh` never recreates
 postgres), then `cw-refresh-collation` if `GLIBC_VERSION` changed. Rollback is the previous digest, plus a
 refresh again when glibc differs. An image without the script (the Debian one) takes it by copy, from this folder:
