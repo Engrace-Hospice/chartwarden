@@ -3,7 +3,7 @@
  * M36 Phase 1 gate - "restore consistency": a restore drill that proves DB + object-store consistency and measures
  * RPO/RTO (docs/messaging-hub/ restore-drill runbook: docs/runbooks/m36-restore-drill.md).
  *
- * Runs ONLY against containers this process starts (pgvector/pgvector:pg18 + MinIO), never the shared Docker cluster:
+ * Runs ONLY against containers this process starts (production's Postgres image, built from deploy/production/postgres, + MinIO), never the shared Docker cluster:
  *   1. source: migrate + provision roles (the production path), seed two tenants through the real M36 routes
  *   2. backup the way production does it: `pg_dump -d chartwarden | gzip` (deploy/production/reseed-demo.sh) plus a copy of
  *      the MinIO data volume (production has NO object-store backup at all - see the runbook; this is the closest
@@ -16,7 +16,7 @@
  *   bun run m36:restore-drill -- --fault=<name>    # expect exit 1 (detection proof); names in FAULTS below
  *   bun run m36:restore-drill:detect               # runs every fault and asserts each one FAILS the drill
  *
- * Needs: docker, bun. Optional: WX_DRILL_MINIO_IMAGE (default cgr.dev/chainguard/minio:latest), --out=<dir>.
+ * Needs: docker, bun. Optional: WX_DRILL_POSTGRES_IMAGE (default: build chartwarden-postgres:dev), WX_DRILL_MINIO_IMAGE (default cgr.dev/chainguard/minio:latest), --out=<dir>.
  */
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";

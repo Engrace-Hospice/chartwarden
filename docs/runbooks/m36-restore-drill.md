@@ -3,7 +3,7 @@
 Phase 1 gate: *a restore drill proves DB + object-store consistency within the recorded RPO/RTO.* This runbook is
 what the drill does, how to run it, what production backs up today (not much), and how to read the numbers.
 
-Run it: `bun run m36:restore-drill` (needs Docker and the images `pgvector/pgvector:pg18` and a MinIO image;
+Run it: `bun run m36:restore-drill` (needs Docker; it builds `chartwarden-postgres:dev` from `deploy/production/postgres` and needs a MinIO image;
 `WX_DRILL_MINIO_IMAGE` overrides the default `cgr.dev/chainguard/minio:latest`). Reports are written to
 `audit/restore-drill/m36-restore-drill.{json,md}`. Detection proof: `bun run m36:restore-drill:detect`.
 It starts and removes only containers it labels itself (`wx-m36-restore-drill=<runId>`); it never touches the shared
