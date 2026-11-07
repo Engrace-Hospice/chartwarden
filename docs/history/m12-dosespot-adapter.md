@@ -118,8 +118,10 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
 - *The link from a member to that record was one administrator's word about another person.* The prescriber now confirms it from their
   own account (`/api/v1/me/dosespot-prescriber-link`, migration 1384), pinned to the link and NPI they were shown, and enrolment on both
   lanes is refused 409 `DOSESPOT_PRACTITIONER_UNCONFIRMED` until a confirmation matches the current link. A re-link or revoke clears it;
-  a table CHECK makes the confirmer the roster row's own member, so another member or an operator cannot confirm for them. The demo seed
-  has Dr. Harris confirm his own link.
+  a table CHECK requires the recorded confirmer to be the row's own member, and a trigger refuses a write that sets or changes a
+  confirmation unless the transaction's declared actor (`app.user_id`) is that member's user (clearing is open to any actor; the trigger is a
+  backstop on the declared actor, not authentication). The row's write-audit record carries the confirmed NPI (public provider data) like
+  any column of the table. The demo seed has Dr. Harris confirm his own link.
 - Fixed here too: the shared Idempotency-Key middleware stored a plain SHA-256 of every request (a credential in the body was testable
   from the table); it is now an HMAC under a key derived from `BETTER_AUTH_SECRET` (CW-SEC-02), with the legacy form honoured for one TTL.
 - Open, not fixed here: `verify` lets a tenant administrator probe candidate clinic keys against the vendor (ADR-0110 open items).

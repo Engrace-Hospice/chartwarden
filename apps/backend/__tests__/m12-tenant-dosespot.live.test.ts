@@ -1746,6 +1746,17 @@ describe.skipIf(!DB_URL)(
           npi: m.physician.npi,
           by: m.membershipId,
         });
+        // ADR-0110 D9 / CW-AC-21 say the table's write-audit row records the confirmed NPI (public provider data, and the evidence of WHAT
+        // the prescriber attested): pinned here so a denylist entry for that column cannot appear without those texts being revisited
+        const auditedWith = (npi: string) =>
+          q(
+            `SELECT 1 FROM audit_event WHERE organization_id=$1 AND resource_kind='dosespot_prescriber'
+                AND after->>'link_confirmed_npi' = $2`,
+            [ORG_A, npi],
+          );
+        expect(m.physician.npi).not.toBeNull();
+        expect(await auditedWith(m.physician.npi as string)).toHaveLength(1);
+        expect(await auditedWith("0000000000")).toHaveLength(0);
         // an UNRELATED update of the confirmed row (any actor) is not a confirmation and is not refused
         await withOrgContext(tdb, { organizationId: ORG_A, userId: TENANT_ADMIN }, (tx) =>
           (tx as unknown as DbClient).execute(
