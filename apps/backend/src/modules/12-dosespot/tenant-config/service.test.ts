@@ -764,6 +764,70 @@ describe("the view says whether the registration is LIVE on this deployment, not
     });
   });
 
+  // Review of slice 4, L-a: the reason was keyed on the ROW's environment, so a sandbox row whose host was unusable was told "sandbox_not_enabled"
+  // (an operator who then set the flag found nothing changed). The reason now follows the environment resolver: no usable host or flag is
+  // `environment_unavailable`; a usable sandbox that is merely not enabled is `sandbox_not_enabled`.
+  const notLiveReasonUnder = async (
+    environment: "sandbox" | "production",
+    activeEnv: Record<string, string>,
+    laterEnv: Record<string, string>,
+  ) => {
+    const h = build({ env: activeEnv });
+    await putFull(h, { environment });
+    await verifyFully(h);
+    await h.service.activate(h.store, TENANT);
+    const later = createDoseSpotClinicService({
+      cipher: buildClinicSecretCipher({
+        dekForOrg: async () => ({ version: "v1", key: randomBytes(32) }),
+      }),
+      probe: { probe: async () => "ok" },
+      env: laterEnv,
+    });
+    return later.view(h.store, ORG);
+  };
+  const PROD = {
+    DOSESPOT_PRODUCTION_ENABLED: "true",
+    DOSESPOT_SUBSCRIPTION_KEY_PRODUCTION: "platform-prod-sub-key",
+    DOSESPOT_BASE_URL_PRODUCTION: "https://my.dosespot.com",
+  };
+
+  it("a sandbox row on a deployment that enables sandbox but names an unacceptable host is environment_unavailable, not sandbox_not_enabled", async () => {
+    const view = await notLiveReasonUnder("sandbox", withPlatformKey, {
+      ...withPlatformKey,
+      DOSESPOT_BASE_URL_SANDBOX: "https://attacker.example.com",
+    });
+    expect(view).toMatchObject({
+      status: "active",
+      live: false,
+      notLiveReason: "environment_unavailable",
+    });
+  });
+
+  it("a production row whose flag has been turned off, or whose host has been unset, is environment_unavailable", async () => {
+    expect(await notLiveReasonUnder("production", PROD, SUBSCRIPTION_KEY_ONLY)).toMatchObject({
+      live: false,
+      notLiveReason: "environment_unavailable",
+    });
+    const { DOSESPOT_BASE_URL_PRODUCTION: _unset, ...noHost } = PROD;
+    expect(await notLiveReasonUnder("production", PROD, noHost)).toMatchObject({
+      live: false,
+      notLiveReason: "environment_unavailable",
+    });
+  });
+
+  it("a usable sandbox that is only not enabled stays sandbox_not_enabled, and a live production row has no reason", async () => {
+    expect(
+      await notLiveReasonUnder("sandbox", withPlatformKey, SUBSCRIPTION_KEY_ONLY),
+    ).toMatchObject({
+      live: false,
+      notLiveReason: "sandbox_not_enabled",
+    });
+    expect(await notLiveReasonUnder("production", PROD, PROD)).toMatchObject({
+      live: true,
+      notLiveReason: null,
+    });
+  });
+
   it("a row that was never activated is not live, and an env-served org is", async () => {
     const h = build({ env: withPlatformKey });
     await putFull(h);

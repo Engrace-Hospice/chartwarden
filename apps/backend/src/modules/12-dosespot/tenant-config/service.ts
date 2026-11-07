@@ -226,11 +226,10 @@ export function createDoseSpotClinicService(
   function liveFacts(row: ConfigRow): Pick<ClinicConfigView, "live" | "notLiveReason"> {
     const live = registrationIsLive(row, env());
     if (live || row.status !== "active") return { live, notLiveReason: null };
-    return {
-      live,
-      notLiveReason:
-        row.environment === "sandbox" ? "sandbox_not_enabled" : "environment_unavailable",
-    };
+    // An environment with no usable host or flag cannot be served whatever else is set; only a sandbox that resolves but is not enabled
+    // is "sandbox_not_enabled" (the one the operator fixes by setting the flag).
+    const usable = resolveDoseSpotEnvironment(row.environment as DoseSpotEnvironment, env()).ok;
+    return { live, notLiveReason: usable ? "sandbox_not_enabled" : "environment_unavailable" };
   }
 
   async function viewOf(
