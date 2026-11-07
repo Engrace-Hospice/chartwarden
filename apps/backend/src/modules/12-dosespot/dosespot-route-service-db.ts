@@ -114,6 +114,13 @@ const MO = schema.medicationOrders;
 const MOT = schema.medicationOrderTransmissions;
 const RR = schema.refillRequests;
 const DP = schema.dosespotPrescribers;
+/** Clears the prescriber's own confirmation of the linked physician record (migration 1384): all four together. */
+const NO_LINK_CONFIRMATION = {
+  linkConfirmedMdmId: null,
+  linkConfirmedNpi: null,
+  linkConfirmedAt: null,
+  linkConfirmedByMembershipId: null,
+} as const;
 const MHR = schema.medicationHistoryRecords;
 const RXB = schema.rxBenefitCache;
 
@@ -1620,7 +1627,8 @@ export function createDbDoseSpotBackend(
                 set: {
                   deaAuthorizedSchedules: deaAuthorizedSchedules as string[],
                   ...(externalPhysicianMdmId ? { externalPhysicianMdmId } : {}),
-                  ...(relinking ? { npi: null } : {}),
+                  // a re-link carries nothing of the previous one: no stale NPI, and the PRESCRIBER's confirmation was of the old link
+                  ...(relinking ? { npi: null, ...NO_LINK_CONFIRMATION } : {}),
                   enrolledAt: at,
                   revokedAt: null,
                   revocationReason: null,
@@ -1669,6 +1677,8 @@ export function createDbDoseSpotBackend(
             revokedAt: new Date(),
             revocationReason: reason,
             epcsEnabled: false,
+            // a revoked prescriber who is reinstated confirms again: the confirmation does not survive the revocation
+            ...NO_LINK_CONFIRMATION,
             updatedAt: new Date(),
           })
           .where(eq(DP.id, row.id));

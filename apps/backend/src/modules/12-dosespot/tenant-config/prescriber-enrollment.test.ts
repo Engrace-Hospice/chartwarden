@@ -75,6 +75,9 @@ function build(
           vendorEnrollmentRequestedAt: null,
           npi: null,
           externalPhysicianMdmId: MDM,
+          // the prescriber has confirmed THIS link and the NPI they were shown (the default; the refusals override it)
+          linkConfirmedMdmId: MDM,
+          linkConfirmedNpi: NPI,
           ...opts.row,
         };
   const store: RosterStore = {
@@ -84,9 +87,15 @@ function build(
     },
     membershipExists: async () => opts.membershipInOrg !== false,
     rosterRow: async () => roster,
-    async ensureRequested(_org, membershipId, at, claimWindowMs, expectedPhysicianMdmId) {
+    confirmLink: async () => null, // the prescriber's own confirmation is not this service's: practitioner-link.test.ts
+    async ensureRequested(_org, membershipId, at, claimWindowMs, expected) {
       log.push("ensureRequested");
-      if (!roster || roster.externalPhysicianMdmId !== expectedPhysicianMdmId) {
+      if (
+        !roster ||
+        roster.externalPhysicianMdmId !== expected.physicianMdmId ||
+        roster.linkConfirmedMdmId !== expected.physicianMdmId ||
+        roster.linkConfirmedNpi !== expected.confirmedNpi
+      ) {
         throw new ChartWardenError("DOSESPOT_ROSTER_CHANGED", "the roster changed", 409);
       }
       if (roster.revokedAt !== null || roster.dosespotPrescriberId !== null) {
@@ -297,6 +306,41 @@ describe("prescriber vendor enrolment", () => {
         epcsRequested: false,
       },
     ]);
+  });
+
+  it("is refused (409) until the PRESCRIBER has confirmed the linked record: nothing is claimed or sent", async () => {
+    const cases: Array<Partial<RosterRow>> = [
+      { linkConfirmedMdmId: null, linkConfirmedNpi: null }, // never confirmed
+      { linkConfirmedMdmId: "66666666-6666-4666-8666-666666666666" }, // confirmed another record: the link was changed since
+      { linkConfirmedNpi: "1000000004" }, // confirmed another NPI: the record's NPI is no longer the one they were shown
+    ];
+    for (const row of cases) {
+      const h = build({ row });
+      await expect(h.service.enroll(ACTOR, MEMBER)).rejects.toMatchObject({
+        statusCode: 409,
+        code: "DOSESPOT_PRACTITIONER_UNCONFIRMED",
+      });
+      expect(h.log).toEqual([`profile:${MDM}`]); // derived, refused: never claimed, never sent
+      expect(h.calls()).toBe(0);
+    }
+  });
+
+  it("an unconfirmed link voided between deriving the profile and claiming the row is refused at the claim (409)", async () => {
+    const h = build({
+      onProfile: () => {
+        // the prescriber's confirmation is cleared (a re-link, a revoke) while the profile is being derived
+        h.setRoster({
+          ...(h.roster() as RosterRow),
+          linkConfirmedMdmId: null,
+          linkConfirmedNpi: null,
+        });
+      },
+    });
+    await expect(h.service.enroll(ACTOR, MEMBER)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "DOSESPOT_ROSTER_CHANGED",
+    });
+    expect(h.calls()).toBe(0);
   });
 
   it("a prescriber who is not on the roster has no practitioner record to derive from: 409, and nothing is claimed or called", async () => {

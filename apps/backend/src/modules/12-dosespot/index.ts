@@ -308,6 +308,10 @@ export {
   createPrescriberEnrollmentService,
 } from "./tenant-config/prescriber-enrollment";
 export {
+  type PractitionerLinkService,
+  createPractitionerLinkService,
+} from "./tenant-config/practitioner-link";
+export {
   type NppesDirectoryPort,
   type PractitionerDirectoryPort,
   type PractitionerProfile,

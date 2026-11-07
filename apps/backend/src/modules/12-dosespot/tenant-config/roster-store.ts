@@ -25,6 +25,8 @@ const toRow = (r: typeof P.$inferSelect): RosterRow => ({
   vendorEnrollmentRequestedAt: r.vendorEnrollmentRequestedAt,
   npi: r.npi,
   externalPhysicianMdmId: r.externalPhysicianMdmId,
+  linkConfirmedMdmId: r.linkConfirmedMdmId,
+  linkConfirmedNpi: r.linkConfirmedNpi,
 });
 
 export function createDrizzleRosterStore(tx: DbClient): RosterStore {
@@ -62,14 +64,20 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
       return row ? toRow(row) : null;
     },
 
-    async ensureRequested(organizationId, membershipId, at, claimWindowMs, expectedPhysicianMdmId) {
+    async ensureRequested(organizationId, membershipId, at, claimWindowMs, expected) {
       const [existing] = await tx
         .select()
         .from(P)
         .where(and(eq(P.organizationId, organizationId), eq(P.membershipId, membershipId)))
         .for("update");
-      // the profile was derived from the physician record this row linked a moment ago: a roster edit since then voids it
-      if (!existing || existing.externalPhysicianMdmId !== expectedPhysicianMdmId) {
+      // the profile was derived from the physician record this row linked, and the prescriber's confirmation covered, a moment ago: a
+      // roster edit since then (a re-link or a revoke clears the confirmation) voids both
+      if (
+        !existing ||
+        existing.externalPhysicianMdmId !== expected.physicianMdmId ||
+        existing.linkConfirmedMdmId !== expected.physicianMdmId ||
+        existing.linkConfirmedNpi !== expected.confirmedNpi
+      ) {
         throw rosterChanged();
       }
       // a revoked or already-linked prescriber is returned untouched: nothing is stamped and nothing is reinstated
@@ -87,6 +95,30 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
         .returning();
       if (!stamped) throw new Error("dosespot_prescriber update returned no row");
       return { row: toRow(stamped), inProgress: false };
+    },
+
+    async confirmLink(organizationId, membershipId, input) {
+      const [row] = await tx
+        .update(P)
+        .set({
+          linkConfirmedMdmId: input.mdmId,
+          linkConfirmedNpi: input.npi,
+          linkConfirmedAt: input.at,
+          // the member themself: the table's CHECK refuses anyone else's membership here
+          linkConfirmedByMembershipId: membershipId,
+          updatedAt: input.at,
+        })
+        .where(
+          and(
+            eq(P.organizationId, organizationId),
+            eq(P.membershipId, membershipId),
+            isNull(P.revokedAt),
+            // pinned: only while the row still links the record the prescriber was shown
+            eq(P.externalPhysicianMdmId, input.mdmId),
+          ),
+        )
+        .returning();
+      return row ? toRow(row) : null;
     },
 
     async releaseRequest(organizationId, membershipId, claimedAt) {

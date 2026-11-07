@@ -111,6 +111,10 @@ export const OnboardingDoseSpotPrescriberListSchema = Type.Object({
       onRoster: Type.Boolean(),
       enrolledWithDoseSpot: Type.Boolean(),
       vendorEnrollmentRequestedAt: Nullable(Iso),
+      linkConfirmed: Type.Boolean({
+        description:
+          "The prescriber has confirmed the physician record linked to them (from their own account; there is no operator route for it). An enrolment is refused 409 DOSESPOT_PRACTITIONER_UNCONFIRMED until they have.",
+      }),
     }),
   ),
 });

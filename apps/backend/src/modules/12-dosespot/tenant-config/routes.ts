@@ -10,6 +10,7 @@ import { requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { rejectAiActor } from "../../../bootstrap/reject-ai-actor";
 import { MembershipParamsSchema, parse } from "../routes/dosespot-typebox";
+import type { PractitionerLinkService } from "./practitioner-link";
 import type { PrescriberEnrollmentService } from "./prescriber-enrollment";
 import {
   type PreHandler,
@@ -19,12 +20,18 @@ import {
   requireIdempotencyKey,
 } from "./route-guards";
 import type { DoseSpotClinicRouteService } from "./tenant-service";
-import { EnrollPrescriberVendorBodySchema, PutClinicBodySchema } from "./typebox";
+import {
+  ConfirmPractitionerLinkBodySchema,
+  EnrollPrescriberVendorBodySchema,
+  PutClinicBodySchema,
+} from "./typebox";
 
 export interface TenantDoseSpotRouteDeps {
   readonly clinicService: DoseSpotClinicRouteService;
   /** A prescriber's DoseSpot (vendor) enrolment; absent => that route is not mounted. */
   readonly enrollmentService?: Pick<PrescriberEnrollmentService, "enroll">;
+  /** The prescriber's own confirmation of the physician record linked to them; absent => those two routes are not mounted. */
+  readonly linkService?: PractitionerLinkService;
   /** Per-user cap on `verify` (a vendor call per request); fail-open like the other route limits. Absent = unlimited. */
   readonly verifyRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 }
@@ -36,6 +43,13 @@ const ROSTER = requirePermission("prescribing.admin.roster") as PreHandler;
 const ROSTER_STEPUP = requireStepUp("prescribing.admin.roster") as PreHandler;
 const NO_AI = rejectAiActor("AI principals cannot change the DoseSpot registration") as PreHandler;
 const IDEMPOTENT = requireIdempotencyKey();
+// The prescriber's OWN confirmation: a member who may sign orders, signed in as themself (the session's membership selects the roster
+// row, so there is no member id to forge), with a fresh step-up, a human actor and an Idempotency-Key. No platform route exists for it.
+const SELF_PRESCRIBER = requirePermission("prescribing.sign") as PreHandler;
+const SELF_STEPUP = requireStepUp("prescribing.sign") as PreHandler;
+const NO_AI_CONFIRM = rejectAiActor(
+  "AI principals cannot confirm a prescriber's identity",
+) as PreHandler;
 const WRITE: readonly PreHandler[] = [ADMIN, ADMIN_STEPUP, NO_AI, IDEMPOTENT];
 
 export function registerTenantDoseSpotRoutes(
@@ -89,7 +103,8 @@ export function registerTenantDoseSpotRoutes(
   // POST dosespot-enrollment — register a roster prescriber with DoseSpot and record the vendor's id (the link `transmit-newrx`
   // sends under). Needs the roster key (a prescriber, not the clinic, is being enrolled), a fresh step-up and an Idempotency-Key.
   // 409 DOSESPOT_NOT_READY until the registration is verified or active. The NPI and name are NOT in the body: they come from the
-  // physician record the roster links the member to (409 DOSESPOT_PRACTITIONER_* / DOSESPOT_NPPES_* when it cannot vouch). Never starts EPCS.
+  // physician record the roster links the member to (409 DOSESPOT_PRACTITIONER_* / DOSESPOT_NPPES_* when it cannot vouch), and the PRESCRIBER must have confirmed that link
+  // themself (409 DOSESPOT_PRACTITIONER_UNCONFIRMED until they have: the routes below). Never starts EPCS.
   if (deps.enrollmentService) {
     const enrollment = deps.enrollmentService;
     app.post(
@@ -101,6 +116,35 @@ export function registerTenantDoseSpotRoutes(
         parse(EnrollPrescriberVendorBodySchema, request.body ?? {}); // nothing identifying is accepted: a typed NPI or name is a 422
         return enrollment.enroll(actor, membershipId);
       },
+    );
+  }
+
+  // GET / POST …/confirm — the PRESCRIBER confirms, from their own account, that the physician record the roster linked them to is theirs.
+  // They are shown its name and NPI; the confirmation is pinned to that link and NPI (409 DOSESPOT_ROSTER_CHANGED if either moved) and
+  // the vendor enrolment, on the tenant and the operator lane alike, is refused until one exists for the current link. Never on behalf of
+  // another member: the session's own membership is the roster row.
+  if (deps.linkService) {
+    const link = deps.linkService;
+    app.get(
+      "/api/v1/me/dosespot-prescriber-link",
+      {
+        preHandler: [SELF_PRESCRIBER],
+        config: {
+          auditRead: {
+            none: "the member's own prescriber link: a roster id and public provider data (name, NPI); no patient data",
+          },
+        },
+      },
+      async (request) => link.view(clinicActorOf(request)),
+    );
+    app.post(
+      "/api/v1/me/dosespot-prescriber-link/confirm",
+      { preHandler: [SELF_PRESCRIBER, SELF_STEPUP, NO_AI_CONFIRM, IDEMPOTENT] },
+      async (request) =>
+        link.confirm(
+          clinicActorOf(request),
+          parse(ConfirmPractitionerLinkBodySchema, request.body),
+        ),
     );
   }
 }

@@ -743,6 +743,7 @@ import {
   createDrizzleTenantConfigSource,
   createEnvWebhookSecretResolver,
   createEpisodeTracker,
+  createPractitionerLinkService,
   createPractitionerProfileSource,
   createPrescriberEnrollmentService,
   createTransmissionGate,
@@ -6200,21 +6201,35 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               });
             },
           };
+          const m12RosterTx = <T>(
+            organizationId: string,
+            userId: string,
+            fn: (store: ReturnType<typeof createDrizzleRosterStore>, tx: DbClient) => Promise<T>,
+          ) =>
+            withOrgContext(dbHandle.db, { organizationId, userId }, (tx) =>
+              fn(createDrizzleRosterStore(tx as unknown as DbClient), tx as unknown as DbClient),
+            );
+          const m12PractitionerDirectory = {
+            resolvePhysician: (organizationId: string, mdmId: string) =>
+              getDoseSpotPractitionerDirectory().resolvePhysician(organizationId, mdmId),
+          };
+          // WHO the clinician is: the NPI and name of the M40 physician record the roster links the member to, cross-checked against
+          // NPPES's public directory. Both seams resolve lazily (a not-yet-registered one fails closed through its deny-stub).
+          const m12PractitionerProfiles = createPractitionerProfileSource({
+            directory: m12PractitionerDirectory,
+            nppes: { getByNpi: (input) => getDoseSpotNppesDirectory().getByNpi(input) },
+          });
+          // The prescriber's OWN confirmation that the linked record is theirs (the enrolment below refuses until it exists).
+          const m12PractitionerLink = createPractitionerLinkService({
+            inTx: m12RosterTx,
+            directory: m12PractitionerDirectory,
+            profiles: m12PractitionerProfiles,
+            audit: buildClinicAuditPort(),
+          });
           const m12PrescriberEnrollment = createPrescriberEnrollmentService({
-            inTx: (organizationId, userId, fn) =>
-              withOrgContext(dbHandle.db, { organizationId, userId }, (tx) =>
-                fn(createDrizzleRosterStore(tx as unknown as DbClient), tx as unknown as DbClient),
-              ),
+            inTx: m12RosterTx,
             client: m12DoseSpotClient,
-            // WHO the clinician is: the NPI and name of the M40 physician record the roster links the member to, cross-checked against
-            // NPPES's public directory. Both seams resolve lazily (a not-yet-registered one fails closed through its deny-stub).
-            profiles: createPractitionerProfileSource({
-              directory: {
-                resolvePhysician: (organizationId, mdmId) =>
-                  getDoseSpotPractitionerDirectory().resolvePhysician(organizationId, mdmId),
-              },
-              nppes: { getByNpi: (input) => getDoseSpotNppesDirectory().getByNpi(input) },
-            }),
+            profiles: m12PractitionerProfiles,
             outbox: m12OutboxPublisher,
             audit: buildClinicAuditPort(),
             afterWrite: m12ClinicAfterWrite,
@@ -6373,6 +6388,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 app.log.error({ err, ...context }, "tenant DoseSpot: a post-commit step failed"),
             }),
             enrollmentService: m12PrescriberEnrollment,
+            linkService: m12PractitionerLink,
             verifyRateLimit: createRouteRateLimit({
               store: rateLimitStore ?? createInMemoryRateLimitStore(),
               limit: DOSESPOT_VERIFY_ROUTE_RATE_LIMIT,

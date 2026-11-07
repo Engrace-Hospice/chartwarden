@@ -41,6 +41,12 @@ export const dosespotPrescribers = pgTable(
     vendorEnrollmentRequestedAt: timestamp("vendor_enrollment_requested_at", {
       withTimezone: true,
     }),
+    // Migration 1384 — the PRESCRIBER's own confirmation that `externalPhysicianMdmId` is them (all four set together, or none). The CHECK
+    // makes the confirmer the roster row's own member, so no administrator or operator can confirm on someone's behalf.
+    linkConfirmedMdmId: uuid("link_confirmed_mdm_id"),
+    linkConfirmedNpi: text("link_confirmed_npi"),
+    linkConfirmedAt: timestamp("link_confirmed_at", { withTimezone: true }),
+    linkConfirmedByMembershipId: uuid("link_confirmed_by_membership_id"),
     enrolledAt: timestamp("enrolled_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     revocationReason: text("revocation_reason"),
@@ -58,6 +64,10 @@ export const dosespotPrescribers = pgTable(
     activeMdmUnique: uniqueIndex("dosespot_prescriber_active_mdm_unique")
       .on(t.organizationId, t.externalPhysicianMdmId)
       .where(sql`external_physician_mdm_id IS NOT NULL AND revoked_at IS NULL`),
+    linkConfirmation: check(
+      "dosespot_prescriber_link_confirmation_ck",
+      sql`(link_confirmed_mdm_id IS NULL AND link_confirmed_npi IS NULL AND link_confirmed_at IS NULL AND link_confirmed_by_membership_id IS NULL) OR (link_confirmed_mdm_id IS NOT NULL AND link_confirmed_npi ~ '^[0-9]{10}$' AND link_confirmed_at IS NOT NULL AND link_confirmed_by_membership_id = membership_id)`,
+    ),
     epcsConsistency: check(
       "dosespot_prescriber_epcs_consistency",
       sql`(epcs_enabled = true) <= (ial2_status = 'verified' AND dea IS NOT NULL AND array_length(dea_authorized_schedules, 1) > 0)`,

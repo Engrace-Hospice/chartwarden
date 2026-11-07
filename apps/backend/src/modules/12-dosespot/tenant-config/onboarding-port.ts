@@ -165,6 +165,8 @@ export function buildDoseSpotClinicOnboardingPort(deps: {
               enrolledWithDoseSpot: P.dosespotPrescriberId,
               revokedAt: P.revokedAt,
               requestedAt: P.vendorEnrollmentRequestedAt,
+              mdmId: P.externalPhysicianMdmId,
+              confirmedMdmId: P.linkConfirmedMdmId,
             })
             .from(P)
             .where(eq(P.organizationId, scope.organizationId))
@@ -176,6 +178,9 @@ export function buildDoseSpotClinicOnboardingPort(deps: {
             onRoster: r.revokedAt === null,
             enrolledWithDoseSpot: r.enrolledWithDoseSpot !== null,
             vendorEnrollmentRequestedAt: r.requestedAt ? r.requestedAt.toISOString() : null,
+            // why an enrolment is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED): the prescriber has not confirmed the CURRENT link.
+            // Only the prescriber can; there is no operator route for it.
+            linkConfirmed: r.mdmId !== null && r.confirmedMdmId === r.mdmId,
           }));
         },
       );

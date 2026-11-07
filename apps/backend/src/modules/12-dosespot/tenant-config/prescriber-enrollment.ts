@@ -38,6 +38,15 @@ export interface RosterRow {
   readonly npi: string | null;
   /** The M40 physician record the roster links this membership to (the source of the NPI and the legal name). */
   readonly externalPhysicianMdmId: string | null;
+  /** What the PRESCRIBER confirmed from their own account: the record, and the NPI they were shown (null = never confirmed). */
+  readonly linkConfirmedMdmId: string | null;
+  readonly linkConfirmedNpi: string | null;
+}
+
+/** The link a profile was derived from, and the NPI it carried: what the claim re-checks under the row lock. */
+export interface ExpectedLink {
+  readonly physicianMdmId: string | null;
+  readonly confirmedNpi: string;
 }
 
 /** The two tables an enrolment touches, over ONE open org-scoped transaction. */
@@ -51,8 +60,9 @@ export interface RosterStore {
   /** The membership's roster row, or null when it is not on the roster. */
   rosterRow(organizationId: string, membershipId: string): Promise<RosterRow | null>;
   /**
-   * The step-1 CLAIM on a roster prescriber, atomic on the row (`FOR UPDATE`). The row must exist and still link the physician record
-   * the profile was derived from (`expectedPhysicianMdmId`), else 409 `DOSESPOT_ROSTER_CHANGED`. A row that is REVOKED or already
+   * The step-1 CLAIM on a roster prescriber, atomic on the row (`FOR UPDATE`). The row must exist, still link the physician record the
+   * profile was derived from, and still carry the PRESCRIBER's confirmation of that record and NPI (`expected`), else 409
+   * `DOSESPOT_ROSTER_CHANGED`. A row that is REVOKED or already
    * LINKED is returned untouched (nothing is stamped, nothing is reinstated); a row whose request marker is younger than
    * `claimWindowMs` with no vendor id is another attempt IN FLIGHT (`inProgress`); otherwise the marker is stamped.
    */
@@ -61,8 +71,17 @@ export interface RosterStore {
     membershipId: string,
     at: Date,
     claimWindowMs: number,
-    expectedPhysicianMdmId: string | null,
+    expected: ExpectedLink,
   ): Promise<{ readonly row: RosterRow; readonly inProgress: boolean }>;
+  /**
+   * The PRESCRIBER's confirmation of the linked record: set only for their own live row while it still links `mdmId` (null otherwise).
+   * `membershipId` is both the row's member and the confirmer, which the table's CHECK also enforces.
+   */
+  confirmLink(
+    organizationId: string,
+    membershipId: string,
+    input: { readonly mdmId: string; readonly npi: string; readonly at: Date },
+  ): Promise<RosterRow | null>;
   /**
    * Release the claim after a DEFINITIVE refusal, so a corrected retry need not wait out the window. Conditional on THIS attempt's own
    * marker (`claimedAt`): a claim that aged out and was re-stamped by another administrator must not be cleared by the first attempt.
@@ -202,6 +221,13 @@ export function createPrescriberEnrollmentService(
       409,
     );
 
+  const unconfirmed = (): ChartWardenError =>
+    new ChartWardenError(
+      "DOSESPOT_PRACTITIONER_UNCONFIRMED",
+      "the prescriber has not confirmed that the linked physician record is theirs; ask them to confirm it from their own account (they are shown the record's name and NPI)",
+      409,
+    );
+
   async function prepare(actor: EnrollActor, membershipId: string): Promise<EnrollPlan> {
     const { organizationId, userId } = actor;
     // Read first, on its own short transaction: is the registration ready, is the member ours, what does the roster link them to?
@@ -238,13 +264,24 @@ export function createPrescriberEnrollmentService(
       physicianMdmId,
       environment: seen.environment,
     });
+    // The roster administrator's link is one person's assertion about another: the PRESCRIBER must have confirmed THIS link and the NPI
+    // the record carries now (a re-link clears it, and a record whose NPI changed is no longer what they confirmed).
+    if (
+      seen.row === null ||
+      physicianMdmId === null ||
+      seen.row.linkConfirmedMdmId !== physicianMdmId ||
+      seen.row.linkConfirmedNpi !== profile.npi
+    ) {
+      throw unconfirmed();
+    }
+    const expected: ExpectedLink = { physicianMdmId, confirmedNpi: profile.npi };
     const claim = await deps.inTx(organizationId, userId, async (store) => {
       const { row, inProgress } = await store.ensureRequested(
         organizationId,
         membershipId,
         now(),
         ENROLL_CLAIM_WINDOW_MS,
-        physicianMdmId,
+        expected,
       );
       if (row.revokedAt !== null) throw revoked();
       if (inProgress) {

@@ -11,6 +11,8 @@ export const CLINIC_AUDIT_EVENTS = {
   activated: "m12.dosespot_clinic.activated",
   deactivated: "m12.dosespot_clinic.deactivated",
   prescriberEnrolled: "m12.dosespot_clinic.prescriber_enrolled",
+  /** The prescriber confirmed, from their own account, that the linked physician record is theirs. Ids only. */
+  prescriberLinkConfirmed: "m12.dosespot_clinic.prescriber_link_confirmed",
 } as const;
 export type ClinicAuditEvent = (typeof CLINIC_AUDIT_EVENTS)[keyof typeof CLINIC_AUDIT_EVENTS];
 

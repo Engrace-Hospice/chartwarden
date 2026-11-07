@@ -20,6 +20,7 @@ import {
   DOSESPOT_VERIFY_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
 } from "../src/bootstrap/plugins/route-rate-limit";
+import type { PractitionerLinkService } from "../src/modules/12-dosespot/tenant-config/practitioner-link";
 import type { PrescriberEnrollmentService } from "../src/modules/12-dosespot/tenant-config/prescriber-enrollment";
 import { registerTenantDoseSpotRoutes } from "../src/modules/12-dosespot/tenant-config/routes";
 import type {
@@ -52,6 +53,8 @@ const VIEW: ClinicConfigView = {
   clinicId: "clinic-1",
   serviceClinicianId: "900",
   hasSecret: true,
+  live: false,
+  notLiveReason: null,
   registeredAt: "2026-11-06T00:00:00.000Z",
   verifiedAt: null,
   activatedAt: null,
@@ -60,6 +63,14 @@ const VIEW: ClinicConfigView = {
   queuedTransmissions: 0,
   version: 1,
   updatedAt: "2026-11-06T00:00:00.000Z",
+};
+
+const LINK_VIEW = {
+  membershipId: MEMBERSHIP,
+  linked: true,
+  externalPhysicianMdmId: "77777777-7777-4777-8777-777777777777",
+  physician: { firstName: "Orrin", lastName: "Delacroix", npi: "1234567893" },
+  confirmed: false,
 };
 
 interface Call {
@@ -111,6 +122,8 @@ function makeServer(opts: { verifyLimit?: number } = {}) {
       grant("reader_1", ["prescribing.clinic.read"]),
       // a roster admin holds the prescriber-roster key, never the registration keys
       grant("roster_1", ["prescribing.admin.roster"]),
+      // a prescriber (may sign orders) confirms their OWN link; nobody else's key opens it
+      grant("prescriber_1", ["prescribing.sign"]),
       grant("none_1", []),
     ]).store,
   );
@@ -128,9 +141,29 @@ function makeServer(opts: { verifyLimit?: number } = {}) {
       return { membershipId, enrolledWithDoseSpot: true };
     },
   };
+  const linkService: PractitionerLinkService = {
+    async view(actor) {
+      calls.push({
+        method: "link.view",
+        organizationId: actor.organizationId,
+        membershipId: actor.membershipId,
+      });
+      return LINK_VIEW;
+    },
+    async confirm(actor, input) {
+      calls.push({
+        method: "link.confirm",
+        organizationId: actor.organizationId,
+        membershipId: actor.membershipId,
+        body: input,
+      });
+      return { ...LINK_VIEW, confirmed: true };
+    },
+  };
   registerTenantDoseSpotRoutes(app, {
     clinicService: service,
     enrollmentService,
+    linkService,
     ...(opts.verifyLimit
       ? {
           verifyRateLimit: createRouteRateLimit({
@@ -369,6 +402,87 @@ describe("prescriber DoseSpot enrolment route", () => {
         .statusCode,
     ).toBe(422);
     expect(calls).toEqual([]);
+    await app.close();
+  });
+});
+
+describe("the prescriber's own link confirmation routes", () => {
+  const VIEW_URL = "/api/v1/me/dosespot-prescriber-link";
+  const CONFIRM_URL = `${VIEW_URL}/confirm`;
+  const SEEN = { externalPhysicianMdmId: LINK_VIEW.externalPhysicianMdmId, npi: "1234567893" };
+  const PRESCRIBER = { "x-test-user": "prescriber_1", "x-test-step-up": "1" };
+
+  it("shows the signed-in member's OWN link (their session's membership selects the roster row) to a member who may sign", async () => {
+    const { app, calls } = makeServer();
+    const ok = await app.inject({
+      method: "GET",
+      url: VIEW_URL,
+      headers: { "x-test-user": "prescriber_1" },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({
+      linked: true,
+      physician: { npi: "1234567893" },
+      confirmed: false,
+    });
+    expect(calls).toEqual([{ method: "link.view", organizationId: ORG, membershipId: MEMBERSHIP }]);
+    for (const user of ["admin_1", "roster_1", "none_1"]) {
+      // neither a clinic admin nor a roster admin holds it: it is the prescriber's, not an administrator's
+      const denied = await app.inject({
+        method: "GET",
+        url: VIEW_URL,
+        headers: { "x-test-user": user },
+      });
+      expect(denied.statusCode, user).toBe(403);
+    }
+    expect((await app.inject({ method: "GET", url: VIEW_URL })).statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("confirming needs the signing permission, a fresh step-up, no AI actor and an Idempotency-Key, and the roster/clinic admins' keys do not open it", async () => {
+    const { app, calls } = makeServer();
+    const send = (headers: Record<string, string>) =>
+      app.inject({ method: "POST", url: CONFIRM_URL, headers, payload: SEEN });
+    expect((await send({ ...idem() })).statusCode).toBe(401);
+    expect((await send({ ...ADMIN, ...idem() })).statusCode).toBe(403);
+    expect(
+      (await send({ "x-test-user": "roster_1", "x-test-step-up": "1", ...idem() })).statusCode,
+    ).toBe(403);
+    expect((await send({ "x-test-user": "prescriber_1", ...idem() })).statusCode).toBe(403); // stale step-up
+    expect(
+      (await send({ ...PRESCRIBER, "x-test-actor-kind": "ai_agent", ...idem() })).statusCode,
+    ).toBe(403);
+    expect((await send(PRESCRIBER)).statusCode).toBe(400); // no Idempotency-Key
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("confirms with the session's own membership and the link and NPI they were shown; a body naming anyone else, or anything else, is a 422", async () => {
+    const { app, calls } = makeServer();
+    const post = (payload: object) =>
+      app.inject({
+        method: "POST",
+        url: CONFIRM_URL,
+        headers: { ...PRESCRIBER, ...idem() },
+        payload,
+      });
+    const ok = await post(SEEN);
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({ confirmed: true });
+    expect(calls).toEqual([
+      { method: "link.confirm", organizationId: ORG, membershipId: MEMBERSHIP, body: SEEN },
+    ]);
+    for (const bad of [
+      { ...SEEN, membershipId: "99999999-9999-4999-8999-999999999999" }, // whose? the session's: the field does not exist
+      { ...SEEN, organizationId: "x" },
+      { ...SEEN, npi: "12345" },
+      { ...SEEN, externalPhysicianMdmId: "not-a-uuid" },
+      { externalPhysicianMdmId: SEEN.externalPhysicianMdmId },
+      {},
+    ]) {
+      expect((await post(bad)).statusCode).toBe(422);
+    }
+    expect(calls).toHaveLength(1);
     await app.close();
   });
 });

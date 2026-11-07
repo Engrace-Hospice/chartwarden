@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1963,
-    "enriched": 1963,
+    "routes": 1965,
+    "enriched": 1965,
     "deficit": 0,
-    "mutating": 1132,
+    "mutating": 1133,
     "mutatingNoBody": 1,
-    "gets": 778,
+    "gets": 779,
     "getsNoResponse": 9
   },
   "modules": [
@@ -111,12 +111,12 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 40,
-      "enriched": 40,
+      "routes": 42,
+      "enriched": 42,
       "deficit": 0,
-      "mutating": 28,
+      "mutating": 29,
       "mutatingNoBody": 0,
-      "gets": 12,
+      "gets": 13,
       "getsNoResponse": 0
     },
     {

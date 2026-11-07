@@ -118,6 +118,47 @@ export const VerifyClinicResponseSchema = Type.Object({
 export const EnrollPrescriberVendorBodySchema = Type.Object({}, { additionalProperties: false });
 export type EnrollPrescriberVendorBody = Static<typeof EnrollPrescriberVendorBodySchema>;
 
+/**
+ * The PRESCRIBER's confirmation of the physician record linked to them: pinned to the link and the NPI they were shown. Nothing here
+ * says WHICH member: the session's own membership is the roster row, so nobody can confirm someone else's.
+ */
+export const ConfirmPractitionerLinkBodySchema = Type.Object(
+  {
+    externalPhysicianMdmId: Type.String({
+      format: "uuid",
+      description:
+        "The physician record the prescriber was shown (the link the roster held when they looked).",
+    }),
+    npi: Type.String({
+      pattern: "^[0-9]{10}$",
+      description:
+        "The NPI the prescriber was shown for that record. A link or NPI that has since changed is a 409.",
+    }),
+  },
+  { additionalProperties: false },
+);
+export type ConfirmPractitionerLinkBody = Static<typeof ConfirmPractitionerLinkBodySchema>;
+
+export const PractitionerLinkViewSchema = Type.Object({
+  membershipId: Type.String(),
+  linked: Type.Boolean({
+    description:
+      "The member is on the prescriber roster (not revoked) and the roster links a physician record to them.",
+  }),
+  externalPhysicianMdmId: Nullable(Type.String()),
+  physician: Nullable(
+    Type.Object({
+      firstName: Type.String(),
+      lastName: Type.String(),
+      npi: Type.String(),
+    }),
+  ),
+  confirmed: Type.Boolean({
+    description:
+      "The prescriber has confirmed THIS link and the record's CURRENT NPI. The DoseSpot enrolment is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED) until they have.",
+  }),
+});
+
 export const PrescriberVendorEnrollmentViewSchema = Type.Object({
   membershipId: Type.String(),
   enrolledWithDoseSpot: Type.Literal(true),

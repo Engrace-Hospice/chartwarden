@@ -1215,7 +1215,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Register a roster prescriber with DoseSpot and record the vendor's id (the link transmission sends under). Needs a verified or active registration (409 DOSESPOT_NOT_READY) and a membership of this organization (404). The body is empty: the NPI and legal name are NEVER taken from the caller (a typed npi, firstName or lastName is a 422) but derived from the physician record the prescriber roster links the member to (409 DOSESPOT_PRACTITIONER_NOT_LINKED / _NOT_ACTIVE / _NPI_MISSING / _NAME_MISSING, 422 DOSESPOT_NPI_INVALID by its check digit), and cross-checked against NPPES (409 DOSESPOT_NPPES_MISMATCH when NPPES lists an organization, a deactivated provider or another surname; a production registration also needs NPPES to list the NPI, 409 DOSESPOT_NPPES_UNVERIFIED); idempotent for a prescriber already linked; never reinstates a revoked prescriber (409 DOSESPOT_PRESCRIBER_REVOKED); a second enrolment in flight is 409 DOSESPOT_ENROLLMENT_IN_PROGRESS; a roster re-link while it ran is 409 DOSESPOT_ROSTER_CHANGED; a 2xx DoseSpot accepted but did not confirm is 502 DOSESPOT_ENROLLMENT_UNCONFIRMED (the claim is kept: the clinician may exist); the vendor call runs with no transaction open. Never starts EPCS or IAL2. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        /** Register a roster prescriber with DoseSpot and record the vendor's id (the link transmission sends under). Needs a verified or active registration (409 DOSESPOT_NOT_READY) and a membership of this organization (404). The body is empty: the NPI and legal name are NEVER taken from the caller (a typed npi, firstName or lastName is a 422) but derived from the physician record the prescriber roster links the member to (409 DOSESPOT_PRACTITIONER_NOT_LINKED / _NOT_ACTIVE / _NPI_MISSING / _NAME_MISSING, 422 DOSESPOT_NPI_INVALID by its check digit), and cross-checked against NPPES (409 DOSESPOT_NPPES_MISMATCH when NPPES lists an organization, a deactivated provider or another surname; a production registration also needs NPPES to list the NPI, 409 DOSESPOT_NPPES_UNVERIFIED); idempotent for a prescriber already linked; never reinstates a revoked prescriber (409 DOSESPOT_PRESCRIBER_REVOKED); a second enrolment in flight is 409 DOSESPOT_ENROLLMENT_IN_PROGRESS; the prescriber must first have confirmed the linked record themself (409 DOSESPOT_PRACTITIONER_UNCONFIRMED); a roster re-link while it ran is 409 DOSESPOT_ROSTER_CHANGED; a 2xx DoseSpot accepted but did not confirm is 502 DOSESPOT_ENROLLMENT_UNCONFIRMED (the claim is kept: the clinician may exist); the vendor call runs with no transaction open. Never starts EPCS or IAL2. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused */
         post: operations["postApiV1AdminDosespotprescribersByMembershipIdDosespotenrollment"];
         delete?: never;
         options?: never;
@@ -14583,6 +14583,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/dosespot-prescriber-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The signed-in prescriber's OWN link: the physician record the prescriber roster linked them to, shown with its name and NPI (public provider data), and whether they have confirmed it. prescribing.sign; the session's membership selects the roster row */
+        get: operations["getApiV1MeDosespotprescriberlink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/dosespot-prescriber-link/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The prescriber confirms, from their own account, that the physician record the roster linked them to is theirs. Pinned to the link and NPI they were shown (409 DOSESPOT_ROSTER_CHANGED if either moved); 409 DOSESPOT_PRACTITIONER_NOT_LINKED when they are not on the roster, _NOT_ACTIVE / _NPI_MISSING / DOSESPOT_NPPES_MISMATCH when the record cannot vouch. Never on behalf of another member and no platform route exists. The DoseSpot enrolment, on both lanes, is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED) until a confirmation matches the current link. prescribing.sign + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        post: operations["postApiV1MeDosespotprescriberlinkConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/permissions": {
         parameters: {
             query?: never;
@@ -21245,7 +21279,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Register a roster prescriber with DoseSpot on the tenant's behalf and record the vendor's id (409 DOSESPOT_NOT_READY until the registration is verified or active; the NPI and legal name are derived from the physician record the roster links the member to and cross-checked against NPPES, never typed, so the body is the reason alone: see the tenant route for the 409/422 codes; idempotent for a linked prescriber; never starts EPCS). tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused */
+        /** Register a roster prescriber with DoseSpot on the tenant's behalf and record the vendor's id (409 DOSESPOT_NOT_READY until the registration is verified or active; the NPI and legal name are derived from the physician record the roster links the member to and cross-checked against NPPES, never typed, so the body is the reason alone, and the prescriber must have confirmed that link themself (the roster list shows linkConfirmed; the operator cannot confirm for them): see the tenant route for the 409/422 codes; idempotent for a linked prescriber; never starts EPCS). tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused */
         post: operations["postApiV1PlatformTenantsByOrgSlugDosespotPrescribersByMembershipIdEnroll"];
         delete?: never;
         options?: never;
@@ -72349,6 +72383,89 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MeDosespotprescriberlink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        membershipId: string;
+                        /** @description The member is on the prescriber roster (not revoked) and the roster links a physician record to them. */
+                        linked: boolean;
+                        externalPhysicianMdmId: string | null;
+                        physician: {
+                            firstName: string;
+                            lastName: string;
+                            npi: string;
+                        } | null;
+                        /** @description The prescriber has confirmed THIS link and the record's CURRENT NPI. The DoseSpot enrolment is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED) until they have. */
+                        confirmed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MeDosespotprescriberlinkConfirm: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description The physician record the prescriber was shown (the link the roster held when they looked).
+                     */
+                    externalPhysicianMdmId: string;
+                    /** @description The NPI the prescriber was shown for that record. A link or NPI that has since changed is a 409. */
+                    npi: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        membershipId: string;
+                        /** @description The member is on the prescriber roster (not revoked) and the roster links a physician record to them. */
+                        linked: boolean;
+                        externalPhysicianMdmId: string | null;
+                        physician: {
+                            firstName: string;
+                            lastName: string;
+                            npi: string;
+                        } | null;
+                        /** @description The prescriber has confirmed THIS link and the record's CURRENT NPI. The DoseSpot enrolment is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED) until they have. */
+                        confirmed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MePermissions: {
         parameters: {
             query?: never;
@@ -93050,6 +93167,8 @@ export interface operations {
                             onRoster: boolean;
                             enrolledWithDoseSpot: boolean;
                             vendorEnrollmentRequestedAt: string | null;
+                            /** @description The prescriber has confirmed the physician record linked to them (from their own account; there is no operator route for it). An enrolment is refused 409 DOSESPOT_PRACTITIONER_UNCONFIRMED until they have. */
+                            linkConfirmed: boolean;
                         }[];
                     };
                 };
