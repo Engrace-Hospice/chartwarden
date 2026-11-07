@@ -84,7 +84,10 @@ const OVERRIDE_STEP_UP_OPERATION = "evv.missing_resolution.supervisor_override";
 
 // Static permission guards (§4.6).
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
-/** ADR-0021 / §4.1 — every mutating route requires a client-supplied Idempotency-Key. */
+/**
+ * ADR-0021 / §4.1 — every mutating route requires a client-supplied Idempotency-Key, except the two
+ * `offline-sync` routes: the handset dedupes on `(device, localId)` and that contract carries no header.
+ */
 const IDEMPOTENT = requireIdempotencyKey();
 const CHECK_IN = P("evv.check_in");
 const CHECK_OUT = P("evv.check_out");

@@ -10,7 +10,7 @@
 // `Idempotency-Key`. An update carries the §2.5 `If-Match` version (409 STALE_VERSION on stale); a first insert omits it.
 import {
   actorOf,
-  ifMatchVersionOf,
+  optionalIfMatchVersionOf,
   parse,
   rejectAiActor,
   requireIdempotencyKey,
@@ -45,13 +45,6 @@ const ADMIN_STEPUP = STEP_UP("billing.mac_credential.admin");
 const ADMIN_PARAM_ABAC = PROVIDER_SCOPE("billing.mac_credential.admin", targetProviderFromParams);
 const NO_AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
-
-/** Read the optional `If-Match` version (present only on an update of an existing credential, §2.5). */
-function optionalIfMatch(request: Parameters<typeof ifMatchVersionOf>[0]): number | undefined {
-  const raw = request.headers["if-match"];
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  return typeof value === "string" && value.length > 0 ? ifMatchVersionOf(request) : undefined;
-}
 
 /** Register the §4.1 MAC-credential routes (#34–#35). */
 export function registerMacCredentialRoutes(
@@ -114,7 +107,7 @@ export function registerMacCredentialRoutes(
     async (request, reply) => {
       const actor = writeActorOf(request);
       const body = parse(UpsertMacCredentialBodySchema, request.body);
-      const expectedVersion = optionalIfMatch(request);
+      const expectedVersion = optionalIfMatchVersionOf(request);
       const res = await writeService.upsertMacCredential(actor, {
         providerEntityId: body.providerEntityId,
         macJurisdiction: body.macJurisdiction,

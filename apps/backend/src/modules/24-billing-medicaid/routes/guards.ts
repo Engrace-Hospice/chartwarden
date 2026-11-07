@@ -9,7 +9,7 @@ import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth
 import {
   type HeaderCarrier,
   type PreHandler,
-  ifMatchVersionOf,
+  optionalIfMatchVersionOf,
 } from "@chartwarden/shared/route-kit";
 
 type TargetRequest = {
@@ -79,4 +79,4 @@ export const STEP_UP = (operationKey: string): PreHandler =>
  * (malformed → 400) and a stale version is 409 STALE_VERSION in the write service.
  */
 export const optionalIfMatch = (request: HeaderCarrier): number | null =>
-  request.headers["if-match"] === undefined ? null : ifMatchVersionOf(request);
+  optionalIfMatchVersionOf(request) ?? null;

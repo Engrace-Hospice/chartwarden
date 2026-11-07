@@ -8,7 +8,7 @@
 // carries the version last read (428 / 409). No PHI; org and membership binding is server-side.
 import {
   actorOf,
-  ifMatchVersionOf,
+  optionalIfMatchVersionOf,
   parse,
   rejectAiActor,
   requireIdempotencyKey,
@@ -34,13 +34,6 @@ const ADMIN_ABAC = PROVIDER_SCOPE("billing.mac_credential.admin", targetProvider
 const ADMIN_STEPUP = STEP_UP("billing.mac_credential.admin");
 const NO_AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
-
-/** The optional `If-Match` version (present only when updating an existing profile). */
-function optionalIfMatch(request: Parameters<typeof ifMatchVersionOf>[0]): number | undefined {
-  const raw = request.headers["if-match"];
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  return typeof value === "string" && value.length > 0 ? ifMatchVersionOf(request) : undefined;
-}
 
 export function registerEdiProfileRoutes(app: FastifyInstance, deps: EdiProfileRouteDeps): void {
   const { ediProfileService } = deps;
@@ -73,7 +66,7 @@ export function registerEdiProfileRoutes(app: FastifyInstance, deps: EdiProfileR
         actor,
         key,
         body,
-        optionalIfMatch(request),
+        optionalIfMatchVersionOf(request),
       );
       return reply.code(created ? 201 : 200).send(profile);
     },
