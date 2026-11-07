@@ -10,11 +10,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
   IdempotencyConflictError,
   IdempotencyInFlightError,
+  IdempotencyKeyStaleError,
   type IdempotencyRecord,
   type IdempotencyStore,
   type IdempotentResponse,
   computeIdempotencyHash,
   idempotencyHashMatches,
+  idempotencyKeyId,
+  idempotencyKeyIsStale,
   legacyIdempotencyHash,
   runIdempotent,
 } from "../src/index";
@@ -43,7 +46,7 @@ describe("computeIdempotencyHash (SEC-025 / F13)", () => {
     const a = h(ORG, "k1", { amount: 10 });
     const b = h(ORG, "k1", { amount: 10 });
     expect(a).toBe(b);
-    expect(a).toMatch(/^h1:[0-9a-f]{64}$/);
+    expect(a).toMatch(/^h1:[0-9a-f]{8}:[0-9a-f]{64}$/);
   });
 
   it("differs when org, key, or body differ", () => {
@@ -62,13 +65,37 @@ describe("computeIdempotencyHash (SEC-025 / F13)", () => {
     const stored = h(ORG, "k1", body);
     // an attacker who can read the table and knows the org, the key and a candidate body computes plain SHA-256: no match
     expect(stored).not.toContain(legacyIdempotencyHash(ORG, "k1", body));
-    expect(stored.slice("h1:".length)).not.toBe(legacyIdempotencyHash(ORG, "k1", body));
+    expect(stored.split(":")[2]).not.toBe(legacyIdempotencyHash(ORG, "k1", body));
     // and a different server key (a rotated or wrong one) gives a different fingerprint
     expect(computeIdempotencyHash(ORG, "k1", body, "another-server-key-0000000000000002")).not.toBe(
       stored,
     );
     // the stored value carries no part of the secret
     expect(stored).not.toContain("guessable");
+  });
+});
+
+describe("the server key id (told apart from a different body)", () => {
+  const OTHER = "another-server-key-0000000000000002";
+
+  it("is 8 hex characters, the same for every request under one key, different under another, and carries no part of the key", () => {
+    const kid = idempotencyKeyId(KEY);
+    expect(kid).toMatch(/^[0-9a-f]{8}$/);
+    expect(h(ORG, "k1", { a: 1 }).startsWith(`h1:${kid}:`)).toBe(true);
+    expect(h(ORG, "k2", { b: 2 }).startsWith(`h1:${kid}:`)).toBe(true);
+    expect(idempotencyKeyId(OTHER)).not.toBe(kid);
+    expect(kid).not.toContain(KEY.slice(0, 4));
+  });
+
+  it("a record under another key is STALE; a different body under the same key is not; a legacy or malformed record is not", () => {
+    const stored = h(ORG, "k1", { a: 1 });
+    const underOther = (body: unknown) => computeIdempotencyHash(ORG, "k1", body, OTHER);
+    expect(idempotencyKeyIsStale(stored, underOther({ a: 1 }))).toBe(true);
+    expect(idempotencyKeyIsStale(stored, underOther({ a: 2 }))).toBe(true); // the key changed: that is all anyone can say
+    expect(idempotencyKeyIsStale(stored, h(ORG, "k1", { a: 2 }))).toBe(false);
+    expect(idempotencyKeyIsStale(stored, stored)).toBe(false);
+    expect(idempotencyKeyIsStale(legacyIdempotencyHash(ORG, "k1", { a: 1 }), stored)).toBe(false);
+    expect(idempotencyKeyIsStale(`h1:${"0".repeat(64)}`, stored)).toBe(false);
   });
 });
 
@@ -138,9 +165,10 @@ describe("runIdempotent", () => {
     );
     const store = memoryStore({ state: "complete", requestHash: other, response: ok });
     const handler = vi.fn(async () => ok);
-    await expect(runIdempotent(store, ORG, "k1", { a: 1 }, handler, KEY)).rejects.toBeInstanceOf(
-      IdempotencyConflictError,
-    );
+    const error = await runIdempotent(store, ORG, "k1", { a: 1 }, handler, KEY).catch((e) => e);
+    // its own error, not "a different body": the body is the same, the server's key changed
+    expect(error).toBeInstanceOf(IdempotencyKeyStaleError);
+    expect(error).not.toBeInstanceOf(IdempotencyConflictError);
     expect(handler).not.toHaveBeenCalled();
   });
 

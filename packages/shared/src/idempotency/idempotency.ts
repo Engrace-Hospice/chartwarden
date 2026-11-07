@@ -2,7 +2,7 @@
 //
 // Core of the `Idempotency-Key` mutation guard (W-M1-10). The request fingerprint is an HMAC-SHA-256 of
 // (organization_id, key, body) under a SERVER key (SEC-025 / M01-F13), so the same key with a different body is a
-// CONFLICT rather than a silent replay. It is KEYED because the body can be a credential: a plain hash in the
+// CONFLICT rather than a silent replay (and a record written under another server key is STALE, not a conflict). It is KEYED because the body can be a credential: a plain hash in the
 // table would let anyone who can read it test guesses for the secret offline; an HMAC cannot be tested without the
 // server key. A `pending` state guards the concurrent-duplicate race (M01-F15). Storage is dependency-injected
 // (IdempotencyStore): packages/shared is a leaf and never imports @chartwarden/db or reads the environment — the real
@@ -17,16 +17,41 @@ export const IDEMPOTENCY_HASH_PREFIX = "h1:";
 const canonicalRequest = (organizationId: string, key: string, body: unknown): string =>
   JSON.stringify({ organizationId, key, body: body ?? null });
 
-/** `h1:` + HMAC-SHA-256 hex of (organization_id, key, body) under the server key — the request fingerprint (SEC-025 / F13). */
+/** The label the key id is an HMAC of, so the id is a function of the server key and nothing else. */
+const KEY_ID_LABEL = "chartwarden:idempotency:key-id";
+/** A stored keyed fingerprint: `h1:` + the key id + `:` + the HMAC. */
+const KEYED_HASH = /^h1:([0-9a-f]{8}):[0-9a-f]{64}$/;
+
+/**
+ * A short, non-secret label of the server key: the first 8 hex characters of HMAC(key, a fixed label). Every fingerprint carries it, so a
+ * mismatch can be told apart as "the server's key changed since this record was written" (stale) from "another body" (conflict). It is
+ * the same for every row under one key, so it gives a reader of the table nothing to test a body guess against.
+ */
+export function idempotencyKeyId(hmacKey: string | Uint8Array): string {
+  return createHmac("sha256", hmacKey).update(KEY_ID_LABEL).digest("hex").slice(0, 8);
+}
+
+/** `h1:` + key id + `:` + HMAC-SHA-256 hex of (organization_id, key, body) under the server key — the request fingerprint (SEC-025 / F13). */
 export function computeIdempotencyHash(
   organizationId: string,
   key: string,
   body: unknown,
   hmacKey: string | Uint8Array,
 ): string {
-  return `${IDEMPOTENCY_HASH_PREFIX}${createHmac("sha256", hmacKey)
+  return `${IDEMPOTENCY_HASH_PREFIX}${idempotencyKeyId(hmacKey)}:${createHmac("sha256", hmacKey)
     .update(canonicalRequest(organizationId, key, body))
     .digest("hex")}`;
+}
+
+/**
+ * Was the STORED fingerprint written under a different server key than the one computing `requestHash` (a rotated `BETTER_AUTH_SECRET`)?
+ * Only two well-formed keyed values with different key ids say so; a legacy (plain SHA-256) or malformed record never does, so the
+ * caller keeps reporting those as an ordinary conflict.
+ */
+export function idempotencyKeyIsStale(stored: string, requestHash: string): boolean {
+  const storedId = KEYED_HASH.exec(stored)?.[1];
+  const currentId = KEYED_HASH.exec(requestHash)?.[1];
+  return storedId !== undefined && currentId !== undefined && storedId !== currentId;
 }
 
 /**
@@ -90,6 +115,19 @@ export class IdempotencyConflictError extends Error {
   }
 }
 
+/**
+ * Thrown when a record for the key exists but was written under a different server key (the secret was rotated since): the body may well
+ * be the same, so it is NOT a conflict, but nothing can say whether the first request took effect either. The caller maps it to HTTP 409.
+ */
+export class IdempotencyKeyStaleError extends Error {
+  constructor(readonly key: string) {
+    super(
+      `idempotency_key_stale: key '${key}' was recorded before the server's idempotency key changed`,
+    );
+    this.name = "IdempotencyKeyStaleError";
+  }
+}
+
 /** Thrown when a duplicate arrives while the first request is still in flight (F15). */
 export class IdempotencyInFlightError extends Error {
   constructor(readonly key: string) {
@@ -119,9 +157,14 @@ export async function runIdempotent(
       legacyIdempotencyHash(organizationId, key, body),
     );
 
+  const mismatch = (stored: string): Error =>
+    idempotencyKeyIsStale(stored, requestHash)
+      ? new IdempotencyKeyStaleError(key)
+      : new IdempotencyConflictError(key);
+
   const existing = await store.load(organizationId, key);
   if (existing) {
-    if (!matches(existing.requestHash)) throw new IdempotencyConflictError(key);
+    if (!matches(existing.requestHash)) throw mismatch(existing.requestHash);
     if (existing.state === "complete") return existing.response;
     throw new IdempotencyInFlightError(key);
   }
@@ -129,7 +172,7 @@ export async function runIdempotent(
   if (!(await store.putPending(organizationId, key, requestHash))) {
     // Lost the claim to a concurrent duplicate: never run the handler. Reload the winner's record.
     const winner = await store.load(organizationId, key);
-    if (winner && !matches(winner.requestHash)) throw new IdempotencyConflictError(key);
+    if (winner && !matches(winner.requestHash)) throw mismatch(winner.requestHash);
     if (winner?.state === "complete") return winner.response;
     throw new IdempotencyInFlightError(key);
   }

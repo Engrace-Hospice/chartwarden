@@ -77,7 +77,7 @@ describe("the Idempotency-Key fingerprint is keyed", () => {
     expect((await post(SECRET_BODY)).statusCode).toBe(201);
     expect(claimed).toHaveLength(1);
     const stored = claimed[0] as string;
-    expect(stored).toMatch(/^h1:[0-9a-f]{64}$/);
+    expect(stored).toMatch(/^h1:[0-9a-f]{8}:[0-9a-f]{64}$/);
     // what an attacker with table access can compute for a candidate body (the old scheme) is NOT what is stored
     expect(stored).not.toContain(legacyIdempotencyHash(SCOPE, "k-1", SECRET_BODY));
     expect(stored).not.toContain(
@@ -114,7 +114,9 @@ describe("the Idempotency-Key fingerprint is keyed", () => {
     expect(runs).toBe(0);
   });
 
-  it("a record under ANOTHER server key (a rotated secret) is a clean 409, never a replay and never a re-run", async () => {
+  // Review of slice 4, L-c: this used to answer "reused with different body" for the SAME body, sending the client hunting for a body
+  // difference that does not exist. It is its own 409, saying what happened and what to do.
+  it("a record under ANOTHER server key (a rotated secret) is a 409 of its own (IDEMPOTENCY_KEY_STALE), never a replay and never a re-run", async () => {
     const first = recordingStore();
     await build(first.store, "an-earlier-server-key-000000000000002");
     await post(SECRET_BODY);
@@ -122,8 +124,19 @@ describe("the Idempotency-Key fingerprint is keyed", () => {
     await build(first.inner, SERVER_KEY); // the same records, the key has changed
     const retry = await post(SECRET_BODY);
     expect(retry.statusCode).toBe(409);
-    expect(retry.json().error?.code).toBe("IDEMPOTENCY_CONFLICT");
+    expect(retry.json().error?.code).toBe("IDEMPOTENCY_KEY_STALE");
+    expect(retry.json().error?.message).toMatch(/new Idempotency-Key/);
+    expect(retry.json().error?.message).not.toMatch(/different body/);
     expect(runs).toBe(0);
+  });
+
+  it("a different body is still IDEMPOTENCY_CONFLICT after the key changed back (only the key decides stale)", async () => {
+    const records = recordingStore();
+    await build(records.store);
+    await post(SECRET_BODY);
+    const other = await post({ clinicKey: "a-different-clinic-key-5678" });
+    expect(other.statusCode).toBe(409);
+    expect(other.json().error?.code).toBe("IDEMPOTENCY_CONFLICT");
   });
 });
 

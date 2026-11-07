@@ -13,7 +13,7 @@
 // unauthenticated routes (no org scope to key on). A first request records a `pending`
 // lock then captures its response on the way out (onSend) and marks it `complete`. A replay
 // with the SAME body returns the cached response; a DIFFERENT body is a 409
-// IDEMPOTENCY_CONFLICT; a concurrent duplicate still in flight is a 409 CONFLICT.
+// IDEMPOTENCY_CONFLICT (a record written under another server key, i.e. after a secret rotation, is a 409 IDEMPOTENCY_KEY_STALE); a concurrent duplicate still in flight is a 409 CONFLICT.
 import { createHmac, randomBytes } from "node:crypto";
 import {
   type IdempotencyRecord,
@@ -21,9 +21,14 @@ import {
   type IdempotentResponse,
   computeIdempotencyHash,
   idempotencyHashMatches,
+  idempotencyKeyIsStale,
   legacyIdempotencyHash,
 } from "@chartwarden/shared";
-import { ConflictError, IdempotencyConflictError } from "@chartwarden/types";
+import {
+  ConflictError,
+  IdempotencyConflictError,
+  IdempotencyKeyStaleError,
+} from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
 declare module "fastify" {
@@ -57,7 +62,7 @@ const MIN_SECRET_LENGTH = 32;
  * every replica and across restarts (an Idempotency-Key is replayed up to 24 h later), so it comes from configuration the platform
  * already requires, never a constant in the code. Production refuses to boot without it. Outside production a missing secret gets a
  * process-local random key: nothing is replayable across a restart there, which only costs a dev a clean 409. Rotating the secret
- * makes every stored fingerprint a clean mismatch (409), never a replay and never a re-run.
+ * makes every stored fingerprint a clean mismatch (409 IDEMPOTENCY_KEY_STALE), never a replay and never a re-run.
  */
 export function idempotencyHmacKey(env: NodeJS.ProcessEnv = process.env): Buffer {
   const secret = env.BETTER_AUTH_SECRET;
@@ -116,7 +121,10 @@ export function applyIdempotency(
           legacyIdempotencyHash(scope, key, request.body ?? null),
         )
       ) {
-        throw new IdempotencyConflictError();
+        // a record under another server key (a rotated secret) is not a different body: say so, so the client does not hunt for one
+        throw idempotencyKeyIsStale(existing.requestHash, requestHash)
+          ? new IdempotencyKeyStaleError()
+          : new IdempotencyConflictError();
       }
       if (existing.state === "complete") {
         const status = Number(existing.response.status) || 200;
