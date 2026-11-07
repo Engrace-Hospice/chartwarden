@@ -6233,6 +6233,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             outbox: m12OutboxPublisher,
             audit: buildClinicAuditPort(),
             afterWrite: m12ClinicAfterWrite,
+            // a claim that cannot be released after a definitive refusal ages out; this is the only place that says so
+            warn: (fields, message) => app.log.warn(fields, message),
           });
           mountTenantPlatformRoutes(app, dbHandle.db, {
             tenantBaseDomain,

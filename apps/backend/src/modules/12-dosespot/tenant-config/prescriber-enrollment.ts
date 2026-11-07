@@ -172,8 +172,11 @@ export interface PrescriberEnrollmentDeps {
     scope: { organizationId: string; userId: string; membershipId: string | null },
   ) => Promise<void>;
   readonly now?: () => Date;
-  /** A structured warning (pino's `(fields, message)` shape); never given a secret, an NPI or a name. */
-  readonly warn?: (fields: Record<string, string>, message: string) => void;
+  /**
+   * A structured warning (pino's `(fields, message)` shape); never given a secret, an NPI or a name. REQUIRED, not optional: a claim
+   * that cannot be released after a definitive refusal is only ever visible here, and an optional sink was left unwired in production.
+   */
+  readonly warn: (fields: Record<string, string>, message: string) => void;
 }
 
 /**
@@ -331,7 +334,7 @@ export function createPrescriberEnrollmentService(
           )
           .catch((releaseFault: unknown) => {
             // the claim then simply ages out of its window; say so rather than swallow it (ids and the error class only)
-            deps.warn?.(
+            deps.warn(
               {
                 organizationId: plan.organizationId,
                 membershipId: plan.membershipId,

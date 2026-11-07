@@ -572,6 +572,7 @@ describe.skipIf(!DB_URL)(
         outbox,
         audit: buildClinicAuditPort(),
         afterWrite,
+        warn: (fields, message) => warnings.push(`${message} ${JSON.stringify(fields)}`),
       });
       // the prescriber's OWN confirmation of the linked record, over the same real M40 provider and NPPES reader
       const mdmDirectory = createMdmEntityProvider(createDbMdmStore(tdb));
