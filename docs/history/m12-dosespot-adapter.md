@@ -115,9 +115,14 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   M29's reader seam): NPI-1, active, same surname. The enrolment body is empty; the member must already be on the roster with that link,
   which is how the demo roster is seeded (`db:seed:prescriber-roster`). NPPES with no row refuses in production and proceeds flagged
   (`nppesVerified: false` on the audit row) in sandbox, because the demo's synthetic NPIs are not in the real registry.
-- Open, not fixed here: `verify` lets a tenant administrator probe candidate clinic keys against the vendor (ADR-0110 open items); the
-  request body, secret included, is hashed into the idempotency record's fingerprint by shared middleware that predates this slice
-  (tracked separately).
+- *The link from a member to that record was one administrator's word about another person.* The prescriber now confirms it from their
+  own account (`/api/v1/me/dosespot-prescriber-link`, migration 1384), pinned to the link and NPI they were shown, and enrolment on both
+  lanes is refused 409 `DOSESPOT_PRACTITIONER_UNCONFIRMED` until a confirmation matches the current link. A re-link or revoke clears it;
+  a table CHECK makes the confirmer the roster row's own member, so another member or an operator cannot confirm for them. The demo seed
+  has Dr. Harris confirm his own link.
+- Fixed here too: the shared Idempotency-Key middleware stored a plain SHA-256 of every request (a credential in the body was testable
+  from the table); it is now an HMAC under a key derived from `BETTER_AUTH_SECRET` (CW-SEC-02), with the legacy form honoured for one TTL.
+- Open, not fixed here: `verify` lets a tenant administrator probe candidate clinic keys against the vendor (ADR-0110 open items).
 
 ## Operational notes
 
