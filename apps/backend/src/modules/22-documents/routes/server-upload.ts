@@ -84,12 +84,35 @@ export interface CommittedUpload {
   readonly versionNumber: number;
 }
 
+/** A document filed on the CALLER's transaction: what was verified, and the way to take the object back out. */
+export interface FiledUpload extends CommittedUpload {
+  readonly mimeType: string;
+  readonly byteSize: number;
+  readonly sha256Hex: string;
+  /**
+   * Destroy the stored object. For the caller whose transaction rolls back after `createDocumentOn` returned: the rows go with the
+   * rollback, the object would not. Best effort (a failure is logged, never thrown).
+   */
+  discard(): Promise<void>;
+}
+
 export interface ServerUploadService {
   createDocument(
     organizationId: OrgId,
     actor: DocumentWriteActor,
     args: UploadDocumentArgs,
   ): Promise<CommittedUpload>;
+  /**
+   * The same upload (content gate, scan, object store) with the document and version rows written on `tx`: a transaction the caller
+   * opened, ALREADY scoped to `organizationId`, and owns (it commits or rolls back with the caller's own rows, an audit row for one).
+   * The object is destroyed here only when the insert itself fails; a caller that fails afterwards calls `discard()`.
+   */
+  createDocumentOn(
+    tx: DbClient,
+    organizationId: OrgId,
+    actor: DocumentWriteActor,
+    args: UploadDocumentArgs,
+  ): Promise<FiledUpload>;
   createVersion(
     organizationId: OrgId,
     actor: DocumentWriteActor,
@@ -331,64 +354,89 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     return version.id;
   }
 
+  /** Verify, scan and store the bytes, then insert the document + version(+ tags) through `scope` (the caller's way into a transaction). */
+  async function fileDocument(
+    organizationId: OrgId,
+    actor: DocumentWriteActor,
+    args: UploadDocumentArgs,
+    scope: <T>(fn: (tx: DbClient) => Promise<T>) => Promise<T>,
+  ): Promise<CommittedUpload & VerifiedContent & { readonly objectKey: string }> {
+    requireStore();
+    const verified = verifyUploadContent(args.content);
+    await assertReferralAccess(organizationId, actor.userId, args.aggregateType, args.aggregateId);
+    await assertScanned(args.content, verified);
+    const objectKey = objectKeyFor(args.aggregateType);
+    const committed = await storeThenCommit(organizationId, objectKey, args.content, verified, () =>
+      scope(async (tx) => {
+        const [doc] = await tx
+          .insert(D)
+          .values({
+            organizationId,
+            patientId: args.patientId,
+            admissionId: args.admissionId,
+            retentionClass: args.retentionClass,
+            sourceKind: "user_upload",
+            aggregateType: args.aggregateType as DocumentAggregateType,
+            aggregateId: args.aggregateId,
+            title: args.title,
+            patientFacing: args.patientFacing,
+            metadata: null,
+            createdByMembershipId: actor.membershipId,
+          })
+          .returning({ id: D.id });
+        if (!doc) throw new Error("document insert returned no row");
+        const versionId = await insertVersion(
+          tx,
+          organizationId,
+          actor,
+          doc.id,
+          1,
+          null,
+          objectKey,
+          verified,
+        );
+        await tx
+          .update(D)
+          .set({ activeVersionId: versionId, updatedAt: now() })
+          .where(eq(D.id, doc.id));
+        for (const t of args.tags) {
+          await tx.insert(TAG).values({
+            organizationId,
+            documentId: doc.id,
+            tagKind: t.tagKind,
+            tagKey: t.tagKey,
+            tagValue: t.tagValue,
+            addedByMembershipId: actor.membershipId,
+          });
+        }
+        return { documentId: doc.id, versionId, versionNumber: 1 };
+      }),
+    );
+    return { ...committed, ...verified, objectKey };
+  }
+
   return {
     async createDocument(organizationId, actor, args) {
-      requireStore();
-      const verified = verifyUploadContent(args.content);
-      await assertReferralAccess(
+      const { documentId, versionId, versionNumber } = await fileDocument(
         organizationId,
-        actor.userId,
-        args.aggregateType,
-        args.aggregateId,
+        actor,
+        args,
+        (fn) => inOrg(organizationId, actor.userId, fn),
       );
-      await assertScanned(args.content, verified);
-      const objectKey = objectKeyFor(args.aggregateType);
-      return storeThenCommit(organizationId, objectKey, args.content, verified, () =>
-        inOrg(organizationId, actor.userId, async (tx) => {
-          const [doc] = await tx
-            .insert(D)
-            .values({
-              organizationId,
-              patientId: args.patientId,
-              admissionId: args.admissionId,
-              retentionClass: args.retentionClass,
-              sourceKind: "user_upload",
-              aggregateType: args.aggregateType as DocumentAggregateType,
-              aggregateId: args.aggregateId,
-              title: args.title,
-              patientFacing: args.patientFacing,
-              metadata: null,
-              createdByMembershipId: actor.membershipId,
-            })
-            .returning({ id: D.id });
-          if (!doc) throw new Error("document insert returned no row");
-          const versionId = await insertVersion(
-            tx,
-            organizationId,
-            actor,
-            doc.id,
-            1,
-            null,
-            objectKey,
-            verified,
-          );
-          await tx
-            .update(D)
-            .set({ activeVersionId: versionId, updatedAt: now() })
-            .where(eq(D.id, doc.id));
-          for (const t of args.tags) {
-            await tx.insert(TAG).values({
-              organizationId,
-              documentId: doc.id,
-              tagKind: t.tagKind,
-              tagKey: t.tagKey,
-              tagValue: t.tagValue,
-              addedByMembershipId: actor.membershipId,
-            });
-          }
-          return { documentId: doc.id, versionId, versionNumber: 1 };
-        }),
-      );
+      return { documentId, versionId, versionNumber };
+    },
+
+    async createDocumentOn(tx, organizationId, actor, args) {
+      const filed = await fileDocument(organizationId, actor, args, (fn) => fn(tx));
+      return {
+        documentId: filed.documentId,
+        versionId: filed.versionId,
+        versionNumber: filed.versionNumber,
+        mimeType: filed.mimeType,
+        byteSize: filed.byteSize,
+        sha256Hex: filed.sha256Hex,
+        discard: () => destroyQuietly(organizationId, filed.objectKey),
+      };
     },
 
     async createVersion(organizationId, actor, documentId, args) {

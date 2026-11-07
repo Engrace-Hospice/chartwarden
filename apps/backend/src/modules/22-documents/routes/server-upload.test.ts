@@ -174,6 +174,54 @@ describe("createServerUploadService.createDocument", () => {
   });
 });
 
+describe("createServerUploadService.createDocumentOn", () => {
+  // The caller's own transaction: a `withOrgContext` call would reach `db.tx` too in this harness, so the counter on the mock proves the
+  // service opened none of its own.
+  it("files on the caller's transaction without opening one, and reports what it verified", async () => {
+    const { db, inserts } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const mem = createInMemoryObjectStore();
+    const svc = createServerUploadService({ db: {} as DbClient, objects: mem.store });
+    const filed = await svc.createDocumentOn(tx, ORG, ACTOR, ARGS);
+    expect(filed).toMatchObject({
+      versionNumber: 1,
+      mimeType: "application/pdf",
+      byteSize: PDF.byteLength,
+      sha256Hex: sha(PDF),
+    });
+    expect(inserts.find((i) => i.table === schema.documents)?.values).toMatchObject({
+      organizationId: ORG,
+      createdByMembershipId: ACTOR.membershipId,
+    });
+    expect(mem.objects.size).toBe(1);
+  });
+
+  it("discard() removes the stored object (the caller's later step failed and its transaction rolled back)", async () => {
+    const { db } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const mem = createInMemoryObjectStore();
+    const svc = createServerUploadService({ db: {} as DbClient, objects: mem.store });
+    const filed = await svc.createDocumentOn(tx, ORG, ACTOR, ARGS);
+    await filed.discard();
+    expect(mem.objects.size).toBe(0);
+  });
+
+  it("removes the object itself when the insert fails, and still gates on the content first", async () => {
+    const { db } = fakeDb({ failInsertOn: schema.documentVersions });
+    const { tx } = db as unknown as { tx: DbClient };
+    const mem = createInMemoryObjectStore();
+    const svc = createServerUploadService({ db: {} as DbClient, objects: mem.store });
+    await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toThrow("boom");
+    expect(mem.objects.size).toBe(0);
+    await expect(
+      svc.createDocumentOn(tx, ORG, ACTOR, {
+        ...ARGS,
+        content: { bytes: new TextEncoder().encode("<html>"), mimeType: "application/pdf" },
+      }),
+    ).rejects.toMatchObject({ code: "UPLOAD_CONTENT_MISMATCH" });
+  });
+});
+
 describe("createServerUploadService.createVersion", () => {
   const DOC_ID = "44444444-4444-4444-8444-444444444444";
   const writable = { id: DOC_ID, status: "active", aggregateType: "other", activeVersionId: "v1" };
