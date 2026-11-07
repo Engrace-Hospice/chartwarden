@@ -30,6 +30,8 @@ export const DOSESPOT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   rule("m12.dosespot_degraded", "critical", null),
   // The paired notice (`alert` has no open/resolved state to auto-resolve).
   rule("m12.dosespot_recovered", "info", ["in_app"]),
+  // A NewRx call DoseSpot accepted but did not answer readably: the order is held (never retried) until a person checks DoseSpot (M36 `dosespot-alerts`).
+  rule("m12.medication_order.transmission_unconfirmed", "critical", null),
   // ADR-0110: a tenant's clinic registration stopped being active (deactivated, or its credential changed): newly signed orders activate
   // locally and queued ones wait. Raised directly by the clinic service after its commit; before this rule it reached nobody.
   rule("m12.dosespot_config.deactivated", "warn", null),

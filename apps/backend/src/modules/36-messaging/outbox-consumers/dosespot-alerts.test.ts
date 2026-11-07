@@ -90,6 +90,31 @@ describe("M36 dosespot-alerts consumer", () => {
     );
   });
 
+  it("turns a held transmission into a critical alert naming the order, with the way out in its sentence", () => {
+    const plan = planDosespotAlert(
+      event(
+        "m12.medication_order.transmission_unconfirmed",
+        { orderId: "order-1", lastErrorClass: "unconfirmed_outcome" },
+        "evt-3",
+      ),
+    );
+    expect(plan).toMatchObject({
+      alertType: "m12.medication_order.transmission_unconfirmed",
+      severity: "critical",
+      correlationId: "outbox:m12.medication_order.transmission_unconfirmed:evt-3",
+    });
+    expect(plan.payload).toMatchObject({
+      orderId: "order-1",
+      lastErrorClass: "unconfirmed_outcome",
+    });
+    expect(String(plan.payload.detail)).toMatch(/DoseSpot account/);
+    expect(() =>
+      planDosespotAlert(
+        event("m12.medication_order.transmission_unconfirmed", { lastErrorClass: "x" }),
+      ),
+    ).toThrow(/orderId/);
+  });
+
   it("refuses an event it does not own (the deactivation alert is raised directly, so a second path would page twice)", () => {
     expect(() => planDosespotAlert(event("m12.dosespot_config.deactivated", {}))).toThrow(
       /unexpected event/,
@@ -101,7 +126,11 @@ describe("M36 dosespot-alerts consumer", () => {
     const consumer = buildM36DosespotAlertConsumer({ emit } as unknown as AlertEmitter);
     expect(consumer.consumerModule).toBe("m36");
     expect(consumer.eventTypes).toEqual([...M36_DOSESPOT_ALERT_EVENT_TYPES]);
-    expect(consumer.eventTypes).toEqual(["m12.dosespot_degraded", "m12.dosespot_recovered"]);
+    expect(consumer.eventTypes).toEqual([
+      "m12.dosespot_degraded",
+      "m12.dosespot_recovered",
+      "m12.medication_order.transmission_unconfirmed",
+    ]);
     await consumer.handle(
       event("m12.dosespot_degraded", { ...opened, organizationId: "attacker-org" }),
     );

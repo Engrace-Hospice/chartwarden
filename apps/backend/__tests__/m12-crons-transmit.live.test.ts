@@ -12,6 +12,7 @@ import {
   DegradedError,
   type DoseSpotFetch,
   NotEnabledError,
+  UnconfirmedOutcomeError,
   createEnvTenantConfigResolver,
   createHttpDoseSpotClient,
   createLayeredTenantConfigResolver,
@@ -461,6 +462,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
             transmitted: 0,
             requeued: 0,
             failed: 0,
+            held: 0,
             deferredByOutage: 0,
             skippedConfigFault: 1,
           });
@@ -874,6 +876,103 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
     });
   });
 
+  // Review of slice 4, L-e: DoseSpot ACCEPTED the call (2xx) but its answer was unreadable or carried no id, so the prescription may already
+  // exist there. That is neither a failure (the order did not fail) nor a retry (a second send could dispense twice): it is held, in its
+  // own state, and an administrator is told once.
+  describe("an unconfirmed outcome is held, never failed and never re-sent", () => {
+    const unconfirmed = () =>
+      new UnconfirmedOutcomeError(
+        "dosespot",
+        "transmitNewRx",
+        "DoseSpot returned an unreadable response.",
+        "c-unconfirmed",
+      );
+    const sendsOf = (vendor: FakeDoseSpotVendor) =>
+      vendor.calls.filter((c) => c.method === "transmitNewRx").length;
+    const heldOrder = async () => {
+      await h.admin.query(
+        "DELETE FROM outbox_event WHERE event_type='m12.medication_order.transmission_unconfirmed'",
+      );
+      const { orderId, transmissionId } = await queued();
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async () => {
+          throw unconfirmed();
+        },
+      });
+      const pass = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+      return { orderId, transmissionId: transmissionId as string, vendor, pass };
+    };
+
+    it("the order stays in flight with its transmission row naming why: not failed, no retry spent, one event", async () => {
+      const { orderId, transmissionId, vendor, pass } = await heldOrder();
+      expect(pass).toMatchObject({ claimed: 1, held: 1, failed: 0, requeued: 0, transmitted: 0 });
+      expect(await orderRow(orderId)).toMatchObject({
+        status: "queued_for_transmission",
+        s: "in_flight",
+      });
+      const t = await txRow(transmissionId);
+      expect(t).toMatchObject({
+        last_error_class: "unconfirmed_outcome",
+        retry_count: 0,
+        transmission_failed_at: null,
+        transmission_succeeded_at: null,
+      });
+      expect(String(t.last_error_detail)).toMatch(/may already exist/);
+      expect(sendsOf(vendor)).toBe(1);
+      const events = await h.eventsOf("m12.medication_order.transmission_unconfirmed", ORG_A);
+      expect(events).toHaveLength(1);
+      expect(events[0]?.payload).toEqual({ orderId, lastErrorClass: "unconfirmed_outcome" });
+      const failed = await h.eventsOf("m12.medication_order.transmission_failed", ORG_A);
+      expect(failed.filter((e) => (e.payload as { orderId?: string }).orderId === orderId)).toEqual(
+        [],
+      );
+    });
+
+    it("neither the next tick nor the recovery drain (even long after the stale-claim window) sends it again", async () => {
+      const { orderId, vendor } = await heldOrder();
+      expect((await runTransmitNewRxForOrg(deps(vendor, minutes(120)), ORG_A)).claimed).toBe(0);
+      await h.admin.query(
+        "UPDATE medication_order SET updated_at = now() - interval '3 hours' WHERE id=$1",
+        [orderId],
+      );
+      const drain = await runRecoveryDrainForOrg(deps(vendor, minutes(240)), ORG_A);
+      expect(drain.released).toBe(0);
+      expect(drain.pass.claimed).toBe(0);
+      expect(sendsOf(vendor)).toBe(1);
+      expect(await orderRow(orderId)).toMatchObject({ s: "in_flight" });
+    });
+
+    it("a crashed worker's stale claim (no unconfirmed marker) is still released and re-sent: the hold is for the ambiguous outcome only", async () => {
+      const { orderId } = await queued();
+      await h.admin.query(
+        "UPDATE medication_order SET dosespot_send_state='in_flight', updated_at = now() - interval '3 hours' WHERE id=$1",
+        [orderId],
+      );
+      const vendor = new FakeDoseSpotVendor({});
+      const drain = await runRecoveryDrainForOrg(deps(vendor), ORG_A);
+      expect(drain.released).toBe(1);
+      expect(sendsOf(vendor)).toBe(1);
+    });
+
+    it("an ambiguous outcome among clean ones holds only its own order", async () => {
+      const first = await queued();
+      const second = await queued();
+      let calls = 0;
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async (_org, payload) => {
+          calls += 1;
+          if (payload.medicationOrderId === first.orderId) throw unconfirmed();
+          return { dosespotPrescriptionId: "rx-ok", transmittedAt: new Date().toISOString() };
+        },
+      });
+      const pass = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+      expect(calls).toBe(2);
+      expect(pass).toMatchObject({ claimed: 2, held: 1, transmitted: 1 });
+      expect((await orderRow(first.orderId)).s).toBe("in_flight");
+      expect((await orderRow(second.orderId)).status).toBe("transmitted");
+    });
+  });
+
   // Review of slice 4, M3: the episode memory is shared (Valkey), a recovery is announced by whichever process sees it, and a fault
   // in the store or the publish delays an alert but never drops one or fails a tick. The shared store here is a faithful in-memory
   // stand-in for the SET NX PX / PEXPIRE / DEL subset; the real Valkey is exercised by m12-episode-store.live.test.ts.
@@ -1111,6 +1210,39 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         expect(recovered).toHaveLength(1);
         expect(recovered[0]?.severity).toBe("info");
         expect(await recipientsOf(recovered[0]?.id as string)).toEqual([adminUserId]);
+      });
+
+      it("a held (unconfirmed) transmission pages the administrator once, critical, naming the order and nothing clinical", async () => {
+        await h.admin.query(
+          "DELETE FROM outbox_event WHERE event_type='m12.medication_order.transmission_unconfirmed'",
+        );
+        const patientId = await h.seedPatient(ORG_A, { synced: "501" });
+        const { orderId } = await h.seedOrder({
+          org: ORG_A,
+          patientId,
+          status: "queued_for_transmission",
+          sendState: "queued",
+        });
+        const vendor = new FakeDoseSpotVendor({
+          transmit: async () => {
+            throw new UnconfirmedOutcomeError("dosespot", "transmitNewRx", "no id", "c-held");
+          },
+        });
+        await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+        await dispatcher.tick();
+        await dispatcher.tick();
+        // earlier tests of this suite held orders of their own: this order's alert is the one named by its id
+        const held = await h.q(
+          "SELECT id, severity::text AS severity FROM alert WHERE organization_id=$1 AND event_type=$2 AND payload->>'orderId'=$3",
+          [ORG_A, "m12.medication_order.transmission_unconfirmed", orderId],
+        );
+        expect(held).toHaveLength(1);
+        expect(held[0]?.severity).toBe("critical");
+        expect(await recipientsOf(held[0]?.id as string)).toEqual([adminUserId]);
+        const payload = (await h.q("SELECT payload FROM alert WHERE id=$1", [held[0]?.id]))[0]
+          ?.payload as Record<string, unknown>;
+        expect(payload).toMatchObject({ orderId, lastErrorClass: "unconfirmed_outcome" });
+        expect(JSON.stringify(payload)).not.toMatch(/Morphine|patient/i);
       });
 
       it("the registration's deactivation alert (raised directly by the clinic service) now has a recipient too", async () => {

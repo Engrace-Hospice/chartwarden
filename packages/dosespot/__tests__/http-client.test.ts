@@ -506,6 +506,54 @@ describe("transmitNewRx", () => {
     expect(calls).toHaveLength(0);
   });
 
+  // Review of slice 4, L-e: a 2xx the adapter cannot use is AMBIGUOUS (the prescription may exist), the same class as an enrolment's.
+  it("a 2xx create with no prescription id, or an unreadable create or send answer, is an UNCONFIRMED outcome, never a permanent refusal", async () => {
+    const transmitWith = (override: Record<string, Responder>) =>
+      client({ ...routes([{ Id: 9001 }]), ...override })
+        .c.transmitNewRx(ORG, NEWRX, "idem-6")
+        .catch((e) => e);
+    const accepted: ReadonlyArray<readonly [string, Record<string, Responder>]> = [
+      [
+        "a create with no Id",
+        {
+          "POST /api/patients/501/prescriptions/coded": () => ({
+            status: 200,
+            body: { Result: { ResultCode: "OK" } },
+          }),
+        },
+      ],
+      [
+        "an unreadable create",
+        {
+          "POST /api/patients/501/prescriptions/coded": () => ({
+            status: 200,
+            text: "<html>gateway</html>",
+          }),
+        },
+      ],
+      [
+        "an unreadable send",
+        {
+          "POST /api/patients/501/prescriptions/send": () => ({
+            status: 200,
+            text: "<html>gateway</html>",
+          }),
+        },
+      ],
+    ];
+    for (const [name, override] of accepted) {
+      const err = await transmitWith(override);
+      expect(isUnconfirmedOutcomeError(err), name).toBe(true);
+      expect(err.retryable, name).toBe(false);
+    }
+    // a REFUSAL stays a plain permanent failure
+    const refused = await transmitWith({
+      "POST /api/patients/501/prescriptions/coded": () => ({ status: 422 }),
+    });
+    expect(refused).toBeInstanceOf(DegradedError);
+    expect(isUnconfirmedOutcomeError(refused)).toBe(false);
+  });
+
   it("surfaces a Result.ResultCode=ERROR body as a permanent failure", async () => {
     const r = routes([{ Id: 9001 }]);
     r["POST /api/patients/501/prescriptions/coded"] = () => ({

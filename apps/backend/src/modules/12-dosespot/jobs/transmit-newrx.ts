@@ -16,6 +16,12 @@
 //                       the queued-on-recovery drain exists for).
 //        failure    -> the §4.10 planner: re-queue while budget remains, else `transmission_failed` + event; a
 //                       permanent vendor rejection or an unfixable order exhausts immediately.
+//        unconfirmed -> DoseSpot ACCEPTED the call (2xx) but its answer was unreadable or carried no id: the prescription may already
+//                       exist there. The order is HELD, still `in_flight`, its transmission row naming why
+//                       ({@link UNCONFIRMED_OUTCOME_CLASS}): not failed (it did not fail), not re-queued, not retried, and skipped by the
+//                       stale-claim drain (a second send could dispense twice). `m12.medication_order.transmission_unconfirmed` is
+//                       published in the same transaction and M36 tells the tenant's administrators, who check the prescriber's DoseSpot
+//                       account and either find it sent or discontinue the order and sign a new one.
 // Nothing here ever marks an order transmitted without a real `DoseSpotNewRxResponse`.
 import { createHash } from "node:crypto";
 import { schema } from "@chartwarden/db";
@@ -25,11 +31,12 @@ import {
   isConfigUnavailableError,
   isDegradedError,
   isNotEnabledError,
+  isUnconfirmedOutcomeError,
   planTransmissionFailure,
   planTransmissionSuccess,
   transitionMedicationOrder,
 } from "@chartwarden/dosespot";
-import { and, asc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt, notExists, sql } from "drizzle-orm";
 import { type M12CronDeps, errorClassOf, inOrg, isCircuitOpenError, nowOf } from "./cron-common";
 import { reportDegradation, reportRecovery } from "./degradation-reports";
 import { DosespotSyncQueueRepository } from "./repository";
@@ -43,6 +50,8 @@ export const TRANSMIT_BATCH_SIZE = 25;
 export const RECOVERY_BATCH_SIZE = 100;
 /** An `in_flight` claim older than this is a crashed worker's; the recovery drain re-queues it. */
 export const IN_FLIGHT_STALE_MS = 10 * 60_000;
+/** The transmission row's `last_error_class` while an order is HELD for an outcome DoseSpot left unconfirmed. */
+export const UNCONFIRMED_OUTCOME_CLASS = "unconfirmed_outcome";
 const MAX_BACKOFF_MINUTES = 60;
 
 type OrderRow = typeof MO.$inferSelect;
@@ -53,6 +62,8 @@ export interface TransmitPassResult {
   readonly transmitted: number;
   readonly requeued: number;
   readonly failed: number;
+  /** Orders held because DoseSpot accepted the call but did not confirm what it created: neither retried nor failed. */
+  readonly held: number;
   readonly deferredByOutage: number;
   /** 1 when the org's config could not be read or opened, so the pass was skipped whole (no claim, no write); 0 otherwise. */
   readonly skippedConfigFault: number;
@@ -181,6 +192,7 @@ async function buildPayload(
 type Outcome =
   | { kind: "success"; prescriptionId: string; transmittedAt: Date }
   | { kind: "outage" }
+  | { kind: "unconfirmed"; detail: string }
   | {
       kind: "failure";
       errorClass: string;
@@ -226,6 +238,13 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
     if (isCircuitOpenError(error) || isNotEnabledError(error) || isConfigUnavailableError(error)) {
       return { kind: "outage" };
     }
+    // accepted but unreadable / no id: the prescription may exist, so the order is held, not failed and not retried
+    if (isUnconfirmedOutcomeError(error)) {
+      return {
+        kind: "unconfirmed",
+        detail: `${error.customerMessage} The prescription may already exist at DoseSpot.`,
+      };
+    }
     return {
       kind: "failure",
       errorClass: errorClassOf(error),
@@ -241,7 +260,7 @@ async function settle(
   organizationId: string,
   c: Claimed,
   outcome: Outcome,
-): Promise<"transmitted" | "requeued" | "failed" | "deferred"> {
+): Promise<"transmitted" | "requeued" | "failed" | "deferred" | "held"> {
   const now = nowOf(deps);
   return inOrg(deps.db, organizationId, async (tx) => {
     const orderId = c.order.id;
@@ -262,6 +281,22 @@ async function settle(
         .returning({ id: MO.id });
       if (back.length !== 1) throw new Error("order not in flight at outage release");
       return "deferred";
+    }
+
+    if (outcome.kind === "unconfirmed") {
+      // The order stays `in_flight` (nothing re-claims it: the claim takes only `queued`, and the drain skips this class); only the row
+      // that says why, and the event that tells a person, are written. No retry is spent and no failure timestamp is set.
+      const held = await tx
+        .update(MOT)
+        .set({ lastErrorClass: UNCONFIRMED_OUTCOME_CLASS, lastErrorDetail: outcome.detail })
+        .where(eq(MOT.id, c.transmission.id))
+        .returning({ id: MOT.id });
+      if (held.length !== 1) throw new Error("transmission row not updated at unconfirmed hold");
+      await emit("m12.medication_order.transmission_unconfirmed", {
+        orderId,
+        lastErrorClass: UNCONFIRMED_OUTCOME_CLASS,
+      });
+      return "held";
     }
 
     if (outcome.kind === "success") {
@@ -410,6 +445,7 @@ export async function runTransmitNewRxForOrg(
       transmitted: 0,
       requeued: 0,
       failed: 0,
+      held: 0,
       deferredByOutage: 0,
       skippedConfigFault: 1,
     };
@@ -419,6 +455,7 @@ export async function runTransmitNewRxForOrg(
   let transmitted = 0;
   let requeued = 0;
   let failed = 0;
+  let held = 0;
   let deferredByOutage = 0;
   for (const c of claimed) {
     const outcome = await attemptOne(deps, organizationId, c);
@@ -426,6 +463,7 @@ export async function runTransmitNewRxForOrg(
     if (result === "transmitted") transmitted += 1;
     else if (result === "requeued") requeued += 1;
     else if (result === "failed") failed += 1;
+    else if (result === "held") held += 1;
     else deferredByOutage += 1;
   }
   return {
@@ -433,6 +471,7 @@ export async function runTransmitNewRxForOrg(
     transmitted,
     requeued,
     failed,
+    held,
     deferredByOutage,
     skippedConfigFault: 0,
   };
@@ -440,7 +479,7 @@ export async function runTransmitNewRxForOrg(
 
 /**
  * `dosespot.transmit_queued_on_recovery` (§4.8 / D11): re-queue claims a crashed worker abandoned (`in_flight`
- * past {@link IN_FLIGHT_STALE_MS}), then drain the accumulated `queued` backlog with the larger recovery batch.
+ * past {@link IN_FLIGHT_STALE_MS}, except an order HELD for an unconfirmed outcome), then drain the accumulated `queued` backlog with the larger recovery batch.
  * Returns how many stale claims were released.
  */
 export async function runRecoveryDrainForOrg(
@@ -458,6 +497,18 @@ export async function runRecoveryDrainForOrg(
           eq(MO.status, "queued_for_transmission"),
           eq(MO.dosespotSendState, "in_flight"),
           lt(MO.updatedAt, cutoff),
+          // an order HELD for an unconfirmed outcome is not a crashed worker's claim: re-queueing it would send it again
+          notExists(
+            tx
+              .select({ one: sql`1` })
+              .from(MOT)
+              .where(
+                and(
+                  eq(MOT.medicationOrderId, MO.id),
+                  eq(MOT.lastErrorClass, UNCONFIRMED_OUTCOME_CLASS),
+                ),
+              ),
+          ),
         ),
       )
       .returning({ id: MO.id });

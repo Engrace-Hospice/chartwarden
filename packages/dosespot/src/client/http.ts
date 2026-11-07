@@ -509,9 +509,11 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         );
         prescriptionId = identifierOf(created);
         if (prescriptionId === undefined) {
-          throw degraded(
+          // accepted (2xx) with no id: the prescription may exist at DoseSpot, so the outcome is AMBIGUOUS, not a refusal (a worker holds the
+          // order for a person instead of failing it, and never re-sends it)
+          throw new UnconfirmedOutcomeError(
+            "dosespot",
             "transmitNewRx",
-            false,
             "DoseSpot returned no prescription id.",
             correlationId,
           );

@@ -242,6 +242,18 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m12.medication_order.transmission_unconfirmed",
+    moduleOwner: "m12",
+    description:
+      "DoseSpot accepted a NewRx call but its answer was unreadable or carried no prescription id, so the prescription may already exist there. The order is HELD in flight (never failed, never retried, never re-sent) for a person to check the prescriber's DoseSpot account; M36 alerts the tenant's administrators. Ids only.",
+    payloadSchema: Type.Object({
+      orderId: id,
+      lastErrorClass: Type.String(),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m12.medication_order.transmission_failed",
     moduleOwner: "m12",
     description:

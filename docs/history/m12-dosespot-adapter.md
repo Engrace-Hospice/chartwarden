@@ -140,6 +140,14 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   every replica: a restart does not re-alert, and the replica that sees the recovery announces it whichever one raised the alert. An unreachable
   store or a failed publish delays an alert or a recovery to the next tick, never drops it. The circuit breaker's own edges are still paired
   in-process (a restart while a breaker is open leaves that alert without its recovery notice).
+- An outcome DoseSpot left unconfirmed (review of slice 4, L-e): a 2xx that is unreadable or carries no prescription id means the prescription
+  may already exist there, so `transmitNewRx` neither fails the order nor retries it (a second send could dispense twice). The order is HELD:
+  still `queued_for_transmission` / `in_flight`, its transmission row `last_error_class = 'unconfirmed_outcome'` with a detail line, no retry
+  spent, skipped by the claim and by the stale-claim drain. `m12.medication_order.transmission_unconfirmed` is published in the same transaction
+  and M36's `dosespot-alerts` pages the tenant's administrators once, naming the order. The way out is a person's: check the prescriber's
+  DoseSpot account (found there = it was sent; not there = discontinue the order and sign a new one). There is no resolve action in the product
+  yet, and a held order stays `in_flight` until someone acts. (The same 2xx-but-no-id ambiguity after the create step used to be a permanent
+  refusal; it is now this class, like an enrolment's.)
 - A tenant with an outage longer than ~31 minutes of real failed attempts sees orders land in `transmission_failed`; the existing
   `retransmit` route mints the corrected order. Breaker-open ticks do not count.
 - Live proof: `test:m12:crons-transmit:live` and `test:m12:crons-housekeeping:live` (CI job "M12 DoseSpot crons"), run against a

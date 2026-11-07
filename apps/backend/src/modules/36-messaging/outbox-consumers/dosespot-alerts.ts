@@ -4,6 +4,8 @@
 //
 //   m12.dosespot_degraded   -> m12.dosespot_degraded   critical  (seeded tenant_admins rule)
 //   m12.dosespot_recovered  -> m12.dosespot_recovered  info      (seeded tenant_admins rule)
+//   m12.medication_order.transmission_unconfirmed -> the same name  critical  (seeded tenant_admins rule): DoseSpot accepted a NewRx call
+//                           but did not answer readably, so the order is HELD (never retried) until a person checks the prescriber's DoseSpot account
 //
 // `m12.dosespot_config.deactivated` is NOT consumed here: the clinic service raises that alert directly after its commit, so a second
 // path would page twice (its seeded rule is in the same file as these two).
@@ -26,6 +28,7 @@ export const M36_DOSESPOT_ALERT_CONSUMER = "m36.dosespot-alerts" as const;
 export const M36_DOSESPOT_ALERT_EVENT_TYPES = [
   "m12.dosespot_degraded",
   "m12.dosespot_recovered",
+  "m12.medication_order.transmission_unconfirmed",
 ] as const;
 
 export interface DosespotAlertPlan {
@@ -46,6 +49,8 @@ const BREAKER_DETAIL =
   "E-prescribing through DoseSpot is temporarily unavailable. New prescriptions wait in the queue and are sent automatically when the service recovers.";
 const RECOVERED_DETAIL =
   "The earlier DoseSpot e-prescribing problem has cleared. Queued prescriptions are being sent.";
+const UNCONFIRMED_DETAIL =
+  "DoseSpot accepted this prescription request but its answer could not be read, so the prescription may already exist there. ChartWarden is holding the order and will not send it again. Check the prescriber's DoseSpot account: if the prescription is there, the order was sent; if it is not, discontinue this order and sign a new one.";
 
 function requireString(p: Record<string, unknown>, key: string, eventName: string): string {
   const v = p[key];
@@ -84,6 +89,16 @@ export function planDosespotAlert(event: DispatchableOutboxEvent): DosespotAlert
       severity: "info",
       correlationId: `outbox:${name}:${event.id}`,
       payload: { eventType: name, breakerName, closedAt, detail: RECOVERED_DETAIL },
+    };
+  }
+  if (name === "m12.medication_order.transmission_unconfirmed") {
+    const orderId = requireString(p, "orderId", name);
+    const lastErrorClass = requireString(p, "lastErrorClass", name);
+    return {
+      alertType: name,
+      severity: "critical",
+      correlationId: `outbox:${name}:${event.id}`,
+      payload: { eventType: name, orderId, lastErrorClass, detail: UNCONFIRMED_DETAIL },
     };
   }
   throw new Error(`${M36_DOSESPOT_ALERT_CONSUMER}: unexpected event ${name}`);
