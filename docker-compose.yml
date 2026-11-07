@@ -82,7 +82,8 @@ services:
   # the first boot downloads it (a minute or two), during which the healthcheck is "starting". api/worker only wait for
   # the container to START, never for it to be healthy: until clamd answers, attachments simply stay `pending`
   # (nothing is delivered), and unrelated boot paths never fail on a signature download. clamav/clamav-debian is
-  # multi-arch (the alpine clamav/clamav image has no arm64 build).
+  # multi-arch (the alpine clamav/clamav image has no arm64 build), so dev keeps it for Apple Silicon; production runs
+  # the amd64-only alpine clamav/clamav (deploy/production/compose.yml), same engine version and /init entrypoint.
   clamav:
     image: clamav/clamav-debian:1.4
     # clamd loads the whole signature set (a reload briefly doubles it): bound it so a scan flood or a bad update
