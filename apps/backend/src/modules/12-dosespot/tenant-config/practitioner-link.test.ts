@@ -39,6 +39,7 @@ function build(
           externalPhysicianMdmId: MDM,
           linkConfirmedMdmId: null,
           linkConfirmedNpi: null,
+          linkConfirmedByMembershipId: null,
           ...opts.row,
         };
   const audits: {
@@ -59,7 +60,12 @@ function build(
       if (!roster || roster.membershipId !== membershipId) return null;
       if (roster.revokedAt !== null || roster.externalPhysicianMdmId !== input.mdmId) return null;
       confirmed.push({ by: membershipId, mdmId: input.mdmId, npi: input.npi });
-      roster = { ...roster, linkConfirmedMdmId: input.mdmId, linkConfirmedNpi: input.npi };
+      roster = {
+        ...roster,
+        linkConfirmedMdmId: input.mdmId,
+        linkConfirmedNpi: input.npi,
+        linkConfirmedByMembershipId: membershipId,
+      };
       return roster;
     },
   } as unknown as RosterStore;
@@ -144,14 +150,29 @@ describe("what the prescriber is shown", () => {
   });
 
   it("is confirmed only while the confirmation matches the CURRENT link and the record's CURRENT NPI", async () => {
-    const h = build({ row: { linkConfirmedMdmId: MDM, linkConfirmedNpi: NPI } });
+    const h = build({
+      row: { linkConfirmedMdmId: MDM, linkConfirmedNpi: NPI, linkConfirmedByMembershipId: ME },
+    });
     expect((await h.service.view(actor())).confirmed).toBe(true);
     h.setRoster({ ...(h.roster() as RosterRow), externalPhysicianMdmId: OTHER_MDM }); // re-linked: the old confirmation is no longer this link's
     expect((await h.service.view(actor())).confirmed).toBe(false);
     const changedNpi = build({
-      row: { linkConfirmedMdmId: MDM, linkConfirmedNpi: "1000000004" },
+      row: {
+        linkConfirmedMdmId: MDM,
+        linkConfirmedNpi: "1000000004",
+        linkConfirmedByMembershipId: ME,
+      },
     });
     expect((await changedNpi.service.view(actor())).confirmed).toBe(false); // the record's NPI is no longer the one they confirmed
+    // a confirmation recorded as made by SOMEONE ELSE does not count, whatever else matches
+    const byAnother = build({
+      row: {
+        linkConfirmedMdmId: MDM,
+        linkConfirmedNpi: NPI,
+        linkConfirmedByMembershipId: SOMEONE_ELSE,
+      },
+    });
+    expect((await byAnother.service.view(actor())).confirmed).toBe(false);
   });
 });
 

@@ -789,12 +789,24 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     const member = member2Of[ORG_A] as string;
     const mdmC = "99999999-0000-4000-8000-00000000000c";
     const mdmD = "99999999-0000-4000-8000-00000000000d";
-    const confirm = (mdm: string) =>
-      admin.query(
-        `UPDATE dosespot_prescriber SET link_confirmed_mdm_id=$2, link_confirmed_npi='1234567893', link_confirmed_at=now(),
-           link_confirmed_by_membership_id=membership_id WHERE membership_id=$1`,
-        [member, mdm],
-      );
+    // the confirmation trigger wants the declared actor (`app.user_id`) to be the member's own user, whoever writes
+    const memberUser = (await admin.query("SELECT user_id FROM membership WHERE id=$1", [member]))
+      .rows[0]?.user_id as string;
+    const confirm = async (mdm: string) => {
+      await admin.query("BEGIN");
+      try {
+        await admin.query("SELECT set_config('app.user_id', $1, true)", [memberUser]);
+        await admin.query(
+          `UPDATE dosespot_prescriber SET link_confirmed_mdm_id=$2, link_confirmed_npi='1234567893', link_confirmed_at=now(),
+             link_confirmed_by_membership_id=membership_id WHERE membership_id=$1`,
+          [member, mdm],
+        );
+        await admin.query("COMMIT");
+      } catch (error) {
+        await admin.query("ROLLBACK");
+        throw error;
+      }
+    };
     const confirmed = async () =>
       (
         await admin.query(

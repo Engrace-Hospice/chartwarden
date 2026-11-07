@@ -119,10 +119,12 @@ export function registerTenantDoseSpotRoutes(
     );
   }
 
-  // GET / POST …/confirm — the PRESCRIBER confirms, from their own account, that the physician record the roster linked them to is theirs.
-  // They are shown its name and NPI; the confirmation is pinned to that link and NPI (409 DOSESPOT_ROSTER_CHANGED if either moved) and
-  // the vendor enrolment, on the tenant and the operator lane alike, is refused until one exists for the current link. Never on behalf of
-  // another member: the session's own membership is the roster row.
+  // GET (a read: `prescribing.sign` only, NOT step-up gated) and POST …/confirm (`prescribing.sign` + a fresh step-up + a human actor +
+  // an Idempotency-Key): the PRESCRIBER confirms, from their own account, that the physician record the roster linked them to is theirs.
+  // The GET shows them its name and NPI; the confirmation is pinned to that link and NPI (409 DOSESPOT_ROSTER_CHANGED if either moved),
+  // and the vendor enrolment, on the tenant and the operator lane alike, is refused until one by the row's own member exists for the
+  // current link. These handlers cannot be pointed at another member (the session's own membership is the roster row), there is no
+  // platform route, and the database refuses a confirmation written under a different declared user (migration 1384).
   if (deps.linkService) {
     const link = deps.linkService;
     app.get(

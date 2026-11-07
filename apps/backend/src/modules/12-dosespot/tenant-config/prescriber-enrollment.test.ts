@@ -22,6 +22,7 @@ import {
   type RosterRow,
   type RosterStore,
   createPrescriberEnrollmentService,
+  linkConfirmedBy,
 } from "./prescriber-enrollment";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -78,6 +79,7 @@ function build(
           // the prescriber has confirmed THIS link and the NPI they were shown (the default; the refusals override it)
           linkConfirmedMdmId: MDM,
           linkConfirmedNpi: NPI,
+          linkConfirmedByMembershipId: MEMBER,
           ...opts.row,
         };
   const store: RosterStore = {
@@ -92,9 +94,10 @@ function build(
       log.push("ensureRequested");
       if (
         !roster ||
-        roster.externalPhysicianMdmId !== expected.physicianMdmId ||
-        roster.linkConfirmedMdmId !== expected.physicianMdmId ||
-        roster.linkConfirmedNpi !== expected.confirmedNpi
+        !linkConfirmedBy(roster, {
+          physicianMdmId: expected.physicianMdmId,
+          npi: expected.confirmedNpi,
+        })
       ) {
         throw new ChartWardenError("DOSESPOT_ROSTER_CHANGED", "the roster changed", 409);
       }
@@ -119,7 +122,14 @@ function build(
     },
     async recordVendorId(_org, membershipId, input) {
       log.push("recordVendorId");
-      if (roster && roster.externalPhysicianMdmId !== input.expectedPhysicianMdmId) {
+      if (
+        roster &&
+        (roster.externalPhysicianMdmId !== input.expectedPhysicianMdmId ||
+          !linkConfirmedBy(roster, {
+            physicianMdmId: input.expectedPhysicianMdmId,
+            npi: input.npi,
+          }))
+      ) {
         throw new ChartWardenError("DOSESPOT_ROSTER_CHANGED", "the roster changed", 409);
       }
       if (roster?.revokedAt) {
@@ -310,7 +320,9 @@ describe("prescriber vendor enrolment", () => {
 
   it("is refused (409) until the PRESCRIBER has confirmed the linked record: nothing is claimed or sent", async () => {
     const cases: Array<Partial<RosterRow>> = [
-      { linkConfirmedMdmId: null, linkConfirmedNpi: null }, // never confirmed
+      { linkConfirmedMdmId: null, linkConfirmedNpi: null, linkConfirmedByMembershipId: null }, // never confirmed
+      { linkConfirmedByMembershipId: "44444444-4444-4444-8444-444444444445" }, // "confirmed" by someone who is not the row's member
+      { linkConfirmedByMembershipId: null }, // no confirmer recorded
       { linkConfirmedMdmId: "66666666-6666-4666-8666-666666666666" }, // confirmed another record: the link was changed since
       { linkConfirmedNpi: "1000000004" }, // confirmed another NPI: the record's NPI is no longer the one they were shown
     ];
@@ -580,6 +592,26 @@ describe("prescriber vendor enrolment", () => {
       cause: "Error",
     });
     expect(JSON.stringify(h.warned)).not.toContain("secret-bound-value");
+  });
+
+  it("recording the vendor id is refused (409) when the prescriber's confirmation was cleared while the vendor call was in flight", async () => {
+    const h = build({
+      vendor: async () => {
+        // a revoke (or a re-link back and forth) clears the confirmation while DoseSpot is being called
+        h.setRoster({
+          ...(h.roster() as RosterRow),
+          linkConfirmedMdmId: null,
+          linkConfirmedNpi: null,
+          linkConfirmedByMembershipId: null,
+        });
+        return { dosespotPrescriberId: "704", epcsEnrollmentStarted: false };
+      },
+    });
+    await expect(h.service.enroll(ACTOR, MEMBER)).rejects.toMatchObject({
+      code: "DOSESPOT_ROSTER_CHANGED",
+    });
+    expect(h.roster()?.dosespotPrescriberId).toBeNull();
+    expect(h.published).toEqual([]);
   });
 
   it("recording the vendor id is refused (409) when the roster re-linked the member to another physician while the vendor call was in flight", async () => {

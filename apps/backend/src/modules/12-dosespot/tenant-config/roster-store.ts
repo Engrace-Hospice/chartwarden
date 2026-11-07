@@ -3,8 +3,8 @@
 // environment are read from `dosespot_clinic_registration`; the roster row is `dosespot_prescriber` (M12-owned, both).
 import { type DbClient, schema } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
-import { and, eq, isNull } from "drizzle-orm";
-import type { RosterRow, RosterStore } from "./prescriber-enrollment";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { type RosterRow, type RosterStore, linkConfirmedBy } from "./prescriber-enrollment";
 
 const R = schema.dosespotClinicRegistrations;
 const P = schema.dosespotPrescribers;
@@ -27,6 +27,7 @@ const toRow = (r: typeof P.$inferSelect): RosterRow => ({
   externalPhysicianMdmId: r.externalPhysicianMdmId,
   linkConfirmedMdmId: r.linkConfirmedMdmId,
   linkConfirmedNpi: r.linkConfirmedNpi,
+  linkConfirmedByMembershipId: r.linkConfirmedByMembershipId,
 });
 
 export function createDrizzleRosterStore(tx: DbClient): RosterStore {
@@ -74,9 +75,10 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
       // roster edit since then (a re-link or a revoke clears the confirmation) voids both
       if (
         !existing ||
-        existing.externalPhysicianMdmId !== expected.physicianMdmId ||
-        existing.linkConfirmedMdmId !== expected.physicianMdmId ||
-        existing.linkConfirmedNpi !== expected.confirmedNpi
+        !linkConfirmedBy(toRow(existing), {
+          physicianMdmId: expected.physicianMdmId,
+          npi: expected.confirmedNpi,
+        })
       ) {
         throw rosterChanged();
       }
@@ -153,6 +155,10 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
             eq(P.membershipId, membershipId),
             isNull(P.revokedAt), // revoked while the vendor call was in flight: never link a revoked prescriber
             mdmMatches, // re-linked to another physician meanwhile: the NPI sent to the vendor is not this member's any more
+            // and the member's own confirmation of that record and NPI must still stand (a re-link or a revoke clears it)
+            eq(P.linkConfirmedMdmId, input.expectedPhysicianMdmId ?? sql`NULL`),
+            eq(P.linkConfirmedNpi, input.npi),
+            eq(P.linkConfirmedByMembershipId, P.membershipId),
           ),
         )
         .returning();

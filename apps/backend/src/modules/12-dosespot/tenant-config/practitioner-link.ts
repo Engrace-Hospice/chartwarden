@@ -2,15 +2,26 @@
 // roster administrator linked them to (ADR-0110 D9). The DoseSpot enrolment sends the linked record's NPI and legal name to the vendor;
 // the administrator cannot choose either (they come from the NPPES-sourced record), but the LINK ("this member is that physician") was
 // still one person's word about another. So the member, signed in as themself with a fresh step-up, is shown the record's name and NPI
-// and confirms them, pinned to the link and the NPI they were shown; enrolment on both lanes is refused until a confirmation matches the
-// CURRENT link and the record's CURRENT NPI. The confirmer is always the roster row's own member (the actor's membership IS the key, and
-// a CHECK on the table refuses anyone else's), so neither another member nor a platform operator can confirm on someone's behalf.
-// Audited with ids only: never the NPI or the name.
+// and confirms them, pinned to the link and the NPI they were shown, and enrolment on both lanes is refused until a confirmation by the
+// row's own member matches the CURRENT link and the record's CURRENT NPI.
+//
+// WHAT IS ENFORCED WHERE (exactly):
+//   here + the route   the actor's membership IS the key (`rosterRow(own membership)`), so this service cannot be pointed at another
+//                      member's row; the route (the member's own session, `prescribing.sign`, a fresh step-up, a human actor,
+//                      an Idempotency-Key) is the only entry point and there is no platform route. This is application code.
+//   the table          a CHECK binds the recorded confirmer to the row's own member (`by = membership_id`, no NULL operand), whoever wrote it.
+//   the trigger        a write that sets or changes a confirmation is refused unless the transaction's declared actor (`app.user_id`,
+//                      which `withOrgContext` sets from the session) is that member's own user: an operator-lane transaction, an
+//                      administrator's request or a worker cannot do it. It is not authentication: code that can set the GUC could
+//                      declare any user, so it relies on the application never declaring anyone but the session's user.
+//   the enrolment gate the confirmation must be by the row's own member, of the current link and NPI, at the claim and again at the record.
+// Audited with ids only (the roster row, the physician record, the actor) in a row the write-audit trigger of this table also takes;
+// that row, like any column of the table, carries the NPI (public provider data), so "ids only" describes this service's own entry.
 import type { DbClient } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
 import { CLINIC_AUDIT_EVENTS, type ClinicAuditPort } from "./audit-port";
 import type { PractitionerDirectoryPort, PractitionerProfileSource } from "./practitioner-profile";
-import type { RosterRow, RosterStore } from "./prescriber-enrollment";
+import { type RosterRow, type RosterStore, linkConfirmedBy } from "./prescriber-enrollment";
 
 export interface PractitionerLinkView {
   readonly membershipId: string;
@@ -118,8 +129,7 @@ export function createPractitionerLinkService(deps: PractitionerLinkDeps): Pract
       physician,
       confirmed:
         physician !== null &&
-        row.linkConfirmedMdmId === row.externalPhysicianMdmId &&
-        row.linkConfirmedNpi === physician.npi,
+        linkConfirmedBy(row, { physicianMdmId: row.externalPhysicianMdmId, npi: physician.npi }),
     };
   }
 

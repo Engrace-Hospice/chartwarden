@@ -41,6 +41,29 @@ export interface RosterRow {
   /** What the PRESCRIBER confirmed from their own account: the record, and the NPI they were shown (null = never confirmed). */
   readonly linkConfirmedMdmId: string | null;
   readonly linkConfirmedNpi: string | null;
+  /** WHO confirmed it: counts only when it is the row's own membership (the CHECK and the trigger say so too; the gate re-checks). */
+  readonly linkConfirmedByMembershipId: string | null;
+}
+
+/** Has the row's OWN member confirmed `physicianMdmId` and `npi`? The one test the claim, the view and the enrolment gate share. */
+export function linkConfirmedBy(
+  row: Pick<
+    RosterRow,
+    | "membershipId"
+    | "externalPhysicianMdmId"
+    | "linkConfirmedMdmId"
+    | "linkConfirmedNpi"
+    | "linkConfirmedByMembershipId"
+  >,
+  expected: { readonly physicianMdmId: string | null; readonly npi: string },
+): boolean {
+  return (
+    expected.physicianMdmId !== null &&
+    row.externalPhysicianMdmId === expected.physicianMdmId &&
+    row.linkConfirmedMdmId === expected.physicianMdmId &&
+    row.linkConfirmedNpi === expected.npi &&
+    row.linkConfirmedByMembershipId === row.membershipId
+  );
 }
 
 /** The link a profile was derived from, and the NPI it carried: what the claim re-checks under the row lock. */
@@ -95,7 +118,11 @@ export interface RosterStore {
       readonly dosespotPrescriberId: string;
       readonly npi: string;
       readonly at: Date;
-      /** The physician record the NPI came from: the row must still link it (409 DOSESPOT_ROSTER_CHANGED otherwise). */
+      /**
+       * The physician record the NPI came from: the row must still link it AND still carry the member's own confirmation of it and of
+       * `npi` (409 DOSESPOT_ROSTER_CHANGED otherwise): a re-link, a revoke or a cleared confirmation while the vendor call ran stops
+       * the vendor id being linked under an NPI nobody confirmed.
+       */
       readonly expectedPhysicianMdmId: string | null;
     },
   ): Promise<RosterRow>;
@@ -269,14 +296,10 @@ export function createPrescriberEnrollmentService(
     });
     // The roster administrator's link is one person's assertion about another: the PRESCRIBER must have confirmed THIS link and the NPI
     // the record carries now (a re-link clears it, and a record whose NPI changed is no longer what they confirmed).
-    if (
-      seen.row === null ||
-      physicianMdmId === null ||
-      seen.row.linkConfirmedMdmId !== physicianMdmId ||
-      seen.row.linkConfirmedNpi !== profile.npi
-    ) {
+    if (seen.row === null || !linkConfirmedBy(seen.row, { physicianMdmId, npi: profile.npi })) {
       throw unconfirmed();
     }
+    if (physicianMdmId === null) throw unconfirmed(); // unreachable (linkConfirmedBy refused it); narrows the type
     const expected: ExpectedLink = { physicianMdmId, confirmedNpi: profile.npi };
     const claim = await deps.inTx(organizationId, userId, async (store) => {
       const { row, inProgress } = await store.ensureRequested(

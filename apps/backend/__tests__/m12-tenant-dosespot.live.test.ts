@@ -317,6 +317,18 @@ describe.skipIf(!DB_URL)(
       }
       return { id, npi, firstName, lastName };
     }
+    /** One statement on the admin connection with `app.user_id` declared as `userId` for its transaction (what `withOrgContext` does). */
+    async function asDeclaredUser(userId: string, text: string, params: unknown[] = []) {
+      await admin.query("BEGIN");
+      try {
+        await admin.query("SELECT set_config('app.user_id', $1, true)", [userId]);
+        await admin.query(text, params);
+        await admin.query("COMMIT");
+      } catch (error) {
+        await admin.query("ROLLBACK");
+        throw error;
+      }
+    }
     /**
      * Put `membershipId` on `org`'s roster, linked to a fresh practitioner record (what the roster `enroll` route does). By default the
      * PRESCRIBER has already confirmed the link (the state an enrolment needs, written directly so the enrolment cases stay about
@@ -334,7 +346,11 @@ describe.skipIf(!DB_URL)(
         [org, membershipId, linked.id],
       );
       if (opts.confirmed !== false && linked.npi !== null) {
-        await admin.query(
+        // the trigger wants the declared actor to be the member's own user, whoever writes: so the seed declares it
+        const userId = (await q("SELECT user_id FROM membership WHERE id=$1", [membershipId]))[0]
+          ?.user_id as string;
+        await asDeclaredUser(
+          userId,
           `UPDATE dosespot_prescriber SET link_confirmed_mdm_id=$2, link_confirmed_npi=$3, link_confirmed_at=now(),
              link_confirmed_by_membership_id=membership_id WHERE membership_id=$1`,
           [membershipId, linked.id, linked.npi],
@@ -1057,7 +1073,7 @@ describe.skipIf(!DB_URL)(
         expect(sent).toContain(physician1.lastName);
         const row = (await q("SELECT * FROM dosespot_prescriber WHERE membership_id=$1", [M1]))[0];
         expect(row?.npi).toBe(physician1.npi); // the profile's NPI is the one recorded
-        expect(row?.dosespot_prescriber_id).toMatch(/^70\d$/);
+        expect(row?.dosespot_prescriber_id).toMatch(/^7\d{2}$/);
         expect(row?.vendor_enrollment_requested_at).not.toBeNull();
         const events = await eventsOf("m12.prescriber_enrolled", ORG_A);
         expect(events.at(-1)?.payload).toEqual({
@@ -1336,7 +1352,7 @@ describe.skipIf(!DB_URL)(
               [member],
             )
           )[0]?.dosespot_prescriber_id,
-        ).toMatch(/^70\d$/);
+        ).toMatch(/^7\d{2}$/);
       });
 
       it("two concurrent enrolments of a member who is NOT on the roster are both refused (409): the roster is the only way in", async () => {
@@ -1406,7 +1422,7 @@ describe.skipIf(!DB_URL)(
           [member, other.id],
         );
         const vendorId = await enrollment.callVendor(plan);
-        expect(vendorId).toMatch(/^70\d$/); // the vendor created the clinician under the OLD physician's NPI...
+        expect(vendorId).toMatch(/^7\d{2}$/); // the vendor created the clinician under the OLD physician's NPI...
         const actor = tenantActor(ORG_A);
         const code = await errorCode(
           withOrgContext(tdb, { organizationId: ORG_A, userId: TENANT_ADMIN }, (tx) =>
@@ -1458,7 +1474,7 @@ describe.skipIf(!DB_URL)(
           [member],
         );
         const vendorId = await enrollment.callVendor(plan);
-        expect(vendorId).toMatch(/^70\d$/); // the vendor DID create the clinician...
+        expect(vendorId).toMatch(/^7\d{2}$/); // the vendor DID create the clinician...
         const actor = tenantActor(ORG_A);
         const code = await errorCode(
           withOrgContext(tdb, { organizationId: ORG_A, userId: TENANT_ADMIN }, (tx) =>
@@ -1689,16 +1705,155 @@ describe.skipIf(!DB_URL)(
             ),
           ),
         ).toBe("DOSESPOT_PRACTITIONER_NOT_LINKED");
-        // and no id of another member is accepted anywhere: the table itself refuses a confirmer who is not the row's member
-        const err = await admin
-          .query(
-            "UPDATE dosespot_prescriber SET link_confirmed_mdm_id=$2, link_confirmed_npi=$3, link_confirmed_at=now(), link_confirmed_by_membership_id=$4 WHERE membership_id=$1",
-            [theirs.membershipId, theirs.physician.id, theirs.physician.npi, mine.membershipId],
-          )
-          .then(() => "")
-          .catch((e: Error) => e.message);
-        expect(err).toContain("dosespot_prescriber_link_confirmation_ck");
         expect((await confirmationOf(theirs.membershipId))?.mdm).toBeNull();
+      });
+
+      const errText = (e: unknown) =>
+        [(e as Error).message, ((e as Error).cause as Error | undefined)?.message].join(" ");
+      const directConfirm = (
+        declared: { userId: string; systemActor?: true },
+        m: { membershipId: string; physician: SeededPhysician },
+      ) =>
+        withOrgContext(tdb, { organizationId: ORG_A, ...declared }, (tx) =>
+          (tx as unknown as DbClient).execute(
+            sql`UPDATE dosespot_prescriber SET link_confirmed_mdm_id=${m.physician.id}, link_confirmed_npi=${m.physician.npi},
+                  link_confirmed_at=now(), link_confirmed_by_membership_id=${m.membershipId}
+                WHERE membership_id=${m.membershipId}`,
+          ),
+        );
+
+      it("the database refuses a confirmation written under ANOTHER declared user (a direct UPDATE as the application role), and accepts the member acting as themself", async () => {
+        const m = await unconfirmedMember();
+        // the application role, declared as a tenant administrator, as the platform operator, and as the empty system actor
+        for (const declared of [
+          { userId: TENANT_ADMIN },
+          { userId: OPERATOR },
+          { userId: "", systemActor: true as const },
+        ]) {
+          const err = await directConfirm(declared, m).then(
+            () => "",
+            (e: unknown) => errText(e),
+          );
+          expect(err, JSON.stringify(declared)).toContain(
+            "a link confirmation can only be set by the member it belongs to",
+          );
+          expect((await confirmationOf(m.membershipId))?.mdm).toBeNull();
+        }
+        // the member, declared as themself, may: that is the route's own path
+        await directConfirm({ userId: m.userId }, m);
+        expect(await confirmationOf(m.membershipId)).toEqual({
+          mdm: m.physician.id,
+          npi: m.physician.npi,
+          by: m.membershipId,
+        });
+        // an UNRELATED update of the confirmed row (any actor) is not a confirmation and is not refused
+        await withOrgContext(tdb, { organizationId: ORG_A, userId: TENANT_ADMIN }, (tx) =>
+          (tx as unknown as DbClient).execute(
+            sql`UPDATE dosespot_prescriber SET dea_authorized_schedules = ARRAY['II']::text[] WHERE membership_id=${m.membershipId}`,
+          ),
+        );
+        expect((await confirmationOf(m.membershipId))?.mdm).toBe(m.physician.id);
+        // and CLEARING it is open to any actor: a re-link or a revoke does that
+        await withOrgContext(tdb, { organizationId: ORG_A, userId: TENANT_ADMIN }, (tx) =>
+          (tx as unknown as DbClient).execute(
+            sql`UPDATE dosespot_prescriber SET link_confirmed_mdm_id=NULL, link_confirmed_npi=NULL, link_confirmed_at=NULL,
+                  link_confirmed_by_membership_id=NULL WHERE membership_id=${m.membershipId}`,
+          ),
+        );
+        expect((await confirmationOf(m.membershipId))?.mdm).toBeNull();
+      });
+
+      it("the CHECK refuses, even with the trigger off, a confirmer who is not the row's member and a NULL confirmer, NPI or timestamp", async () => {
+        const a = await unconfirmedMember();
+        const b = await unconfirmedMember();
+        const attempt = async (setClause: string, params: unknown[]) => {
+          await admin.query("BEGIN");
+          try {
+            await admin.query("SET LOCAL session_replication_role = replica"); // triggers off: only the CHECK is left
+            await admin.query(
+              `UPDATE dosespot_prescriber SET ${setClause} WHERE membership_id=$1`,
+              [a.membershipId, ...params],
+            );
+            await admin.query("COMMIT");
+            return "";
+          } catch (e) {
+            await admin.query("ROLLBACK");
+            return (e as Error).message;
+          }
+        };
+        const base = "link_confirmed_mdm_id=$2, link_confirmed_npi=$3, link_confirmed_at=now()";
+        const id = a.physician.id;
+        const npi = a.physician.npi;
+        const cases: ReadonlyArray<readonly [string, string, unknown[]]> = [
+          [
+            "a confirmer who is another member",
+            `${base}, link_confirmed_by_membership_id=$4`,
+            [id, npi, b.membershipId],
+          ],
+          ["a NULL confirmer", `${base}, link_confirmed_by_membership_id=NULL`, [id, npi]],
+          [
+            "a NULL NPI",
+            "link_confirmed_mdm_id=$2, link_confirmed_npi=NULL, link_confirmed_at=now(), link_confirmed_by_membership_id=membership_id",
+            [id],
+          ],
+          [
+            "a NULL timestamp",
+            "link_confirmed_mdm_id=$2, link_confirmed_npi=$3, link_confirmed_at=NULL, link_confirmed_by_membership_id=membership_id",
+            [id, npi],
+          ],
+          [
+            "a malformed NPI",
+            "link_confirmed_mdm_id=$2, link_confirmed_npi='12345', link_confirmed_at=now(), link_confirmed_by_membership_id=membership_id",
+            [id],
+          ],
+          ["only some of the four", "link_confirmed_mdm_id=$2", [id]],
+        ];
+        for (const [name, setClause, params] of cases) {
+          expect(await attempt(setClause, params), name).toContain(
+            "dosespot_prescriber_link_confirmation_ck",
+          );
+        }
+        // the one well-formed confirmation by the row's own member passes the CHECK (the trigger, off here, is what asks who declared it)
+        expect(
+          await attempt(`${base}, link_confirmed_by_membership_id=membership_id`, [id, npi]),
+        ).toBe("");
+        expect((await confirmationOf(a.membershipId))?.by).toBe(a.membershipId);
+      });
+
+      it("recording the vendor id is refused (409) when the prescriber's confirmation was cleared while the vendor call was in flight", async () => {
+        const m = await unconfirmedMember();
+        await linkService.confirm(asMember(m), {
+          externalPhysicianMdmId: m.physician.id,
+          npi: m.physician.npi as string,
+        });
+        const plan = await enrollment.prepare(tenantActor(ORG_A), m.membershipId);
+        await admin.query(
+          `UPDATE dosespot_prescriber SET link_confirmed_mdm_id=NULL, link_confirmed_npi=NULL, link_confirmed_at=NULL,
+             link_confirmed_by_membership_id=NULL WHERE membership_id=$1`,
+          [m.membershipId],
+        );
+        const vendorId = await enrollment.callVendor(plan);
+        const actor = tenantActor(ORG_A);
+        const code = await errorCode(
+          withOrgContext(tdb, { organizationId: ORG_A, userId: TENANT_ADMIN }, (tx) =>
+            enrollment.complete(
+              createDrizzleRosterStore(tx as unknown as DbClient),
+              tx as unknown as DbClient,
+              actor,
+              plan,
+              vendorId as string,
+            ),
+          ),
+        );
+        expect(code).toBe("DOSESPOT_ROSTER_CHANGED");
+        expect(
+          (
+            await q(
+              "SELECT dosespot_prescriber_id FROM dosespot_prescriber WHERE membership_id=$1",
+              [m.membershipId],
+            )
+          )[0]?.dosespot_prescriber_id,
+        ).toBeNull();
       });
 
       it("a platform operator cannot confirm on a member's behalf: there is no operator route, and their own membership selects no one else's row", async () => {
@@ -1853,7 +2008,7 @@ describe.skipIf(!DB_URL)(
               [M3],
             )
           )[0]?.dosespot_prescriber_id,
-        ).toMatch(/^70\d$/);
+        ).toMatch(/^7\d{2}$/);
         expect(
           (await auditRows(ORG_B, "m34.tenant_onboarding.dosespot_prescriber_enrolled")).length,
         ).toBe(1);

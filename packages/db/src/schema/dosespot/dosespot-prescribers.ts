@@ -42,7 +42,9 @@ export const dosespotPrescribers = pgTable(
       withTimezone: true,
     }),
     // Migration 1384 — the PRESCRIBER's own confirmation that `externalPhysicianMdmId` is them (all four set together, or none). The CHECK
-    // makes the confirmer the roster row's own member, so no administrator or operator can confirm on someone's behalf.
+    // binds the record to the row's own member (by = membership_id, no NULL operand); a trigger additionally requires the transaction's
+    // declared actor (`app.user_id`) to be that member's user when a confirmation is set. The application's route and enrolment gate do
+    // the rest (own session, step-up, human actor). See the migration for exactly what is enforced where.
     linkConfirmedMdmId: uuid("link_confirmed_mdm_id"),
     linkConfirmedNpi: text("link_confirmed_npi"),
     linkConfirmedAt: timestamp("link_confirmed_at", { withTimezone: true }),
@@ -66,7 +68,7 @@ export const dosespotPrescribers = pgTable(
       .where(sql`external_physician_mdm_id IS NOT NULL AND revoked_at IS NULL`),
     linkConfirmation: check(
       "dosespot_prescriber_link_confirmation_ck",
-      sql`(link_confirmed_mdm_id IS NULL AND link_confirmed_npi IS NULL AND link_confirmed_at IS NULL AND link_confirmed_by_membership_id IS NULL) OR (link_confirmed_mdm_id IS NOT NULL AND link_confirmed_npi ~ '^[0-9]{10}$' AND link_confirmed_at IS NOT NULL AND link_confirmed_by_membership_id = membership_id)`,
+      sql`(link_confirmed_mdm_id IS NULL AND link_confirmed_npi IS NULL AND link_confirmed_at IS NULL AND link_confirmed_by_membership_id IS NULL) OR (link_confirmed_mdm_id IS NOT NULL AND link_confirmed_npi IS NOT NULL AND link_confirmed_npi ~ '^[0-9]{10}$' AND link_confirmed_at IS NOT NULL AND link_confirmed_by_membership_id IS NOT NULL AND link_confirmed_by_membership_id = membership_id)`,
     ),
     epcsConsistency: check(
       "dosespot_prescriber_epcs_consistency",
