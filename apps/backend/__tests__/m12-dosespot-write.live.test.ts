@@ -785,6 +785,40 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     expect(await rowOf()).toEqual({ mdm: mdmB, vendor: null, npi: null });
   });
 
+  it("a re-link or a revoke clears the PRESCRIBER's confirmation of the linked record (it never carries to another record or across a reinstatement)", async () => {
+    const member = member2Of[ORG_A] as string;
+    const mdmC = "99999999-0000-4000-8000-00000000000c";
+    const mdmD = "99999999-0000-4000-8000-00000000000d";
+    const confirm = (mdm: string) =>
+      admin.query(
+        `UPDATE dosespot_prescriber SET link_confirmed_mdm_id=$2, link_confirmed_npi='1234567893', link_confirmed_at=now(),
+           link_confirmed_by_membership_id=membership_id WHERE membership_id=$1`,
+        [member, mdm],
+      );
+    const confirmed = async () =>
+      (
+        await admin.query(
+          "SELECT link_confirmed_mdm_id AS mdm, link_confirmed_npi AS npi, link_confirmed_at AS at, link_confirmed_by_membership_id AS by FROM dosespot_prescriber WHERE membership_id=$1",
+          [member],
+        )
+      ).rows[0];
+    await svc.enrollPrescriber(ORG_A, member, [], mdmC);
+    await confirm(mdmC);
+    expect((await confirmed())?.mdm).toBe(mdmC);
+    // enrolling the SAME record again keeps what the prescriber confirmed about it
+    await svc.enrollPrescriber(ORG_A, member, [], mdmC);
+    expect((await confirmed())?.mdm).toBe(mdmC);
+    // pointing the row at another record clears all four columns
+    await svc.enrollPrescriber(ORG_A, member, [], mdmD);
+    expect(await confirmed()).toEqual({ mdm: null, npi: null, at: null, by: null });
+    // a revoke clears it too: a reinstated prescriber confirms again
+    await confirm(mdmD);
+    await svc.revokePrescriber(ORG_A, member, "on leave");
+    expect(await confirmed()).toEqual({ mdm: null, npi: null, at: null, by: null });
+    await svc.enrollPrescriber(ORG_A, member, [], mdmD);
+    expect((await confirmed())?.mdm).toBeNull();
+  });
+
   it("verbal: an LPN recorder is refused VERBAL_RECORDER_NOT_ELIGIBLE and a claimed discipline the actor lacks is 422", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     await svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);

@@ -68,6 +68,7 @@ import {
   createDoseSpotClinicService,
   createDrizzleRosterStore,
   createDrizzleTenantConfigSource,
+  createPractitionerLinkService,
   createPractitionerProfileSource,
   createPrescriberEnrollmentService,
   createTransmissionGate,
@@ -316,17 +317,29 @@ describe.skipIf(!DB_URL)(
       }
       return { id, npi, firstName, lastName };
     }
-    /** Put `membershipId` on `org`'s roster, linked to a fresh practitioner record (what the roster `enroll` route does). */
+    /**
+     * Put `membershipId` on `org`'s roster, linked to a fresh practitioner record (what the roster `enroll` route does). By default the
+     * PRESCRIBER has already confirmed the link (the state an enrolment needs, written directly so the enrolment cases stay about
+     * enrolment); `confirmed: false` leaves it as a roster administrator left it. The real confirmation path has its own cases.
+     */
     async function rosterWithPhysician(
       org: string,
       membershipId: string,
       physician?: SeededPhysician,
+      opts: { confirmed?: boolean } = {},
     ): Promise<SeededPhysician> {
       const linked = physician ?? (await seedPhysician());
       await admin.query(
         "INSERT INTO dosespot_prescriber (organization_id, membership_id, external_physician_mdm_id, enrolled_at) VALUES ($1,$2,$3,now())",
         [org, membershipId, linked.id],
       );
+      if (opts.confirmed !== false && linked.npi !== null) {
+        await admin.query(
+          `UPDATE dosespot_prescriber SET link_confirmed_mdm_id=$2, link_confirmed_npi=$3, link_confirmed_at=now(),
+             link_confirmed_by_membership_id=membership_id WHERE membership_id=$1`,
+          [membershipId, linked.id, linked.npi],
+        );
+      }
       physicianOfMember.set(membershipId, linked);
       return linked;
     }
@@ -334,6 +347,7 @@ describe.skipIf(!DB_URL)(
     let service: ReturnType<typeof createDoseSpotClinicService>;
     let route: ReturnType<typeof buildDrizzleDoseSpotClinicRouteService>;
     let enrollment: ReturnType<typeof createPrescriberEnrollmentService>;
+    let linkService: ReturnType<typeof createPractitionerLinkService>;
     let onboardingData: ReturnType<typeof buildDrizzleOnboardingDataService>;
     let dosespotPort: ReturnType<typeof buildDoseSpotClinicOnboardingPort>;
     let outbox: DoseSpotWriteOutboxPort;
@@ -558,6 +572,20 @@ describe.skipIf(!DB_URL)(
         outbox,
         audit: buildClinicAuditPort(),
         afterWrite,
+      });
+      // the prescriber's OWN confirmation of the linked record, over the same real M40 provider and NPPES reader
+      const mdmDirectory = createMdmEntityProvider(createDbMdmStore(tdb));
+      linkService = createPractitionerLinkService({
+        inTx: (organizationId, userId, fn) =>
+          withOrgContext(tdb, { organizationId, userId }, (tx) =>
+            fn(createDrizzleRosterStore(tx as unknown as DbClient), tx as unknown as DbClient),
+          ),
+        directory: mdmDirectory,
+        profiles: createPractitionerProfileSource({
+          directory: mdmDirectory,
+          nppes: createNppesProviderReader(createDrizzleM29PublishedSeamStore(tdb)),
+        }),
+        audit: buildClinicAuditPort(),
       });
       registerPlatformJob(JOB_ID);
       dosespotPort = buildDoseSpotClinicOnboardingPort({
@@ -1112,7 +1140,9 @@ describe.skipIf(!DB_URL)(
       // ── who the prescriber is: derived from the roster-linked practitioner record, cross-checked against NPPES ──────────────
       let memberSeq = 0;
       /** A fresh member of ORG_A (one active membership per user per org); `onRoster` links them to a fresh practitioner record. */
-      const newMember = async (opts: { onRoster?: boolean; status?: string } = {}) => {
+      const newMember = async (
+        opts: { onRoster?: boolean; status?: string; confirmed?: boolean } = {},
+      ) => {
         const n = ++memberSeq;
         const suffix = n.toString(16).padStart(2, "0");
         const userId = `99000000-0000-4000-8000-0000000001${suffix}`;
@@ -1125,7 +1155,14 @@ describe.skipIf(!DB_URL)(
           "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,$2,$3,$4)",
           [membershipId, userId, ORG_A, opts.status ?? "active"],
         );
-        if (opts.onRoster) await rosterWithPhysician(ORG_A, membershipId);
+        if (opts.onRoster) {
+          await rosterWithPhysician(
+            ORG_A,
+            membershipId,
+            undefined,
+            opts.confirmed === undefined ? {} : { confirmed: opts.confirmed },
+          );
+        }
         return membershipId;
       };
       /** `ORG_A`'s roster row for a fresh member, linked to `physician` (or to nothing). */
@@ -1225,7 +1262,12 @@ describe.skipIf(!DB_URL)(
         const member = await newMember({ onRoster: true });
         const other = await seedPhysician();
         const code = await errorCode(
-          inOrgA((store) => store.ensureRequested(ORG_A, member, new Date(), 5 * 60_000, other.id)),
+          inOrgA((store) =>
+            store.ensureRequested(ORG_A, member, new Date(), 5 * 60_000, {
+              physicianMdmId: other.id,
+              confirmedNpi: other.npi as string,
+            }),
+          ),
         );
         expect(code).toBe("DOSESPOT_ROSTER_CHANGED"); // the profile belonged to `other`, the row now links someone else
         expect(
@@ -1316,7 +1358,10 @@ describe.skipIf(!DB_URL)(
 
       it("the claim is released only by the attempt that made it: a vendor refusal never clears a newer claim", async () => {
         const member = await newMember({ onRoster: true });
-        const linkedTo = physicianOfMember.get(member)?.id as string;
+        const linkedTo = {
+          physicianMdmId: physicianOfMember.get(member)?.id as string,
+          confirmedNpi: physicianOfMember.get(member)?.npi as string,
+        };
         const marker = async () =>
           (
             await q(
@@ -1435,6 +1480,245 @@ describe.skipIf(!DB_URL)(
         expect(row?.dosespot_prescriber_id).toBeNull();
         expect(row?.revoked_at).not.toBeNull();
         expect((await eventsOf("m12.prescriber_enrolled", ORG_A)).length).toBe(published);
+      });
+    });
+
+    // ── the prescriber's own confirmation of the physician record the roster linked them to ──────────────────────────────────────
+    describe("the prescriber must confirm the linked physician record themself before the vendor enrolment", () => {
+      let memberSeq = 0;
+      const clinicianCalls = () => fetchLog.filter((c) => c.url.endsWith("/api/clinicians")).length;
+      /** A member of ORG_A on the roster, linked to a fresh record, NOT yet confirmed by the prescriber; and their user id. */
+      const unconfirmedMember = async (org = ORG_A) => {
+        const n = ++memberSeq;
+        const suffix = n.toString(16).padStart(2, "0");
+        const userId = `99000000-0000-4000-8000-0000000003${suffix}`;
+        const membershipId = `99000000-0000-4000-8000-0000000004${suffix}`;
+        await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [
+          userId,
+          `link${n}@ds.test`,
+        ]);
+        await admin.query(
+          "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,$2,$3,'active')",
+          [membershipId, userId, org],
+        );
+        const physician = await rosterWithPhysician(org, membershipId, undefined, {
+          confirmed: false,
+        });
+        return { membershipId, userId, physician };
+      };
+      const asMember = (m: { membershipId: string; userId: string }, org = ORG_A) => ({
+        organizationId: org,
+        userId: m.userId,
+        membershipId: m.membershipId,
+        request: { correlationId: `live-link-${++seq}`, requestId: `req-link-${seq}` },
+      });
+      const confirmationOf = async (membershipId: string) =>
+        (
+          await q(
+            `SELECT link_confirmed_mdm_id AS mdm, link_confirmed_npi AS npi, link_confirmed_by_membership_id AS by
+               FROM dosespot_prescriber WHERE membership_id=$1`,
+            [membershipId],
+          )
+        )[0];
+
+      it("an enrolment is refused (409) until the prescriber confirms, with nothing claimed or sent", async () => {
+        const m = await unconfirmedMember();
+        const calls = clinicianCalls();
+        expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), m.membershipId))).toBe(
+          "DOSESPOT_PRACTITIONER_UNCONFIRMED",
+        );
+        expect(clinicianCalls()).toBe(calls);
+        const row = (
+          await q("SELECT * FROM dosespot_prescriber WHERE membership_id=$1", [m.membershipId])
+        )[0];
+        expect(row?.vendor_enrollment_requested_at).toBeNull();
+        expect(row?.dosespot_prescriber_id).toBeNull();
+      });
+
+      it("the prescriber is shown their record's name and NPI, confirms it, and then the enrolment goes through", async () => {
+        const m = await unconfirmedMember();
+        const shown = await linkService.view(asMember(m));
+        expect(shown).toEqual({
+          membershipId: m.membershipId,
+          linked: true,
+          externalPhysicianMdmId: m.physician.id,
+          physician: {
+            firstName: m.physician.firstName,
+            lastName: m.physician.lastName,
+            npi: m.physician.npi,
+          },
+          confirmed: false,
+        });
+        const out = await linkService.confirm(asMember(m), {
+          externalPhysicianMdmId: m.physician.id,
+          npi: m.physician.npi as string,
+        });
+        expect(out.confirmed).toBe(true);
+        // the confirmer is the roster row's own member (the table's CHECK also says so)
+        expect(await confirmationOf(m.membershipId)).toEqual({
+          mdm: m.physician.id,
+          npi: m.physician.npi,
+          by: m.membershipId,
+        });
+        // audited with ids only: the row id, the physician record's id, the actor: never the NPI or the name
+        const audit = (await auditRows(ORG_A, "m12.dosespot_clinic.prescriber_link_confirmed")).at(
+          -1,
+        );
+        expect(audit?.actor_user_id).toBe(m.userId);
+        expect(audit?.context).toMatchObject({
+          actorMembershipId: m.membershipId,
+          changedFields: ["linkConfirmation"],
+          physicianMdmId: m.physician.id,
+        });
+        const logged = JSON.stringify(audit);
+        expect(logged).not.toContain(m.physician.npi as string);
+        expect(logged).not.toContain(m.physician.lastName);
+        // and now the vendor enrolment (by an administrator) proceeds, with the confirmed record's NPI
+        const calls = clinicianCalls();
+        expect(await enrollment.enroll(tenantActor(ORG_A), m.membershipId)).toEqual({
+          membershipId: m.membershipId,
+          enrolledWithDoseSpot: true,
+        });
+        expect(clinicianCalls()).toBe(calls + 1);
+        expect(
+          (
+            await q("SELECT npi FROM dosespot_prescriber WHERE membership_id=$1", [m.membershipId])
+          )[0]?.npi,
+        ).toBe(m.physician.npi);
+      });
+
+      it("a re-link voids the confirmation: enrolment is refused again until the prescriber confirms the NEW record", async () => {
+        const m = await unconfirmedMember();
+        await linkService.confirm(asMember(m), {
+          externalPhysicianMdmId: m.physician.id,
+          npi: m.physician.npi as string,
+        });
+        const other = await seedPhysician();
+        // an administrator points the row at another record (the roster upsert clears the columns: m12-dosespot-write.live proves
+        // that; here the link moves under a confirmation that was never cleared, and the pin alone must refuse)
+        await admin.query(
+          "UPDATE dosespot_prescriber SET external_physician_mdm_id=$2 WHERE membership_id=$1",
+          [m.membershipId, other.id],
+        );
+        const calls = clinicianCalls();
+        expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), m.membershipId))).toBe(
+          "DOSESPOT_PRACTITIONER_UNCONFIRMED",
+        );
+        expect(clinicianCalls()).toBe(calls);
+        // even a write that raced the re-link (it read the OLD link) cannot confirm: the update is pinned to the link it was shown
+        expect(
+          await withOrgContext(tdb, { organizationId: ORG_A, userId: m.userId }, (tx) =>
+            createDrizzleRosterStore(tx as unknown as DbClient).confirmLink(ORG_A, m.membershipId, {
+              mdmId: m.physician.id,
+              npi: m.physician.npi as string,
+              at: new Date(),
+            }),
+          ),
+        ).toBeNull();
+        // the view agrees, and confirming the old record they were shown is refused: the link moved
+        expect((await linkService.view(asMember(m))).confirmed).toBe(false);
+        expect(
+          await errorCode(
+            linkService.confirm(asMember(m), {
+              externalPhysicianMdmId: m.physician.id,
+              npi: m.physician.npi as string,
+            }),
+          ),
+        ).toBe("DOSESPOT_ROSTER_CHANGED");
+        // confirming the NEW record re-opens the enrolment
+        await linkService.confirm(asMember(m), {
+          externalPhysicianMdmId: other.id,
+          npi: other.npi as string,
+        });
+        expect(await enrollment.enroll(tenantActor(ORG_A), m.membershipId)).toMatchObject({
+          enrolledWithDoseSpot: true,
+        });
+      });
+
+      it("a record whose NPI changed since the prescriber confirmed it is no longer confirmed: they confirm what they are shown NOW", async () => {
+        const m = await unconfirmedMember();
+        await linkService.confirm(asMember(m), {
+          externalPhysicianMdmId: m.physician.id,
+          npi: m.physician.npi as string,
+        });
+        const newNpi = syntheticNpi(9_000 + memberSeq);
+        await admin.query("UPDATE external_physician SET npi=$2 WHERE id=$1", [
+          m.physician.id,
+          newNpi,
+        ]);
+        const calls = clinicianCalls();
+        expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), m.membershipId))).toBe(
+          "DOSESPOT_PRACTITIONER_UNCONFIRMED",
+        );
+        expect(clinicianCalls()).toBe(calls);
+        expect((await linkService.view(asMember(m))).confirmed).toBe(false);
+        await linkService.confirm(asMember(m), {
+          externalPhysicianMdmId: m.physician.id,
+          npi: newNpi,
+        });
+        expect(await enrollment.enroll(tenantActor(ORG_A), m.membershipId)).toMatchObject({
+          enrolledWithDoseSpot: true,
+        });
+      });
+
+      it("only the member can confirm their own link: another member's confirmation attempt changes nothing", async () => {
+        const mine = await unconfirmedMember();
+        const theirs = await unconfirmedMember();
+        // `mine` tries to confirm THEIR record (pinned to what `theirs` was shown): their own row links something else
+        expect(
+          await errorCode(
+            linkService.confirm(asMember(mine), {
+              externalPhysicianMdmId: theirs.physician.id,
+              npi: theirs.physician.npi as string,
+            }),
+          ),
+        ).toBe("DOSESPOT_ROSTER_CHANGED");
+        expect((await confirmationOf(theirs.membershipId))?.mdm).toBeNull();
+        expect((await confirmationOf(mine.membershipId))?.mdm).toBeNull();
+        // a member who is not on the roster at all has no row to confirm
+        const stranger = `99000000-0000-4000-8000-0000000005${(++memberSeq).toString(16).padStart(2, "0")}`;
+        expect(
+          await errorCode(
+            linkService.confirm(
+              { ...asMember(mine), membershipId: stranger },
+              {
+                externalPhysicianMdmId: theirs.physician.id,
+                npi: theirs.physician.npi as string,
+              },
+            ),
+          ),
+        ).toBe("DOSESPOT_PRACTITIONER_NOT_LINKED");
+        // and no id of another member is accepted anywhere: the table itself refuses a confirmer who is not the row's member
+        const err = await admin
+          .query(
+            "UPDATE dosespot_prescriber SET link_confirmed_mdm_id=$2, link_confirmed_npi=$3, link_confirmed_at=now(), link_confirmed_by_membership_id=$4 WHERE membership_id=$1",
+            [theirs.membershipId, theirs.physician.id, theirs.physician.npi, mine.membershipId],
+          )
+          .then(() => "")
+          .catch((e: Error) => e.message);
+        expect(err).toContain("dosespot_prescriber_link_confirmation_ck");
+        expect((await confirmationOf(theirs.membershipId))?.mdm).toBeNull();
+      });
+
+      it("a platform operator cannot confirm on a member's behalf: there is no operator route, and their own membership selects no one else's row", async () => {
+        const m = await unconfirmedMember();
+        // the operator lane (the port and the data service) offers no confirmation at all
+        for (const surface of [dosespotPort, onboardingData] as object[]) {
+          expect(Object.keys(surface).filter((k) => /confirm/i.test(k))).toEqual([]);
+        }
+        // the one confirmation entry point keys on the session's OWN membership: an operator's has no roster row in the tenant
+        for (const org of [PLATFORM_ORG, ORG_A]) {
+          expect(
+            await errorCode(
+              linkService.confirm(
+                { organizationId: org, userId: OPERATOR, membershipId: OPS_MEMBERSHIP },
+                { externalPhysicianMdmId: m.physician.id, npi: m.physician.npi as string },
+              ),
+            ),
+          ).toBe("DOSESPOT_PRACTITIONER_NOT_LINKED");
+        }
+        expect((await confirmationOf(m.membershipId))?.mdm).toBeNull();
+        // and the operator's enrolment of an unconfirmed prescriber is refused the same way (the operator lane describe: ORG_B)
       });
     });
 
@@ -1572,6 +1856,30 @@ describe.skipIf(!DB_URL)(
         expect(
           (await auditRows(ORG_B, "m34.tenant_onboarding.dosespot_prescriber_enrolled")).length,
         ).toBe(1);
+      });
+
+      it("an operator's enrolment of a prescriber who has not confirmed the link is refused (409), and the roster list says so", async () => {
+        const M4 = "99000000-0000-4000-8000-0000000000b4";
+        await admin.query(
+          `INSERT INTO "user" (id,email) VALUES ('99000000-0000-4000-8000-0000000000bc','rx5@ds.test') ON CONFLICT DO NOTHING`,
+        );
+        await admin.query(
+          "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,'99000000-0000-4000-8000-0000000000bc',$2,'active')",
+          [M4, ORG_B],
+        );
+        await rosterWithPhysician(ORG_B, M4, undefined, { confirmed: false });
+        const calls = fetchLog.length;
+        expect(
+          await errorCode(onboardingData.enrollDoseSpotPrescriber(operator(), "ds-b", M4, REASON)),
+        ).toBe("DOSESPOT_PRACTITIONER_UNCONFIRMED");
+        expect(fetchLog.slice(calls).filter((c) => c.url.endsWith("/api/clinicians"))).toHaveLength(
+          0,
+        );
+        const roster = (await onboardingData.listDoseSpotPrescribers(operator(), "ds-b")) as {
+          items: { membershipId: string; linkConfirmed: boolean }[];
+        };
+        expect(roster.items.find((i) => i.membershipId === M4)?.linkConfirmed).toBe(false);
+        expect(roster.items.some((i) => i.linkConfirmed)).toBe(true); // the one the prescriber confirmed (M3)
       });
 
       it("an active tenant is closed to the operator (409 TENANT_NOT_ONBOARDING, audited, nothing written) but a deactivation is allowed", async () => {
