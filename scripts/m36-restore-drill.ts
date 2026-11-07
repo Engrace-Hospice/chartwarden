@@ -16,7 +16,7 @@
  *   bun run m36:restore-drill -- --fault=<name>    # expect exit 1 (detection proof); names in FAULTS below
  *   bun run m36:restore-drill:detect               # runs every fault and asserts each one FAILS the drill
  *
- * Needs: docker, bun. Optional: WX_DRILL_POSTGRES_IMAGE (default: build chartwarden-postgres:dev), WX_DRILL_MINIO_IMAGE (default cgr.dev/chainguard/minio:latest), --out=<dir>.
+ * Needs: docker, bun. Optional: WX_DRILL_POSTGRES_IMAGE (default: build chartwarden-postgres:drill), WX_DRILL_MINIO_IMAGE (default cgr.dev/chainguard/minio:latest), --out=<dir>.
  */
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";

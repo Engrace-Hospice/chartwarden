@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 
 // Production's Postgres, built from deploy/production/postgres unless WX_DRILL_POSTGRES_IMAGE names one.
-export const POSTGRES_IMAGE = process.env.WX_DRILL_POSTGRES_IMAGE ?? "chartwarden-postgres:dev";
+export const POSTGRES_IMAGE = process.env.WX_DRILL_POSTGRES_IMAGE ?? "chartwarden-postgres:drill"; // not :dev, which the shared dev stack runs
 const POSTGRES_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
   "..",

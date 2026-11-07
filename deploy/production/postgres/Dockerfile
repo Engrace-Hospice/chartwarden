@@ -1,13 +1,14 @@
 # deploy/production/postgres/Dockerfile — ChartWarden's Postgres: PostgreSQL 18 + pgvector on Wolfi (glibc).
 #
 # Replaces pgvector/pgvector:pg18 (Debian), whose OS layer carried dozens of HIGH/CRITICAL CVEs Debian will not fix.
-# Production runs the published, scanned, signed digest (.github/workflows/postgres-image.yml); dev compose, CI and
-# the restore drills build this file, so every Postgres the code meets is the same package set.
+# Production will run the published, scanned, signed digest (.github/workflows/postgres-image.yml) once compose.yml
+# pins it; dev compose, CI and the restore drills build this file, so every Postgres the code meets is the same package set.
 #
 # Drop-in for a volume the Debian image created: postgres is uid/gid 999, PGDATA is the PG18 layout under the
 # /var/lib/postgresql volume, LANG is en_US.utf8, and entrypoint.sh adds Debian's socket directory (/var/run/postgresql,
 # the pg-socket volume) to Wolfi's /tmp. Behind it, Wolfi's stock docker-entrypoint.sh (postgresql-18-oci-entrypoint)
-# keeps the same POSTGRES_* / initdb.d contract.
+# keeps the POSTGRES_* contract; init scripts go in /var/lib/postgres/initdb/, not /docker-entrypoint-initdb.d.
+# posix-libc-utils-bin ships `locale`, so initdb imports the libc collations (en_US.utf8 ...) a Debian cluster has.
 #
 # COLLATION. Text indexes are ordered by glibc's collation. GLIBC_VERSION is asserted at build time, so a base bump
 # that moves glibc fails here instead of silently reordering indexes. Moving it is a planned change: after the new
@@ -32,7 +33,8 @@ RUN glibc_is_pinned() { /lib/libc.so.6 | grep -q "release version ${GLIBC_VERSIO
       "postgresql-18-contrib=${PG_VERSION}" \
       "postgresql-18-oci-entrypoint=${PG_VERSION}" \
       "pgvector-18=${PGVECTOR_VERSION}" \
-      gosu "glibc-${GLIBC_VERSION}-locale-en" tzdata \
+      gosu=1.20-r0 tzdata=2026f-r0 \
+      "glibc-${GLIBC_VERSION}-locale-en" "posix-libc-utils-bin-${GLIBC_VERSION}" \
  && glibc_is_pinned \
  && install -d -o postgres -g postgres -m 0755 /var/lib/postgresql \
  && install -d -o postgres -g postgres -m 3777 /var/run/postgresql
