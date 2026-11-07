@@ -11,11 +11,9 @@ All changes were reviewed by path and diff, staged explicitly, and passed `git d
 | SHA | Scope |
 |---|---|
 | `73b4538fb` | BIL-1.5A operational hardening, BIL-1.5A.1–A.3, migrations 1359–1361, tests, and BIL-1.5B source corrections. |
-| `5e71c9e65` | BIL-1.5A/B prior phase reports and BIL-1 Release Gate Phase 1 reports. |
-| `410b3a081` | Corrected Phase 1 readiness verdict and blocker owners. |
-| `21724af53` | Finalized branch stack and ordered merge matrix. |
+| Report-only commits after source | BIL-1.5A/B prior phase reports, BIL-1 Release Gate reports, readiness corrections and final stack matrix. |
 
-All four commits are local on the existing implementation branch. They have not been pushed. No changes were discarded, reset, rebased or force-pushed. The full diff is reproducible from these commits plus the BIL-1.3/1.4 ancestry.
+The source commit and report-only commits are local on the existing implementation branch. They have not been pushed. No changes were discarded, reset, rebased or force-pushed. The exact final local HEAD is reported in the Phase 1 response; the full diff is reproducible from it plus the BIL-1.3/1.4 ancestry.
 
 ## Remaining consolidation blocker
 
