@@ -238,6 +238,16 @@ describe("createServerUploadService.createVersion", () => {
     expect(inserts[0]?.values).toMatchObject({ versionNumber: "3", replacesVersionId: "v1" });
   });
 
+  it("refuses a tenant_baa document with 409 DOCUMENT_IMMUTABLE and stores nothing: the generic upload cannot add a version to the signed BAA", async () => {
+    const { db } = fakeDb({ selects: [[{ ...writable, aggregateType: "tenant_baa" }], []] });
+    const mem = createInMemoryObjectStore();
+    const svc = createServerUploadService({ db, objects: mem.store });
+    await expect(
+      svc.createVersion(ORG, ACTOR, DOC_ID, { content: ARGS.content }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "DOCUMENT_IMMUTABLE" });
+    expect(mem.objects.size).toBe(0);
+  });
+
   it("refuses a legal-hold document with 409 and stores nothing", async () => {
     const { db } = fakeDb({ selects: [[{ ...writable, status: "legal_hold" }], []] });
     const mem = createInMemoryObjectStore();

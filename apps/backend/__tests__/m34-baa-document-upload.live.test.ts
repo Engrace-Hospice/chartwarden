@@ -13,6 +13,8 @@ import { spawnSync } from "node:child_process";
  *   - it cannot file any other kind: a body that names one is a 422, the generic documents route refuses platform_ops (403) and refuses
  *     the `tenant_baa` kind to a tenant user who does hold `documents.upload` (422), and the DB grant holds no `documents.*` key;
  *   - it cannot read other documents: the generic read routes refuse it (403) for the tenant's own and for the BAA document;
+ *   - the signed BAA is immutable to the generic routes: a tenant user holding documents.upload and documents.edit_metadata gets 409
+ *     DOCUMENT_IMMUTABLE on a new version, a metadata edit, a link and a tag, and the row is unchanged;
  *   - a tenant user's documents are unaffected: their pre-existing rows are untouched, the other tenant cannot see the BAA, and the
  *     ordinary upload route still works;
  *   - a refused file (type mismatch), an active tenant (409), an unknown tenant (404) store nothing; a failure AFTER the object was stored
@@ -39,6 +41,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { m34PlatformBypassAuditor } from "../src/index";
+import { buildDocumentAbacPredicates } from "../src/modules/22-documents/abac-predicates";
 import { createDbDocumentBackend } from "../src/modules/22-documents/documents-route-service-db";
 import { deriveTenantBucket } from "../src/modules/22-documents/lifecycle/storage";
 import { buildTenantBaaDocumentOnboardingPort } from "../src/modules/22-documents/onboarding-baa-document-port";
@@ -296,7 +299,7 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
             roleKey: "compliance_officer",
             enabled: true,
             expiresAt: null,
-            permissionKeys: ["documents.upload", "documents.read"],
+            permissionKeys: ["documents.upload", "documents.read", "documents.edit_metadata"],
           },
         ],
       },
@@ -313,8 +316,15 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
     server = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
     mountTenantPlatformRoutes(server, tenantPool.db, { onboardingData: { service } });
     // The ordinary documents routes, over the SAME upload service: what a tenant user (and a platform_ops user) meets there.
+    const documents = createDbDocumentBackend(tenantPool.db, {}, uploads);
+    // The suite's own registry, so M22's predicates are added to IT (the shared one is not installed here).
+    for (const [name, predicate] of Object.entries(
+      buildDocumentAbacPredicates({ resolver: documents.abacResolver }),
+    )) {
+      reg.register(name, predicate);
+    }
     registerDocumentRoutes(server, {
-      service: createDbDocumentBackend(tenantPool.db, {}, uploads).service,
+      service: documents.service,
       signedUrl: { mint: async () => ({}) } as never,
     });
   }, 300_000);
@@ -605,6 +615,77 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
       ]);
       expect(res.body).not.toContain(DOC_B);
       expect(res.body).not.toContain(DOC_A);
+    });
+  });
+
+  describe("the signed BAA is immutable to the generic write routes", () => {
+    const tenantCall = (
+      method: "POST" | "PATCH" | "DELETE",
+      url: string,
+      payload?: Record<string, unknown>,
+    ) =>
+      server.inject({
+        method,
+        url,
+        headers: tenantHeaders(),
+        ...(payload ? { payload } : {}),
+      });
+    const rowOf = () =>
+      q(
+        "SELECT title, status, active_version_id, patient_facing, patient_id, admission_id, updated_at FROM document WHERE id=$1",
+        [uploadedDocumentId],
+      );
+
+    it("refuses a tenant user holding documents.upload and documents.edit_metadata a version, a patch, a link and a tag (409 DOCUMENT_IMMUTABLE)", async () => {
+      const before = await rowOf();
+      const versionsBefore = await q("SELECT 1 FROM document_version WHERE document_id=$1", [
+        uploadedDocumentId,
+      ]);
+      const attempts = [
+        tenantCall("POST", `/api/v1/documents/${uploadedDocumentId}/versions`, {
+          mimeType: "application/pdf",
+          contentBase64: PDF_BASE64,
+        }),
+        tenantCall("PATCH", `/api/v1/documents/${uploadedDocumentId}`, {
+          title: "Edited by the tenant",
+        }),
+        tenantCall("POST", `/api/v1/documents/${uploadedDocumentId}/links`, {
+          patientId: "44444444-4444-4444-8444-444444444444",
+        }),
+        tenantCall("POST", `/api/v1/documents/${uploadedDocumentId}/tags`, {
+          tagKind: "free",
+          tagKey: "note",
+        }),
+        tenantCall(
+          "DELETE",
+          `/api/v1/documents/${uploadedDocumentId}/tags/44444444-4444-4444-8444-444444444444`,
+        ),
+      ];
+      for (const res of await Promise.all(attempts)) {
+        expect(res.statusCode, res.body).toBe(409);
+        expect(errorCode(res)).toBe("DOCUMENT_IMMUTABLE");
+      }
+      expect(await rowOf()).toEqual(before);
+      expect(
+        await q("SELECT 1 FROM document_version WHERE document_id=$1", [uploadedDocumentId]),
+      ).toHaveLength(versionsBefore.length);
+      expect(
+        await q("SELECT 1 FROM document_tag WHERE document_id=$1", [uploadedDocumentId]),
+      ).toEqual([]);
+    });
+
+    it("still lets the same tenant user edit and tag their OWN document", async () => {
+      const patched = await tenantCall("PATCH", `/api/v1/documents/${DOC_B}`, {
+        title: "Renamed by the tenant",
+      });
+      expect(patched.statusCode, patched.body).toBe(200);
+      const tagged = await tenantCall("POST", `/api/v1/documents/${DOC_B}/tags`, {
+        tagKind: "free",
+        tagKey: "note",
+      });
+      expect(tagged.statusCode, tagged.body).toBe(201);
+      await q("UPDATE document SET title='Existing tenant document' WHERE id=$1", [DOC_B]);
+      await q("DELETE FROM document_tag WHERE document_id=$1", [DOC_B]);
     });
   });
 

@@ -51,6 +51,7 @@ import { commitReviewDiagnosisWriteback } from "./extraction/writeback-commit-dx
 import { isDiagnosisFieldPath } from "./extraction/writeback-plan-dx";
 import { markReceivedOnArrival, recordsRequestConflicts } from "./records-request/inbound-match";
 import { type CursorPage, paginate } from "./routes/concurrency";
+import { assertKindWritable } from "./routes/immutable-kinds";
 import type { ServerUploadService } from "./routes/server-upload";
 import type {
   DocumentRouteService,
@@ -284,6 +285,8 @@ export function createDbDocumentRouteService(
       throw new NotFoundError("document");
     if (basis?.expectedAdmissionId !== undefined && doc.admissionId !== basis.expectedAdmissionId)
       throw new NotFoundError("document");
+    // The signed BAA is filed once by ChartWarden support: no patch, link or tag from the generic routes (patch, link, add / remove tag).
+    assertKindWritable(doc.aggregateType);
     return doc;
   }
 

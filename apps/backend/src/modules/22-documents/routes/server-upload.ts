@@ -22,6 +22,7 @@ import { ChartWardenError, DegradedError, NotFoundError } from "@chartwarden/typ
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";
+import { assertKindWritable } from "./immutable-kinds";
 import type {
   DocumentWriteActor,
   UploadDocumentArgs,
@@ -262,6 +263,8 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     // #641 — the route's scope check saw this patient; a row that has since moved is out of scope.
     if (expectedPatientId !== undefined && doc.patientId !== expectedPatientId)
       throw new NotFoundError("document");
+    // A kind that a dedicated route files once (the signed BAA) takes no new version from this route, whoever holds documents.upload.
+    assertKindWritable(doc.aggregateType);
     const [hold] = await tx
       .select({ id: LH.id })
       .from(LH)

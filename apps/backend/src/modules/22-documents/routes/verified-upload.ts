@@ -6,6 +6,7 @@ import { ChartWardenError, DegradedError, ForbiddenError, NotFoundError } from "
 import { and, eq, sql } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";
+import { assertKindWritable } from "./immutable-kinds";
 import type { DocumentProvenanceMetadata } from "./service";
 
 const UPLOAD_TTL_MS = 15 * 60 * 1000;
@@ -172,11 +173,12 @@ export function createVerifiedUploadService(deps: {
         const targetDocumentId = input.targetDocumentId;
         await inOrg(organizationId, userId, async (tx) => {
           const [doc] = await tx
-            .select({ id: D.id, status: D.status })
+            .select({ id: D.id, status: D.status, aggregateType: D.aggregateType })
             .from(D)
             .where(eq(D.id, targetDocumentId))
             .limit(1);
           if (!doc) throw new NotFoundError("document");
+          assertKindWritable(doc.aggregateType);
           if (doc.status === "legal_hold" || doc.status === "destroyed_tombstone") {
             throw new ChartWardenError(
               "DOCUMENT_IMMUTABLE",
@@ -324,11 +326,17 @@ export function createVerifiedUploadService(deps: {
         if (documentId) {
           await tx.execute(sql`select id from document where id = ${documentId} for update`);
           const [doc] = await tx
-            .select({ id: D.id, activeVersionId: D.activeVersionId, status: D.status })
+            .select({
+              id: D.id,
+              activeVersionId: D.activeVersionId,
+              status: D.status,
+              aggregateType: D.aggregateType,
+            })
             .from(D)
             .where(and(eq(D.id, documentId), eq(D.organizationId, organizationId)))
             .limit(1);
           if (!doc) throw new NotFoundError("document");
+          assertKindWritable(doc.aggregateType);
           if (doc.status === "legal_hold" || doc.status === "destroyed_tombstone") {
             throw new ChartWardenError(
               "DOCUMENT_IMMUTABLE",
