@@ -55,6 +55,14 @@ export function createClaimMdEraDeliveryService(input: {
       const held = await input.store.holdDelivery({ inboxId, accountReference: input.accountReference, usage: input.usage,
         reason: "SOURCE_REVALIDATION_FAILED" });
       if (held) {
+        if (held.state === "delivered" || held.state === "exact_duplicate" || held.state === "possible_duplicate") {
+          if (!held.tenantFinalized) {
+            await finalizeStage({ tenantDb: input.tenantDb, organizationId: held.organizationId,
+              stageIds: held.stageIds, disposition: held.state, safeReasonCode: held.safeErrorCode });
+            await input.store.confirmDeliveryTenantFinalized(held.id);
+          }
+          return held.state;
+        }
         await finalizeStage({ tenantDb: input.tenantDb, organizationId: held.organizationId,
           stageIds: held.stageIds, disposition: "held", safeReasonCode: held.safeErrorCode, forceHold: true });
         if (!held.tenantFinalized) await input.store.confirmDeliveryTenantFinalized(held.id);

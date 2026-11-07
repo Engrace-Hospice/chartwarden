@@ -56,8 +56,8 @@ describe.skipIf(!DB_URL)("M23 Claim.MD response inbox — LIVE Postgres", () => 
 
   it("allows one concurrent capture lease winner and fences the losing worker", async () => {
     const inserted = await admin.query<{ id: string }>(
-      `INSERT INTO claimmd_response_stream(account_reference,usage,cursor,lease_until)
-       VALUES ('synthetic-concurrency-account','test','0',now() - interval '1 second') RETURNING id`,
+      `INSERT INTO claimmd_response_stream(account_reference,usage,cursor,lease_owner,lease_until)
+       VALUES ('synthetic-concurrency-account','test','0',gen_random_uuid(),now() - interval '1 second') RETURNING id`,
     );
     const streamId = inserted.rows[0]?.id;
     if (!streamId) throw new Error("live fixture stream missing");
@@ -102,7 +102,7 @@ describe.skipIf(!DB_URL)("M23 Claim.MD response inbox — LIVE Postgres", () => 
          (id,organization_id,provider_entity_id,claim_id,billing_module,submission_id,attempt_key,vendor,account_reference,usage,
           billing_npi,billing_tin_ciphertext,payer_id,claim_type,pcn,isa13,gs06,st02,payload_sha256,payload_format,outbound_reference,reserved_at)
          VALUES ($1,$2,gen_random_uuid(),gen_random_uuid(),'M23',gen_random_uuid(),$3,'claimmd','acct-synthetic','test',
-          '1234567893','v1.synthetic.encrypted.value','payer-synthetic','81:A:3','PCN-SYNTHETIC','000000101','101','0101',
+          '1234567893',repeat('x',48),'payer-synthetic','81:A:3','PCN-SYNTHETIC','000000101','101','0101',
           repeat('a',64),'x12',$3,now())`,
         [ids[index], organizationId, `sub-attempt-${index}`],
       );

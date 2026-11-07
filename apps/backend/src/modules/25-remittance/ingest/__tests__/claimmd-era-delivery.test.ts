@@ -47,7 +47,7 @@ function setup(options: { readonly failFirstCommit?: boolean; readonly resolutio
       return { outcome: value.state, reason: null };
     }),
     confirmDeliveryTenantFinalized: vi.fn(async () => { trace.push("tenant-finalized"); }),
-    holdDelivery: vi.fn(async () => ({ id: DELIVERY, organizationId: ORG, stageIds: [], tenantFinalized: true,
+    holdDelivery: vi.fn(async () => ({ id: DELIVERY, organizationId: ORG, stageIds: [] as string[], tenantFinalized: true,
       state: "held", safeErrorCode: "SOURCE_REVALIDATION_FAILED" })),
     pendingDelivery: vi.fn(async () => [INBOX]),
   };
@@ -96,5 +96,26 @@ describe("BIL-1.4.1B safe M25 delivery", () => {
     expect(x.trace).toEqual(["tenant-stage-finalized"]);
     expect("receiveAdvice" in x.service).toBe(false);
     expect("postAdvice" in x.service).toBe(false);
+  });
+
+  it("preserves a terminal receipt when another worker completes before source revalidation fails", async () => {
+    const x = setup({ resolutionFails: true });
+    x.store.holdDelivery.mockResolvedValueOnce({ id: DELIVERY, organizationId: ORG, stageIds: [],
+      tenantFinalized: true, state: "delivered", safeErrorCode: "SOURCE_REVALIDATION_FAILED" });
+    expect(await x.service.deliver(INBOX)).toBe("delivered");
+    expect(x.finalizeStage).not.toHaveBeenCalled();
+    expect(x.store.confirmDeliveryTenantFinalized).not.toHaveBeenCalled();
+    expect(x.stageComponent).not.toHaveBeenCalled();
+  });
+
+  it("finishes an existing terminal receipt after a concurrent worker committed but did not finalize the stage", async () => {
+    const x = setup({ resolutionFails: true });
+    x.store.holdDelivery.mockResolvedValueOnce({ id: DELIVERY, organizationId: ORG,
+      stageIds: ["00000000-0000-4000-8000-000000000104"], tenantFinalized: false,
+      state: "delivered", safeErrorCode: "SOURCE_REVALIDATION_FAILED" });
+    expect(await x.service.deliver(INBOX)).toBe("delivered");
+    expect(x.finalizeStage).toHaveBeenCalledWith(expect.objectContaining({ disposition: "delivered" }));
+    expect(x.store.confirmDeliveryTenantFinalized).toHaveBeenCalledWith(DELIVERY);
+    expect(x.stageComponent).not.toHaveBeenCalled();
   });
 });

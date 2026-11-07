@@ -129,6 +129,30 @@ export const claimmdEraDeliveryHistory = pgTable("claimmd_era_delivery_history",
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({ byDelivery: index("claimmd_era_delivery_history_ix").on(t.deliveryId, t.createdAt) }));
 
+/** Append-only operator/service recovery request audit; central and readable only by the audited capture role. */
+export const claimmdEraRecoveryAction = pgTable("claimmd_era_recovery_action", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  actionId: uuid("action_id").notNull(),
+  inboxId: uuid("inbox_id").notNull().references(() => claimmdEraInbox.id, { onDelete: "restrict" }),
+  accountReference: varchar("account_reference", { length: 128 }).notNull(),
+  usage: text("usage").notNull(),
+  eraId: varchar("era_id", { length: 64 }).notNull(),
+  stage: text("stage").notNull(),
+  actorId: uuid("actor_id").notNull(),
+  reasonCode: varchar("reason_code", { length: 64 }).notNull(),
+  expectedState: varchar("expected_state", { length: 64 }).notNull(),
+  resultingState: varchar("resulting_state", { length: 64 }).notNull(),
+  previousRetryCount: integer("previous_retry_count").notNull(),
+  newRetryEligibility: boolean("new_retry_eligibility").notNull(),
+  resolutionVersion: integer("resolution_version"),
+  deliveryId: uuid("delivery_id"),
+  deliveryAttemptCount: integer("delivery_attempt_count"),
+  outcome: varchar("outcome", { length: 32 }).notNull(),
+  safeFailureCode: varchar("safe_failure_code", { length: 64 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ action: unique("claimmd_era_recovery_action_id_uq").on(t.actionId),
+  byInbox: index("claimmd_era_recovery_action_inbox_ix").on(t.inboxId, t.createdAt) }));
+
 /** Central protected ownership decision. Claim references and identity evidence remain encrypted. */
 export const claimmdEraResolution = pgTable("claimmd_era_resolution", {
   id: uuid("id").primaryKey().defaultRandom(),

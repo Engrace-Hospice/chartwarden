@@ -5,14 +5,14 @@ export interface ClaimMdEvidenceKeys {
   dekForOrgVersion(organizationId: string, version: string): Promise<{ version: string; key: Buffer }>;
 }
 
-const aad = (input: { evidenceId: string; organizationId: string; providerEntityId: string; attemptKey: string }) =>
-  Buffer.from(JSON.stringify(["chartwarden", "claimmd_submission_evidence", "billing_tin", 1, input.evidenceId,
+const aad = (input: { evidenceId: string; organizationId: string; providerEntityId: string; attemptKey: string; recordKind?: "claim" | "notice" }) =>
+  Buffer.from(JSON.stringify(["chartwarden", input.recordKind === "notice" ? "claimmd_notice_submission_evidence" : "claimmd_submission_evidence", "billing_tin", 1, input.evidenceId,
     input.organizationId, input.providerEntityId, input.attemptKey]), "utf8");
 
 /** Tenant-DEK envelope with evidence-row-bound AAD; provider-row ciphertext cannot be replayed here. */
 export function createClaimMdEvidenceCipher(keys: ClaimMdEvidenceKeys) {
   return {
-    async seal(input: { evidenceId: string; organizationId: string; providerEntityId: string; attemptKey: string; tin: string }) {
+    async seal(input: { evidenceId: string; organizationId: string; providerEntityId: string; attemptKey: string; tin: string; recordKind?: "claim" | "notice" }) {
       const { version, key } = await keys.dekForOrg(input.organizationId);
       if (key.byteLength !== 32) throw new Error("tenant DEK must be 32 bytes");
       const nonce = randomBytes(12);
@@ -22,7 +22,7 @@ export function createClaimMdEvidenceCipher(keys: ClaimMdEvidenceKeys) {
       return ["v1", Buffer.from(version, "utf8").toString("base64url"), nonce.toString("base64url"),
         cipher.getAuthTag().toString("base64url"), ciphertext.toString("base64url")].join(".");
     },
-    async open(input: { evidenceId: string; organizationId: string; providerEntityId: string; attemptKey: string; sealed: string }) {
+    async open(input: { evidenceId: string; organizationId: string; providerEntityId: string; attemptKey: string; sealed: string; recordKind?: "claim" | "notice" }) {
       const [versionTag, versionEncoded, nonce, tag, ciphertext] = input.sealed.split(".");
       if (versionTag !== "v1" || !versionEncoded || !nonce || !tag || ciphertext === undefined) throw new Error("evidence cipher envelope is malformed");
       const version = Buffer.from(versionEncoded, "base64url").toString("utf8");

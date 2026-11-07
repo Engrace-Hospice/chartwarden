@@ -3,19 +3,24 @@ import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import type { ClaimMdEraListPage } from "@chartwarden/x12-837-client";
-import { and, asc, eq, inArray, isNull, lt, notExists, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, lt, min, notExists, or, sql } from "drizzle-orm";
 import type { ClaimMdPayloadKeyRing } from "../../../bootstrap/claimmd-payload-cipher";
 import { createClaimMdProtectedPayloadCipher } from "../../../bootstrap/claimmd-payload-cipher";
 
 export const CLAIMMD_ERA_CAPTURE_JOB_ID = "m25-claimmd-era-capture";
 export const CLAIMMD_ERA_RESOLUTION_JOB_ID = "m25-claimmd-era-ownership-resolution";
 export const CLAIMMD_ERA_DELIVERY_JOB_ID = "m25-claimmd-era-delivery";
+export const CLAIMMD_ERA_RECOVERY_JOB_ID = "m25-claimmd-era-recovery";
+/** Read-only metrics principal, independent of ERA capture and delivery activation. */
+export const CLAIMMD_ERA_METRICS_JOB_ID = "m25-claimmd-era-metrics";
 const S = schema.claimmdEraStreams;
 const I = schema.claimmdEraInbox;
 const R = schema.claimmdEraResolution;
 const RH = schema.claimmdEraResolutionHistory;
 const D = schema.claimmdEraDelivery;
 const DH = schema.claimmdEraDeliveryHistory;
+const REC = schema.claimmdEraRecoveryAction;
+const MAX_CAPTURE_RETRIES = 5;
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
 export interface ClaimMdEraLease {
@@ -37,6 +42,45 @@ export function createClaimMdEraStore(input: {
     eq(S.id, lease.streamId), eq(S.leaseOwner, lease.owner), eq(S.generation, lease.generation), sql`${S.leaseUntil} > now()`,
   );
   return {
+    /** Small, indexed and non-decrypting aggregate view used by the Prometheus scrape sampler. */
+    async operationalSnapshot(accountReference: string, usage: "test" | "production") {
+      if (!/^[A-Za-z0-9._:-]{1,128}$/.test(accountReference)) throw new Error("CLAIMMD_ERA_ACCOUNT_INVALID");
+      return run("Claim.MD ERA durable operational metrics", async (tx) => {
+        const [stream] = await tx.select({ cursor: S.cursor, lastSuccessAt: S.lastSuccessAt,
+          lastAttemptAt: S.lastAttemptAt, errorCode: S.errorCode, leaseUntil: S.leaseUntil })
+          .from(S).where(and(eq(S.vendor, "claimmd"), eq(S.accountReference, accountReference),
+            eq(S.usage, usage), eq(S.streamKind, "eras"))).limit(1);
+        const captures = await tx.select({ state: I.captureState, count: count(), oldest: min(I.discoveredAt) })
+          .from(I).where(and(eq(I.vendor, "claimmd"), eq(I.accountReference, accountReference), eq(I.usage, usage)))
+          .groupBy(I.captureState);
+        const resolutions = await tx.select({ state: R.status, count: count(), oldest: min(R.createdAt) })
+          .from(R).where(and(eq(R.vendor, "claimmd"), eq(R.accountReference, accountReference), eq(R.usage, usage)))
+          .groupBy(R.status);
+        const deliveries = await tx.select({ state: D.state, count: count(), oldest: min(D.updatedAt) })
+          .from(D).where(and(eq(D.vendor, "claimmd"), eq(D.accountReference, accountReference), eq(D.usage, usage)))
+          .groupBy(D.state);
+        const retryExhausted = await tx.select({ count: count() }).from(I).where(and(
+          eq(I.vendor, "claimmd"), eq(I.accountReference, accountReference), eq(I.usage, usage),
+          eq(I.captureState, "retryable_failure"), sql`${I.retryCount} >= ${MAX_CAPTURE_RETRIES}`));
+        const toCounts = (rows: readonly { state: string; count: number }[]) =>
+          Object.fromEntries(rows.map((row) => [row.state, row.count]));
+        const oldest = (...values: (Date | null)[]) => {
+          const dates = values.filter((value): value is Date => value instanceof Date);
+          return dates.length ? Math.min(...dates.map((value) => value.getTime())) : null;
+        };
+        return {
+          cursorPresent: Boolean(stream), lastSuccessAt: stream?.lastSuccessAt?.getTime() ?? null,
+          lastAttemptAt: stream?.lastAttemptAt?.getTime() ?? null, streamFailed: Boolean(stream?.errorCode),
+          leaseContendedOrHeld: Boolean(stream?.leaseUntil && stream.leaseUntil > new Date()),
+          capture: toCounts(captures), resolution: toCounts(resolutions), delivery: toCounts(deliveries),
+          captureRetryExhausted: retryExhausted[0]?.count ?? 0,
+          oldestCaptureAt: oldest(...captures.filter((row) => row.state === "discovered" || row.state === "retryable_failure").map((row) => row.oldest)),
+          oldestResolutionAt: oldest(...resolutions.filter((row) => row.state !== "verified").map((row) => row.oldest)),
+          oldestDeliveryAt: oldest(...deliveries.filter((row) => row.state !== "delivered" && row.state !== "exact_duplicate").map((row) => row.oldest)),
+          sampledAt: Date.now(),
+        };
+      }, CLAIMMD_ERA_METRICS_JOB_ID);
+    },
     /** There is deliberately no stream insert here; bootstrap is an operator-reviewed SQL action. */
     async acquire(accountReference: string, usage: "test" | "production"): Promise<ClaimMdEraLease | null> {
       const owner = randomUUID();
@@ -95,7 +139,8 @@ export function createClaimMdEraStore(input: {
         const [stream] = await tx.select({ id: S.id }).from(S).where(leasePredicate(lease)).limit(1);
         if (!stream) throw new Error("CLAIMMD_ERA_LEASE_FENCED");
         const rows = await tx.select({ eraId: I.eraId }).from(I).where(and(eq(I.streamId, lease.streamId),
-          or(eq(I.captureState, "discovered"), eq(I.captureState, "retryable_failure"))))
+          or(eq(I.captureState, "discovered"), and(eq(I.captureState, "retryable_failure"),
+            sql`${I.retryCount} < ${MAX_CAPTURE_RETRIES}`))))
           .orderBy(asc(I.discoveredAt)).limit(limit);
         return rows.map((row) => row.eraId);
       });
@@ -262,6 +307,14 @@ export function createClaimMdEraStore(input: {
           return null;
         const [existing] = await tx.select().from(D).where(eq(D.inboxId, inputHold.inboxId)).for("update").limit(1);
         if (existing) {
+          // Another worker may have completed delivery while this worker was revalidating the
+          // source. A source-read failure must never downgrade a terminal financial receipt.
+          if (["delivered", "exact_duplicate", "possible_duplicate"].includes(existing.state))
+            return { id: existing.id, inboxId: existing.inboxId, organizationId: existing.organizationId,
+              providerEntityId: existing.providerEntityId, resolutionId: existing.resolutionId,
+              resolutionVersion: existing.resolutionVersion, originalDigest: existing.original835Digest,
+              state: existing.state, stageIds: existing.stageIds, tenantFinalized: existing.tenantFinalized,
+              safeErrorCode: existing.safeErrorCode, existingAdviceId: existing.existingAdviceId };
           if (existing.state !== "held") {
             await tx.update(D).set({ state: "held", safeErrorCode: inputHold.reason, completedAt: sql`now()`, updatedAt: sql`now()` })
               .where(eq(D.id, existing.id));
@@ -491,6 +544,156 @@ export function createClaimMdEraStore(input: {
       await run("Claim.MD ERA lease release", async (tx) => {
         await tx.update(S).set({ leaseOwner: null, leaseUntil: null, errorCode, updatedAt: sql`now()` }).where(leasePredicate(lease));
       });
+    },
+
+    /**
+     * One audited, optimistic recovery transition. This is an internal platform operation only;
+     * callers must authenticate an operator/service principal before invoking it. It never changes
+     * the account cursor, source bytes, ownership, or any financial/posting state.
+     */
+    async recover(inputRecovery: {
+      readonly actionId: string; readonly inboxId: string; readonly accountReference: string;
+      readonly usage: "test" | "production"; readonly stage: "capture" | "ownership_resolution" | "m25_delivery";
+      readonly actorId: string; readonly reasonCode: string; readonly expectedState: string; readonly expectedVersion: number;
+    }) {
+      if (!/^[0-9a-f-]{36}$/i.test(inputRecovery.actionId) || !/^[0-9a-f-]{36}$/i.test(inputRecovery.inboxId) ||
+          !/^[0-9a-f-]{36}$/i.test(inputRecovery.actorId) || !/^[A-Z][A-Z0-9_]{2,63}$/.test(inputRecovery.reasonCode) ||
+          !Number.isSafeInteger(inputRecovery.expectedVersion) || inputRecovery.expectedVersion < 0 ||
+          !/^[A-Za-z0-9._:-]{1,128}$/.test(inputRecovery.accountReference) ||
+          !["test", "production"].includes(inputRecovery.usage) ||
+          !["capture", "ownership_resolution", "m25_delivery"].includes(inputRecovery.stage) ||
+          typeof inputRecovery.expectedState !== "string" || inputRecovery.expectedState.length < 1 || inputRecovery.expectedState.length > 64)
+        throw new Error("CLAIMMD_ERA_RECOVERY_INVALID");
+      try {
+      return await run("Claim.MD ERA operator recovery", async (tx) => {
+        const [priorAction] = await tx.select().from(REC).where(eq(REC.actionId, inputRecovery.actionId)).limit(1);
+        if (priorAction) {
+          if (priorAction.inboxId !== inputRecovery.inboxId || priorAction.actorId !== inputRecovery.actorId ||
+              priorAction.stage !== inputRecovery.stage || priorAction.reasonCode !== inputRecovery.reasonCode ||
+              priorAction.accountReference !== inputRecovery.accountReference || priorAction.usage !== inputRecovery.usage)
+            throw new Error("CLAIMMD_ERA_RECOVERY_ACTION_ID_CONFLICT");
+          return { outcome: priorAction.outcome as "requeued" | "reconciled" | "rejected",
+            state: priorAction.resultingState, retryEligible: priorAction.newRetryEligibility,
+            resolutionVersion: priorAction.resolutionVersion, deliveryId: priorAction.deliveryId };
+        }
+        const [source] = await tx.select({ id: I.id, streamId: I.streamId, eraId: I.eraId, state: I.captureState,
+          retryCount: I.retryCount, updatedAt: I.updatedAt, digest: I.original835Digest, accountReference: I.accountReference,
+          usage: I.usage }).from(I).where(and(eq(I.id, inputRecovery.inboxId), eq(I.accountReference, inputRecovery.accountReference),
+          eq(I.usage, inputRecovery.usage), eq(I.vendor, "claimmd"))).for("update").limit(1);
+        if (!source) throw new Error("CLAIMMD_ERA_RECOVERY_NOT_FOUND");
+        // A concurrent retry with the same action id may have waited on the source-row lock.
+        // Re-read the action after acquiring that lock so idempotent callers receive the committed
+        // receipt instead of a stale-state error.
+        const [committedAction] = await tx.select().from(REC).where(eq(REC.actionId, inputRecovery.actionId)).limit(1);
+        if (committedAction) {
+          if (committedAction.inboxId !== inputRecovery.inboxId || committedAction.actorId !== inputRecovery.actorId ||
+              committedAction.stage !== inputRecovery.stage || committedAction.reasonCode !== inputRecovery.reasonCode ||
+              committedAction.accountReference !== inputRecovery.accountReference || committedAction.usage !== inputRecovery.usage)
+            throw new Error("CLAIMMD_ERA_RECOVERY_ACTION_ID_CONFLICT");
+          return { outcome: committedAction.outcome as "requeued" | "reconciled" | "rejected",
+            state: committedAction.resultingState, retryEligible: committedAction.newRetryEligibility,
+            resolutionVersion: committedAction.resolutionVersion, deliveryId: committedAction.deliveryId };
+        }
+        let resultingState = source.state;
+        let retryEligible = false;
+        let previousRetryCount = source.retryCount;
+        let resolutionVersion: number | null = null;
+        let deliveryId: string | null = null;
+        let deliveryAttemptCount: number | null = null;
+        let outcome: "requeued" | "reconciled" = "requeued";
+
+        if (inputRecovery.stage === "capture") {
+          const [stream] = await tx.select({ leaseUntil: S.leaseUntil }).from(S).where(eq(S.id, source.streamId)).for("update").limit(1);
+          const captureRecoveries = await tx.select({ id: REC.id }).from(REC).where(and(
+            eq(REC.inboxId, source.id), eq(REC.stage, "capture"), eq(REC.outcome, "requeued")));
+          if (inputRecovery.expectedState !== source.state || inputRecovery.expectedVersion !== source.retryCount ||
+              source.state !== "retryable_failure" || source.retryCount < MAX_CAPTURE_RETRIES ||
+              captureRecoveries.length >= 3 ||
+              stream?.leaseUntil && stream.leaseUntil > new Date()) throw new Error("CLAIMMD_ERA_RECOVERY_STALE_OR_UNSAFE");
+          await tx.update(I).set({ retryCount: 0, lastErrorCode: null, updatedAt: sql`now()` }).where(eq(I.id, source.id));
+          previousRetryCount = source.retryCount;
+          retryEligible = true;
+        } else if (inputRecovery.stage === "ownership_resolution") {
+          const [resolution] = await tx.select({ status: R.status, version: R.resolutionVersion,
+            organizationId: R.organizationId, providerEntityId: R.providerEntityId }).from(R)
+            .where(eq(R.inboxId, source.id)).for("update").limit(1);
+          if (!resolution || inputRecovery.expectedState !== resolution.status ||
+              inputRecovery.expectedVersion !== resolution.version || source.state !== "captured" ||
+              resolution.status === "conflict" || resolution.status === "verified")
+            throw new Error("CLAIMMD_ERA_RECOVERY_STALE_OR_UNSAFE");
+          resolutionVersion = resolution.version;
+          resultingState = resolution.status;
+          retryEligible = true;
+        } else {
+          const [delivery] = await tx.select().from(D).where(eq(D.inboxId, source.id)).for("update").limit(1);
+          const [resolution] = await tx.select({ id: R.id, status: R.status, version: R.resolutionVersion,
+            organizationId: R.organizationId, providerEntityId: R.providerEntityId, locationId: R.locationId,
+            digest: R.original835Digest }).from(R).where(eq(R.inboxId, source.id)).for("update").limit(1);
+          if (!delivery || !resolution) throw new Error("CLAIMMD_ERA_RECOVERY_NOT_FOUND");
+          if (inputRecovery.expectedState !== delivery.state || inputRecovery.expectedVersion !== delivery.attemptCount)
+            throw new Error("CLAIMMD_ERA_RECOVERY_STALE_OR_UNSAFE");
+          if (["delivered", "possible_duplicate", "exact_duplicate"].includes(delivery.state)) {
+            outcome = "reconciled";
+            resultingState = delivery.state;
+            deliveryId = delivery.id;
+            deliveryAttemptCount = delivery.attemptCount;
+            resolutionVersion = resolution.version;
+          } else {
+            const priorRecoveries = await tx.select({ id: REC.id }).from(REC).where(and(
+              eq(REC.inboxId, source.id), eq(REC.stage, "m25_delivery"), eq(REC.outcome, "requeued")));
+            if (delivery.state !== "held" || !["DELIVERY_RETRY_LIMIT", "SOURCE_REVALIDATION_FAILED"].includes(delivery.safeErrorCode ?? "") ||
+                priorRecoveries.length >= 3 || source.state !== "captured" || !source.digest || resolution.status !== "verified" ||
+                resolution.digest !== source.digest || resolution.version !== delivery.resolutionVersion ||
+                resolution.id !== delivery.resolutionId || resolution.organizationId !== delivery.organizationId ||
+                resolution.providerEntityId !== delivery.providerEntityId || resolution.locationId !== delivery.locationId)
+              throw new Error("CLAIMMD_ERA_RECOVERY_STALE_OR_UNSAFE");
+            await tx.update(D).set({ state: "prepared", attemptCount: 0, safeErrorCode: null,
+              completedAt: null, updatedAt: sql`now()` }).where(eq(D.id, delivery.id));
+            await tx.insert(DH).values({ deliveryId: delivery.id, state: "prepared", safeReasonCode: "OPERATOR_REQUEUED",
+              attemptCount: 0, stageIds: delivery.stageIds });
+            resultingState = "prepared";
+            retryEligible = true;
+            deliveryId = delivery.id;
+            deliveryAttemptCount = delivery.attemptCount;
+            resolutionVersion = resolution.version;
+          }
+        }
+
+        await tx.insert(REC).values({ actionId: inputRecovery.actionId, inboxId: source.id,
+          accountReference: inputRecovery.accountReference, usage: inputRecovery.usage, eraId: source.eraId,
+          stage: inputRecovery.stage, actorId: inputRecovery.actorId, reasonCode: inputRecovery.reasonCode,
+          expectedState: inputRecovery.expectedState, resultingState, previousRetryCount,
+          newRetryEligibility: retryEligible, resolutionVersion, deliveryId, deliveryAttemptCount, outcome });
+        return { outcome, state: resultingState, retryEligible, resolutionVersion, deliveryId };
+      }, CLAIMMD_ERA_RECOVERY_JOB_ID);
+      } catch (error) {
+        // Record a safe rejection in a separate transaction so the failed optimistic transition
+        // does not roll back its audit evidence. If the source is unavailable, the action cannot
+        // satisfy its FK and is deliberately left to the operator's service log/alert.
+        const failureCode = error instanceof Error && /^CLAIMMD_ERA_RECOVERY_[A-Z_]+$/.test(error.message)
+          ? error.message : "CLAIMMD_ERA_RECOVERY_FAILED";
+        await run("Claim.MD ERA recovery rejected action audit", async (tx) => {
+          const [prior] = await tx.select({ id: REC.id }).from(REC).where(eq(REC.actionId, inputRecovery.actionId)).limit(1);
+          if (prior) return;
+          const [source] = await tx.select({ id: I.id, eraId: I.eraId, state: I.captureState,
+            retryCount: I.retryCount }).from(I).where(and(eq(I.id, inputRecovery.inboxId),
+            eq(I.accountReference, inputRecovery.accountReference), eq(I.usage, inputRecovery.usage),
+            eq(I.vendor, "claimmd"))).for("update").limit(1);
+          if (!source) return;
+          const [resolution] = inputRecovery.stage === "ownership_resolution" || inputRecovery.stage === "m25_delivery"
+            ? await tx.select({ version: R.resolutionVersion }).from(R).where(eq(R.inboxId, source.id)).limit(1) : [];
+          const [delivery] = inputRecovery.stage === "m25_delivery"
+            ? await tx.select({ id: D.id, attemptCount: D.attemptCount }).from(D).where(eq(D.inboxId, source.id)).limit(1) : [];
+          await tx.insert(REC).values({ actionId: inputRecovery.actionId, inboxId: source.id,
+            accountReference: inputRecovery.accountReference, usage: inputRecovery.usage, eraId: source.eraId,
+            stage: inputRecovery.stage, actorId: inputRecovery.actorId, reasonCode: inputRecovery.reasonCode,
+            expectedState: inputRecovery.expectedState, resultingState: source.state, previousRetryCount: source.retryCount,
+            newRetryEligibility: false, resolutionVersion: resolution?.version ?? null,
+            deliveryId: delivery?.id ?? null, deliveryAttemptCount: delivery?.attemptCount ?? null,
+            outcome: "rejected", safeFailureCode: failureCode });
+        }, CLAIMMD_ERA_RECOVERY_JOB_ID).catch(() => {});
+        throw error;
+      }
     },
   };
 }

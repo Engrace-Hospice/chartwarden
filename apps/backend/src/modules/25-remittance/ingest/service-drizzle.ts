@@ -858,8 +858,11 @@ export function buildDrizzleM25IngestService(
               transactionSetControlNumber: RA.transactionSetControlNumber,
               payerKind: RA.payerKind,
               payerId: RA.payerId,
+              checkOrEftTraceNumber: RA.checkOrEftTraceNumber,
+              contentDigest: RA.contentDigest,
               minioObjectKey: RA.minioObjectKey,
               parseStatus: RA.parseStatus,
+              parseSummary: RA.parseSummary,
               receivedAt: RA.receivedAt,
               totalPaymentAmount: RA.totalPaymentAmount,
             })
@@ -870,6 +873,12 @@ export function buildDrizzleM25IngestService(
       const advice = current[0];
       if (!advice) return { outcome: "not_found", adviceId };
       if (advice.parseStatus !== "queued" && advice.parseStatus !== "failed") {
+        if ((advice.parseStatus as string) === "held_duplicate") {
+          const reason = advice.parseSummary && typeof advice.parseSummary === "object" &&
+            (advice.parseSummary as { reason?: unknown }).reason === "MISSING_FINANCIAL_IDENTITY"
+            ? "MISSING_FINANCIAL_IDENTITY" as const : "CROSS_SOURCE_POSTED_IDENTITY" as const;
+          return { outcome: "held_duplicate", adviceId, reason };
+        }
         // A redelivery retries a delete that failed after the original post (delete is idempotent).
         if (advice.parseStatus === "posted" || advice.parseStatus === "partial_posted")
           await dropStagedRaw(actor.organizationId, adviceId);
@@ -932,13 +941,51 @@ export function buildDrizzleM25IngestService(
           { organizationId: actor.organizationId, userId: "" },
           async (tx) => {
             const guard = await tx
-              .select({ parseStatus: RA.parseStatus })
+              .select({ parseStatus: RA.parseStatus, parseSummary: RA.parseSummary })
               .from(RA)
               .where(eq(RA.id, adviceId))
               .for("update")
               .limit(1);
-            if (guard[0]?.parseStatus !== "queued" && guard[0]?.parseStatus !== "failed") {
+            const currentGuard = guard[0];
+            if (!currentGuard) throw new Error("M25_ADVICE_DISAPPEARED_DURING_POST");
+            if (currentGuard.parseStatus !== "queued" && currentGuard.parseStatus !== "failed") {
+              if ((currentGuard.parseStatus as string) === "held_duplicate")
+                return { outcome: "held_duplicate" as const, reason: currentGuard.parseSummary &&
+                  typeof currentGuard.parseSummary === "object" &&
+                  (currentGuard.parseSummary as { reason?: unknown }).reason === "MISSING_FINANCIAL_IDENTITY"
+                  ? "MISSING_FINANCIAL_IDENTITY" as const : "CROSS_SOURCE_POSTED_IDENTITY" as const };
               return { outcome: "already_posted" as const };
+            }
+            // A missing TRN or the immutable parsed-content digest leaves no defensible
+            // cross-source posting identity. Keep the original advice for operator review;
+            // never let an absent key bypass the common financial-effects guard.
+            const trace = advice.checkOrEftTraceNumber;
+            if (!trace || !advice.contentDigest) {
+              await tx.update(RA).set({ parseStatus: "held_duplicate",
+                parseSummary: { reason: "MISSING_FINANCIAL_IDENTITY" } }).where(eq(RA.id, adviceId));
+              return { outcome: "held_duplicate" as const, reason: "MISSING_FINANCIAL_IDENTITY" as const };
+            }
+            // Serialize every supported source at the financial effect boundary. This exact identity
+            // (tenant/provider, payer, trace, amount, and parsed-content digest) avoids treating a
+            // legitimate partial/secondary payment as a duplicate based on amount/date alone.
+            {
+              await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.organizationId}|${advice.providerEntityId}|${advice.payerId}|${trace}`}, 0))`);
+              const [prior] = await tx.select({ id: RA.id }).from(RA).where(and(
+                eq(RA.organizationId, actor.organizationId),
+                eq(RA.providerEntityId, advice.providerEntityId),
+                eq(RA.payerId, advice.payerId),
+                eq(RA.checkOrEftTraceNumber, trace),
+                eq(RA.totalPaymentAmount, advice.totalPaymentAmount),
+                eq(RA.contentDigest, advice.contentDigest),
+                sql`${RA.id} <> ${adviceId}`,
+                sql`${RA.parseStatus} IN ('posted','partial_posted')`,
+              )).limit(1);
+              if (prior) {
+                await tx.update(RA).set({ parseStatus: "held_duplicate",
+                  parseSummary: { reason: "CROSS_SOURCE_POSTED_IDENTITY", existingAdviceId: prior.id } })
+                  .where(eq(RA.id, adviceId));
+                return { outcome: "held_duplicate" as const, reason: "CROSS_SOURCE_POSTED_IDENTITY" as const };
+              }
             }
             let postedLineCount = 0;
             let unmatchedLineCount = 0;
@@ -996,6 +1043,8 @@ export function buildDrizzleM25IngestService(
           await dropStagedRaw(actor.organizationId, adviceId);
           return { outcome: "already_posted", adviceId };
         }
+        if (result.outcome === "held_duplicate")
+          return { outcome: "held_duplicate", adviceId, reason: result.reason };
         await dropStagedRaw(actor.organizationId, adviceId);
         return {
           outcome: result.outcome,

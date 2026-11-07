@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { transportUpload } from "./clearinghouse-submission";
 
 const x12 = readFileSync(new URL("../../../../../../packages/x12-837-client/src/clearinghouse/__fixtures__/stedi-claim.x12", import.meta.url), "utf8");
+const noticeX12 = (kind: "noe" | "notr" | "transfer_notice") => readFileSync(new URL(
+  `../../../../../../packages/x12-837-client/src/clearinghouse/__fixtures__/stedi-${kind === "noe" ? "NOE_81A" : kind === "notr" ? "NOTR_81B" : "TRANSFER_81C"}.x12`, import.meta.url), "utf8")
+  .replace(/(ISA(?:\*[^*]*){7}\*)[^*]*/, `$1${"CLAIMMD".padEnd(15, " ")}`)
+  .replace(/(GS\*HC\*[^*]+\*)[^*]*/, "$1CLAIMMD");
 const context = { organizationId: "00000000-0000-4000-8000-000000000001", providerEntityId: "00000000-0000-4000-8000-000000000002",
   payerId: "payer-context-is-not-used-as-evidence", correlationId: "correlation-synthetic", usage: "test" as const, billingNpi: "1234567893" };
 
@@ -36,5 +40,28 @@ describe("M23 Claim.MD evidence boundary", () => {
     const upload = transportUpload(makeTransport(order, async (_input: unknown) => { throw new Error("storage unavailable"); }));
     await expect(upload(request)).rejects.toThrow(/Claim\.MD|claim/i);
     expect(order).toEqual(["reserve"]);
+  });
+
+  it("keeps notice uploads off by default and commits typed evidence before any notice transport call", async () => {
+    for (const kind of ["noe", "notr", "transfer_notice"] as const) {
+    const order: string[] = [];
+    const submitNotice = vi.fn(async () => { order.push("upload"); return { ok: true as const, data: {
+      clearinghouseSubmissionId: "file-synthetic", idempotencyKey: "notice-key", controlNumber: "NOTICE-REF",
+      receivedAt: new Date().toISOString(), replayed: false, vendorIdentifiers: [{ field: "fileid", value: "file-synthetic" }],
+    } }; });
+    const base = { binding: { vendor: "claimmd", transport: { submitClaim: vi.fn(), submitNotice } },
+      contexts: { contextFor: async () => ({ ...context, payerId: "STEDI" }), providerEntitiesFor: async () => [] },
+      claimMdNoticeEvidence: { accountReference: "acct-synthetic", usage: "test" as const,
+        reserve: async (v: unknown) => { order.push("reserve"); expect(v).toMatchObject({ noticeKind: kind, noticeId: "00000000-0000-4000-8000-000000000005", submissionId: "00000000-0000-4000-8000-000000000006" }); return "notice-evidence"; },
+        observe: async () => { order.push("observe"); } } };
+    const notice = { organizationId: context.organizationId, providerEntityId: context.providerEntityId, kind,
+      x12: noticeX12(kind), controlNumber: kind === "notr" ? "WXNOTR0001" : "WXNOE0001", noticeId: "00000000-0000-4000-8000-000000000005",
+      submissionId: "00000000-0000-4000-8000-000000000006", attemptIndex: 0 };
+    await expect(transportUpload(base as never)({ ...notice })).rejects.toThrow(/disabled/);
+    expect(submitNotice).not.toHaveBeenCalled();
+    const enabled = transportUpload({ ...base, claimMdNoticeUploadsEnabled: true } as never);
+    await expect(enabled(notice)).resolves.toMatchObject({ accepted: true });
+    expect(order).toEqual(["reserve", "upload", "observe"]);
+    }
   });
 });

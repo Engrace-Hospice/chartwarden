@@ -69,6 +69,7 @@ import type { RepresentativeService } from "./representative-service";
 import type { SubmissionService } from "./submission-service";
 import type { TpeService } from "./tpe-service";
 import type { M25WriteService } from "./write-service";
+import type { ClaimMdEraReviewService } from "../ingest/claimmd-era-review";
 
 /**
  * The services every M25 route plugin composes over (bound to Drizzle, or in-memory in tests).
@@ -80,6 +81,8 @@ export interface M25RouteServices {
   readonly readService: M25ReadService;
   readonly writeService: M25WriteService;
   readonly ingestService?: M25IngestService;
+  /** Optional tenant-scoped read-only consumer for encrypted Claim.MD staging details. */
+  readonly claimMdEraReviewService?: ClaimMdEraReviewService;
   /** ADR intake + MAC rules (milestone 2a); the ADR routes mount only when supplied. */
   readonly adrService?: AdrService;
   /** Non-response routing + MAC reopenings (milestone 3); the routes mount only when both are supplied. */

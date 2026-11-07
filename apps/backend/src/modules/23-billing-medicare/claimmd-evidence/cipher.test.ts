@@ -18,4 +18,14 @@ describe("Claim.MD submission evidence cipher", () => {
     await expect(cipher.open({ evidenceId: "00000000-0000-4000-8000-000000000004", organizationId: org,
       providerEntityId: provider, attemptKey: "attempt-synthetic", sealed })).rejects.toThrow();
   });
+  it("binds notice TIN ciphertext to a separate notice evidence domain", async () => {
+    const cipher = createClaimMdEvidenceCipher({ dekForOrg: async () => ({ version: "synthetic-v1", key }),
+      dekForOrgVersion: async () => ({ version: "synthetic-v1", key }) });
+    const sealed = await cipher.seal({ evidenceId: evidence, organizationId: org, providerEntityId: provider,
+      attemptKey: "notice-attempt-synthetic", tin: "987654321", recordKind: "notice" });
+    await expect(cipher.open({ evidenceId: evidence, organizationId: org, providerEntityId: provider,
+      attemptKey: "notice-attempt-synthetic", sealed, recordKind: "notice" })).resolves.toBe("987654321");
+    await expect(cipher.open({ evidenceId: evidence, organizationId: org, providerEntityId: provider,
+      attemptKey: "notice-attempt-synthetic", sealed })).rejects.toThrow();
+  });
 });

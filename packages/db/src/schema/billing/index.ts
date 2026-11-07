@@ -56,3 +56,4 @@ export * from "./claimmd-response-resolution";
 export * from "./claimmd-ack-application";
 export * from "./claimmd-ack-delivery";
 export * from "./claimmd-submission-evidence";
+export * from "./claimmd-notice-submission-evidence";

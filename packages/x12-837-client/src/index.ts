@@ -363,6 +363,8 @@ export type { ClaimMdRequestCounter } from "./clearinghouse/claimmd-rate-limit";
 export { scopeKey } from "./clearinghouse/submission-identity";
 export { extractX12SubmissionEvidence, X12EvidenceError } from "./clearinghouse/submission-evidence";
 export type { X12ClaimEvidence, X12SubmissionEvidence } from "./clearinghouse/submission-evidence";
+export { extractX12NoticeEvidence } from "./clearinghouse/notice-submission-evidence";
+export type { X12NoticeEvidence } from "./clearinghouse/notice-submission-evidence";
 export {
   CredentialRejectedError,
   DirectMacTransport,
