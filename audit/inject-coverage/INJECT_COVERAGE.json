@@ -380,6 +380,7 @@
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
+        "apps/backend/__tests__/m34-baa-document-upload.live.test.ts",
         "apps/backend/__tests__/m6-nomnc-expedited.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
@@ -558,6 +559,7 @@
       "suiteFiles": [
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
         "apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts",
+        "apps/backend/__tests__/m34-baa-document-upload.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-baa-document.test.ts",
         "apps/backend/__tests__/m34-onboarding-data-routes.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
