@@ -39,12 +39,12 @@ import {
 } from "../src/bootstrap/org-spine-facts";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { m34PlatformBypassAuditor } from "../src/index";
-import { isTenantBaaDocumentFiled } from "../src/modules/22-documents/onboarding-baa-document-port";
 import {
   createOrgDataWriteScope,
   createOrganizationActivator,
   createOrganizationStatusReader,
 } from "../src/modules/02-identity";
+import { isTenantBaaDocumentFiled } from "../src/modules/22-documents/onboarding-baa-document-port";
 import {
   buildDrizzleOrgMacJurisdictionReader,
   buildMacFeedConfiguredReader,
@@ -1941,7 +1941,10 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
           baaStatus: "executed",
           documentId: own,
         });
-        expect(await baaRow(pending.id)).toMatchObject({ baa_status: "executed", document_id: own });
+        expect(await baaRow(pending.id)).toMatchObject({
+          baa_status: "executed",
+          document_id: own,
+        });
       });
 
       it("answers 503 when no document adapter is bound and a link is being written", async () => {
