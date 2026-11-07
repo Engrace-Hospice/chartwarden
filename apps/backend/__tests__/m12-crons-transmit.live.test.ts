@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * GAP-037 — M12 transmission crons over real Postgres as the real NOBYPASSRLS `chartwarden_app` role, with the REAL
  * catalog-validating publisher. Covers: the sign-time enqueue, `transmit_newrx` (success / retryable / exhausted /
@@ -16,22 +17,33 @@ import {
   createLayeredTenantConfigResolver,
 } from "@chartwarden/dosespot";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
+import { buildBootOutboxCatalog } from "../src/bootstrap/outbox-persister";
 import {
   type ClinicSecretCipher,
+  M12_OUTBOX_EVENTS,
   createDrizzleTenantConfigSource,
   enqueueTransmissionIfBound,
 } from "../src/modules/12-dosespot/index";
 import { inOrg } from "../src/modules/12-dosespot/jobs/cron-common";
 import { staleQueuedOrdersQuery } from "../src/modules/12-dosespot/jobs/degradation-reports";
 import {
+  type EpisodeStoreClient,
+  createValkeyEpisodeTracker,
+} from "../src/modules/12-dosespot/jobs/episode-store";
+import {
   type M12CronDeps,
   buildM12CronRunners,
   createBreakerEdgeRecorder,
   createEpisodeTracker,
+  runQueuedAgeAlertForOrg,
   runRecoveryDrainForOrg,
   runTransmissionSweepForOrg,
   runTransmitNewRxForOrg,
 } from "../src/modules/12-dosespot/jobs/index";
+import { alertAfterCommit } from "../src/modules/12-dosespot/tenant-config/effects";
+import { createDrizzleAlertEmitter, wireAlertRuleSeed } from "../src/modules/36-messaging/index";
+import { buildM36DosespotAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/dosespot-alerts";
 import { FakeDoseSpotVendor } from "./_fake-dosespot-vendor";
 import { GOOD_DATA, type M12Live, ORG_A, ORG_B, setupM12Live } from "./_m12-live-harness";
 
@@ -859,6 +871,268 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       } finally {
         await h.admin.query("ROLLBACK");
       }
+    });
+  });
+
+  // Review of slice 4, M3: the episode memory is shared (Valkey), a recovery is announced by whichever process sees it, and a fault
+  // in the store or the publish delays an alert but never drops one or fails a tick. The shared store here is a faithful in-memory
+  // stand-in for the SET NX PX / PEXPIRE / DEL subset; the real Valkey is exercised by m12-episode-store.live.test.ts.
+  describe("degradation alerts across processes (shared episode store)", () => {
+    const sharedStore = () => {
+      const expiresAt = new Map<string, number>();
+      const faults = { down: false };
+      const live = (key: string) => {
+        const at = expiresAt.get(key);
+        if (at === undefined) return false;
+        if (at <= Date.now()) {
+          expiresAt.delete(key);
+          return false;
+        }
+        return true;
+      };
+      const reach = () => {
+        if (faults.down) throw new Error("ECONNREFUSED");
+      };
+      const client: EpisodeStoreClient = {
+        async set(key, _value, _px, ms, _nx) {
+          reach();
+          if (live(key)) return null;
+          expiresAt.set(key, Date.now() + ms);
+          return "OK";
+        },
+        async pexpire(key, ms) {
+          reach();
+          if (!live(key)) return 0;
+          expiresAt.set(key, Date.now() + ms);
+          return 1;
+        },
+        async del(key) {
+          reach();
+          const was = live(key);
+          expiresAt.delete(key);
+          return was ? 1 : 0;
+        },
+      };
+      return { client, faults };
+    };
+    const BREAKER = `dosespot-queued_orders_stale:${ORG_A}`;
+    const events = async (type: string) =>
+      (await h.eventsOf(type, ORG_A)).filter((e) => e.payload.breakerName === BREAKER);
+    const staleOrder = async () => {
+      const patientId = await h.seedPatient(ORG_A, { synced: "501" });
+      const { orderId } = await h.seedOrder({
+        org: ORG_A,
+        patientId,
+        status: "queued_for_transmission",
+        sendState: "queued",
+      });
+      const setAge = (interval: string) =>
+        h.admin.query(
+          `UPDATE medication_order_transmission SET queued_at = now() - interval '${interval}' WHERE medication_order_id=$1`,
+          [orderId],
+        );
+      await setAge("2 hours");
+      return { orderId, setAge };
+    };
+    const makeReplica = (
+      store: EpisodeStoreClient,
+      over: Partial<M12CronDeps> = {},
+      warnings: { fields: Record<string, string | number>; message: string }[] = [],
+    ): M12CronDeps => ({
+      ...deps(new FakeDoseSpotVendor({})),
+      episodes: createValkeyEpisodeTracker(store),
+      warn: (fields, message) => warnings.push({ fields, message }),
+      ...over,
+    });
+    const clearEvents = async () => {
+      await h.admin.query(
+        "DELETE FROM outbox_event WHERE event_type IN ('m12.dosespot_degraded','m12.dosespot_recovered')",
+      );
+    };
+
+    it("two replicas raise ONE alert, and the replica that sees the recovery announces it even though the other raised the alert", async () => {
+      await clearEvents();
+      const { setAge } = await staleOrder();
+      const { client } = sharedStore();
+      const replicaA = makeReplica(client);
+      const replicaB = makeReplica(client);
+      expect(await runQueuedAgeAlertForOrg(replicaA, ORG_A)).toBe(true);
+      expect(await runQueuedAgeAlertForOrg(replicaB, ORG_A)).toBe(true); // B sees the same fault: no second alert
+      expect(await events("m12.dosespot_degraded")).toHaveLength(1);
+      await setAge("1 minute");
+      expect(await runQueuedAgeAlertForOrg(replicaB, ORG_A)).toBe(false); // B, not A, announces the recovery
+      expect(await events("m12.dosespot_recovered")).toHaveLength(1);
+      expect(await runQueuedAgeAlertForOrg(replicaA, ORG_A)).toBe(false);
+      expect(await events("m12.dosespot_recovered")).toHaveLength(1);
+    });
+
+    it("a restart does not alert again: a fresh process over the same store joins the open episode", async () => {
+      await clearEvents();
+      await staleOrder();
+      const { client } = sharedStore();
+      await runQueuedAgeAlertForOrg(makeReplica(client), ORG_A);
+      await runQueuedAgeAlertForOrg(makeReplica(client), ORG_A); // the "restarted" process: a new tracker, same store
+      expect(await events("m12.dosespot_degraded")).toHaveLength(1);
+    });
+
+    it("a recovery that could not be published is retried on the next tick instead of being lost with the episode", async () => {
+      await clearEvents();
+      const { setAge } = await staleOrder();
+      const { client } = sharedStore();
+      const warnings: { fields: Record<string, string | number>; message: string }[] = [];
+      let failRecovery = true;
+      const publishing = makeReplica(client, {}, warnings);
+      const flaky: M12CronDeps = {
+        ...publishing,
+        outbox: {
+          publish: (tx, e) => {
+            if (failRecovery && e.eventName === "m12.dosespot_recovered")
+              return Promise.reject(new Error("outbox unavailable"));
+            return publishing.outbox.publish(tx, e);
+          },
+        },
+      };
+      await runQueuedAgeAlertForOrg(flaky, ORG_A);
+      await setAge("1 minute");
+      await expect(runQueuedAgeAlertForOrg(flaky, ORG_A)).resolves.toBe(false); // a tick never fails on it
+      expect(await events("m12.dosespot_recovered")).toHaveLength(0);
+      expect(warnings.map((w) => w.message)).toContain("M12 recovery event could not be published");
+      failRecovery = false;
+      await runQueuedAgeAlertForOrg(flaky, ORG_A);
+      expect(await events("m12.dosespot_recovered")).toHaveLength(1);
+      await runQueuedAgeAlertForOrg(flaky, ORG_A);
+      expect(await events("m12.dosespot_recovered")).toHaveLength(1);
+    });
+
+    it("an alert that could not be published is retried on the next tick (the episode is released)", async () => {
+      await clearEvents();
+      await staleOrder();
+      const { client } = sharedStore();
+      let failOpen = true;
+      const publishing = makeReplica(client);
+      const flaky: M12CronDeps = {
+        ...publishing,
+        outbox: {
+          publish: (tx, e) =>
+            failOpen && e.eventName === "m12.dosespot_degraded"
+              ? Promise.reject(new Error("outbox unavailable"))
+              : publishing.outbox.publish(tx, e),
+        },
+      };
+      await runQueuedAgeAlertForOrg(flaky, ORG_A);
+      expect(await events("m12.dosespot_degraded")).toHaveLength(0);
+      failOpen = false;
+      await runQueuedAgeAlertForOrg(flaky, ORG_A);
+      await runQueuedAgeAlertForOrg(flaky, ORG_A);
+      expect(await events("m12.dosespot_degraded")).toHaveLength(1);
+    });
+
+    it("an unreachable episode store never fails the tick and never drops the alert: it is raised once the store is back", async () => {
+      await clearEvents();
+      await staleOrder();
+      const { client, faults } = sharedStore();
+      const warnings: { fields: Record<string, string | number>; message: string }[] = [];
+      const replica = makeReplica(client, {}, warnings);
+      faults.down = true;
+      await expect(runQueuedAgeAlertForOrg(replica, ORG_A)).resolves.toBe(true);
+      expect(await events("m12.dosespot_degraded")).toHaveLength(0);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]?.fields).toMatchObject({
+        organizationId: ORG_A,
+        kind: "queued_orders_stale",
+      });
+      faults.down = false;
+      await runQueuedAgeAlertForOrg(replica, ORG_A);
+      await runQueuedAgeAlertForOrg(replica, ORG_A);
+      expect(await events("m12.dosespot_degraded")).toHaveLength(1);
+    });
+    // The point of the whole path: the alert must REACH someone. Real catalog-validating publisher, real dispatcher, real AlertEmitter and the
+    // seeded platform rules, against an organization that has an administrator and one that has none.
+    describe("the alerts reach the tenant's administrators (publisher -> dispatcher -> M36 consumer -> seeded rule)", () => {
+      let dispatcher: ReturnType<typeof createOutboxDispatcher>;
+      let emitter: ReturnType<typeof createDrizzleAlertEmitter>;
+      let adminUserId: string;
+      beforeAll(async () => {
+        const member = (
+          await h.q("SELECT id, user_id FROM membership WHERE organization_id=$1", [ORG_A])
+        )[0];
+        adminUserId = member.user_id as string;
+        const roleId = (
+          await h.q(
+            "INSERT INTO role (organization_id, key, name, category) VALUES ($1,'org_admin','org_admin','admin_executive') RETURNING id",
+            [ORG_A],
+          )
+        )[0].id as string;
+        await h.q(
+          "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
+          [ORG_A, member.id, roleId],
+        );
+        emitter = createDrizzleAlertEmitter(h.handle.db);
+        await wireAlertRuleSeed(h.handle.db);
+        dispatcher = createOutboxDispatcher({
+          db: h.handle.db,
+          orgs: {
+            listActiveOrgs: async () => [{ organizationId: ORG_A }, { organizationId: ORG_B }],
+          },
+          consumers: [buildM36DosespotAlertConsumer(emitter)],
+          eventCatalog: buildBootOutboxCatalog([M12_OUTBOX_EVENTS]),
+          options: { log: () => {} },
+        });
+      });
+      const alertsNamed = (eventType: string) =>
+        h.q(
+          "SELECT id, severity::text AS severity FROM alert WHERE organization_id=$1 AND event_type=$2 ORDER BY created_at",
+          [ORG_A, eventType],
+        );
+      const recipientsOf = async (alertId: string) =>
+        (
+          await h.q(
+            "SELECT DISTINCT recipient_user_id FROM notification_delivery WHERE alert_id=$1",
+            [alertId],
+          )
+        ).map((r) => r.recipient_user_id as string);
+
+      it("an opened episode pages the administrator once (critical) however often the relay runs, and its recovery sends the paired notice (info)", async () => {
+        await clearEvents();
+        const { setAge } = await staleOrder();
+        const { client } = sharedStore();
+        const replica = makeReplica(client);
+        await runQueuedAgeAlertForOrg(replica, ORG_A);
+        await dispatcher.tick();
+        await dispatcher.tick();
+        const degraded = await alertsNamed("m12.dosespot_degraded");
+        expect(degraded).toHaveLength(1);
+        expect(degraded[0]?.severity).toBe("critical");
+        expect(await recipientsOf(degraded[0]?.id as string)).toEqual([adminUserId]);
+        await setAge("1 minute");
+        await runQueuedAgeAlertForOrg(replica, ORG_A);
+        await dispatcher.tick();
+        const recovered = await alertsNamed("m12.dosespot_recovered");
+        expect(recovered).toHaveLength(1);
+        expect(recovered[0]?.severity).toBe("info");
+        expect(await recipientsOf(recovered[0]?.id as string)).toEqual([adminUserId]);
+      });
+
+      it("the registration's deactivation alert (raised directly by the clinic service) now has a recipient too", async () => {
+        await alertAfterCommit(
+          {
+            dispatch: async ({ alertCode, severity, organizationId, payload }) => {
+              await emitter.emit(organizationId, {
+                eventType: alertCode,
+                payload,
+                severity,
+                correlationId: `m12-clinic:${alertCode}:${randomUUID()}`,
+              });
+            },
+          },
+          ORG_A,
+          { id: randomUUID(), environment: "production", version: 3 },
+          { kind: "deactivated", cause: "deactivated" },
+        );
+        const sent = await alertsNamed("m12.dosespot_config.deactivated");
+        expect(sent).toHaveLength(1);
+        expect(await recipientsOf(sent[0]?.id as string)).toEqual([adminUserId]);
+      });
     });
   });
 

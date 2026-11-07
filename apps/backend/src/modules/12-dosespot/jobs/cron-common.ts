@@ -16,23 +16,25 @@ export const CRON_USER_ID = "";
 
 /**
  * Remembers which faults are already reported, so one is alerted ONCE per episode (and its clearing once) instead of on every tick.
- * `raise` is true on the first report of an episode; `clear` is true when an episode was open and has now ended.
- * ponytail: in memory, per process: a restart (or a second worker) alerts once more. Persist it if that noise ever matters.
+ * `raise` is true on the first report of an episode (a report of an open one only keeps it open); `clear` is true when an episode was
+ * open and has now ended. Either rejects when the memory cannot be reached: the caller must not read that as "no episode".
+ * Production uses the Valkey-backed tracker (`episode-store.ts`), shared by every process, so a restart or a second replica neither
+ * alerts again nor loses a recovery. The in-memory one below is for a single process (tests, a boot with no Valkey).
  */
 export interface EpisodeTracker {
-  raise(key: string): boolean;
-  clear(key: string): boolean;
+  raise(key: string): Promise<boolean>;
+  clear(key: string): Promise<boolean>;
 }
 
 export function createEpisodeTracker(): EpisodeTracker {
   const open = new Set<string>();
   return {
-    raise(key) {
+    async raise(key) {
       if (open.has(key)) return false;
       open.add(key);
       return true;
     },
-    clear(key) {
+    async clear(key) {
       return open.delete(key);
     },
   };

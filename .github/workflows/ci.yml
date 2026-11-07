@@ -1436,6 +1436,9 @@ jobs:
           - { name: "M23/M27 validation queue isolation", scripts: "test:m23:validation-queue-isolation:live" }
           # ADR-0111 D7 - a held claims-billing job is delayed on real BullMQ, no attempt spent, never failed (needs Valkey).
           - { name: "Claims-billing worker hold", scripts: "test:claims-billing:worker-hold:live" }
+          # Review of slice 4 (M3) - the M12 degradation alerts' alert-once-per-episode memory on a real Valkey: shared across processes (a
+          # recovery is announced by whichever replica sees it), survives a restart, refreshed while the fault lasts, lapses when nobody reports it.
+          - { name: "M12 episode store", scripts: "test:m12:episode-store:live" }
     services:
       # F-025 (#59): four of the newly-wired suites gate on `CHARTWARDEN_TEST_REDIS_URL` as well as the
       # database — `test:m30:scheduled-jobs:live`, `test:m33:scheduled-jobs:live`,

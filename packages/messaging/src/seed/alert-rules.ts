@@ -12,6 +12,7 @@ import type { AlertCategory, AlertRecipientResolver, AlertSeverity } from "../in
 import type { ResolverArgs } from "../resolution";
 import type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
 import { BILLING_CAP_ALERT_RULES } from "./alert-rules-billing-cap";
+import { DOSESPOT_ALERT_RULES } from "./alert-rules-dosespot";
 
 export type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
 
@@ -1793,6 +1794,8 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // M12 DoseSpot e-prescribing: the adapter-health pair (M36 `dosespot-alerts` consumer) and the registration going out of service.
+  ...DOSESPOT_ALERT_RULES,
 ];
 
 /** The event types of the `system_locked` platform rules (§7.4) — the always-on floor a

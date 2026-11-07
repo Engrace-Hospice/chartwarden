@@ -5,6 +5,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PLATFORM_DEFAULT_ALERT_RULES } from "@chartwarden/messaging";
 import { describe, expect, it } from "vitest";
+import { DEACTIVATED_ALERT } from "../src/modules/12-dosespot/tenant-config/effects";
+import { M36_DOSESPOT_ALERT_EVENT_TYPES } from "../src/modules/36-messaging/outbox-consumers/dosespot-alerts";
 
 const SRC = join(__dirname, "..", "src", "modules");
 const EMIT_SITES = [
@@ -52,5 +54,28 @@ describe("cron alert codes have seeded platform rules", () => {
   it("seeds a rule for every emitted code", () => {
     const missing = [...emittedCodes()].filter((c) => !seeded.has(c));
     expect(missing).toEqual([]);
+  });
+});
+
+// Review of slice 4, M3: the DoseSpot alert codes are raised by an M36 outbox consumer (degraded / recovered) and by the clinic service
+// directly (deactivated). The scan above reads M23-M27 emit sites only, and a missing rule persists the alert with ZERO recipients, so
+// the codes are pinned here from the modules' own constants.
+describe("DoseSpot alert codes have seeded platform rules", () => {
+  const seeded = new Map(PLATFORM_DEFAULT_ALERT_RULES.map((r) => [r.eventType, r]));
+  const codes = [...M36_DOSESPOT_ALERT_EVENT_TYPES, DEACTIVATED_ALERT];
+
+  it("names the three codes", () => {
+    expect([...codes].sort()).toEqual([
+      "m12.dosespot_config.deactivated",
+      "m12.dosespot_degraded",
+      "m12.dosespot_recovered",
+    ]);
+  });
+
+  it.each(codes)("%s is seeded, enabled, and addressed to the tenant's administrators", (code) => {
+    const rule = seeded.get(code);
+    expect(rule).toBeDefined();
+    expect(rule?.enabled).toBe(true);
+    expect(rule?.recipientResolver).toBe("tenant_admins");
   });
 });

@@ -131,6 +131,13 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   registration row (the demo tenant): the boot log names each such org, and a row takes over the day it exists. A tenant that loses its
   live registration (deactivated, rotated) keeps its queued orders `queued` (the crons skip it) rather than failing them; newly signed
   orders activate locally and its administrators are alerted.
+- Degradation alerts (review of slice 4, M3): `m12.dosespot_degraded` / `_recovered` (breaker edges, an org whose config cannot be opened, signed
+  orders queued over an hour) are consumed by M36's `dosespot-alerts` and reach the tenant's administrators (seeded `tenant_admins` rules, the
+  deactivation alert's rule among them; before, these events had no consumer and the deactivation alert no rule, so nobody was told). The
+  "once per episode" memory is a Valkey key per (kind, org) (`chartwarden:m12:episode:*`, SET NX PX, refreshed while the fault lasts), shared by
+  every replica: a restart does not re-alert, and the replica that sees the recovery announces it whichever one raised the alert. An unreachable
+  store or a failed publish delays an alert or a recovery to the next tick, never drops it. The circuit breaker's own edges are still paired
+  in-process (a restart while a breaker is open leaves that alert without its recovery notice).
 - A tenant with an outage longer than ~31 minutes of real failed attempts sees orders land in `transmission_failed`; the existing
   `retransmit` route mints the corrected order. Breaker-open ticks do not count.
 - Live proof: `test:m12:crons-transmit:live` and `test:m12:crons-housekeeping:live` (CI job "M12 DoseSpot crons"), run against a

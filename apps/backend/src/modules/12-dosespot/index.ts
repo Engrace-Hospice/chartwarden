@@ -205,6 +205,7 @@ export {
   M12_QUEUE_CATALOG,
   createBreakerEdgeRecorder,
   createEpisodeTracker,
+  createValkeyEpisodeTracker,
   createDrizzlePatientSyncSnapshotResolver,
   createUnboundDosespotPatientIdResolver,
   describeM12AdapterPosture,

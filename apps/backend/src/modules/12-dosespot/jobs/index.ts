@@ -65,6 +65,12 @@ export {
 } from "./cron-common";
 export { QUEUED_ORDER_ALERT_AGE_MS, runQueuedAgeAlertForOrg } from "./degradation-reports";
 export {
+  EPISODE_KEY_PREFIX,
+  EPISODE_TTL_MS,
+  type EpisodeStoreClient,
+  createValkeyEpisodeTracker,
+} from "./episode-store";
+export {
   M12_CRON_QUEUES,
   M12_CRON_QUEUE_PARAMS,
   M12_CRON_SCHEDULES,

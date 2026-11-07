@@ -5,7 +5,9 @@
 //                        transmit pass skips the org entirely until it can, so this alert is the only thing that says why.
 //   queued_orders_stale  signed orders have sat in `queued_for_transmission` longer than {@link QUEUED_ORDER_ALERT_AGE_MS}, whatever
 //                        the reason (a deactivated registration, a fault, an outage): "queued ones wait" must not mean "forever".
-// Publishing is best effort and never fails a tick: a failed publish un-raises the episode so the next tick tries again.
+// "Once per episode" is remembered in a store shared by every process (episode-store.ts), so a restart or a second replica does not alert
+// again and the process that sees the recovery announces it. Reporting is best effort and never fails a tick: an unreachable store or a failed
+// publish delays the alert (or the recovery) to the next tick, it never drops it.
 import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, exists, lt, sql } from "drizzle-orm";
 import { type M12CronDeps, inOrg, nowOf } from "./cron-common";
@@ -42,39 +44,71 @@ async function publish(
   );
 }
 
-/** Raise `kind` for `org`: an alert on the first report of an episode, nothing on the rest. */
+const causeNameOf = (cause: unknown): string => (cause instanceof Error ? cause.name : "unknown");
+
+/**
+ * Raise `kind` for `org`: an alert on the first report of an episode (in any process), nothing on the rest. Never throws: an
+ * unreachable episode store or a failed publish delays the alert to the next tick, it does not drop it and does not fail the tick.
+ */
 export async function reportDegradation(
   deps: M12CronDeps,
   org: string,
   kind: DegradationKind,
 ): Promise<void> {
+  const episodes = deps.episodes;
+  if (!episodes) return;
   const key = keyOf(kind, org);
-  if (!deps.episodes?.raise(key)) return;
+  try {
+    if (!(await episodes.raise(key))) return;
+  } catch (cause) {
+    deps.warn?.(
+      { organizationId: org, kind, cause: causeNameOf(cause) },
+      "M12 degradation episode store unavailable; the alert is retried on the next tick",
+    );
+    return;
+  }
   try {
     await publish(deps, org, kind, "opened");
   } catch (cause) {
-    deps.episodes.clear(key); // not alerted: let the next tick try again
     deps.warn?.(
-      { organizationId: org, kind, cause: cause instanceof Error ? cause.name : "unknown" },
+      { organizationId: org, kind, cause: causeNameOf(cause) },
       "M12 degradation alert could not be published",
     );
+    // not alerted: release the episode so the next tick (any process) tries again
+    await episodes.clear(key).catch(() => undefined);
   }
 }
 
-/** End the episode for `org` (an event only when one was open). */
+/**
+ * End the episode for `org` (an event only when one was open, whichever process opened it). Never throws: a store that cannot be
+ * reached leaves the episode open for the next tick, and a recovery that cannot be published re-opens it so it is announced later
+ * instead of being lost with the cleared key.
+ */
 export async function reportRecovery(
   deps: M12CronDeps,
   org: string,
   kind: DegradationKind,
 ): Promise<void> {
-  if (!deps.episodes?.clear(keyOf(kind, org))) return;
+  const episodes = deps.episodes;
+  if (!episodes) return;
+  const key = keyOf(kind, org);
+  try {
+    if (!(await episodes.clear(key))) return;
+  } catch (cause) {
+    deps.warn?.(
+      { organizationId: org, kind, cause: causeNameOf(cause) },
+      "M12 degradation episode store unavailable; the recovery is retried on the next tick",
+    );
+    return;
+  }
   try {
     await publish(deps, org, kind, "closed");
   } catch (cause) {
     deps.warn?.(
-      { organizationId: org, kind, cause: cause instanceof Error ? cause.name : "unknown" },
+      { organizationId: org, kind, cause: causeNameOf(cause) },
       "M12 recovery event could not be published",
     );
+    await episodes.raise(key).catch(() => undefined);
   }
 }
 

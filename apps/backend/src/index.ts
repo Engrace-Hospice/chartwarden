@@ -742,11 +742,11 @@ import {
   createDrizzleRosterStore,
   createDrizzleTenantConfigSource,
   createEnvWebhookSecretResolver,
-  createEpisodeTracker,
   createPractitionerLinkService,
   createPractitionerProfileSource,
   createPrescriberEnrollmentService,
   createTransmissionGate,
+  createValkeyEpisodeTracker,
   createWebhookBodyCipher,
   describeM12AdapterPosture,
   describeM12EnvFallbackWarning,
@@ -1788,6 +1788,7 @@ import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox
 import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/outbox-consumers/channel-membership-sync";
 import { buildM36CriticalLabAlertConsumers } from "./modules/36-messaging/outbox-consumers/critical-lab-alerts";
 import { buildM36DeathBoardConsumer } from "./modules/36-messaging/outbox-consumers/death-board";
+import { buildM36DosespotAlertConsumer } from "./modules/36-messaging/outbox-consumers/dosespot-alerts";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
 import { buildM36EmergencyNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/emergency-notifications";
 import { buildM36ExportNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/export-notifications";
@@ -11974,6 +11975,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // GAP-037 — the seven §4.8 crons (transmit_newrx, transmit_queued_on_recovery, rx_benefit_prewarm, refill_sla,
     // ial2_expiry_warn, transmission_timeout_sweep, epcs_attempt_expiry_sweep). The vendor-facing four run only for
     // tenants with a bound adapter; the three DB-only ones run for every org.
+    // The alert-once-per-episode memory is shared by every replica and survives a restart (Valkey): its own short-timeout connection, so
+    // a tick never waits on it (an unreachable store delays an alert to the next tick, see degradation-reports.ts).
+    const m12EpisodeRedis = new Redis({
+      ...(queueConnection as RedisOptions),
+      maxRetriesPerRequest: 1,
+      connectTimeout: 2_000,
+      retryStrategy: (times) => Math.min(times * 200, 2_000),
+    });
+    m12EpisodeRedis.on("error", () => {});
+    app.addHook("onClose", async () => {
+      await m12EpisodeRedis.quit().catch(() => undefined);
+    });
     const m12CronWorkers = registerM12CronWorkers({
       connection: queueConnection,
       db: dbHandle.db,
@@ -11982,8 +11995,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       activeOrgs: m12SyncActiveOrgs,
       config: m12TenantConfig,
       breakerEdges: m12BreakerEdges,
-      // one alert per fault episode, and a log line (org ids and error classes only) for what a tick held back
-      episodes: createEpisodeTracker(),
+      // one alert per fault episode (across replicas and restarts), and a log line (org ids and error classes only) for what a tick held back
+      episodes: createValkeyEpisodeTracker(m12EpisodeRedis),
       warn: (fields, message) => app.log.warn(fields, message),
     });
     attachDlqAlertsToAll(m12CronWorkers, "m12");
@@ -13016,6 +13029,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // events (M30 spec §4.9): previously unconsumed (`declaredConsumers: []`), so none of them paged anyone.
           // GAP-043 - M29's listener-down / listener-recovered events (published by the worker-role watcher): the page.
           buildM36FeedHealthAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // Review of slice 4 (M3) - M12's `m12.dosespot_degraded` / `_recovered`: previously unconsumed, so a tenant whose signed
+          // prescriptions stopped reaching DoseSpot was told nothing. The tenant's administrators get the alert and the paired notice.
+          buildM36DosespotAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
           // #908/#910 — a critical (HH/LL) lab result pages the caseload RN, the order drafter, the attending and (unsigned
           // order) the medical director: one alert per observation, tenant admins as the never-zero fallback.
           ...buildM36CriticalLabAlertConsumers(criticalLabDepsFor(dbHandle.db, app)),

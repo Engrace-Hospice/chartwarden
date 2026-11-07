@@ -481,14 +481,13 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     eventName: "m12.dosespot_degraded",
     moduleOwner: "m12",
     description:
-      "The DoseSpot circuit breaker opened; M36 system alert to org_admin + ChartWarden ops (DR_BCP §10.4.3).",
+      "DoseSpot e-prescribing is degraded for the organization: the circuit breaker opened, its configuration could not be opened, or signed orders have waited in the queue over an hour (`lastErrorClass` names which). Consumed by M36's `dosespot-alerts`, which alerts the tenant's administrators.",
     payloadSchema: Type.Object({
       breakerName: id,
       openedAt: isoInstant,
       lastErrorClass: Type.String(),
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── tenant onboarding slice 4 (ADR-0110): the clinic registration going live / out of service ───────────
@@ -523,10 +522,9 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     eventName: "m12.dosespot_recovered",
     moduleOwner: "m12",
     description:
-      "The DoseSpot circuit breaker closed; the queued-on-recovery worker drains the backlog.",
+      "A DoseSpot degradation ended (the circuit breaker closed, the configuration opens again, or no order waits past the threshold); the queued-on-recovery worker drains the backlog. Consumed by M36's `dosespot-alerts` as the paired notice.",
     payloadSchema: Type.Object({ breakerName: id, closedAt: isoInstant }),
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

@@ -244,6 +244,10 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m30.alerts.cop_review_overdue",
       "mdm.baa_expiring",
       "mdm.physician_deactivated",
+      // M12 DoseSpot e-prescribing: adapter degraded / recovered (M36 `dosespot-alerts`) and the registration deactivated.
+      "m12.dosespot_degraded",
+      "m12.dosespot_recovered",
+      "m12.dosespot_config.deactivated",
     ]);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();
