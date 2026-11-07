@@ -1052,6 +1052,11 @@ import { claimMdAckMode } from "./modules/23-billing-medicare/claimmd-ack/config
 import { createClaimMdAckSource, CLAIMMD_ACK_JOB_ID } from "./modules/23-billing-medicare/claimmd-ack/store";
 import { createClaimMdAckDispatcher } from "./modules/23-billing-medicare/claimmd-ack/service";
 import { startClaimMdAckWorker } from "./modules/23-billing-medicare/claimmd-ack/worker";
+import { createClaimMdAccountEraReader, type ClaimMdEraUsage } from "@chartwarden/x12-837-client";
+import { claimMdEraRuntimeConfig, shouldRunLegacyClaimMdEraPull } from "./modules/25-remittance/ingest/claimmd-era-config";
+import { createClaimMdEraStore, CLAIMMD_ERA_CAPTURE_JOB_ID } from "./modules/25-remittance/ingest/claimmd-era-store";
+import { createClaimMdEraCapture } from "./modules/25-remittance/ingest/claimmd-era-capture";
+import { startClaimMdEraCaptureWorker } from "./modules/25-remittance/ingest/claimmd-era-worker";
 import {
   bindPlatformClearinghouse,
   describeClearinghouseBinding,
@@ -4292,6 +4297,33 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
   const m41OutboxPublisher = bindCallerModule(txOutboxPublisher, "m41");
   const claimMdAckExecutionMode = claimMdAckMode(process.env);
+  const claimMdEraConfig = claimMdEraRuntimeConfig(process.env);
+  let claimMdEraCapture: ReturnType<typeof createClaimMdEraCapture> | undefined;
+  if (claimMdEraConfig.deliveryEnabled)
+    throw new Error("Claim.MD ERA M25 delivery is not available until BIL-1.4 M25 staging is certified");
+  if (claimMdEraConfig.captureEnabled) {
+    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
+    const accountKey = process.env.CLAIMMD_ACCOUNT_KEY;
+    const keyRing = claimMdInboxKeyRingFromEnv(process.env);
+    if (role === "api" || clearinghouseBinding.vendor !== "claimmd" || !dbHandle || !platformDbHandle || !rateLimitStore ||
+      !accountReference || !/^[A-Za-z0-9._:-]{1,128}$/.test(accountReference) ||
+      (usage !== "test" && usage !== "production") || !accountKey || !keyRing)
+      throw new Error("Claim.MD ERA capture requires worker role, Claim.MD account configuration, platform/tenant DB, keyring, and shared rate limiter");
+    registerPlatformJob(CLAIMMD_ERA_CAPTURE_JOB_ID);
+    const store = createClaimMdEraStore({ platformDb: platformDbHandle.db, auditBypass: m34PlatformBypassAuditor, keyRing });
+    const reader = createClaimMdAccountEraReader({ accounts: { [accountReference]: { [usage as ClaimMdEraUsage]: accountKey } }, counter: rateLimitStore });
+    claimMdEraCapture = createClaimMdEraCapture({ store, reader, log: (summary) => app.log.info(summary, "Claim.MD ERA capture tick") });
+    await withPlatformContext(platformDbHandle.db, { jobId: CLAIMMD_ERA_CAPTURE_JOB_ID,
+      reason: "Claim.MD ERA capture schema and operator-bootstrap preflight", crossTenant: true }, m34PlatformBypassAuditor, async (tx) => {
+      await tx.select({ id: schema.claimmdEraStreams.id }).from(schema.claimmdEraStreams).limit(0);
+      await tx.select({ id: schema.claimmdEraInbox.id }).from(schema.claimmdEraInbox).limit(0);
+      const [stream] = await tx.select({ id: schema.claimmdEraStreams.id }).from(schema.claimmdEraStreams)
+        .where(and(eq(schema.claimmdEraStreams.accountReference, accountReference),
+          eq(schema.claimmdEraStreams.usage, usage), eq(schema.claimmdEraStreams.streamKind, "eras"))).limit(1);
+      if (!stream) throw new Error("Claim.MD ERA stream is not operator-bootstrapped");
+    });
+  }
   let claimMdAckDispatcher: ReturnType<typeof createClaimMdAckDispatcher> | undefined;
   if (claimMdAckExecutionMode !== "off" && role !== "api") {
     if (clearinghouseBinding.vendor !== "claimmd" || !dbHandle || !platformDbHandle || !claimMdSubmissionEvidence)
@@ -7706,6 +7738,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     app.addHook("onClose", async () => stop());
     app.log.info({ mode: claimMdAckExecutionMode, batchSize: 25 }, "Claim.MD acknowledgment dispatcher started");
   }
+  if (claimMdEraCapture) {
+    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE!.trim();
+    const usage = process.env.CLAIMMD_ACCOUNT_USAGE as ClaimMdEraUsage;
+    const stop = startClaimMdEraCaptureWorker({ runOnce: claimMdEraCapture.runOnce, accountReference, usage,
+      log: (summary) => app.log.info(summary, "Claim.MD ERA account capture tick") });
+    app.addHook("onClose", async () => stop());
+    app.log.info({ enabled: true, intervalMs: 60_000, automaticPosting: false }, "Claim.MD ERA capture worker started");
+  }
 
   // ── worker-runner section (the M4-T11 BullMQ worker-construction precedent) ──────────────────────────
   // Construct the §4.3 M34 BullMQ Workers + the four cron-schedule Queue producers, and tear them down on
@@ -9262,7 +9302,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     };
     // #717 - the bound clearinghouse feeds the 835 intake. With no vendor bound (CLEARINGHOUSE_VENDOR unset) neither the
     // `remittance-pull` worker nor its schedule exists, so nothing polls an unbound transport.
-    const m25RemittancePull = clearinghouseBinding.vendor
+    const legacyM25ClaimMdPull = shouldRunLegacyClaimMdEraPull({ vendor: clearinghouseBinding.vendor,
+      captureEnabled: claimMdEraConfig.captureEnabled, deliveryEnabled: claimMdEraConfig.deliveryEnabled });
+    const m25RemittancePull = clearinghouseBinding.vendor && legacyM25ClaimMdPull
       ? {
           transport: clearinghouseBinding.transport,
           vendor: clearinghouseBinding.vendor,

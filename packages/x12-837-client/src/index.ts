@@ -68,6 +68,9 @@ export type {
 export { createNgsJ6PortalClient, NgsJ6PortalClient } from "./mac-portal/ngs-j6";
 export { captureAccountResponsePage, createClaimMdAccountResponseReader } from "./clearinghouse/claimmd-account-response";
 export type { AccountResponsePage, AccountResponseRead, CapturedResponseEvent, ClaimMdUsage } from "./clearinghouse/claimmd-account-response";
+export { captureClaimMdEraListPage, createClaimMdAccountEraReader, discoverClaimMdEraSnapshot } from "./clearinghouse/claimmd-account-era";
+export type { ClaimMdEraDetailsRead, ClaimMdEraFileRead, ClaimMdEraListItem, ClaimMdEraListPage, ClaimMdEraListRead, ClaimMdEraUsage,
+  ClaimMdEraDiscoveryCommitPort, ClaimMdEraDiscoveryResult, ClaimMdEraPagePort } from "./clearinghouse/claimmd-account-era";
 export type {
   NgsJ6PortalHttpPort,
   NgsJ6PortalHttpRequest,

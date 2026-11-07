@@ -38,3 +38,4 @@ export * from "./beneficiary-representative"; // representative_form_version, re
 export * from "./playbook"; // denial_playbook, denial_playbook_version, denial_playbook_case_step (milestone 9a-1)
 export * from "./pull-cursor"; // remittance_pull_cursor (#717)
 export * from "./pull-refusal"; // remittance_pull_refusal (#717 follow-up)
+export * from "./claimmd-era"; // claimmd_era_stream, claimmd_era_inbox, claimmd_era_m25_stage (BIL-1.4)
