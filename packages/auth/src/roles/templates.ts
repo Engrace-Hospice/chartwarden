@@ -177,6 +177,9 @@ export const PLATFORM_ONBOARDING_DATA_KEYS = [
   "tenant_clearinghouse.verify_baa_platform",
   // Owner decision 2026-11-06: an operator withdraws a tenant's mistaken "filed outside ChartWarden" NOE/NOTR record (migration 1355).
   "tenant_notice_filing.withdraw_platform",
+  // Owner decision 2026-11-06: an operator uploads the signed BAA for a tenant (migration 1368). Scoped to the one document kind
+  // `tenant_baa` and the tenant in the path; it is not `documents.upload` and reads no document.
+  "tenant_baa_document.upload_platform",
 ] as const;
 const PLATFORM_ONBOARDING_DATA_ROLES: readonly PlatformOpsRoleKey[] = ["platform_ops"];
 

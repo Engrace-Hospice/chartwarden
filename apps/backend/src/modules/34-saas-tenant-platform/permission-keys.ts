@@ -398,9 +398,20 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // A platform operator uploads the signed BAA for a tenant that is still onboarding (onboarding step 3). The NARROWEST grant that does
+  // it, in place of `documents.upload` (which would let a platform role file any document kind into any tenant): the one route behind this
+  // key files one document kind (`tenant_baa`) for the tenant in the path, on that tenant's own RLS scope; it lists and reads no document.
+  // The route also needs the platform_ops role (`tenant_lifecycle_platform_ops`), a fresh step-up, a human actor, an Idempotency-Key and a
+  // recorded reason. Bound to `platform_ops` alone (migration 1368): a role the predicate always denies gains nothing from the key.
+  "tenant_baa_document.upload_platform": {
+    resource: "tenant_baa_document",
+    action: "upload_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
-/** Union of the M34 contributed permission keys (forty-seven). */
+/** Union of the M34 contributed permission keys (forty-eight). */
 export type M34ContributedPermissionKey = keyof typeof M34_CONTRIBUTED_PERMISSIONS;
 
 /**

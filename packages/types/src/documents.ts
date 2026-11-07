@@ -145,6 +145,8 @@ export type DocumentAggregateType =
   | "triage_summary_attending"
   // FY2027 (mig 0380) — the 42 CFR 418.24(c) election statement addendum, one document per version.
   | "election_addendum"
+  // Onboarding step 3 (mig 1367) — the signed BAA between ChartWarden and the tenant, uploaded by a platform operator.
+  | "tenant_baa"
   | "other";
 
 /** §3.2 / §2.2.1 — the document lifecycle (mirrors `document_status`). */

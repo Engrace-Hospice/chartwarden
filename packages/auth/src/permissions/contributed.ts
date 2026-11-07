@@ -3038,6 +3038,14 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // Onboarding step 3: a platform operator uploads the signed BAA for a tenant that is still onboarding. The narrowest grant that does it
+  // (see the M34 module's permission-keys.ts): one route, one document kind, the tenant in the path. NOT `documents.upload`.
+  "tenant_baa_document.upload_platform": {
+    resource: "tenant_baa_document",
+    action: "upload_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M34 contributed permission keys. */
