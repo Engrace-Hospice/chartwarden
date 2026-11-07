@@ -66,7 +66,14 @@ import type { OnboardingProgress } from "../../onboarding/progress";
 import type { WizardActivation } from "../../onboarding/wizard-store-drizzle";
 import { evaluateActivationGuards, pickGoverningBaa } from "./activation-guards";
 import { assertBaaDocumentFiled, assertExecutedBaaHasDocument } from "./baa-guards";
-import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
+import {
+  type CursorPage,
+  decodeCursor,
+  decodeSqlCursor,
+  encodeCursor,
+  pageSizeOf,
+  paginate,
+} from "./concurrency";
 import { partitionEffects } from "./effect-ledger";
 import { evaluateDestructionGuards, retentionEndsAtFrom } from "./offboarding-guards";
 import { readOnboardingProgress } from "./onboarding-progress-drizzle";
@@ -196,7 +203,6 @@ const BAA = schema.platformTenantBaaRecord;
 const SS = schema.supportSession;
 const SCG = schema.supportConsentGrant;
 /** A cursor id that is bound into SQL as a uuid (the export job list). */
-const UUID_CURSOR_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 const isoReq = (d: Date): string => d.toISOString();
@@ -1367,14 +1373,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       return inPlatformCtx("platform-ops list tenant export jobs", async (tx) => {
         const repo = new TenantExportRepository(tx);
         const size = pageSizeOf(limit);
-        const keyset = cursor ? decodeCursor(cursor) : undefined;
-        // The cursor goes into SQL as a timestamp and a uuid: a value that is neither is a clean 400, never a database error.
-        if (
-          keyset &&
-          (Number.isNaN(Date.parse(keyset.createdAt)) || !UUID_CURSOR_ID.test(keyset.id))
-        ) {
-          throw new ChartWardenError("VALIDATION_FAILED", "the cursor is malformed", 400);
-        }
+        // The cursor goes into SQL as a timestamp and a uuid: checked strictly here, a value that is neither is a clean 400.
+        const keyset = cursor ? decodeSqlCursor(cursor) : undefined;
         // limit + 1 so `hasMore` is answered by the read itself, never by a second count query.
         const rows = await repo.listPlatformPage({
           organizationId: filter.organizationId,

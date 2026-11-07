@@ -4,7 +4,12 @@
 // at the page boundary (or, worse, handed the same page back forever). The cursor names the last row seen: the next page starts after IT.
 import { describe, expect, it } from "vitest";
 import { paginate as paginatePlatform } from "../routes/platform/concurrency";
-import { decodeCursor, encodeCursor } from "../routes/platform/concurrency";
+import {
+  decodeCursor,
+  decodeSqlCursor,
+  encodeCursor,
+  isStrictIsoTimestamp,
+} from "../routes/platform/concurrency";
 import { paginate as paginateTenant } from "../routes/tenant/concurrency";
 
 interface Row {
@@ -85,5 +90,49 @@ describe.each([
   it("a malformed cursor is a clean 400, not a page from the start", () => {
     expect(() => paginate(sameMillisecond, "not-a-cursor", 2)).toThrow(/cursor is malformed/);
     expect(() => decodeCursor(Buffer.from('{"createdAt":1}').toString("base64url"))).toThrow();
+  });
+});
+
+describe("the cursor of a list that pages in SQL is judged strictly", () => {
+  const ID = "6f1f9c3e-8d2a-4b7e-9a10-2c4d5e6f7a8b";
+  const cursorOf = (createdAt: string, id: string = ID) => encodeCursor({ createdAt, id });
+
+  it("takes the timestamps a row renders (microseconds, milliseconds, none) and a uuid", () => {
+    for (const ts of [
+      "2026-11-06T12:00:00.123456Z",
+      "2026-11-06T12:00:00.123Z",
+      "2026-11-06T12:00:00Z",
+    ]) {
+      expect(decodeSqlCursor(cursorOf(ts))).toEqual({ createdAt: ts, id: ID });
+    }
+  });
+
+  it("refuses what is not an ISO timestamp that exists, instead of normalising it or letting the database's cast fail", () => {
+    for (const ts of [
+      "garbage",
+      "2026-11-06",
+      "2026-11-06 12:00:00Z",
+      "2026-11-06T12:00:00",
+      "2026-11-06T12:00:00+01:00",
+      "2026-11-06T12:00:00.1234567Z",
+      "2026-02-31T00:00:00Z",
+      "2026-13-01T00:00:00Z",
+      "2026-11-06T25:00:00Z",
+      "2026-11-06T12:61:00Z",
+      "now()",
+      "",
+    ]) {
+      expect(isStrictIsoTimestamp(ts), ts).toBe(false);
+      expect(() => decodeSqlCursor(cursorOf(ts)), ts).toThrowError(
+        expect.objectContaining({ statusCode: 400, code: "VALIDATION_FAILED" }),
+      );
+    }
+  });
+
+  it("refuses an id that is not a uuid, and a cursor that is not base64url JSON at all", () => {
+    expect(() => decodeSqlCursor(cursorOf("2026-11-06T12:00:00Z", "not-a-uuid"))).toThrowError(
+      expect.objectContaining({ statusCode: 400 }),
+    );
+    expect(() => decodeSqlCursor("%%%")).toThrowError(expect.objectContaining({ statusCode: 400 }));
   });
 });

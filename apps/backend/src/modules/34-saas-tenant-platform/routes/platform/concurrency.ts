@@ -3,8 +3,9 @@
 // The opaque keyset-cursor codec + page helper the platform-ops LIST routes paginate on (§4.1 SD-052):
 // `GET /platform/tenants`, `GET /platform/tenant-invitations`, `GET /platform/onboarding-templates`.
 // Mirrors the M22 routes/concurrency.ts precedent EXACTLY (cursor encodes `(createdAt DESC, id)`; offset
-// pagination is forbidden); the codec shape is base64url JSON in the slice + HMAC-signed in prod — the
-// route surface is stable either way. A malformed cursor is a 400 VALIDATION_FAILED (never page-from-start).
+// pagination is forbidden); the codec is plain base64url JSON. It is NOT signed: a client can write any cursor, so a cursor is only a
+// position in a list the caller may already read, and every consumer validates what it decodes (a cursor that goes into SQL as a
+// timestamp and a uuid is checked with `decodeSqlCursor`). A malformed cursor is a 400 VALIDATION_FAILED (never page-from-start).
 import { ChartWardenError } from "@chartwarden/types";
 
 /** The keyset a cursor encodes — `(createdAt DESC, id)` (§4.1). Opaque to clients. */
@@ -13,7 +14,7 @@ export interface CursorKeyset {
   readonly id: string;
 }
 
-/** Encode a keyset into an opaque base64url cursor (HMAC-signed in prod; shape identical). */
+/** Encode a keyset into an opaque base64url cursor (unsigned: see the header; shape identical to the other modules' codecs). */
 export function encodeCursor(keyset: CursorKeyset): string {
   return Buffer.from(JSON.stringify(keyset), "utf8").toString("base64url");
 }
@@ -30,6 +31,32 @@ export function decodeCursor(cursor: string): CursorKeyset {
   } catch {
     throw new ChartWardenError("VALIDATION_FAILED", "the cursor is malformed", 400);
   }
+}
+
+export const UUID_CURSOR_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CURSOR_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/;
+
+/**
+ * An ISO-8601 UTC timestamp that round-trips: the shape (up to microseconds, `Z`), and a calendar date and clock time that exist, so
+ * `2026-02-31T00:00:00Z` and `…T25:00:00Z` are refused instead of being normalised or reaching the database's cast as an error.
+ */
+export function isStrictIsoTimestamp(value: string): boolean {
+  if (!CURSOR_TIMESTAMP.test(value)) return false;
+  const seconds = value.slice(0, 19);
+  const parsed = Date.parse(`${seconds}Z`);
+  return !Number.isNaN(parsed) && new Date(parsed).toISOString().slice(0, 19) === seconds;
+}
+
+/**
+ * Decode a cursor whose keyset goes into SQL as a `timestamptz` and a `uuid` (a list that pages in SQL): both are checked here, so a
+ * value that is neither is a clean 400, never a cast error from the database (a 500).
+ */
+export function decodeSqlCursor(cursor: string): CursorKeyset {
+  const keyset = decodeCursor(cursor);
+  if (!isStrictIsoTimestamp(keyset.createdAt) || !UUID_CURSOR_ID.test(keyset.id)) {
+    throw new ChartWardenError("VALIDATION_FAILED", "the cursor is malformed", 400);
+  }
+  return keyset;
 }
 
 /** The default + maximum page size for the platform list routes (§4.1: default 50, max 200). */

@@ -2,9 +2,9 @@
 //
 // The opaque keyset-cursor pagination helper the M34 tenant LIST routes share — copied verbatim from the
 // M22 routes/concurrency.ts precedent (PHI list routes paginate by an opaque `(createdAt DESC, id)` cursor;
-// offset pagination is forbidden on PHI lists). The slice encodes the keyset as base64url JSON; production
-// HMAC-signs it (the codec shape is identical so the routes are stable). `decodeCursor` rejects a malformed
-// cursor as 400 VALIDATION_FAILED (never silently page-from-start).
+// offset pagination is forbidden on PHI lists). The keyset is plain base64url JSON, NOT signed: a client can write any
+// cursor, so it is only a position in a list the caller may already read, and a consumer validates what it decodes. `decodeCursor`
+// rejects a malformed cursor as 400 VALIDATION_FAILED (never silently page-from-start).
 import { ChartWardenError } from "@chartwarden/types";
 
 /** The keyset a cursor encodes — `(createdAt DESC, id)` (§4.1). Opaque to clients. */
@@ -13,7 +13,7 @@ export interface CursorKeyset {
   readonly id: string;
 }
 
-/** Encode a keyset into an opaque base64url cursor (HMAC-signed in prod; shape identical). */
+/** Encode a keyset into an opaque base64url cursor (unsigned: see the header). */
 export function encodeCursor(keyset: CursorKeyset): string {
   return Buffer.from(JSON.stringify(keyset), "utf8").toString("base64url");
 }
