@@ -1584,7 +1584,7 @@ merge to main
 ### 12.2 Container Image Strategy
 
 - Multi-stage Dockerfile per service
-- Base image: `node:22-bookworm-slim` for TS services, `python:3.12-slim` for Python
+- Base image: `node:22-bookworm-slim` for TS services; Wolfi (`cgr.dev/chainguard/wolfi-base`, glibc, digest-pinned) for Python — the docling worker's torch/opencv wheels need glibc, so not Alpine
 - Distroless final image where feasible
 - Image tagged with: `<service>:<git-sha>`, `<service>:<branch>`, `<service>:latest` (latest only on main)
 - Image signing with cosign; verification in deploy
