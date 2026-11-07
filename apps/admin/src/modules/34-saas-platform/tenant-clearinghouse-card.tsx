@@ -19,6 +19,7 @@ import { MODE_LABEL, VENDOR_LABEL, isTransmitting } from "./onboarding/clearingh
 import type { ClearinghouseView } from "./onboarding/clearinghouse-model";
 import { SwitchToVendor } from "./onboarding/clearinghouse-switch";
 import { ContractModeBanner } from "./onboarding/contract-mode-banner";
+import { ModeUnconfirmedNotice } from "./onboarding/mode-unconfirmed-notice";
 import { useLoad } from "./onboarding/use-load";
 import { cap } from "./saas-status";
 
@@ -34,6 +35,7 @@ function Body({
   onOpenFilings,
 }: { orgSlug: string; tenantStatus: string; onOpenFilings: () => void }): JSX.Element {
   const client = useApiClient();
+  const [modeUnconfirmed, setModeUnconfirmed] = useState(false);
   const load = useLoad<ClearinghouseView>(`hub-clearinghouse:${orgSlug}`, () =>
     client.GET("/api/v1/platform/tenants/{orgSlug}/clearinghouse", {
       params: { path: { orgSlug } },
@@ -55,6 +57,7 @@ function Body({
   const vendor = view.vendor ?? "";
   return (
     <>
+      {modeUnconfirmed ? <ModeUnconfirmedNotice orgSlug={orgSlug} /> : null}
       {chosen && isTransmitting(view) ? <ContractModeBanner orgSlug={orgSlug} /> : null}
       {chosen ? (
         <dl className="wx-kv">
@@ -103,6 +106,10 @@ function Body({
           view={view}
           tenantStatus={tenantStatus}
           reload={() => load.reload(true)}
+          onSwitched={async (modeConfirmed) => {
+            setModeUnconfirmed(!modeConfirmed);
+            await load.reload(true);
+          }}
         />
         {chosen ? (
           <VerifyBaa

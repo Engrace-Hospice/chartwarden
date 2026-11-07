@@ -637,6 +637,9 @@ export function createTenantClearinghouseService(
 
     async checkPut(store, actor, input, expectedVersion) {
       validatePut(actor, input);
+      // A credential that would have to be sealed needs the cipher: a deployment without one refuses (503) HERE, before the caller
+      // writes anything else, instead of after it.
+      if (input.vendor !== "outside" && input.secret !== undefined) requireCipher();
       const existing = await store.find(actor.organizationId);
       if (existing) await checkChange(store, actor, existing, input, expectedVersion);
       else checkCreate(input, expectedVersion);

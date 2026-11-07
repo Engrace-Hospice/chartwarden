@@ -418,7 +418,7 @@ export function registerOnboardingDataRoutes(
       if (fields.billingServiceMode !== undefined) {
         for (const guard of PRICING_WRITE) await guard(request, reply);
       }
-      const { created, view } = await service.putClearinghouse(
+      const { created, view, billingModeConfirmed } = await service.putClearinghouse(
         op,
         slugOf(request),
         fields,
@@ -426,7 +426,12 @@ export function registerOnboardingDataRoutes(
         optionalIfMatch(request),
       );
       // A first choice answers 201, a version-checked change 200.
-      return reply.code(created ? 201 : 200).send(view);
+      // The mode the operator chose could not be confirmed after the vendor committed: said in the answer, not only in a log.
+      return reply
+        .code(created ? 201 : 200)
+        .send(
+          billingModeConfirmed === false ? { ...(view as object), billingModeConfirmed } : view,
+        );
     },
   );
 

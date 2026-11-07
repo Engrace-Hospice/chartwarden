@@ -165,6 +165,51 @@ describe("tenant clearinghouse service: choosing", () => {
     expect(store.rows()).toHaveLength(0);
   });
 
+  describe("checkPut: every refusal put would make, without writing", () => {
+    it("answers 503 for a credential when no encryption key is bound, BEFORE the caller writes anything else (the operator's switch sets the billing mode first)", async () => {
+      const store = createInMemoryConfigStore();
+      const service = createTenantClearinghouseService({ probes: {} });
+      expect(
+        await codeOf(
+          service.checkPut(
+            store,
+            OPERATOR,
+            { vendor: "claimmd", mode: "production", secret: FAKE_KEY },
+            undefined,
+          ),
+        ),
+      ).toBe("CLEARINGHOUSE_CIPHER_UNBOUND");
+      expect(store.rows()).toHaveLength(0);
+    });
+
+    it("asks nothing of the cipher for `outside` or for a write without a credential, and writes nothing either way", async () => {
+      const store = createInMemoryConfigStore();
+      const service = createTenantClearinghouseService({ probes: {} });
+      await expect(
+        service.checkPut(store, OPERATOR, { vendor: "outside" }, undefined),
+      ).resolves.toBeUndefined();
+      expect(store.rows()).toHaveLength(0);
+    });
+
+    it("refuses what put would refuse (a missing credential on a first choice, a stale or missing pin) and changes nothing", async () => {
+      const { store, service } = setup();
+      expect(
+        await codeOf(
+          service.checkPut(store, OPERATOR, { vendor: "claimmd", mode: "production" }, undefined),
+        ),
+      ).toBe("VALIDATION_FAILED"); // the field error on `secret` (CLEARINGHOUSE_SECRET_REQUIRED) under the 422 envelope
+      const chosen = await service.put(store, ACTOR, { vendor: "outside" }, undefined);
+      const version = chosen.view.version as number;
+      const toVendor = { vendor: "claimmd", mode: "production", secret: FAKE_KEY } as const;
+      expect(await codeOf(service.checkPut(store, OPERATOR, toVendor, undefined))).toBe(
+        "IF_MATCH_REQUIRED",
+      );
+      expect(await codeOf(service.checkPut(store, OPERATOR, toVendor, version + 3))).toBeTruthy();
+      await expect(service.checkPut(store, OPERATOR, toVendor, version)).resolves.toBeUndefined();
+      expect((await service.view(store, ORG)).vendor).toBe("outside");
+    });
+  });
+
   it("needs If-Match to change an existing config, and refuses a stale version", async () => {
     const { store, service } = setup();
     await service.put(

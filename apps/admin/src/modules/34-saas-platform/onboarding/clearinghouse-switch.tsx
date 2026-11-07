@@ -39,12 +39,15 @@ export function SwitchToVendor({
   view,
   tenantStatus,
   reload,
+  onSwitched,
 }: {
   orgSlug: string;
   view: ClearinghouseView;
   tenantStatus: string;
-  /** Read the choice again (after a change, or a pin that went stale). */
+  /** Read the choice again (a pin that went stale). */
   reload: () => Promise<void> | void;
+  /** The switch committed; `modeConfirmed` is false when the billing mode could not be confirmed afterwards (the caller says so). */
+  onSwitched: (modeConfirmed: boolean) => Promise<void> | void;
 }): JSX.Element | null {
   const client = useApiClient();
   const write = useOpsWrite();
@@ -102,7 +105,7 @@ export function SwitchToVendor({
     );
     if (outcome.ok) {
       close();
-      await reload();
+      await onSwitched(outcome.data.billingModeConfirmed !== false);
       return;
     }
     const { failure } = outcome;

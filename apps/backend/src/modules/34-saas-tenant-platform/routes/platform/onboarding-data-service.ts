@@ -126,7 +126,15 @@ export interface OnboardingDataService {
     fields: OnboardingFields,
     reason: string,
     expectedVersion: number | undefined,
-  ): Promise<{ readonly created: boolean; readonly view: unknown }>;
+  ): Promise<{
+    readonly created: boolean;
+    readonly view: unknown;
+    /**
+     * `false` only when the vendor committed but the billing mode the operator chose could not be confirmed afterwards (even after one
+     * retry): the tenant has the vendor, and its contract may not hold that mode. Absent otherwise.
+     */
+    readonly billingModeConfirmed?: false;
+  }>;
   verifyClearinghouse(
     op: OnboardingOperator,
     orgSlug: string,
@@ -643,22 +651,31 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     }
   }
 
-  /** After the vendor committed: the operator's mode is asked for once more (idempotent). A failure is warned about; the vendor change stands. */
+  /**
+   * After the vendor committed: the operator's mode is asked for once more (idempotent), and once more if that fails. Returns whether it
+   * was confirmed; when it was not, the cause is warned about and the CALLER tells the operator (the vendor change stands).
+   */
   async function reassertModeAfterSwitch(
     op: OnboardingOperator,
     orgSlug: string,
     mode: NonNullable<ClearinghouseSwitchPlan["billingServiceMode"]>,
     reason: string,
     organizationId: string,
-  ): Promise<void> {
-    try {
-      await deps.billingMode?.setModeLeavingOutside(op, orgSlug, mode, reason);
-    } catch (cause) {
-      deps.warn?.(
-        "m34.onboarding data: the vendor switch committed but the billing mode could not be confirmed afterwards; read the tenant's contract and set it if it is not the one chosen",
-        { organizationId, err: cause },
-      );
+  ): Promise<boolean> {
+    let lastCause: unknown;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        await deps.billingMode?.setModeLeavingOutside(op, orgSlug, mode, reason);
+        return true;
+      } catch (cause) {
+        lastCause = cause;
+      }
     }
+    deps.warn?.(
+      "m34.onboarding data: the vendor switch committed but the billing mode could not be confirmed afterwards (after a retry); read the tenant's contract and set it if it is not the one chosen",
+      { organizationId, err: lastCause },
+    );
+    return false;
   }
 
   /** The bound clearinghouse adapter, or a typed 503 (the credential lanes' posture). */
@@ -821,7 +838,13 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       // Leaving `outside` for a vendor while the tenant has a contract also sets the billing mode: BEFORE the vendor, so a failure never
       // leaves a vendor without its mode, and put back to none if the vendor change then fails.
       if (mode !== null && deps.billingMode) {
-        await deps.billingMode.setModeLeavingOutside(op, orgSlug, mode, reason);
+        try {
+          await deps.billingMode.setModeLeavingOutside(op, orgSlug, mode, reason);
+        } catch (err) {
+          // The mode is written before the vendor: a refusal there ends the attempt, and it is audited like any other failed attempt.
+          await recordFailedWrite(op, target, spec, err);
+          throw err;
+        }
       }
       let result: { created: boolean; view: unknown };
       try {
@@ -853,10 +876,13 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       // The vendor is committed and the tenant no longer bills outside, so nothing the system does reverts the mode now. But a sync or
       // sweep may have set none in the window between the mode write and this commit (the tenant was still outside): ask for the
       // operator's mode again. Idempotent (a no-op when it is already in force or pending), dated like any mode change.
-      if (mode !== null && deps.billingMode) {
-        await reassertModeAfterSwitch(op, orgSlug, mode, reason, target.organizationId);
-      }
-      return settleStepAfter(target.organizationId, result);
+      const confirmed =
+        mode !== null && deps.billingMode
+          ? await reassertModeAfterSwitch(op, orgSlug, mode, reason, target.organizationId)
+          : true;
+      const settled = await settleStepAfter(target.organizationId, result);
+      // An unconfirmed mode is never a silent 200: the flag travels with the result, and the screen says so.
+      return confirmed ? settled : { ...settled, billingModeConfirmed: false as const };
     },
 
     verifyClearinghouse: async (op, orgSlug, fields, reason) => {

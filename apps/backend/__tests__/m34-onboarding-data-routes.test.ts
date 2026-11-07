@@ -112,7 +112,12 @@ function recordingService(calls: Call[]): OnboardingDataService {
       expectedVersion: number | undefined,
     ) => {
       calls.push({ method: "putClearinghouse", op, orgSlug, fields, reason, expectedVersion });
-      return { created: expectedVersion === undefined, view: { vendor: fields.vendor } };
+      return {
+        created: expectedVersion === undefined,
+        view: { vendor: fields.vendor },
+        // the service reports an unconfirmed billing mode (the stub does when the reason says so)
+        ...(reason.includes("unconfirmed") ? { billingModeConfirmed: false as const } : {}),
+      };
     },
     verifyClearinghouse: async (
       op: OnboardingOperator,
@@ -1483,7 +1488,9 @@ describe("service: an operator's switch out of outside (order, any status, the m
       putFails?: Error;
       validateFails?: Error;
       contract?: boolean | "unreadable";
-      reassertFails?: boolean;
+      /** How many of the confirmations AFTER the vendor committed fail (the write before it always succeeds). */
+      reassertFails?: number;
+      modeWriteFails?: boolean;
     } = {},
   ) {
     const log: string[] = [];
@@ -1510,7 +1517,11 @@ describe("service: an operator's switch out of outside (order, any status, the m
       setModeLeavingOutside: async (_op: unknown, _slug: string, mode: string) => {
         modeCalls += 1;
         log.push(`setMode:${mode}`);
-        if (options.reassertFails && modeCalls > 1) throw new Error("contract canceled meanwhile");
+        if (options.modeWriteFails)
+          throw new ChartWardenError("PRICING_REFUSED", "pricing write refused", 409);
+        if (modeCalls > 1 && modeCalls - 1 <= (options.reassertFails ?? 0)) {
+          throw new Error("contract canceled meanwhile");
+        }
       },
       restoreNone: async () => {
         log.push("restoreNone");
@@ -1636,10 +1647,29 @@ describe("service: an operator's switch out of outside (order, any status, the m
     expect(warned).toHaveLength(1);
   });
 
-  it("still succeeds, with a loud warning, when the vendor committed but the mode cannot be confirmed afterwards", async () => {
-    const { service, warned } = harness({ reassertFails: true });
-    await expect(put(service)).resolves.toMatchObject({ created: false });
+  it("retries the confirmation once: a first failure that the second attempt clears is confirmed, with no flag and no warning", async () => {
+    const { service, log, warned } = harness({ reassertFails: 1 });
+    const out = await put(service);
+    expect(out).not.toHaveProperty("billingModeConfirmed");
+    expect(log.filter((l) => l.startsWith("setMode"))).toHaveLength(3); // before the vendor, then the confirmation twice
+    expect(warned).toEqual([]);
+  });
+
+  it("is NEVER a silent success when the mode cannot be confirmed after the retry: the vendor stands, the answer says billingModeConfirmed:false, and it is logged", async () => {
+    const { service, log, warned } = harness({ reassertFails: 2 });
+    const out = await put(service);
+    expect(out).toMatchObject({ created: false, billingModeConfirmed: false });
+    expect(log.filter((l) => l.startsWith("setMode"))).toHaveLength(3);
     expect(warned.some((w) => w.includes("could not be confirmed"))).toBe(true);
+  });
+
+  it("audits a FAILED mode write as write_failed, and writes no vendor", async () => {
+    const { service, log, inserts } = harness({ modeWriteFails: true });
+    await expect(put(service)).rejects.toMatchObject({ code: "PRICING_REFUSED" });
+    expect(log).not.toContain("put");
+    expect(inserts.map((i) => i.values.eventType)).toEqual([
+      ONBOARDING_DATA_AUDIT_EVENTS.writeFailed,
+    ]);
   });
 
   it("the operator's read says whether the tenant has a contract, from the server (a canceled one is not one), and 503s when it cannot tell", async () => {
@@ -1701,6 +1731,20 @@ describe("the clearinghouse switch that names a billing mode is also a pricing w
     expect(res.statusCode, res.body).toBe(200);
     expect(calls.map((c) => c.method)).toEqual(["putClearinghouse"]);
     expect(calls[0]?.fields).toMatchObject({ billingServiceMode: "managed_billing" });
+    await app.close();
+  });
+
+  it("says in the answer when the vendor committed but the billing mode could not be confirmed (billingModeConfirmed: false), and says nothing otherwise", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const unconfirmed = await putAs(app, "pricing-user", {
+      ...SWITCH_BODY,
+      reason: "ticket CHG-unconfirmed",
+    });
+    expect(unconfirmed.statusCode, unconfirmed.body).toBe(200);
+    expect(unconfirmed.json()).toMatchObject({ vendor: "claimmd", billingModeConfirmed: false });
+    const confirmed = await putAs(app, "pricing-user", SWITCH_BODY);
+    expect(confirmed.json()).not.toHaveProperty("billingModeConfirmed");
     await app.close();
   });
 

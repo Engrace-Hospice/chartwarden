@@ -17,7 +17,9 @@ blocked while a contract exists, and the operator's write was onboarding-only.
 - A body that names `billingServiceMode` also needs the pricing key `subscription.onboard_platform` (`403` with the clearinghouse key alone).
 - Everything that can be refused beforehand is refused BEFORE the mode is written (the plan's `422`s, the body's rules, `412`/`428` on the
   If-Match, the switch's locks, a missing credential), so a plain input error writes no mode; a refusal is audited as a failed attempt.
-  After the vendor commits, the mode is asked for once more (idempotent), so a sync that ran in between cannot leave the tenant on none.
+  After the vendor commits, the mode is asked for again (idempotent), and once more if that fails, so a sync that ran in between cannot
+  leave the tenant on none. If it still cannot be confirmed the answer carries `billingModeConfirmed: false` (the vendor change stands):
+  read the contract and set the mode if it is not the one chosen.
 - A contract that is PAUSED counts: the tenant's own switch is `409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR`, the operator names the
   mode, and the outside-means-none rule applies to it. A canceled contract is none. A contract that cannot be read is
   `503 CLEARINGHOUSE_CONTRACT_UNAVAILABLE` on the operator's route too.

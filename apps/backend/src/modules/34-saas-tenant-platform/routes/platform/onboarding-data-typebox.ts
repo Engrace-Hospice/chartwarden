@@ -311,6 +311,19 @@ export const OnboardingClearinghouseReadSchema = Type.Composite([
   }),
 ]);
 
+/** The answer to the operator's write of the choice: the masked view, plus a flag when the billing mode could not be confirmed. */
+export const OnboardingClearinghouseWriteSchema = Type.Composite([
+  OnboardingClearinghouseViewSchema,
+  Type.Object({
+    billingModeConfirmed: Type.Optional(
+      Type.Literal(false, {
+        description:
+          "Present (false) only when the vendor change committed but the billing service mode the write named could not be confirmed afterwards, even after one retry: the tenant has the vendor and its contract may not hold that mode. Read the contract and set the mode if it is not the one chosen.",
+      }),
+    ),
+  }),
+]);
+
 export const OnboardingClearinghouseVerifyResponseSchema = Type.Object({
   config: OnboardingClearinghouseViewSchema,
   test: Nullable(Type.Object({ outcome: ClearinghouseOutcome })),

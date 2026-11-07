@@ -37,6 +37,7 @@ import {
 } from "./clearinghouse-model";
 import { ContractModeBanner } from "./contract-mode-banner";
 import { FailureNotice } from "./failure-notice";
+import { ModeUnconfirmedNotice } from "./mode-unconfirmed-notice";
 import type { PanelContext } from "./panel-types";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
 import { RecordSaveDialog } from "./record-save-dialog";
@@ -147,6 +148,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
   const [noteError, setNoteError] = useState<string | null>(null);
   const [notePhiFree, setNotePhiFree] = useState(false);
   const [testProblem, setTestProblem] = useState<string | null>(null);
+  const [modeUnconfirmed, setModeUnconfirmed] = useState(false);
   const write = useOpsWrite();
 
   const current = load.data;
@@ -230,6 +232,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
     if (outcome.ok) {
       setEditing(false);
       setSecret("");
+      setModeUnconfirmed(outcome.data.billingModeConfirmed === false);
       await settled();
     } else if (isAboutAnInput(outcome.failure)) {
       setDialog(null); // the form stays open with what was typed; the error is under its input
@@ -322,6 +325,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
           </>
         ) : null}
         {testProblem ? <InlineAlert tone="warning">{testProblem}</InlineAlert> : null}
+        {modeUnconfirmed ? <ModeUnconfirmedNotice orgSlug={orgSlug} /> : null}
         {canWrite && available && !editing ? (
           <div className="wx-drawer-actions">
             {current ? (

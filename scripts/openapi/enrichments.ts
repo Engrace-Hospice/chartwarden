@@ -15483,6 +15483,7 @@ import {
   OnboardingClearinghouseVerifyRequest as M34OnboardingClearinghouseVerifyRequest,
   OnboardingClearinghouseVerifyResponseSchema as M34OnboardingClearinghouseVerifyResponseSchema,
   OnboardingClearinghouseViewSchema as M34OnboardingClearinghouseViewSchema,
+  OnboardingClearinghouseWriteSchema as M34OnboardingClearinghouseWriteSchema,
   OnboardingNoticeFilingListSchema as M34OnboardingNoticeFilingListSchema,
   OnboardingNoticeWithdrawalViewSchema as M34OnboardingNoticeWithdrawalViewSchema,
   OnboardingReasonSchema as M34OnboardingReasonSchema,
@@ -15555,11 +15556,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34OnboardingClearinghouseReadSchema,
   },
   "PUT /api/v1/platform/tenants/:orgSlug/clearinghouse": {
-    summary: `Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key — ${CLEARINGHOUSE_CHOICE_NOTE}. Moving a tenant that has a contract OUT of outside to a vendor requires \`billingServiceMode\` (422 BILLING_SERVICE_MODE_REQUIRED): the mode is set first through the pricing path and put back if the vendor change fails; the field is refused (422 BILLING_SERVICE_MODE_NOT_APPLICABLE) on any other write. A body that names the mode also needs the pricing key subscription.onboard_platform (403 without it). That switch is the one clearinghouse write accepted for ANY tenant status (a live tenant that bills outside has no other way off outside). Every refusal that can be foreseen (the plan, the body's rules, the If-Match, the locks, the credential) is made BEFORE the mode is written; after the vendor commits the mode is confirmed once more (idempotent). ${M34_CLEARINGHOUSE_PUT_NOTE}`,
+    summary: `Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key — ${CLEARINGHOUSE_CHOICE_NOTE}. Moving a tenant that has a contract OUT of outside to a vendor requires \`billingServiceMode\` (422 BILLING_SERVICE_MODE_REQUIRED): the mode is set first through the pricing path and put back if the vendor change fails; the field is refused (422 BILLING_SERVICE_MODE_NOT_APPLICABLE) on any other write. A body that names the mode also needs the pricing key subscription.onboard_platform (403 without it). That switch is the one clearinghouse write accepted for ANY tenant status (a live tenant that bills outside has no other way off outside). Every refusal that can be foreseen (the plan, the body's rules, the If-Match, the locks, the credential) is made BEFORE the mode is written; after the vendor commits the mode is asked for again (idempotent), and once more if that fails; if it still cannot be confirmed the answer carries billingModeConfirmed: false and the vendor change stands (read the contract and set the mode if it is not the one chosen). ${M34_CLEARINGHOUSE_PUT_NOTE}`,
     body: M34OnboardingClearinghousePutRequest,
     headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
     status: 201,
-    response: M34OnboardingClearinghouseViewSchema,
+    response: M34OnboardingClearinghouseWriteSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/verify": {
     summary: `Verify a tenant's clearinghouse connection (a no-PHI connection test for Claim.MD, an attestation with evidence for Stedi). ${M34_CLEARINGHOUSE_WRITE_NOTE}`,

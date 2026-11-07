@@ -318,6 +318,26 @@ describe("ClearinghousePanel: leaving outside for a vendor (a contracted tenant'
     });
   });
 
+  it("says so when the vendor committed but the billing mode could not be confirmed, and not otherwise", async () => {
+    mount(OUTSIDE_TENANT, { PUT: { [CH]: () => ok({ ...CLAIMMD, billingModeConfirmed: false }) } });
+    await open();
+    fireEvent.change(screen.getByLabelText(/^Billing service mode/), {
+      target: { value: "managed_billing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("The customer moves to Claim.MD, ticket CHG-9101", "Save");
+    expect(await screen.findByText(/could not be confirmed/)).toBeTruthy();
+    cleanup();
+
+    mount(OUTSIDE_TENANT, { PUT: { [CH]: () => ok(CLAIMMD) } });
+    await open();
+    fireEvent.change(screen.getByLabelText(/^Billing service mode/), { target: { value: "none" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("The customer moves to Claim.MD, ticket CHG-9101", "Save");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByText(/could not be confirmed/)).toBeNull();
+  });
+
   it("accepts an explicit None as the answer", async () => {
     const { client } = mount(OUTSIDE_TENANT, { PUT: { [CH]: () => ok(CLAIMMD) } });
     await open();

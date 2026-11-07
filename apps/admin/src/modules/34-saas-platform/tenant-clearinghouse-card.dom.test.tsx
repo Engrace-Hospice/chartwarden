@@ -379,6 +379,35 @@ describe("TenantClearinghouseCard: switching a live outside tenant to a vendor",
     await waitFor(() => expect(reads(client, CH)).toBeGreaterThan(1));
   });
 
+  it("says so, with a way to the contract, when the vendor committed but the billing mode could not be confirmed (never a silent success)", async () => {
+    mountSwitch(SWITCHABLE, "active", () => ok({ ...CLAIMMD, billingModeConfirmed: false }));
+    await show();
+    fillForm();
+    fireEvent.change(screen.getByLabelText(/^Billing service mode/), {
+      target: { value: "managed_billing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: reason } });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Switch" }));
+
+    expect(await screen.findByText(/could not be confirmed/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Plan and contract step/ }).getAttribute("href")).toBe(
+      "/tenants/cedar-ridge/onboarding/plan_contract",
+    );
+  });
+
+  it("says nothing of the mode when it was confirmed", async () => {
+    mountSwitch(SWITCHABLE, "active", () => ok({ ...CLAIMMD }));
+    await show();
+    fillForm();
+    fireEvent.change(screen.getByLabelText(/^Billing service mode/), { target: { value: "none" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: reason } });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Switch" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByText(/could not be confirmed/)).toBeNull();
+  });
+
   it("closes the form and reads the choice again when the pin went stale (412), keeping no credential", async () => {
     const client = mountSwitch(SWITCHABLE, "active", () =>
       refused(
