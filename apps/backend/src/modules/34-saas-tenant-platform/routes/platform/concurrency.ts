@@ -42,6 +42,8 @@ const CURSOR_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/;
  */
 export function isStrictIsoTimestamp(value: string): boolean {
   if (!CURSOR_TIMESTAMP.test(value)) return false;
+  // Postgres has no year 0000 (its calendar goes 1 BC, 1 AD), though JavaScript parses it: refuse it here, not in the cast.
+  if (Number(value.slice(0, 4)) < 1) return false;
   const seconds = value.slice(0, 19);
   const parsed = Date.parse(`${seconds}Z`);
   return !Number.isNaN(parsed) && new Date(parsed).toISOString().slice(0, 19) === seconds;

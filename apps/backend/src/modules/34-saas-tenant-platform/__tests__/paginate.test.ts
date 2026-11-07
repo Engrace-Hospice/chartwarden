@@ -119,6 +119,8 @@ describe("the cursor of a list that pages in SQL is judged strictly", () => {
       "2026-13-01T00:00:00Z",
       "2026-11-06T25:00:00Z",
       "2026-11-06T12:61:00Z",
+      "0000-01-01T00:00:00Z", // JavaScript parses year 0; Postgres has none
+      "0000-12-31T23:59:59.999999Z",
       "now()",
       "",
     ]) {

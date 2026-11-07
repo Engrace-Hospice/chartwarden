@@ -194,6 +194,32 @@ describe.skipIf(!DB_URL)("GAP-098 — M34 oversized-hold discovery, LIVE Postgre
 
   // ── the PULL half: the cross-tenant list ────────────────────────────────────────────────────────
   describe("GET /api/v1/platform/tenant-export-jobs", () => {
+    it("answers a malformed cursor with a 400 BEFORE the platform context is entered: no bypass audit row, no database cast error", async () => {
+      const bypassRows = async () =>
+        Number(
+          (
+            await admin.query(
+              "SELECT count(*)::text AS n FROM audit_event WHERE event_type='platform.bypass_invoked'",
+            )
+          ).rows[0].n,
+        );
+      const before = await bypassRows();
+      const cursorOf = (createdAt: string, id: string) =>
+        Buffer.from(JSON.stringify({ createdAt, id }), "utf8").toString("base64url");
+      for (const cursor of [
+        cursorOf("garbage", "6f1f9c3e-8d2a-4b7e-9a10-2c4d5e6f7a8b"),
+        cursorOf("2026-11-06T12:00:00.123456Z", "not-a-uuid"),
+        cursorOf("0000-01-01T00:00:00Z", "6f1f9c3e-8d2a-4b7e-9a10-2c4d5e6f7a8b"),
+        "%%%",
+      ]) {
+        await expect(
+          platformService().listTenantExportJobs({ held: true }, cursor, 10),
+          cursor,
+        ).rejects.toMatchObject({ statusCode: 400, code: "VALIDATION_FAILED" });
+      }
+      expect(await bypassRows()).toBe(before);
+    });
+
     it("surfaces held bundles from EVERY tenant, with the size the co-signer decides on", async () => {
       const a = await seedJob(ORG_A, { sizeBytes: 60 * 1024 * 1024 * 1024 });
       const b = await seedJob(ORG_B, { sizeBytes: 80 * 1024 * 1024 * 1024 });

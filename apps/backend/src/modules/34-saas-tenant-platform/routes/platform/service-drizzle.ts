@@ -202,8 +202,6 @@ const ORG = schema.organizations;
 const BAA = schema.platformTenantBaaRecord;
 const SS = schema.supportSession;
 const SCG = schema.supportConsentGrant;
-/** A cursor id that is bound into SQL as a uuid (the export job list). */
-
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 const isoReq = (d: Date): string => d.toISOString();
 
@@ -1370,11 +1368,12 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     // surface where the in-memory-paginate shortcut would actually hurt. The cursor CODEC is the shared
     // one, so the wire shape matches every other platform list.
     async listTenantExportJobs(filter, cursor, limit): Promise<CursorPage<TenantExportJobView>> {
+      // The cursor goes into SQL as a timestamp and a uuid: checked strictly BEFORE the platform context is entered, so a value that is
+      // neither is a clean 400 that leaves no platform bypass audit row.
+      const keyset = cursor ? decodeSqlCursor(cursor) : undefined;
       return inPlatformCtx("platform-ops list tenant export jobs", async (tx) => {
         const repo = new TenantExportRepository(tx);
         const size = pageSizeOf(limit);
-        // The cursor goes into SQL as a timestamp and a uuid: checked strictly here, a value that is neither is a clean 400.
-        const keyset = cursor ? decodeSqlCursor(cursor) : undefined;
         // limit + 1 so `hasMore` is answered by the read itself, never by a second count query.
         const rows = await repo.listPlatformPage({
           organizationId: filter.organizationId,
