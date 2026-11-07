@@ -159,6 +159,15 @@ export interface OnboardingFactReaders {
   readonly macFeedConfigured?: (orgId: string) => Promise<boolean>;
   /** M23 (ADR-0053 amendment 2026-11-06): the org's clearinghouse choice is settled (`outside`, or a vendor in `active` status). */
   readonly clearinghouseSettled?: (orgId: string) => Promise<boolean>;
+  /**
+   * M22 (BAA documents): the governing BAA's `documentId` is a signed BAA filed for THIS organization (a `tenant_baa` document row in
+   * it), judged on the pass's own org-scoped transaction. Bound: an executed BAA whose link does not verify (another tenant's document,
+   * another kind, no document) leaves step 3 unsettled. Unbound (a test): the status alone decides, as before.
+   */
+  readonly baaDocumentFiled?: (
+    tx: DbClient,
+    ref: { readonly organizationId: string; readonly documentId: string },
+  ) => Promise<boolean>;
   readonly dosespotKickoffRecorded?: (orgId: string) => Promise<boolean>;
   readonly xeroConnected?: (orgId: string) => Promise<boolean>;
   readonly gustoConnected?: (orgId: string) => Promise<boolean>;
@@ -192,6 +201,11 @@ export async function gatherOnboardingContext(
     tasks.filter((t) => t.status === "done" || t.status === "skipped").map((t) => t.templateKey),
   );
   const read = (fn?: (o: string) => Promise<boolean>) => (fn ? fn(orgId) : Promise.resolve(false));
+  const baaDocumentId = latestBaa?.documentId ?? null;
+  const baaLinkHolds = readers.baaDocumentFiled
+    ? baaDocumentId !== null &&
+      (await readers.baaDocumentFiled(tx, { organizationId: orgId, documentId: baaDocumentId }))
+    : true;
   return {
     providerEntityCount: seed.providerEntities.length,
     locationCount: seed.locationCount,
@@ -205,7 +219,7 @@ export async function gatherOnboardingContext(
     xeroConnected: await read(readers.xeroConnected),
     gustoConnected: await read(readers.gustoConnected),
     complianceOfficerAssigned: Boolean(account?.officer),
-    baaExecuted: latestBaa?.baaStatus === "executed",
+    baaExecuted: latestBaa?.baaStatus === "executed" && baaLinkHolds,
     allCanonicalTasksDoneOrSkipped: canonical.every((t) => settled.has(t.key)),
   };
 }

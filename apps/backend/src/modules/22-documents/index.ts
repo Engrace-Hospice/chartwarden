@@ -353,6 +353,7 @@ export { buildPortalUploadIntakePort } from "./portal-upload-intake";
 export {
   buildEnvTenantBaaDocumentOnboardingPort,
   buildTenantBaaDocumentOnboardingPort,
+  isTenantBaaDocumentFiled,
 } from "./onboarding-baa-document-port";
 export { buildPortalDisclosureReader } from "./access-log/portal-disclosures";
 

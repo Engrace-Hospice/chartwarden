@@ -52,6 +52,7 @@ import {
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
+import type { OnboardingBaaDocumentPort } from "../../../../bootstrap/onboarding-baa-document-port";
 import { isTenantSlugTaken } from "../../../../bootstrap/tenant-slug-registry";
 import {
   type InvitationDeliveryPort,
@@ -64,7 +65,7 @@ import { voidPendingGoLiveForDataChange } from "../../onboarding/go-live-void";
 import type { OnboardingProgress } from "../../onboarding/progress";
 import type { WizardActivation } from "../../onboarding/wizard-store-drizzle";
 import { evaluateActivationGuards, pickGoverningBaa } from "./activation-guards";
-import { assertExecutedBaaHasDocument } from "./baa-guards";
+import { assertBaaDocumentFiled, assertExecutedBaaHasDocument } from "./baa-guards";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
 import { partitionEffects } from "./effect-ledger";
 import { evaluateDestructionGuards, retentionEndsAtFrom } from "./offboarding-guards";
@@ -182,6 +183,11 @@ export interface DrizzleTenantPlatformDeps {
     organizationId: string;
   }) => Promise<void>;
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
+  /**
+   * M22's BAA document adapter: a BAA record may link only a signed BAA filed for its own tenant (judged in the write's transaction).
+   * Unbound with a document id on the write: 503 `BAA_DOCUMENTS_UNBOUND`.
+   */
+  readonly baaDocuments?: Pick<OnboardingBaaDocumentPort, "isFiled">;
 }
 
 const A = schema.tenantAccount;
@@ -1276,6 +1282,10 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         // organizationId is resolved from the tenant_account spine.
         const account = await new TenantAccountRepository(tx).findById(args.tenantAccountId);
         if (!account) throw new NotFoundError("tenant account");
+        await assertBaaDocumentFiled(deps.baaDocuments, tx, {
+          organizationId: account.organizationId,
+          documentId: args.documentId,
+        });
         const row = await repo.create({
           organizationId: account.organizationId,
           tenantAccountId: args.tenantAccountId,
@@ -1312,6 +1322,17 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           baaStatus: args.baaStatus ?? existing.baaStatus,
           documentId: args.documentId ?? existing.documentId,
         });
+        // The link is judged whenever it changes or the record is (or becomes) executed: a legacy link that proves nothing cannot
+        // stay under an executed status through an unrelated edit.
+        if (
+          args.documentId !== undefined ||
+          (args.baaStatus ?? existing.baaStatus) === "executed"
+        ) {
+          await assertBaaDocumentFiled(deps.baaDocuments, tx, {
+            organizationId: existing.organizationId,
+            documentId: args.documentId ?? existing.documentId,
+          });
+        }
         const row = await repo.update(baaId, {
           baaStatus: args.baaStatus as schema.PlatformTenantBaaRecord["baaStatus"] | undefined,
           executedOn: args.executedOn,

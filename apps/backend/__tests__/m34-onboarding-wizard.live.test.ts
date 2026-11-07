@@ -39,6 +39,7 @@ import {
 } from "../src/bootstrap/org-spine-facts";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { m34PlatformBypassAuditor } from "../src/index";
+import { isTenantBaaDocumentFiled } from "../src/modules/22-documents/onboarding-baa-document-port";
 import {
   createOrgDataWriteScope,
   createOrganizationActivator,
@@ -289,8 +290,17 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     macFeedConfigured: buildMacFeedConfiguredReader(buildDrizzleOrgMacJurisdictionReader(app.db)),
   });
   const advancer = () => createOnboardingAdvancer({ db: app.db, outbox, alerts, facts: facts() });
+  /** The advance pass as the composition root wires it: step 3 also needs the governing BAA's document to verify (M22's check). */
+  const documentCheckingAdvancer = () =>
+    createOnboardingAdvancer({
+      db: app.db,
+      outbox,
+      alerts,
+      facts: { ...facts(), baaDocumentFiled: isTenantBaaDocumentFiled },
+    });
   const backend = (opts: Pick<DrizzleTenantPlatformDeps, "advanceOnboarding" | "warn"> = {}) =>
     createDrizzleTenantPlatformBackend({
+      baaDocuments: { isFiled: isTenantBaaDocumentFiled },
       ...opts,
       platformDb: platform.db,
       enqueue: { enqueue: async (q, k) => ({ jobId: `${q}-${k}` }) },
@@ -348,6 +358,15 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       await admin.query(
         "SELECT id FROM onboarding_task WHERE tenant_account_id=$1 AND template_key=$2",
         [tenant, key],
+      )
+    ).rows[0].id;
+  /** A document row in `org` (the signed BAA kind unless another is named), as the upload route would have filed it. */
+  const fileDocument = async (org: string, kind = "tenant_baa"): Promise<string> =>
+    (
+      await admin.query(
+        `INSERT INTO document (organization_id, retention_class, source_kind, aggregate_type, title, created_by_membership_id)
+         VALUES ($1,'compliance','user_upload',$2::document_aggregate_type,'Signed agreement','e5000000-0000-4000-8000-0000000000e5') RETURNING id`,
+        [org, kind],
       )
     ).rows[0].id;
   const statusOf = async (tenant: string, key: string): Promise<string> =>
@@ -1679,12 +1698,19 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     // A third for the review-fix tests, which leave executed BAA records behind.
     const ORG_S3 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb07";
     const T_S3 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb08";
+    // A fourth and a fifth for the document-link tests (the register's link check, and step 3's own judgement of the link).
+    const ORG_S4 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb09";
+    const T_S4 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb0a";
+    const ORG_S5 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb0b";
+    const T_S5 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb0c";
 
     beforeAll(async () => {
       for (const [org, tenant, slug] of [
         [ORG_S, T_S, "wiz-s"],
         [ORG_S2, T_S2, "wiz-s2"],
         [ORG_S3, T_S3, "wiz-s3"],
+        [ORG_S4, T_S4, "wiz-s4"],
+        [ORG_S5, T_S5, "wiz-s5"],
       ] as const) {
         await admin.query(
           "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -1715,7 +1741,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         expiresOn: "2028-10-01",
         breachNotificationContactEmail: "privacy@wiz-s.test",
         breachNotificationContactPhone: null,
-        documentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+        documentId: await fileDocument(ORG_S),
       });
       expect(await baaRow(created.id)).toMatchObject({
         organization_id: ORG_S,
@@ -1843,15 +1869,120 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         updated_by_user_id: null,
       });
 
+      const document = await fileDocument(ORG_S3);
       await backend().service.updateBaaRecord(pending.id, OPS_USER, {
         baaStatus: "executed",
-        documentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+        documentId: document,
       });
       expect(await baaRow(pending.id)).toMatchObject({
         baa_status: "executed",
-        document_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+        document_id: document,
         recorded_by_user_id: OPS_USER,
         updated_by_user_id: OPS_USER,
+      });
+    });
+
+    describe("the link must be a signed BAA filed for THIS tenant", () => {
+      const record = (documentId: string | null, baaStatus = "executed") => ({
+        tenantAccountId: T_S4,
+        addendumVersion: "v-link",
+        baaStatus,
+        executedOn: "2026-10-01",
+        effectiveOn: "2026-10-01",
+        expiresOn: "2028-10-01",
+        breachNotificationContactEmail: null,
+        breachNotificationContactPhone: null,
+        documentId,
+      });
+      const recordsOf = async (tenant: string) =>
+        (
+          await admin.query(
+            "SELECT document_id, baa_status FROM platform_tenant_baa_record WHERE tenant_account_id=$1",
+            [tenant],
+          )
+        ).rows;
+
+      it("refuses another tenant's BAA document, a document of another kind and an unknown id (422 BAA_DOCUMENT_INVALID) on create and on update, writing nothing", async () => {
+        const othersBaa = await fileDocument(ORG_S2);
+        const notABaa = await fileDocument(ORG_S4, "other");
+        const unknown = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa00ff";
+        for (const [label, id] of [
+          ["another tenant's BAA", othersBaa],
+          ["a document of another kind", notABaa],
+          ["an unknown id", unknown],
+        ] as const) {
+          const refused = await refusal(backend().service.createBaaRecord(OPS_USER, record(id)));
+          expect(refused.code, label).toBe("BAA_DOCUMENT_INVALID");
+          expect(refused.statusCode, label).toBe(422);
+        }
+        expect(await recordsOf(T_S4)).toEqual([]);
+
+        const pending = await backend().service.createBaaRecord(OPS_USER, record(null, "pending"));
+        for (const [label, id] of [
+          ["another tenant's BAA", othersBaa],
+          ["a document of another kind", notABaa],
+        ] as const) {
+          const refused = await refusal(
+            backend().service.updateBaaRecord(pending.id, OPS_USER, {
+              baaStatus: "executed",
+              documentId: id,
+            }),
+          );
+          expect(refused.code, label).toBe("BAA_DOCUMENT_INVALID");
+        }
+        expect(await baaRow(pending.id)).toMatchObject({
+          baa_status: "pending",
+          document_id: null,
+          updated_by_user_id: null,
+        });
+
+        const own = await fileDocument(ORG_S4);
+        await backend().service.updateBaaRecord(pending.id, OPS_USER, {
+          baaStatus: "executed",
+          documentId: own,
+        });
+        expect(await baaRow(pending.id)).toMatchObject({ baa_status: "executed", document_id: own });
+      });
+
+      it("answers 503 when no document adapter is bound and a link is being written", async () => {
+        const unbound = createDrizzleTenantPlatformBackend({
+          platformDb: platform.db,
+          enqueue: { enqueue: async (q, k) => ({ jobId: `${q}-${k}` }) },
+          legalHoldClear: async () => true,
+          auditBypass: m34PlatformBypassAuditor,
+          outbox,
+          platformJobId: JOB_ID,
+        } as never);
+        const refused = await refusal(
+          unbound.service.createBaaRecord(OPS_USER, {
+            ...record(await fileDocument(ORG_S4)),
+            addendumVersion: "v-unbound",
+          }),
+        );
+        expect(refused.code).toBe("BAA_DOCUMENTS_UNBOUND");
+        expect(refused.statusCode).toBe(503);
+      });
+
+      it("settles step 3 only when the governing BAA's document verifies", async () => {
+        await attestPlatform(T_S5, "wiz-s5", "account_created", "organisation confirmed");
+        await attestPlatform(T_S5, "wiz-s5", "plan_contract", "order form countersigned");
+        // An executed BAA written before the link was checked (a legacy row), linked to ANOTHER tenant's document.
+        const insert = async (documentId: string) =>
+          admin.query(
+            `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+             VALUES ($1,$2,'v-legacy','executed','2026-10-01','2026-10-01','2028-10-01',$3)`,
+            [ORG_S5, T_S5, documentId],
+          );
+        await insert(await fileDocument(ORG_S2));
+        await documentCheckingAdvancer()({ tenantAccountId: T_S5, orgId: ORG_S5 });
+        expect(await statusOf(T_S5, "baa_executed")).toBe("blocked");
+
+        await admin.query(
+          "UPDATE platform_tenant_baa_record SET document_id=$2 WHERE tenant_account_id=$1",
+          [T_S5, await fileDocument(ORG_S5)],
+        );
+        await documentCheckingAdvancer()({ tenantAccountId: T_S5, orgId: ORG_S5 });
+        expect(await statusOf(T_S5, "baa_executed")).toBe("done");
       });
     });
 
@@ -1950,7 +2081,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
           .slice(0, 10),
         breachNotificationContactEmail: null,
         breachNotificationContactPhone: null,
-        documentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0003",
+        documentId: await fileDocument(ORG_W),
       });
       await wizard(false).attestGoLive(officer, ORG_W, "ready");
 
@@ -2004,7 +2135,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         expiresOn: "2028-10-01",
         breachNotificationContactEmail: null,
         breachNotificationContactPhone: null,
-        documentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+        documentId: await fileDocument(ORG_S2),
       });
 
       expect(warned).toEqual([]);

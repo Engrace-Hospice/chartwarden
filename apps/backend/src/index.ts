@@ -1036,6 +1036,7 @@ import {
   doclingConfigFromEnv,
   expireRecordsRequestsForOrg,
   getDocumentRenderer,
+  isTenantBaaDocumentFiled,
   mountDocumentRoutes,
   registerAiBlockValidatorWorker,
   registerDocLensIntakeWorker,
@@ -2988,6 +2989,8 @@ function buildM34OnboardingFacts(db: DbClient) {
       const choice = await getSeam("TenantClearinghouseReader").choiceForOrg(orgId);
       return choice.vendor !== null && choice.status === "active";
     },
+    // Wizard step 3: the governing BAA's document must be a signed BAA filed for this org (M22 owns the table).
+    baaDocumentFiled: isTenantBaaDocumentFiled,
   };
 }
 
@@ -6055,6 +6058,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 : pricingContracts.get().hasLiveContract(organizationId),
           });
           const m34PlatformBackend = buildDrizzlePlatformService({
+            // The BAA register links only a signed BAA filed for the record's own tenant (M22's check, on the write's transaction).
+            baaDocuments: { isFiled: isTenantBaaDocumentFiled },
             advanceOnboarding: async ({ tenantAccountId, organizationId }) => {
               await m34OnboardingAdvance({ tenantAccountId, orgId: organizationId });
             },

@@ -8,10 +8,12 @@
 //
 // FAIL CLOSED like every M22 upload: no object store configured (`MINIO_*` unset) answers a typed 503 and nothing is stored; with
 // `DOCUMENT_UPLOAD_SCAN_REQUIRED=true` an unbound scanner does too.
-import type { DbClient } from "@chartwarden/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import type { OrgId } from "@chartwarden/types";
+import { and, eq } from "drizzle-orm";
 import {
   type OnboardingBaaDocumentPort,
+  type OnboardingBaaDocumentRef,
   TENANT_BAA_DOCUMENT_KIND,
 } from "../../bootstrap/onboarding-baa-document-port";
 import { assertTxScopedToOrg } from "../../bootstrap/onboarding-credential-port";
@@ -23,12 +25,33 @@ import {
 import { createS3ObjectStore, s3ObjectStoreConfigFromEnv } from "./seams/index";
 
 const BAA_DOCUMENT_TITLE = "Business associate agreement";
+const DOCUMENT = schema.documents;
+
+/** Whether `ref.documentId` is a `tenant_baa` document of `ref.organizationId` (a boolean; reads nothing else). On the caller's transaction. */
+export async function isTenantBaaDocumentFiled(
+  tx: DbClient,
+  ref: OnboardingBaaDocumentRef,
+): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: DOCUMENT.id })
+    .from(DOCUMENT)
+    .where(
+      and(
+        eq(DOCUMENT.id, ref.documentId),
+        eq(DOCUMENT.organizationId, ref.organizationId),
+        eq(DOCUMENT.aggregateType, TENANT_BAA_DOCUMENT_KIND),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
 
 /** The port over an upload service (injected so the unit test needs no object store). */
 export function buildTenantBaaDocumentOnboardingPort(
   uploads: Pick<ServerUploadService, "createDocumentOn">,
 ): OnboardingBaaDocumentPort {
   return {
+    isFiled: isTenantBaaDocumentFiled,
     async upload(tx, scope, input) {
       await assertTxScopedToOrg(tx, scope.organizationId);
       const bytes = decodeBase64Content(input.contentBase64);

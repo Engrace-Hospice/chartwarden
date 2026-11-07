@@ -367,6 +367,12 @@ async function main(): Promise<void> {
       await run(
         'GRANT UPDATE ("derived_organization_id", "derived_provider_entity_id", "last_error_class", "processing_outcome", "entitlement_checked_at", "processed_at", "attempt_count", "payload_cipher", "payload_key_ref", "payload_cleared_at") ON "claimmd_webhook_event" TO chartwarden_platform;',
       );
+      // The BAA register links only a signed BAA filed for the record's own tenant, judged in the write's transaction (the platform
+      // credential writes the register): three COLUMNS of `document` (its id, its organization and its kind), never a title, a patient or
+      // an object key, and no other document table.
+      await run(
+        'GRANT SELECT ("id", "organization_id", "aggregate_type") ON "document" TO chartwarden_platform;',
+      );
       // The NPI-verification admin list (migration 1326) also names the entity: legal_name joins that column grant.
       await run(
         'GRANT SELECT ("id", "organization_id", "npi", "legal_name") ON "provider_entity" TO chartwarden_platform;',

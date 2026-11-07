@@ -38,7 +38,20 @@ export interface OnboardingBaaDocumentUpload {
   discard(): Promise<void>;
 }
 
+/** What `isFiled` is asked: a document id and the organization it must belong to. */
+export interface OnboardingBaaDocumentRef {
+  readonly organizationId: string;
+  readonly documentId: string;
+}
+
 export interface OnboardingBaaDocumentPort {
+  /**
+   * Whether `documentId` is a signed BAA filed for this organization: a document row IN that organization of kind `tenant_baa` (another
+   * tenant's document, a document of any other kind and an id that is no document at all are all false). On the caller's transaction, so
+   * a BAA register write judges the link in the same transaction that records it. Reads nothing back: a boolean.
+   */
+  isFiled(tx: DbClient, ref: OnboardingBaaDocumentRef): Promise<boolean>;
+
   /**
    * File the signed BAA for the tenant `scope` names, on the caller's transaction. The bytes arrive as base64 text: M22 decodes them
    * strictly, so the check is the documents pipeline's own, not a copy. A refused file is a typed 4xx (415 type, 422 not base64 / size /
