@@ -32,6 +32,8 @@ import type {
 import { MAX_DOCUMENT_UPLOAD_BYTES, type ReferralAccessReader } from "./verified-upload";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+/** The default wait for a put made while the caller holds a transaction (see `heldPutTimeoutMs`). */
+const HELD_PUT_TIMEOUT_MS = 30_000;
 const ALLOWED_MIME_TYPES = [
   "application/pdf",
   "image/jpeg",
@@ -75,6 +77,12 @@ export interface ServerUploadDeps {
   /** Fail closed when no scanner is bound (production posture while no scanner implementation exists). */
   readonly scanRequired?: boolean;
   readonly logger?: UploadLogger;
+  /**
+   * How long `createDocumentOn` waits for the object store's put (default 30 s). That upload runs while the CALLER holds a transaction
+   * (and, for the onboarding writes, the shared onboarding advisory lock), so a store that never answers must not hold them for long:
+   * the put is aborted, the object is cleaned up best effort, and the upload is a 503 `document-storage`.
+   */
+  readonly heldPutTimeoutMs?: number;
   readonly now?: () => Date;
   readonly randomId?: () => string;
 }
@@ -280,22 +288,38 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     return `uploads/${randomId()}/${aggregateType}-${randomId().slice(0, 12)}`;
   }
 
-  /** Store the object, run `commit`, and destroy the object if the commit fails (nothing references it). */
+  /**
+   * Store the object, run `commit`, and destroy the object if the commit certainly failed (nothing references it). `commitMayHaveLanded`
+   * tells a failure of the COMMIT ITSELF (the callback finished, the commit then failed: the rows may be there) from one inside the
+   * callback (rolled back): after an ambiguous commit failure the object is kept and the failure logged, because destroying the file
+   * of a document that did commit would lose it. `putTimeoutMs` aborts a put that never answers (the caller holds a transaction).
+   */
   async function storeThenCommit(
     organizationId: OrgId,
     objectKey: string,
     content: UploadedContent,
     verified: VerifiedContent,
     commit: () => Promise<CommittedUpload>,
+    options: { readonly putTimeoutMs?: number; readonly commitMayHaveLanded?: () => boolean } = {},
   ): Promise<CommittedUpload> {
     const objects = requireStore();
     const bucket = deriveTenantBucket(organizationId);
-    const stored = await objects.putObject({
-      bucket,
-      objectKey,
-      bytes: content.bytes,
-      mimeType: verified.mimeType,
-    });
+    const signal =
+      options.putTimeoutMs === undefined ? undefined : AbortSignal.timeout(options.putTimeoutMs);
+    let stored: { readonly sha256Hex: string };
+    try {
+      stored = await objects.putObject({
+        bucket,
+        objectKey,
+        bytes: content.bytes,
+        mimeType: verified.mimeType,
+        ...(signal ? { signal } : {}),
+      });
+    } catch (error) {
+      if (!signal?.aborted) throw error;
+      await destroyQuietly(organizationId, objectKey); // a put that timed out may still have landed
+      throw new DegradedError("document-storage", "the object store did not answer in time");
+    }
     if (stored.sha256Hex !== verified.sha256Hex) {
       await destroyQuietly(organizationId, objectKey);
       throw new ChartWardenError(
@@ -307,7 +331,14 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     try {
       return await commit();
     } catch (error) {
-      await destroyQuietly(organizationId, objectKey);
+      if (options.commitMayHaveLanded?.()) {
+        deps.logger?.warn(
+          { organizationId, objectKey },
+          "m22 upload: the commit failed after the rows were written, so the object is kept (the commit may have landed); an orphan sweep, not this path, removes it if it did not",
+        );
+      } else {
+        await destroyQuietly(organizationId, objectKey);
+      }
       throw error;
     }
   }
@@ -363,57 +394,66 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     actor: DocumentWriteActor,
     args: UploadDocumentArgs,
     scope: <T>(fn: (tx: DbClient) => Promise<T>) => Promise<T>,
+    options: { readonly putTimeoutMs?: number } = {},
   ): Promise<CommittedUpload & VerifiedContent & { readonly objectKey: string }> {
     requireStore();
     const verified = verifyUploadContent(args.content);
     await assertReferralAccess(organizationId, actor.userId, args.aggregateType, args.aggregateId);
     await assertScanned(args.content, verified);
     const objectKey = objectKeyFor(args.aggregateType);
-    const committed = await storeThenCommit(organizationId, objectKey, args.content, verified, () =>
-      scope(async (tx) => {
-        const [doc] = await tx
-          .insert(D)
-          .values({
+    let bodyDone = false;
+    const committed = await storeThenCommit(
+      organizationId,
+      objectKey,
+      args.content,
+      verified,
+      () =>
+        scope(async (tx) => {
+          const [doc] = await tx
+            .insert(D)
+            .values({
+              organizationId,
+              patientId: args.patientId,
+              admissionId: args.admissionId,
+              retentionClass: args.retentionClass,
+              sourceKind: "user_upload",
+              aggregateType: args.aggregateType as DocumentAggregateType,
+              aggregateId: args.aggregateId,
+              title: args.title,
+              patientFacing: args.patientFacing,
+              metadata: null,
+              createdByMembershipId: actor.membershipId,
+            })
+            .returning({ id: D.id });
+          if (!doc) throw new Error("document insert returned no row");
+          const versionId = await insertVersion(
+            tx,
             organizationId,
-            patientId: args.patientId,
-            admissionId: args.admissionId,
-            retentionClass: args.retentionClass,
-            sourceKind: "user_upload",
-            aggregateType: args.aggregateType as DocumentAggregateType,
-            aggregateId: args.aggregateId,
-            title: args.title,
-            patientFacing: args.patientFacing,
-            metadata: null,
-            createdByMembershipId: actor.membershipId,
-          })
-          .returning({ id: D.id });
-        if (!doc) throw new Error("document insert returned no row");
-        const versionId = await insertVersion(
-          tx,
-          organizationId,
-          actor,
-          doc.id,
-          1,
-          null,
-          objectKey,
-          verified,
-        );
-        await tx
-          .update(D)
-          .set({ activeVersionId: versionId, updatedAt: now() })
-          .where(eq(D.id, doc.id));
-        for (const t of args.tags) {
-          await tx.insert(TAG).values({
-            organizationId,
-            documentId: doc.id,
-            tagKind: t.tagKind,
-            tagKey: t.tagKey,
-            tagValue: t.tagValue,
-            addedByMembershipId: actor.membershipId,
-          });
-        }
-        return { documentId: doc.id, versionId, versionNumber: 1 };
-      }),
+            actor,
+            doc.id,
+            1,
+            null,
+            objectKey,
+            verified,
+          );
+          await tx
+            .update(D)
+            .set({ activeVersionId: versionId, updatedAt: now() })
+            .where(eq(D.id, doc.id));
+          for (const t of args.tags) {
+            await tx.insert(TAG).values({
+              organizationId,
+              documentId: doc.id,
+              tagKind: t.tagKind,
+              tagKey: t.tagKey,
+              tagValue: t.tagValue,
+              addedByMembershipId: actor.membershipId,
+            });
+          }
+          bodyDone = true;
+          return { documentId: doc.id, versionId, versionNumber: 1 };
+        }),
+      { ...options, commitMayHaveLanded: () => bodyDone },
     );
     return { ...committed, ...verified, objectKey };
   }
@@ -430,7 +470,9 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     },
 
     async createDocumentOn(tx, organizationId, actor, args) {
-      const filed = await fileDocument(organizationId, actor, args, (fn) => fn(tx));
+      const filed = await fileDocument(organizationId, actor, args, (fn) => fn(tx), {
+        putTimeoutMs: deps.heldPutTimeoutMs ?? HELD_PUT_TIMEOUT_MS,
+      });
       return {
         documentId: filed.documentId,
         versionId: filed.versionId,
@@ -450,40 +492,48 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
       );
       await assertScanned(args.content, verified);
       const objectKey = objectKeyFor(target.aggregateType);
-      return storeThenCommit(organizationId, objectKey, args.content, verified, () =>
-        inOrg(organizationId, actor.userId, async (tx) => {
-          const doc = await lockWritableDocument(
-            tx,
-            organizationId,
-            documentId,
-            args.expectedPatientId,
-          );
-          const rows = await tx
-            .select({ versionNumber: V.versionNumber })
-            .from(V)
-            .where(eq(V.documentId, documentId));
-          const versionNumber =
-            rows.reduce((max, row) => Math.max(max, Number(row.versionNumber)), 0) + 1;
-          const versionId = await insertVersion(
-            tx,
-            organizationId,
-            actor,
-            documentId,
-            versionNumber,
-            doc.activeVersionId,
-            objectKey,
-            verified,
-          );
-          await tx
-            .update(D)
-            .set({
-              activeVersionId: versionId,
-              updatedAt: now(),
-              ...(args.title !== undefined ? { title: args.title } : {}),
-            })
-            .where(eq(D.id, documentId));
-          return { documentId, versionId, versionNumber };
-        }),
+      let bodyDone = false;
+      return storeThenCommit(
+        organizationId,
+        objectKey,
+        args.content,
+        verified,
+        () =>
+          inOrg(organizationId, actor.userId, async (tx) => {
+            const doc = await lockWritableDocument(
+              tx,
+              organizationId,
+              documentId,
+              args.expectedPatientId,
+            );
+            const rows = await tx
+              .select({ versionNumber: V.versionNumber })
+              .from(V)
+              .where(eq(V.documentId, documentId));
+            const versionNumber =
+              rows.reduce((max, row) => Math.max(max, Number(row.versionNumber)), 0) + 1;
+            const versionId = await insertVersion(
+              tx,
+              organizationId,
+              actor,
+              documentId,
+              versionNumber,
+              doc.activeVersionId,
+              objectKey,
+              verified,
+            );
+            await tx
+              .update(D)
+              .set({
+                activeVersionId: versionId,
+                updatedAt: now(),
+                ...(args.title !== undefined ? { title: args.title } : {}),
+              })
+              .where(eq(D.id, documentId));
+            bodyDone = true;
+            return { documentId, versionId, versionNumber };
+          }),
+        { commitMayHaveLanded: () => bodyDone },
       );
     },
   };

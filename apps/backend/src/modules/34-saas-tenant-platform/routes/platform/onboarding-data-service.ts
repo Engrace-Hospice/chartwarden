@@ -362,6 +362,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     const target = await targetOf(orgSlug);
     let outcome: WriteOutcome<T>;
     let tenantAccountId: string | undefined;
+    let bodyFinished = false;
     try {
       outcome = await withOrgContext<DbClient, WriteOutcome<T>>(
         db,
@@ -402,10 +403,12 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             ...(done.changedFields ? { changedFields: done.changedFields } : {}),
             ...(done.detail ? { detail: done.detail } : {}),
           });
+          bodyFinished = true;
           return { value: done.value };
         },
       );
     } catch (err) {
+      await spec.onFailure?.({ commitReached: bodyFinished });
       await recordFailedWrite(op, target, spec, err);
       throw err;
     }
@@ -808,7 +811,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
 
     uploadBaaDocument: (op, orgSlug, input, reason) =>
       uploadTenantBaaDocument(
-        { port: deps.baaDocuments, write, scopeOf },
+        { port: deps.baaDocuments, write, scopeOf, ...(deps.warn ? { warn: deps.warn } : {}) },
         op,
         orgSlug,
         input,

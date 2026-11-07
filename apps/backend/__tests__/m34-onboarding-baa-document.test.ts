@@ -306,7 +306,10 @@ interface InsertedRow {
 const resolveTenant = async (slug: string) =>
   slug === "tenant-b" ? { organizationId: TARGET_ORG } : null;
 
-function stubDb(tenantStatus: string | null, options: { failInserts?: boolean } = {}) {
+function stubDb(
+  tenantStatus: string | null,
+  options: { failInserts?: boolean; failCommit?: boolean } = {},
+) {
   const inserts: InsertedRow[] = [];
   const select = () => ({
     from: (table: unknown) => ({
@@ -330,7 +333,14 @@ function stubDb(tenantStatus: string | null, options: { failInserts?: boolean } 
     update: () => ({ set: () => ({ where: () => ({ returning: async () => [] }) }) }),
     execute: async () => undefined,
   };
-  const db = { select, transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx) };
+  const db = {
+    select,
+    transaction: async (fn: (t: typeof tx) => Promise<unknown>) => {
+      const result = await fn(tx);
+      if (options.failCommit) throw new Error("commit failed"); // the callback finished, the COMMIT then failed
+      return result;
+    },
+  };
   return { db: db as unknown as DbClient, inserts, tx };
 }
 
@@ -491,6 +501,27 @@ describe("service: uploadBaaDocument", () => {
     );
 
     expect(discard).toHaveBeenCalledOnce();
+  });
+
+  it("KEEPS the stored object, and logs it, when the COMMIT itself fails (the document may have landed: deleting its file would lose the agreement)", async () => {
+    const { db } = stubDb("onboarding", { failCommit: true });
+    const { port, discard } = fakePort();
+    const warned: { message: string; context: Record<string, unknown> }[] = [];
+    const service = buildDrizzleOnboardingDataService({
+      db,
+      resolveTenant,
+      baaDocuments: port,
+      warn: (message, context) => warned.push({ message, context }),
+    });
+
+    await expect(service.uploadBaaDocument(OPERATOR, "tenant-b", INPUT, REASON)).rejects.toThrow(
+      "commit failed",
+    );
+
+    expect(discard).not.toHaveBeenCalled();
+    expect(warned).toHaveLength(1);
+    expect(warned[0]?.message).toContain("commit failed after the document was filed");
+    expect(warned[0]?.context).toMatchObject({ documentId: DOCUMENT_ID });
   });
 
   it("discards nothing when the file itself was refused (nothing was stored)", async () => {

@@ -18,4 +18,10 @@ export interface WriteSpec {
   readonly reason: string;
   /** True for a write a LIVE tenant needs too (the BAA verification): the shared lock and the audit row stay, the status gate goes. */
   readonly anyTenantStatus?: boolean;
+  /**
+   * Runs when the write fails (before the error is rethrown), for a callback that made something the transaction cannot roll back (an
+   * object in a store). `commitReached` is true when the callback and the audit row finished and the failure came from the COMMIT itself:
+   * then the rows may have landed, and a caller must not undo what they point at.
+   */
+  readonly onFailure?: (info: { readonly commitReached: boolean }) => Promise<void>;
 }

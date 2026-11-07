@@ -27,6 +27,7 @@ export interface BaaDocumentWriteDeps {
     run: (tx: DbClient, target: OnboardingAuditTarget) => Promise<WriteResult<T>>,
   ) => Promise<T>;
   readonly scopeOf: (op: OnboardingOperator, organizationId: string) => OnboardingWriteScope;
+  readonly warn?: (message: string, context: Record<string, unknown>) => void;
 }
 
 export async function uploadTenantBaaDocument(
@@ -45,22 +46,31 @@ export async function uploadTenantBaaDocument(
     );
   }
   let filed: OnboardingBaaDocumentUpload | undefined;
-  try {
-    return await deps.write(
-      op,
-      orgSlug,
-      {
-        event: ONBOARDING_DATA_AUDIT_EVENTS.baaDocumentUploaded,
-        resourceKind: "tenant_baa_document",
-        reason,
+  return deps.write(
+    op,
+    orgSlug,
+    {
+      event: ONBOARDING_DATA_AUDIT_EVENTS.baaDocumentUploaded,
+      resourceKind: "tenant_baa_document",
+      reason,
+      // The rows roll back with the transaction, the stored object would not: take it out, unless the COMMIT itself failed (the rows
+      // may have landed, and deleting the file of a document that exists would lose the agreement): then keep it and say so. An orphan
+      // sweep is the way to reclaim an object whose commit did not land (an open item in ADR-0053's amendment, not built here).
+      onFailure: async ({ commitReached }) => {
+        if (!filed) return;
+        if (!commitReached) {
+          await filed.discard();
+          return;
+        }
+        deps.warn?.(
+          "m34.onboarding BAA upload: the commit failed after the document was filed; the object is kept because the commit may have landed",
+          { documentId: filed.resourceId, organizationId: op.organizationId },
+        );
       },
-      async (tx, target) => {
-        filed = await port.upload(tx, deps.scopeOf(op, target.organizationId), input);
-        return { value: filed.view, resourceId: filed.resourceId, detail: filed.detail };
-      },
-    );
-  } catch (error) {
-    await filed?.discard();
-    throw error;
-  }
+    },
+    async (tx, target) => {
+      filed = await port.upload(tx, deps.scopeOf(op, target.organizationId), input);
+      return { value: filed.view, resourceId: filed.resourceId, detail: filed.detail };
+    },
+  );
 }

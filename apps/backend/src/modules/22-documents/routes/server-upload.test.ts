@@ -13,8 +13,16 @@ import {
 } from "./server-upload";
 
 vi.mock("@chartwarden/tenancy", () => ({
-  withOrgContext: async (db: { tx: unknown }, _ctx: unknown, fn: (tx: unknown) => unknown) =>
-    fn(db.tx),
+  // `failCommit` models a COMMIT that fails after the callback finished: the rows may or may not be there.
+  withOrgContext: async (
+    db: { tx: unknown; failCommit?: boolean },
+    _ctx: unknown,
+    fn: (tx: unknown) => unknown,
+  ) => {
+    const result = await fn(db.tx);
+    if (db.failCommit) throw new Error("commit failed");
+    return result;
+  },
 }));
 
 const ORG = "11111111-1111-4111-8111-111111111111" as never;
@@ -37,7 +45,9 @@ const ARGS = {
 };
 
 /** A tx that records inserts per table and answers selects from `selects` in order. */
-function fakeDb(opts: { failInsertOn?: unknown; selects?: unknown[][] } = {}) {
+function fakeDb(
+  opts: { failInsertOn?: unknown; selects?: unknown[][]; failCommit?: boolean } = {},
+) {
   const inserts: { table: unknown; values: Record<string, unknown> }[] = [];
   const updates: Record<string, unknown>[] = [];
   const selects = [...(opts.selects ?? [])];
@@ -65,7 +75,8 @@ function fakeDb(opts: { failInsertOn?: unknown; selects?: unknown[][] } = {}) {
       },
     }),
   };
-  return { db: { tx } as unknown as DbClient, inserts, updates };
+  const failCommit = opts.failCommit === true;
+  return { db: { tx, failCommit } as unknown as DbClient, inserts, updates };
 }
 
 describe("verifyUploadContent", () => {
@@ -219,6 +230,69 @@ describe("createServerUploadService.createDocumentOn", () => {
         content: { bytes: new TextEncoder().encode("<html>"), mimeType: "application/pdf" },
       }),
     ).rejects.toMatchObject({ code: "UPLOAD_CONTENT_MISMATCH" });
+  });
+});
+
+describe("createServerUploadService: the put and the commit while the caller holds a transaction", () => {
+  /** A store whose put never answers until it is aborted: what a hung object store looks like to a caller holding a transaction. */
+  function hangingStore() {
+    const destroyed: string[] = [];
+    const base = createInMemoryObjectStore();
+    return {
+      destroyed,
+      store: {
+        ...base.store,
+        putObject: ({ signal }: { signal?: AbortSignal }) =>
+          new Promise<never>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(new Error("aborted")));
+          }),
+        destroyAllVersions: async ({ objectKey }: { objectKey: string }) => {
+          destroyed.push(objectKey);
+        },
+      } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"],
+    };
+  }
+
+  it("aborts a put that never answers and answers 503 document-storage, writing no row (createDocumentOn)", async () => {
+    const { db, inserts } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const { store, destroyed } = hangingStore();
+    const svc = createServerUploadService({
+      db: {} as DbClient,
+      objects: store,
+      heldPutTimeoutMs: 25,
+    });
+
+    await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
+      statusCode: 503,
+    });
+
+    expect(inserts).toHaveLength(0);
+    expect(destroyed).toHaveLength(1); // a put that timed out may still have landed: cleaned up best effort
+  });
+
+  it("keeps the object, and logs it, when the COMMIT itself fails after the rows were written (the document may exist)", async () => {
+    const { db } = fakeDb({ failCommit: true });
+    const mem = createInMemoryObjectStore();
+    const warn = vi.fn();
+    const svc = createServerUploadService({ db, objects: mem.store, logger: { warn } });
+
+    await expect(svc.createDocument(ORG, ACTOR, ARGS)).rejects.toThrow("commit failed");
+
+    expect(mem.objects.size).toBe(1);
+    expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it("still removes the object when the failure was inside the transaction (rolled back)", async () => {
+    const { db } = fakeDb({ failInsertOn: schema.documentVersions, failCommit: true });
+    const mem = createInMemoryObjectStore();
+    const warn = vi.fn();
+    const svc = createServerUploadService({ db, objects: mem.store, logger: { warn } });
+
+    await expect(svc.createDocument(ORG, ACTOR, ARGS)).rejects.toThrow("boom");
+
+    expect(mem.objects.size).toBe(0);
+    expect(warn).not.toHaveBeenCalled();
   });
 });
 
