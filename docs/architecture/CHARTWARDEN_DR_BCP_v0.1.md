@@ -502,7 +502,7 @@ docker compose --env-file .env.production -f compose.yml -f compose.backup.yml b
 # restore.env: endpoint/bucket + the READ-ONLY restore key id + *_FILE paths; restore-secrets/: escrowed key files
 BACKUP_ENV_FILE=/root/restore.env BACKUP_SECRETS_DIR=/root/restore-secrets ./backup/restore.sh latest   # or a snapshot id
 docker run --rm --network host --env-file ./restore-<id>/restore.env -v "$PWD/restore-<id>:$PWD/restore-<id>:ro" \
-  "$CHARTWARDEN_IMAGE" bun run backup:verify-restore                   # exit 0 = every check passed
+  "$CHARTWARDEN_IMAGE" bun run scripts/backup/verify-restore.ts                   # exit 0 = every check passed
 ./backup/restore.sh destroy <id>
 ```
 
