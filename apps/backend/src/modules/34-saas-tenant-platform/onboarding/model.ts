@@ -116,6 +116,8 @@ export interface GoverningBaa {
   readonly baaStatus: string;
   readonly expiresOn: string | null;
   readonly documentId: string | null;
+  /** The document is a signed BAA filed for this tenant (M22's check, judged by the store); absent when the store has no check. */
+  readonly documentFiled?: boolean;
   readonly recordedByUserId: string | null;
   readonly updatedByUserId: string | null;
 }

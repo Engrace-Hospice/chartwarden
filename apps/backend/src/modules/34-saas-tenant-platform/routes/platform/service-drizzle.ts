@@ -65,7 +65,11 @@ import { voidPendingGoLiveForDataChange } from "../../onboarding/go-live-void";
 import type { OnboardingProgress } from "../../onboarding/progress";
 import type { WizardActivation } from "../../onboarding/wizard-store-drizzle";
 import { evaluateActivationGuards, pickGoverningBaa } from "./activation-guards";
-import { assertBaaDocumentFiled, assertExecutedBaaHasDocument } from "./baa-guards";
+import {
+  type BaaDocumentCheck,
+  assertBaaDocumentFiled,
+  assertExecutedBaaHasDocument,
+} from "./baa-guards";
 import {
   type CursorPage,
   decodeCursor,
@@ -286,6 +290,13 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
    */
   activateApprovedTenant: WizardActivation;
 } {
+  /** M22's BAA-document check bound to ONE transaction (the write's own), or undefined when no adapter is bound. */
+  const boundTo = (tx: PlatformTx): BaaDocumentCheck | undefined =>
+    deps.baaDocuments
+      ? (ref) =>
+          (deps.baaDocuments as NonNullable<typeof deps.baaDocuments>).isFiled(tx as never, ref)
+      : undefined;
+
   /**
    * Run `fn` in one audited platform-context tx (the only place cross-tenant rows are read/written). `crossTenant` (default
    * true) is the audit severity: critical when the unit of work reads or writes tenant DATA, warn when it does not.
@@ -382,12 +393,25 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       onboarding.listTasksByTenant(tenantAccountId),
       new BaaRegisterRepository(tx).listByTenantAccountId(tenantAccountId),
     ]);
+    const governing = pickGoverningBaa(baaRows);
+    // The guard rests on the governing BAA's document too: executed with a link that does not verify (another tenant's document, another
+    // kind, none) is not an executed BAA. Judged where an adapter is bound; unbound, the status alone decides (a test).
+    const documentFiled =
+      governing && deps.baaDocuments
+        ? governing.documentId !== null &&
+          (await deps.baaDocuments.isFiled(tx as never, {
+            organizationId: governing.organizationId,
+            documentId: governing.documentId,
+          }))
+        : undefined;
     const guards = evaluateActivationGuards({
       canonicalTemplateKeys: templates
         .filter((t) => t.isCanonical && !t.isOptional)
         .map((t) => t.key),
       tasks,
-      latestBaa: pickGoverningBaa(baaRows),
+      latestBaa: governing
+        ? { ...governing, ...(documentFiled === undefined ? {} : { documentFiled }) }
+        : undefined,
       today: new Date(),
     });
     return {
@@ -1286,7 +1310,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         // organizationId is resolved from the tenant_account spine.
         const account = await new TenantAccountRepository(tx).findById(args.tenantAccountId);
         if (!account) throw new NotFoundError("tenant account");
-        await assertBaaDocumentFiled(deps.baaDocuments, tx, {
+        await assertBaaDocumentFiled(boundTo(tx), {
           organizationId: account.organizationId,
           documentId: args.documentId,
         });
@@ -1332,7 +1356,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           args.documentId !== undefined ||
           (args.baaStatus ?? existing.baaStatus) === "executed"
         ) {
-          await assertBaaDocumentFiled(deps.baaDocuments, tx, {
+          await assertBaaDocumentFiled(boundTo(tx), {
             organizationId: existing.organizationId,
             documentId: args.documentId ?? existing.documentId,
           });

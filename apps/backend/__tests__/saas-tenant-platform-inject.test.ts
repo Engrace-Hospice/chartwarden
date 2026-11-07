@@ -265,7 +265,10 @@ function makeServer(
     ],
   };
 
-  const platform = createInMemoryTenantPlatformBackend(platformSeed);
+  // The in-memory twin holds no documents: it is handed M22's check (the signed BAA of this tenant is the one id below).
+  const platform = createInMemoryTenantPlatformBackend(platformSeed, {
+    baaDocumentFiled: async ({ documentId }) => documentId === TENANT_BAA_DOCUMENT_ID,
+  });
   const tenant = createInMemoryTenantBackend(tenantSeed);
   // The onboarding wizard (tenant surface): two org_admin-owned steps in sequence.
   const wizardState = createMemoryWizardState({
@@ -1025,6 +1028,8 @@ describe("M34-saas-tenant-platform-inject — platform-ops signup-intent triage 
   });
 });
 
+const TENANT_BAA_DOCUMENT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0004";
+
 // ── platform-ops: baa-register.ts (3 routes) ─────────────────────────────────────────────────────────
 describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§3.8/D11)", () => {
   it("lists, creates, and updates a BAA record", async () => {
@@ -1092,11 +1097,35 @@ describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§
       method: "PATCH",
       url: `/api/v1/platform/baa-register/${baaId}`,
       headers: PLATFORM_OPS_STEPUP,
-      payload: { baaStatus: "executed", documentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0004" },
+      payload: { baaStatus: "executed", documentId: TENANT_BAA_DOCUMENT_ID },
     });
     expect(update.statusCode).toBe(200);
     expect(update.json().baaStatus).toBe("executed");
-    expect(update.json().documentId).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0004");
+    expect(update.json().documentId).toBe(TENANT_BAA_DOCUMENT_ID);
+
+    // The link must be a signed BAA filed for THIS tenant (the twin calls the same guard as the Drizzle service): any other id is a 422.
+    const elsewhere = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa00ff";
+    const badUpdate = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/platform/baa-register/${baaId}`,
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { documentId: elsewhere },
+    });
+    expect(badUpdate.statusCode).toBe(422);
+    expect(badUpdate.json().error.code).toBe("BAA_DOCUMENT_INVALID");
+    const badCreate = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/baa-register",
+      headers: PLATFORM_OPS_STEPUP,
+      payload: {
+        ...payload,
+        addendumVersion: "v-elsewhere",
+        baaStatus: "executed",
+        documentId: elsewhere,
+      },
+    });
+    expect(badCreate.statusCode).toBe(422);
+    expect(badCreate.json().error.code).toBe("BAA_DOCUMENT_INVALID");
 
     await app.close();
   });

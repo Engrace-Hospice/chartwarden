@@ -32,6 +32,34 @@ describe("evaluateActivationGuards", () => {
     });
   });
 
+  it("does not count an executed BAA whose document does not verify: the status rests on a link that proves nothing", () => {
+    const input = {
+      canonicalTemplateKeys: canonical,
+      tasks: [
+        { templateKey: "account_created", status: "done" },
+        { templateKey: "ccn_registered", status: "done" },
+      ],
+      today: TODAY,
+    };
+    const unverified = evaluateActivationGuards({
+      ...input,
+      latestBaa: { ...executedBaa("2027-12-31"), documentFiled: false },
+    });
+    expect(unverified).toMatchObject({ baaExecuted: false, baaExpiryClearsNinetyDays: false });
+    // verified, and not judged at all (no adapter bound), are both an executed BAA
+    for (const documentFiled of [true, undefined]) {
+      expect(
+        evaluateActivationGuards({
+          ...input,
+          latestBaa: {
+            ...executedBaa("2027-12-31"),
+            ...(documentFiled === undefined ? {} : { documentFiled }),
+          },
+        }),
+      ).toMatchObject({ baaExecuted: true, baaExpiryClearsNinetyDays: true });
+    }
+  });
+
   it("is incomplete while a canonical task is pending or has no row at all", () => {
     const pending = evaluateActivationGuards({
       canonicalTemplateKeys: canonical,

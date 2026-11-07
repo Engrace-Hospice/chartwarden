@@ -5,6 +5,7 @@
 // refuses, listing every guard that failed. Nothing here touches IO; wizard-service.ts runs these against a store.
 import { ChartWardenError } from "@chartwarden/types";
 import {
+  type ActivationGuardInput,
   type ActivationGuards,
   evaluateActivationGuards,
 } from "../routes/platform/activation-guards";
@@ -50,7 +51,7 @@ export type GoLiveState =
 export function evaluateGoLiveGuards(input: {
   readonly templates: readonly StepTemplate[];
   readonly tasks: readonly StepTask[];
-  readonly latestBaa: { readonly baaStatus: string; readonly expiresOn: string | null } | undefined;
+  readonly latestBaa: ActivationGuardInput["latestBaa"];
   readonly today: Date;
 }): ActivationGuards {
   const overlaid = input.tasks.map((t) =>
@@ -66,7 +67,8 @@ export function evaluateGoLiveGuards(input: {
 
 const GUARD_MESSAGES: Readonly<Record<string, string>> = {
   canonicalTasksComplete: "every required onboarding step must be done or skipped",
-  baaExecuted: "the latest platform BAA must be executed",
+  baaExecuted:
+    "the latest platform BAA must be executed, with the signed agreement filed for this tenant",
   baaExpiryClearsNinetyDays: "the executed BAA must have more than 90 days left",
 };
 

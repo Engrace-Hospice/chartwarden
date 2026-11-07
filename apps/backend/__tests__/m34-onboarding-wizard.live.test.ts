@@ -56,6 +56,7 @@ import {
   recordOrganizationActivationReconciled,
   runOrganizationActivationReconcile,
 } from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
+import { evaluateGoLiveGuards } from "../src/modules/34-saas-tenant-platform/onboarding/go-live";
 import { voidPendingGoLiveForDataChange } from "../src/modules/34-saas-tenant-platform/onboarding/go-live-void";
 import type {
   PlatformActor,
@@ -1705,6 +1706,8 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     const T_S4 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb0a";
     const ORG_S5 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb0b";
     const T_S5 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb0c";
+    const ORG_S6 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb0d";
+    const T_S6 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb0e";
 
     beforeAll(async () => {
       for (const [org, tenant, slug] of [
@@ -1713,6 +1716,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         [ORG_S3, T_S3, "wiz-s3"],
         [ORG_S4, T_S4, "wiz-s4"],
         [ORG_S5, T_S5, "wiz-s5"],
+        [ORG_S6, T_S6, "wiz-s6"],
       ] as const) {
         await admin.query(
           "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -1959,6 +1963,46 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         );
         expect(refused.code).toBe("BAA_DOCUMENTS_UNBOUND");
         expect(refused.statusCode).toBe(503);
+      });
+
+      it("go-live judges the governing BAA's document too: the wizard store says whether the link verifies, with the real adapter", async () => {
+        const governing = async (checked: boolean) =>
+          createDrizzleWizardRunner({
+            db: app.db,
+            platformDb: platform.db,
+            auditBypass: m34PlatformBypassAuditor,
+            platformJobId: JOB_ID,
+            activation: backend().activateApprovedTenant,
+            orgProfileFor: (tx) => buildDrizzleOrgProfilePort(tx),
+            ...(checked ? { baaDocumentFiled: isTenantBaaDocumentFiled } : {}),
+          }).inPlatform("review: the governing BAA of a tenant", (store) => store.latestBaa(T_S6));
+        const insert = async (documentId: string | null) =>
+          admin.query(
+            `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+             VALUES ($1,$2,'v-golive','executed','2026-10-01','2026-10-01','2028-10-01',$3)`,
+            [ORG_S6, T_S6, documentId],
+          );
+        // executed, but linked to ANOTHER tenant's document: the status rests on nothing
+        await insert(await fileDocument(ORG_S2));
+        expect(await governing(true)).toMatchObject({
+          baaStatus: "executed",
+          documentFiled: false,
+        });
+        const guards = evaluateGoLiveGuards({
+          templates: [],
+          tasks: [],
+          latestBaa: (await governing(true)) ?? undefined,
+          today: new Date(),
+        });
+        expect(guards.baaExecuted).toBe(false);
+        // no adapter bound: not judged (the status alone decides, as before)
+        expect((await governing(false))?.documentFiled).toBeUndefined();
+
+        await admin.query(
+          "UPDATE platform_tenant_baa_record SET document_id=$2 WHERE tenant_account_id=$1",
+          [T_S6, await fileDocument(ORG_S6)],
+        );
+        expect(await governing(true)).toMatchObject({ documentFiled: true });
       });
 
       it("settles step 3 only when the governing BAA's document verifies", async () => {

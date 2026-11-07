@@ -14,7 +14,11 @@
 //     descriptor; they do NOT directly mutate cross-tenant rows from the request thread.
 import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
 import type { OnboardingProgress } from "../../onboarding/progress";
-import { assertExecutedBaaHasDocument } from "./baa-guards";
+import {
+  type BaaDocumentCheck,
+  assertBaaDocumentFiled,
+  assertExecutedBaaHasDocument,
+} from "./baa-guards";
 import { type CursorPage, paginate } from "./concurrency";
 
 // ── enqueue port (the thin worker-trigger seam the command routes inject) ─────────────────────────────
@@ -524,7 +528,16 @@ export interface TenantPlatformBackendInspect {
   enqueuedJobs(): ReadonlyArray<{ queue: M34QueueName; jobKey: string }>;
 }
 
-export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSeed = {}): {
+/** What the in-memory twin cannot hold itself: M22's check that a BAA's document is a signed BAA filed for the tenant. */
+export interface InMemoryTenantPlatformOptions {
+  /** Unbound: linking a document is a 503, exactly as in the Drizzle service (no document store to look in). */
+  readonly baaDocumentFiled?: BaaDocumentCheck;
+}
+
+export function createInMemoryTenantPlatformBackend(
+  seed: TenantPlatformRouteSeed = {},
+  options: InMemoryTenantPlatformOptions = {},
+): {
   service: TenantPlatformRouteService;
   enqueue: EnqueuePort;
   inspect: TenantPlatformBackendInspect;
@@ -1090,6 +1103,11 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
     },
     async createBaaRecord(_actorUserId, args) {
       assertExecutedBaaHasDocument(args);
+      await assertBaaDocumentFiled(options.baaDocumentFiled, {
+        organizationId:
+          tenants.get(args.tenantAccountId)?.organizationId ?? uuidFromCounter("e", 1),
+        documentId: args.documentId,
+      });
       // UNIQUE (tenant_account, addendum_version) — a duplicate is a 409 (the DB index enforces it in prod).
       for (const b of baaRecords.values()) {
         if (
@@ -1131,6 +1149,12 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
         documentId: args.documentId ?? b.documentId,
       };
       assertExecutedBaaHasDocument(view);
+      if (args.documentId !== undefined || view.baaStatus === "executed") {
+        await assertBaaDocumentFiled(options.baaDocumentFiled, {
+          organizationId: view.organizationId,
+          documentId: view.documentId,
+        });
+      }
       baaRecords.set(baaId, view);
       return view;
     },

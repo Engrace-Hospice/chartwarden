@@ -106,6 +106,24 @@ describe("evaluateGoLiveGuards", () => {
     });
   });
 
+  it("fails the BAA guards when the governing BAA's document does not verify (the go-live approval refuses it)", () => {
+    const tasks = [
+      task("a", "done"),
+      task("b", "done"),
+      task("go_live_checklist_complete", "in_progress"),
+    ];
+    const g = evaluateGoLiveGuards({
+      templates: TEMPLATES,
+      tasks,
+      latestBaa: { ...BAA_OK, documentFiled: false },
+      today: NOW,
+    });
+    expect(g).toMatchObject({ baaExecuted: false, baaExpiryClearsNinetyDays: false });
+    expect(() => assertGuardsPass(g, TEMPLATES, tasks)).toThrowError(
+      expect.objectContaining({ code: "ACTIVATION_GUARDS_FAILED" }),
+    );
+  });
+
   it("fails canonicalTasksComplete while an earlier gating step is open", () => {
     const tasks = [
       task("a", "done"),

@@ -6120,6 +6120,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           const m34Onboarding = {
             wizard: createOnboardingWizard({
               runner: createDrizzleWizardRunner({
+                // Go-live rests on the governing BAA's document too (M22's check, on the wizard's own transaction).
+                baaDocumentFiled: isTenantBaaDocumentFiled,
                 db: dbHandle.db,
                 platformDb: platformDbHandle?.db ?? dbHandle.db,
                 auditBypass: m34PlatformBypassAuditor,
@@ -8421,7 +8423,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 // M34 owns the go-live date (tenant activation); M35 has no edge to it, so it reads it through this port.
                 goLive: { goLiveAt: (tx, orgId) => readTenantGoLive(tx, orgId) },
                 // The backstop for "outside means billing mode none": the wizard's sync is post-commit and best effort, so the hourly
-                // sweep applies it again, before the statement, for any org whose clearinghouse is outside AND that holds a live contract
+                // sweep applies it again, before the statement, for any org whose clearinghouse is outside AND that holds a contract that is not
+                // canceled (live or paused: a paused contract bills again on resume)
                 // (a no-op when the mode is already none or pending none). It exists only where this sweep does: with the pseudonym key ring.
                 reconcileOutsideMode: createOutsideModeReconciler({
                   billsOutside: async (orgId) =>
