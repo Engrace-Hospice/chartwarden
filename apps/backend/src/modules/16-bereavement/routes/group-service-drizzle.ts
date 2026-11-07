@@ -25,6 +25,7 @@ import {
   BEREAVEMENT_CAPABLE_DISCIPLINES,
   BEREAVEMENT_OVERSIGHT_ROLES,
   BEREAVEMENT_VOLUNTEER_DISCIPLINE,
+  decideGroupScope,
   disciplineForRoleKeys,
 } from "../abac-predicates";
 import type { BereavementCipher } from "../bereavement-crypto";
@@ -172,10 +173,11 @@ export function buildDrizzleM16GroupService(db: DbClient, deps: M16GroupDeps): M
     };
   }
 
-  async function detail(tx: DbClient, row: GroupRow): Promise<GroupDetailView> {
+  /** `reveal` false = the meeting link stays sealed (`hasJoinUrl` only). */
+  async function detail(tx: DbClient, row: GroupRow, reveal = true): Promise<GroupDetailView> {
     const stats = (await statsFor(tx, [row.id])).get(row.id) ?? { enrolled: 0, next: null };
     let joinUrl: string | null = null;
-    if (row.joinUrlCipher !== null && deps.cipher !== undefined) {
+    if (reveal && row.joinUrlCipher !== null && deps.cipher !== undefined) {
       joinUrl = await deps.cipher.decrypt(
         row.organizationId,
         "bereavement_support_group.join_url",
@@ -254,6 +256,46 @@ export function buildDrizzleM16GroupService(db: DbClient, deps: M16GroupDeps): M
     if (problem !== null) throw new BereavementStateError("GROUP_RECURRENCE_INVALID", problem);
   }
 
+  /**
+   * The meeting link is for the people who RUN the group: oversight and its facilitators (`bereavement_group_scope`, mode `run`; a volunteer
+   * facilitator only while the 418.78 gates pass). Everyone else reading the group sees `hasJoinUrl` only.
+   */
+  async function mayReadJoinUrl(actor: M16ReadActor, group: GroupRow): Promise<boolean> {
+    if (group.joinUrlCipher === null) return false;
+    const isVolunteer = disciplineForRoleKeys(actor.roles) === BEREAVEMENT_VOLUNTEER_DISCIPLINE;
+    const mayBeVolunteer =
+      isVolunteer ||
+      (group.facilitatorKind === "volunteer" && group.facilitatorUserId === actor.membershipId);
+    let volunteerGatesPass = false;
+    if (mayBeVolunteer && actor.membershipId !== null) {
+      try {
+        volunteerGatesPass = await deps.volunteerGatesSatisfied({
+          organizationId: actor.organizationId,
+          volunteerMembershipId: actor.membershipId,
+        });
+      } catch {
+        volunteerGatesPass = false;
+      }
+    }
+    return decideGroupScope(
+      {
+        organizationId: group.organizationId,
+        groupId: group.id,
+        facilitatorKind: group.facilitatorKind,
+        facilitatorUserId: group.facilitatorUserId,
+        coFacilitatorUserId: group.coFacilitatorUserId ?? null,
+      },
+      {
+        organizationId: actor.organizationId,
+        membershipId: actor.membershipId,
+        hasOversight: BEREAVEMENT_OVERSIGHT_ROLES.some((r) => actor.roles.includes(r)),
+        isVolunteer,
+        volunteerGatesPass,
+      },
+      "run",
+    );
+  }
+
   /** Is the actor acting as a volunteer on this group (the reduced roster)? Oversight never is. */
   function actsAsVolunteer(actor: M16ReadActor, group: GroupRow): boolean {
     if (BEREAVEMENT_OVERSIGHT_ROLES.some((r) => actor.roles.includes(r))) return false;
@@ -324,7 +366,7 @@ export function buildDrizzleM16GroupService(db: DbClient, deps: M16GroupDeps): M
       return withOrgContext(db, scope(actor), async (scoped) => {
         const tx = asTx(scoped);
         const [row] = await tx.select().from(GROUP).where(eq(GROUP.id, groupId)).limit(1);
-        return row ? detail(tx, row) : null;
+        return row ? detail(tx, row, await mayReadJoinUrl(actor, row)) : null;
       });
     },
 

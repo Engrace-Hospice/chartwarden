@@ -28,6 +28,7 @@ import {
   INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES,
   SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES,
   assertNotInternalOnlyForWrite,
+  assertNotOrgLibraryForEdit,
   isInternalOnlyAggregateType,
 } from "../internal-documents";
 import {
@@ -276,6 +277,8 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     doc: { patientId: string | null; aggregateType: string; aggregateId: string | null },
     purpose: DocumentScopePurpose = "read",
   ): Promise<void> {
+    // ADR-0109 D10 (PR 3) — the published grief-library file is fixed: no generic write route may change it.
+    if (purpose === "write") assertNotOrgLibraryForEdit(doc.aggregateType);
     if (doc.aggregateType === "referral") {
       const { organizationId, actor } = actorOf(request);
       try {

@@ -42,6 +42,10 @@ import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "driz
 import { emitAlertBestEffort } from "../alert-port";
 import type { BereavementCipher } from "../bereavement-crypto";
 import {
+  withdrawLapsedGroupEnrollments,
+  withdrawLapsedMemorialInvitations,
+} from "../groups/enrollment-sweep";
+import {
   isAssessmentTaskOverdue,
   transitionBereavementOutreach,
   transitionBereavementPlan,
@@ -50,7 +54,6 @@ import type { MailingGenerateEnqueuePort } from "../mailings/enqueue-port";
 import { requestDischargeSummary } from "../render-payloads/index";
 import { settleOutstandingForClosure } from "../routes/closure-settlement";
 import { runEffects } from "../routes/effects-runner";
-import { withdrawLapsedGroupEnrollments } from "../routes/group-service-drizzle";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
 import {
   M16_ANNIVERSARY_LOOKAHEAD_DAYS,
@@ -356,10 +359,25 @@ export async function runClose13MonthsCron(deps: M16WorkerDeps): Promise<{ close
     }
     // ADR-0109 D10 (PR 3) — the nightly support-group pass, after the closures it may depend on: a family that left the program (an opt-out, a
     // closed plan) leaves its groups. Set-based and idempotent.
-    await inRowTx(deps, organizationId, "group-withdraw", organizationId, async (tx) => {
-      const n = await withdrawLapsedGroupEnrollments(tx, now);
-      if (n > 0) log("m16.close-13mo: lapsed group enrollments withdrawn", { organizationId, n });
-    });
+    // Its own try/catch: a failing program pass must not stop the next org's closures.
+    try {
+      await inRowTx(deps, organizationId, "program-withdraw", organizationId, async (tx) => {
+        const n = await withdrawLapsedGroupEnrollments(tx, now);
+        const m = await withdrawLapsedMemorialInvitations(tx);
+        if (n + m > 0) {
+          log("m16.close-13mo: lapsed program participation withdrawn", {
+            organizationId,
+            enrollments: n,
+            invitations: m,
+          });
+        }
+      });
+    } catch (error) {
+      log("m16.close-13mo: the program withdraw pass failed for an org", {
+        organizationId,
+        error: error instanceof Error ? error.name : "unknown",
+      });
+    }
   }
   return { closed };
 }

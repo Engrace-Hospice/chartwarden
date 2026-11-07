@@ -16,6 +16,7 @@ import type {
   BereavementMemorialRsvpSource,
 } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { BEREAVEMENT_OVERSIGHT_ROLES } from "../abac-predicates";
 import type { BereavementCipher } from "../bereavement-crypto";
 import { BereavementStateError, checkVersion } from "../lifecycle/index";
 import { cancelUnmailedMemorialRun, inviteForMemorial } from "../memorials/publish-drizzle";
@@ -135,10 +136,11 @@ export function buildDrizzleM16MemorialService(
     };
   }
 
-  async function detail(tx: DbClient, row: ServiceRow): Promise<MemorialDetailView> {
+  /** `reveal` false = the meeting link stays sealed (`hasJoinUrl` only). */
+  async function detail(tx: DbClient, row: ServiceRow, reveal = true): Promise<MemorialDetailView> {
     const counts = (await countsFor(tx, [row.id])).get(row.id) ?? ZERO;
     const joinUrl =
-      row.joinUrlCipher !== null && deps.cipher !== undefined
+      reveal && row.joinUrlCipher !== null && deps.cipher !== undefined
         ? await deps.cipher.decrypt(
             row.organizationId,
             "bereavement_memorial_service.join_url",
@@ -264,7 +266,9 @@ export function buildDrizzleM16MemorialService(
       return withOrgContext(db, scope(actor), async (scoped) => {
         const tx = asTx(scoped);
         const [row] = await tx.select().from(SVC).where(eq(SVC.id, serviceId)).limit(1);
-        return row ? detail(tx, row) : null;
+        // The link is the organizers' (oversight); a counselor reading the service sees `hasJoinUrl` only (families get it in the portal after a yes).
+        const reveal = BEREAVEMENT_OVERSIGHT_ROLES.some((r) => actor.roles.includes(r));
+        return row ? detail(tx, row, reveal) : null;
       });
     },
 
@@ -300,6 +304,19 @@ export function buildDrizzleM16MemorialService(
             "MEMORIAL_NOT_EDITABLE",
             `a ${svc.status} service can no longer be changed`,
           );
+        }
+        if (svc.status === "published" && input.capacity !== null) {
+          // never below the people who already said yes (each yes is 1 + its guests)
+          const [{ people } = { people: 0 }] = await tx
+            .select({ people: sql<number>`coalesce(sum(1 + ${INV.guests}), 0)::int` })
+            .from(INV)
+            .where(and(eq(INV.serviceId, svc.id), eq(INV.status, "rsvp_yes")));
+          if (input.capacity < people) {
+            throw new BereavementStateError(
+              "MEMORIAL_FULL",
+              `${people} people have already said yes: the capacity cannot go below that`,
+            );
+          }
         }
         if (svc.status === "published" && input.inviteWindowMonths !== svc.inviteWindowMonths) {
           throw new BereavementStateError(

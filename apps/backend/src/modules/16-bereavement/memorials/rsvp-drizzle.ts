@@ -1,7 +1,8 @@
 // apps/backend/src/modules/16-bereavement/memorials/rsvp-drizzle.ts — ADR-0109 D10 (PR 3): record a memorial RSVP (staff phone or the family's portal).
 //
 // ONE rule for both doors, inside the caller's transaction:
-//   * the invitation must belong to the named contact (staff) or to a contact on the named portal account (portal); anything else is "not found";
+//   * the invitation must belong to the named contact (staff) or to a contact on the named portal account whose own plan is still open (portal);
+//     anything else is "not found";
 //   * the service must be `published` and not yet started; the PORTAL also stops at the RSVP-by date (staff may still take a late call);
 //   * an invitation that was withdrawn or already marked attended / no-show is closed;
 //   * a `yes` must fit the capacity: the service row is LOCKED, so two answers cannot both take the last seats (people = 1 + guests per yes);
@@ -57,13 +58,24 @@ export async function applyMemorialRsvp(
   const notFound = () =>
     new BereavementStateError("MEMORIAL_INVITATION_NOT_FOUND", "invitation not found");
 
+  const PLAN = schema.bereavementPlan;
   const [found] = await tx
-    .select({ inv: INV, portalAccountId: CONTACT.portalAccountId })
+    .select({ inv: INV, portalAccountId: CONTACT.portalAccountId, planStatus: PLAN.status })
     .from(INV)
     .innerJoin(CONTACT, eq(CONTACT.id, INV.bereavedContactId))
+    .innerJoin(PLAN, eq(PLAN.id, CONTACT.planId))
     .where(eq(INV.id, args.invitationId))
     .limit(1);
   if (!found) throw notFound();
+  // The portal door answers only for a contact whose OWN plan is still open (an account linked to a closed plan and an open one reaches only
+  // the open one's invitations). An opted-out family may still answer an invitation it already holds (owner decision).
+  if (
+    args.portalAccountId !== undefined &&
+    found.planStatus !== "active" &&
+    found.planStatus !== "paused"
+  ) {
+    throw notFound();
+  }
   if (args.contactId !== undefined && found.inv.bereavedContactId !== args.contactId) {
     throw notFound();
   }

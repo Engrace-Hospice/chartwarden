@@ -283,6 +283,130 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     expect(rows[0].active_version_id).toBe(v2.versionId);
   });
 
+  // ADR-0109 D10 (PR 3) — the grief-library video policy and the new_version target rules.
+  it("a library video completes only when its first bytes carry an MP4 ftyp box; a new version must match its target's type and patient; a library file is fixed", async () => {
+    const heads = new Map<string, Uint8Array>();
+    const mp4Head = Uint8Array.from([
+      0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d,
+    ]);
+    const pdfHead = new TextEncoder().encode("%PDF-1.7\n%abc");
+    const presignedLengths: (number | undefined)[] = [];
+    const objects = {
+      async putObject() {
+        throw new Error("not used");
+      },
+      async presignUpload(args: {
+        bucket: string;
+        objectKey: string;
+        mimeType: string;
+        sha256Hex: string;
+        contentLength?: number;
+      }) {
+        lastStagedObject = { bucket: args.bucket, objectKey: args.objectKey };
+        presignedLengths.push(args.contentLength);
+        return {
+          url: `https://object.invalid/${args.bucket}/${args.objectKey}`,
+          headers: { "content-type": args.mimeType },
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        };
+      },
+      async inspectObject({ bucket, objectKey }: { bucket: string; objectKey: string }) {
+        return objectMetadata.get(`${bucket}/${objectKey}`) ?? null;
+      },
+      async presign() {
+        throw new Error("not used");
+      },
+      async destroyAllVersions({ bucket, objectKey }: { bucket: string; objectKey: string }) {
+        objectMetadata.delete(`${bucket}/${objectKey}`);
+      },
+      async getObject({ bucket, objectKey }: { bucket: string; objectKey: string }) {
+        return heads.get(`${bucket}/${objectKey}`) ?? null;
+      },
+    };
+    const video = createVerifiedUploadService({
+      db: handle.db,
+      objects: objects as never,
+      reader: objects as never,
+    });
+    const sha256Hex = "b".repeat(64);
+    const libraryInput = {
+      mode: "new_document" as const,
+      targetDocumentId: null,
+      patientId: null,
+      admissionId: null,
+      retentionClass: "bereavement" as const,
+      aggregateType: "bereavement_library_item" as const,
+      aggregateId: null,
+      title: "Library video",
+      patientFacing: true,
+      mimeType: "video/mp4",
+      byteSize: 40_000_000,
+      sha256Hex,
+    };
+    const stage = async (head: Uint8Array) => {
+      const started = await video.initiate({
+        organizationId: ORG_A,
+        ...ACTOR,
+        input: libraryInput,
+      });
+      if (!lastStagedObject) throw new Error("no staged object");
+      const key = `${lastStagedObject.bucket}/${lastStagedObject.objectKey}`;
+      objectMetadata.set(key, { byteSize: 40_000_000, mimeType: "video/mp4", sha256Hex });
+      heads.set(key, head);
+      return started.uploadId;
+    };
+    // the declared size is signed into the PUT
+    const okId = await stage(mp4Head);
+    expect(presignedLengths.at(-1)).toBe(40_000_000);
+    const done = await video.complete({ organizationId: ORG_A, ...ACTOR, uploadId: okId });
+    expect(done.versionNumber).toBe(1);
+    // a renamed PDF is refused at complete, and the object is destroyed
+    const badId = await stage(pdfHead);
+    await expect(
+      video.complete({ organizationId: ORG_A, ...ACTOR, uploadId: badId }),
+    ).rejects.toMatchObject({
+      code: "UPLOAD_INTEGRITY_MISMATCH",
+    });
+    // video is the library's alone; a library document never names a patient
+    await expect(
+      video.initiate({
+        organizationId: ORG_A,
+        ...ACTOR,
+        input: { ...libraryInput, aggregateType: "other" },
+      }),
+    ).rejects.toMatchObject({ code: "UNSUPPORTED_MEDIA_TYPE" });
+    await expect(
+      video.initiate({
+        organizationId: ORG_A,
+        ...ACTOR,
+        input: { ...libraryInput, patientId: PATIENT },
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+
+    // new_version: a video onto a PATIENT document (declaring the library type to get the video rule) is refused: the target's type decides
+    const patientDoc = (
+      await admin.query(
+        "SELECT id FROM document WHERE organization_id=$1 AND patient_id=$2 LIMIT 1",
+        [ORG_A, PATIENT],
+      )
+    ).rows[0].id as string;
+    await expect(
+      video.initiate({
+        organizationId: ORG_A,
+        ...ACTOR,
+        input: { ...libraryInput, mode: "new_version", targetDocumentId: patientDoc },
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    // and the published library file cannot be replaced through the generic path
+    await expect(
+      video.initiate({
+        organizationId: ORG_A,
+        ...ACTOR,
+        input: { ...libraryInput, mode: "new_version", targetDocumentId: done.documentId },
+      }),
+    ).rejects.toMatchObject({ code: "DOCUMENT_LIBRARY_IMMUTABLE" });
+  });
+
   it("verified upload accepts referral DOCX provenance and later links the same document to patient/admission", async () => {
     await admin.query(
       `INSERT INTO referral (id, organization_id, patient_name_at_receipt, source_channel)

@@ -25,3 +25,23 @@ export async function withdrawLapsedGroupEnrollments(tx: DbClient, at: Date): Pr
     RETURNING e.id`);
   return (rows as unknown as { rowCount: number | null }).rowCount ?? 0;
 }
+
+/**
+ * ADR-0109 D10 (PR 3) — the nightly pass's memorial half: an open invitation (invited / rsvp_*) of a service still ahead is WITHDRAWN when the
+ * contact's plan has closed or the contact has left the program (deceased, found ineligible). NOT on an opt-out: an opted-out family may still
+ * answer an invitation it already holds (owner decision). Set-based and idempotent.
+ */
+export async function withdrawLapsedMemorialInvitations(tx: DbClient): Promise<number> {
+  const rows = await tx.execute(sql`
+    UPDATE bereavement_memorial_invitation i
+       SET status = 'withdrawn', version = i.version + 1, updated_at = now()
+      FROM bereaved_contact c
+      JOIN bereavement_plan p ON p.id = c.plan_id,
+           bereavement_memorial_service s
+     WHERE c.id = i.bereaved_contact_id AND s.id = i.service_id
+       AND i.status IN ('invited', 'rsvp_yes', 'rsvp_no', 'rsvp_maybe')
+       AND s.status IN ('draft', 'published')
+       AND (p.status NOT IN ('active', 'paused') OR c.status IN ('deceased', 'ineligible_post_review'))
+    RETURNING i.id`);
+  return (rows as unknown as { rowCount: number | null }).rowCount ?? 0;
+}

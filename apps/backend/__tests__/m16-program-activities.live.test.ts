@@ -29,6 +29,7 @@ import {
   createInMemoryEffectivePermissionStore,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
+  registerPredicateIdempotent,
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
@@ -37,7 +38,7 @@ import { runWithRequestContext } from "@chartwarden/tenancy";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildServer } from "../src/bootstrap/index";
+import { buildServer, registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { registerBereavementAbacPredicates } from "../src/modules/16-bereavement/abac-predicates";
 import { buildDrizzleBereavementAbacResolver } from "../src/modules/16-bereavement/abac-resolver-drizzle";
@@ -58,7 +59,12 @@ import {
 } from "../src/modules/16-bereavement/routes/index";
 import { registerBereavementLibraryRoutes } from "../src/modules/16-bereavement/routes/library.routes";
 import { registerBereavementMemorialRoutes } from "../src/modules/16-bereavement/routes/memorial.routes";
+import { createDrizzleBereavementSeamStore } from "../src/modules/16-bereavement/seams/drizzle-store";
+import { registerBereavementSeams } from "../src/modules/16-bereavement/seams/index";
 import { createBereavementPortalContentProvider } from "../src/modules/16-bereavement/seams/portal-content";
+import { buildPortalAbacPredicates } from "../src/modules/31-portal/abac-predicates";
+import { registerPortalReadRoutes } from "../src/modules/31-portal/routes/read.routes";
+import { registerPortalWriteRoutes } from "../src/modules/31-portal/routes/write.routes";
 import {
   createDrizzleOrgDocumentAccessPort,
   createDrizzlePortalAccessLog,
@@ -72,6 +78,13 @@ const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ORG_A = "a1630000-0000-4000-8000-0000000000a1";
 const ORG_B = "b1630000-0000-4000-8000-0000000000b1";
 const ADDRESS = "10 Sample Street\nTestville, ZZ 00000";
+/** The bereaved-family session's keys (the session class grants exactly these in production). */
+const PORTAL_BEREAVED_KEYS = [
+  "portal.bereavement.read_program",
+  "portal.bereavement.read_resources",
+  "portal.bereavement.opt_out_own",
+  "portal.bereavement.rsvp_own",
+];
 
 interface Person {
   readonly user: string;
@@ -89,7 +102,15 @@ function headerAuth(request: FastifyRequest): void {
   request.context.userId = h("x-test-user");
   request.context.organizationId = h("x-test-org");
   request.context.roles = h("x-test-roles") === "" ? [] : h("x-test-roles").split(",");
-  request.context.attributes = { membershipId: h("x-test-membership"), sessionClass: "staff" };
+  request.context.attributes =
+    h("x-test-session-class") === ""
+      ? { membershipId: h("x-test-membership"), sessionClass: "staff" }
+      : {
+          sessionClass: h("x-test-session-class"),
+          portalAccountId: h("x-test-portal-account"),
+          sessionPatientId: h("x-test-portal-patient"),
+          sessionId: h("x-test-session-id"),
+        };
 }
 
 describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE Postgres", () => {
@@ -271,6 +292,8 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
     await seedPerson("donB", ORG_B, "director_of_nursing");
     // the bereaved family member's portal login (a real user row: the audit trail names the actor)
     await seedPerson("family", ORG_A, "bereaved_portal");
+    // a caregiver-portal login: no bereaved-family keys
+    await seedPerson("caregiver", ORG_A, "caregiver_portal");
 
     handle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
@@ -289,7 +312,12 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
             roleKey: p.roles,
             enabled: true,
             expiresAt: null,
-            permissionKeys: [...M16_PERMISSION_KEY_LIST],
+            permissionKeys:
+              p.roles === "bereaved_portal"
+                ? [...PORTAL_BEREAVED_KEYS]
+                : p.roles === "caregiver_portal"
+                  ? []
+                  : [...M16_PERMISSION_KEY_LIST],
           },
         ],
       })),
@@ -335,6 +363,24 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
       db: handle.db as never,
       security: { rateLimitEnabled: false },
     });
+    // M31's real `bereaved_portal_window_open` over M16's real `BereavedPortalScopeProvider` (Drizzle store); the account row is M31's and is
+    // stubbed active here (its own suites prove it).
+    registerBereavementSeams({ store: createDrizzleBereavementSeamStore(handle.db) });
+    registerSeam("BereavementPortalContentProvider", portal);
+    const portalPredicates = buildPortalAbacPredicates({
+      resolver: {
+        ...({} as Record<string, never>),
+        async loadAccount(orgId: string, portalAccountId: string) {
+          return { organizationId: orgId, portalAccountId, status: "bereaved" } as never;
+        },
+      } as never,
+    });
+    registerPredicateIdempotent(
+      "bereaved_portal_window_open",
+      portalPredicates.bereaved_portal_window_open as never,
+    );
+    registerPortalReadRoutes(app, {} as never);
+    registerPortalWriteRoutes(app, {} as never);
     registerBereavementGroupRoutes(app, {
       groupService: buildDrizzleM16GroupService(handle.db, {
         outbox: outbox as never,
@@ -454,6 +500,35 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
         [created.json().groupId],
       );
       expect(raw.join_url_cipher).not.toContain("meet.example.test");
+      // the link is for the people who run the group: its facilitator reads it, another clinician sees only that one exists
+      const url = `${GROUPS}/${created.json().groupId}`;
+      expect((await call("GET", url, "counselor")).json().joinUrl).toBe(
+        "https://meet.example.test/room-42",
+      );
+      expect((await call("GET", url, "counselor2")).json()).toMatchObject({
+        hasJoinUrl: true,
+        joinUrl: null,
+      });
+    });
+
+    it("a drop-in group's walk-in is recorded by oversight only; its facilitator records the families on the roster", async () => {
+      const g = (
+        await call("POST", GROUPS, "don", groupBody({ enrollmentRequired: false }))
+      ).json();
+      await call("POST", `${GROUPS}/${g.groupId}/open`, "don", undefined, ifMatch(1));
+      const session = (
+        await call("POST", `${GROUPS}/${g.groupId}/sessions`, "counselor", {
+          startsAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+          endsAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        })
+      ).json();
+      const att = `${GROUPS}/${g.groupId}/sessions/${session.sessionId}/attendance`;
+      expect(codeOf(await call("POST", att, "counselor", { contactIds: [ben] }))).toBe(
+        "CONTACT_NOT_ENROLLED",
+      );
+      expect((await call("POST", att, "don", { contactIds: [ben] })).json()).toMatchObject({
+        recordedCount: 1,
+      });
     });
 
     it("a volunteer facilitator opens only while the 418.78 gates pass, runs the group and gets the reduced roster, and never manages it", async () => {
@@ -813,7 +888,8 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
       expect(items_[contacts.mail as string]).toBe("included");
       expect(items_[contacts.edge as string]).toBe("included");
       // the portal-only invitees are not in the run at all (no letter), and neither is anyone the service did not invite
-      for (const k of ["portal", "nomail", "old", "optout"]) expect(items_[contacts[k] as string]).toBeUndefined();
+      for (const k of ["portal", "nomail", "old", "optout"])
+        expect(items_[contacts[k] as string]).toBeUndefined();
       expect(Object.keys(items_)).toHaveLength(
         await count(
           "SELECT count(*)::int n FROM bereavement_memorial_invitation WHERE service_id=$1 AND delivery='mailing'",
@@ -879,6 +955,28 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
         status: "rsvp_yes",
         joinUrl: "https://meet.example.test/remember",
       });
+      // a published service's capacity never drops below the people who said yes (2 + 1 here)
+      const svc = (await call("GET", `${MEMORIALS}/${serviceId}`, "don")).json();
+      expect(svc.joinUrl).toBe("https://meet.example.test/remember");
+      // a counselor reading the service sees only that a link exists
+      expect((await call("GET", `${MEMORIALS}/${serviceId}`, "counselor")).json()).toMatchObject({
+        hasJoinUrl: true,
+        joinUrl: null,
+      });
+      const edit = {
+        title: svc.title,
+        description: svc.description,
+        startsAt: svc.startsAt,
+        endsAt: svc.endsAt,
+        modality: svc.modality,
+        venueText: svc.venueText,
+        capacity: 2,
+        rsvpBy: svc.rsvpBy,
+        inviteWindowMonths: svc.inviteWindowMonths,
+      };
+      expect(
+        codeOf(await call("PATCH", `${MEMORIALS}/${serviceId}`, "don", edit, ifMatch(svc.version))),
+      ).toBe("MEMORIAL_FULL");
       const events = await admin.query(
         "SELECT payload FROM outbox_event WHERE event_type='m16.bereavement.memorial_rsvp_recorded' AND payload->>'serviceId'=$1",
         [serviceId],
@@ -900,6 +998,60 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
       expect(
         (await call("PUT", rsvp, "counselor", { response: "maybe", guests: 0 })).statusCode,
       ).toBe(200);
+    });
+
+    it("an account linked to a closed plan and an open one reaches only the open plan's invitations; the nightly pass withdraws the closed one's", async () => {
+      const closedPlan = await seedPlan(ORG_A, { status: "closed_completed" });
+      const closedContact = await seedContact(ORG_A, closedPlan, {
+        name: "Closed plan contact",
+        portalAccountId: portalAccount,
+      });
+      const closedInv = (
+        await one<{ id: string }>(
+          `INSERT INTO bereavement_memorial_invitation (organization_id, provider_entity_id, service_id, plan_id, bereaved_contact_id, delivery)
+           VALUES ($1,$2,$3,$4,$5,'portal_only') RETURNING id`,
+          [ORG_A, pe[ORG_A], serviceId, closedPlan, closedContact],
+        )
+      ).id;
+      const portalArgs = {
+        organizationId: ORG_A,
+        userId: who("family").user,
+        portalAccountId: portalAccount,
+      };
+      const listed = await portal.memorialInvitationsForPortalAccount(portalArgs);
+      expect(listed.map((i) => i.invitationId)).not.toContain(closedInv);
+      await expect(
+        portal.recordPortalRsvp({
+          ...portalArgs,
+          invitationId: closedInv,
+          response: "yes",
+          guests: 0,
+        }),
+      ).rejects.toMatchObject({ code: "MEMORIAL_INVITATION_NOT_FOUND" });
+      // an opted-out family keeps the invitation it holds (owner decision); a closed plan's is withdrawn by the nightly pass
+      await seedOptOut(ORG_A, plans.mail as string, contacts.mail as string, "full");
+      await runClose13MonthsCron({
+        connection: {} as never,
+        db: handle.db,
+        outbox: outbox as never,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+      });
+      expect(
+        (
+          await one<{ status: string }>(
+            "SELECT status FROM bereavement_memorial_invitation WHERE id=$1",
+            [closedInv],
+          )
+        ).status,
+      ).toBe("withdrawn");
+      expect(
+        (
+          await one<{ status: string }>(
+            "SELECT status FROM bereavement_memorial_invitation WHERE service_id=$1 AND bereaved_contact_id=$2",
+            [serviceId, contacts.mail],
+          )
+        ).status,
+      ).not.toBe("withdrawn");
     });
 
     it("attendance writes the activity row once the service started and is final; cancelling a service cancels its unmailed run", async () => {
@@ -1015,6 +1167,23 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
       expect(codeOf(await call("POST", LIBRARY, "don", body(video)))).toBe(
         "LIBRARY_DOCUMENT_TAKEN",
       );
+      // a video is published only with a transcript
+      const bare = await seedDocument(ORG_A, {
+        aggregate: "bereavement_library_item",
+        mime: "video/mp4",
+      });
+      const bareItem = (await call("POST", LIBRARY, "don", body(bare))).json();
+      expect(
+        codeOf(
+          await call(
+            "POST",
+            `${LIBRARY}/${bareItem.itemId}/status`,
+            "don",
+            { status: "published" },
+            ifMatch(1),
+          ),
+        ),
+      ).toBe("LIBRARY_TRANSCRIPT_REQUIRED");
       for (const doc of [batch, patientDoc]) {
         expect(codeOf(await call("POST", LIBRARY, "don", body(doc)))).toBe(
           "LIBRARY_DOCUMENT_INVALID",
@@ -1131,6 +1300,178 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
       );
       expect(await portal.libraryForPortal(args)).toEqual([]);
       expect(await mint("document")).toBeNull();
+    });
+  });
+
+  // ══ the M31 portal routes ═══════════════════════════════════════════════════════════════════════
+  describe("the four M31 portal routes (window-gated, family's own rows, audited library read)", () => {
+    const account = randomUUID();
+    const session = randomUUID();
+    let openPatient = "";
+    let closedPatient = "";
+    let invitationId = "";
+    let itemId = "";
+    const portalCall = (
+      method: "GET" | "POST",
+      url: string,
+      o: { as?: string; patient?: string; cls?: string; payload?: object } = {},
+    ) => {
+      const p = who(o.as ?? "family");
+      return app.inject({
+        method,
+        url,
+        headers: {
+          "x-test-user": p.user,
+          "x-test-org": p.org,
+          "x-test-roles": p.roles,
+          "x-test-session-class": o.cls ?? "bereaved_portal",
+          "x-test-portal-account": account,
+          "x-test-portal-patient": o.patient ?? openPatient,
+          "x-test-session-id": session,
+          "idempotency-key": randomUUID(),
+        },
+        ...(o.payload ? { payload: o.payload } : {}),
+      });
+    };
+
+    beforeAll(async () => {
+      const open = await seedPlan(ORG_A);
+      openPatient = (
+        await one<{ patient_id: string }>("SELECT patient_id FROM bereavement_plan WHERE id=$1", [
+          open,
+        ])
+      ).patient_id;
+      const contact = await seedContact(ORG_A, open, {
+        name: "Portal family",
+        address: false,
+        portalAccountId: account,
+      });
+      const closed = await seedPlan(ORG_A, { status: "closed_completed" });
+      closedPatient = (
+        await one<{ patient_id: string }>("SELECT patient_id FROM bereavement_plan WHERE id=$1", [
+          closed,
+        ])
+      ).patient_id;
+      await seedContact(ORG_A, closed, {
+        name: "Portal family (closed)",
+        portalAccountId: account,
+      });
+      const svc = (
+        await call("POST", "/api/v1/bereavement/memorials", "don", {
+          title: "Portal remembrance",
+          description: null,
+          startsAt: new Date(Date.now() + 15 * 86_400_000).toISOString(),
+          endsAt: new Date(Date.now() + 15 * 86_400_000 + 7_200_000).toISOString(),
+          modality: "in_person",
+          venueText: "Chapel",
+          capacity: null,
+          rsvpBy: null,
+          inviteWindowMonths: 12,
+        })
+      ).json();
+      await call(
+        "POST",
+        `/api/v1/bereavement/memorials/${svc.serviceId}/publish`,
+        "don",
+        undefined,
+        ifMatch(1),
+      );
+      invitationId = (
+        await one<{ id: string }>(
+          "SELECT id FROM bereavement_memorial_invitation WHERE service_id=$1 AND bereaved_contact_id=$2",
+          [svc.serviceId, contact],
+        )
+      ).id;
+      const doc = await seedDocument(ORG_A, {
+        aggregate: "bereavement_library_item",
+        mime: "application/pdf",
+      });
+      const item = (
+        await call("POST", "/api/v1/bereavement/library", "don", {
+          documentId: doc,
+          title: "A leaflet",
+          summary: null,
+          category: "coping",
+          transcriptDocumentId: null,
+          sortOrder: 0,
+        })
+      ).json();
+      itemId = item.itemId;
+      await call(
+        "POST",
+        `/api/v1/bereavement/library/${itemId}/status`,
+        "don",
+        { status: "published" },
+        ifMatch(1),
+      );
+    });
+
+    it("the bereaved family reads its invitations and the library, answers, and gets a library URL whose read event names the item", async () => {
+      const inv = await portalCall("GET", "/api/v1/portal/bereavement/memorials");
+      expect(inv.statusCode).toBe(200);
+      expect(inv.json().items.map((i: { invitationId: string }) => i.invitationId)).toContain(
+        invitationId,
+      );
+      const rsvp = await portalCall(
+        "POST",
+        `/api/v1/portal/bereavement/memorials/${invitationId}/rsvp`,
+        {
+          payload: { response: "yes", guests: 1 },
+        },
+      );
+      expect(rsvp.json()).toMatchObject({ status: "rsvp_yes", guests: 1 });
+      expect(
+        (await portalCall("GET", "/api/v1/portal/bereavement/library"))
+          .json()
+          .items.map((i: { itemId: string }) => i.itemId),
+      ).toContain(itemId);
+      const minted = await portalCall("GET", `/api/v1/portal/bereavement/library/${itemId}/url`);
+      expect(minted.statusCode).toBe(200);
+      expect(minted.headers["cache-control"]).toBe("no-store");
+      expect(
+        await count(
+          "SELECT count(*)::int n FROM audit_event WHERE event_type='bereavement_library_item.viewed' AND resource_id=$1 AND actor_user_id=$2",
+          [itemId, who("family").user],
+        ),
+      ).toBe(1);
+      expect(
+        (await portalCall("GET", `/api/v1/portal/bereavement/library/${randomUUID()}/url`))
+          .statusCode,
+      ).toBe(404);
+    });
+
+    it("a session that is not the bereaved family's, or whose plan's window is closed, is refused every route", async () => {
+      const routes: ["GET" | "POST", string, object?][] = [
+        ["GET", "/api/v1/portal/bereavement/memorials"],
+        [
+          "POST",
+          `/api/v1/portal/bereavement/memorials/${invitationId}/rsvp`,
+          { response: "no", guests: 0 },
+        ],
+        ["GET", "/api/v1/portal/bereavement/library"],
+        ["GET", `/api/v1/portal/bereavement/library/${itemId}/url`],
+      ];
+      for (const [method, url, payload] of routes) {
+        // a caregiver-portal session holds none of the bereaved-family keys
+        expect(
+          (
+            await portalCall(method, url, {
+              as: "caregiver",
+              cls: "caregiver_portal",
+              ...(payload ? { payload } : {}),
+            })
+          ).statusCode,
+        ).toBe(403);
+        // the family's session anchored on the CLOSED plan's patient: the window is shut
+        expect(
+          (
+            await portalCall(method, url, {
+              patient: closedPatient,
+              ...(payload ? { payload } : {}),
+            })
+          ).statusCode,
+        ).toBe(403);
+      }
     });
   });
 

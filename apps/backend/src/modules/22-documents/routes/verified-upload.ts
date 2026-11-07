@@ -8,7 +8,11 @@ import {
 } from "@chartwarden/types";
 import { ChartWardenError, DegradedError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
-import { assertNotInternalOnlyForWrite, isInternalOnlyAggregateType } from "../internal-documents";
+import {
+  assertNotInternalOnlyForWrite,
+  assertNotOrgLibraryForEdit,
+  isInternalOnlyAggregateType,
+} from "../internal-documents";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectReaderPort, ObjectStorePort } from "../seams/store";
 import type { DocumentProvenanceMetadata } from "./service";
@@ -30,15 +34,21 @@ const FTYP_PROBE_BYTES = 12;
 const isLibraryType = (aggregateType: string): boolean =>
   ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES.has(aggregateType as DocumentAggregateType);
 
-/** Pure: does this head of a file carry an ISO-BMFF `ftyp` box at offset 4 (every mp4 starts with one)? */
+/** The ISO-BMFF major brands an MP4 video the browser plays declares (`M4V ` carries a trailing space). */
+export const MP4_MAJOR_BRANDS: ReadonlySet<string> = new Set([
+  "isom",
+  "iso2",
+  "mp41",
+  "mp42",
+  "avc1",
+  "M4V ",
+]);
+
+/** Pure: does this head of a file carry an ISO-BMFF `ftyp` box at offset 4 with an MP4 major brand at offset 8? */
 export function hasMp4FtypBox(head: Uint8Array): boolean {
-  return (
-    head.byteLength >= 8 &&
-    head[4] === 0x66 /* f */ &&
-    head[5] === 0x74 /* t */ &&
-    head[6] === 0x79 /* y */ &&
-    head[7] === 0x70 /* p */
-  );
+  if (head.byteLength < 12) return false;
+  const ascii = (from: number, to: number) => String.fromCharCode(...head.slice(from, to));
+  return ascii(4, 8) === "ftyp" && MP4_MAJOR_BRANDS.has(ascii(8, 12));
 }
 
 export interface ReferralAccessReader {
@@ -228,13 +238,32 @@ export function createVerifiedUploadService(deps: {
         const targetDocumentId = input.targetDocumentId;
         await inOrg(organizationId, userId, async (tx) => {
           const [doc] = await tx
-            .select({ id: D.id, status: D.status, aggregateType: D.aggregateType })
+            .select({
+              id: D.id,
+              status: D.status,
+              aggregateType: D.aggregateType,
+              patientId: D.patientId,
+            })
             .from(D)
             .where(eq(D.id, targetDocumentId))
             .limit(1);
           if (!doc) throw new NotFoundError("document");
           // Render-only and never a version target for anyone: answer as if absent (no internal/unknown oracle).
           if (isInternalOnlyAggregateType(doc.aggregateType)) throw new NotFoundError("document");
+          // ADR-0109 D10 (PR 3) — a new version is the SAME document: its declared type and patient must be the target's, so the MIME / size /
+          // org-level rules validateInput applied (video only for a library document) are the target's real rules; and a grief-library file
+          // is fixed once uploaded.
+          assertNotOrgLibraryForEdit(doc.aggregateType);
+          if (
+            doc.aggregateType !== input.aggregateType ||
+            (doc.patientId ?? null) !== input.patientId
+          ) {
+            throw new ChartWardenError(
+              "VALIDATION_FAILED",
+              "a new version must declare the target document's own type and patient",
+              422,
+            );
+          }
           if (doc.status === "legal_hold" || doc.status === "destroyed_tombstone") {
             throw new ChartWardenError(
               "DOCUMENT_IMMUTABLE",

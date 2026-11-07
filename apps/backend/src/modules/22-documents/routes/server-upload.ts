@@ -20,7 +20,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { DocumentAggregateType, OrgId } from "@chartwarden/types";
 import { ChartWardenError, DegradedError, NotFoundError } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { assertNotInternalOnlyForWrite } from "../internal-documents";
+import { assertNotInternalOnlyForWrite, assertNotOrgLibraryForEdit } from "../internal-documents";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";
 import type {
@@ -241,6 +241,7 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     if (expectedPatientId !== undefined && doc.patientId !== expectedPatientId)
       throw new NotFoundError("document");
     assertNotInternalOnlyForWrite(doc.aggregateType);
+    assertNotOrgLibraryForEdit(doc.aggregateType);
     const [hold] = await tx
       .select({ id: LH.id })
       .from(LH)

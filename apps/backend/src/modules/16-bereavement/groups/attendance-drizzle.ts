@@ -7,6 +7,7 @@
 // `support_group_attendance_recorded` (ids and counts only) is published when anyone new was recorded.
 import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { BEREAVEMENT_OVERSIGHT_ROLES } from "../abac-predicates";
 import { BereavementStateError } from "../lifecycle/index";
 import { loadProgramContacts } from "../program/program-contacts";
 import type { M16WriteActor } from "../routes/actor";
@@ -38,7 +39,10 @@ export async function recordSessionAttendance(
       `${notInProgram.length} of the named contacts are not active program families`,
     );
   }
-  if (group.enrollmentRequired) {
+  // A drop-in group admits walk-ins, but only OVERSIGHT (who may see every program family) records a family that is not enrolled: a
+  // facilitator records the families on their roster.
+  const hasOversight = BEREAVEMENT_OVERSIGHT_ROLES.some((r) => actor.roles.includes(r));
+  if (group.enrollmentRequired || !hasOversight) {
     const enrolled = await tx
       .select({ contactId: ENROLL.bereavedContactId })
       .from(ENROLL)

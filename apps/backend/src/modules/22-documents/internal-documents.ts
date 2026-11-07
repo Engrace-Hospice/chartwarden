@@ -13,6 +13,7 @@ import {
   ChartWardenError,
   type DocumentAggregateType,
   INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES,
+  ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES,
   SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES,
 } from "@chartwarden/types";
 
@@ -70,6 +71,27 @@ export function assertNotInternalOnlyForWrite(aggregateType: string | null | und
     throw new ChartWardenError(
       "DOCUMENT_INTERNAL_ONLY",
       "this document is internal to the agency and render-only: it cannot be created or changed by hand",
+      422,
+    );
+  }
+}
+
+/** ADR-0109 D10 (PR 3) — true for an org-level grief-library type (`ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES`). */
+export const isOrgLibraryAggregateType = (aggregateType: string | null | undefined): boolean =>
+  aggregateType !== null &&
+  aggregateType !== undefined &&
+  ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES.has(aggregateType as DocumentAggregateType);
+
+/**
+ * ADR-0109 D10 (PR 3) — a grief-library file is FIXED once uploaded: no generic M22 write (a new version, a PATCH, a tag, a link) may change
+ * it, because bereavement oversight published THAT file to families. Replacing one means uploading a new document and registering it in the
+ * library, which oversight then publishes. 422 `DOCUMENT_LIBRARY_IMMUTABLE`.
+ */
+export function assertNotOrgLibraryForEdit(aggregateType: string | null | undefined): void {
+  if (isOrgLibraryAggregateType(aggregateType)) {
+    throw new ChartWardenError(
+      "DOCUMENT_LIBRARY_IMMUTABLE",
+      "a grief-library file cannot be changed after upload: upload a new file and register it in the library",
       422,
     );
   }

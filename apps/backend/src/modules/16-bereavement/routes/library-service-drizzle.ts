@@ -194,6 +194,25 @@ export function buildDrizzleM16LibraryService(
     },
 
     async setStatus(actor, itemId, input) {
+      // Publishing re-checks the file through the M22 seam (still an active org-level library document; kind and MIME refreshed), requires a
+      // transcript for a video (families who cannot hear it are not left out), and re-checks the transcript.
+      let refreshed: { readonly mimeType: string } | null = null;
+      if (input.status === "published") {
+        const current = await withOrgContext(db, scope(actor), (scoped) =>
+          itemOr404(scoped as DbClient, itemId),
+        );
+        refreshed = await describe(actor.organizationId, current.documentId);
+        if (
+          libraryKindOf(refreshed.mimeType) === "video" &&
+          current.transcriptDocumentId === null
+        ) {
+          throw new BereavementStateError(
+            "LIBRARY_TRANSCRIPT_REQUIRED",
+            "a video needs a PDF transcript before it can be published",
+          );
+        }
+        await assertTranscript(actor.organizationId, current.transcriptDocumentId);
+      }
       return withOrgContext(db, scope(actor), async (scoped) => {
         const tx = scoped as DbClient;
         const item = await itemOr404(tx, itemId);
@@ -202,6 +221,9 @@ export function buildDrizzleM16LibraryService(
         const [row] = await tx
           .update(ITEM)
           .set({
+            ...(refreshed === null
+              ? {}
+              : { mimeType: refreshed.mimeType, kind: libraryKindOf(refreshed.mimeType) }),
             status: input.status,
             publishedAt: input.status === "published" ? (item.publishedAt ?? at) : item.publishedAt,
             version: item.version + 1,

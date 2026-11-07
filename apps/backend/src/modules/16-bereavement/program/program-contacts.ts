@@ -92,8 +92,3 @@ export async function loadProgramContacts(
   }
   return out;
 }
-
-/** The SQL predicate "this contact (alias `c`, plan alias `p`) is a program family right now", for set-based reads and sweeps. */
-export const PROGRAM_FAMILY_SQL = `c.status = 'active' AND p.status = 'active' AND NOT EXISTS (
-  SELECT 1 FROM bereavement_opt_out o
-   WHERE o.bereaved_contact_id = c.id AND o.rescinded_at IS NULL AND o.opt_out_kind IN ('full', 'pause_temporarily'))`;

@@ -153,6 +153,8 @@ export const M16_ERROR_STATUS = {
   LIBRARY_DOCUMENT_INVALID: 422,
   /** That document is already a library item. */
   LIBRARY_DOCUMENT_TAKEN: 409,
+  /** A video is published only with a PDF transcript. */
+  LIBRARY_TRANSCRIPT_REQUIRED: 422,
   /** No M22 org-document seam is bound: nothing can be checked or handed out. */
   LIBRARY_UNAVAILABLE: 503,
   // Optimistic concurrency (§2.5)

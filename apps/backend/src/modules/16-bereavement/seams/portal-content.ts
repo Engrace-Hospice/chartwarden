@@ -16,7 +16,7 @@ import type {
   IsoInstant,
   OrgDocumentAccessProvider,
 } from "@chartwarden/types";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import type { BereavementCipher } from "../bereavement-crypto";
 import { applyMemorialRsvp, rsvpWindowOpen } from "../memorials/rsvp-drizzle";
@@ -42,6 +42,7 @@ export function createBereavementPortalContentProvider(
   const INV = schema.bereavementMemorialInvitation;
   const SVC = schema.bereavementMemorialService;
   const CONTACT = schema.bereavedContact;
+  const PLAN = schema.bereavementPlan;
   const now = deps.now ?? (() => new Date());
   const ITEM = schema.bereavementLibraryItem;
   const orgDocuments = deps.orgDocuments ?? (() => getSeam("OrgDocumentAccessProvider"));
@@ -88,7 +89,15 @@ export function createBereavementPortalContentProvider(
           .from(INV)
           .innerJoin(SVC, eq(SVC.id, INV.serviceId))
           .innerJoin(CONTACT, eq(CONTACT.id, INV.bereavedContactId))
-          .where(and(eq(CONTACT.portalAccountId, portalAccountId), eq(SVC.status, "published")))
+          .innerJoin(PLAN, eq(PLAN.id, CONTACT.planId))
+          // the contact's OWN plan must still be open: an account linked to two plans never sees the closed plan's invitations
+          .where(
+            and(
+              eq(CONTACT.portalAccountId, portalAccountId),
+              eq(SVC.status, "published"),
+              inArray(PLAN.status, ["active", "paused"]),
+            ),
+          )
           .orderBy(asc(SVC.startsAt), asc(INV.id))
           .limit(50);
         return Promise.all(rows.map((r) => toPortal(r.inv, r.svc, at)));
