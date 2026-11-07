@@ -12,8 +12,10 @@ its full description there. Newest first.
 blocked while a contract exists, and the operator's write was onboarding-only.
 
 - `PUT /api/v1/platform/tenants/{orgSlug}/clearinghouse` that moves a tenant with a contract from `outside` to a vendor (the body names
-  `billingServiceMode`) is now accepted for ANY tenant status. Every other clearinghouse write stays onboarding-only
-  (`409 TENANT_NOT_ONBOARDING`). For a live tenant the mode is dated the 1st of next month, like any mode change.
+  `billingServiceMode`) is now accepted for a tenant that is provisioning, onboarding, active, at risk or suspended (an explicit allowlist:
+  any other status, such as offboarding, final export pending, retained or being destroyed, is `409 TENANT_NOT_ONBOARDING`, answered before
+  any mode is written). Every other write on that route stays onboarding-only. For a live tenant the mode is dated the 1st of next month,
+  like any mode change.
 - A body that names `billingServiceMode` also needs the pricing key `subscription.onboard_platform` (`403` with the clearinghouse key alone).
 - Everything that can be refused beforehand is refused BEFORE the mode is written (the plan's `422`s, the body's rules, `412`/`428` on the
   If-Match, the switch's locks, a missing credential), so a plain input error writes no mode; a refusal is audited as a failed attempt.
