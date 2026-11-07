@@ -9,7 +9,7 @@
 // flag) is not usable. A credential that cannot be opened, or with no Subscription-Key anywhere, THROWS a typed 503 rather than going
 // unbound silently or sending a request without one. The transmit pass resolves the config ONCE before it claims anything, so that throw
 // skips the org's pass (nothing claimed, nothing written, the org id and error class logged, one alert per episode, the age alert behind
-// it): it is neither retried order by order nor deferred order by order (jobs/transmit-newrx.ts, jobs/degradation-alerts.ts).
+// it): it is neither retried order by order nor deferred order by order (jobs/transmit-newrx.ts, jobs/degradation-reports.ts).
 import { type DbClient, schema } from "@chartwarden/db";
 import {
   type DoseSpotConfigPurpose,

@@ -63,7 +63,7 @@ export {
   createEpisodeTracker,
   runForEachActiveOrg,
 } from "./cron-common";
-export { QUEUED_ORDER_ALERT_AGE_MS, runQueuedAgeAlertForOrg } from "./degradation-alerts";
+export { QUEUED_ORDER_ALERT_AGE_MS, runQueuedAgeAlertForOrg } from "./degradation-reports";
 export {
   M12_CRON_QUEUES,
   M12_CRON_QUEUE_PARAMS,

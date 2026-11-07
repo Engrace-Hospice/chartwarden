@@ -14,7 +14,7 @@ import {
   type M12CronDeps,
   runForEachActiveOrg,
 } from "./cron-common";
-import { runQueuedAgeAlertForOrg } from "./degradation-alerts";
+import { runQueuedAgeAlertForOrg } from "./degradation-reports";
 import { runEpcsAttemptExpirySweepForOrg, runIal2ExpiryWarnForOrg } from "./ial2-and-epcs-sweeps";
 import {
   type M12CronKey,

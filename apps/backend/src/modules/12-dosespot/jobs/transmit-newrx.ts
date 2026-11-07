@@ -31,7 +31,7 @@ import {
 } from "@chartwarden/dosespot";
 import { and, asc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { type M12CronDeps, errorClassOf, inOrg, isCircuitOpenError, nowOf } from "./cron-common";
-import { reportDegradation, reportRecovery } from "./degradation-alerts";
+import { reportDegradation, reportRecovery } from "./degradation-reports";
 import { DosespotSyncQueueRepository } from "./repository";
 
 const MO = schema.medicationOrders;

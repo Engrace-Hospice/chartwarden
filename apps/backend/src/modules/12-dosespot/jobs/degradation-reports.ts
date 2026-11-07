@@ -1,4 +1,4 @@
-// apps/backend/src/modules/12-dosespot/jobs/degradation-alerts.ts — the two ways a tenant's signed orders can wait with nobody told,
+// apps/backend/src/modules/12-dosespot/jobs/degradation-reports.ts — the two ways a tenant's signed orders can wait with nobody told,
 // each raised ONCE per episode (and its clearing once) through the existing `m12.dosespot_degraded` / `m12.dosespot_recovered` events
 // (the M36 alert path the circuit breaker already uses; `lastErrorClass` names which):
 //   config_unavailable   the org's DoseSpot config could not be read or opened (a database, key-ring, KEK or credential fault). The
