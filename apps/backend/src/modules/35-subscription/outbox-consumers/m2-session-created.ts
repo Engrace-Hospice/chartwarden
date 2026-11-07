@@ -24,8 +24,11 @@ import {
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, ne } from "drizzle-orm";
 import { createDrizzleActivePeriodStore } from "../active-period-store-drizzle";
+import { nonStaffMembershipIds } from "../pricing/staff-meter";
 
 const MB = schema.memberships;
+const MR = schema.membershipRoles;
+const RL = schema.roles;
 const CONSUMER_USER_ID = "";
 
 export const M35_SESSION_CREATED_CONSUMER = {
@@ -68,6 +71,33 @@ async function membershipIdForUserForOrg(
 }
 
 /**
+ * True when EVERY role grant the membership holds right now is non-staff (the system auditor role, a platform-owned role): the facts the
+ * staff meter excludes on. Judged HERE, when the sign-in is observed, and written to the ledger, because a tenant administrator can
+ * change a member's roles after the fact (swapping a nurse to auditor-only after the month, or in its grace window) and the bill
+ * must not follow that. A membership with no grant at all is staff (it is simply not excluded).
+ */
+async function holdsOnlyNonStaffRoles(
+  db: DbClient,
+  organizationId: string,
+  membershipId: string,
+): Promise<boolean> {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
+    const grants = await (tx as unknown as DbClient)
+      .select({
+        membershipId: MR.membershipId,
+        key: RL.key,
+        organizationId: RL.organizationId,
+        category: RL.category,
+        systemDefault: RL.systemDefault,
+      })
+      .from(MR)
+      .innerJoin(RL, eq(MR.roleId, RL.id))
+      .where(and(eq(MR.organizationId, organizationId), eq(MR.membershipId, membershipId)));
+    return nonStaffMembershipIds(grants).has(membershipId);
+  });
+}
+
+/**
  * M35's live `m2.session.created` binding (§4.12 `user-active-period-aggregator`). Pseudonymizes the
  * resolved membership id and upserts `user_active_period` — idempotent on
  * `(organizationId, membershipPseudonym, periodYearMonth)` via the store's own `ON CONFLICT`.
@@ -102,6 +132,7 @@ export function buildM35SessionCreatedConsumer(deps: SessionCreatedConsumerDeps)
         pseudonymKeyEpoch: key.keyEpoch,
         periodYearMonth: toBillingYearMonth(at),
         becameActiveAt: at,
+        nonStaffObserved: await holdsOnlyNonStaffRoles(deps.db, event.organizationId, membershipId),
       });
     },
   };

@@ -15,6 +15,8 @@ export {
   PLATFORM_OPS_ROLE_KEYS,
   PLATFORM_OPS_ROLE_GRANTS,
   M34_PLATFORM_OPS_ONBOARDING_KEYS,
+  M35_PLATFORM_OPS_ONBOARDING_KEYS,
+  M35_PRICING_READ_KEY,
   PLATFORM_ONBOARDING_DATA_KEYS,
   M35_BILLING_ADMIN_READ_KEYS,
   M35_BILLING_ADMIN_WRITE_KEYS,
@@ -66,6 +68,11 @@ export {
   isTenantRoleReserved,
   roleConfersKey,
 } from "./platform-reserved";
+export {
+  EXTERNAL_AUDITOR_ROLE_KEY,
+  SYSTEM_MANAGED_ROLE_KEYS,
+  isSystemManagedRoleKey,
+} from "./system-managed";
 export {
   FULL_CATALOG_ROLE_KEYS,
   type MirrorPermission,

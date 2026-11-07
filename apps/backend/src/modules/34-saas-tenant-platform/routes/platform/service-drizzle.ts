@@ -90,6 +90,10 @@ import type {
   UpdateBaaRecordArgs,
   UpsertFeatureFlagArgs,
 } from "./service";
+import {
+  ONBOARDING_WRITABLE_STATUSES,
+  lockTenantOnboardingExclusive,
+} from "./tenant-onboarding-lock";
 
 // ── injected ports the composition root binds (Phase-2D wiring; kept off the request thread) ──────────
 
@@ -397,6 +401,21 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     actorKind: LifecycleActorKind,
     event: LifecycleEvent,
   ): Promise<schema.TenantAccount> {
+    // The caller decided `event` from the status it read, maybe before waiting on a lock. Lock the row and refuse if
+    // another transition (e.g. the go-live approval) committed in between, so a stale status never overwrites a fresh one.
+    const [current] = await tx
+      .select()
+      .from(A)
+      .where(eq(A.id, account.id))
+      .limit(1)
+      .for("no key update");
+    if (!current || current.status !== account.status) {
+      throw new ChartWardenError(
+        "TENANT_STATUS_CHANGED",
+        "the tenant's status changed while this request was waiting; reload and retry",
+        409,
+      );
+    }
     const repo = new TenantAccountRepository(tx);
     const res = transitionTenant(account.status, event);
 
@@ -696,6 +715,10 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             "a tenant goes live through the compliance officer's attestation and a platform approval (POST /api/v1/platform/tenants/:orgSlug/go-live/approve), not a status change",
             409,
           );
+        }
+        // Leaving provisioning/onboarding waits for in-flight operator onboarding-data writes (see tenant-onboarding-lock.ts).
+        if (ONBOARDING_WRITABLE_STATUSES.has(account.status)) {
+          await lockTenantOnboardingExclusive(tx, account.organizationId);
         }
         const event =
           account.status === "retained" && args.toStatus === "destruction_pending"

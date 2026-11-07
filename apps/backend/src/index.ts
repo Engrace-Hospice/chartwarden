@@ -346,6 +346,7 @@ import { buildActivePermissionHolderIds } from "./bootstrap/active-permission-ho
 import {
   assertClaimsBillingSeamBound,
   configureClaimsBillingGate,
+  isClaimsBillingEntitled,
   parseClaimsBillingEnforcement,
   withClaimsBillingGate,
 } from "./bootstrap/claims-billing-gate";
@@ -363,6 +364,7 @@ import {
   EMERGENCY_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
   MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
+  TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
 } from "./bootstrap/plugins/route-rate-limit";
 import { buildUrgentRateLimit } from "./bootstrap/plugins/urgent-rate-limit";
@@ -1076,6 +1078,7 @@ import {
 import {
   type M23BootAssemblyPorts,
   type M23HetsConfig,
+  M23_CLAIMMD_WEBHOOK_JOB_ID,
   M23_NPI_VERIFICATION_JOB_ID,
   M23_OUTBOX_EVENTS,
   M23_PLATFORM_JOB_ID,
@@ -1097,6 +1100,7 @@ import {
   buildDrizzleEdiProfileService,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
+  buildDrizzleNpiVerificationService,
   buildDrizzleOrgMacJurisdictionReader,
   buildDrizzlePlatformAdminService,
   buildDrizzleRateTableService,
@@ -1589,6 +1593,10 @@ import {
   wireM34Tenancy,
 } from "./modules/34-saas-tenant-platform/index";
 import { canInviteFirstAdmin } from "./modules/34-saas-tenant-platform/invitation-token";
+import {
+  buildPricingOnboardingPort,
+  readTenantGoLive,
+} from "./modules/34-saas-tenant-platform/onboarding/pricing-port";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
 // the bound transactional-outbox publisher; the platform-ops cross-tenant reads/writes run through the
@@ -1600,12 +1608,15 @@ import {
   M35_JOBS_PLATFORM_JOB_ID,
   M35_OUTBOX_EVENTS,
   type PlatformRunner,
+  buildContractService,
   buildDrizzleAddonService,
   buildDrizzleM35RouteService,
   buildM35OrgLifecycleConsumer,
   buildM35PatientActivePeriodConsumer,
   buildM35SessionCreatedConsumer,
   buildM35WebhookIngest,
+  buildPlatformAuditPort,
+  buildPricingPlanService,
   createDrizzlePseudonymKeyProvider,
   loadM35StripeConfig,
   mountM35Routes,
@@ -4388,6 +4399,24 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           fn,
         )
     : undefined;
+  // ADR-0053 amendment D7 - the Claim.MD webhook ingress (M23). Bound only when CLAIMMD_WEBHOOK_ENABLED=true AND the
+  // account key + usage, the payload key and the platform pool are all present; otherwise the route answers 503 and
+  // stores nothing. The receipt table is platform-only, so every touch is one allowlisted, audited platform tx.
+  const m23ClaimMdRunner: ClaimMdPlatformRunner | undefined = platformDbHandle
+    ? (fn) =>
+        withPlatformContext(
+          platformDbHandle.db,
+          {
+            jobId: M23_CLAIMMD_WEBHOOK_JOB_ID,
+            reason:
+              "M23 Claim.MD webhook receipts (platform-only table, one vendor account for every tenant)",
+            crossTenant: true,
+          },
+          m34PlatformBypassAuditor,
+          fn,
+        )
+    : undefined;
+  const m23ClaimMdWebhook = claimMdWebhookConfigFromEnv(process.env, m23ClaimMdRunner);
   const m37OutboxPublisher = bindCallerModule(txOutboxPublisher, "m37");
   const m39OutboxPublisher = bindCallerModule(txOutboxPublisher, "m39");
   // GAP-101 — M36's first publisher: the out-of-band dispatcher + vendor-webhook reconcile emit
@@ -6224,6 +6253,27 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               recompute: m27Recompute.enqueue,
             }),
           });
+          // ADR-0053 amendment D7 - the Claim.MD webhook ingress (M23); 503 until every prerequisite is bound.
+          if (m23ClaimMdWebhook.missing.length > 0) {
+            app.log.warn(
+              { missing: m23ClaimMdWebhook.missing },
+              "CLAIMMD_WEBHOOK_ENABLED=true but the Claim.MD webhook is not bound; it answers 503 until these are set",
+            );
+          }
+          registerClaimMdWebhookRoutes(app, {
+            usage: m23ClaimMdWebhook.usage,
+            binding: m23ClaimMdWebhook.bound
+              ? {
+                  usage: m23ClaimMdWebhook.bound.usage,
+                  accountKey: m23ClaimMdWebhook.bound.accountKey,
+                  receive: buildClaimMdReceiptStore({
+                    runner: m23ClaimMdWebhook.bound.runner,
+                    cipher: m23ClaimMdWebhook.bound.cipher,
+                    log: (event, detail) => app.log.info({ claimmd: detail }, event),
+                  }),
+                }
+              : null,
+          });
           // M35 (Subscription Billing) — mount the §4.1 tenant + §4.2 platform-ops + §4.3 webhook route
           // plugins over the single Drizzle route service. Tenant mutations open their own withOrgContext
           // (RLS scopes every statement to app.org_id) and emit their §4.11 m35.* event through the
@@ -6233,6 +6283,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // audited `withPlatformContext`. When no platform credential is configured the runner is undefined
           // and the admin surface fails closed (503) — never reading under tenant RLS. The §4.3 webhook stays
           // fail-closed (503) until the live Stripe secret + DEK transport binds.
+          // The ONE platform audit mapping (M35 `buildPlatformAuditPort`, fed M4's real writer); the live suite injects the same function.
+          const m35PlatformAudit = buildPlatformAuditPort((tx, row) =>
+            auditPlatformEvent(tx as Parameters<typeof auditPlatformEvent>[0], row),
+          );
           mountM35Routes(app, {
             // GAP-058 — the inbound Stripe webhook binds when the signing secret, the payload key AND the
             // platform credential are all configured; otherwise it stays 503 (never half-bound).
@@ -6248,6 +6302,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 : {},
             service: buildDrizzleM35RouteService(dbHandle.db, {
               outbox: m35OutboxPublisher,
+              // A platform operator's pause / resume / cancel names the operator in the PLATFORM-scoped audit row, never in the
+              // tenant-readable state history.
+              audit: m35PlatformAudit,
               // GAP-060 — a client-supplied payment-method id is verified against Stripe (attached to THIS
               // org's customer) before it is stored; unset => attach refuses 503.
               ...(m35Stripe.client
@@ -6270,6 +6327,26 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               outbox: m35OutboxPublisher,
               ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
             }),
+            // Slice 2 (tenant pricing) - the plan editor, onboarding step 2 (the contract; settles `plan_contract` through the
+            // M34 wizard, bound here as a port because M35 has no edge to M34) and the tenant's own pricing read. Writes run on the
+            // platform runner only; each is audited with the operator's reason (the platform audit writer, M4).
+            pricing: (() => {
+              const m35PricingAudit = m35PlatformAudit;
+              return {
+                plans: buildPricingPlanService({
+                  ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
+                  audit: m35PricingAudit,
+                }),
+                contracts: buildContractService({
+                  db: dbHandle.db,
+                  ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
+                  outbox: m35OutboxPublisher,
+                  audit: m35PricingAudit,
+                  onboarding: buildPricingOnboardingPort({ wizard: m34Onboarding.wizard }),
+                  log: (message, detail) => app.log.warn(detail, message),
+                }),
+              };
+            })(),
           });
           // M37 (Inpatient Unit / IPU Management) — mount the §4.1 core route spine over the Drizzle route
           // service. Each mutation opens its own withOrgContext (RLS scopes every statement to app.org_id),
@@ -8125,6 +8202,23 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 },
                 keyProvider: pseudonymKeyProvider,
               },
+              // Slice 2 - the daily census (same sweep, same reader) and the monthly statement sweep. The M25 net-collections seam is
+              // resolved lazily, like the census reader. Stripe push stays unbound (StatementStripePort).
+              pricing: {
+                census: {
+                  activePatientCount: (orgId: string) =>
+                    getSeam("PatientCensusReader").activePatientCount(orgId),
+                },
+                keyProvider: pseudonymKeyProvider,
+                netCollections: {
+                  netCollectionsForPeriod: (orgId, period) =>
+                    getSeam("NetCollectionsReader").netCollectionsForPeriod(orgId, period),
+                  netCollectionsByMonth: (orgId, period) =>
+                    getSeam("NetCollectionsReader").netCollectionsByMonth(orgId, period),
+                },
+                // M34 owns the go-live date (tenant activation); M35 has no edge to it, so it reads it through this port.
+                goLive: { goLiveAt: (tx, orgId) => readTenantGoLive(tx, orgId) },
+              },
             }
           : {}),
       });
@@ -8134,6 +8228,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         webhookHandler: m35Stripe.cipher !== undefined,
         refundExecutor: m35Stripe.client !== undefined,
         patientCensus: pseudonymKeyRing !== null && pseudonymKeyRing !== undefined,
+        pricingStatement: pseudonymKeyRing !== null && pseudonymKeyRing !== undefined,
       })
         .then((queues) => {
           app.addHook("onClose", () => Promise.all(queues.map((q) => q.close())));
@@ -8153,9 +8248,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       const claimMdSweepWorker = registerClaimMdWebhookSweepWorker(queueConnection, {
         runner: claimMdBound.runner,
         cipher: claimMdBound.cipher,
-        // TODO(claims-billing-addon): bind M35 entitlement. The Billing add-on capability (`isEntitled(orgId)`) lands on a
-        // parallel branch; until it is merged every resolved tenant counts as entitled, so reports flow as before it.
-        entitlement: { isEntitled: async () => true },
+        // ADR-0108 — the claims-billing add-on. Follows CLAIMS_BILLING_ENFORCEMENT (off/shadow: entitled; enforce: the
+        // M35 read, which throws on a failed read so the sweep retries without spending an attempt).
+        entitlement: {
+          isEntitled: (organizationId) =>
+            isClaimsBillingEntitled(organizationId, { queue: "claimmd-webhook-sweep" }),
+        },
         outbox: m23OutboxPublisher,
         log: (event, detail) => app.log.info({ claimmd: detail }, event),
         // A receipt that went terminal `failed` is lost (Claim.MD already got 200): the ops alert sink, error level.

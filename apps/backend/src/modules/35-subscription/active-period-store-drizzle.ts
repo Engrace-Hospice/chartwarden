@@ -14,7 +14,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import type { ActivePeriodStore } from "@chartwarden/subscription-billing";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 const PAP = schema.patientActivePeriod;
 const UAP = schema.userActivePeriod;
@@ -60,14 +60,19 @@ export function createDrizzleActivePeriodStore(db: DbClient): ActivePeriodStore 
               pseudonymKeyEpoch: input.pseudonymKeyEpoch,
               periodYearMonth: input.periodYearMonth,
               wasActive: true,
+              nonStaffObserved: input.nonStaffObserved ?? false,
               firstSessionAt: input.becameActiveAt,
               lastSessionAt: input.becameActiveAt,
             })
             // A second session within the same period updates the recency fact rather than no-op'ing —
-            // `lastSessionAt` is genuinely meant to move; `firstSessionAt`/`wasActive` do not.
+            // `lastSessionAt` is genuinely meant to move; `firstSessionAt`/`wasActive` do not. `nonStaffObserved` only ever ANDs: one
+            // staff sign-in makes the month staff, and a later non-staff one cannot make it non-staff again.
             .onConflictDoUpdate({
               target: [UAP.organizationId, UAP.membershipPseudonym, UAP.periodYearMonth],
-              set: { lastSessionAt: input.becameActiveAt },
+              set: {
+                lastSessionAt: input.becameActiveAt,
+                nonStaffObserved: sql`${UAP.nonStaffObserved} AND ${input.nonStaffObserved ?? false}`,
+              },
             })
             .returning({ id: UAP.id, firstSessionAt: UAP.firstSessionAt });
           // `inserted` here is misleading for an UPDATE path — Drizzle's `onConflictDoUpdate` still
