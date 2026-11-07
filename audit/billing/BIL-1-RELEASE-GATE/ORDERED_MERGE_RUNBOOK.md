@@ -6,7 +6,7 @@
 2. Obtain formal independent code/security review of exact candidate SHAs. Run Gitleaks and all required branch CI; do not merge until green and approved.
 3. Reopen or replace #981 as BIL-1.3 → `develop`, head `756c164d2`.
 4. Reopen or replace #982 as BIL-1.4 → BIL-1.3, head `2ea823a19`. After #981 lands, retarget #982 to `develop` so its unique diff is only `47cd1aaba`–`2ea823a19`.
-5. After BIL-1.4 is accepted, create BIL-1.5A/B → `develop` with implementation commit `73b4538fb` and report commits `5e71c9e65`, `410b3a081`. Verify no unrelated commits are included.
+5. After BIL-1.4 is accepted, create BIL-1.5A/B → `develop` with implementation commit `73b4538fb` and report commits `5e71c9e65`, `410b3a081`, `21724af53`. Verify no unrelated commits are included.
 6. Preserve migration classification. Apply 1353/1358 in a maintenance window with backups and forward-fix operators ready; automatic rollback after a contract migration is not safe.
 
 ## Merge order
