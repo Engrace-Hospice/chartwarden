@@ -4,7 +4,7 @@
 // accrual-line paging is keyset over (posted_at DESC, id DESC). numeric() columns arrive as strings →
 // coerced to number at the edge; bigint(mode:'number') arrive as numbers.
 import { type DbClient, schema } from "@chartwarden/db";
-import { decodeCursor, encodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import type {
@@ -179,7 +179,7 @@ export function buildDrizzleM26ReadService(db: DbClient): M26ReadService {
     },
 
     async listAccrualLines(actor, periodId, patientId, cursor, limit) {
-      const c = decodeCursor(actor.organizationId, cursor, isKeysetCursor);
+      const c = decodeKeysetCursor(actor.organizationId, cursor, "instant");
       return withOrgContext(db, actor, async (tx) => {
         const conds = [eq(BAL.capPeriodId, periodId), eq(BAL.patientId, patientId)];
         if (c)

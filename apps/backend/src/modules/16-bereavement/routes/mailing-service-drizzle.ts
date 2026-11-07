@@ -17,7 +17,12 @@
 //
 // NO NAME OR ADDRESS passes through this file: items hold ids, the PDF holds the people.
 import { type DbClient, schema } from "@chartwarden/db";
-import { type KeysetCursor, clampLimit, toCursorPage } from "@chartwarden/shared/route-kit";
+import {
+  type KeysetCursor,
+  clampLimit,
+  decodeKeysetCursor,
+  toCursorPage,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type {
   BereavedContactRelationship,
@@ -49,7 +54,7 @@ import type {
   MailingRunView,
   MailingScheduleView,
 } from "./mailing-service";
-import { decodeCheckedCursor } from "./pagination";
+
 import type { WriteOutboxPort } from "./write-service";
 
 type ConfigRow = typeof schema.bereavementMailingConfig.$inferSelect;
@@ -340,7 +345,7 @@ export function buildDrizzleM16MailingService(
 
     async listRuns(actor, input) {
       const limit = clampLimit(input.limit, RUN_PAGE);
-      const after: KeysetCursor | null = decodeCheckedCursor(
+      const after: KeysetCursor | null = decodeKeysetCursor(
         actor.organizationId,
         input.cursor,
         "date",
@@ -387,7 +392,7 @@ export function buildDrizzleM16MailingService(
 
     async listItems(actor, runId, input) {
       const limit = clampLimit(input.limit, ITEM_PAGE);
-      const afterCursor = decodeCheckedCursor(actor.organizationId, input.cursor, "integer");
+      const afterCursor = decodeKeysetCursor(actor.organizationId, input.cursor, "integer");
       const afterOrdinal = Number(afterCursor?.a ?? Number.NaN);
       return withOrgContext(db, scope(actor), async (scoped) => {
         const tx = asTx(scoped);

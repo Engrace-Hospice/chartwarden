@@ -6,12 +6,7 @@
 // are all in the WHERE clause, and a page is fetched as `size + 1` rows so `hasMore` is exact.
 import { schema } from "@chartwarden/db";
 import type { QualityDb } from "@chartwarden/quality";
-import {
-  InvalidCursorError,
-  decodeCursor,
-  encodeCursor,
-  isKeysetCursor,
-} from "@chartwarden/shared/route-kit";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { type SQL, and, desc, eq, gte, inArray, lt, lte, ne, or } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import type { CursorPage } from "./pagination";
@@ -116,16 +111,13 @@ export function infectionEventListWhere(
   return where as SQL;
 }
 
-/** Verify + decode the signed cursor into its keyset; a tampered or non-date cursor is 422, never page 1. */
+/** Verify + decode the signed cursor into its keyset; a tampered, non-instant or non-uuid cursor is 422, never page 1. */
 export function toListCursor(
   organizationId: string,
   cursor: string | undefined,
 ): ListCursor | undefined {
-  const key = decodeCursor(organizationId, cursor, isKeysetCursor);
-  if (!key) return undefined;
-  const at = new Date(key.a);
-  if (Number.isNaN(at.getTime())) throw new InvalidCursorError();
-  return { at, id: key.id };
+  const key = decodeKeysetCursor(organizationId, cursor, "instant");
+  return key ? { at: new Date(key.a), id: key.id } : undefined;
 }
 
 /** Trim the `size + 1` probe row off a fetched page; its presence is what makes `hasMore` exact. */

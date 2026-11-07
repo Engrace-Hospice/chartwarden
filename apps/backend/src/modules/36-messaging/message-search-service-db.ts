@@ -24,7 +24,7 @@ import type { MessageBodyKind } from "@chartwarden/messaging";
 // (`status <> 'deleted'`) mean a tombstone is never even opened; the body searched is the CURRENT one (an edit
 // replaces the cipher in place). Hydration (reactions, pins, scan-gated attachments) is the shared read path, so a
 // result can never show more than the channel history would.
-import { decodeCursor, encodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { type SQL, and, desc, eq, sql } from "drizzle-orm";
@@ -199,7 +199,7 @@ export function createDbMessageSearchService(deps: MessageSearchDeps): MessageSe
   return {
     async searchMessages(orgId, input): Promise<MessageSearchResult> {
       const filters = parseFilters(input);
-      const keyset = decodeCursor(orgId, input.cursor, isKeysetCursor);
+      const keyset = decodeKeysetCursor(orgId, input.cursor, "instant");
       const cursor = keyset && { createdAt: keyset.a, id: keyset.id };
       if (!(await deps.canViewChannel(orgId, input.userId, input.channelId))) {
         throw new NotFoundError("channel", input.channelId);

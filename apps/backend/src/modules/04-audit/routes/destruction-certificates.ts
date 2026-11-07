@@ -27,9 +27,8 @@ import { type DbClient, schema } from "@chartwarden/db";
 import {
   type PreHandler,
   actorOf,
-  decodeCursor,
+  decodeKeysetCursor,
   encodeCursor,
-  isKeysetCursor,
 } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
@@ -135,11 +134,12 @@ export function registerDestructionCertificatesRoutes(
         DestructionCertificateListQuerySchema,
         request.query,
       ) as DestructionCertificateListQuery;
+      // Before any read: a cursor this org minted for another list is 422, never a cast 500.
+      const cur = decodeKeysetCursor(organizationId, q.cursor, "instant");
       return withOrgContext(deps.db, { organizationId, userId }, async (tx) => {
         const limit = resolveLimit(q.limit);
         const where = [eq(CERT.organizationId, organizationId)];
         if (q.status) where.push(eq(CERT.status, q.status));
-        const cur = decodeCursor(organizationId, q.cursor, isKeysetCursor);
         if (cur) {
           where.push(sql`(${CERT.createdAt}, ${CERT.id}) < (${cur.a}::timestamptz, ${cur.id})`);
         }

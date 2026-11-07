@@ -15,8 +15,7 @@ import {
   type CursorPage,
   type PageSizePolicy,
   clampLimit,
-  decodeCursor,
-  isKeysetCursor,
+  decodeKeysetCursor,
   toCursorPage,
 } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -262,7 +261,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
     // ── 1 — plan worklist (keyset on `updated_at DESC, id DESC`) ─────────────────────────────────────
     async listPlans(actor, query: PlanListQuery) {
       const limit = pageLimit(query, M15_PAGE_SIZES.plans);
-      const cursor = decodeCursor(actor.organizationId, query.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, query.cursor, "instant");
       const rows = await withOrgContext(db, scope(actor), async (tx) => {
         const filters = [
           query.patientId ? eq(P.patientId, query.patientId) : undefined,
@@ -410,7 +409,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
       const plan = await loadReadablePlan(actor, planId);
       if (!plan) return null;
       const limit = pageLimit(query, M15_PAGE_SIZES.versions);
-      const cursor = decodeCursor(actor.organizationId, query.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, query.cursor, "integer");
       const rows = await withOrgContext(db, scope(actor), async (tx) => {
         const filters = [eq(V.planId, planId)];
         if (cursor) {
@@ -470,7 +469,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
     // ── 19 — compliance gates (keyset on `valid_until ASC, id ASC`) ──────────────────────────────────
     async listVolunteerGates(actor, query: GateListQuery) {
       const limit = pageLimit(query, M15_PAGE_SIZES.gates);
-      const cursor = decodeCursor(actor.organizationId, query.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, query.cursor, "instant");
       const instant = now();
       const rows = await withOrgContext(db, scope(actor), async (tx) => {
         const horizon =
@@ -550,7 +549,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
     // ── 25 — the discipline elements M8 / M14 / M22 pull (system principals) ─────────────────────────
     async listRelevantElements(actor, input) {
       const limit = pageLimit(input, M15_PAGE_SIZES.relevantElements);
-      const cursor = decodeCursor(actor.organizationId, input.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, input.cursor, "text");
       const plans = await withOrgContext(db, scope(actor), async (tx) => {
         const filters = [
           input.patientId ? eq(P.patientId, input.patientId) : undefined,
@@ -609,7 +608,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
     // ── 26 — the MSW psychosocial risk factors for an admission (M16's rubric input) ─────────────────
     async listMswRiskFactors(actor, input) {
       const limit = pageLimit(input, M15_PAGE_SIZES.riskFactors);
-      const cursor = decodeCursor(actor.organizationId, input.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, input.cursor, "text");
       const rows = await withOrgContext(db, scope(actor), async (tx) => {
         const filters = [
           eq(P.admissionId, input.admissionId),
@@ -703,7 +702,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
     // ── 28 — the supervisory cadence worklist (the §7.1 ladder, resolved per plan) ───────────────────
     async listSupervisoryCadence(actor, input) {
       const limit = pageLimit(input, M15_PAGE_SIZES.supervisoryCadence);
-      const cursor = decodeCursor(actor.organizationId, input.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, input.cursor, "instant");
       const instant = now();
       const rows = await withOrgContext(db, scope(actor), async (tx) => {
         const filters = [

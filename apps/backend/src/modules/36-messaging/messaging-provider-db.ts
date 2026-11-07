@@ -24,7 +24,7 @@ import type {
 // deferrals — driven by M16/M17/M19 outbox events not wired in Phase 1 — since they have no equivalent
 // read seam yet (a clear NOT_IMPLEMENTED throw beats reconciling against source data with no producer).
 // GAP-104 (2026-10-05): `archiveCareTeamChannel` is real (see `outbox-consumers/channel-membership-sync.ts`).
-import { decodeCursor, encodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
@@ -122,7 +122,7 @@ export function createDbMessagingProvider(
       }
       const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
       const backward = input.direction === "backward";
-      const keyset = decodeCursor(orgId, input.cursor, isKeysetCursor);
+      const keyset = decodeKeysetCursor(orgId, input.cursor, "instant");
       const cursor = keyset && { createdAt: keyset.a, id: keyset.id };
       const where = [eq(MSG.organizationId, orgId), eq(MSG.channelId, input.channelId)];
       if (cursor) {

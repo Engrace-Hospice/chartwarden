@@ -66,7 +66,7 @@ import {
   mayManageChannelMembersResolved,
   rollUpAlertOutcome,
 } from "@chartwarden/messaging";
-import { decodeCursor, encodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
@@ -1458,6 +1458,8 @@ export function createDbMessagingRouteService(
     },
 
     async listMessages(orgId, input) {
+      // Before any read: a cursor this org minted for another list is 422, never a timestamptz/uuid cast 500.
+      const keyset = decodeKeysetCursor(orgId, input.cursor, "instant");
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         const ch = await tx
           .select({ id: CH.id, kind: CH.channelKind, subjectId: CH.subjectId })
@@ -1467,7 +1469,6 @@ export function createDbMessagingRouteService(
         if (!ch[0]) throw new NotFoundError("channel", input.channelId);
         const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
         const where: SQL[] = [eq(MSG.organizationId, orgId), eq(MSG.channelId, input.channelId)];
-        const keyset = decodeCursor(orgId, input.cursor, isKeysetCursor);
         let cur = keyset && { createdAt: keyset.a, id: keyset.id };
         const backward = input.anchorMessageId ? true : input.direction === "backward";
         let includeCursor = false;
@@ -1572,7 +1573,7 @@ export function createDbMessagingRouteService(
           eq(MSG.channelId, input.channelId),
           eq(MSG.parentMessageId, input.messageId),
         ];
-        const keyset = decodeCursor(orgId, input.cursor, isKeysetCursor);
+        const keyset = decodeKeysetCursor(orgId, input.cursor, "instant");
         const cur = keyset && { createdAt: keyset.a, id: keyset.id };
         if (cur) where.push(sql`(${MSG.createdAt}, ${MSG.id}) > (${cur.createdAt}, ${cur.id})`);
         // Oldest first: a thread reads top to bottom. Same (created_at, id) keyset as the channel list, with the

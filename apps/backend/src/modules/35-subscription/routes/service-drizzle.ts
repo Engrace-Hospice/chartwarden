@@ -14,7 +14,7 @@
 // to M1's gated `withPlatformContext` (the M34 platform-runner precedent); until a platform pool is bound
 // it fails closed (PLATFORM_CONTEXT_UNAVAILABLE), never silently reading nothing under tenant RLS.
 import { type DbClient, schema } from "@chartwarden/db";
-import { decodeCursor, encodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import {
   PaymentMethodRejectedError,
   type PaymentMethodVerifier,
@@ -377,7 +377,7 @@ function pageOf<T extends { readonly id: string }>(
   limit: number | undefined,
 ): CursorPage<T> {
   const size = pageSizeOf(limit);
-  const key = decodeCursor(scope, cursor, isKeysetCursor);
+  const key = decodeKeysetCursor(scope, cursor, "text");
   let start = 0;
   if (key) {
     start = rows.findIndex((r) => keyOf(r) < key.a || (keyOf(r) === key.a && r.id < key.id));
