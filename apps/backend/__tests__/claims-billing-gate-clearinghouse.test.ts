@@ -1,4 +1,4 @@
-// ADR-0110 repurposed (ADR-0053 amendment 2026-11-06) — the claims-billing gate decides from the tenant's clearinghouse
+// ADR-0111 repurposed (ADR-0053 amendment 2026-11-06) — the claims-billing gate decides from the tenant's clearinghouse
 // choice: the REAL entitlement reader over a stub choice reader, through every gate entry point (route preHandler,
 // isClaimsBillingEntitled, worker hold), in each enforcement mode, with the carve-outs that must stay open.
 import type { SubscriptionWorkBlockReader, TenantClearinghouseChoice } from "@chartwarden/types";

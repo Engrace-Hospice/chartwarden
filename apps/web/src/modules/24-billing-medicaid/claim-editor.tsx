@@ -124,7 +124,7 @@ export function MedicaidClaimEditor(): JSX.Element {
   const [reason, setReason] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // ADR-0110 — submit / replace are new claims-billing work (void stays open): paused without the add-on. Submitting
+  // ADR-0111 — submit / replace are new claims-billing work (void stays open): paused without the add-on. Submitting
   // a void claim (TOB 818) is not paused: the server lets it through.
   const claimsBilling = useClaimsBilling();
 

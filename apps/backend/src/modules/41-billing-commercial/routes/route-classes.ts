@@ -1,4 +1,4 @@
-// apps/backend/src/modules/41-billing-commercial/routes/route-classes.ts — ADR-0110 D5: the M41 routes (the mount plus
+// apps/backend/src/modules/41-billing-commercial/routes/route-classes.ts — ADR-0111 D5: the M41 routes (the mount plus
 // the commercial claim and acknowledgment-quarantine registrars) that start NEW claims-billing work: claim assemble,
 // ready, submit and the eligibility check. Validation, void, reconcile, authorizations, enrollment (and its Claim.MD reports), payer-plan policy
 // and the acknowledgment quarantine stay open. Ordered, first match wins.

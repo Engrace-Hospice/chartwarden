@@ -1,4 +1,4 @@
-// ADR-0110 — the shared ClaimsBillingNotice / useClaimsBilling: hidden when entitled or unknown, a warning (and
+// ADR-0111 — the shared ClaimsBillingNotice / useClaimsBilling: hidden when entitled or unknown, a warning (and
 // `blocked`) only when the server enforces, an info line in shadow, and a 402 refusal flips every reader at once.
 import { act, cleanup, render, screen } from "@testing-library/react";
 import type { JSX } from "react";
@@ -58,7 +58,7 @@ afterEach(() => {
   __resetClaimsBillingForTest();
 });
 
-describe("ClaimsBillingNotice (ADR-0110)", () => {
+describe("ClaimsBillingNotice (ADR-0111)", () => {
   it("shows nothing and blocks nothing for an entitled org", async () => {
     mount({ entitled: true, enforced: true, reason: null });
     await act(async () => {});

@@ -1,4 +1,4 @@
-// apps/backend/src/modules/05-patient/census-reader.ts — M5 `PatientCensusReader` seam impl (ADR-0110 D8).
+// apps/backend/src/modules/05-patient/census-reader.ts — M5 `PatientCensusReader` seam impl (ADR-0111 D8).
 //
 // The census the M35 claims-billing add-on PULLS: ids of patients whose status is `active`, keyset-paged by id, plus
 // M5's own count for reconciliation. Ids only — no name, MRN or DOB crosses. Reads run under `withOrgContext` so RLS

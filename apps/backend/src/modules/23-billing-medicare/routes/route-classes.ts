@@ -1,4 +1,4 @@
-// apps/backend/src/modules/23-billing-medicare/routes/route-classes.ts — ADR-0110 D5: which M23 routes start NEW
+// apps/backend/src/modules/23-billing-medicare/routes/route-classes.ts — ADR-0111 D5: which M23 routes start NEW
 // claims-billing work (gated by the add-on) and which stay open. Ordered, first match wins: the new-work exceptions
 // come before the open prefix that would otherwise cover them. NOE / NOTR / transfer notices, voids, draft edits,
 // validation, acknowledgments and configuration stay OPEN (CMS 5-day deadlines; finish in-flight work).

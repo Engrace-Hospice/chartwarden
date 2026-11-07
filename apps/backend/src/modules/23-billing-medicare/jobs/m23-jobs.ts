@@ -2577,7 +2577,7 @@ export async function runMacPortalHealth(
 // ── live worker construction (the M27 m27-jobs.ts template) ────────────────────────────────────────────────
 
 /**
- * ADR-0110 D7 — the queues that START new claims-billing work: a job for an org without the add-on is HELD (moved back
+ * ADR-0111 D7 — the queues that START new claims-billing work: a job for an org without the add-on is HELD (moved back
  * to delayed, no attempt spent, no DLQ), never failed. NOE / NOTR / transfer-notice submission, acknowledgment pulls,
  * validation and revalidation are deliberately absent (CMS deadlines; finish in-flight work).
  */
@@ -2588,7 +2588,7 @@ export const M23_CLAIMS_BILLING_GATED_QUEUES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Hold a gated queue's job for an org without the add-on — unless it submits a VOID claim (ADR-0110: voids stay
+ * Hold a gated queue's job for an org without the add-on — unless it submits a VOID claim (ADR-0111: voids stay
  * available), read from the stored claim under the job's org. A failed void lookup holds (fail closed).
  */
 async function holdNewClaimsWork(
@@ -2622,7 +2622,7 @@ export const M23_CLAIM_TRANSPORT_QUEUES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Everything a worker asks BEFORE it opens the job's transaction: the claims-billing gate (ADR-0110 D7), then, for the claim,
+ * Everything a worker asks BEFORE it opens the job's transaction: the claims-billing gate (ADR-0111 D7), then, for the claim,
  * transfer-notice and NOE / NOTR queues, whether the org's clearinghouse is live. Either answer holds the job (moved back to
  * delayed, no attempt spent, no DLQ) by throwing BullMQ's DelayedError. Returns undefined when the job may run, and `"parked"`
  * when it is DONE without running: a NOE / NOTR job of an org that bills outside ChartWarden (owner decision D4) parks the notice

@@ -162,7 +162,7 @@ describe("org-less 401 (ORGANIZATION_NOT_SELECTED)", () => {
   });
 });
 
-// ADR-0110 — the claims-billing gate's fail-closed 503 is one refused action, not an outage: navigating to
+// ADR-0111 — the claims-billing gate's fail-closed 503 is one refused action, not an outage: navigating to
 // /maintenance would throw away the form the user was filling in.
 describe("503 BILLING_ENTITLEMENT_UNAVAILABLE", () => {
   const url = `${ORIGIN}/api/v1/claims/submit`;

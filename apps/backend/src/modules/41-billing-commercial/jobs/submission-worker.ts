@@ -506,7 +506,7 @@ export async function drainOrg(
   deps: SubmissionWorkerDeps,
   organizationId: string,
 ): Promise<DrainResult> {
-  // ADR-0110 D7 — an org without the claims-billing add-on is skipped, not leased: its rows stay queued (no attempt spent)
+  // ADR-0111 D7 — an org without the claims-billing add-on is skipped, not leased: its rows stay queued (no attempt spent)
   // and the next tick asks again. A failed entitlement read in enforce mode skips too (fail closed, no DLQ).
   if (
     !(await claimsBillingAllowsWork(organizationId, { queue: M41_CRON_QUEUES.submissionDrain }))

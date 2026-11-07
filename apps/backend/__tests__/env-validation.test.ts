@@ -117,7 +117,7 @@ describe("collectEnvProblems", () => {
     expect(integrationEnabled(GOOD, FHIR_TOKEN_ENDPOINT_ENABLED_ENV)).toBe(true);
   });
 
-  it("ADR-0110: CLAIMS_BILLING_ENFORCEMENT is optional (shadow), but a set value must be off|shadow|enforce", () => {
+  it("ADR-0111: CLAIMS_BILLING_ENFORCEMENT is optional (shadow), but a set value must be off|shadow|enforce", () => {
     for (const mode of ["off", "shadow", "enforce"]) {
       expect(collectEnvProblems({ ...GOOD, CLAIMS_BILLING_ENFORCEMENT: mode })).toEqual([]);
     }

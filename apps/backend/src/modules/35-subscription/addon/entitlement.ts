@@ -1,4 +1,4 @@
-// apps/backend/src/modules/35-subscription/addon/entitlement.ts — ADR-0110 the claims-billing entitlement.
+// apps/backend/src/modules/35-subscription/addon/entitlement.ts — ADR-0111 the claims-billing entitlement.
 //
 // `decideClaimsBillingEntitlement` is the pure rule (D3): entitled iff the org holds a trialing/active, not-ended
 // `subscription_addon` row for `claims_billing` AND the subscription that row hangs off is trialing, active, past_due
@@ -46,7 +46,7 @@ export function addonIsLive(row: Omit<AddonFacts, "subscriptionStatus">, now: Da
 }
 
 /**
- * Owner decision D1 (ADR-0110 repurposed): the rule that survives the add-on. A suspended, canceled or paused subscription blocks
+ * Owner decision D1 (ADR-0111 repurposed): the rule that survives the add-on. A suspended, canceled or paused subscription blocks
  * new claims work with its own reason; trialing, active, past_due and at_risk do not (dunning still lets work start). One
  * rule for the add-on's D3 and for the gate's subscription check, so they cannot drift.
  */

@@ -766,9 +766,9 @@ describe.skipIf(!DB_URL)("F-144 — M13/M23/M24/M25 render-request producers, LI
       await b.end();
     }
   });
-  // ── ADR-0110 — the void readers the claims-billing gate consults (submit route + submit workers) ──────────
+  // ── ADR-0111 — the void readers the claims-billing gate consults (submit route + submit workers) ──────────
 
-  it("ADR-0110: the void readers see a stored 818 under the caller's org (RLS), never another org's claim", async () => {
+  it("ADR-0111: the void readers see a stored 818 under the caller's org (RLS), never another org's claim", async () => {
     const original = await seedClaim("ACK_ACCEPTED", "CLM-CTL-VOID-0", "2025-03-01", "2025-03-31");
     const voided = await seedClaim("DRAFT", "CLM-CTL-VOID-1", "2025-04-01", "2025-04-30");
     await admin.query("UPDATE claim SET tob='818', replaces_claim_id=$2 WHERE id=$1", [

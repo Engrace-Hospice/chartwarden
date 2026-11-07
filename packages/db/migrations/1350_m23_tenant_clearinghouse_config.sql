@@ -1,5 +1,5 @@
 -- compat: expand
--- M23: the clearinghouse each tenant chose (ADR-0053 amendment 2026-11-06; ADR-0108 repurposed). Until now ChartWarden bound
+-- M23: the clearinghouse each tenant chose (ADR-0053 amendment 2026-11-06; ADR-0111 repurposed). Until now ChartWarden bound
 -- ONE clearinghouse for the whole platform (CLEARINGHOUSE_VENDOR); now every tenant chooses `stedi`, `claimmd` or `outside`
 -- ("bills outside ChartWarden"), with its own sealed vendor credential. One row per organization.
 --

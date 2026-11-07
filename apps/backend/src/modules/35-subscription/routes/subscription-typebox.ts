@@ -316,7 +316,7 @@ export const UsagePeriodDto = Type.Object({
 });
 export const UsageHistoryResponseDto = cursorPage(UsagePeriodDto);
 
-// ADR-0110 (repurposed, ADR-0053 amendment 2026-11-06) — the tenant's claims-billing posture (the web ClaimsBillingNotice
+// ADR-0111 (repurposed, ADR-0053 amendment 2026-11-06) — the tenant's claims-billing posture (the web ClaimsBillingNotice
 // reads it). `entitled` / `reason` follow the org's clearinghouse choice (M23): no add-on, no fee. `status` is still the
 // latest add-on row's status (`none` = never held), informational only; `activePatientCount` is the current period's census
 // count (null until the first census sweep for the org).
@@ -352,7 +352,7 @@ export const BillingStatusDto = Type.Object({
   daysUntilSuspension: intNull(),
   hasValidPaymentMethod: Type.Boolean(),
   paymentMethodExpiresAt: dateNull(),
-  /** ADR-0110 — present whenever the add-on service is bound (always on a db boot). */
+  /** ADR-0111 — present whenever the add-on service is bound (always on a db boot). */
   claimsBilling: Type.Optional(ClaimsBillingStatusDto),
 });
 
@@ -476,7 +476,7 @@ export const WebhookReceiptDto = Type.Object({
 export const WebhookReceiptListResponseDto = cursorPage(WebhookReceiptDto);
 export const AckResponseDto = Type.Object({ ok: Type.Boolean() });
 
-// ── ADR-0110 the claims-billing add-on (platform-ops) ──────────────────────────────────────────────────
+// ── ADR-0111 the claims-billing add-on (platform-ops) ──────────────────────────────────────────────────
 
 export const AddonDto = Type.Object({
   id: uuid(),
@@ -485,7 +485,7 @@ export const AddonDto = Type.Object({
   description: strNull(),
   entitlementKey: Type.String(),
   meterEventType: Type.String(),
-  /** Null until platform ops prices it; Stripe charging is deferred (ADR-0110 D7). */
+  /** Null until platform ops prices it; Stripe charging is deferred (ADR-0111 D7). */
   unitPriceCents: intNull(),
   currencyCode: Type.String(),
   isActive: Type.Boolean(),

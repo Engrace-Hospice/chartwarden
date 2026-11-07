@@ -75,7 +75,7 @@ export interface AppLayoutProps {
 export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   const session = useSession();
   const client = useApiClient();
-  // ADR-0110 — read the claims-billing add-on posture for a user allowed to read the billing status (the route's own
+  // ADR-0111 — read the claims-billing add-on posture for a user allowed to read the billing status (the route's own
   // permission); the billing screens' notice and gated actions read it from the shared store. Re-primed per org and on
   // navigation (a no-op until the posture's TTL lapses), so a platform grant shows without a reload.
   const canReadBillingStatus = session?.permissions?.includes("subscription.read") === true;

@@ -68,7 +68,7 @@ export function MedicaidEligibilityCenter(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // ADR-0110 — a new eligibility check is new claims-billing work: paused without the add-on (when enforced).
+  // ADR-0111 — a new eligibility check is new claims-billing work: paused without the add-on (when enforced).
   const claimsBilling = useClaimsBilling();
 
   const load = useCallback(async () => {

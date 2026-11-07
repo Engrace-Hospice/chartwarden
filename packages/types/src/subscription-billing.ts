@@ -144,7 +144,7 @@ export type UsageEventType =
   | "fhir_egress_request"
   | "hl7_message_inbound"
   | "hl7_message_outbound"
-  | "billing_addon_patient"; // ADR-0110: the claims-billing add-on monthly active-patient census
+  | "billing_addon_patient"; // ADR-0111: the claims-billing add-on monthly active-patient census
 
 /** §3.3 `usage_event_source_module` — which module emitted a usage event (idempotency key component). */
 export type UsageEventSourceModule = "m1" | "m2" | "m5" | "m23" | "m24" | "m28" | "m29" | "m32";
@@ -220,8 +220,8 @@ export const M35_EVENT_NAMES = [
   "m35.stripe.api_call_failed",
   "m35.tenant.billing_blocked",
   "m35.revenue.monthly_snapshot_computed",
-  "m35.claims_billing_addon.granted", // ADR-0110
-  "m35.claims_billing_addon.canceled", // ADR-0110
+  "m35.claims_billing_addon.granted", // ADR-0111
+  "m35.claims_billing_addon.canceled", // ADR-0111
 ] as const;
 
 export type M35EventName = (typeof M35_EVENT_NAMES)[number];
@@ -502,7 +502,7 @@ export interface M35RevenueMonthlySnapshotComputedPayload {
   readonly activeSubscriptions: number;
 }
 
-/** ADR-0110 — the claims-billing add-on grant / cancel push (ids, status, effective instant only). */
+/** ADR-0111 — the claims-billing add-on grant / cancel push (ids, status, effective instant only). */
 export interface M35ClaimsBillingAddonChangedPayload {
   readonly subscriptionAddonId: string;
   readonly subscriptionId: SubscriptionId;
@@ -681,15 +681,15 @@ export interface PatientCounterProvider {
   }): Promise<number>;
 }
 
-// ── ADR-0110 the claims-billing add-on ─────────────────────────────────────────────────────────────────
+// ── ADR-0111 the claims-billing add-on ─────────────────────────────────────────────────────────────────
 
 /** The add-on slug / entitlement key (migration 1321 seeds the one `addon` row). */
 export const CLAIMS_BILLING_ADDON_SLUG = "claims_billing";
 
 /**
  * Why an org is NOT entitled to start new claims-billing work. The three `clearinghouse_*` reasons are the live ones
- * (ADR-0110 repurposed, ADR-0053 amendment 2026-11-06: the entitlement follows the org's clearinghouse choice, with no
- * add-on and no fee). The add-on reasons (ADR-0110 D3) are no longer produced by the gate; they stay in the union so the
+ * (ADR-0111 repurposed, ADR-0053 amendment 2026-11-06: the entitlement follows the org's clearinghouse choice, with no
+ * add-on and no fee). The add-on reasons (ADR-0111 D3) are no longer produced by the gate; they stay in the union so the
  * add-on admin surface and its stored history keep type-checking (expand-only).
  */
 export type ClaimsBillingDenyReason =
@@ -710,7 +710,7 @@ export type ClaimsBillingEntitlement =
 export type SubscriptionAddonStatus = "trialing" | "active" | "canceled";
 
 /**
- * ADR-0110 (repurposed) — the claims-billing entitlement read (owner M23). Entitled = the org chose `stedi` or `claimmd`
+ * ADR-0111 (repurposed) — the claims-billing entitlement read (owner M23). Entitled = the org chose `stedi` or `claimmd`
  * and that config is `active`; `outside` and "nothing chosen" are refused (a `draft` / `verified` config is not active
  * yet). No cache: every call reads the database (the gate memoises per request). Throws when the read fails; a new-work
  * caller fails CLOSED on it.

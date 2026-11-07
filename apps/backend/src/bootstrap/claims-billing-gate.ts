@@ -1,4 +1,4 @@
-// apps/backend/src/bootstrap/claims-billing-gate.ts — ADR-0110 the claims-billing add-on gate (M1 bootstrap).
+// apps/backend/src/bootstrap/claims-billing-gate.ts — ADR-0111 the claims-billing add-on gate (M1 bootstrap).
 //
 // One place decides whether an org may START new claims-billing work, for routes (a preHandler appended at the
 // M23/M24/M25/M41 mount boundary, after each route's own permission + ABAC handlers) and for workers (hold, don't
@@ -129,7 +129,7 @@ export async function claimsBillingVerdict(
 }
 
 /**
- * ADR-0110 D4 — the one call other backend code makes before starting NEW claims-billing work for an org. True when
+ * ADR-0111 D4 — the one call other backend code makes before starting NEW claims-billing work for an org. True when
  * the work may go ahead under the current mode (always true in `off` and `shadow`; `shadow` logs a would-deny). In
  * `enforce`, false when the org lacks the add-on, and it THROWS 503 BILLING_ENTITLEMENT_UNAVAILABLE when the read
  * fails: skip or defer the work then, never treat it as entitled.
@@ -337,7 +337,7 @@ export interface HoldableJob {
 }
 
 /**
- * ADR-0110 D7 — call first in a new-work job processor. Returns normally when the work may run (or `exempt` answers
+ * ADR-0111 D7 — call first in a new-work job processor. Returns normally when the work may run (or `exempt` answers
  * true — a void claim). Otherwise moves the job
  * back to delayed (CLAIMS_BILLING_HOLD_MS) and throws BullMQ's DelayedError, which the worker treats as "not done, no
  * attempt spent": no retry counted, no DLQ.

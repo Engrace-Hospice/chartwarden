@@ -1,4 +1,4 @@
-// apps/backend/src/modules/24-billing-medicaid/void-claim.ts — ADR-0110: a void successor (TOB 818, see
+// apps/backend/src/modules/24-billing-medicaid/void-claim.ts — ADR-0111: a void successor (TOB 818, see
 // `buildSuccessorClaim`) stays transmittable without the claims-billing add-on. The submit route and the
 // medicaid-claim.submit / retry workers ask this before refusing or holding. The TOB is read from the stored claim
 // under the org's RLS context, never taken from the request.

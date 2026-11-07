@@ -1,4 +1,4 @@
-// apps/backend/src/modules/35-subscription/addon/addon-service.ts — ADR-0110 the claims-billing add-on service.
+// apps/backend/src/modules/35-subscription/addon/addon-service.ts — ADR-0111 the claims-billing add-on service.
 //
 // PLATFORM-OPS writes (grant / trial / cancel) run ONLY through the injected platform runner (the chartwarden_platform carrier): the
 // app role holds SELECT and nothing else on `subscription_addon`, so a tenant session can never grant itself the

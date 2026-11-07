@@ -23,7 +23,7 @@ import {
 
 export interface TenantRouteDeps {
   readonly service: M35RouteService;
-  /** ADR-0110 — adds the tenant's claims-billing add-on posture to `GET /api/v1/billing/status`. */
+  /** ADR-0111 — adds the tenant's claims-billing add-on posture to `GET /api/v1/billing/status`. */
   readonly addons?: AddonService;
 }
 

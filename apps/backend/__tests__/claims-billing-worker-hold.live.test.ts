@@ -1,5 +1,5 @@
 /**
- * ADR-0110 D7 — LIVE Valkey proof that the claims-billing worker hold is a HOLD, not a failure: on a real BullMQ queue a
+ * ADR-0111 D7 — LIVE Valkey proof that the claims-billing worker hold is a HOLD, not a failure: on a real BullMQ queue a
  * job for an org without the add-on goes back to `delayed`, spends no attempt, never fails (so never reaches a DLQ),
  * and runs normally once the org is entitled. The gate itself is unit-tested; this proves the BullMQ semantics.
  *
@@ -24,7 +24,7 @@ function connectionOf(url: string): ConnectionOptions {
   return { host: u.hostname, port: Number(u.port || 6379), maxRetriesPerRequest: null };
 }
 
-describe.skipIf(!REDIS_URL)("ADR-0110 worker hold — LIVE Valkey", () => {
+describe.skipIf(!REDIS_URL)("ADR-0111 worker hold — LIVE Valkey", () => {
   const queueName = `cb-hold-${randomUUID()}`;
   let connection: ConnectionOptions;
   let queue: Queue;

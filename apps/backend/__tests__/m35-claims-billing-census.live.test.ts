@@ -1,5 +1,5 @@
 /**
- * ADR-0110 D8 — LIVE Postgres proof of the claims-billing census pull: M5's `PatientCensusReader` paged into M35's
+ * ADR-0111 D8 — LIVE Postgres proof of the claims-billing census pull: M5's `PatientCensusReader` paged into M35's
  * `patient_active_period` as HMAC pseudonyms, and the real `PatientCounterProvider` over it.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m35:claims-billing-census:live
@@ -38,7 +38,7 @@ const D_ENDED_AT = new Date(Date.UTC(NOW.getUTCFullYear(), NOW.getUTCMonth(), 2)
 const KEY = { keyEpoch: "epoch-20261101T0000Z-test", keyMaterial: "live-suite-only-key-material" };
 const keyProvider = { activeKey: async () => KEY };
 
-describe.skipIf(!DB_URL)("ADR-0110 claims-billing census — LIVE Postgres", () => {
+describe.skipIf(!DB_URL)("ADR-0111 claims-billing census — LIVE Postgres", () => {
   let admin: Client;
   let app: ReturnType<typeof createDbClient>;
   const patients: Record<string, string[]> = {};

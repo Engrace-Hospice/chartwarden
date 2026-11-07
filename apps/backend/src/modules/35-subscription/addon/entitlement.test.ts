@@ -17,7 +17,7 @@ const row = (over: Partial<AddonFacts> = {}): AddonFacts => ({
   ...over,
 });
 
-describe("decideClaimsBillingEntitlement (ADR-0110 D3)", () => {
+describe("decideClaimsBillingEntitlement (ADR-0111 D3)", () => {
   it("denies never_purchased when the org never held the add-on", () => {
     expect(decideClaimsBillingEntitlement(null, NOW)).toEqual({
       entitled: false,
