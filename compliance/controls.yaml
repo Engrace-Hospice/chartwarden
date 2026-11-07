@@ -554,6 +554,28 @@ controls:
       - ci: "gitleaks dir . --config .gitleaks.toml"
       - script: harness:phi-scan
 
+  - id: CW-SEC-02
+    title: >-
+      The Idempotency-Key request fingerprint that the shared middleware stores for every mutating route is a keyed hash, so a credential
+      in a request body is not testable against guesses by someone who can read the table. idempotency_key.request_hash holds "h1:" +
+      HMAC-SHA-256 over the organization, user, method, route, path parameters, If-Match, key and body, under a server key derived from
+      BETTER_AUTH_SECRET with a purpose label (configuration the platform already requires; no key in code). Production refuses to boot
+      without the secret; a non-production process with none uses a process-local random key. Across a deploy a record stored under the
+      earlier plain SHA-256 still matches the same request by its legacy hash (computed, never written, for the 24 h TTL), so a retry
+      replays rather than re-executes, and a record under another key (a rotated secret) is a clean 409, never a replay or a re-run.
+      Routes that return a one-time secret opt out of response capture (noIdempotencyCapture). Scope: the request fingerprint, not the
+      cached response body.
+    hipaa: ["164.312(a)(2)(iv)", "164.312(c)(1)"]
+    soc2: ["CC6.1", "CC6.7"]
+    status: implemented
+    evidence:
+      - script: test:gap007:idempotency-claim:live
+      - script: test:f073:idempotency-bodiless:live
+      - file: packages/shared/src/idempotency/idempotency.ts
+      - file: apps/backend/src/bootstrap/plugins/idempotency.ts
+      - file: apps/backend/__tests__/idempotency-keyed-fingerprint.test.ts
+      - file: packages/shared/__tests__/idempotency.test.ts
+
   - id: CW-BA-01
     title: Business associate agreements tracked for every vendor that touches PHI
     hipaa: ["164.308(b)(1)", "164.314(a)"]
