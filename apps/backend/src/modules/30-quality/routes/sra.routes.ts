@@ -29,10 +29,10 @@
 // read/write contract), with no method on `M30ReadRouteService` / `M30WriteRouteService`. It lands with
 // the M30 export service in P2c rather than being invented against an absent contract method.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type PreHandler, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
-import { type PreHandler, actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { actorOf, writeActorOf } from "./actor";
 import {
   AddSraFindingBodySchema,
   CloseSraCycleBodySchema,

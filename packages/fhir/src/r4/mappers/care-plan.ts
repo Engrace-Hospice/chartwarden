@@ -4,7 +4,7 @@ import type { FhirMapper, MapperContext } from "../../interfaces/mapper";
 import type { CarePlan, FhirReference } from "../types";
 import type { CarePlanDomain } from "./domain";
 
-export const US_CORE_CARE_PLAN_PROFILE =
+const US_CORE_CARE_PLAN_PROFILE =
   "http://hl7.org/fhir/us/core/StructureDefinition/us-core-careplan";
 
 const CARE_PLAN_CATEGORY_SYSTEM = "http://hl7.org/fhir/us/core/CodeSystem/careplan-category";

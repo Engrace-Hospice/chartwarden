@@ -11,6 +11,7 @@
 // populates `request.context`. The two §4.7 ABAC predicates M18 owns (`assigned_clinician_for_visit` /
 // `evv_within_visit_window`) are built over the SAME in-memory backend via `buildEvvAbacPredicates` and
 // registered into the shared ABAC registry, exactly as `buildOrderAbacPredicates` does for M11.
+import { randomUUID } from "node:crypto";
 import {
   DEVICE_ATTESTATION_ATTRIBUTE,
   createInMemoryEffectivePermissionStore,
@@ -33,6 +34,9 @@ import {
   buildEvvAbacPredicates,
   registerEvvRoutes,
 } from "../src/modules/18-evv/index";
+
+/** A fresh Idempotency-Key — every M17/M18 mutating route requires one (ADR-0021). */
+const idem = () => ({ "idempotency-key": randomUUID() });
 
 /** GAP-132 — flips the stubbed grant+consent predicate; reset after every use. */
 const portalConsentLive = { value: true };
@@ -403,10 +407,23 @@ describe("M18 EVV inject smoke — auth/RBAC/validation envelope", () => {
     const res = await app.inject({
       method: "PATCH",
       url: "/api/v1/evv/geofence-policy/tenant",
-      headers: SUPERVISOR,
+      headers: { ...SUPERVISOR, ...idem() },
       payload: {},
     });
     expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("400 — a write without an Idempotency-Key", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/evv/geofence-policy/tenant",
+      headers: SUPERVISOR,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("IDEMPOTENCY_KEY_REQUIRED");
     await app.close();
   });
 });
@@ -417,7 +434,7 @@ describe("§4.1 routes 1-7 — capture + event reads", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/evv/check-in",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: checkInBody(),
     });
     expect(res.statusCode).toBe(201);
@@ -430,7 +447,7 @@ describe("§4.1 routes 1-7 — capture + event reads", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/evv/check-out",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: checkOutBody(),
     });
     expect(res.statusCode).toBe(201);
@@ -606,7 +623,7 @@ describe("§4.1 routes 1-7 — capture + event reads", () => {
     const ci = await app.inject({
       method: "POST",
       url: "/api/v1/evv/check-in",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: checkInBody(),
     });
     const eventId = ci.json().eventId as string;
@@ -625,7 +642,7 @@ describe("§4.1 routes 1-7 — capture + event reads", () => {
     await app.inject({
       method: "POST",
       url: "/api/v1/evv/check-in",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: checkInBody(),
     });
     const res = await app.inject({ method: "GET", url: "/api/v1/evv/events", headers: SUPERVISOR });
@@ -642,13 +659,13 @@ describe("§4.1 routes 1-7 — capture + event reads", () => {
     const original = await app.inject({
       method: "POST",
       url: "/api/v1/evv/check-in",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: checkInBody(),
     });
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/evv/events/${original.json().eventId}/correct`,
-      headers: SUPERVISOR_STEPUP,
+      headers: { ...SUPERVISOR_STEPUP, ...idem() },
       payload: { newEvent: checkInBody(), correctionReason: "x".repeat(60) },
     });
     expect(res.statusCode).toBe(200);
@@ -687,7 +704,7 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/evv/devices/self-register",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: { platform: "ios", modelDescription: "iPhone 14" },
     });
     expect(res.statusCode).toBe(201);
@@ -700,14 +717,14 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
     const reg = await app.inject({
       method: "POST",
       url: "/api/v1/evv/devices/self-register",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: { platform: "ios", modelDescription: "iPhone 14" },
     });
     const id = reg.json().id as string;
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/evv/devices/${id}/approve`,
-      headers: SUPERVISOR,
+      headers: { ...SUPERVISOR, ...idem() },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("approved");
@@ -719,7 +736,7 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
     const reg = await app.inject({
       method: "POST",
       url: "/api/v1/evv/devices/self-register",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: {
         platform: "android",
         modelDescription: "Pixel 8",
@@ -729,7 +746,7 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/evv/devices/${id}/reject`,
-      headers: SUPERVISOR,
+      headers: { ...SUPERVISOR, ...idem() },
       payload: { reason: "unrecognized device model" },
     });
     expect(res.statusCode).toBe(200);
@@ -742,14 +759,14 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
     const reg = await app.inject({
       method: "POST",
       url: "/api/v1/evv/devices/self-register",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: { platform: "ios", modelDescription: "iPhone 15" },
     });
     const id = reg.json().id as string;
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/evv/devices/${id}/suspend`,
-      headers: SUPERVISOR,
+      headers: { ...SUPERVISOR, ...idem() },
       payload: { reason: "integrity check failed" },
     });
     expect(res.statusCode).toBe(200);
@@ -762,7 +779,7 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
     const reg = await app.inject({
       method: "POST",
       url: "/api/v1/evv/devices/self-register",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: {
         platform: "android",
         modelDescription: "Pixel 7",
@@ -772,7 +789,7 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/evv/devices/${id}/retire`,
-      headers: SUPERVISOR,
+      headers: { ...SUPERVISOR, ...idem() },
       payload: {},
     });
     expect(res.statusCode).toBe(200);
@@ -799,7 +816,7 @@ describe("§4.1 routes 14-16 — geofence policy", () => {
     const res = await app.inject({
       method: "PATCH",
       url: "/api/v1/evv/geofence-policy/tenant",
-      headers: SUPERVISOR,
+      headers: { ...SUPERVISOR, ...idem() },
       payload: { radiusM: 100, maxAccuracyM: 30 },
     });
     expect(res.statusCode).toBe(200);
@@ -812,7 +829,7 @@ describe("§4.1 routes 14-16 — geofence policy", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/evv/geofence-policy/per-address",
-      headers: SUPERVISOR,
+      headers: { ...SUPERVISOR, ...idem() },
       payload: {
         patientAddressId: PATIENT_ADDRESS,
         radiusM: 100,
@@ -844,7 +861,7 @@ describe("§4.1 routes 17-19 — missing-EVV resolution (§2.2.4 D6)", () => {
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/evv/missing-resolutions/${RESOLUTION_ATTEST}/clinician-attest`,
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: { reason: "x".repeat(40) },
     });
     expect(res.statusCode).toBe(200);
@@ -857,7 +874,7 @@ describe("§4.1 routes 17-19 — missing-EVV resolution (§2.2.4 D6)", () => {
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/evv/missing-resolutions/${RESOLUTION_OVERRIDE}/supervisor-override`,
-      headers: SUPERVISOR_STEPUP,
+      headers: { ...SUPERVISOR_STEPUP, ...idem() },
       payload: { reason: "x".repeat(60) },
     });
     expect(res.statusCode).toBe(200);
@@ -884,7 +901,7 @@ describe("§4.1 routes 20-22 — aggregator submissions (§2.2.5 D7)", () => {
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/evv/aggregator-submissions/${SUBMISSION_REJECTED}/resubmit`,
-      headers: SUPERVISOR,
+      headers: { ...SUPERVISOR, ...idem() },
       payload: {},
     });
     expect(res.statusCode).toBe(200);
@@ -897,7 +914,7 @@ describe("§4.1 routes 20-22 — aggregator submissions (§2.2.5 D7)", () => {
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/evv/aggregator-submissions/${SUBMISSION_PENDING}/cancel`,
-      headers: SUPERVISOR,
+      headers: { ...SUPERVISOR, ...idem() },
       payload: { reason: "duplicate submission" },
     });
     expect(res.statusCode).toBe(200);
@@ -924,7 +941,7 @@ describe("§4.1 routes 23-25 — metrics, team location, portal arrival", () => 
     await app.inject({
       method: "POST",
       url: "/api/v1/evv/check-in",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: checkInBody(),
     });
     const res = await app.inject({
@@ -942,7 +959,7 @@ describe("§4.1 routes 23-25 — metrics, team location, portal arrival", () => 
     await app.inject({
       method: "POST",
       url: "/api/v1/evv/check-in",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: checkInBody(),
     });
     const res = await app.inject({
@@ -996,7 +1013,7 @@ describe("F-028 — the §2.3 / D6 step-up is server-verified, not client-assert
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/evv/events/00000000-0000-4000-8000-000000000000/correct",
-      headers: { ...SUPERVISOR_STALE, "x-step-up": "fresh" },
+      headers: { ...idem(), ...SUPERVISOR_STALE, "x-step-up": "fresh" },
       payload: { newEvent: checkInBody(), correctionReason: "x".repeat(60) },
     });
     expect(res.statusCode).toBe(403);
@@ -1008,7 +1025,7 @@ describe("F-028 — the §2.3 / D6 step-up is server-verified, not client-assert
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/evv/events/00000000-0000-4000-8000-000000000000/correct",
-      headers: { ...SUPERVISOR, "x-step-up": "fresh" }, // no `x-test-session` ⇒ no session id
+      headers: { ...idem(), ...SUPERVISOR, "x-step-up": "fresh" }, // no `x-test-session` ⇒ no session id
       payload: { newEvent: checkInBody(), correctionReason: "x".repeat(60) },
     });
     expect(res.statusCode).toBe(403);
@@ -1020,7 +1037,7 @@ describe("F-028 — the §2.3 / D6 step-up is server-verified, not client-assert
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/evv/missing-resolutions/${RESOLUTION_OVERRIDE}/supervisor-override`,
-      headers: { ...SUPERVISOR_STALE, "x-step-up": "fresh" },
+      headers: { ...idem(), ...SUPERVISOR_STALE, "x-step-up": "fresh" },
       payload: { reason: "x".repeat(60) },
     });
     expect(res.statusCode).toBe(403);
@@ -1033,7 +1050,7 @@ describe("F-028 — the §2.3 / D6 step-up is server-verified, not client-assert
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/evv/missing-resolutions/${RESOLUTION_OVERRIDE}/supervisor-override`,
-      headers: SUPERVISOR_STEPUP,
+      headers: { ...SUPERVISOR_STEPUP, ...idem() },
       payload: { reason: "x".repeat(60) },
     });
     expect(res.statusCode).toBe(200);
@@ -1094,7 +1111,7 @@ describe("M18 EVV — write fidelity (F-068)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/evv/check-in",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: checkInBody(),
     });
     expect(res.statusCode).toBe(201);
@@ -1105,7 +1122,7 @@ describe("M18 EVV — write fidelity (F-068)", () => {
     app.inject({
       method: "POST",
       url: `/api/v1/evv/events/${id}/correct`,
-      headers: SUPERVISOR_STEPUP,
+      headers: { ...SUPERVISOR_STEPUP, ...idem() },
       payload: { newEvent: checkInBody(), correctionReason: "x".repeat(60), ...over },
     });
 
@@ -1227,7 +1244,7 @@ describe("M18 EVV — write fidelity (F-068)", () => {
     const reg = await app.inject({
       method: "POST",
       url: "/api/v1/evv/devices/self-register",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: { platform: "ios", modelDescription: "iPhone 14" },
     });
     const deviceId = reg.json().id as string;
@@ -1240,7 +1257,7 @@ describe("M18 EVV — write fidelity (F-068)", () => {
       const res = await app.inject({
         method: "POST",
         url: `/api/v1/evv/devices/${deviceId}/${action}`,
-        headers: SUPERVISOR,
+        headers: { ...SUPERVISOR, ...idem() },
         payload: { reason },
       });
       expect(res.statusCode).toBe(200);
@@ -1258,13 +1275,13 @@ describe("M18 EVV — write fidelity (F-068)", () => {
     const reg = await app.inject({
       method: "POST",
       url: "/api/v1/evv/devices/self-register",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: { platform: "ios", modelDescription: "iPhone 14" },
     });
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/evv/devices/${reg.json().id}/approve`,
-      headers: SUPERVISOR,
+      headers: { ...SUPERVISOR, ...idem() },
       payload: {},
     });
     expect(res.statusCode).toBe(200);
@@ -1280,7 +1297,7 @@ describe("M18 EVV — write fidelity (F-068)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/evv/geofence-policy/per-address",
-      headers: SUPERVISOR,
+      headers: { ...SUPERVISOR, ...idem() },
       payload: {
         patientAddressId: PATIENT_ADDRESS,
         radiusM: 120,
@@ -1302,7 +1319,7 @@ describe("M18 EVV — write fidelity (F-068)", () => {
     const res = await app.inject({
       method: "PATCH",
       url: "/api/v1/evv/geofence-policy/tenant",
-      headers: SUPERVISOR,
+      headers: { ...SUPERVISOR, ...idem() },
       payload: { radiusM: 150, maxAccuracyM: 40 },
     });
     expect(res.statusCode).toBe(200);
@@ -1318,7 +1335,7 @@ describe("M18 EVV — write fidelity (F-068)", () => {
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/evv/aggregator-submissions/${SUBMISSION_PENDING}/cancel`,
-      headers: SUPERVISOR,
+      headers: { ...SUPERVISOR, ...idem() },
       payload: { reason },
     });
     expect(res.statusCode).toBe(200);
@@ -1332,7 +1349,7 @@ describe("M18 EVV — write fidelity (F-068)", () => {
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/evv/missing-resolutions/${RESOLUTION_OVERRIDE}/supervisor-override`,
-      headers: SUPERVISOR_STEPUP,
+      headers: { ...SUPERVISOR_STEPUP, ...idem() },
       payload: { reason: "x".repeat(60) }, // no stepUpAuthRefId
     });
     expect(res.statusCode).toBe(200);
@@ -1345,7 +1362,7 @@ describe("M18 EVV — write fidelity (F-068)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/evv/devices/self-register",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: { platform: "ios", modelDescription: "iPhone 14" }, // no attestationId
     });
     expect(res.statusCode).toBe(201);
@@ -1376,7 +1393,7 @@ describe("GAP-055 — capture guards: device attestation + offline-sync per-even
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/evv/check-in",
-      headers: CLINICIAN,
+      headers: { ...CLINICIAN, ...idem() },
       payload: checkInBody({ evvDeviceId: OTHER_DEVICE }),
     });
     expect(res.statusCode).toBe(403);
@@ -1421,13 +1438,13 @@ describe("GAP-055 — capture guards: device attestation + offline-sync per-even
     const ci = await app.inject({
       method: "POST",
       url: "/api/v1/evv/check-in",
-      headers: CLINICIAN_UNATTESTED,
+      headers: { ...CLINICIAN_UNATTESTED, ...idem() },
       payload: checkInBody(),
     });
     const co = await app.inject({
       method: "POST",
       url: "/api/v1/evv/check-out",
-      headers: CLINICIAN_UNATTESTED,
+      headers: { ...CLINICIAN_UNATTESTED, ...idem() },
       payload: checkOutBody(),
     });
     expect([ci.statusCode, co.statusCode]).toEqual([403, 403]);
@@ -1440,7 +1457,7 @@ describe("GAP-055 — capture guards: device attestation + offline-sync per-even
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/evv/check-in",
-      headers: CLINICIAN_UNATTESTED,
+      headers: { ...CLINICIAN_UNATTESTED, ...idem() },
       payload: checkInBody({ deviceAttestationValid: true, attested: true }),
     });
     expect([403, 422]).toContain(res.statusCode);
@@ -1510,7 +1527,13 @@ describe("GAP-055 — capture guards with device attestation NOT enforced", () =
     url: string,
     headers: Record<string, string>,
     payload: unknown,
-  ) => app.inject({ method: "POST", url, headers, payload: payload as Record<string, unknown> });
+  ) =>
+    app.inject({
+      method: "POST",
+      url,
+      headers: { ...headers, ...idem() },
+      payload: payload as Record<string, unknown>,
+    });
   const written = async (backend: EvvRouteService) => (await backend.listEvents(ORG, {})).length;
 
   it("check-in / check-out succeed for an un-attested session on the resolved (most-recent approved) device", async () => {

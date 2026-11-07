@@ -1,18 +1,17 @@
-import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/audit-request.routes.ts - M25 milestone 7a-1 routes: RAC / UPIC / SMRC
 // (or other) audit request intake. Reads gate on `audit_request.read`, writes on `audit_request.manage`. Every
 // request-level change is If-Match (409 when stale) and every mutation requires an Idempotency-Key. The due date is a
 // recorded deadline (registered here under /audit-requests/:id/recorded-deadlines), never a column or a default.
 // Org, actor and provider-entity scope are server-derived (actor.ts). Nothing is sent from here (milestone 7a-2).
+import { ifMatchVersionOf, parse, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
+import { NotFoundError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { AUDIT_AUTHORITY_KINDS } from "../domain";
 import { actorOf, writeActorOf } from "./actor";
 import type { AuditRequestService } from "./audit-request-service";
-import { clampLimit, ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { P } from "./guards";
-import type { LaterTierService } from "./later-tier-service";
-import type { DeadlineSubject } from "./later-tier-service";
+import type { DeadlineSubject, LaterTierService } from "./later-tier-service";
 import {
   RecordedDeadlinePatchSchema,
   RecordedDeadlineRequestSchema,
@@ -20,7 +19,7 @@ import {
   RecordedDeadlineViewSchema,
   uuidParam,
 } from "./later-tier.routes";
-import { parse } from "./m25-typebox";
+import { clampLimit } from "./m25-typebox";
 
 export interface AuditRequestRouteDeps {
   readonly auditRequestService: AuditRequestService;
@@ -228,7 +227,7 @@ export function registerAuditRequestRoutes(
           writeActorOf(request),
           auditId(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -246,7 +245,7 @@ export function registerAuditRequestRoutes(
             writeActorOf(request),
             auditId(request),
             body,
-            ifMatchVersion(request),
+            ifMatchVersionOf(request),
           ),
         );
     },
@@ -261,7 +260,7 @@ export function registerAuditRequestRoutes(
           writeActorOf(request),
           auditId(request),
           uuidParam(request, "claimId", "audit request claim"),
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       ),
   );
@@ -276,7 +275,7 @@ export function registerAuditRequestRoutes(
           writeActorOf(request),
           auditId(request),
           body.to,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -326,7 +325,7 @@ export function registerAuditRequestRoutes(
           subjectOf(request),
           deadlineId(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -342,7 +341,7 @@ export function registerAuditRequestRoutes(
           subjectOf(request),
           deadlineId(request),
           body.satisfiedOn,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },

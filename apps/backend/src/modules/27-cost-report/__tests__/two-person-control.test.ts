@@ -3,7 +3,7 @@
 // repositories and the org-context wrapper are stubbed so this runs without a DB (the real-DB cases live in
 // m27-cost-report-workflow-slice.live.test.ts).
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { M27WriteActor } from "../routes/actor";
+import type { M27WriteActor } from "../routes/write-service";
 
 const APPROVER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OTHER = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";

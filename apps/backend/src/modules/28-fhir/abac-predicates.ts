@@ -1,3 +1,10 @@
+import {
+  type AbacContext,
+  type AbacTarget,
+  hasOrgWideScope,
+  registerPredicateIdempotent,
+} from "@chartwarden/auth";
+import { fhirInboundIsPatientScoped } from "@chartwarden/fhir";
 // apps/backend/src/modules/28-fhir/abac-predicates.ts — M28-T08 (§4.7 / §8.1).
 //
 // The SIX named ABAC predicate resolvers M28 registers into M3's named-predicate registry. Each is a
@@ -29,13 +36,7 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards
 // on `abacRegistry.has`.
-import {
-  type AbacContext,
-  type AbacTarget,
-  hasOrgWideScope,
-  registerPredicateIdempotent,
-} from "@chartwarden/auth";
-import { fhirInboundIsPatientScoped } from "@chartwarden/fhir";
+import { membershipIdOf, targetStr } from "@chartwarden/shared/route-kit";
 import type { FhirInboundOwnerModule } from "@chartwarden/types";
 import { getSeam } from "../../bootstrap/index";
 
@@ -168,23 +169,10 @@ export interface FhirGatewayAbacDeps {
 
 // ── target/context extraction (server-side only) ─────────────────────────────────────────────────────
 
-function targetStr(target: AbacTarget, ...fields: readonly string[]): string | null {
-  for (const field of fields) {
-    const value = target[field];
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  return null;
-}
-
 function targetStrArray(target: AbacTarget, field: string): readonly string[] | null {
   const value = target[field];
   if (Array.isArray(value) && value.every((v) => typeof v === "string")) return value as string[];
   return null;
-}
-
-function membershipIdOf(context: AbacContext): string | null {
-  const value = context.attributes?.membershipId;
-  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 // ── the predicates ───────────────────────────────────────────────────────────────────────────────────

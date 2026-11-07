@@ -3,15 +3,15 @@
 // Claim FACTS (coverage, admission, election, level of care, diagnoses, attending) come from the consumed reader seams
 // Module 23 already binds (ADR-0100 D2): the reader SHAPES are reused from M23's claim-assembly types so one bound adapter
 // serves both lanes. M41 reads no other module's tables.
-import type { DbClient } from "@chartwarden/db";
-import type { CaseloadProvider, PatientCoverageReader } from "@chartwarden/types";
 import type {
   AdmissionContextReader,
   DiagnosisSequenceReader,
   ElectionPeriodReader,
   LevelOfCareReader,
   MdmEntityProvider,
-} from "../../23-billing-medicare/services/claim-assembly-types";
+} from "@chartwarden/billing";
+import type { DbClient } from "@chartwarden/db";
+import type { CaseloadProvider, PatientCoverageReader } from "@chartwarden/types";
 
 export type CommercialDb = DbClient;
 /** The org-context transaction handle every statement runs on. */

@@ -1,9 +1,9 @@
-import { Button, SelectField, TextAreaField, TextField, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the playbook EDITOR (hospice ADR/TPE/QIC PRD milestone 9a-1): one modal that writes a
 // new playbook for a denial reason (code kind + code, optionally one MAC) or edits / adds a draft version. The text is the
 // organization's own: a SOURCE NOTE is required (where the guidance came from), and a draft is never active until a
 // different person publishes it. Nothing here suggests wording or states what a MAC requires. The server owns every
 // refusal and its message is shown verbatim; a stale draft (409) is reported and the library reloads.
+import { Button, SelectField, TextAreaField, TextField, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { ActionModal, ButtonRow, ErrorAlert, FormButtons, Hint, PhiNotice } from "./action-ui";
@@ -136,11 +136,11 @@ export function PlaybookEditor({
     if (res.ok) onDone(done);
     else {
       setError(
-        res.code === "VERSION_CONFLICT"
+        res.code === "STALE_VERSION"
           ? `${res.message} Your text is kept; save again to overwrite the newer draft.`
           : res.message,
       );
-      if (res.code === "VERSION_CONFLICT") onConflict?.(res.message);
+      if (res.code === "STALE_VERSION") onConflict?.(res.message);
     }
   }
 

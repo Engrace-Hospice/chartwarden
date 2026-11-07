@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/17-scheduling/outbox-consumers/m18-evv-late-check-resolved.ts — F-196 (#248).
 //
 // `m18.evv.late_check_resolved` was declared as an M17 consumer since the catalog existed but never bound.
@@ -14,14 +15,11 @@
 // it). Idempotent by construction: the UPDATE's WHERE clause pins
 // `evv_missing_resolution_resolved_at IS NULL`, so a redelivery after the first stamp matches zero rows and
 // is a silent no-op, mirroring the `transfer_event.document_id`/`m6-backref` NULL-guard shape (F-192).
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull } from "drizzle-orm";
 
 const V = schema.visit;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M17_EVV_LATE_CHECK_RESOLVED_CONSUMER = {
   eventName: "m18.evv.late_check_resolved",

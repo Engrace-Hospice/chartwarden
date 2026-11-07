@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import { buildIvSafetyOverlay, isIvContinuousOrder } from "@chartwarden/inpatient";
 // apps/backend/src/modules/37-ipu/consumers/m12-medication-order-iv-overlay.ts — the WRITER of
 // `ipu_iv_safety_overlay` (M37 §2.6 / D7, GAP-107). Until this file the table had a reader (the
 // `IpuIvSafetyOverlayProvider` seam) and an eraser and nothing that ever inserted a row, so every IPU patient on
@@ -27,17 +29,13 @@
 // KNOWN LIMIT (see the spec changelog): the overlay is created when the order is SIGNED, per §2.6. An infusion
 // signed while the patient was still at home and continued after an IPU admission is NOT retro-fitted with an
 // overlay; M13 then runs with its own order-policy bounds only.
-import { type DbClient, schema } from "@chartwarden/db";
-import { buildIvSafetyOverlay, isIvContinuousOrder } from "@chartwarden/inpatient";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, notInArray } from "drizzle-orm";
 import type { WriteOutboxPort } from "../routes/service-drizzle";
 
 const O = schema.ipuIvSafetyOverlay;
 const A = schema.ipuAdmission;
-
-/** F-102's convention: a consumer-driven `withOrgContext` carries no human actor. */
-const CONSUMER_USER_ID = "";
 
 /** Admission states in which the patient is no longer on the unit — no overlay is owed. */
 const ENDED_ADMISSION_STATES = ["transferred", "discharged", "deceased", "closed"] as const;

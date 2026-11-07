@@ -7,10 +7,10 @@
 /** What a client is telling the server: "I am here" or "I am typing". */
 export type PresenceKind = "present" | "typing";
 
-export const PRESENCE_TTL_MS = 60_000;
-export const TYPING_TTL_MS = 6_000;
+const PRESENCE_TTL_MS = 60_000;
+const TYPING_TTL_MS = 6_000;
 /** At most one write per user per channel per kind in this window. */
-export const PRESENCE_THROTTLE_MS = 3_000;
+const PRESENCE_THROTTLE_MS = 3_000;
 /** A channel never reports more than this many ids per kind (a bound on the response, not on membership). */
 export const PRESENCE_LIST_LIMIT = 200;
 

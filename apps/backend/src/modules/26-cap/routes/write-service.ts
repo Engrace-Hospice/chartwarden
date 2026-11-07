@@ -2,7 +2,7 @@
 // POST/PATCH surface) + the transactional-outbox port. Each command runs under withOrgContext (RLS),
 // validates the §2.2 transition via the pure cap-period state machine, stamps the acting user, and emits
 // the §4.10 outbox event on the caller's tx through the injected WriteOutboxPort (transactional outbox).
-import type { M26WriteActor } from "./actor";
+import type { M26Actor } from "./read-service";
 import type { PeriodView, ProjectionView, SettlementView } from "./read-service";
 
 /** A §4.10 `m26.cap.*` transactional-outbox emission. PHI-free payload by construction (D13). */
@@ -64,33 +64,33 @@ export interface AmendConstantInput {
 }
 
 export interface M26WriteService {
-  openPeriod(actor: M26WriteActor, input: OpenPeriodInput): Promise<PeriodView>;
+  openPeriod(actor: M26Actor, input: OpenPeriodInput): Promise<PeriodView>;
   lockMethodology(
-    actor: M26WriteActor,
+    actor: M26Actor,
     periodId: string,
     input: LockMethodologyInput,
   ): Promise<PeriodView>;
-  closePeriod(actor: M26WriteActor, periodId: string): Promise<PeriodView>;
-  reopenPeriod(actor: M26WriteActor, periodId: string, input: ReopenInput): Promise<PeriodView>;
+  closePeriod(actor: M26Actor, periodId: string): Promise<PeriodView>;
+  reopenPeriod(actor: M26Actor, periodId: string, input: ReopenInput): Promise<PeriodView>;
   /** `trigger` stamps how the snapshots were produced (`manual_recompute` by default; the cron passes `nightly_batch`). */
   recompute(
-    actor: M26WriteActor,
+    actor: M26Actor,
     periodId: string,
     trigger?: "nightly_batch" | "remittance_trigger" | "manual_recompute",
   ): Promise<ProjectionView[]>;
-  acknowledgeEvent(actor: M26WriteActor, eventId: string, input: AcknowledgeInput): Promise<void>;
+  acknowledgeEvent(actor: M26Actor, eventId: string, input: AcknowledgeInput): Promise<void>;
   importPsr(
-    actor: M26WriteActor,
+    actor: M26Actor,
     periodId: string,
     input: ImportPsrInput,
   ): Promise<{ importId: string }>;
-  resolveVariance(actor: M26WriteActor, lineId: string, input: ResolveVarianceInput): Promise<void>;
-  proposeSettlement(actor: M26WriteActor, periodId: string): Promise<SettlementView>;
+  resolveVariance(actor: M26Actor, lineId: string, input: ResolveVarianceInput): Promise<void>;
+  proposeSettlement(actor: M26Actor, periodId: string): Promise<SettlementView>;
   finalizeSettlement(
-    actor: M26WriteActor,
+    actor: M26Actor,
     periodId: string,
     input: FinalizeInput,
   ): Promise<SettlementView>;
-  publishConstant(actor: M26WriteActor, input: PublishConstantInput): Promise<void>;
-  amendConstant(actor: M26WriteActor, capYear: string, input: AmendConstantInput): Promise<void>;
+  publishConstant(actor: M26Actor, input: PublishConstantInput): Promise<void>;
+  amendConstant(actor: M26Actor, capYear: string, input: AmendConstantInput): Promise<void>;
 }

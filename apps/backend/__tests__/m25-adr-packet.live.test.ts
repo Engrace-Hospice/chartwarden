@@ -404,7 +404,7 @@ describe.skipIf(!DB_URL)("M25 ADR response packet - LIVE Postgres", () => {
     await svc().transitionAdr(A(), id, "in_assembly", stale); // returned: the version moves
     await svc().transitionAdr(A(), id, "in_review", await ver(id));
     expect(await refused(svc().signOffAdr(B(), id, stale))).toMatchObject({
-      code: "VERSION_CONFLICT",
+      code: "STALE_VERSION",
       statusCode: 409,
     });
   });

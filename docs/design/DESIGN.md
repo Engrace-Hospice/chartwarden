@@ -114,9 +114,9 @@ amber accent = brand warmth only (never status). Every value ships a light and a
 
 ### 2.4 System health — degraded mode (must mirror code exactly)
 
-These align 1:1 with `statusColors` in
-[`packages/ui/src/core/theme/colors.ts`](../../packages/ui/src/core/theme/colors.ts) and drive the
-degraded-mode banner (App Shell / System Health). Do not redefine them per screen.
+Reference palette for system-health surfaces (App Shell / System Health). No code token carries
+this triad today: the degraded-mode banner (`packages/ui/src/web/components/degraded-banner.tsx`)
+renders with the theme-reactive `warning` / `error` tokens. Do not redefine them per screen.
 
 | Token | fg | bg | border | Meaning |
 | :-- | :-- | :-- | :-- | :-- |
@@ -578,8 +578,7 @@ copy this block over the shipped files:
 }
 ```
 
-The `statusColors` triad (§2.4) stays in `colors.ts` as the source of truth for the degraded
-banner; mirror it here only for reference.
+The system-health triad (§2.4) is a reference palette; the degraded banner uses the theme tokens.
 
 ---
 

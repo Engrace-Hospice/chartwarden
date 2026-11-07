@@ -6,9 +6,9 @@
 // the stricter `cost_report.read_snapshot_detail` (audit-read-logged — the one route that surfaces the
 // materialized payloads). M27 carries NO PHI (D18). Both reads; no mutation, no Idempotency-Key. Org/actor
 // binding is ALWAYS server-side.
+import { actorOf, parse } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf } from "./actor";
-import { CostReportIdParamsSchema, SnapshotParamsSchema, parse } from "./cost-report-typebox";
+import { CostReportIdParamsSchema, SnapshotParamsSchema } from "./cost-report-typebox";
 import { P } from "./guards";
 import type { M27ReadRouteService } from "./read-service";
 

@@ -1,3 +1,4 @@
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
 // apps/backend/src/modules/34-saas-tenant-platform/abac-predicates.ts — M34 (§4.6).
 //
 // The EIGHT named ABAC predicate resolvers M34 OWNS and registers into M3's named-predicate registry
@@ -17,7 +18,7 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests)
 // is idempotent via registerPredicateIdempotent (the M22 `registerDocumentAbacPredicates` precedent).
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@chartwarden/auth";
+import { membershipIdOf, targetStr } from "@chartwarden/shared/route-kit";
 import { getSeam } from "../../bootstrap/index";
 
 /** The §4.6 predicate names M34 owns (registered into M3). Single-owner across the platform registry. */
@@ -89,11 +90,6 @@ export interface TenantPlatformAbacResolver {
 }
 
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
-const targetStr = (target: AbacTarget, field: string): string | null => {
-  const value = target[field];
-  return typeof value === "string" && value.length > 0 ? value : null;
-};
-
 /**
  * The flag scope a write targets: `null` (organizationId absent/null = platform-global), a non-empty org id,
  * or `undefined` when the field is present but malformed (the caller denies).
@@ -106,15 +102,6 @@ function flagScopeOf(target: AbacTarget): string | null | undefined {
 
 /** `platform_ops` is the M3 RBAC role on a staff session (M34-F03) — tested via `context.roles`. */
 const isPlatformOps = (context: AbacContext): boolean => hasRole(context, "platform_ops");
-
-/**
- * Read the actor's server-assembled membership id (M2 session attribute). The route layer binds
- * the active membership into `context.attributes.membershipId`; absent → null (fail-closed where used).
- */
-function membershipIdOf(context: AbacContext): string | null {
-  const value = context.attributes.membershipId;
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
 
 /** Deps for M34's ABAC predicate resolvers (the slice injects an in-memory resolver + caseload stub). */
 export interface TenantPlatformAbacDeps {

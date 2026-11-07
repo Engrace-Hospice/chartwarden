@@ -47,4 +47,4 @@ export type ClaimAssembleResponse = Static<typeof ClaimAssembleResponse>;
 //   409 PATIENT_DECEASED_BEFORE_FROM — patient died before the claim's service_from
 //   409 OVERLAPPING_ACTIVE_CLAIM     — a non-superseded claim already covers this range
 //   422 ASSEMBLY_VALIDATION_FAILED   — the rule registry found failures even before SUBMIT
-//   412 IF_MATCH_REQUIRED            — duplicate-call without a version precondition
+//   428 IF_MATCH_REQUIRED            — duplicate-call without a version precondition

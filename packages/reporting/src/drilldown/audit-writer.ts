@@ -108,7 +108,7 @@ export interface DrilldownAuditInput {
  * the minted trace id + the clock instant. `accessed_at` is supplied (not DB-default) so the partition key is
  * deterministic for tests; `consent_narrowing_reason` is set only when narrowed.
  */
-export function buildDrilldownAuditRow(
+function buildDrilldownAuditRow(
   input: DrilldownAuditInput,
   queryFiltersCipher: string,
   rowId: string,

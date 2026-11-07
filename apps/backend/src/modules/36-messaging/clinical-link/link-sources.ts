@@ -14,7 +14,7 @@ import type { ClinicalLinkKind, ClinicalLinkSource } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 import type { ClinicalLinkSourcePorts } from "./clinical-link-service";
 
-export const CLINICAL_LINK_SEAM_KEYS = {
+const CLINICAL_LINK_SEAM_KEYS = {
   medication: "MedicationOrderProvider",
   order: "OrderProvider",
   care_plan: "CarePlanReader",
@@ -28,7 +28,7 @@ const PATIENT_SCOPE = "caseload_or_scope";
 const MEETING_SCOPE = "idg_meeting_scope";
 
 /** Per kind: the owning module's READ permission and the ABAC predicate over its target. */
-export const CLINICAL_LINK_GUARDS: Readonly<
+const CLINICAL_LINK_GUARDS: Readonly<
   Record<ClinicalLinkKind, { readonly permission: string; readonly predicate: string }>
 > = {
   medication: { permission: "prescribing.read", predicate: PATIENT_SCOPE },

@@ -6,7 +6,6 @@ export const AI_GUARDRAIL =
   "AI-generated draft. It can be wrong. It is not a chart note and does not send, order or change anything.";
 export const AI_NOT_A_SUBSTITUTE =
   "A summary never replaces reading an urgent message or answering a request that asks you to acknowledge it.";
-export const AI_TRIGGER_LABEL = "AI summary";
 export const AI_GENERATING = "Reading the conversation...";
 export const AI_CANCEL = "Cancel";
 export const AI_UNAVAILABLE_TEXT = "AI unavailable. Read the conversation instead.";

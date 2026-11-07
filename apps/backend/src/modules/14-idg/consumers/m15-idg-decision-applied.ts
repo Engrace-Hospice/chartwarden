@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/14-idg/consumers/m15-idg-decision-applied.ts — M14's live consumer of
 // `m15.idg_decision.applied` (F-234 / #248; M15 spec §4.5: "IDG decision applied … consumer M14").
 //
@@ -15,16 +16,13 @@
 //
 // The consumed event name is a STRING literal and no M15 schema is imported: M14 reads M15 solely through the
 // outbox, so this adds no `dependsOn` edge.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 
 const DEC = schema.idgDecision;
 const ACK = schema.idgDecisionApplicationAck;
-
-/** §3.3 — a consumer-driven write names no acting membership. */
-const CONSUMER_USER_ID = "";
 
 export const M14_M15_DECISION_APPLIED_CONSUMER = {
   eventName: "m15.idg_decision.applied",

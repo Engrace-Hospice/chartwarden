@@ -31,8 +31,7 @@
     "apps/admin/**/*.test.tsx",
     "apps/portal/**/*.test.ts",
     "apps/portal/**/*.test.tsx",
-    "packages/ui/**/*.test.ts",
-    "packages/admin-ui-shell/**/*.test.ts"
+    "packages/ui/**/*.test.ts"
   ],
   "exclude": [
     "**/node_modules/**",

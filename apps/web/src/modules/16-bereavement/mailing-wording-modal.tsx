@@ -1,6 +1,6 @@
 // apps/web/src/modules/16-bereavement — edit ONE DRAFT RUN's wording (ADR-0109 D10, route 47).
 //
-// The save carries the run version the page READ in `If-Match`. A 412 means someone else saved first: the page reloads, what was typed
+// The save carries the run version the page READ in `If-Match`. A 409 STALE_VERSION means someone else saved first: the page reloads, what was typed
 // stays in the editor, and the dialog shows THEIR saved wording beside it. Saving is then blocked until the reader picks one: "Replace
 // with theirs" (drop the typed wording) or "Overwrite with mine" (the next save writes over theirs, against the newer version). A newer
 // version is never written over silently. If that reload fails (or still answers the refused version), the dialog says so and offers
@@ -13,6 +13,7 @@ import type { JSX } from "react";
 import {
   type MailingRun,
   errorMessage,
+  isStaleVersion,
   isStaleWrite,
   updateMailingRunContent,
 } from "./bereavement-api";
@@ -51,11 +52,11 @@ export function EditWordingModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
-  /** The run version a 412 refused; until the reader chooses, saving is blocked. */
+  /** The run version a STALE_VERSION refused; until the reader chooses, saving is blocked. */
   const [conflictAt, setConflictAt] = useState<number | null>(null);
-  /** The page is re-reading the run after a 412. */
+  /** The page is re-reading the run after a STALE_VERSION. */
   const [reloading, setReloading] = useState(false);
-  /** A reload after the 412 answered without their wording: "Try again" is offered (and stays mounted while it retries). */
+  /** A reload after the STALE_VERSION answered without their wording: "Try again" is offered (and stays mounted while it retries). */
   const [reloadFailed, setReloadFailed] = useState(false);
   const idempotency = useIdempotencyKey();
   // The newer wording, once the page has re-read the run past the refused version.
@@ -102,7 +103,7 @@ export function EditWordingModal({
     idempotency.settle(status);
     setBusy(false);
     if (err || !next) {
-      if (status === 412) {
+      if (isStaleVersion(status, err)) {
         setConflictAt(run.version);
         setReloadFailed(false);
         setError(RUN_MOVED);

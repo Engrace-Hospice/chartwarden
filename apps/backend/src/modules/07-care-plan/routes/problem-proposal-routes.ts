@@ -11,13 +11,13 @@
 // membership is required (it is stamped as the problem's `added_by` and the proposal's decider).
 // SUD-flagged proposals follow the §7.6 rule: omitted for a caller without disclosure, 404 on decide.
 import { requireAbac, requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { membershipIdOf } from "../abac-predicates";
 import type { ProblemProposalService } from "../problem-proposals-db";
 import type { CarePlanRouteDeps } from "./care-plan-routes";
 import { PlanParamsSchema, parse } from "./care-plan-typebox";
-import type { PreHandler } from "./concurrency";
 import {
   AcceptProblemProposalSchema,
   DismissProblemProposalSchema,

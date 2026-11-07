@@ -383,7 +383,7 @@ async function missOneOutreach(
   });
   const updated = await tx
     .update(OUTREACH)
-    // §2.5 (GAP-194) — the miss slide bumps the version, so a counselor acting on the pre-miss row gets 412.
+    // §2.5 (GAP-194) — the miss slide bumps the version, so a counselor acting on the pre-miss row gets 409 STALE_VERSION.
     .set({ status: transition.to, version: sql`${OUTREACH.version} + 1`, updatedAt: now })
     .where(and(eq(OUTREACH.id, row.id), eq(OUTREACH.status, "scheduled")))
     .returning({ id: OUTREACH.id });

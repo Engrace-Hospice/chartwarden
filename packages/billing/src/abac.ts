@@ -24,5 +24,3 @@ export const M23_ABAC_PREDICATES = [
   "override_role_eligible",
   "regulatory_required_rule_protected",
 ] as const;
-
-export type M23AbacPredicateName = (typeof M23_ABAC_PREDICATES)[number];

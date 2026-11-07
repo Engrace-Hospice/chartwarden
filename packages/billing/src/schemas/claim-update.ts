@@ -42,4 +42,4 @@ export type ClaimDeleteResponse = Static<typeof ClaimDeleteResponse>;
 
 // Errors (per §4.2 patterns):
 //   409 CLAIM_NOT_DRAFT — target is not in DRAFT (no edits/deletes once it leaves DRAFT)
-//   412 STALE_VERSION   — If-Match / ifVersion mismatch
+//   409 STALE_VERSION   — If-Match / ifVersion mismatch

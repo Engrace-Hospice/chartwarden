@@ -1,3 +1,11 @@
+import {
+  type AbacContext,
+  type AbacTarget,
+  registerPredicateIdempotent,
+  resolveActorPermissions,
+} from "@chartwarden/auth";
+import { schema } from "@chartwarden/db";
+import type { QualityDb } from "@chartwarden/quality";
 // apps/backend/src/modules/30-quality/abac-predicates.ts — M30 (§4.7 / §6.7).
 //
 // The named ABAC predicate resolvers M30 OWNS and registers into M3's named-predicate registry
@@ -42,14 +50,7 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards
 // on `abacRegistry.has` (the M33 `registerM33AbacPredicates` / M34 precedent). Never fails open.
-import {
-  type AbacContext,
-  type AbacTarget,
-  registerPredicateIdempotent,
-  resolveActorPermissions,
-} from "@chartwarden/auth";
-import { schema } from "@chartwarden/db";
-import type { QualityDb } from "@chartwarden/quality";
+import { membershipIdOf, targetStr } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
@@ -414,28 +415,12 @@ export function buildDrizzleM30AbacResolver(db: QualityDb): ReadingM30AbacResolv
 // ---- shared helpers ---------------------------------------------------------
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
 
-const targetStr = (target: AbacTarget, field: string): string | null => {
-  const value = target[field];
-  return typeof value === "string" && value.length > 0 ? value : null;
-};
-
-/**
- * The actor's ACTIVE membership id — the server-assembled M2 session attribute the routes' `writeActorOf`
- * already trusts (`context.attributes.membershipId`). The §4.7 ownership predicates key on THIS, never on
- * `context.userId` (a different id space than the §3 `*_membership_id` owner columns). Absent → null
- * (fail-closed: an actor with no active membership cannot own an M30 row).
- */
-function actorMembershipId(context: AbacContext): string | null {
-  const value = context.attributes.membershipId;
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
 /** The org + acting user the resolver scopes its `withOrgContext` reads to. */
 function readContextOf(context: AbacContext): M30AbacReadContext {
   return {
     organizationId: context.organizationId,
     userId: context.userId,
-    membershipId: actorMembershipId(context),
+    membershipId: membershipIdOf(context),
   };
 }
 
@@ -497,7 +482,7 @@ export function buildM30AbacPredicates(
       if (!isAbuse && (await actorHoldsPermission(context, "incident.read"))) return true; // (a)
       if (isAbuse && (await actorHoldsPermission(context, "incident.abuse_review"))) return true; // (b)
       // (c) actor is the reporter or the assignee.
-      const membershipId = actorMembershipId(context);
+      const membershipId = membershipIdOf(context);
       if (!membershipId) return false;
       if (membershipId === incident.reportedByMembershipId) return true;
       return incident.assignedToMembershipId === membershipId;
@@ -509,7 +494,7 @@ export function buildM30AbacPredicates(
       if (!incidentId) return false;
       const incident = await resolver.loadIncident(readContextOf(context), incidentId);
       if (!incident) return false;
-      const membershipId = actorMembershipId(context);
+      const membershipId = membershipIdOf(context);
       if (!membershipId) return false;
       if (membershipId === incident.reportedByMembershipId) return true;
       return incident.assignedToMembershipId === membershipId;
@@ -521,7 +506,7 @@ export function buildM30AbacPredicates(
       if (!incidentId) return false;
       const incident = await resolver.loadIncident(readContextOf(context), incidentId);
       if (!incident) return false;
-      const membershipId = actorMembershipId(context);
+      const membershipId = membershipIdOf(context);
       if (!membershipId) return false;
       return incident.assignedToMembershipId === membershipId;
     },
@@ -549,7 +534,7 @@ export function buildM30AbacPredicates(
       // The verifier MUST NOT be the incident's assignee (the two-person control). An unassigned
       // incident cannot be verified (no assignee to separate from) → deny.
       if (!incident.assignedToMembershipId) return false;
-      const membershipId = actorMembershipId(context);
+      const membershipId = membershipIdOf(context);
       if (!membershipId) return false;
       return membershipId !== incident.assignedToMembershipId;
     },
@@ -560,7 +545,7 @@ export function buildM30AbacPredicates(
       if (!projectId) return false;
       const project = await resolver.loadQapiProject(readContextOf(context), projectId);
       if (!project) return false;
-      const membershipId = actorMembershipId(context);
+      const membershipId = membershipIdOf(context);
       if (membershipId && membershipId === project.ownerMembershipId) return true;
       return await actorHoldsPermission(context, "qapi.admin");
     },
@@ -570,7 +555,7 @@ export function buildM30AbacPredicates(
     qapiCloseAuthority: async (context, target) => {
       const cosignerMembershipId = targetStr(target, "cosignerMembershipId");
       if (!cosignerMembershipId) return false; // fail-closed (no second signer)
-      const callerMembershipId = actorMembershipId(context);
+      const callerMembershipId = membershipIdOf(context);
       if (!callerMembershipId) return false;
       if (cosignerMembershipId === callerMembershipId) return false; // must be two distinct actors
       const callerIsQc = hasRole(context, ROLE_QAPI_COORDINATOR);
@@ -592,7 +577,7 @@ export function buildM30AbacPredicates(
       if (!cycleId) return false;
       const cycle = await resolver.loadSraCycle(readContextOf(context), cycleId);
       if (!cycle) return false;
-      const membershipId = actorMembershipId(context);
+      const membershipId = membershipIdOf(context);
       if (membershipId && membershipId === cycle.ownerMembershipId) return true;
       return await actorHoldsPermission(context, "sra.admin");
     },
@@ -602,7 +587,7 @@ export function buildM30AbacPredicates(
     sraCloseAuthority: async (context, target) => {
       const cosignerMembershipId = targetStr(target, "cosignerMembershipId");
       if (!cosignerMembershipId) return false;
-      const callerMembershipId = actorMembershipId(context);
+      const callerMembershipId = membershipIdOf(context);
       if (!callerMembershipId) return false;
       if (cosignerMembershipId === callerMembershipId) return false; // two distinct actors
       const callerIsSo = hasRole(context, ROLE_SECURITY_OFFICER);
@@ -623,7 +608,7 @@ export function buildM30AbacPredicates(
       if (!reviewId) return false;
       const review = await resolver.loadMortalityReview(readContextOf(context), reviewId);
       if (!review) return false;
-      const membershipId = actorMembershipId(context);
+      const membershipId = membershipIdOf(context);
       if (!membershipId) return false;
       return review.assignedToMembershipId === membershipId;
     },

@@ -19,7 +19,7 @@ import {
 // this panel used to write Replace/Void directly with a fabricated empty reason; that reason-capture
 // ceremony now lives in exactly one place, the editor). Reads GET /api/v1/billing/claims; Submit writes
 // POST {id}/submit directly. The server is the only authz point (ADR-0030): a 503 (seams unbound) degrades
-// the surface; a 412 (If-Match) / 422 (validation) on a write surfaces inline, never a toast; a
+// the surface; a 409 (stale If-Match) / 422 (validation) on a write surfaces inline, never a toast; a
 // STEP_UP_REQUIRED denial routes to /step-up. Lantern: WorkQueueLayout + FilterBar + RightDetailPanel,
 // No-Line table (§6.7), mono claim-control-number (IBM Plex), tabular-nums, CSS-var tokens only. Status
 // tones flow through billing-status.ts (§6.6). NOTE: the openapi marks the list query as `never` (the
@@ -402,7 +402,7 @@ function ClaimPreview({
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Submit carries no reason, so it stays a direct one-click action here. It sends If-Match (the claim
-  // version) for §2.5 optimistic concurrency; a 412 means the row moved under us (reopen to retry), a 422
+  // version) for §2.5 optimistic concurrency; a 409 means the row moved under us (reopen to retry), a 422
   // carries the validation envelope, a 503 means the write seam is unbound, and a step-up denial routes to
   // the real /step-up screen (returning here) rather than a dead-end inline message.
   const submit = useCallback(async () => {
@@ -423,7 +423,7 @@ function ClaimPreview({
         return;
       }
       setBusy(false);
-      if (response?.status === 412)
+      if (response?.status === 409)
         setActionError("This claim changed since you opened it — reopen to retry.");
       else if (response?.status === 422)
         setActionError("Validation failed — resolve the claim's open findings first.");

@@ -12,8 +12,9 @@
 // gate scans that second argument — a helper that took `names: string[]` would hide them, the exact hole
 // that let M30 ship 15 guards on an unregistered predicate).
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
+import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
-import type { PreHandler } from "./actor";
 
 type TargetRequest = { readonly params?: unknown };
 
@@ -121,3 +122,17 @@ export const ABAC_ENGAGEMENT_SCOPE = (action: string, idParam = "engagementId"):
  */
 export const ABAC_IN_ORG = (action: string): PreHandler =>
   requireAbac(action, "inOrg", { getTarget: () => ({}), notFoundOnDeny: false }) as PreHandler;
+
+/** §4.1.1 — refuse `?offset=` on a PHI list route (offset pagination is forbidden). */
+export function rejectOffsetPagination(): PreHandler {
+  return async (request) => {
+    const query = (request.query ?? {}) as Record<string, unknown>;
+    if (query.offset !== undefined) {
+      throw new ChartWardenError(
+        "OFFSET_PAGINATION_FORBIDDEN",
+        "offset pagination is not supported on PHI list routes; use ?cursor=",
+        400,
+      );
+    }
+  };
+}

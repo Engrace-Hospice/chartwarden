@@ -8,10 +8,15 @@
 // session carries NO workforce membership, and §3.3.8 says exactly that — the self-service opt-out row
 // records `recorded_by_user_id = NULL`. Requiring a membership here would have made the portal opt-out
 // button 403 for the only people it exists for.
+import {
+  ifMatchVersionOf,
+  optionalIfMatchVersionOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, mutatingActorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import {
   ABAC_ANY,
   ABAC_DISCIPLINE_SELF,
@@ -113,7 +118,7 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const body = parse(UpdateContactBody, request.body);
       return writeService.updateContact(writeActorOf(request), contactId, {
         ...body,
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -133,7 +138,7 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(CareGoalsBody, request.body);
       return writeService.setCareGoals(writeActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request, true) ?? 0,
+        expectedVersion: ifMatchVersionOf(request),
         goals: body.goals,
       });
     },
@@ -155,7 +160,7 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const body = parse(ConfirmContactBody, request.body);
       return writeService.confirmContact(writeActorOf(request), contactId, {
         ...body,
-        expectedVersion: ifMatchVersion(request),
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -178,7 +183,7 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const body = parse(OptOutBody, request.body);
       return writeService.optOutContact(mutatingActorOf(request), contactId, {
         ...body,
-        expectedVersion: ifMatchVersion(request),
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -203,7 +208,7 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const body = parse(RescindOptOutBody, request.body);
       return writeService.rescindOptOut(mutatingActorOf(request), contactId, {
         ...body,
-        expectedVersion: ifMatchVersion(request),
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -223,7 +228,7 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const body = parse(MarkDeceasedBody, request.body);
       return writeService.markContactDeceased(writeActorOf(request), contactId, {
         ...body,
-        expectedVersion: ifMatchVersion(request),
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -244,7 +249,7 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const body = parse(MarkUnreachableBody, request.body);
       return writeService.markContactUnreachable(writeActorOf(request), contactId, {
         ...body,
-        expectedVersion: ifMatchVersion(request),
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -265,7 +270,7 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const body = parse(DismissUnreachableProposalBody, request.body);
       return writeService.dismissUnreachableProposal(writeActorOf(request), contactId, {
         ...body,
-        expectedVersion: ifMatchVersion(request),
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -287,7 +292,7 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const body = parse(FlagComplicatedGriefBody, request.body);
       return writeService.flagComplicatedGrief(writeActorOf(request), contactId, {
         ...body,
-        expectedVersion: ifMatchVersion(request),
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );

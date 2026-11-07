@@ -100,21 +100,21 @@ function hasAll(
 }
 
 /** True iff the clinical dimension carries its required structural members (D9). */
-export function isClinicalDimensionComplete(
+function isClinicalDimensionComplete(
   data: schema.ClinicalDimensionData | null | undefined,
 ): boolean {
   return hasAll(data, REQUIRED_CLINICAL_KEYS);
 }
 
 /** True iff the satisfaction dimension carries its required structural members (D9). */
-export function isSatisfactionDimensionComplete(
+function isSatisfactionDimensionComplete(
   data: schema.SatisfactionDimensionData | null | undefined,
 ): boolean {
   return hasAll(data, REQUIRED_SATISFACTION_KEYS);
 }
 
 /** True iff the compliance dimension carries its required structural members (D9). */
-export function isComplianceDimensionComplete(
+function isComplianceDimensionComplete(
   data: schema.ComplianceDimensionData | null | undefined,
 ): boolean {
   return hasAll(data, REQUIRED_COMPLIANCE_KEYS);

@@ -58,11 +58,9 @@ export {
 } from "./read-service-drizzle";
 export { type M20WriteDeps, buildDrizzleM20WriteService } from "./write-service-drizzle";
 export {
-  type M20MutatingActor,
   type M20ReadActor,
   type M20WriteActor,
   actorOf,
-  mutatingActorOf,
   providerEntityOf,
   writeActorOf,
 } from "./actor";
@@ -73,18 +71,7 @@ export {
   decodeCoordinates,
   encodeCoordinates,
 } from "./coordinates";
-export {
-  type CursorPage,
-  InvalidCursorError,
-  M20_PAGE_SIZES,
-  clampLimit,
-  decodeCursor,
-  encodeCursor,
-  ifMatchVersion,
-  rejectOffsetPagination,
-  requireIdempotencyKey,
-  toCursorPage,
-} from "./concurrency";
+export { M20_PAGE_SIZES } from "./page-sizes";
 export {
   type EffectContext,
   type EffectPatch,

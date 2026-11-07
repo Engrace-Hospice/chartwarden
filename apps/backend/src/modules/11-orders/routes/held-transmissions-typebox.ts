@@ -1,12 +1,12 @@
 // apps/backend/src/modules/11-orders/routes/held-transmissions-typebox.ts — the held-order worklist's TypeBox schemas
 // (F-201, #248). Named `*-typebox` so the table-ownership import heuristic never mistakes it for a Drizzle import.
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { type Static, Type } from "@sinclair/typebox";
 import type { HeldTransmissionPage } from "../stuck-transmission-recovery";
 
 /** `GET /api/v1/orders/held-transmissions` — oldest first; `cursor` is the opaque `nextCursor` of the previous page. */
 export const HeldTransmissionsQuerySchema = Type.Object({
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 50 })),
-  cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 300 })),
+  ...pageQuery({ max: 100, defaultSize: 50 }),
 });
 export type HeldTransmissionsQuery = Static<typeof HeldTransmissionsQuerySchema>;
 

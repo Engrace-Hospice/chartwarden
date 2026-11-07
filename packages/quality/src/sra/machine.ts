@@ -77,9 +77,7 @@ export type SraCycleEvent =
     };
 
 /** The legal §2.2 transition graph (from → events accepted). Guards are checked separately. */
-export const SRA_CYCLE_GRAPH: Readonly<
-  Record<SraCycleStatus, ReadonlyArray<SraCycleEvent["type"]>>
-> = {
+const SRA_CYCLE_GRAPH: Readonly<Record<SraCycleStatus, ReadonlyArray<SraCycleEvent["type"]>>> = {
   chartered: ["startAssessment"],
   in_progress: ["submitForReview"],
   review: ["close", "returnToProgress"],

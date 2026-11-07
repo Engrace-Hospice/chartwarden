@@ -25,9 +25,9 @@ import type {
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
 
-export const M36_MESSAGE_HINT_CONSUMER = "m36.message-hints" as const;
+const M36_MESSAGE_HINT_CONSUMER = "m36.message-hints" as const;
 
-export const M36_MESSAGE_HINT_EVENT_TYPES = [
+const M36_MESSAGE_HINT_EVENT_TYPES = [
   "m36.message.sent",
   "m36.message.edited",
   "m36.message.deleted",

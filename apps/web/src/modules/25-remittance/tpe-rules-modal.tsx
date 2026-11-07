@@ -1,8 +1,8 @@
-import { TextField, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the per-MAC TPE exit thresholds (hospice ADR/TPE/QIC PRD, milestone 5), modelled
 // on the ADR window rules. NO threshold is built in: the figures commonly quoted for each MAC are unverified, so this
 // organization records the number from its MAC's TPE letter, with the source and the day it was verified. Until it
 // does, the tracker says "No threshold confirmed" instead of assuming one.
+import { TextField, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { ActionModal, ErrorAlert, FormButtons, Hint } from "./action-ui";
@@ -69,7 +69,7 @@ export function TpeRulesModal({
     if (!res.ok) {
       setError(res.message);
       // The rule moved under us: show the message, and refresh the list so the next save carries the new version.
-      if (res.code === "VERSION_CONFLICT") await reload();
+      if (res.code === "STALE_VERSION") await reload();
       return;
     }
     setMacName("");

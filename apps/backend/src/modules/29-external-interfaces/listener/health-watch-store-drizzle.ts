@@ -1,8 +1,9 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/29-external-interfaces/listener/health-watch-store-drizzle.ts - GAP-043. The Drizzle
 // `FeedWatchStore`: reads the watchable feeds (feed + listener-state row + newest inbound frame) and applies a transition
 // - the state row, the current hour's health row and the outbox event - in ONE `withOrgContext` transaction, as the
 // feed's own tenant (RLS on `app.org_id`). The watcher runs in the worker role as `chartwarden_app`.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 
@@ -13,7 +14,6 @@ import type { FeedWatchStore, WatchedFeed } from "./health-watch";
 
 const STATE = schema.externalFeedListenerState;
 const HEALTH = schema.externalFeedHealth;
-const SYSTEM_USER_ID = "";
 
 const CIRCUIT_STATES: readonly ListenerCircuitState[] = ["closed", "open", "half_open"];
 const asState = (value: unknown): ListenerCircuitState =>
@@ -43,7 +43,7 @@ export function createDrizzleFeedWatchStore(deps: {
     async listWatchable(organizationId, now) {
       return withOrgContext(
         deps.db,
-        { organizationId, userId: SYSTEM_USER_ID },
+        { organizationId, userId: CONSUMER_USER_ID },
         async (tx): Promise<readonly WatchedFeed[]> => {
           // Active inbound feeds that are expected to be serving NOW: status active, inside the active window, not
           // revoked, and the feed-level BAA not past its expiry (the M40 gate's own refusals surface through the
@@ -88,7 +88,7 @@ export function createDrizzleFeedWatchStore(deps: {
       const { feed } = transition;
       await withOrgContext(
         deps.db,
-        { organizationId: feed.organizationId, userId: SYSTEM_USER_ID },
+        { organizationId: feed.organizationId, userId: CONSUMER_USER_ID },
         async (tx) => {
           const db = tx as DbClient;
           // State: only the watcher-owned columns, so a concurrent listener heartbeat is never overwritten.

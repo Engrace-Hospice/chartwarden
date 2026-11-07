@@ -8,9 +8,14 @@
 // service 404s a mismatch) + the §D13 AI-block + `Idempotency-Key` on mutations. NO PHI. Org/actor/membership binding is
 // ALWAYS server-side.
 import { nationalRateReferenceFor } from "@chartwarden/billing";
+import {
+  actorOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, rejectAiActor, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { writeActorOf } from "./actor";
 import { P, PROVIDER_SCOPE, targetProviderFromBody, targetProviderFromQuery } from "./guards";
 import type { RateTableRouteService } from "./rate-table-service";
 import {
@@ -23,7 +28,6 @@ import {
   type RateTableNationalReferenceResponse,
   SupersedeRateTableBodySchema,
   assertWholeCents,
-  parse,
 } from "./rate-table-typebox";
 
 export interface RateTableRouteDeps {

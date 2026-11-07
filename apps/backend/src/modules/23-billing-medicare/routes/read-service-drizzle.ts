@@ -1,5 +1,6 @@
 import {
   type ArAgingDto,
+  type CursorPage,
   type MetricsBucket,
   canonicalRemediation,
   canonicalRuleKey,
@@ -36,7 +37,6 @@ import {
 } from "../services/claim-attention";
 import { type PriorStayFact, resolveRhcCarryOver } from "../services/rhc-carry-over";
 import type { M23ReadActor } from "./actor";
-import type { CursorPage } from "./concurrency";
 import { projectHospicePeriods } from "./hospice-periods";
 import { mapNoe, mapNotr } from "./notice-views";
 import type {

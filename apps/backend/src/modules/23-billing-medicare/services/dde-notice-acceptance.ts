@@ -13,6 +13,7 @@
 // A notice that is ALREADY `ack_accepted` (the electronic path got there first) is left untouched: the electronic
 // answer stays the notice's truth and the queue item just records its own outcome.
 import { type NoticeState, noeMachine, notrMachine, repositories } from "@chartwarden/billing";
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import {
   ChartWardenError,
   ConflictError,
@@ -164,11 +165,7 @@ export async function applyDdeNoticeAcceptance(
         : {},
     );
     if (!res.ok || !res.row) {
-      throw new ChartWardenError(
-        "VERSION_CONFLICT",
-        `the ${input.kind.toUpperCase()} was modified concurrently`,
-        412,
-      );
+      throw new StaleVersionError(`the ${input.kind.toUpperCase()} was modified concurrently`);
     }
     current = { ...current, ...res.row };
   }

@@ -7,9 +7,9 @@ import type { CoverageHour } from "./window-builder";
 import { hourStartOf } from "./window-builder";
 
 /** §2.3 — the coverage-gap alert horizon floor (hours forward); the inpatient_unit default. */
-export const RN_COVERAGE_HORIZON_FLOOR_HOURS = 8;
+const RN_COVERAGE_HORIZON_FLOOR_HOURS = 8;
 /** §2.3 — the maximum horizon a tenant may configure (the inpatient_unit CHECK ceiling). */
-export const RN_COVERAGE_HORIZON_MAX_HOURS = 168;
+const RN_COVERAGE_HORIZON_MAX_HOURS = 168;
 /** §2.3 — the forward RN coverage a unit must hold to exit `provisional` (activate): 168 hours = 7 days. */
 export const RN_ACTIVATION_FORWARD_HOURS = 168;
 

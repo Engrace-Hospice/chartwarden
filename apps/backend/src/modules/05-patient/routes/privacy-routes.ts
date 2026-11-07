@@ -1,3 +1,4 @@
+import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/05-patient/routes/privacy-routes.ts — the Privacy Officer surface (M5 §4.2,
 // §4.7, §5.1 "Privacy flags", §6 "Resync privacy flags").
 //
@@ -21,15 +22,13 @@
 //
 // Reads are §2.5 read-audited (Part 2 facts — flag set, origin, consent state — are themselves sensitive);
 // the resync is write-audited by the M4 trigger on `patient_privacy_flag_snapshot` (as the acting user).
-import { requirePermission } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SnapshotRebuildSummary } from "../jobs/snapshot-rebuild";
 import type { PrivacyOfficerService } from "../privacy/officer-db";
 import { LooseIdParamsSchema, parse } from "./patient-typebox";
 import { RestrictedPatientsQuerySchema } from "./privacy-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface PatientPrivacyRouteDeps {
   service: PrivacyOfficerService;
@@ -41,12 +40,6 @@ export interface PatientPrivacyRouteDeps {
 }
 
 const PRIVACY_ADMIN = requirePermission("privacy.admin") as PreHandler;
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
-}
 
 const notFound = () => new ChartWardenError("NOT_FOUND", "patient not found", 404);
 

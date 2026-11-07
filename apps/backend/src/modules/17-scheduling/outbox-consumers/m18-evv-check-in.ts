@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionVisit } from "@chartwarden/scheduling";
 // apps/backend/src/modules/17-scheduling/outbox-consumers/m18-evv-check-in.ts — the D14 EVV-authoritative
 // `published → en_route` advance (F-152, #248).
 //
@@ -17,17 +19,13 @@
 // has ever written it. The self-attest path has no `eventId` to write (there is no `evv_event` row on that
 // path), which is presumably why the column was never wired there; THIS consumer does have one
 // (`m18.evv.check_in_recorded`'s own `eventId`), so it is written here for the first time.
-import { type DbClient, schema } from "@chartwarden/db";
-import { transitionVisit } from "@chartwarden/scheduling";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { VisitStatus } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 
 const V = schema.visit;
 const VSH = schema.visitStateHistory;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M17_EVV_CHECK_IN_CONSUMER = {
   eventName: "m18.evv.check_in_recorded",

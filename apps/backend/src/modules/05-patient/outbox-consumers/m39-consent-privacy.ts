@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/05-patient/outbox-consumers/m39-consent-privacy.ts — the §7.6/D10
 // `patient_privacy_flag_snapshot` recompute this module's own `privacy/index.ts` has always been
 // PURE for, with no live caller (F-167, #248, closing 4 of the m5 `handlers-unbound` group's six
@@ -62,7 +63,7 @@
 // track is a silent no-op, matching every other M5 consumer's convention
 // (`m6-admission-activated.ts`, `m17-visit-assignment.ts`) — a later, correctly-scoped delivery still
 // resolves fine.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
@@ -77,10 +78,6 @@ import {
 
 const P = schema.patients;
 const PFS = schema.patientPrivacyFlagSnapshots;
-
-/** §3.3-style consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID`
- *  convention — M6/M16/M23's outbox consumers all use the identical empty-string sentinel). */
-const CONSUMER_USER_ID = "";
 
 /** M39's own §4.3.1-decided type→flag mapping, re-expressed as data (see file header for why this
  *  cannot be a cross-module import). Widen this literal, never re-derive it independently, if M39

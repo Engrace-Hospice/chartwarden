@@ -1,3 +1,4 @@
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/30-quality/jobs/review-overdue-sweeps.ts — GAP-049.
 //
 // The two SCHEDULED §4.9 alerts that had no cron (alert-defs.ts `trigger.kind: "scheduled"`):
@@ -7,18 +8,17 @@
 // a request), picks the rows past their due date and raises the M36 alert through `AlertEmitter`. The alert
 // correlation id carries a cadence bucket, so a re-run inside the bucket dedupes (alert is UNIQUE on
 // (organization_id, correlation_id)) and a new bucket re-pages. Payloads are ids and instants only — no PHI.
-import type { DbClient } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
 
 export const M30_REVIEW_OVERDUE_QUEUE = "m30.review_overdue_sweep";
 /** 08:30 UTC daily — clear of the 08:00 CAP-overdue scan. */
-export const M30_REVIEW_OVERDUE_SCHEDULE = "30 8 * * *";
+const M30_REVIEW_OVERDUE_SCHEDULE = "30 8 * * *";
 const MS_PER_DAY = 86_400_000;
 const MORTALITY_REPEAT_DAYS = 2;
 const COP_REPEAT_DAYS = 14;
-const SYSTEM_USER_ID = "";
 
 export interface OverdueMortalityReview {
   readonly reviewId: string;
@@ -136,7 +136,7 @@ export function scanOrgForOverdueMortalityReviews(
   organizationId: string,
   now: Date,
 ): Promise<readonly OverdueMortalityReview[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const res = await tx.execute(sql`
       SELECT id AS "reviewId", target_completion_at AS "targetCompletionAt"
         FROM mortality_review
@@ -157,7 +157,7 @@ export function scanOrgForOverdueCopReviews(
   organizationId: string,
   now: Date,
 ): Promise<readonly OverdueCopCitation[]> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const res = await tx.execute(sql`
       SELECT id AS "statusId", cop_citation AS "copCitation", next_review_due_at AS "nextReviewDueAt"
         FROM cop_compliance_status

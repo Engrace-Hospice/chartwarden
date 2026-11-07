@@ -1,3 +1,4 @@
+import { hasOrgWideScope, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/08-encounters/routes/encounters-routes.ts — M8-T09 the §4.1 route inventory
 // (34 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth,
 // M3) on the §4.5 keys M8 registers into M3's catalog (M8_CONTRIBUTED_PERMISSIONS). Org binding is
@@ -9,14 +10,20 @@
 // predicate (abac-predicates.ts) on routes 1/2/3/8/18/19/20/22 — the module previously shipped with NO
 // route-level caseload enforcement despite the header comment's prior claim it was "composed separately
 // upstream" (nothing ever composed it). §7.7: the selections PATCH carries `If-Match` (the row version)
-// → 412 VERSION_MISMATCH on skew. Sign routes (14/20/21/25) carry the client's step-up timestamp;
+// → 409 STALE_VERSION on skew. Sign routes (14/20/21/25) carry the client's step-up timestamp;
 // freshness (≤ 5 min, §2.7 D13) is verified here and injected into the lifecycle machine
 // (STEP_UP_AUTH_REQUIRED → 412 when stale).
-import { hasOrgWideScope, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import {
+  type PreHandler,
+  ifMatchVersionOf,
+  membershipActorOf,
+  orgOf,
+  requireIfMatch,
+} from "@chartwarden/shared/route-kit";
 import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
-import { ifMatchVersionOf, requireIfMatch } from "./concurrency";
+
 import {
   AddendumParamsSchema,
   AdministrativeOverrideSchema,
@@ -47,9 +54,6 @@ import {
   parse,
 } from "./encounters-typebox";
 import type { EncounterRouteService, SigningActor } from "./service";
-
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface EncounterRouteDeps {
   service: EncounterRouteService;
@@ -82,32 +86,6 @@ async function listScopeOf(
   } catch {
     return sessionIds;
   }
-}
-
-/** The org a service principal acts in (#680). It has no membership, so the user `actorOf` would 401 it. */
-function systemOrgOf(request: FastifyRequest): string {
-  const organizationId = request.context?.organizationId;
-  if (!organizationId) throw new UnauthorizedError();
-  return organizationId;
-}
-
-function actorOf(request: FastifyRequest): {
-  organizationId: string;
-  userId: string;
-  roles: readonly string[];
-} {
-  const ctx = request.context;
-  // `userId` here is the codebase-wide convention of "the acting MEMBERSHIP id" (matches
-  // `signingActorOf` below, and every `authored_by_membership_id`/`created_by_membership_id`
-  // column this module's service layer writes it into — see encounters-route-service-db.ts:472's
-  // own comment: "stored as the authoring membership"). This used to read `ctx.userId` (the raw
-  // Better Auth user id, set unconditionally by the M2 authenticate hook — a DIFFERENT id from the
-  // org membership), which meant `POST /encounters` FK-violated on `authored_by_membership_id`
-  // every single call, and `GET /encounters/my-drafts` silently returned zero rows for everyone
-  // (filtering by a value no draft's `authored_by_membership_id` could ever equal).
-  const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: membershipId, roles: ctx.roles };
 }
 
 /** The real caller signing an encounter/cosignature/addendum (§3.3/D13) — membership id + M2 session
@@ -242,7 +220,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
 
   // 1 — create draft encounter.
   app.post("/api/v1/encounters", { preHandler: [AUTHOR, SCOPE_CREATE] }, async (request, reply) => {
-    const { organizationId, userId, roles } = actorOf(request);
+    const { organizationId, userId, roles } = membershipActorOf(request);
     const body = parse(CreateEncounterSchema, request.body);
     if (!authorDisciplinesOf(roles).has(body.discipline)) {
       throw new ForbiddenError(
@@ -274,7 +252,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       config: { auditRead: { resourceKind: "encounter", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(EncounterListQuerySchema, request.query);
       const patientIds = await listScopeOf(request, caseloadPatientIds);
       return service.listEncounters(organizationId, {
@@ -299,7 +277,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       config: { auditRead: { resourceKind: "encounter", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.cosignatureQueue(organizationId);
     },
   );
@@ -312,7 +290,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       config: { auditRead: { resourceKind: "encounter", list: true } },
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       return service.myDrafts(organizationId, userId);
     },
   );
@@ -325,7 +303,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       config: { auditRead: { resourceKind: "encounter", resourceIdParam: "encounterId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.getEncounter(organizationId, encounterIdOf(request));
     },
   );
@@ -343,7 +321,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       ],
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       parse(EncounterParamsSchema, request.params);
       const body = parse(UpdateSelectionsSchema, request.body);
       return service.updateSelections(
@@ -370,7 +348,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       parse(EncounterParamsSchema, request.params);
       return service.getSelections(organizationId, encounterIdOf(request));
     },
@@ -395,7 +373,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       parse(EncounterParamsSchema, request.params);
       return service.getTemplate(organizationId, encounterIdOf(request));
     },
@@ -406,7 +384,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     "/api/v1/encounters/:encounterId/vitals",
     { preHandler: [VITALS, SCOPE_FOR("vitals.author"), IS_AUTHOR_OR_SUPERVISOR("vitals.author")] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const body = parse(CaptureVitalsSchema, request.body);
       const res = await service.captureVitals(organizationId, encounterIdOf(request), body);
       return reply.code(201).send(res);
@@ -425,7 +403,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       ],
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { encounterId, vitalId } = parse(VitalParamsSchema, request.params);
       const body = parse(CaptureVitalsSchema, request.body);
       return service.editVitals(organizationId, encounterId, vitalId, body);
@@ -464,7 +442,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.listVitals(organizationId, encounterIdOf(request));
     },
   );
@@ -476,7 +454,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       preHandler: [MILEAGE, SCOPE_FOR("mileage.author"), IS_AUTHOR_OR_SUPERVISOR("mileage.author")],
     },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const body = parse(CaptureMileageSchema, request.body);
       const res = await service.captureMileage(organizationId, encounterIdOf(request), body);
       return reply.code(201).send(res);
@@ -495,7 +473,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       ],
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const body = parse(CaptureMileageSchema, request.body);
       return service.editMileage(organizationId, encounterIdOf(request), body);
     },
@@ -512,7 +490,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       config: { auditRead: { resourceKind: "mileage", resourceIdParam: "encounterId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       parse(EncounterParamsSchema, request.params);
       return service.getMileage(organizationId, encounterIdOf(request));
     },
@@ -527,7 +505,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     "/api/v1/encounters/:encounterId/care-plan-links",
     { preHandler: [AUTHOR, SCOPE_FOR("encounter.author")] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const body = parse(CarePlanLinkSchema, request.body);
       const res = await service.addCarePlanLink(
         organizationId,
@@ -552,7 +530,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.listCarePlanLinks(organizationId, encounterIdOf(request));
     },
   );
@@ -573,7 +551,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       ],
     },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { encounterId, linkId } = parse(CarePlanLinkParamsSchema, request.params);
       await service.removeCarePlanLink(organizationId, userId, encounterId, linkId);
       return reply.code(204).send();
@@ -591,7 +569,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       ],
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const body = parse(EvvReconcileSchema, request.body);
       return service.documentEvvMissing(
         organizationId,
@@ -606,7 +584,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     "/api/v1/encounters/:encounterId/finalize",
     { preHandler: [FINALIZE, SCOPE_FOR("encounter.finalize"), IS_AUTHOR("encounter.finalize")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const body = parse(FinalizeEncounterSchema, request.body ?? {});
       return service.finalize(organizationId, encounterIdOf(request), today(), {
         lateEntryReason: body.lateEntryReason,
@@ -623,7 +601,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     "/api/v1/encounters/:encounterId/hearthnote/enhance",
     { preHandler: [FINALIZE, SCOPE_FOR("encounter.finalize"), IS_AUTHOR("encounter.finalize")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       parse(HearthnoteEnhanceSchema, request.body);
       return service.enhanceHearthnote(organizationId, encounterIdOf(request));
     },
@@ -634,7 +612,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     "/api/v1/encounters/:encounterId/hearthnote/modifications/:modId/decisions",
     { preHandler: [FINALIZE, SCOPE_FOR("encounter.finalize"), IS_AUTHOR("encounter.finalize")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { encounterId, modId } = parse(ModificationParamsSchema, request.params);
       parse(ModificationDecisionSchema, request.body);
       return service.recordModificationDecision(organizationId, encounterId, modId);
@@ -653,7 +631,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       ],
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const body = parse(SignEncounterSchema, request.body); // the attestation-confirmed shape
       return service.sign(organizationId, encounterIdOf(request), signingActorOf(request), {
         at: today(),
@@ -673,7 +651,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       ],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const body = parse(LateEntryOverrideSchema, request.body);
       return service.lateEntryOverride(organizationId, encounterIdOf(request), {
         actorMembershipId: userId,
@@ -689,7 +667,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       preHandler: [ADMIN_OVERRIDE, STEP_UP("encounter.administrative_override")],
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const body = parse(AdministrativeOverrideSchema, request.body);
       return service.administrativeOverride(organizationId, encounterIdOf(request), {
         actorMembershipId: userId,
@@ -703,7 +681,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     "/api/v1/encounters/:encounterId/void",
     { preHandler: [ADMIN_OVERRIDE] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const body = parse(VoidEncounterSchema, request.body);
       return service.voidEncounter(organizationId, encounterIdOf(request), {
         actorMembershipId: userId,
@@ -724,7 +702,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.getCosignature(organizationId, encounterIdOf(request));
     },
   );
@@ -734,7 +712,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     "/api/v1/encounters/:encounterId/cosignature/acknowledge",
     { preHandler: [COSIGN, ABAC_COSIGN, SCOPE_FOR("encounter.cosign")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.cosignAcknowledge(
         organizationId,
         encounterIdOf(request),
@@ -751,7 +729,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       preHandler: [COSIGN, ABAC_COSIGN, SCOPE_FOR("encounter.cosign"), STEP_UP("encounter.cosign")],
     },
     async (request) => {
-      const { organizationId, roles } = actorOf(request);
+      const { organizationId, roles } = membershipActorOf(request);
       parse(SignEncounterSchema, request.body); // validates the attestation-confirmed shape
       return service.cosignSign(organizationId, encounterIdOf(request), signingActorOf(request), {
         isQualifiedRn: isRn(roles),
@@ -771,7 +749,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       ],
     },
     async (request) => {
-      const { organizationId, roles } = actorOf(request);
+      const { organizationId, roles } = membershipActorOf(request);
       const body = parse(SupervisorReleaseSchema, request.body);
       return service.supervisorRelease(organizationId, encounterIdOf(request), {
         isSupervisor: isSupervisor(roles),
@@ -786,7 +764,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     "/api/v1/encounters/:encounterId/addenda",
     { preHandler: [ADDENDUM_AUTHOR, SCOPE_FOR("encounter.addendum_author")] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const body = parse(CreateAddendumSchema, request.body);
       // GAP-028 — `userId` here is the caller's membership id: the addendum is THEIRS, not the parent's.
       const res = await service.createAddendum(organizationId, encounterIdOf(request), {
@@ -823,7 +801,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       return service.listChartPromotions(
         organizationId,
         encounterIdOf(request),
@@ -838,7 +816,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     // Declining is a decision on what enters the chart: the same permission as signing the addendum (WP 3.7 review M4).
     { preHandler: [PROMOTION_PARAMS_UUID, ADDENDUM_SIGN, SCOPE_FOR("encounter.addendum_sign")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { encounterId, requestId } = parse(ChartPromotionParamsSchema, request.params);
       const body = parse(RejectChartPromotionSchema, request.body);
       return service.rejectChartPromotion(organizationId, encounterId, requestId, {
@@ -860,7 +838,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       ],
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
       const body = parse(UpdateSelectionsSchema, request.body);
       return service.updateAddendumSelections(organizationId, encounterId, addendumId, body);
@@ -881,7 +859,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
       return service.getAddendumSelections(organizationId, encounterId, addendumId);
     },
@@ -898,7 +876,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       ],
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
       return service.finalizeAddendum(organizationId, encounterId, addendumId);
     },
@@ -916,7 +894,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       ],
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
       parse(SignEncounterSchema, request.body); // validates the attestation-confirmed shape
       return service.signAddendum(
@@ -937,7 +915,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       config: { auditRead: { resourceKind: "encounter", list: true } },
     },
     async (request) => {
-      const organizationId = systemOrgOf(request);
+      const organizationId = orgOf(request);
       const q = parse(BillableQuerySchema, request.query);
       return service.billable(organizationId, q.encounterIds);
     },
@@ -951,7 +929,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       config: { auditRead: { resourceKind: "encounter", list: true } },
     },
     async (request) => {
-      const organizationId = systemOrgOf(request);
+      const organizationId = orgOf(request);
       const q = parse(SignedSinceQuerySchema, request.query);
       return service.signedSince(organizationId, q.since);
     },
@@ -967,7 +945,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       },
     },
     async (request) => {
-      const organizationId = systemOrgOf(request);
+      const organizationId = orgOf(request);
       return service.renderPayload(organizationId, encounterIdOf(request));
     },
   );

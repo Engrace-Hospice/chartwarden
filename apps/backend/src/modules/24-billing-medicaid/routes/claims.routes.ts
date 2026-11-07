@@ -2,11 +2,12 @@
 // validation + AR surface (routes 1–17, 35, 36). Reads gate on the §4.7 key; mutations compose the §4.8 ABAC
 // predicate over the route's `:id` (mapped onto the claim target), the §D12 step-up on submit/replace/void,
 // the §8.6 `actor_kind='ai_*'` reject, and the §F08 Idempotency-Key. Org/actor binding is server-side.
+
+import { rejectAiActor, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
-import { actorOf, rejectAiActor, writeActorOf } from "./actor";
-import { clampLimit, ifMatchVersion, requireIdempotencyKey } from "./concurrency";
-import { ABAC_BODY_PE, ABAC_CLAIM, ABAC_RESULT, P, STEP_UP } from "./guards";
+import { m24ActorOf } from "./actor";
+import { ABAC_BODY_PE, ABAC_CLAIM, ABAC_RESULT, P, STEP_UP, optionalIfMatch } from "./guards";
 import {
   ApplyOverrideBody,
   AssembleClaimBody,
@@ -28,12 +29,13 @@ export interface ClaimsRouteDeps {
   readonly writeService: M24WriteService;
 }
 
-const AI = rejectAiActor();
+const AI = rejectAiActor("AI principals cannot create or modify Medicaid billing records (D12)");
 const IDEMPOTENT = requireIdempotencyKey();
+/** The claim list's page size: 50 by default, clamped to 100 (the schema admits up to 200). */
+const CLAIM_PAGE_DEFAULT = 50;
+const CLAIM_PAGE_MAX = 100;
 const pParam = (request: { params: unknown }, key: string): string =>
   (request.params as Record<string, string>)[key] ?? "";
-const vParam = (request: { headers: Record<string, unknown> }): number | null =>
-  ifMatchVersion(request);
 
 export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps): void {
   const { readService, writeService } = deps;
@@ -51,7 +53,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     },
     async (request, reply) => {
       const body = parse(AssembleClaimBody, request.body);
-      const claim = await writeService.assembleClaim(writeActorOf(request), body);
+      const claim = await writeService.assembleClaim(m24ActorOf(request), body);
       return reply.code(201).send(claim);
     },
   );
@@ -67,7 +69,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       const q = parseQuery(ClaimListQuery, request.query);
       return reply.send(
         await readService.listClaims(
-          actorOf(request),
+          m24ActorOf(request),
           {
             state: q.state,
             kind: q.kind,
@@ -77,7 +79,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
             providerEntityId: q.providerEntityId,
           },
           q.cursor,
-          clampLimit(q.limit === undefined ? undefined : String(q.limit)),
+          Math.min(q.limit ?? CLAIM_PAGE_DEFAULT, CLAIM_PAGE_MAX),
         ),
       );
     },
@@ -94,7 +96,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       config: { auditRead: { resourceKind: "medicaid_claim", resourceIdParam: "id" } },
     },
     async (request, reply) => {
-      const claim = await readService.getClaim(actorOf(request), pParam(request, "id"));
+      const claim = await readService.getClaim(m24ActorOf(request), pParam(request, "id"));
       if (!claim) throw new NotFoundError("medicaid claim not found");
       return reply.send(claim);
     },
@@ -114,8 +116,8 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     async (request, reply) => {
       const body = parse(UpdateDraftClaimBody, request.body);
       return reply.send(
-        await writeService.updateDraftClaim(writeActorOf(request), pParam(request, "id"), {
-          expectedVersion: vParam(request),
+        await writeService.updateDraftClaim(m24ActorOf(request), pParam(request, "id"), {
+          expectedVersion: optionalIfMatch(request),
           mcoId: body.mcoId,
         }),
       );
@@ -135,9 +137,9 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     },
     async (request, reply) => {
       await writeService.deleteDraftClaim(
-        writeActorOf(request),
+        m24ActorOf(request),
         pParam(request, "id"),
-        vParam(request),
+        optionalIfMatch(request),
       );
       return reply.code(204).send();
     },
@@ -155,7 +157,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       ],
     },
     async (request, reply) =>
-      reply.send(await writeService.validateClaim(writeActorOf(request), pParam(request, "id"))),
+      reply.send(await writeService.validateClaim(m24ActorOf(request), pParam(request, "id"))),
   );
 
   // 7 — submit (step-up)
@@ -173,8 +175,8 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     async (request, reply) => {
       const body = parse(SubmitClaimBody, request.body);
       return reply.send(
-        await writeService.submitClaim(writeActorOf(request), pParam(request, "id"), {
-          expectedVersion: vParam(request),
+        await writeService.submitClaim(m24ActorOf(request), pParam(request, "id"), {
+          expectedVersion: optionalIfMatch(request),
           channelHint: body.channelHint,
         }),
       );
@@ -196,8 +198,8 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     async (request, reply) => {
       const body = parse(ReplaceClaimBody, request.body);
       return reply.code(201).send(
-        await writeService.replaceClaim(writeActorOf(request), pParam(request, "id"), {
-          expectedVersion: vParam(request),
+        await writeService.replaceClaim(m24ActorOf(request), pParam(request, "id"), {
+          expectedVersion: optionalIfMatch(request),
           reason: body.reason,
         }),
       );
@@ -219,8 +221,8 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     async (request, reply) => {
       const body = parse(VoidClaimBody, request.body);
       return reply.code(201).send(
-        await writeService.voidClaim(writeActorOf(request), pParam(request, "id"), {
-          expectedVersion: vParam(request),
+        await writeService.voidClaim(m24ActorOf(request), pParam(request, "id"), {
+          expectedVersion: optionalIfMatch(request),
           reason: body.reason,
         }),
       );
@@ -241,9 +243,9 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     async (request, reply) =>
       reply.send(
         await writeService.abandonClaim(
-          writeActorOf(request),
+          m24ActorOf(request),
           pParam(request, "id"),
-          vParam(request),
+          optionalIfMatch(request),
         ),
       ),
   );
@@ -261,7 +263,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       },
     },
     async (request, reply) =>
-      reply.send(await readService.listClaimLines(actorOf(request), pParam(request, "id"))),
+      reply.send(await readService.listClaimLines(m24ActorOf(request), pParam(request, "id"))),
   );
 
   // 12 — submissions
@@ -277,7 +279,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       },
     },
     async (request, reply) =>
-      reply.send(await readService.listSubmissions(actorOf(request), pParam(request, "id"))),
+      reply.send(await readService.listSubmissions(m24ActorOf(request), pParam(request, "id"))),
   );
 
   // 13 — acknowledgments
@@ -297,7 +299,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       },
     },
     async (request, reply) =>
-      reply.send(await readService.listAcknowledgments(actorOf(request), pParam(request, "id"))),
+      reply.send(await readService.listAcknowledgments(m24ActorOf(request), pParam(request, "id"))),
   );
 
   // 14 — validation run (RBAC; the run→claim caseload narrowing binds with the M5 CaseloadProvider seam)
@@ -308,7 +310,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       config: { auditRead: { resourceKind: "medicaid_validation_run", resourceIdParam: "id" } },
     },
     async (request, reply) => {
-      const run = await readService.getValidationRun(actorOf(request), pParam(request, "id"));
+      const run = await readService.getValidationRun(m24ActorOf(request), pParam(request, "id"));
       if (!run) throw new NotFoundError("validation run not found");
       return reply.send(run);
     },
@@ -327,7 +329,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       },
     },
     async (request, reply) =>
-      reply.send(await readService.listValidationRuns(actorOf(request), pParam(request, "id"))),
+      reply.send(await readService.listValidationRuns(m24ActorOf(request), pParam(request, "id"))),
   );
 
   // 16 — apply override (step-up)
@@ -346,7 +348,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       const body = parse(ApplyOverrideBody, request.body);
       return reply
         .code(201)
-        .send(await writeService.applyOverride(writeActorOf(request), pParam(request, "id"), body));
+        .send(await writeService.applyOverride(m24ActorOf(request), pParam(request, "id"), body));
     },
   );
 
@@ -361,7 +363,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
         },
       },
     },
-    async (request, reply) => reply.send(await readService.listOverrides(actorOf(request))),
+    async (request, reply) => reply.send(await readService.listOverrides(m24ActorOf(request))),
   );
 
   // 35 — AR aging dashboard
@@ -378,7 +380,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     async (request, reply) =>
       reply.send(
         await readService.arDashboard(
-          actorOf(request),
+          m24ActorOf(request),
           parseQuery(ProviderEntityQuery, request.query).providerEntityId,
         ),
       ),
@@ -394,7 +396,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     async (request, reply) =>
       reply.send(
         await readService.arMetrics(
-          actorOf(request),
+          m24ActorOf(request),
           parseQuery(ProviderEntityQuery, request.query).providerEntityId,
         ),
       ),
@@ -410,7 +412,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     },
     async (request, reply) => {
       const q = parseQuery(ValidationWorklistQuery, request.query);
-      return reply.send(await readService.validationWorklist(actorOf(request), q.limit ?? 500));
+      return reply.send(await readService.validationWorklist(m24ActorOf(request), q.limit ?? 500));
     },
   );
 }

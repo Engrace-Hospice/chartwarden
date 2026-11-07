@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { repositories, resolveWageIndex, validateWageIndexEntry } from "@chartwarden/billing";
 import type { ResolvedWageIndex } from "@chartwarden/billing";
 import type * as schema from "@chartwarden/db/schema";
+import { isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import type { M23ReadActor, M23WriteActor } from "./actor";
@@ -58,12 +59,6 @@ export function mapWageIndex(row: schema.TenantWageIndex): WageIndexView {
     supersededById: row.supersededById,
     createdAt: row.createdAt.toISOString(),
   };
-}
-
-/** Postgres `unique_violation` — the partial unique index tripped by a concurrent writer for the same CCN + fiscal year. */
-function isUniqueViolation(err: unknown): boolean {
-  const e = err as { code?: string; cause?: { code?: string } } | null;
-  return e?.code === "23505" || e?.cause?.code === "23505";
 }
 
 /**

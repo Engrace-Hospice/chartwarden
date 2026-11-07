@@ -1,7 +1,8 @@
 // GAP-085 — the clinician lab observation list is caseload-scoped, filters + keyset cursor run before LIMIT.
 import { describe, expect, it, vi } from "vitest";
 
-import { decodeObservationCursor, resolveLabListScope } from "../routes/lab-list-scope";
+import { decodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
+import { resolveLabListScope } from "../routes/lab-list-scope";
 import { createInMemoryM29Store } from "../routes/store";
 
 const ORG = "org-1";
@@ -88,7 +89,7 @@ describe("listObservations scoping, filters and cursor (GAP-085)", () => {
     const first = await store.listObservations(ORG, { abnormalFlag: "HH", limit: 1 });
     expect(first.items.map((i) => i.id)).toEqual([O3]);
     expect(first.nextCursor).toBeDefined();
-    expect(decodeObservationCursor(first.nextCursor)).toMatchObject({ id: O3 });
+    expect(decodeCursor(ORG, first.nextCursor, isKeysetCursor)).toMatchObject({ id: O3 });
     const second = await store.listObservations(ORG, {
       abnormalFlag: "HH",
       limit: 1,
@@ -99,25 +100,16 @@ describe("listObservations scoping, filters and cursor (GAP-085)", () => {
   });
 });
 
-describe("decodeObservationCursor (malformed input)", () => {
+describe("listObservations cursor (malformed input)", () => {
   const enc = (v: unknown) => Buffer.from(JSON.stringify(v), "utf8").toString("base64url");
 
-  it("round-trips a well-formed cursor", () => {
-    const c = { d: "2026-01-03T00:00:00.000Z", id: O3 };
-    expect(decodeObservationCursor(enc(c))).toEqual(c);
-  });
-
-  it("treats a non-uuid id as the first page (no 500 from the uuid cast)", () => {
-    expect(decodeObservationCursor(enc({ d: "2026-01-03T00:00:00.000Z", id: "not-a-uuid" }))).toBe(
-      undefined,
-    );
-    expect(decodeObservationCursor(enc({ d: "2026-01-03T00:00:00.000Z", id: "' OR 1=1 --" }))).toBe(
-      undefined,
-    );
-  });
-
-  it("treats an unparseable date or non-JSON as the first page", () => {
-    expect(decodeObservationCursor(enc({ d: "nope", id: O3 }))).toBe(undefined);
-    expect(decodeObservationCursor("%%%")).toBe(undefined);
+  it("refuses an unsigned or non-JSON cursor with 422 INVALID_CURSOR, never page 1", async () => {
+    const store = createInMemoryM29Store();
+    for (const cursor of [enc({ a: "2026-01-03T00:00:00.000Z", id: "' OR 1=1 --" }), "%%%"]) {
+      await expect(store.listObservations(ORG, { cursor })).rejects.toMatchObject({
+        statusCode: 422,
+        code: "INVALID_CURSOR",
+      });
+    }
   });
 });

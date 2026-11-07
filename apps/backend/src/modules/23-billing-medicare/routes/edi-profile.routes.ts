@@ -5,16 +5,21 @@
 // credential permissions (the same setup-wizard step, the same roles): reads `billing.mac_credential.read`, the write
 // `billing.mac_credential.admin` + the §D14 step-up. Both compose the §4.7 `provider_entity_billing_scope` predicate over the
 // `:providerEntityId` path param; the write adds the §D13 AI-block + `Idempotency-Key`. A first PUT omits `If-Match`; an update
-// carries the version last read (428 / 412). No PHI; org and membership binding is server-side.
+// carries the version last read (428 / 409). No PHI; org and membership binding is server-side.
+import {
+  actorOf,
+  ifMatchVersionOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, rejectAiActor, writeActorOf } from "./actor";
-import { parseIfMatch, requireIdempotencyKey } from "./concurrency";
+import { writeActorOf } from "./actor";
 import type { EdiProfileRouteService } from "./edi-profile-service";
 import {
   EdiProfileListParamsSchema,
   EdiProfileParamsSchema,
   UpsertEdiProfileBodySchema,
-  parse,
 } from "./edi-profile-typebox";
 import { P, PROVIDER_SCOPE, STEP_UP, targetProviderFromParams } from "./guards";
 
@@ -31,10 +36,10 @@ const NO_AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
 
 /** The optional `If-Match` version (present only when updating an existing profile). */
-function optionalIfMatch(request: Parameters<typeof parseIfMatch>[0]): number | undefined {
+function optionalIfMatch(request: Parameters<typeof ifMatchVersionOf>[0]): number | undefined {
   const raw = request.headers["if-match"];
   const value = Array.isArray(raw) ? raw[0] : raw;
-  return typeof value === "string" && value.length > 0 ? parseIfMatch(request) : undefined;
+  return typeof value === "string" && value.length > 0 ? ifMatchVersionOf(request) : undefined;
 }
 
 export function registerEdiProfileRoutes(app: FastifyInstance, deps: EdiProfileRouteDeps): void {

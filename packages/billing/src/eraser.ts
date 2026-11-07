@@ -96,10 +96,3 @@ export interface BillingMedicareEraser {
   readonly cascade: readonly M23PatientCascadeTable[];
   readonly redactFields: readonly string[];
 }
-
-/** The static eraser descriptor M23 registers with M4 (the live store is injected at P3). */
-export const billingMedicareEraser: BillingMedicareEraser = {
-  retentionClass: M23_RETENTION_CLASS,
-  cascade: M23_PATIENT_CASCADE_ORDER,
-  redactFields: M23_REDACT_FIELDS,
-};

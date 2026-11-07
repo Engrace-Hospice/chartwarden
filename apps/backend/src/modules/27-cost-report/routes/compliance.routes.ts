@@ -5,14 +5,9 @@
 // date`). The read gates `cost_report.read`; the extension composes `cost_report_editor_for_provider` (§4.7)
 // over the `:id` (recording the MAC grant is a draft-surface edit). M27 carries NO PHI (D18). The extension
 // carries `Idempotency-Key` (§4.1). Org/actor binding server-side.
+import { actorOf, parse, requireIdempotencyKey, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
-import {
-  CostReportIdParamsSchema,
-  DeadlineExtensionBodySchema,
-  parse,
-} from "./cost-report-typebox";
+import { CostReportIdParamsSchema, DeadlineExtensionBodySchema } from "./cost-report-typebox";
 import { EDITOR_FOR_PROVIDER, P } from "./guards";
 import type { M27ReadRouteService } from "./read-service";
 import type { M27WriteRouteService } from "./write-service";

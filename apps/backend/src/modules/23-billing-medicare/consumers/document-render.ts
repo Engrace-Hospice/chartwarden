@@ -123,13 +123,3 @@ export function buildDenialAppealCoverLetterRequest(input: {
     },
   };
 }
-
-/**
- * The same-transaction (D2) emit port the noe/notr submit workers + the 277CA ack consumer call to publish
- * `m23.billing.document_render_requested` through the catalog-validating tx publisher (bindCallerModule
- * "m23"). INJECTED at the composition root; an unbound port is a LAZY fail-closed thunk (throws only when a
- * job runs, RULE 4). Pairs with the inbound `m22.document.rendered` handler that records the returned id.
- */
-export interface DocumentRenderRequestEmitter {
-  readonly emitDocumentRenderRequested: (request: DocumentRenderRequestPayload) => Promise<void>;
-}

@@ -1,3 +1,4 @@
+import type { ResolvedMessage } from "@chartwarden/messaging";
 // apps/backend/src/modules/36-messaging/routes/idg-discussion-routes.ts - WP 3.6 IDG discussions (READ ONLY).
 //
 //   GET /api/v1/messaging/channels/:id/idg-discussions?limit=
@@ -8,7 +9,7 @@
 // Flag off => 200 { enabled:false }; the web reads that `enabled` (the web feature-flag hook is not wired, never use it).
 // The list is a decrypted-body read, so it is read-audited as one aggregate list event carrying the channel's patient.
 // Nothing here writes, publishes or reads a header; a message never marks an IDG meeting complete or changes a plan.
-import type { ResolvedMessage } from "@chartwarden/messaging";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { IdgDiscussionStore } from "../idg/idg-discussion-store-db";
@@ -16,9 +17,7 @@ import { IdgDiscussionQuerySchema } from "./idg-discussion-typebox";
 import { ChannelParamsSchema, parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
-export const IDG_DISCUSSION_DEFAULT_LIMIT = 50;
+const IDG_DISCUSSION_DEFAULT_LIMIT = 50;
 
 export interface IdgDiscussionRouteDeps {
   /** `messaging.idg` AND `messaging.clinical_links`. A throw reads as off (fail closed). */

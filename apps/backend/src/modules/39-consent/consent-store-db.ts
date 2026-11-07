@@ -63,6 +63,7 @@ import {
 // competing terminal transitions, encrypts optional notes before persistence, and writes its M1
 // outbox event atomically. Signed rows are never edited; corrections mint supersession/renewal rows.
 import { type DbClient, schema } from "@chartwarden/db";
+import { decodeCursor, encodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
 import { type SQL, and, desc, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
@@ -313,26 +314,6 @@ function toDpoaView(
     removedAt: iso(a.removedAt),
     active: a.removedAt === null && (a.termUntil === null || a.termUntil.getTime() > nowMs),
   };
-}
-
-/** Encode a generic keyset cursor (`sortKey|id`) — the expiring-consents page key (§4.12). */
-function encodeKeysetCursor(sortKey: string, id: string): string {
-  return Buffer.from(`${sortKey}|${id}`, "utf8").toString("base64url");
-}
-
-/** Encode/decode the opaque keyset cursor (`evaluatedAt|id`), mirroring the in-memory slice (§4.12 —
- *  never an offset). */
-function encodeCursor(row: EvalAuditRow): string {
-  return Buffer.from(`${row.evaluatedAt}|${row.id}`, "utf8").toString("base64url");
-}
-function decodeCursor(cursor: string): { sortKey: string; id: string } | null {
-  try {
-    const [sortKey, id] = Buffer.from(cursor, "base64url").toString("utf8").split("|");
-    if (!sortKey || !id) return null;
-    return { sortKey, id };
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -1866,11 +1847,9 @@ export function createDbConsentRouteService(
           gt(CR.expiresAt, new Date(nowMs)),
           lte(CR.expiresAt, horizon),
         ];
-        if (page.cursor) {
-          const c = decodeCursor(page.cursor);
-          // Keyset (expires_at, id) ASC — strictly after the cursor (§4.12, never an offset).
-          if (c) where.push(sql`(${CR.expiresAt}, ${CR.id}) > (${c.sortKey}, ${c.id})`);
-        }
+        const c = decodeCursor(organizationId, page.cursor, isKeysetCursor);
+        // Keyset (expires_at, id) ASC — strictly after the cursor (§4.12, never an offset).
+        if (c) where.push(sql`(${CR.expiresAt}, ${CR.id}) > (${c.a}, ${c.id})`);
         const rows = await tx
           .select()
           .from(CR)
@@ -1890,7 +1869,9 @@ export function createDbConsentRouteService(
         });
         const last = pageRows[pageRows.length - 1];
         const nextCursor =
-          hasMore && last?.expiresAt ? encodeKeysetCursor(last.expiresAt, last.id) : null;
+          hasMore && last?.expiresAt
+            ? encodeCursor(organizationId, { a: last.expiresAt, id: last.id })
+            : null;
         return { rows: pageRows, nextCursor };
       });
     },
@@ -1979,11 +1960,9 @@ export function createDbConsentRouteService(
         const where: (SQL | undefined)[] = [eq(CEA.organizationId, organizationId)];
         if (filter.consentId) where.push(eq(CEA.consentRecordId, filter.consentId));
         if (filter.patientId) where.push(eq(CEA.patientId, filter.patientId));
-        if (page.cursor) {
-          const c = decodeCursor(page.cursor);
-          // Keyset (evaluated_at, id) DESC — strictly after the cursor (§4.12, never an offset).
-          if (c) where.push(sql`(${CEA.evaluatedAt}, ${CEA.id}) < (${c.sortKey}, ${c.id})`);
-        }
+        const c = decodeCursor(organizationId, page.cursor, isKeysetCursor);
+        // Keyset (evaluated_at, id) DESC — strictly after the cursor (§4.12, never an offset).
+        if (c) where.push(sql`(${CEA.evaluatedAt}, ${CEA.id}) < (${c.a}, ${c.id})`);
         const rows = await tx
           .select({
             id: CEA.id,
@@ -2013,7 +1992,12 @@ export function createDbConsentRouteService(
           evaluatedAt: r.evaluatedAt.toISOString(),
         }));
         const nextCursor =
-          hasMore && pageRows.length > 0 ? encodeCursor(pageRows[pageRows.length - 1]!) : null;
+          hasMore && pageRows.length > 0
+            ? encodeCursor(organizationId, {
+                a: pageRows[pageRows.length - 1]!.evaluatedAt,
+                id: pageRows[pageRows.length - 1]!.id,
+              })
+            : null;
         return { rows: pageRows, nextCursor };
       });
     },

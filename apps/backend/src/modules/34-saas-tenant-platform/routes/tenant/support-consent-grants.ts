@@ -10,8 +10,8 @@
 // in the Drizzle service (every grant view is a §164.528 disclosure-accounting surface). Mirrors the M22
 // registerDocumentRoutes plugin shape EXACTLY.
 import { requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type PreHandler, actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf } from "./actor";
 import type { TenantRouteService } from "./service";
 import {
   GrantListQuerySchema,
@@ -54,7 +54,7 @@ export function registerSupportConsentGrantRoutes(
     "/api/v1/tenant/support-consent-grants",
     { preHandler: [ISSUE, STEP_UP_ISSUE] },
     async (request, reply) => {
-      const { organizationId, membershipId } = actorOf(request);
+      const { organizationId, membershipId } = writeActorOf(request);
       const body = parse(SupportConsentGrantRequest, request.body);
       const res = await service.issueConsentGrant(organizationId, membershipId, {
         scope: body.scope,
@@ -71,7 +71,7 @@ export function registerSupportConsentGrantRoutes(
     "/api/v1/tenant/support-consent-grants/:id/revoke",
     { preHandler: [REVOKE] },
     async (request) => {
-      const { organizationId, membershipId } = actorOf(request);
+      const { organizationId, membershipId } = writeActorOf(request);
       const { id } = parse(GrantParamsSchema, request.params);
       const body = parse(RevokeConsentGrantRequest, request.body);
       return service.revokeConsentGrant(organizationId, id, membershipId, body.revocationReason);

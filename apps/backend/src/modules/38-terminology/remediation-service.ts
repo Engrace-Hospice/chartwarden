@@ -32,7 +32,7 @@ import type { CarePlanCodeUsageRecord, CarePlanReader } from "@chartwarden/types
 import type { SystemDeprecation, TerminologyOpsStore } from "./ops-store";
 
 /** Default lookback for the report — §4.2's "default last 18 months". */
-export const REMEDIATION_DEFAULT_LOOKBACK_MONTHS = 18;
+const REMEDIATION_DEFAULT_LOOKBACK_MONTHS = 18;
 
 /** The record classes this report currently consults. See the header: two of §7.3's three are unbound. */
 export const REMEDIATION_COVERED_RECORD_TYPES = ["problem_list"] as const;

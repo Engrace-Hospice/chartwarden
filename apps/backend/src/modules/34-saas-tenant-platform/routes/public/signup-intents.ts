@@ -1,3 +1,4 @@
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, RateLimitedError } from "@chartwarden/types";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/public/signup-intents.ts — M34 the PUBLIC
 // self-serve signup surface (§4.1 "Public routes (no session)"; §7.1 Phase-3). Three pre-organization,
@@ -25,7 +26,7 @@ import { ChartWardenError, RateLimitedError } from "@chartwarden/types";
 // is returned to the prospect's email channel (M36), NEVER in the HTTP response, and only its SHA256 hash is
 // persisted (value-capture-denylisted in the audit projection, §3.10).
 import { type Static, Type } from "@sinclair/typebox";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   AcceptInvitationRequest,
   PublicSignupIntentRequest,
@@ -33,16 +34,11 @@ import {
   parse,
 } from "../typebox";
 
-/** A preHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
-/** The capability flag that unlocks self-serve signup (D14) — Phase 3, default OFF for the platform. */
-export const SELF_SERVE_SIGNUP_FLAG = "m34.self_serve_signup" as const;
 /** The error code the public routes return when the flag is OFF (the Phase-1 platform default). */
-export const SIGNUP_DISABLED_CODE = "SIGNUP_DISABLED" as const;
+const SIGNUP_DISABLED_CODE = "SIGNUP_DISABLED" as const;
 
 /** 503 SIGNUP_DISABLED — self-serve signup is OFF (Phase-1 deny-default; the body is never reached). */
-export function signupDisabled(): ChartWardenError {
+function signupDisabled(): ChartWardenError {
   return new ChartWardenError(SIGNUP_DISABLED_CODE, "self-serve signup is not enabled", 503);
 }
 

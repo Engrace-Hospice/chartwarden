@@ -3134,7 +3134,7 @@ discharge) OR an RN directly initiates from S21.4.
    `COVERAGE_REASON_REQUIRED`; the DB CHECK rejects the same write if the app guard is bypassed.
 3. A determination on a `comfort_kit_deploy` / `comfort_kit_replenish` request → 422
    `M21_COVERAGE_NOT_APPLICABLE_TO_KIND`.
-4. A stale `If-Match` → 412 `M21_STALE_VERSION`; a missing `Idempotency-Key` → 400.
+4. A stale `If-Match` → 409 `STALE_VERSION`; a missing `Idempotency-Key` → 400.
 5. A valid change persists value, reason, instant and SESSION membership, leaves `status` untouched, and emits
    exactly one `m21.supply_request.coverage_determination_changed` in the same transaction; an unchanged
    re-save emits nothing.

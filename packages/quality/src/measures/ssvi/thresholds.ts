@@ -117,7 +117,7 @@ export const SSVI_THRESHOLDS_FY2025_DATA: SsviThresholdTable = {
 };
 
 /** Every published SSVI cut table, keyed by the data fiscal year. */
-export const SSVI_THRESHOLD_TABLES: Readonly<Record<number, SsviThresholdTable>> = {
+const SSVI_THRESHOLD_TABLES: Readonly<Record<number, SsviThresholdTable>> = {
   [SSVI_THRESHOLDS_FY2025_DATA.dataFiscalYear]: SSVI_THRESHOLDS_FY2025_DATA,
 };
 

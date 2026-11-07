@@ -1,3 +1,4 @@
+import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/36-messaging/routes/emergency-routes.ts - M36 ADR-0106 (PROPOSED): emergency message.
 //
 //   POST /api/v1/messaging/messages/:messageId/emergency   the AUTHOR declares their message an emergency (messaging.send; 201 / 200 already)
@@ -9,7 +10,7 @@
 // The tenant flag `messaging.emergency` (absent = off) is checked BEFORE the request is parsed: off is a uniform 404, the same answer as any
 // unknown route. Org and actor are the server-side request context; the acknowledgment has no user field (nobody acknowledges for someone
 // else). Responses are never cached.
-import { requirePermission } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { EmergencyService } from "../emergency/emergency-service";
@@ -24,18 +25,10 @@ import {
 } from "./emergency-typebox";
 import { parse } from "./messaging-typebox";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface EmergencyRouteDeps {
   readonly service: EmergencyService;
   /** Optional per-route budget, run after the permission and before the flag. */
   readonly rateLimit?: PreHandler | undefined;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 const SEND = requirePermission("messaging.send") as PreHandler;

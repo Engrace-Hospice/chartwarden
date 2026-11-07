@@ -36,34 +36,11 @@
  * CI:    exits 1 on any unresolved name (arch:fitness stage).
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync } from "node:fs";
+import { relative } from "node:path";
+import { appSourceFiles } from "./lib/gate-scan";
 
 const REPO_ROOT = process.cwd();
-const SCAN_ROOTS = ["apps", "packages"];
-const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".turbo", "coverage", "__tests__"]);
-
-/** Every .ts source file under the scan roots, excluding build output and test fixtures. */
-function sourceFiles(): string[] {
-  const out: string[] = [];
-  const walk = (dir: string): void => {
-    let entries: string[];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (SKIP_DIRS.has(entry)) continue;
-      const full = join(dir, entry);
-      if (statSync(full).isDirectory()) walk(full);
-      else if (entry.endsWith(".ts") && !entry.endsWith(".d.ts") && !entry.includes(".test."))
-        out.push(full);
-    }
-  };
-  for (const root of SCAN_ROOTS) walk(join(REPO_ROOT, root));
-  return out;
-}
 
 /**
  * Split a call's argument list on TOP-LEVEL commas — the second argument is the predicate name,
@@ -127,7 +104,7 @@ interface Use {
   readonly line: number;
 }
 
-const files = sourceFiles();
+const files = appSourceFiles(REPO_ROOT);
 const sources = new Map<string, string>(files.map((f) => [f, readFileSync(f, "utf8")]));
 
 // ── Declared names ────────────────────────────────────────────────────────────────────────────

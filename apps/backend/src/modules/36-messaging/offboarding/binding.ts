@@ -54,7 +54,7 @@ export interface OffboardingBindingInput {
  * A person has LEFT when their account is deactivated or every membership in this organisation is revoked. Pending and suspended memberships are
  * reinstatable and are not offboarding. No membership row in this organisation at all (absent or another tenant's user) is `unknown`.
  */
-export function createDbStanding(db: DbClient): OffboardingDeps["standing"] {
+function createDbStanding(db: DbClient): OffboardingDeps["standing"] {
   return (organizationId, userId): Promise<Standing> =>
     withOrgContext(db, systemOrgContext(organizationId), async (tx) => {
       const rows = await tx

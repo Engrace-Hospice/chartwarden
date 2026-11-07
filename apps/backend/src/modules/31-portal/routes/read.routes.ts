@@ -9,7 +9,9 @@
 // history, M9 trend, M10 HOPE, M11 orders, M21 supplies, M40 grief) resolve their seam through a LOCAL
 // structural shape with an OPTIONAL method, so a missing arm yields the empty lay view rather than a type
 // error or a leak (D17). No route reads a raw clinical field.
+import { Uuid } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, DegradedError, NotFoundError } from "@chartwarden/types";
+import { Value } from "@sinclair/typebox/value";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { toPreferencesView } from "../provisioning/preferences";
@@ -29,8 +31,7 @@ import {
   portalPatientIdOf,
   portalSessionIdOf,
 } from "./actor";
-import { rejectOffsetPagination } from "./concurrency";
-import { ABAC_ACCOUNT, ABAC_BEREAVED, ABAC_GRANT, P } from "./guards";
+import { ABAC_ACCOUNT, ABAC_BEREAVED, ABAC_GRANT, P, rejectOffsetPagination } from "./guards";
 import type { PortalRouteDeps } from "./index";
 import { PortalMessageHistoryQuery, WithinQuery, parseQuery } from "./portal-typebox";
 
@@ -97,7 +98,6 @@ interface DocumentDownloadArm {
     portalSessionId: string;
   }): Promise<{ url: string; expiresAt: string } | { denied: true; reason: string }>;
 }
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Resolve a seam by name (raw — some upstream portal arms are not typed in `SeamContracts`; the name is in
  *  M31_REQUIRED_SEAMS so the fitness-gaps registry check covers it). */
 const arm = <T>(name: string): T => (getSeam as unknown as (n: string) => unknown)(name) as T;
@@ -339,7 +339,7 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
       const portalAccountId = portalAccountIdOf(actor);
       const portalSessionId = portalSessionIdOf(actor);
       const { documentId } = request.params as { documentId: string };
-      if (!UUID_RE.test(documentId)) throw new NotFoundError("document");
+      if (!Value.Check(Uuid(), documentId)) throw new NotFoundError("document");
       let minted: Awaited<ReturnType<DocumentDownloadArm["mintPortalDownloadUrl"]>>;
       try {
         const reader = arm<DocumentDownloadArm>("PortalDocumentReader");

@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 // apps/backend/src/modules/29-external-interfaces/inbound/parse-worker.ts — GAP-086. The inbound PARSE / PROCESSING worker:
 // it consumes the `hl7_message_inbound` rows the MLLP listener persisted (`parse_status='in_progress'`) and runs each through
 // the pure M29 pipeline that already existed but had no caller — projection → patient cascade → proposal / lab attach.
@@ -28,7 +29,7 @@
 // consent for — so there is a window between ingest and processing in which the sealed payload is unredacted.)
 //
 // Everything cross-module is an injected PORT (patient reader, order reader, terminology, consent, org settings, outbox).
-import { createHash, randomUUID } from "node:crypto";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -58,7 +59,6 @@ import { extractPdfAttachments } from "./obx-pdf";
 import { projectCascadeForMessage } from "./outcome-router";
 
 const INBOUND = schema.hl7MessageInbound;
-const SYSTEM_USER_ID = "";
 
 /** §2.2 / spec line 216 — the proposal review SLA (`expires_at = proposed_at + 72h`). */
 export const PROPOSAL_REVIEW_SLA_MS = 72 * 3_600_000;
@@ -392,7 +392,7 @@ async function processNext(
   try {
     return await withOrgContext(
       deps.db,
-      { organizationId, userId: SYSTEM_USER_ID },
+      { organizationId, userId: CONSUMER_USER_ID },
       async (scoped) => {
         const tx = scoped as DbClient;
         const [row] = await tx
@@ -438,7 +438,7 @@ async function processNext(
     const lastError = err instanceof Error ? err.name : "unknown";
     deps.log?.("warn", "hl7.parse.transient_failure", { messageId: row.id, attempts, lastError });
     const exhausted = attempts >= maxAttempts;
-    await withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (scoped) => {
+    await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
       await (scoped as DbClient)
         .update(INBOUND)
         .set({
@@ -494,7 +494,7 @@ export async function runParseSweep(deps: ParseSweepDeps): Promise<SweepResult> 
   return total;
 }
 
-export const PARSE_WORKER_DEFAULT_INTERVAL_MS = 2_000;
+const PARSE_WORKER_DEFAULT_INTERVAL_MS = 2_000;
 
 /** The in-process poller (single-flight; `unref`'d). Replicas coordinate through `SKIP LOCKED`. */
 export function startParseWorker(deps: ParseSweepDeps & { readonly intervalMs?: number }): {

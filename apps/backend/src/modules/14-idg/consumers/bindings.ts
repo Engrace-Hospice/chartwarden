@@ -1,3 +1,7 @@
+import { type DbClient, schema } from "@chartwarden/db";
+// Imported from the concrete module rather than the `./index` barrel: the barrel re-exports THIS file,
+// so going through it would be a cycle (`arch:boundaries` no-circular).
+import { transitionActionItem } from "@chartwarden/idg";
 // apps/backend/src/modules/14-idg/consumers/bindings.ts — the live §4.5 D8 action-item auto-close
 // binding (F-104 / #103).
 //
@@ -42,10 +46,7 @@
 //
 // The read and the write are M14-owned tables inside one `withOrgContext`. Every consumed event name is a
 // STRING literal and no upstream schema is imported, so this adds no `dependsOn` edge.
-import { type DbClient, schema } from "@chartwarden/db";
-// Imported from the concrete module rather than the `./index` barrel: the barrel re-exports THIS file,
-// so going through it would be a cycle (`arch:boundaries` no-circular).
-import { transitionActionItem } from "@chartwarden/idg";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { IdgActionItemLinkedKind } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
@@ -54,9 +55,6 @@ import type { IdgWriteOutboxPort } from "../idg-route-service-db";
 import { M14_AUTO_CLOSE_LINKED_KIND, planActionItemAutoClose } from "./action-item-auto-close";
 
 const ACT = schema.idgActionItem;
-
-/** §3.3 — a consumer-driven write names no acting membership. */
-const CONSUMER_USER_ID = "";
 
 /** §4.5 — the `close_reason` D8 writes, distinguishing an auto-close from a human completion. */
 const AUTO_CLOSE_REASON = "auto_close_downstream";

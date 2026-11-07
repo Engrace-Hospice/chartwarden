@@ -1,3 +1,5 @@
+import { requirePermission } from "@chartwarden/auth";
+import { effectiveSbarPolicy, prepareSbarPolicy } from "@chartwarden/messaging";
 // apps/backend/src/modules/36-messaging/routes/sbar-routes.ts - M36 WP 3.3 SBAR policy.
 //
 //   GET    /api/v1/messaging/sbar/policy                       the effective policy for the composer   (messaging.send)
@@ -7,8 +9,7 @@
 // GET is a 404 while the tenant flag `messaging.sbar` is off (the feature does not exist). Org and actor are always the
 // server-side request context. The write-time checks on a message live in sbar/sbar-write-check.ts, not here; this file
 // also exports the route-level flag check the send and edit routes call when a body contains an sbar block.
-import { requirePermission } from "@chartwarden/auth";
-import { effectiveSbarPolicy, prepareSbarPolicy } from "@chartwarden/messaging";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import {
   NotFoundError,
   type RichBody,
@@ -21,8 +22,6 @@ import type { SbarPolicyStore } from "../sbar/sbar-policy-store-db";
 import { sbarNotAvailable } from "../sbar/sbar-write-check";
 import { parse } from "./messaging-typebox";
 import { PutSbarPolicyBodySchema } from "./sbar-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface SbarRouteDeps {
   /** The tenant flag `messaging.sbar`. A throw reads as off (fail closed). */
@@ -39,12 +38,6 @@ export const DISABLED_SBAR: SbarRouteDeps = {
     remove: async () => undefined,
   },
 };
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
-}
 
 const flagOn = (deps: SbarRouteDeps, organizationId: string): Promise<boolean> =>
   deps.isEnabled(organizationId).catch(() => false);

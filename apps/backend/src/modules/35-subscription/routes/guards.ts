@@ -16,8 +16,7 @@
 // a promo's redemption count) the guard layer cannot supply; they are REGISTERED (./abac-predicates) and
 // named in the §4.7 permission catalog, and the write service enforces the same invariants server-side.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import type { PreHandler } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { type PreHandler, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 
 /** RBAC gate — `requirePermission(key)` from M3 (the §4.7 key catalog M35 contributes). */
 export const P = (key: string): PreHandler => requirePermission(key) as PreHandler;

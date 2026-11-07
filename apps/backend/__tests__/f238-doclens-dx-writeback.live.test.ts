@@ -460,14 +460,14 @@ describe.skipIf(!DB_URL)("F-238 — DocLens → M7 diagnosis proposals — LIVE 
     const added = await outboxRows(ORG_A, "m7.problem.added");
     expect(added.map((r) => r.payload.problemId)).toContain(accepted.problemId);
 
-    // Only a pending proposal can be decided; a stale version is a 412.
+    // Only a pending proposal can be decided; a stale version is a 409 STALE_VERSION.
     await expect(
       proposals.accept(ORG_A, plan, lung.id, { ifVersion: 2, kind: "related" }, clinician()),
     ).rejects.toMatchObject({ statusCode: 409 });
     const htn = rows[2] as { id: string; version: number };
     await expect(
       proposals.dismiss(ORG_A, plan, htn.id, { ifVersion: htn.version + 5 }, clinician()),
-    ).rejects.toMatchObject({ statusCode: 412 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "STALE_VERSION" });
     // DISMISS — nothing is charted.
     const dismissed = await proposals.dismiss(
       ORG_A,

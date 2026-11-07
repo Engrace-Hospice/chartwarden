@@ -15,12 +15,7 @@
 // wraps it with the store read/write + the `m35.revenue.monthly_snapshot_computed` outbox. Integer cents
 // throughout (§2.3 — no float).
 
-import type {
-  BillingCadence,
-  BillingYearMonth,
-  IsoInstant,
-  SubscriptionStatus,
-} from "@chartwarden/types";
+import type { BillingCadence, BillingYearMonth, SubscriptionStatus } from "@chartwarden/types";
 import {
   type OutboxIntent,
   type RevenueContribution,
@@ -165,23 +160,4 @@ export class RevenueRecognitionService {
       ],
     };
   }
-}
-
-/** Convenience: convert a computation into the leaf snapshot DTO shape (T05 seam + T06 route read). */
-export function toSnapshotDto(record: RevenueSnapshotRecord): {
-  id: string;
-  snapshotMonth: BillingYearMonth;
-  mrrCents: number;
-  arrCents: number;
-  activeSubscriptions: number;
-  computedAt: IsoInstant;
-} {
-  return {
-    id: record.id,
-    snapshotMonth: record.snapshotMonth,
-    mrrCents: record.mrrCents,
-    arrCents: record.arrCents,
-    activeSubscriptions: record.activeSubscriptions,
-    computedAt: record.computedAt.toISOString() as IsoInstant,
-  };
 }

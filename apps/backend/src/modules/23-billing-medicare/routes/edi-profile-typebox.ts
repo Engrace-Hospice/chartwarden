@@ -1,8 +1,8 @@
 // apps/backend/src/modules/23-billing-medicare/routes/edi-profile-typebox.ts — M23 EDI-profile request/response shapes
 // (migration 1269). Named `*-typebox` for the same table-ownership-heuristic reason as `billing-typebox.ts`. Limits mirror the
 // table's CHECKs. No secret and no beneficiary data; org / membership binding is server-side.
+import "@chartwarden/shared/route-kit";
 import { type Static, Type } from "@sinclair/typebox";
-import { parse } from "./billing-typebox";
 
 const uuid = () => Type.String({ format: "uuid" });
 // Non-blank printable ASCII free of the X12 delimiters (* ~ : ^ | \) the 837I writer cannot carry, so a bad value is
@@ -50,5 +50,3 @@ export type EdiProfileView = Static<typeof EdiProfileViewSchema>;
 export const EdiProfileListResponseSchema = Type.Object({
   profiles: Type.Array(EdiProfileViewSchema),
 });
-
-export { parse };

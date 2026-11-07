@@ -1,3 +1,22 @@
+import { createHash } from "node:crypto";
+import {
+  type BillingRuleRegistry,
+  type ClaimState,
+  type RuleParameterOverlays,
+  type RuleResult,
+  type TypeOfBill,
+  type ValidationContext,
+  buildClaimSnapshot,
+  canonicalRuleKey,
+  claimAdmissionCodes,
+  claimDischargeCodeColumns,
+  claimLateNoeSpans,
+  claimPhysicianNpis,
+  rederivedTypeOfBill,
+  repositories,
+  summarizeRuleRun,
+} from "@chartwarden/billing";
+import type * as schema from "@chartwarden/db/schema";
 // apps/backend/src/modules/23-billing-medicare/services/claim-validation-service.ts — the M23 §11.A
 // pre-submission validation SERVICE (spec §10 task 28 / §4.5, D1 / D5).
 //
@@ -18,26 +37,9 @@
 // results, no extra transition). The injected reader port is FAIL-CLOSED-UNBOUND (RULE 4) — its default
 // throws only when a validation actually RUNS, so boot stays green. NO PHI / NO MBI (D13); the context
 // carries ids + aggregate facts only.
-import { createHash } from "node:crypto";
-import {
-  type BillingRuleRegistry,
-  type ClaimState,
-  type RuleParameterOverlays,
-  type RuleResult,
-  type TypeOfBill,
-  type ValidationContext,
-  buildClaimSnapshot,
-  canonicalRuleKey,
-  claimAdmissionCodes,
-  claimLateNoeSpans,
-  claimPhysicianNpis,
-  repositories,
-  summarizeRuleRun,
-} from "@chartwarden/billing";
-import type * as schema from "@chartwarden/db/schema";
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
-import { claimDischargeCodeColumns, rederivedTypeOfBill } from "./claim-discharge";
 import {
   type BillingDb,
   type BillingTx,
@@ -80,7 +82,7 @@ const FAIL_CLOSED_CONTEXT: ValidationContextPort = {
 export interface ValidateClaimInput {
   readonly claimId: string;
   readonly trigger: schema.ValidationRun["trigger"];
-  /** Optional §2.5 If-Match guard against a concurrently-modified claim (stale → 412). */
+  /** Optional §2.5 If-Match guard against a concurrently-modified claim (stale → 409 STALE_VERSION). */
   readonly expectedVersion?: number;
   /**
    * The run id the caller already minted (the route stamps it on the claim and on the queued job; the
@@ -203,10 +205,8 @@ export function buildClaimValidationService(
       );
     }
     if (input.expectedVersion !== undefined && input.expectedVersion !== claim.version) {
-      throw new ChartWardenError(
-        "VERSION_CONFLICT",
+      throw new StaleVersionError(
         `the claim was modified concurrently (current version ${claim.version})`,
-        412,
       );
     }
 

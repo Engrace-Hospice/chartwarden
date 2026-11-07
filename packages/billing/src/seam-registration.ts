@@ -15,9 +15,6 @@
 //         rather than throw; tightens to `error` when M26 locks (NOT a hard fail-closed).
 //     `makeMbiUnlockDenyStub` stays as the package-local fail-closed THROW stub for tests / slices.
 import type {
-  CapOrgProjectionResult,
-  CapPatientProjectionResult,
-  CapProjectionProvider,
   ClaimDayProjectionProvider,
   ClaimMetricsProvider,
   ClaimReader,
@@ -25,7 +22,6 @@ import type {
   MacCredentialAdmin,
   MbiUnlockReader,
 } from "./seams";
-import { M23_PUBLISHED_SEAM_NAMES } from "./seams";
 
 /** The M1 SeamRegistry `registerSeam` surface, injected as a port (no apps/backend edge). */
 export interface M23SeamRegistrar {
@@ -52,9 +48,6 @@ export function registerM23PublishedSeams(
   registrar.registerSeam("ClaimMetricsProvider", impls.claimMetricsProvider);
   registrar.registerSeam("MacCredentialAdmin", impls.macCredentialAdmin);
 }
-
-/** Sanity: the publish set matches the §4.3 published-name tuple (asserted in test). */
-export const M23_PUBLISHED_SEAMS = M23_PUBLISHED_SEAM_NAMES;
 
 /**
  * The §4.4 consumed-seam names (REQUIRED_SEAMS contract). LIVE producers: M2 / M5 (incl. `MbiUnlockReader`)
@@ -94,12 +87,8 @@ export const M23_REQUIRED_SEAMS = [
   "X12WorkerClient",
 ] as const;
 
-export type M23RequiredSeamName = (typeof M23_REQUIRED_SEAMS)[number];
-
 /** The forward-seam (deny-stub) consumed names — wired live when the producing module locks. */
 export const M23_FORWARD_SEAM_NAMES = ["CapProjectionProvider"] as const;
-
-export type M23ForwardSeamName = (typeof M23_FORWARD_SEAM_NAMES)[number];
 
 /** Thrown by every fail-closed forward-seam deny-stub method until the producing module locks. */
 export const SEAM_NOT_BOUND = "SEAM_NOT_BOUND" as const;
@@ -120,36 +109,6 @@ export function makeDenyStub(seamName: string): Record<string, (...args: unknown
       },
     },
   ) as Record<string, (...args: unknown[]) => never>;
-}
-
-/** The degraded-unavailable per-patient cap projection the D8 deny-stub returns (drives WARN, not error). */
-const CAP_PATIENT_UNAVAILABLE: CapPatientProjectionResult = {
-  status: "unavailable",
-  projectedCapCents: null,
-  capLimitCents: null,
-  withinCap: null,
-};
-
-/** The degraded-unavailable org-wide cap projection the D8 deny-stub returns. */
-const CAP_ORG_UNAVAILABLE: CapOrgProjectionResult = {
-  status: "unavailable",
-  aggregateProjectedCents: null,
-  aggregateCapCents: null,
-  pctOfCap: null,
-  ipuWithinCap: null,
-};
-
-/**
- * The M26 `CapProjectionProvider` DENY-STUB (D8). Unlike `makeDenyStub`, this DEGRADES rather than throws:
- * every method resolves to a `status:"unavailable"` projection so the §11.A `aggregate_cap_projection` /
- * `ipu_cap_projection` rules fall back to `warn` severity. Replaced in place by M26's real reader at M26
- * lock, at which point the rules tighten to `error`. NEVER blocks claim submission while degraded.
- */
-export function makeCapProjectionDenyStub(): CapProjectionProvider {
-  return {
-    projectionForPatient: async () => CAP_PATIENT_UNAVAILABLE,
-    projectionForOrg: async () => CAP_ORG_UNAVAILABLE,
-  };
 }
 
 /** The `MbiUnlockReader` DENY-STUB (§3.6) — fail-closed THROW (MBI must never degrade-open). */

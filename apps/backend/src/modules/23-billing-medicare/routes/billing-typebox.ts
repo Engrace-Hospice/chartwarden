@@ -1,7 +1,6 @@
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/23-billing-medicare/routes/billing-typebox.ts — M23 (§4.2) request schemas.
 //
-// TypeBox path-param / query / body schemas for the §4.1 M23 routes + the `parse(...)` helper. Named
+// TypeBox path-param / query / body schemas for the §4.1 M23 routes (validated by the route kit `parse`). Named
 // `billing-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
 // for a Drizzle one (the M27 `cost-report-typebox` precedent). Validation runs through TypeBox `Value` →
 // M1's VALIDATION_FAILED envelope. Org/actor/membership binding is ALWAYS server-side (request.context) — no
@@ -10,21 +9,9 @@ import { ValidationError } from "@chartwarden/types";
 // VOCAB NOTE: the body/query string-literal unions mirror the FROZEN `@chartwarden/db` pgEnum value lists +
 // the @chartwarden/billing route-service CONTRACT arg shapes (the lowercase domain alphabet the read/write
 // services speak — enum case is mapped at the repository boundary). The optimistic-concurrency version is
-// carried on the `If-Match` header (§2.5; see concurrency.ts), NOT in the body.
+// carried on the `If-Match` header (§2.5; the route kit), NOT in the body.
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
-}
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 const uuid = () => Type.String({ format: "uuid" });
@@ -76,8 +63,7 @@ const MAC_JURISDICTION = [
 
 // ── cursor / keyset page query (§4.1.2 — opaque cursor + clamp-to-200 limit) ─────────────────────────────
 const PageQuery = {
-  cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 };
 
 // ── path params ──────────────────────────────────────────────────────────────────────────────────────
@@ -110,12 +96,7 @@ export const RuleConfigListQuerySchema = Type.Object({
   enabled: Type.Optional(Type.Boolean()),
   isCustom: Type.Optional(Type.Boolean()),
 });
-export const ValidationRunListQuerySchema = Type.Object({
-  state: Type.Optional(lit(CLAIM_STATE)),
-});
 export const PatientQuerySchema = Type.Object({ patientId: uuid() });
-export const ProviderEntityQuerySchema = Type.Object({ providerEntityId: Type.Optional(uuid()) });
-export const RequiredProviderEntityQuerySchema = Type.Object({ providerEntityId: uuid() });
 export const MacCredentialListQuerySchema = Type.Object({ ...PageQuery });
 /** GET /billing/validation-overrides — the org-wide override audit view (spec #17). */
 export const ValidationOverrideListQuerySchema = Type.Object({
@@ -250,24 +231,6 @@ export const ClaimPatchDraftBodySchema = Type.Object({
   totalChargeCents: Type.Optional(Type.Integer({ minimum: 0 })),
   totalExpectedPaymentCents: Type.Optional(Type.Integer({ minimum: 0 })),
 });
-export type ClaimPatchDraftBody = Static<typeof ClaimPatchDraftBodySchema>;
-
-/**
- * Validate `raw` against `schema` (Convert-then-Check), throwing M1's VALIDATION_FAILED envelope on the
- * first error (the M27 `parse(...)` precedent). The route handlers call this on params/query/body so a
- * malformed request is refused with the platform error shape before the service is reached.
- */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}
 
 // ── GET /billing/eligibility/hospice-periods response (the readmission screen's HETS history) ───────────
 const nullable = <T extends TSchema>(t: T) => Type.Union([t, Type.Null()]);
@@ -366,4 +329,3 @@ export const HospicePeriodsResponseSchema = Type.Object({
   ),
   rhcCarryOver: nullable(RhcCarryOverSchema),
 });
-export type HospicePeriodsResponse = Static<typeof HospicePeriodsResponseSchema>;

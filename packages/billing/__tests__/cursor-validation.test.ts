@@ -1,22 +1,37 @@
-// The shared keyset cursor codec (repositories/db.ts): valid cursors round-trip, and a forged one is a 400
-// VALIDATION_FAILED, never a value that reaches Postgres as an invalid timestamp or uuid (a 500).
+// The shared keyset cursor codec (repositories/db.ts, over the route kit's signed cursor): valid cursors
+// round-trip within their scope; a forged, foreign or mis-shaped one is 422 INVALID_CURSOR, never a value
+// that reaches Postgres as an invalid timestamp or uuid (a 500).
 import { repositories } from "@chartwarden/billing";
+import { encodeCursor as encodeKitCursor } from "@chartwarden/shared/route-kit";
 import { describe, expect, it } from "vitest";
 
 const { decodeCursor, encodeCursor } = repositories;
-const forge = (o: unknown) => Buffer.from(JSON.stringify(o), "utf8").toString("base64url");
+const ORG = "00000000-0000-4000-8000-00000000000a";
+const OTHER_ORG = "00000000-0000-4000-8000-00000000000b";
 const ID = "c3d4e5f6-0000-4000-8000-000000000001";
+const invalidCursor = expect.objectContaining({ statusCode: 422, code: "INVALID_CURSOR" });
 
 describe("decodeCursor", () => {
   it("round-trips a cursor this module minted", () => {
     const keyset = { createdAt: new Date("2026-10-08T12:34:56.789Z").toISOString(), id: ID };
-    expect(decodeCursor(encodeCursor(keyset))).toEqual(keyset);
+    expect(decodeCursor(ORG, encodeCursor(ORG, keyset))).toEqual(keyset);
+  });
+
+  it("is the first page when no cursor is given", () => {
+    expect(decodeCursor(ORG, undefined)).toBeUndefined();
   });
 
   it("accepts an uppercase uuid and a microsecond instant", () => {
-    expect(
-      decodeCursor(forge({ createdAt: "2026-10-08T12:34:56.123456Z", id: ID.toUpperCase() })),
-    ).toBeTruthy();
+    const signed = encodeKitCursor(ORG, {
+      createdAt: "2026-10-08T12:34:56.123456Z",
+      id: ID.toUpperCase(),
+    });
+    expect(decodeCursor(ORG, signed)).toBeTruthy();
+  });
+
+  it("rejects a cursor minted for another scope", () => {
+    const keyset = { createdAt: "2026-10-08T12:00:00.000Z", id: ID };
+    expect(() => decodeCursor(OTHER_ORG, encodeCursor(ORG, keyset))).toThrowError(invalidCursor);
   });
 
   it.each([
@@ -26,15 +41,13 @@ describe("decodeCursor", () => {
     ["a non-uuid id", { createdAt: "2026-10-08T12:00:00.000Z", id: "1; DROP TABLE x" }],
     ["a numeric id", { createdAt: "2026-10-08T12:00:00.000Z", id: 7 }],
     ["missing fields", { createdAt: "2026-10-08T12:00:00.000Z" }],
-  ])("rejects %s with a 400", (_n, forged) => {
-    expect(() => decodeCursor(forge(forged))).toThrowError(
-      expect.objectContaining({ statusCode: 400, code: "VALIDATION_FAILED" }),
-    );
+  ])("rejects a signed cursor carrying %s with a 422", (_n, forged) => {
+    expect(() => decodeCursor(ORG, encodeKitCursor(ORG, forged))).toThrowError(invalidCursor);
   });
 
-  it("rejects text that is not base64url JSON at all", () => {
-    expect(() => decodeCursor("%%%not-a-cursor")).toThrowError(
-      expect.objectContaining({ statusCode: 400 }),
-    );
+  it("rejects an unsigned or garbage cursor", () => {
+    const unsigned = Buffer.from(JSON.stringify({ createdAt: "2026-10-08T12:00:00.000Z", id: ID }));
+    expect(() => decodeCursor(ORG, unsigned.toString("base64url"))).toThrowError(invalidCursor);
+    expect(() => decodeCursor(ORG, "%%%not-a-cursor")).toThrowError(invalidCursor);
   });
 });

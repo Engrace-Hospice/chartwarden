@@ -21,9 +21,9 @@
 // (`request.context` via `actorOf`/`writeActorOf`), NEVER the body. The service emits the §4.10
 // `m30.infection.*` events transactionally inside the same unit of work as the mutation.
 import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { type PreHandler, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { actorOf, writeActorOf } from "./actor";
 import { assertPatientInScope } from "./patient-scope";
 import {
   CaseIdParamsSchema,

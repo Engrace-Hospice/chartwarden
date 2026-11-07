@@ -19,6 +19,14 @@ import {
   resetAbacRegistry,
 } from "@chartwarden/auth";
 import type { AbacContext } from "@chartwarden/auth";
+import {
+  InvalidCursorError,
+  clampLimit,
+  decodeCursor,
+  encodeCursor,
+  isKeysetCursor,
+  toCursorPage,
+} from "@chartwarden/shared/route-kit";
 import type { IsoInstant } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
@@ -31,17 +39,11 @@ import {
 } from "../src/modules/15-discipline-care-plans/index";
 import type { M15ReadActor } from "../src/modules/15-discipline-care-plans/routes/actor";
 import {
-  M15_PAGE_SIZES,
-  clampLimit,
-  decodeCursor,
-  encodeCursor,
-  toCursorPage,
-} from "../src/modules/15-discipline-care-plans/routes/concurrency";
-import {
   type DisclosurePort,
   SUMMARY_DISCLOSURE,
   resolveDisclosure,
 } from "../src/modules/15-discipline-care-plans/routes/disclosure";
+import { M15_PAGE_SIZES } from "../src/modules/15-discipline-care-plans/routes/index";
 import type { VolunteerGateFacts } from "../src/modules/15-discipline-care-plans/volunteer/index";
 
 const NOW = "2026-07-30T12:00:00.000Z" as IsoInstant;
@@ -260,6 +262,8 @@ describe("M15-T06 §7.8/§7.9 disclosure gate", () => {
     membershipId: RN_MEMBERSHIP,
     roles: [],
     sessionClass: "staff",
+    actorKind: "user",
+    stepUpRecent: false,
     locationIds: [LOCATION],
     ...overrides,
   });
@@ -371,6 +375,7 @@ describe("M15-T06 §4.6.1 cursor pagination", () => {
   it("emits the spec's `{data, next_cursor, has_more}` envelope and round-trips the cursor", () => {
     const rows = [{ id: "a" }, { id: "b" }, { id: "c" }];
     const page = toCursorPage(
+      ORG,
       rows,
       2,
       (r) => ({ a: r.id, id: r.id }),
@@ -378,11 +383,12 @@ describe("M15-T06 §4.6.1 cursor pagination", () => {
     );
     expect(page.data).toEqual(["a", "b"]);
     expect(page.has_more).toBe(true);
-    expect(decodeCursor(page.next_cursor ?? undefined)).toEqual({ a: "b", id: "b" });
+    expect(decodeCursor(ORG, page.next_cursor, isKeysetCursor)).toEqual({ a: "b", id: "b" });
   });
 
   it("closes the page when the row set fits", () => {
     const page = toCursorPage(
+      ORG,
       [{ id: "a" }],
       2,
       (r) => ({ a: r.id, id: r.id }),
@@ -391,9 +397,12 @@ describe("M15-T06 §4.6.1 cursor pagination", () => {
     expect([page.has_more, page.next_cursor]).toEqual([false, null]);
   });
 
-  it("treats a malformed cursor as 'start from the beginning' rather than throwing", () => {
-    expect(decodeCursor("not-a-cursor")).toBeNull();
-    expect(decodeCursor(encodeCursor({ a: "x", id: "y" }))).toEqual({ a: "x", id: "y" });
+  it("refuses a malformed or unsigned cursor with 422 INVALID_CURSOR", () => {
+    expect(() => decodeCursor(ORG, "not-a-cursor", isKeysetCursor)).toThrow(InvalidCursorError);
+    expect(decodeCursor(ORG, encodeCursor(ORG, { a: "x", id: "y" }), isKeysetCursor)).toEqual({
+      a: "x",
+      id: "y",
+    });
   });
 
   it("clamps `limit` to each route's §4.6.1 page-size policy", () => {

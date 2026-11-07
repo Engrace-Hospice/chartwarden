@@ -6,7 +6,7 @@
 // command arg shapes, and the cross-boundary PORTS the composition root binds at boot. The Drizzle backend
 // (./write-service-drizzle) implements this. M27 carries NO PHI (D18); money is INTEGER CENTS (D8). Every
 // mutation emits its matching `m27.*` outbox event (apps/backend/.../events-by-m27.ts) in the SAME tx.
-import type { M27WriteActor } from "./actor";
+import type { WriteActor } from "@chartwarden/shared/route-kit";
 import type {
   BadDebtKind,
   BadDebtRecordView,
@@ -23,6 +23,12 @@ import type {
   WorksheetCode,
   WorksheetView,
 } from "./read-service";
+
+/** The write actor an M27 service needs (the route kit's write actor, narrowed). */
+export type M27WriteActor = Pick<
+  WriteActor,
+  "organizationId" | "userId" | "roles" | "membershipId" | "stepUpRecent"
+>;
 
 // ── injected ports (bound by the composition root at boot) ──────────────────────────────────────────────
 
@@ -152,11 +158,6 @@ export interface ApproveForSubmitArgs {
   /** The validation run whose zero-unresolved-blocking-failures gate authorizes approval (§2.3). */
   readonly validationId?: string;
 }
-/**
- * Submit takes NO identity from the client: the attester is the authenticated actor and the approver is the
- * one stored server-side at `approveForSubmit` (GAP-081). Legacy body fields are ignored at the route.
- */
-export type SubmitArgs = Record<string, never>;
 export interface SubmitPastDeadlineArgs {
   readonly reason: string;
 }

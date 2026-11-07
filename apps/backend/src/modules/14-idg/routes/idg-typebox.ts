@@ -1,3 +1,4 @@
+import "@chartwarden/shared/route-kit";
 import { DISCIPLINE_NOTE_ADDENDUM_REASON_MAX } from "@chartwarden/idg";
 import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/14-idg/routes/idg-typebox.ts — M14-T05 TypeBox route schemas (§4.2).
@@ -8,7 +9,6 @@ import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@chartwarden/ty
 // lifecycle-bearing envelope fields are pinned here. The cancel/reschedule bodies carry `proposedTransition` +
 // `newScheduledStart` so the route's `per_patient_review_floor_clear` ABAC resolves at authz time.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { IDG_DECISION_PAYLOAD_SCHEMA } from "../decision-payload-schema";
 import type {
@@ -24,17 +24,6 @@ import type {
   PacketDigestView as ServicePacketDigestView,
   RecurringPolicyView as ServiceRecurringPolicyView,
 } from "./service";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
 
 const Nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
 

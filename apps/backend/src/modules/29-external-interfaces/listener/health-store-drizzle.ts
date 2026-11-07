@@ -1,7 +1,8 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/29-external-interfaces/listener/health-store-drizzle.ts — GAP-043. The Drizzle
 // `FeedHealthStorePort`: reads the latest breaker state + newest inbound frame, and upserts the hourly
 // `external_feed_health` row, all under the feed's own org context (tenant RLS, the `app.org_id` GUC).
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 
@@ -12,7 +13,6 @@ const HEALTH = schema.externalFeedHealth;
 const LISTENER_STATE = schema.externalFeedListenerState;
 const INBOUND = schema.hl7MessageInbound;
 const OUTBOUND = schema.hl7MessageOutbound;
-const SYSTEM_USER_ID = "";
 const HOUR_MS = 3_600_000;
 
 const CIRCUIT_STATES: readonly ListenerCircuitState[] = ["closed", "open", "half_open"];
@@ -21,7 +21,7 @@ const asState = (value: string | undefined): ListenerCircuitState =>
 
 export function createDrizzleFeedHealthStore(deps: { readonly db: DbClient }): FeedHealthStorePort {
   const inOrg = <T>(organizationId: string, work: (tx: DbClient) => Promise<T>): Promise<T> =>
-    withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, (tx) =>
+    withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, (tx) =>
       work(tx as DbClient),
     );
 

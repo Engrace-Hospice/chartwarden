@@ -115,7 +115,7 @@ function localClock(instantIso: string, timeZone: string): { weekday: number; mi
 }
 
 /** Throws unless the window has HH:MM times, a start different from its end, and weekdays 0-6. */
-export function validateShiftWindow(window: ShiftWindow): void {
+function validateShiftWindow(window: ShiftWindow): void {
   if (minutesOf(window.startTime) === minutesOf(window.endTime)) {
     throw invalid("a shift window cannot start and end at the same time");
   }

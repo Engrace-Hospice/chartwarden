@@ -1,14 +1,3 @@
-// apps/backend/src/modules/14-idg/routes/service.ts — M14-T05 the §4.1 route service over an in-memory
-// backend (the M8-T09 / M9-T05 / M10-T06 / M11-T06 / M12-T08 / M13-T08 in-mem-slice precedent; Drizzle in prod
-// under `withOrgContext` so RLS backstops every read). The service composes the PURE M14 domain (`@chartwarden/idg`):
-// the §2.2 meeting state machine (`transitionMeeting`), the §2.7 decision record/supersede deciders
-// (`planDecisionRecord` / `planDecisionSupersede`), the §1.1/D8 action-item machine (`transitionActionItem` /
-// `planActionItemCreate`), and the §2.6 minutes-amendment decider — and emits the §4.4 outbox events the relay
-// publishes (drainable for tests).
-//
-// This service ALSO implements {@link IdgAbacResolver} so the §4.7 predicates (`idg_meeting_scope` /
-// `quorate_decision` / `per_patient_review_floor_clear`) resolve over the same dataset (M12/M13-T08 precedent:
-// the backend is both the route service and the ABAC resolver).
 import {
   DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS,
   evaluateQuorum,
@@ -21,6 +10,18 @@ import {
   transitionActionItem,
   transitionMeeting,
 } from "@chartwarden/idg";
+// apps/backend/src/modules/14-idg/routes/service.ts — M14-T05 the §4.1 route service over an in-memory
+// backend (the M8-T09 / M9-T05 / M10-T06 / M11-T06 / M12-T08 / M13-T08 in-mem-slice precedent; Drizzle in prod
+// under `withOrgContext` so RLS backstops every read). The service composes the PURE M14 domain (`@chartwarden/idg`):
+// the §2.2 meeting state machine (`transitionMeeting`), the §2.7 decision record/supersede deciders
+// (`planDecisionRecord` / `planDecisionSupersede`), the §1.1/D8 action-item machine (`transitionActionItem` /
+// `planActionItemCreate`), and the §2.6 minutes-amendment decider — and emits the §4.4 outbox events the relay
+// publishes (drainable for tests).
+//
+// This service ALSO implements {@link IdgAbacResolver} so the §4.7 predicates (`idg_meeting_scope` /
+// `quorate_decision` / `per_patient_review_floor_clear`) resolve over the same dataset (M12/M13-T08 precedent:
+// the backend is both the route service and the ABAC resolver).
+import { StaleVersionError, assertVersion } from "@chartwarden/shared/route-kit";
 import type {
   IdgActionItemLinkedKind,
   IdgActionItemStatus,
@@ -488,23 +489,19 @@ export function assertMayWriteDisciplineNote(
     );
   }
 }
-/** 412 STALE_VERSION when the `If-Match` version no longer matches the row (optimistic concurrency, §7.7). */
+/** 409 STALE_VERSION when the `If-Match` version no longer matches the row (optimistic concurrency, §7.7). */
 export function assertNoteVersion(expected: number, current: number): void {
-  if (expected !== current) {
-    throw new ChartWardenError(
-      "STALE_VERSION",
-      `stale write: expected row version ${expected} but current is ${current}`,
-      412,
-    );
-  }
+  assertVersion(
+    current,
+    expected,
+    `stale write: expected row version ${expected} but current is ${current}`,
+  );
 }
 
-/** 412 STALE_VERSION when the row moved between the version check and the guarded write (a lost race). */
-export function staleRowError(readVersion: number): ChartWardenError {
-  return new ChartWardenError(
-    "STALE_VERSION",
+/** 409 STALE_VERSION when the row moved between the version check and the guarded write (a lost race). */
+export function staleRowError(readVersion: number): StaleVersionError {
+  return new StaleVersionError(
     `stale write: the row changed after version ${readVersion} was read; re-read and retry`,
-    412,
   );
 }
 
@@ -917,7 +914,7 @@ export interface IdgRouteService {
     args: CreateDisciplineNoteArgs,
   ): Promise<DisciplineNoteView>;
   /** Edit a live original note's text and/or reason (same guards; a non-coordinator may edit only their OWN note;
-   * 412 on stale `If-Match`). Addenda are immutable. */
+   * 409 on stale `If-Match`). Addenda are immutable. */
   updateDisciplineNote(
     orgId: string,
     actor: DisciplineNoteActor,

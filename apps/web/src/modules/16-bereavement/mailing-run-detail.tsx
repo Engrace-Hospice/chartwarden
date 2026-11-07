@@ -6,7 +6,7 @@
 //  1. NO DEFAULT WORDING. A run with no title or no paragraph cannot be generated: the button says why and the server refuses it
 //     too (422 MAILING_CONTENT_EMPTY). Nothing on this page ever supplies wording.
 //  2. THE HEADER DECIDES THE VERSION. Every write carries the run version the page READ in `If-Match` and one `Idempotency-Key` per
-//     attempt; a 412/409 reloads the run, closes any open dialog and says why on the page. A write in flight disables every action.
+//     attempt; a 409/404 reloads the run, closes any open dialog and says why on the page. A write in flight disables every action.
 //  3. A STALE BATCH IS NOT HANDED OUT. The server re-checks eligibility before rendering and again at download: when someone in a ready
 //     batch has since opted out (or their plan closed), the download is refused (409 MAILING_RUN_STALE) and the page offers
 //     "Regenerate batch", which selects and renders the run again. Download needs a fresh step-up; a refusal goes to /step-up and back.
@@ -45,6 +45,7 @@ import {
   errorMessage,
   generateMailingRun,
   getMailingRun,
+  isStaleVersion,
   isStaleWrite,
 } from "./bereavement-api";
 import { dateTime, humanize, shortDate, toneOf } from "./bereavement-status";
@@ -292,12 +293,11 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
     inFlight.current = false;
     setBusy(null);
     if (error || !next) {
-      const message =
-        http === 412
-          ? RUN_MOVED
-          : errorCode(error) === CONTENT_EMPTY_CODE
-            ? CONTENT_EMPTY_MESSAGE
-            : errorMessage(error, fallback);
+      const message = isStaleVersion(http, error)
+        ? RUN_MOVED
+        : errorCode(error) === CONTENT_EMPTY_CODE
+          ? CONTENT_EMPTY_MESSAGE
+          : errorMessage(error, fallback);
       if (isStaleWrite(http)) {
         void reload();
         if (ceremony !== null) {

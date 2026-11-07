@@ -5,20 +5,21 @@
 // RE-VALIDATION path (`claim-validation-context-port.ts`, over an existing claim) so the two cannot disagree
 // about what a rule sees. No I/O, no clock: every time-dependent value (eligibility age, NOE admission day) is
 // computed by the caller and passed in.
-import type {
-  Cents,
-  EligibilitySnapshot,
-  IsoDate,
-  NoeStatusSnapshot,
-  RhcCarryOverSnapshot,
-  ValidationContext,
-  calculatePerDiemClass,
-  repositories,
+import {
+  type Cents,
+  type EligibilitySnapshot,
+  type IsoDate,
+  type NoeStatusSnapshot,
+  type RhcCarryOverSnapshot,
+  type ValidationContext,
+  type calculatePerDiemClass,
+  claimDischargeCodes,
+  qCodeForPlaceOfService,
+  type repositories,
 } from "@chartwarden/billing";
 import { claimAdmissionCodes, claimValueCodes } from "@chartwarden/billing";
 import type { AssemblyFacts } from "./claim-assembly-facts";
-import { qCodeForPlaceOfService, visitLinesFor, visitReportingOf } from "./claim-assembly-lines";
-import { claimDischargeCodes } from "./claim-discharge";
+import { visitLinesFor, visitReportingOf } from "./claim-assembly-lines";
 
 /** The claim-row facts the rules read (the rest of `ClaimSnapshot` comes from the admission/diagnosis facts). */
 export interface ClaimFactsInput {

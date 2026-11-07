@@ -1,3 +1,4 @@
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/14-idg/consumers/since-last-idg-cache.ts — the §2.4/§4.5 per-patient "since
 // last IDG" projection cache (Valkey, 30-day TTL) shared by every M9/M10/M11/M12 source consumer in this
 // directory (F-164, #248, continuing the F-129/F-145 investigation of the m14 `handlers-unbound` group).
@@ -59,7 +60,7 @@
 // Refreshed on every write (the whole object is re-SET with a fresh TTL), matching the
 // `m9-assessment-significant-change.ts` precedent — comfortably inside D2's 15-day cadence floor with
 // room for a skipped meeting.
-import type { DbClient } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import type {
   PacketAssessmentChangeDigest,
   PacketHopeTriggerDigest,
@@ -153,9 +154,6 @@ export async function readSinceLastIdgEntry(
 ): Promise<SinceLastIdgCacheEntry> {
   return readEntry(redis, patientId);
 }
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-export const CONSUMER_USER_ID = "";
 
 /** Shared dependency shape for the two consumers (M11/M12) that need a scoped DB lookup to resolve a
  *  fact the payload does not carry (patientId, orderKind/drugLabel) before writing the cache entry. */
