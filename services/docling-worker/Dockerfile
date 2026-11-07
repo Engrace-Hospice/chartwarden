@@ -30,15 +30,15 @@ FROM ${WOLFI_BASE}
 # python-3.12 at the same path the venv was built against (/usr/bin/python3.12); tesseract + English and OSD data for
 # TesseractCliOcrOptions. No libGL/glib: the lock carries opencv-python-headless only.
 RUN apk add --no-cache python-3.12 tesseract tesseract-eng tesseract-osd \
- && adduser -D -H -u 10001 docling
+ && adduser -D -u 10001 docling
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PATH=/opt/venv/bin:$PATH \
     HF_HOME=/opt/models/hf DOCLING_ARTIFACTS_PATH=/opt/models/docling \
     EASYOCR_MODULE_PATH=/opt/models/easyocr
 WORKDIR /srv
 COPY --from=build /opt/venv /opt/venv
-# EasyOCR writes a per-user network dir under its module path at reader start-up; give it one.
 COPY --from=build --chown=docling /opt/models /opt/models
 COPY --chown=docling app ./app
+# EasyOCR writes a per-user network dir under its module path at reader start-up; give it one.
 RUN mkdir -p /opt/models/easyocr && chown docling /opt/models/easyocr /srv
 USER docling
 
