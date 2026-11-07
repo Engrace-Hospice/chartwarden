@@ -14,8 +14,9 @@
 // rolls its own audit row back with it, so its attempt is recorded afterwards as a `denied` `write_failed` row in a
 // small follow-up transaction (best effort, logged when it cannot be written; the original error is what the caller sees).
 //
-// LOCKED ONCE ACTIVE. A write is accepted only while `tenant_account.status` is `provisioning` or `onboarding`
-// (the tenant's own RLS lets the app role read its own row). Any other status answers 409 `TENANT_NOT_ONBOARDING`
+// LOCKED ONCE ACTIVE. A write is accepted only while `tenant_account.status` is `provisioning` or `onboarding` (the one exception is the
+// clearinghouse switch out of `outside`, which takes an explicit allowlist: `CLEARINGHOUSE_SWITCH_STATUSES`; the tenant's own RLS lets
+// the app role read its own row). Any other status answers 409 `TENANT_NOT_ONBOARDING`
 // and the refusal itself is audited. The app role holds no UPDATE on `tenant_account`, so `FOR SHARE` is unavailable;
 // instead every write takes the SHARED advisory lock `tenant-onboarding:<org id>` BEFORE it reads the status
 // (`tenant-onboarding-lock.ts`), and the go-live approval (`activateApprovedTenant`) and `transitionStatus` take it
@@ -68,7 +69,11 @@ import {
 } from "./onboarding-data-audit";
 import { type TenantMemberView, listActiveMembers } from "./onboarding-members";
 import type { WriteResult, WriteSpec } from "./onboarding-write-types";
-import { ONBOARDING_WRITABLE_STATUSES, lockTenantOnboardingShared } from "./tenant-onboarding-lock";
+import {
+  CLEARINGHOUSE_SWITCH_STATUSES,
+  ONBOARDING_WRITABLE_STATUSES,
+  lockTenantOnboardingShared,
+} from "./tenant-onboarding-lock";
 
 export type { OnboardingOperator } from "./onboarding-data-audit";
 
@@ -377,7 +382,8 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             .limit(1);
           if (!account) throw new NotFoundError("tenant");
           tenantAccountId = account.id;
-          if (!spec.anyTenantStatus && !ONBOARDING_WRITABLE_STATUSES.has(account.status)) {
+          const accepted = spec.allowedStatuses ?? ONBOARDING_WRITABLE_STATUSES;
+          if (!spec.anyTenantStatus && !accepted.has(account.status)) {
             await recordOnboardingAudit(tx, op, target, {
               eventType: EVENTS.writeRefused,
               resourceKind: spec.resourceKind,
@@ -413,15 +419,70 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       await recordFailedWrite(op, target, spec, err);
       throw err;
     }
-    if ("refusedStatus" in outcome) {
-      throw new ChartWardenError(
-        "TENANT_NOT_ONBOARDING",
-        `onboarding data can be entered only while the tenant is provisioning or onboarding (it is ${outcome.refusedStatus})`,
-        409,
-      );
-    }
+    if ("refusedStatus" in outcome) throw statusRefusal(spec, outcome.refusedStatus);
     await settleAfterWrite(target.organizationId, tenantAccountId);
     return outcome.value;
+  }
+
+  /** 409 TENANT_NOT_ONBOARDING for a tenant whose status this write does not accept; the message names the statuses it does. */
+  function statusRefusal(
+    spec: Pick<WriteSpec, "allowedStatuses">,
+    status: string,
+  ): ChartWardenError {
+    const accepted = spec.allowedStatuses ?? ONBOARDING_WRITABLE_STATUSES;
+    const words = [...accepted].map((s) => s.replaceAll("_", " "));
+    const list =
+      words.length > 1 ? `${words.slice(0, -1).join(", ")} or ${words.at(-1)}` : words[0];
+    return new ChartWardenError(
+      "TENANT_NOT_ONBOARDING",
+      `this change is accepted only while the tenant is ${list} (it is ${status.replaceAll("_", " ")})`,
+      409,
+    );
+  }
+
+  /** The tenant's status on a short org-scoped read (no lock): the early look the switch takes BEFORE it writes the billing mode. */
+  async function tenantStatusOf(
+    op: OnboardingOperator,
+    target: OnboardingAuditTarget,
+  ): Promise<string> {
+    return withOrgContext<DbClient, string>(
+      db,
+      { organizationId: target.organizationId, userId: op.userId },
+      async (tx) => {
+        const [account] = await tx
+          .select({ status: ACCOUNT.status })
+          .from(ACCOUNT)
+          .where(eq(ACCOUNT.organizationId, target.organizationId))
+          .limit(1);
+        if (!account) throw new NotFoundError("tenant");
+        return account.status;
+      },
+    );
+  }
+
+  /** The audit row a refusal for the tenant's status leaves (the same row `write()` leaves), on its own short transaction. */
+  async function recordStatusRefusal(
+    op: OnboardingOperator,
+    target: OnboardingAuditTarget,
+    spec: WriteSpec,
+    status: string,
+  ): Promise<void> {
+    try {
+      await withOrgContext<DbClient, void>(
+        db,
+        { organizationId: target.organizationId, userId: op.userId },
+        (tx) =>
+          recordOnboardingAudit(tx, op, target, {
+            eventType: EVENTS.writeRefused,
+            resourceKind: spec.resourceKind,
+            outcome: "denied",
+            reason: spec.reason,
+            detail: { attemptedEvent: spec.event, tenantStatus: status },
+          }),
+      );
+    } catch (auditError) {
+      deps.logAuditError?.(auditError, { organizationId: target.organizationId });
+    }
   }
 
   /** Post-commit, best effort: let the advance sweep settle whatever step this write satisfied. */
@@ -729,6 +790,17 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       try {
         plan = await planSwitch(op, target, fields);
         if (plan.billingServiceMode !== null) {
+          // The status is looked at BEFORE the mode is written: a tenant that is offboarding, retained or being destroyed is refused
+          // here, with the refusal audited, instead of getting a mode set and put back. `write()` judges it again under the lock.
+          const status = await tenantStatusOf(op, target);
+          if (!CLEARINGHOUSE_SWITCH_STATUSES.has(status)) {
+            const refusal = statusRefusal(
+              { allowedStatuses: CLEARINGHOUSE_SWITCH_STATUSES },
+              status,
+            );
+            await recordStatusRefusal(op, target, spec, status);
+            throw refusal;
+          }
           await clearinghousePort().validatePut(
             scopeOf(op, target.organizationId),
             plan.body,
@@ -736,7 +808,10 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
           );
         }
       } catch (err) {
-        await recordFailedWrite(op, target, spec, err);
+        // A status refusal already left its own row (write_refused); every other early refusal is a failed attempt.
+        if (!(err instanceof ChartWardenError && err.code === "TENANT_NOT_ONBOARDING")) {
+          await recordFailedWrite(op, target, spec, err);
+        }
         throw err;
       }
       const mode = plan.billingServiceMode;
@@ -752,7 +827,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
           orgSlug,
           // The contracted tenant's switch is the operator's for ANY tenant status: a live tenant that bills outside has no other way
           // to leave outside (its own lane is blocked while a contract exists). Every other clearinghouse write stays onboarding-only.
-          { ...spec, ...(mode !== null ? { anyTenantStatus: true } : {}) },
+          { ...spec, ...(mode !== null ? { allowedStatuses: CLEARINGHOUSE_SWITCH_STATUSES } : {}) },
           async (tx, t) => {
             const done = await clearinghousePort().put(
               tx,

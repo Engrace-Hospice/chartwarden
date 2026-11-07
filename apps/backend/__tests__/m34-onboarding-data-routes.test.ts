@@ -1544,6 +1544,41 @@ describe("service: an operator's switch out of outside (order, any status, the m
     expect(eventsOf(inserts)).toEqual([ONBOARDING_DATA_AUDIT_EVENTS.clearinghouseSet]);
   });
 
+  it("accepts the switch only in an explicit allowlist of statuses: an offboarding, retained or destroyed tenant is refused (409) with no mode written and the refusal audited", async () => {
+    const allowed = new Set(["provisioning", "onboarding", "active", "at_risk", "suspended"]);
+    for (const status of schema.tenantAccountStatus.enumValues) {
+      const { service, log, inserts } = harness({ status });
+      const attempt = put(service);
+      if (allowed.has(status)) {
+        await expect(attempt, status).resolves.toBeDefined();
+        continue;
+      }
+      await expect(attempt, status).rejects.toMatchObject({
+        statusCode: 409,
+        code: "TENANT_NOT_ONBOARDING",
+      });
+      // nothing was written anywhere: not the mode, not the vendor
+      expect(
+        log.some((l) => l.startsWith("setMode") || l === "put"),
+        status,
+      ).toBe(false);
+      expect(
+        inserts.map((i) => i.values.eventType),
+        status,
+      ).toEqual([ONBOARDING_DATA_AUDIT_EVENTS.writeRefused]);
+      expect(inserts[0]?.values.context, status).toMatchObject({ tenantStatus: status });
+    }
+    // the statuses named in the task, spelled out
+    for (const status of [
+      "offboarding_initiated",
+      "final_export_pending",
+      "retained",
+      "destruction_pending",
+    ]) {
+      expect(allowed.has(status)).toBe(false);
+    }
+  });
+
   it("keeps every OTHER clearinghouse write onboarding-only: a plain vendor write on a live tenant is 409, and writes no mode", async () => {
     const { service, log } = harness({ status: "active", contract: false });
     await expect(

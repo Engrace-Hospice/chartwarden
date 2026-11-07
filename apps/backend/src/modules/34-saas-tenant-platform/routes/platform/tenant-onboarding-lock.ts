@@ -14,6 +14,19 @@ export const ONBOARDING_WRITABLE_STATUSES: ReadonlySet<string> = new Set([
   "onboarding",
 ]);
 
+/**
+ * The statuses in which an operator's clearinghouse switch out of `outside` is accepted: a tenant that is being set up, or live. It is an
+ * explicit allowlist, not "any status": a tenant that is offboarding, retained, being destroyed (or destroyed) has no clearinghouse to
+ * move, and a write there must be refused.
+ */
+export const CLEARINGHOUSE_SWITCH_STATUSES: ReadonlySet<string> = new Set([
+  "provisioning",
+  "onboarding",
+  "active",
+  "at_risk",
+  "suspended",
+]);
+
 /** Structural view of a Drizzle transaction: it can execute a SQL fragment (the tenant or the platform pool's). */
 interface SqlExecutor {
   execute(query: SQL): Promise<unknown>;

@@ -19,6 +19,12 @@ export interface WriteSpec {
   /** True for a write a LIVE tenant needs too (the BAA verification): the shared lock and the audit row stay, the status gate goes. */
   readonly anyTenantStatus?: boolean;
   /**
+   * The statuses this write is accepted in, in place of the onboarding-only default (provisioning, onboarding): an explicit allowlist for
+   * a write that a live tenant needs but that must still be refused for one that is offboarding or being destroyed. Ignored when
+   * `anyTenantStatus` is set.
+   */
+  readonly allowedStatuses?: ReadonlySet<string>;
+  /**
    * Runs when the write fails (before the error is rethrown), for a callback that made something the transaction cannot roll back (an
    * object in a store). `commitReached` is true when the callback and the audit row finished and the failure came from the COMMIT itself:
    * then the rows may have landed, and a caller must not undo what they point at.
