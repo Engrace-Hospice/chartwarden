@@ -2,7 +2,7 @@
 
 **Current phase:** BIL-1 Release Gate — Phase 1: Outstanding Certification, Branch Consolidation & Merge Readiness
 **Next phase:** BIL-1 Release Gate — Phase 2: Ordered Merge into `develop` & Post-Merge Verification
-**Verdict:** **NO-GO for actual Phase 2 merges. CONDITIONAL GO for Phase 2 planning and blocker closure.**
+**Verdict: NO-GO.** Phase 2 planning and blocker closure may continue, but actual merges cannot begin.
 
 **Evidence:** Source/tests commit `73b4538fb`; private PostgreSQL 18 full fresh migration and synthetic populated upgrade through 1361; migration transaction failure/restart exercise; M23/M25 real-role RLS 13/13 and 16/16; focused 92/92; cumulative prior 161-file / 1,992-pass suite, build and test typecheck. Exact scope and limits are in `TEST_RESULTS.md`.
 
@@ -21,7 +21,7 @@
 | Automatic financial posting | NO |
 | Production activation | NO |
 | BIL-2 implementation readiness | NO |
-| Additional corrective source PR required | NO presently identified; certification and remote review tasks remain |
+| Additional corrective source PR required | YES for the missing PostgreSQL-backed integrated worker and authenticated recovery tests; no new functional source defect has been demonstrated |
 
 **Remaining blockers:** wrong/open PR direction and closed predecessor PRs (P1, re-establish correct PR stack); missing remote CI/formal review (P1, run after publishing reviewed SHAs); no integrated multi-tenant, worker restart/fencing or auth+DB recovery test (P1, add/run private-PG certification); no vendor test account evidence (P1, obtain explicit account/endpoint authorization); no production-shaped deploy/recovery rehearsal (P1).
 
