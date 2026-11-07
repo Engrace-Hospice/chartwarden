@@ -21185,6 +21185,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/baa-document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload the signed business associate agreement for a tenant that is still onboarding (wizard step 3), through the documents module's own pipeline: size (25 MiB), type allowlist, magic bytes, the malware scan where one is bound, the tenant's bucket. The document is filed on the TENANT's RLS scope under the one kind this route files (tenant_baa); the body names no kind, patient or title, and nothing is read back or listed. The response carries the document id (what the BAA register row's `documentId` links) and the server-computed type, size and SHA-256. 409 TENANT_NOT_ONBOARDING unless the tenant is provisioning or onboarding; 415 for a type or content mismatch, 422 for a size, bad base64 or a scanner verdict, 503 when no object store is configured. tenant_baa_document.upload_platform (its own key, not documents.upload) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the document id and digest) are required; an AI actor is refused. A successful upload voids a pending go-live attestation like any other onboarding data write */
+        post: operations["postApiV1PlatformTenantsByOrgSlugBaadocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/clearinghouse": {
         parameters: {
             query?: never;
@@ -92974,6 +92991,51 @@ export interface operations {
                         } | null;
                         activeGrants: number;
                         activeSessions: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugBaadocument: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The signed agreement, base64 (at most 25 MiB decoded). The server checks the size, the type allowlist, the magic bytes and, where one is bound, the malware scan; it recomputes the digest. */
+                    contentBase64: string;
+                    mimeType: "application/pdf" | "image/jpeg" | "image/png" | "image/tiff" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        documentId: string;
+                        mimeType: string;
+                        /** @description The server-computed size, never the client's claim. */
+                        byteSize: number;
+                        /** @description The server-computed SHA-256 (lower-case hex). */
+                        sha256Hex: string;
                     };
                 };
             };

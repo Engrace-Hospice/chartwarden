@@ -6,6 +6,24 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-06 — A platform operator uploads a tenant's signed BAA
+
+**Why.** Onboarding step 3 linked the signed agreement by a document id the operator had to be handed. The operator can now upload it.
+
+- New `POST /api/v1/platform/tenants/{orgSlug}/baa-document` (`201`): body `{ contentBase64, mimeType, reason }` and nothing else (a field
+  naming a document kind, patient or title is a `422`). Headers: `Idempotency-Key` (required) and a fresh step-up. It answers
+  `{ documentId, mimeType, byteSize, sha256Hex }`; link `documentId` on the BAA register row (`POST /api/v1/platform/baa-register` or
+  `PATCH /api/v1/platform/baa-register/{id}`) as before.
+- The file goes through the documents pipeline: at most 25 MiB decoded (`422 UPLOAD_SIZE_INVALID`), a type allowlist (`415`), magic
+  bytes (`415 UPLOAD_CONTENT_MISMATCH`), not base64 (`422`), a scanner refusal (`422 UPLOAD_REJECTED`), no object store configured
+  (`503`). The size and digest are the server's.
+- New permission `tenant_baa_document.upload_platform`, held by `platform_ops` only. It is not `documents.upload`: it files one document
+  kind (`tenant_baa`) for the tenant in the path, and reads or lists no document. Only while the tenant is `provisioning` or `onboarding`
+  (`409 TENANT_NOT_ONBOARDING` otherwise). A successful upload voids a pending go-live attestation, like any other onboarding data write.
+- The `tenant_baa` kind is not accepted by `POST /api/v1/documents`.
+
+---
+
 ## 2026-11-06 — Leaving "bills outside ChartWarden" is a platform operator's switch
 
 **Why.** A tenant that bills outside ChartWarden is on billing service mode `none` (the system sets it). Moving it to a clearinghouse also

@@ -1008,6 +1008,7 @@ import {
   M22_RECORDS_REQUEST_EXPIRY_PLATFORM_JOB_ID,
   M22_RETENTION_ROTATION_PLATFORM_JOB_ID,
   buildAppealPacketRenderGuard,
+  buildEnvTenantBaaDocumentOnboardingPort,
   buildM22DocumentRequestConsumer,
   buildM22ExtractionBackrefConsumer,
   buildM22ExtractionClinicalBackrefConsumer,
@@ -6239,6 +6240,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 }),
                 // An operator withdraws a tenant's "filed outside ChartWarden" NOE / NOTR record (M23's own rule, on the caller's tx).
                 notices: buildExternalNoticeOnboardingPort(),
+                // An operator uploads a tenant's signed BAA (onboarding step 3) through M22's own upload pipeline, on the caller's tx.
+                baaDocuments: buildEnvTenantBaaDocumentOnboardingPort(dbHandle.db),
                 // The operator's switch out of `outside` names the billing mode: M35 sets it before the vendor (put back if that fails).
                 billingMode: buildOnboardingBillingModePort(() => pricingContracts.get()),
                 settleOnboarding: settleOnboardingForOrg,

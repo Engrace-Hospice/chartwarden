@@ -28,6 +28,10 @@ import {
 } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
+import type {
+  OnboardingBaaDocument,
+  OnboardingBaaDocumentPort,
+} from "../../../../bootstrap/onboarding-baa-document-port";
 import type { OnboardingBillingModePort } from "../../../../bootstrap/onboarding-billing-mode-port";
 import type { OnboardingClearinghousePort } from "../../../../bootstrap/onboarding-clearinghouse-port";
 import type {
@@ -50,6 +54,7 @@ import {
   updateProviderEntityForOrg,
 } from "../../../02-identity/org-admin-site-service";
 import { voidPendingGoLiveForDataChange } from "../../onboarding/go-live-void";
+import { uploadTenantBaaDocument } from "./onboarding-baa-document";
 import {
   type ClearinghouseSwitchPlan,
   planClearinghouseSwitch,
@@ -62,6 +67,7 @@ import {
   recordOnboardingAudit,
 } from "./onboarding-data-audit";
 import { type TenantMemberView, listActiveMembers } from "./onboarding-members";
+import type { WriteResult, WriteSpec } from "./onboarding-write-types";
 import { ONBOARDING_WRITABLE_STATUSES, lockTenantOnboardingShared } from "./tenant-onboarding-lock";
 
 export type { OnboardingOperator } from "./onboarding-data-audit";
@@ -153,6 +159,17 @@ export interface OnboardingDataService {
     reason: string,
     expected: { readonly recordedAt: string | null },
   ): Promise<OnboardingNoticeView>;
+  /**
+   * The operator uploads the signed BAA for the tenant (onboarding step 3): M22's own upload pipeline files one document kind
+   * (`tenant_baa`) on the tenant's RLS scope, and the BAA register row then links the returned id. Only while the tenant is provisioning or
+   * onboarding; a successful upload voids a pending go-live attestation like any other onboarding data write.
+   */
+  uploadBaaDocument(
+    op: OnboardingOperator,
+    orgSlug: string,
+    input: { readonly contentBase64: string; readonly mimeType: string },
+    reason: string,
+  ): Promise<OnboardingBaaDocument>;
   listMedicaidCredentials(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
   /** The tenant's active staff, for assigning its compliance officer (minimum necessary; an audited read). */
   listMembers(
@@ -194,6 +211,8 @@ export interface OnboardingDataDeps {
   readonly clearinghouse?: OnboardingClearinghousePort;
   /** M23's notice adapter (an operator withdraws a tenant's external-filing record); unbound -> that route answers 503. */
   readonly notices?: OnboardingNoticePort;
+  /** M22's BAA document adapter (an operator uploads the tenant's signed BAA); unbound -> that route answers 503. */
+  readonly baaDocuments?: OnboardingBaaDocumentPort;
   /**
    * M35's billing mode adapter. A contracted tenant that bills outside ChartWarden is on mode none, so the operator's switch to a vendor
    * names the mode (set before the vendor, put back if the vendor change fails). Unbound (a deployment without pricing) -> no tenant has a
@@ -262,24 +281,7 @@ const MEDICAID_LANE: CredentialLane = {
   port: (d) => d.medicaidCredentials,
 };
 
-/** What a write callback hands back: the response value plus what the audit row names. */
-interface WriteResult<T> {
-  readonly value: T;
-  readonly resourceId: string;
-  readonly changedFields?: readonly string[];
-  /** Non-sensitive facts for the audit row (counts, codes, kinds). */
-  readonly detail?: Readonly<Record<string, string | number | boolean>>;
-}
-
 type WriteOutcome<T> = { readonly refusedStatus: string } | { readonly value: T };
-
-interface WriteSpec {
-  readonly event: OnboardingAuditEvent;
-  readonly resourceKind: string;
-  readonly reason: string;
-  /** True for a write a LIVE tenant needs too (the BAA verification): the shared lock and the audit row stay, the status gate goes. */
-  readonly anyTenantStatus?: boolean;
-}
 
 const scopeOf = (op: OnboardingOperator, organizationId: string): OnboardingWriteScope => ({
   organizationId,
@@ -802,6 +804,15 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
           );
           return { value: done.view, resourceId: done.resourceId, detail: done.detail };
         },
+      ),
+
+    uploadBaaDocument: (op, orgSlug, input, reason) =>
+      uploadTenantBaaDocument(
+        { port: deps.baaDocuments, write, scopeOf },
+        op,
+        orgSlug,
+        input,
+        reason,
       ),
 
     listMedicaidCredentials: (op, orgSlug) => listCredentials(op, orgSlug, MEDICAID_LANE),

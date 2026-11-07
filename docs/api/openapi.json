@@ -259438,6 +259438,129 @@
         }
       }
     },
+    "/api/v1/platform/tenants/{orgSlug}/baa-document": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugBaadocument",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Upload the signed business associate agreement for a tenant that is still onboarding (wizard step 3), through the documents module's own pipeline: size (25 MiB), type allowlist, magic bytes, the malware scan where one is bound, the tenant's bucket. The document is filed on the TENANT's RLS scope under the one kind this route files (tenant_baa); the body names no kind, patient or title, and nothing is read back or listed. The response carries the document id (what the BAA register row's `documentId` links) and the server-computed type, size and SHA-256. 409 TENANT_NOT_ONBOARDING unless the tenant is provisioning or onboarding; 415 for a type or content mismatch, 422 for a size, bad base64 or a scanner verdict, 503 when no object store is configured. tenant_baa_document.upload_platform (its own key, not documents.upload) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the document id and digest) are required; an AI actor is refused. A successful upload voids a pending go-live attestation like any other onboarding data write",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "documentId",
+                    "mimeType",
+                    "byteSize",
+                    "sha256Hex"
+                  ],
+                  "properties": {
+                    "documentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "mimeType": {
+                      "type": "string"
+                    },
+                    "byteSize": {
+                      "description": "The server-computed size, never the client's claim.",
+                      "type": "integer"
+                    },
+                    "sha256Hex": {
+                      "description": "The server-computed SHA-256 (lower-case hex).",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "contentBase64",
+                  "mimeType",
+                  "reason"
+                ],
+                "properties": {
+                  "contentBase64": {
+                    "minLength": 4,
+                    "maxLength": 34952536,
+                    "description": "The signed agreement, base64 (at most 25 MiB decoded). The server checks the size, the type allowlist, the magic bytes and, where one is bound, the malware scan; it recomputes the digest.",
+                    "type": "string"
+                  },
+                  "mimeType": {
+                    "anyOf": [
+                      {
+                        "const": "application/pdf",
+                        "type": "string"
+                      },
+                      {
+                        "const": "image/jpeg",
+                        "type": "string"
+                      },
+                      {
+                        "const": "image/png",
+                        "type": "string"
+                      },
+                      {
+                        "const": "image/tiff",
+                        "type": "string"
+                      },
+                      {
+                        "const": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/platform/tenants/{orgSlug}/clearinghouse": {
       "get": {
         "operationId": "getApiV1PlatformTenantsByOrgSlugClearinghouse",

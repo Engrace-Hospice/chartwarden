@@ -355,3 +355,45 @@ export const OnboardingNoticeFilingListSchema = Type.Object({
     description: `True when the tenant recorded more than the ${EXTERNAL_NOTICE_FILING_LIST_CAP} newest shown; older records exist that this list does not return.`,
   }),
 });
+
+/**
+ * The upload cap, the documents pipeline's own (25 MiB of bytes, base64-expanded 4/3 and padded). M22 enforces the real limit on the
+ * decoded bytes; this bounds the text before it is parsed. M34 may not import M22, so the figure is repeated here.
+ */
+const BAA_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+const BAA_UPLOAD_MAX_BASE64_CHARS = Math.ceil(BAA_UPLOAD_MAX_BYTES / 3) * 4;
+/** The route-level body limit: the base64 text plus the JSON envelope (`reason`, `mimeType`). */
+export const BAA_UPLOAD_BODY_LIMIT_BYTES = BAA_UPLOAD_MAX_BASE64_CHARS + 64 * 1024;
+const BAA_UPLOAD_MIME_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/tiff",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+] as const;
+
+/**
+ * The signed BAA, uploaded by a platform operator for a tenant that is still onboarding: the bytes, their type and the reason. No
+ * document kind, patient, title or retention class is accepted: the route files exactly one kind (`tenant_baa`).
+ */
+export const OnboardingBaaDocumentUploadRequest = Type.Object(
+  {
+    contentBase64: Type.String({
+      minLength: 4,
+      maxLength: BAA_UPLOAD_MAX_BASE64_CHARS,
+      description:
+        "The signed agreement, base64 (at most 25 MiB decoded). The server checks the size, the type allowlist, the magic bytes and, where one is bound, the malware scan; it recomputes the digest.",
+    }),
+    mimeType: Type.Union(BAA_UPLOAD_MIME_TYPES.map((m) => Type.Literal(m))),
+    reason: OnboardingReasonSchema.properties.reason,
+  },
+  { additionalProperties: false },
+);
+
+/** The document as filed: its id (what the BAA register row links) and what the server verified about the bytes. */
+export const OnboardingBaaDocumentViewSchema = Type.Object({
+  documentId: Type.String({ format: "uuid" }),
+  mimeType: Type.String(),
+  byteSize: Type.Integer({ description: "The server-computed size, never the client's claim." }),
+  sha256Hex: Type.String({ description: "The server-computed SHA-256 (lower-case hex)." }),
+});

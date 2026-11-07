@@ -349,6 +349,11 @@ export {
 } from "./routes/signed-url-service";
 export { M22_OUTBOX_EVENTS, M22_DOCUMENT_RENDERED_EVENT } from "./events-by-m22";
 export { buildPortalUploadIntakePort } from "./portal-upload-intake";
+// Onboarding step 3: the operator's upload of a tenant's signed BAA, through this module's own upload pipeline (bootstrap seam port).
+export {
+  buildEnvTenantBaaDocumentOnboardingPort,
+  buildTenantBaaDocumentOnboardingPort,
+} from "./onboarding-baa-document-port";
 export { buildPortalDisclosureReader } from "./access-log/portal-disclosures";
 
 // GAP-141 — M22 D7 AI-boundary boot validator (db-present onReady hook in the composition root).

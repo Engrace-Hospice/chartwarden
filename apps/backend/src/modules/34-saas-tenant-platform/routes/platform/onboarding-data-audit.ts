@@ -43,6 +43,11 @@ export const ONBOARDING_DATA_AUDIT_EVENTS = {
    * operator, the tenant, the reason, the notice kind and id, the filed date withdrawn and the record's `recordedAt`.
    */
   noticeExternalFilingWithdrawn: "m34.tenant_onboarding.notice_external_filing_withdrawn",
+  /**
+   * A platform operator filed the signed BAA for the tenant (onboarding step 3). The row names the operator, the tenant, the reason, the
+   * document id and what the server verified of the bytes (type, size, sha256): never the bytes.
+   */
+  baaDocumentUploaded: "m34.tenant_onboarding.baa_document_uploaded",
   dataRead: "m34.tenant_onboarding.data_read",
   /** The tenant is not provisioning/onboarding: the write was refused before it ran. */
   writeRefused: "m34.tenant_onboarding.write_refused",

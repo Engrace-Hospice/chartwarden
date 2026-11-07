@@ -15476,6 +15476,8 @@ import {
   VerifyClearinghouseResponseSchema as M23VerifyClearinghouseResponseSchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/typebox";
 import {
+  OnboardingBaaDocumentUploadRequest as M34OnboardingBaaDocumentUploadRequest,
+  OnboardingBaaDocumentViewSchema as M34OnboardingBaaDocumentViewSchema,
   OnboardingClearinghousePutRequest as M34OnboardingClearinghousePutRequest,
   OnboardingClearinghouseVerifyRequest as M34OnboardingClearinghouseVerifyRequest,
   OnboardingClearinghouseVerifyResponseSchema as M34OnboardingClearinghouseVerifyResponseSchema,
@@ -15588,6 +15590,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M34OnboardingReasonSchema,
     headers: M34_NOTICE_WITHDRAW_HEADERS,
     response: M34OnboardingNoticeWithdrawalViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/baa-document": {
+    summary:
+      "Upload the signed business associate agreement for a tenant that is still onboarding (wizard step 3), through the documents module's own pipeline: size (25 MiB), type allowlist, magic bytes, the malware scan where one is bound, the tenant's bucket. The document is filed on the TENANT's RLS scope under the one kind this route files (tenant_baa); the body names no kind, patient or title, and nothing is read back or listed. The response carries the document id (what the BAA register row's `documentId` links) and the server-computed type, size and SHA-256. 409 TENANT_NOT_ONBOARDING unless the tenant is provisioning or onboarding; 415 for a type or content mismatch, 422 for a size, bad base64 or a scanner verdict, 503 when no object store is configured. tenant_baa_document.upload_platform (its own key, not documents.upload) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the document id and digest) are required; an AI actor is refused. A successful upload voids a pending go-live attestation like any other onboarding data write",
+    body: M34OnboardingBaaDocumentUploadRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    response: M34OnboardingBaaDocumentViewSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/activate": {
     summary: `Activate a tenant's verified clearinghouse config; settles wizard step 7 once every earlier step allows it. ${M34_CLEARINGHOUSE_WRITE_NOTE}`,

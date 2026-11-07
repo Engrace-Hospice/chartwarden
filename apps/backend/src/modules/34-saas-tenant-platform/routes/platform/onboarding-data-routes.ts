@@ -16,8 +16,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { rejectAiActor } from "../../../../bootstrap/reject-ai-actor";
 import type { OnboardingDataService, OnboardingOperator } from "./onboarding-data-service";
 import {
+  BAA_UPLOAD_BODY_LIMIT_BYTES,
   ONBOARDING_REASON_MAX,
   ONBOARDING_REASON_MIN,
+  OnboardingBaaDocumentUploadRequest,
   OnboardingClearinghousePutRequest,
   OnboardingClearinghouseVerifyRequest,
   OnboardingLocationCreateRequest,
@@ -50,6 +52,11 @@ const CLEARINGHOUSE_WRITE_KEY = "tenant_clearinghouse.write_platform";
 const CLEARINGHOUSE_VERIFY_BAA_KEY = "tenant_clearinghouse.verify_baa_platform";
 /** An operator withdrawing a tenant's "filed outside ChartWarden" NOE / NOTR record is its own key (a separable duty). */
 const NOTICE_WITHDRAW_KEY = "tenant_notice_filing.withdraw_platform";
+/**
+ * The signed BAA upload (onboarding step 3) has its own key, NOT `documents.upload`: the one route behind it files one document kind
+ * (`tenant_baa`) for the tenant in the path, and the key reads or lists no document.
+ */
+const BAA_DOCUMENT_UPLOAD_KEY = "tenant_baa_document.upload_platform";
 const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -101,6 +108,14 @@ const NOTICE_WITHDRAW: readonly PreHandler[] = [
   P(NOTICE_WITHDRAW_KEY),
   OPS(NOTICE_WITHDRAW_KEY),
   requireStepUp(NOTICE_WITHDRAW_KEY) as PreHandler,
+  rejectAiActor(),
+  requireIdempotencyKey,
+];
+
+const BAA_DOCUMENT_UPLOAD: readonly PreHandler[] = [
+  P(BAA_DOCUMENT_UPLOAD_KEY),
+  OPS(BAA_DOCUMENT_UPLOAD_KEY),
+  requireStepUp(BAA_DOCUMENT_UPLOAD_KEY) as PreHandler,
   rejectAiActor(),
   requireIdempotencyKey,
 ];
@@ -425,6 +440,29 @@ export function registerOnboardingDataRoutes(
         reason,
         requiredRecordedAtPin(request, "BAA record"),
       );
+    },
+  );
+
+  // POST baa-document — the operator uploads the signed BAA for a tenant that is still onboarding (step 3). The bytes go through M22's own
+  // upload pipeline (type / size / magic-byte gate, scan, the tenant's bucket) on the tenant's RLS scope; the kind is fixed server-side
+  // and no document is read or listed. The panel then records the BAA (the register row) with the returned document id. Only while the
+  // tenant is provisioning or onboarding (409 otherwise). The body is the bytes, their type and the reason, nothing else.
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/baa-document",
+    { preHandler: [...BAA_DOCUMENT_UPLOAD], bodyLimit: BAA_UPLOAD_BODY_LIMIT_BYTES },
+    async (request, reply) => {
+      const op = operatorOf(request);
+      const {
+        reason,
+        fields: { contentBase64, mimeType },
+      } = splitReason(parse(OnboardingBaaDocumentUploadRequest, request.body));
+      const view = await service.uploadBaaDocument(
+        op,
+        slugOf(request),
+        { contentBase64, mimeType },
+        reason,
+      );
+      return reply.code(201).send(view);
     },
   );
 

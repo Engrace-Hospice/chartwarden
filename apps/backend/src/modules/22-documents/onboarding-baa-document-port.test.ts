@@ -36,7 +36,11 @@ function fakeUploads(discard = vi.fn(async () => undefined)) {
       discard,
     }),
   );
-  return { uploads: { createDocumentOn } as unknown as ServerUploadService, createDocumentOn, discard };
+  return {
+    uploads: { createDocumentOn } as unknown as ServerUploadService,
+    createDocumentOn,
+    discard,
+  };
 }
 
 describe("buildTenantBaaDocumentOnboardingPort", () => {
@@ -45,7 +49,10 @@ describe("buildTenantBaaDocumentOnboardingPort", () => {
     const tx = txScopedTo(ORG);
     const port = buildTenantBaaDocumentOnboardingPort(uploads);
 
-    const result = await port.upload(tx, SCOPE, { contentBase64: PDF_BASE64, mimeType: "application/pdf" });
+    const result = await port.upload(tx, SCOPE, {
+      contentBase64: PDF_BASE64,
+      mimeType: "application/pdf",
+    });
 
     expect(createDocumentOn).toHaveBeenCalledWith(
       tx,
@@ -83,10 +90,16 @@ describe("buildTenantBaaDocumentOnboardingPort", () => {
     const port = buildTenantBaaDocumentOnboardingPort(uploads);
 
     await expect(
-      port.upload(txScopedTo(OTHER_ORG), SCOPE, { contentBase64: PDF_BASE64, mimeType: "application/pdf" }),
+      port.upload(txScopedTo(OTHER_ORG), SCOPE, {
+        contentBase64: PDF_BASE64,
+        mimeType: "application/pdf",
+      }),
     ).rejects.toMatchObject({ code: "TENANT_SCOPE_MISMATCH" });
     await expect(
-      port.upload(txScopedTo(null), SCOPE, { contentBase64: PDF_BASE64, mimeType: "application/pdf" }),
+      port.upload(txScopedTo(null), SCOPE, {
+        contentBase64: PDF_BASE64,
+        mimeType: "application/pdf",
+      }),
     ).rejects.toMatchObject({ code: "TENANT_SCOPE_MISMATCH" });
     expect(createDocumentOn).not.toHaveBeenCalled();
   });
@@ -96,7 +109,10 @@ describe("buildTenantBaaDocumentOnboardingPort", () => {
     const port = buildTenantBaaDocumentOnboardingPort(uploads);
 
     await expect(
-      port.upload(txScopedTo(ORG), SCOPE, { contentBase64: "not base64!!", mimeType: "application/pdf" }),
+      port.upload(txScopedTo(ORG), SCOPE, {
+        contentBase64: "not base64!!",
+        mimeType: "application/pdf",
+      }),
     ).rejects.toMatchObject({ statusCode: 422 });
     expect(createDocumentOn).not.toHaveBeenCalled();
   });
