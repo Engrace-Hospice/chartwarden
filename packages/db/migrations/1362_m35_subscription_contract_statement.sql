@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS "subscription_statement" (
 	"needs_review" boolean DEFAULT false NOT NULL,
 	"computed_at" timestamp with time zone NOT NULL,
 	"finalized_at" timestamp with time zone,
-	-- the Stripe seam: nothing writes these until M35's Stripe subscription wiring exists (ADR-0108 D7 / slice 2 report)
+	-- the Stripe seam: nothing writes these until M35's Stripe subscription wiring exists (ADR-0111 D7 / slice 2 report)
 	"stripe_usage_record_id" text,
 	"stripe_posted_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
