@@ -6,8 +6,8 @@
 //   queued_orders_stale  signed orders have sat in `queued_for_transmission` longer than {@link QUEUED_ORDER_ALERT_AGE_MS}, whatever
 //                        the reason (a deactivated registration, a fault, an outage): "queued ones wait" must not mean "forever".
 // Publishing is best effort and never fails a tick: a failed publish un-raises the episode so the next tick tries again.
-import { schema } from "@chartwarden/db";
-import { and, eq, lt } from "drizzle-orm";
+import { type DbClient, schema } from "@chartwarden/db";
+import { and, eq, exists, lt, sql } from "drizzle-orm";
 import { type M12CronDeps, inOrg, nowOf } from "./cron-common";
 
 const MO = schema.medicationOrders;
@@ -78,24 +78,47 @@ export async function reportRecovery(
   }
 }
 
+/**
+ * The age probe, as a builder so a test can EXPLAIN the very statement that runs. It starts from the queued set
+ * (`medication_order_queued_idx`, partial, so a handful of rows however large the table) and asks whether ONE of
+ * those orders has a transmission row queued before the cutoff (`mot_order_idx`), instead of joining every
+ * transmission row of the tenant to its order. Both organization predicates are explicit so the indexes lead
+ * with the tenant column even before RLS adds its own.
+ */
+export function staleQueuedOrdersQuery(tx: DbClient, org: string, cutoff: Date) {
+  return tx
+    .select({ id: MO.id })
+    .from(MO)
+    .where(
+      and(
+        eq(MO.organizationId, org),
+        eq(MO.status, "queued_for_transmission"),
+        eq(MO.dosespotSendState, "queued"),
+        exists(
+          tx
+            .select({ one: sql`1` })
+            .from(MOT)
+            .where(
+              and(
+                eq(MOT.organizationId, org),
+                eq(MOT.medicationOrderId, MO.id),
+                lt(MOT.queuedAt, cutoff),
+              ),
+            ),
+        ),
+      ),
+    )
+    .limit(1);
+}
+
 /** Alert once when any of the org's signed orders has waited in `queued` past {@link QUEUED_ORDER_ALERT_AGE_MS}; clear when none has. */
 export async function runQueuedAgeAlertForOrg(deps: M12CronDeps, org: string): Promise<boolean> {
   const cutoff = new Date(nowOf(deps).getTime() - QUEUED_ORDER_ALERT_AGE_MS);
-  const stale = await inOrg(deps.db, org, async (tx) => {
-    const rows = await tx
-      .select({ id: MO.id })
-      .from(MO)
-      .innerJoin(MOT, eq(MOT.medicationOrderId, MO.id))
-      .where(
-        and(
-          eq(MO.status, "queued_for_transmission"),
-          eq(MO.dosespotSendState, "queued"),
-          lt(MOT.queuedAt, cutoff),
-        ),
-      )
-      .limit(1);
-    return rows.length > 0;
-  });
+  const stale = await inOrg(
+    deps.db,
+    org,
+    async (tx) => (await staleQueuedOrdersQuery(tx, org, cutoff)).length > 0,
+  );
   if (stale) await reportDegradation(deps, org, "queued_orders_stale");
   else await reportRecovery(deps, org, "queued_orders_stale");
   return stale;

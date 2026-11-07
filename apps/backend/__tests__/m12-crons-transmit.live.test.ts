@@ -22,6 +22,7 @@ import {
   enqueueTransmissionIfBound,
 } from "../src/modules/12-dosespot/index";
 import { inOrg } from "../src/modules/12-dosespot/jobs/cron-common";
+import { staleQueuedOrdersQuery } from "../src/modules/12-dosespot/jobs/degradation-reports";
 import {
   type M12CronDeps,
   buildM12CronRunners,
@@ -785,6 +786,79 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       const before = (await h.eventsOf("m12.medication_order.ack_received", ORG_A)).length;
       await runTransmissionSweepForOrg(deps(statusOf({ "rx-race": "sent" })), ORG_A);
       expect((await h.eventsOf("m12.medication_order.ack_received", ORG_A)).length).toBe(before);
+    });
+  });
+
+  // Review of slice 4, M4: the per-tick age alert must be index-served, and reshaping it must not change what it finds.
+  describe("the queued-age probe is index-served (migration 1385)", () => {
+    const cutoff = () => new Date(Date.now() - 60 * 60_000);
+    const probe = (org: string) =>
+      inOrg(h.handle.db, org, (tx) => staleQueuedOrdersQuery(tx, org, cutoff()));
+    const age = (orderId: string, interval: string) =>
+      h.admin.query(
+        `UPDATE medication_order_transmission SET queued_at = now() - interval '${interval}' WHERE medication_order_id=$1`,
+        [orderId],
+      );
+    const seeded = async (org: string, over: Record<string, unknown> = {}) => {
+      const patientId = await h.seedPatient(org, { synced: "501" });
+      return h.seedOrder({
+        org,
+        patientId,
+        status: "queued_for_transmission",
+        sendState: "queued",
+        ...over,
+      });
+    };
+
+    it("finds a queued order whose transmission row is older than the cutoff, and only that", async () => {
+      const old = await seeded(ORG_A);
+      await age(old.orderId, "2 hours");
+      expect((await probe(ORG_A)).map((r) => r.id)).toEqual([old.orderId]);
+    });
+
+    it("ignores a queued order whose transmission row is fresh, a sent order with an old row, and another org's old queued order", async () => {
+      const fresh = await seeded(ORG_A);
+      await age(fresh.orderId, "5 minutes");
+      const sent = await seeded(ORG_A, { status: "transmitted", sendState: "transmitted" });
+      await age(sent.orderId, "3 hours");
+      const other = await seeded(ORG_B);
+      await age(other.orderId, "3 hours");
+      expect(await probe(ORG_A)).toEqual([]);
+      expect((await probe(ORG_B)).map((r) => r.id)).toEqual([other.orderId]);
+    });
+
+    it("both indexes exist, and the order index exists on every partition of the partitioned table", async () => {
+      const names = (
+        await h.q(
+          "SELECT indexname FROM pg_indexes WHERE indexname IN ('mot_order_idx','medication_order_queued_idx') ORDER BY 1",
+        )
+      ).map((r) => r.indexname);
+      expect(names).toEqual(["medication_order_queued_idx", "mot_order_idx"]);
+      const [parts] = await h.q(
+        `SELECT count(*)::int AS partitions,
+                count(*) FILTER (WHERE EXISTS (
+                  SELECT 1 FROM pg_index i JOIN pg_inherits ih ON ih.inhrelid = i.indexrelid
+                   WHERE i.indrelid = c.oid AND ih.inhparent = 'medication_order_queued_idx'::regclass))::int AS indexed
+           FROM pg_inherits p JOIN pg_class c ON c.oid = p.inhrelid
+          WHERE p.inhparent = 'medication_order'::regclass`,
+      );
+      expect(parts.partitions).toBeGreaterThan(0);
+      expect(parts.indexed).toBe(parts.partitions);
+    });
+
+    it("the real probe's plan reaches both tables through an index, with sequential scans disabled", async () => {
+      const { sql: text, params } = staleQueuedOrdersQuery(h.handle.db, ORG_A, cutoff()).toSQL();
+      await h.admin.query("BEGIN");
+      try {
+        await h.admin.query("SET LOCAL enable_seqscan = off");
+        const plan = (await h.admin.query(`EXPLAIN ${text}`, params as unknown[])).rows
+          .map((r) => r["QUERY PLAN"] as string)
+          .join("\n");
+        expect(plan).toMatch(/using mot_order_idx on medication_order_transmission/);
+        expect(plan).not.toMatch(/Seq Scan/);
+      } finally {
+        await h.admin.query("ROLLBACK");
+      }
     });
   });
 

@@ -43,6 +43,9 @@ export const medicationOrderTransmissions = pgTable(
     byInFlight: index("mot_in_flight_idx")
       .on(t.organizationId, t.transmissionSucceededAt, t.transmissionFailedAt)
       .where(sql`transmission_succeeded_at IS NULL AND transmission_failed_at IS NULL`),
+    // Migration 1385: the age alert's EXISTS probe (is there a transmission row for this order queued before
+    // the cutoff) and the by-order lookup of the settle/retry paths. No FK covers medication_order_id.
+    byOrder: index("mot_order_idx").on(t.organizationId, t.medicationOrderId, t.queuedAt),
   }),
 );
 
