@@ -16,8 +16,8 @@ function fakeContracts() {
   return {
     calls,
     contracts: {
-      hasLiveContract: async (org: string) => {
-        calls.push(["hasLiveContract", org]);
+      hasContract: async (org: string) => {
+        calls.push(["hasContract", org]);
         return org === "contracted";
       },
       setBillingServiceMode: async (...args: unknown[]) => {

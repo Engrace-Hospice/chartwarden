@@ -116,7 +116,7 @@ export {
   type PlatformContractView,
   type TenantPricingView,
   buildContractService,
-  orgHasLiveContract,
+  orgHasContract,
 } from "./pricing/contract-service";
 export { type PricingRouteDeps, registerPricingRoutes } from "./pricing/pricing.routes";
 export {

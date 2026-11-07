@@ -13,11 +13,11 @@ import { modeTriggerOf } from "./mode-trigger";
 export function buildOnboardingBillingModePort(
   contracts: () => Pick<
     ContractService,
-    "hasLiveContract" | "setBillingServiceMode" | "setModeNoneForOutsideBilling"
+    "hasContract" | "setBillingServiceMode" | "setModeNoneForOutsideBilling"
   >,
 ): OnboardingBillingModePort {
   return {
-    hasContract: (organizationId) => contracts().hasLiveContract(organizationId),
+    hasContract: (organizationId) => contracts().hasContract(organizationId),
     async setModeLeavingOutside(operator: OnboardingBillingModeOperator, orgSlug, mode, reason) {
       await contracts().setBillingServiceMode(
         {

@@ -191,6 +191,24 @@ const WRITER_ONLY = {
   ],
 };
 
+/** An operator who holds the clearinghouse keys AND the pricing key: the one who may name a billing mode on the switch. */
+const PRICING_OPERATOR = {
+  orgId: PLATFORM_ORG,
+  userId: "pricing-user",
+  grants: [
+    {
+      roleKey: "platform_ops",
+      enabled: true,
+      expiresAt: null,
+      permissionKeys: [
+        "tenant_clearinghouse.read_platform",
+        "tenant_clearinghouse.write_platform",
+        "subscription.onboard_platform",
+      ],
+    },
+  ],
+};
+
 function makeServer(
   calls: Call[],
   clearinghouseVerifyRateLimit?: (request: never, reply: never) => Promise<void>,
@@ -203,6 +221,7 @@ function makeServer(
       // a platform role that is NOT platform_ops: holds the keys, fails the predicate
       { ...GRANTS, userId: "support-user" },
       WRITER_ONLY,
+      PRICING_OPERATOR,
     ]).store,
   );
   const reg = createPredicateRegistry();
@@ -1159,6 +1178,10 @@ describe("service: the clearinghouse choice", () => {
     }[] = [];
     const port: OnboardingClearinghousePort = {
       get: async () => ({ vendor: null }),
+      validatePut: async (_scope, body, expectedVersion) => {
+        trace.push("validate");
+        seen.push({ method: "validatePut", body, expectedVersion });
+      },
       put: async (_tx, _scope, body, expectedVersion) => {
         seen.push({ method: "put", body, expectedVersion });
         return {
@@ -1340,7 +1363,10 @@ describe("service: the clearinghouse choice", () => {
     const { db, inserts } = stubDb("onboarding");
     const { port } = fakePort();
     const service = buildDrizzleOnboardingDataService({ db, resolveTenant, clearinghouse: port });
-    await expect(service.getClearinghouse(OPERATOR, "tenant-b")).resolves.toEqual({ vendor: null });
+    await expect(service.getClearinghouse(OPERATOR, "tenant-b")).resolves.toEqual({
+      vendor: null,
+      hasContract: false,
+    });
     expect(inserts[0]?.values).toMatchObject({
       eventType: ONBOARDING_DATA_AUDIT_EVENTS.dataRead,
       resourceKind: "tenant_clearinghouse_config",
@@ -1437,5 +1463,219 @@ describe("service: the clearinghouse choice", () => {
         recordedAt: BAA_PIN,
       }),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe("service: an operator's switch out of outside (order, any status, the mode confirmed after)", () => {
+  const CONFIG_ID = "50000000-0000-4000-8000-000000000001";
+  const SWITCH = {
+    vendor: "claimmd",
+    mode: "production",
+    secret: "fake-key-not-a-secret#1",
+    billingServiceMode: "managed_billing",
+  } as const;
+  const REASON = "The customer moves to Claim.MD, ticket CHG-9301";
+
+  /** A choice that is outside, a contract that exists, and one ordered log of everything that was asked of either. */
+  function harness(
+    options: {
+      status?: string;
+      putFails?: Error;
+      validateFails?: Error;
+      contract?: boolean | "unreadable";
+      reassertFails?: boolean;
+    } = {},
+  ) {
+    const log: string[] = [];
+    let modeCalls = 0;
+    const warned: string[] = [];
+    const port: OnboardingClearinghousePort = {
+      get: async () => ({ vendor: "outside", source: "tenant", version: 4 }),
+      validatePut: async () => {
+        log.push("validatePut");
+        if (options.validateFails) throw options.validateFails;
+      },
+      put: async () => {
+        log.push("put");
+        if (options.putFails) throw options.putFails;
+        return { resourceId: CONFIG_ID, created: false, view: { vendor: "claimmd" } };
+      },
+    } as unknown as OnboardingClearinghousePort;
+    const billingMode = {
+      hasContract: async () => {
+        log.push("hasContract");
+        if (options.contract === "unreadable") throw new Error("pricing tables unreadable");
+        return options.contract !== false;
+      },
+      setModeLeavingOutside: async (_op: unknown, _slug: string, mode: string) => {
+        modeCalls += 1;
+        log.push(`setMode:${mode}`);
+        if (options.reassertFails && modeCalls > 1) throw new Error("contract canceled meanwhile");
+      },
+      restoreNone: async () => {
+        log.push("restoreNone");
+      },
+    };
+    const { db, inserts } = stubDb(options.status ?? "active");
+    const service = buildDrizzleOnboardingDataService({
+      db,
+      resolveTenant,
+      clearinghouse: port,
+      billingMode,
+      warn: (message) => warned.push(message),
+    });
+    return { service, log, inserts, warned };
+  }
+  const put = (service: OnboardingDataService, fields: Record<string, unknown> = SWITCH) =>
+    service.putClearinghouse(OPERATOR, "tenant-b", fields, REASON, 4);
+  const eventsOf = (inserts: InsertedRow[]) => inserts.map((i) => i.values.eventType);
+
+  it("runs for a LIVE tenant, because the contracted tenant's switch has no other way off outside, and confirms the mode after the vendor", async () => {
+    const { service, log, inserts } = harness({ status: "active" });
+    await put(service);
+    // the plan reads the contract; the put's own refusals are asked BEFORE the mode is written; the mode is asked for again afterwards
+    expect(log).toEqual([
+      "hasContract",
+      "validatePut",
+      "setMode:managed_billing",
+      "put",
+      "setMode:managed_billing",
+    ]);
+    expect(eventsOf(inserts)).toEqual([ONBOARDING_DATA_AUDIT_EVENTS.clearinghouseSet]);
+  });
+
+  it("keeps every OTHER clearinghouse write onboarding-only: a plain vendor write on a live tenant is 409, and writes no mode", async () => {
+    const { service, log } = harness({ status: "active", contract: false });
+    await expect(
+      put(service, { vendor: "claimmd", mode: "production", secret: "fake-key-not-a-secret#1" }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "TENANT_NOT_ONBOARDING" });
+    expect(log).not.toContain("put");
+    expect(log.some((l) => l.startsWith("setMode"))).toBe(false);
+  });
+
+  it("writes NOTHING when the put's own refusal is foreseeable (a bad credential, a stale pin): no mode, and the attempt is audited as write_failed", async () => {
+    const refusal = new ChartWardenError(
+      "CLEARINGHOUSE_SECRET_INVALID",
+      "the credential must be 8-512 printable characters with no spaces",
+      422,
+    );
+    const { service, log, inserts } = harness({ validateFails: refusal });
+    await expect(put(service)).rejects.toMatchObject({ code: "CLEARINGHOUSE_SECRET_INVALID" });
+    expect(log).toEqual(["hasContract", "validatePut"]);
+    expect(eventsOf(inserts)).toEqual([ONBOARDING_DATA_AUDIT_EVENTS.writeFailed]);
+    expect(inserts[0]?.values).toMatchObject({
+      outcome: "denied",
+      context: expect.objectContaining({ errorCode: "CLEARINGHOUSE_SECRET_INVALID" }),
+    });
+  });
+
+  it("audits a plan refusal (a mode named where none applies) as write_failed too, writing nothing", async () => {
+    const { service, log, inserts } = harness({ contract: false });
+    await expect(put(service)).rejects.toMatchObject({ statusCode: 422 });
+    expect(log).toEqual(["hasContract"]);
+    expect(eventsOf(inserts)).toEqual([ONBOARDING_DATA_AUDIT_EVENTS.writeFailed]);
+    expect(inserts[0]?.values.context).toMatchObject({ errorCode: "VALIDATION_FAILED" });
+  });
+
+  it("puts the mode back to none when the vendor change fails AFTER the mode was set (a failure no preflight could foresee)", async () => {
+    const { service, log } = harness({
+      putFails: new ChartWardenError("CLEARINGHOUSE_VERSION_CONFLICT", "changed meanwhile", 412),
+    });
+    await expect(put(service)).rejects.toMatchObject({ statusCode: 412 });
+    expect(log).toEqual([
+      "hasContract",
+      "validatePut",
+      "setMode:managed_billing",
+      "put",
+      "restoreNone",
+    ]);
+  });
+
+  it("answers the typed 503 when the contract cannot be read (never 'no contract'), logging the cause", async () => {
+    const { service, log, warned } = harness({ contract: "unreadable" });
+    await expect(put(service)).rejects.toMatchObject({
+      statusCode: 503,
+      code: "CLEARINGHOUSE_CONTRACT_UNAVAILABLE",
+    });
+    expect(log).toEqual(["hasContract"]);
+    expect(warned).toHaveLength(1);
+  });
+
+  it("still succeeds, with a loud warning, when the vendor committed but the mode cannot be confirmed afterwards", async () => {
+    const { service, warned } = harness({ reassertFails: true });
+    await expect(put(service)).resolves.toMatchObject({ created: false });
+    expect(warned.some((w) => w.includes("could not be confirmed"))).toBe(true);
+  });
+
+  it("the operator's read says whether the tenant has a contract, from the server (a canceled one is not one), and 503s when it cannot tell", async () => {
+    const yes = harness({ contract: true });
+    await expect(yes.service.getClearinghouse(OPERATOR, "tenant-b")).resolves.toMatchObject({
+      hasContract: true,
+    });
+    const no = harness({ contract: false });
+    await expect(no.service.getClearinghouse(OPERATOR, "tenant-b")).resolves.toMatchObject({
+      hasContract: false,
+    });
+    const unreadable = harness({ contract: "unreadable" });
+    await expect(unreadable.service.getClearinghouse(OPERATOR, "tenant-b")).rejects.toMatchObject({
+      statusCode: 503,
+    });
+  });
+});
+
+describe("the clearinghouse switch that names a billing mode is also a pricing write", () => {
+  const SWITCH_BODY = {
+    vendor: "claimmd",
+    mode: "production",
+    secret: "fake-key-not-a-secret#1",
+    billingServiceMode: "managed_billing",
+    reason: "ticket CHG-1234",
+  };
+  const putAs = (
+    app: ReturnType<typeof makeServer>,
+    user: string,
+    payload: Record<string, unknown>,
+  ) =>
+    app.inject({
+      method: "PUT",
+      url: `${URL_BASE}/clearinghouse`,
+      headers: {
+        "x-test-user": user,
+        "x-test-org": PLATFORM_ORG,
+        "x-test-roles": "platform_ops",
+        "x-step-up": "fresh",
+        "idempotency-key": key(),
+        "if-match": "4",
+      },
+      payload,
+    });
+
+  it("refuses an operator holding only the clearinghouse key (403) and never reaches the service", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const res = await putAs(app, "writer-only-user", SWITCH_BODY);
+    expect(res.statusCode, res.body).toBe(403);
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("lets an operator who also holds subscription.onboard_platform through", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const res = await putAs(app, "pricing-user", SWITCH_BODY);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(calls.map((c) => c.method)).toEqual(["putClearinghouse"]);
+    expect(calls[0]?.fields).toMatchObject({ billingServiceMode: "managed_billing" });
+    await app.close();
+  });
+
+  it("asks nothing more of a write that names no billing mode: the clearinghouse key alone is enough", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const { billingServiceMode: _drop, ...plain } = SWITCH_BODY;
+    const res = await putAs(app, "writer-only-user", plain);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(calls).toHaveLength(1);
+    await app.close();
   });
 });

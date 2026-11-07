@@ -259567,7 +259567,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "A tenant's clearinghouse choice, masked (hasSecret; the credential is never returned) — platform ops; read is audited",
+        "summary": "A tenant's clearinghouse choice, masked (hasSecret; the credential is never returned), and whether the tenant holds a pricing contract that is not canceled (hasContract: the server's answer to whether a switch out of outside also takes a billing mode) — platform ops; read is audited. 503 CLEARINGHOUSE_CONTRACT_UNAVAILABLE when the contract cannot be read",
         "parameters": [
           {
             "name": "orgSlug",
@@ -259598,7 +259598,8 @@
                     "baa",
                     "activatedAt",
                     "version",
-                    "updatedAt"
+                    "updatedAt",
+                    "hasContract"
                   ],
                   "properties": {
                     "vendor": {
@@ -259880,6 +259881,10 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "hasContract": {
+                      "description": "The tenant holds a pricing contract that is not canceled (live or paused). Moving a tenant that bills outside ChartWarden to a vendor then also takes a billing service mode (billingServiceMode on the write); without a contract it takes none.",
+                      "type": "boolean"
                     }
                   }
                 }
@@ -259899,7 +259904,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. Moving a tenant that has a contract OUT of outside to a vendor requires `billingServiceMode` (422 BILLING_SERVICE_MODE_REQUIRED): the mode is set first through the pricing path and put back if the vendor change fails; the field is refused (422 BILLING_SERVICE_MODE_NOT_APPLICABLE) on any other write. tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused",
+        "summary": "Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key — stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work. Moving a tenant that has a contract OUT of outside to a vendor requires `billingServiceMode` (422 BILLING_SERVICE_MODE_REQUIRED): the mode is set first through the pricing path and put back if the vendor change fails; the field is refused (422 BILLING_SERVICE_MODE_NOT_APPLICABLE) on any other write. A body that names the mode also needs the pricing key subscription.onboard_platform (403 without it). That switch is the one clearinghouse write accepted for ANY tenant status (a live tenant that bills outside has no other way off outside). Every refusal that can be foreseen (the plan, the body's rules, the If-Match, the locks, the credential) is made BEFORE the mode is written; after the vendor commits the mode is confirmed once more (idempotent). tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise), except the switch out of outside that names a billing service mode; an AI actor is refused",
         "parameters": [
           {
             "name": "orgSlug",

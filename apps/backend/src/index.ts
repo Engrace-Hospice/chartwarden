@@ -1646,7 +1646,7 @@ import {
   loadM35StripeConfig,
   modeTriggerOf,
   mountM35Routes,
-  orgHasLiveContract,
+  orgHasContract,
   registerM35AbacPredicates,
   registerM35Seams,
   registerM35Workers,
@@ -6054,8 +6054,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // transaction (a contract read under the tenant's own RLS), and the pricing service is resolved when USED (it is built later).
             hasPricingContract: async (organizationId, tx) =>
               tx
-                ? orgHasLiveContract(tx, organizationId)
-                : pricingContracts.get().hasLiveContract(organizationId),
+                ? orgHasContract(tx, organizationId)
+                : pricingContracts.get().hasContract(organizationId),
+            // The cause of an unreadable contract goes to the (redacting) log; the caller is told only the typed 503.
+            warn: (message, context) => app.log.warn(context, message),
           });
           const m34PlatformBackend = buildDrizzlePlatformService({
             // The BAA register links only a signed BAA filed for the record's own tenant (M22's check, on the write's transaction).

@@ -67,6 +67,16 @@ export function buildTenantClearinghouseOnboardingPort(deps: {
         (tx) => service.view(createDrizzleConfigStore(tx), scope.organizationId),
       ),
 
+    async validatePut(scope, body, expectedVersion) {
+      const input = parse(PutClearinghouseBodySchema, body);
+      await withOrgContext<DbClient, void>(
+        db,
+        { organizationId: scope.organizationId, userId: scope.operatorUserId },
+        (tx) =>
+          service.checkPut(createDrizzleConfigStore(tx), actorFor(scope), input, expectedVersion),
+      );
+    },
+
     async put(tx, scope, body, expectedVersion) {
       await assertTxScopedToOrg(tx, scope.organizationId);
       const input = parse(PutClearinghouseBodySchema, body);

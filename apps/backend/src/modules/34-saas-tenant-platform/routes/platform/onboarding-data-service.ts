@@ -358,8 +358,9 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     orgSlug: string,
     spec: WriteSpec,
     run: (tx: DbClient, target: OnboardingAuditTarget) => Promise<WriteResult<T>>,
+    resolved?: OnboardingAuditTarget,
   ): Promise<T> {
-    const target = await targetOf(orgSlug);
+    const target = resolved ?? (await targetOf(orgSlug));
     let outcome: WriteOutcome<T>;
     let tenantAccountId: string | undefined;
     let bodyFinished = false;
@@ -524,22 +525,42 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
    */
   async function planSwitch(
     op: OnboardingOperator,
-    orgSlug: string,
+    target: OnboardingAuditTarget,
     fields: OnboardingFields,
-  ): Promise<ClearinghouseSwitchPlan & { readonly organizationId: string }> {
+  ): Promise<ClearinghouseSwitchPlan> {
     if (fields.vendor === "outside" && fields.billingServiceMode === undefined) {
-      return { body: fields, billingServiceMode: null, organizationId: "" };
+      return { body: fields, billingServiceMode: null };
     }
-    const target = await targetOf(orgSlug);
-    const plan = await planClearinghouseSwitch(
+    return planClearinghouseSwitch(
       {
         clearinghouse: clearinghousePort(),
         ...(deps.billingMode ? { billingMode: deps.billingMode } : {}),
+        ...(deps.warn ? { warn: deps.warn } : {}),
       },
       scopeOf(op, target.organizationId),
       fields,
     );
-    return { ...plan, organizationId: target.organizationId };
+  }
+
+  /** Whether the tenant holds a contract that is not canceled; an unreadable one is the typed 503, never "none". No pricing bound: none. */
+  async function tenantHasContract(organizationId: string): Promise<boolean> {
+    if (!deps.billingMode) return false;
+    try {
+      return await deps.billingMode.hasContract(organizationId);
+    } catch (cause) {
+      deps.warn?.(
+        "m34.onboarding data: the tenant's contract could not be read for the clearinghouse view",
+        {
+          organizationId,
+          err: cause,
+        },
+      );
+      throw new ChartWardenError(
+        "CLEARINGHOUSE_CONTRACT_UNAVAILABLE",
+        "this tenant's contract could not be read",
+        503,
+      );
+    }
   }
 
   /** The vendor change failed after the mode was set: the tenant, still outside, goes back to none (best effort, loudly warned). */
@@ -553,6 +574,24 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     } catch (cause) {
       deps.warn?.(
         "m34.onboarding data: putting the billing mode back to none after a failed switch also failed; the hourly pricing sweep corrects it",
+        { organizationId, err: cause },
+      );
+    }
+  }
+
+  /** After the vendor committed: the operator's mode is asked for once more (idempotent). A failure is warned about; the vendor change stands. */
+  async function reassertModeAfterSwitch(
+    op: OnboardingOperator,
+    orgSlug: string,
+    mode: NonNullable<ClearinghouseSwitchPlan["billingServiceMode"]>,
+    reason: string,
+    organizationId: string,
+  ): Promise<void> {
+    try {
+      await deps.billingMode?.setModeLeavingOutside(op, orgSlug, mode, reason);
+    } catch (cause) {
+      deps.warn?.(
+        "m34.onboarding data: the vendor switch committed but the billing mode could not be confirmed afterwards; read the tenant's contract and set it if it is not the one chosen",
         { organizationId, err: cause },
       );
     }
@@ -670,37 +709,55 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     upsertMacCredential: (op, orgSlug, fields, reason, expectedVersion) =>
       upsertCredential(op, orgSlug, MAC_LANE, fields, reason, expectedVersion),
     getClearinghouse: async (op, orgSlug) => {
-      const { items } = await read(op, orgSlug, CLEARINGHOUSE_KIND, async (t) => ({
-        items: [await clearinghousePort().get(scopeOf(op, t.organizationId))],
-      }));
+      const { items } = await read(op, orgSlug, CLEARINGHOUSE_KIND, async (t) => {
+        const scope = scopeOf(op, t.organizationId);
+        const choice = await clearinghousePort().get(scope);
+        // The panel asks whether a contract exists (so whether leaving `outside` also takes a billing mode) of the SERVER, never of the
+        // wizard's steps: a contract that was canceled, or never signed through the wizard, would make the form unsatisfiable.
+        return { items: [{ ...choice, hasContract: await tenantHasContract(t.organizationId) }] };
+      });
       return items[0];
     },
 
     putClearinghouse: async (op, orgSlug, fields, reason, expectedVersion) => {
+      const target = await targetOf(orgSlug);
+      const spec = { event: EVENTS.clearinghouseSet, resourceKind: CLEARINGHOUSE_KIND, reason };
+      // Everything that can be refused BEFORE anything is written is judged first: the plan (a mode named or missing, 422) and, for the
+      // switch out of outside, the put's own refusals (the body's rules, the If-Match, the locks, the credential). So a plain input error
+      // writes nothing, not even the billing mode. A refusal here is audited like any other failed attempt.
+      let plan: ClearinghouseSwitchPlan;
+      try {
+        plan = await planSwitch(op, target, fields);
+        if (plan.billingServiceMode !== null) {
+          await clearinghousePort().validatePut(
+            scopeOf(op, target.organizationId),
+            plan.body,
+            expectedVersion,
+          );
+        }
+      } catch (err) {
+        await recordFailedWrite(op, target, spec, err);
+        throw err;
+      }
+      const mode = plan.billingServiceMode;
       // Leaving `outside` for a vendor while the tenant has a contract also sets the billing mode: BEFORE the vendor, so a failure never
       // leaves a vendor without its mode, and put back to none if the vendor change then fails.
-      const switchPlan = await planSwitch(op, orgSlug, fields);
-      if (switchPlan.billingServiceMode !== null && deps.billingMode) {
-        await deps.billingMode.setModeLeavingOutside(
-          op,
-          orgSlug,
-          switchPlan.billingServiceMode,
-          reason,
-        );
+      if (mode !== null && deps.billingMode) {
+        await deps.billingMode.setModeLeavingOutside(op, orgSlug, mode, reason);
       }
-      let organizationId = switchPlan.organizationId;
       let result: { created: boolean; view: unknown };
       try {
         result = await write(
           op,
           orgSlug,
-          { event: EVENTS.clearinghouseSet, resourceKind: CLEARINGHOUSE_KIND, reason },
+          // The contracted tenant's switch is the operator's for ANY tenant status: a live tenant that bills outside has no other way
+          // to leave outside (its own lane is blocked while a contract exists). Every other clearinghouse write stays onboarding-only.
+          { ...spec, ...(mode !== null ? { anyTenantStatus: true } : {}) },
           async (tx, t) => {
-            organizationId = t.organizationId;
             const done = await clearinghousePort().put(
               tx,
               scopeOf(op, t.organizationId),
-              switchPlan.body,
+              plan.body,
               expectedVersion,
             );
             return {
@@ -709,12 +766,19 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
               ...(done.changedFields ? { changedFields: done.changedFields } : {}),
             };
           },
+          target,
         );
       } catch (err) {
-        await restoreNoneAfterFailedSwitch(switchPlan.billingServiceMode, organizationId);
+        await restoreNoneAfterFailedSwitch(mode, target.organizationId);
         throw err;
       }
-      return settleStepAfter(organizationId, result);
+      // The vendor is committed and the tenant no longer bills outside, so nothing the system does reverts the mode now. But a sync or
+      // sweep may have set none in the window between the mode write and this commit (the tenant was still outside): ask for the
+      // operator's mode again. Idempotent (a no-op when it is already in force or pending), dated like any mode change.
+      if (mode !== null && deps.billingMode) {
+        await reassertModeAfterSwitch(op, orgSlug, mode, reason, target.organizationId);
+      }
+      return settleStepAfter(target.organizationId, result);
     },
 
     verifyClearinghouse: async (op, orgSlug, fields, reason) => {

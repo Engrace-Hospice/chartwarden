@@ -58,6 +58,11 @@ const NOTICE_WITHDRAW_KEY = "tenant_notice_filing.withdraw_platform";
  * (`tenant_baa`) for the tenant in the path, and the key reads or lists no document.
  */
 const BAA_DOCUMENT_UPLOAD_KEY = "tenant_baa_document.upload_platform";
+/**
+ * Naming a billing service mode on the clearinghouse switch is a PRICING write (the mode is set through M35's own path), so it also takes
+ * the pricing key the contract routes use: the clearinghouse key alone does not let an operator change what a tenant is billed.
+ */
+const PRICING_WRITE_KEY = "subscription.onboard_platform";
 const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -127,6 +132,8 @@ const refuseOversizedBaaUpload: PreHandler = async (request) => {
     );
   }
 };
+
+const PRICING_WRITE: readonly PreHandler[] = [P(PRICING_WRITE_KEY), OPS(PRICING_WRITE_KEY)];
 
 const BAA_DOCUMENT_UPLOAD: readonly PreHandler[] = [
   P(BAA_DOCUMENT_UPLOAD_KEY),
@@ -407,6 +414,10 @@ export function registerOnboardingDataRoutes(
       const { reason, fields } = splitReason(
         parse(OnboardingClearinghousePutRequest, request.body),
       );
+      // A body that names a billing service mode is also a pricing write: the pricing key (and the platform_ops predicate) as well.
+      if (fields.billingServiceMode !== undefined) {
+        for (const guard of PRICING_WRITE) await guard(request, reply);
+      }
       const { created, view } = await service.putClearinghouse(
         op,
         slugOf(request),

@@ -20,7 +20,7 @@ export interface OnboardingBillingModeOperator {
 }
 
 export interface OnboardingBillingModePort {
-  /** Whether the tenant holds a live pricing contract. Where there is none, no billing mode is ever set. */
+  /** Whether the tenant holds a pricing contract that is not canceled (live or paused). Where there is none, no billing mode is ever set. */
   hasContract(organizationId: string): Promise<boolean>;
   /** Set the mode through the pricing service's ordinary path, passing the outside invariant (this is the switch OUT of outside). */
   setModeLeavingOutside(

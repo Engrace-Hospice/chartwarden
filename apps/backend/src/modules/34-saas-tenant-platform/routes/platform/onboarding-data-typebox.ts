@@ -300,6 +300,17 @@ export const OnboardingClearinghouseViewSchema = Type.Object({
   updatedAt: Nullable(Iso),
 });
 
+/** The operator's READ of the choice: the masked view plus whether the tenant holds a contract (the server's answer, never inferred by a screen). */
+export const OnboardingClearinghouseReadSchema = Type.Composite([
+  OnboardingClearinghouseViewSchema,
+  Type.Object({
+    hasContract: Type.Boolean({
+      description:
+        "The tenant holds a pricing contract that is not canceled (live or paused). Moving a tenant that bills outside ChartWarden to a vendor then also takes a billing service mode (billingServiceMode on the write); without a contract it takes none.",
+    }),
+  }),
+]);
+
 export const OnboardingClearinghouseVerifyResponseSchema = Type.Object({
   config: OnboardingClearinghouseViewSchema,
   test: Nullable(Type.Object({ outcome: ClearinghouseOutcome })),

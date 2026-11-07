@@ -298,7 +298,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       alerts,
       facts: { ...facts(), baaDocumentFiled: isTenantBaaDocumentFiled },
     });
-  const backend = (opts: Pick<DrizzleTenantPlatformDeps, "advanceOnboarding" | "warn"> = {}) =>
+  const backend = (
+    opts: Pick<DrizzleTenantPlatformDeps, "advanceOnboarding" | "warn" | "baaDocuments"> = {},
+  ) =>
     createDrizzleTenantPlatformBackend({
       baaDocuments: { isFiled: isTenantBaaDocumentFiled },
       ...opts,
@@ -1948,14 +1950,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       });
 
       it("answers 503 when no document adapter is bound and a link is being written", async () => {
-        const unbound = createDrizzleTenantPlatformBackend({
-          platformDb: platform.db,
-          enqueue: { enqueue: async (q, k) => ({ jobId: `${q}-${k}` }) },
-          legalHoldClear: async () => true,
-          auditBypass: m34PlatformBypassAuditor,
-          outbox,
-          platformJobId: JOB_ID,
-        } as never);
+        const unbound = backend({ baaDocuments: undefined });
         const refused = await refusal(
           unbound.service.createBaaRecord(OPS_USER, {
             ...record(await fileDocument(ORG_S4)),

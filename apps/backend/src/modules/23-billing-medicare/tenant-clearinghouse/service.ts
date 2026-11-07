@@ -139,12 +139,15 @@ export interface TenantClearinghouseServiceDeps {
    */
   readonly waitingWork?: (organizationId: string, tx: ConfigStore["tx"]) => Promise<WaitingWork>;
   /**
-   * Whether the org holds a live pricing contract (M35; absent = a deployment without pricing, so none). A tenant that bills outside
+   * Whether the org holds a pricing contract that is not canceled, live or PAUSED (M35; absent = a deployment without pricing, so none; a
+   * paused contract is still the tenant's and bills again on resume). A tenant that bills outside
    * ChartWarden is on billing mode none, so leaving `outside` also means choosing the billing mode the vendor billing calls for: only a
    * platform operator may do that (the operator's flow sets the mode with the vendor), so the tenant's own switch is refused while a
    * contract exists. `tx` is the store's open transaction (undefined for the in-memory store): read on it, not on a second connection.
    */
   readonly hasPricingContract?: (organizationId: string, tx: ConfigStore["tx"]) => Promise<boolean>;
+  /** Cause logging for a failure the caller is told about only in general terms (`err` goes to the redacting logger). */
+  readonly warn?: (message: string, context: Record<string, unknown>) => void;
 }
 
 /** What `prepareVerify` read: everything `completeVerify` needs, so no store call is open while the vendor is called. */
@@ -168,6 +171,18 @@ export interface PutResult {
 
 export interface TenantClearinghouseService {
   view(store: ConfigStore, organizationId: string): Promise<ClearinghouseConfigView>;
+  /**
+   * Every refusal `put` would make before it writes, WITHOUT writing: the body's own rules, the If-Match, the switch's locks and a
+   * missing credential, read on `store` with no row lock. A caller that must do something else FIRST (an operator's switch out of
+   * outside sets the billing mode before the vendor) asks this first, so a plain input error writes nothing. `put` still judges all of
+   * it again under the row lock: this is the early refusal, not the authority.
+   */
+  checkPut(
+    store: ConfigStore,
+    actor: ClearinghouseActor,
+    input: PutClearinghouseInput,
+    expectedVersion: number | undefined,
+  ): Promise<void>;
   put(
     store: ConfigStore,
     actor: ClearinghouseActor,
@@ -443,14 +458,8 @@ export function createTenantClearinghouseService(
     );
   }
 
-  /** The first choice: no row yet, so no If-Match, and the credential is required. */
-  async function createFirst(
-    store: ConfigStore,
-    actor: ClearinghouseActor,
-    input: PutClearinghouseInput,
-    expectedVersion: number | undefined,
-  ): Promise<PutResult> {
-    const { organizationId } = actor;
+  /** What a FIRST choice refuses before it writes: an If-Match (there is no row to match), and a missing vendor credential. */
+  function checkCreate(input: PutClearinghouseInput, expectedVersion: number | undefined): void {
     if (expectedVersion !== undefined) {
       throw versionConflict(
         "no clearinghouse config exists for this organization; omit If-Match to create it",
@@ -463,6 +472,17 @@ export function createTenantClearinghouseService(
         "the vendor credential is required with a first choice",
       );
     }
+  }
+
+  /** The first choice: no row yet, so no If-Match, and the credential is required. */
+  async function createFirst(
+    store: ConfigStore,
+    actor: ClearinghouseActor,
+    input: PutClearinghouseInput,
+    expectedVersion: number | undefined,
+  ): Promise<PutResult> {
+    const { organizationId } = actor;
+    checkCreate(input, expectedVersion);
     const patch = await patchFor(actor, null, input);
     try {
       const row = await store.insert({
@@ -533,8 +553,16 @@ export function createTenantClearinghouseService(
     let hasContract: boolean;
     try {
       hasContract = await deps.hasPricingContract(organizationId, store.tx);
-    } catch {
-      // A switch that cannot be judged is not allowed: answering "no contract" could put a vendor in front of billing mode none.
+    } catch (cause) {
+      // A switch that cannot be judged is not allowed: answering "no contract" could put a vendor in front of billing mode none. The
+      // caller gets the typed 503; the CAUSE goes to the log (a database or wiring fault would otherwise vanish behind it).
+      deps.warn?.(
+        "m23 clearinghouse: the tenant's contract could not be read for a switch away from outside",
+        {
+          organizationId,
+          err: cause,
+        },
+      );
       throw new ChartWardenError(
         "CLEARINGHOUSE_CONTRACT_UNAVAILABLE",
         "this organization's contract could not be read, so the switch away from outside ChartWarden was not made",
@@ -548,14 +576,17 @@ export function createTenantClearinghouseService(
     );
   }
 
-  async function changeExisting(
+  /**
+   * Everything a change to an EXISTING choice refuses before it writes, read-only: the If-Match (428 none, 412 stale), the switch's locks,
+   * and a new vendor or mode's credential. `unchanged` when the body changes nothing (the write is then a no-op).
+   */
+  async function checkChange(
     store: ConfigStore,
     actor: ClearinghouseActor,
     existing: ConfigRow,
     input: PutClearinghouseInput,
     expectedVersion: number | undefined,
-  ): Promise<PutResult> {
-    const { organizationId } = actor;
+  ): Promise<"change" | "unchanged"> {
     if (expectedVersion === undefined) {
       throw new ChartWardenError(
         "IF_MATCH_REQUIRED",
@@ -568,9 +599,7 @@ export function createTenantClearinghouseService(
     }
     const target = input.vendor === "outside" ? null : (input.mode ?? null);
     const retargeted = existing.vendor !== input.vendor || existing.mode !== target;
-    if (!retargeted && input.secret === undefined) {
-      return { created: false, view: viewOf(existing, organizationId), changedFields: [] }; // nothing changes
-    }
+    if (!retargeted && input.secret === undefined) return "unchanged";
     if (retargeted) await assertSwitchAllowed(store, existing, actor);
     if (retargeted && input.vendor !== "outside" && input.secret === undefined) {
       throw invalid(
@@ -578,6 +607,20 @@ export function createTenantClearinghouseService(
         "CLEARINGHOUSE_SECRET_REQUIRED",
         "a new vendor or mode needs its own credential",
       );
+    }
+    return "change";
+  }
+
+  async function changeExisting(
+    store: ConfigStore,
+    actor: ClearinghouseActor,
+    existing: ConfigRow,
+    input: PutClearinghouseInput,
+    expectedVersion: number | undefined,
+  ): Promise<PutResult> {
+    const { organizationId } = actor;
+    if ((await checkChange(store, actor, existing, input, expectedVersion)) === "unchanged") {
+      return { created: false, view: viewOf(existing, organizationId), changedFields: [] }; // nothing changes
     }
     const row = await save(store, existing, await patchFor(actor, existing, input));
     return {
@@ -590,6 +633,13 @@ export function createTenantClearinghouseService(
   return {
     async view(store, organizationId) {
       return viewOf(await store.find(organizationId), organizationId);
+    },
+
+    async checkPut(store, actor, input, expectedVersion) {
+      validatePut(actor, input);
+      const existing = await store.find(actor.organizationId);
+      if (existing) await checkChange(store, actor, existing, input, expectedVersion);
+      else checkCreate(input, expectedVersion);
     },
 
     async put(store, actor, input, expectedVersion) {

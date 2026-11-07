@@ -33,6 +33,12 @@ export interface OnboardingClearinghouseResult {
 export interface OnboardingClearinghousePort {
   /** The tenant's clearinghouse config, masked, on the adapter's own org-scoped read. */
   get(scope: OnboardingWriteScope): Promise<object>;
+  /**
+   * Every refusal `put` would make before it writes, without writing (the body's rules, the If-Match, the switch's locks, a missing
+   * credential), on the adapter's own org-scoped read. An operator's switch out of outside sets the billing mode BEFORE the vendor, so it
+   * asks this first: a plain input error then writes nothing anywhere. `put` judges it all again under the row lock.
+   */
+  validatePut(scope: OnboardingWriteScope, body: unknown, expectedVersion?: number): Promise<void>;
   /** Choose the vendor, its mode and credential (the tenant route's own body, the platform `reason` already removed). */
   put(
     tx: DbClient,

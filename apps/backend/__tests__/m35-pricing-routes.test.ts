@@ -144,7 +144,7 @@ function makeServices(calls: Calls): { plans: PricingPlanService; contracts: Con
     }),
     // The system's outside-billing change (the M34 wizard's post-commit sync) is not a route: no route test reaches it.
     setModeNoneForOutsideBilling: async () => ({ changed: false }),
-    hasLiveContract: async () => true,
+    hasContract: async () => true,
     platformView: async (actor, orgSlug) => {
       calls.platformReads.push({ actor, orgSlug });
       return { contract, statements: [] };

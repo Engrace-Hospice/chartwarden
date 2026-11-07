@@ -15479,6 +15479,7 @@ import {
   OnboardingBaaDocumentUploadRequest as M34OnboardingBaaDocumentUploadRequest,
   OnboardingBaaDocumentViewSchema as M34OnboardingBaaDocumentViewSchema,
   OnboardingClearinghousePutRequest as M34OnboardingClearinghousePutRequest,
+  OnboardingClearinghouseReadSchema as M34OnboardingClearinghouseReadSchema,
   OnboardingClearinghouseVerifyRequest as M34OnboardingClearinghouseVerifyRequest,
   OnboardingClearinghouseVerifyResponseSchema as M34OnboardingClearinghouseVerifyResponseSchema,
   OnboardingClearinghouseViewSchema as M34OnboardingClearinghouseViewSchema,
@@ -15498,6 +15499,10 @@ const CLEARINGHOUSE_IF_MATCH_HEADERS = {
 };
 const M34_CLEARINGHOUSE_WRITE_NOTE =
   "tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused";
+const M34_CLEARINGHOUSE_PUT_NOTE = M34_CLEARINGHOUSE_WRITE_NOTE.replace(
+  "Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise)",
+  "Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise), except the switch out of outside that names a billing service mode",
+);
 const M34_CLEARINGHOUSE_BAA_NOTE =
   "tenant_clearinghouse.verify_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. NOT limited to an onboarding tenant (a live tenant that changed vendor needs it too); an AI actor is refused";
 const M34_NOTICE_WITHDRAW_NOTE =
@@ -15546,11 +15551,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/platform/tenants/:orgSlug/clearinghouse": {
     summary:
-      "A tenant's clearinghouse choice, masked (hasSecret; the credential is never returned) — platform ops; read is audited",
-    response: M34OnboardingClearinghouseViewSchema,
+      "A tenant's clearinghouse choice, masked (hasSecret; the credential is never returned), and whether the tenant holds a pricing contract that is not canceled (hasContract: the server's answer to whether a switch out of outside also takes a billing mode) — platform ops; read is audited. 503 CLEARINGHOUSE_CONTRACT_UNAVAILABLE when the contract cannot be read",
+    response: M34OnboardingClearinghouseReadSchema,
   },
   "PUT /api/v1/platform/tenants/:orgSlug/clearinghouse": {
-    summary: `Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key — ${CLEARINGHOUSE_CHOICE_NOTE}. Moving a tenant that has a contract OUT of outside to a vendor requires \`billingServiceMode\` (422 BILLING_SERVICE_MODE_REQUIRED): the mode is set first through the pricing path and put back if the vendor change fails; the field is refused (422 BILLING_SERVICE_MODE_NOT_APPLICABLE) on any other write. ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
+    summary: `Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key — ${CLEARINGHOUSE_CHOICE_NOTE}. Moving a tenant that has a contract OUT of outside to a vendor requires \`billingServiceMode\` (422 BILLING_SERVICE_MODE_REQUIRED): the mode is set first through the pricing path and put back if the vendor change fails; the field is refused (422 BILLING_SERVICE_MODE_NOT_APPLICABLE) on any other write. A body that names the mode also needs the pricing key subscription.onboard_platform (403 without it). That switch is the one clearinghouse write accepted for ANY tenant status (a live tenant that bills outside has no other way off outside). Every refusal that can be foreseen (the plan, the body's rules, the If-Match, the locks, the credential) is made BEFORE the mode is written; after the vendor commits the mode is confirmed once more (idempotent). ${M34_CLEARINGHOUSE_PUT_NOTE}`,
     body: M34OnboardingClearinghousePutRequest,
     headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
     status: 201,

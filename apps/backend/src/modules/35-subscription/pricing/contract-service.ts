@@ -145,8 +145,12 @@ export interface ContractService {
     reason: unknown,
     opts?: { readonly leavingOutside?: boolean },
   ): Promise<PlatformContractView>;
-  /** Whether the org holds a live (billable now) contract, read on the tenant pool. Where there is none, no billing mode is ever invented. */
-  hasLiveContract(organizationId: string): Promise<boolean>;
+  /**
+   * Whether the org holds a contract that is not canceled (live or PAUSED), read on the tenant pool. A paused contract is still the
+   * tenant's: it bills again on resume, so the billing mode that must follow its clearinghouse choice is judged against it too. Where
+   * there is none, no billing mode is ever invented.
+   */
+  hasContract(organizationId: string): Promise<boolean>;
   /**
    * Slice 5: a tenant that bills outside ChartWarden pays no billing percentage. Sets the org's billing service mode to `none` as a
    * SYSTEM action (no operator), dated like any mode change: at once while the tenant is onboarding with nothing billed, else from
@@ -294,7 +298,7 @@ interface LoadedContract {
 /** The org's newest contract in the scope with its plan bands and mode history, on a tenant or a platform transaction. */
 async function loadContract(
   tx: WriteTx,
-  scope: "live" | "latest",
+  scope: "live" | "current" | "latest",
   at: Date,
   organizationId: string,
 ): Promise<LoadedContract | null> {
@@ -323,13 +327,13 @@ async function lockSubscriptionAndReloadHistory(
   return { ...found, history };
 }
 
-/** Whether the org has a live (billable now) contract, on the given org-scoped or platform transaction. */
-export async function orgHasLiveContract(
+/** Whether the org has a contract that is not canceled (live or paused), on the given org-scoped or platform transaction. */
+export async function orgHasContract(
   tx: WriteTx,
   organizationId: string,
   at: Date = new Date(),
 ): Promise<boolean> {
-  return (await selectNewestContract(tx, "live", at, organizationId)) !== null;
+  return (await selectNewestContract(tx, "current", at, organizationId)) !== null;
 }
 
 async function requirePlan(tx: WriteTx, planSlug: string): Promise<PlanRow> {
@@ -632,7 +636,14 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         if (!tenant) throw new NotFoundError("tenant");
         const at = now();
         const today = utcDateOf(at);
-        const loaded = await loadContract(tx, "live", at, tenant.organizationId);
+        // The switch out of outside names the mode for a PAUSED contract too (it is the tenant's, and bills again on resume); the
+        // ordinary mode route stays on a live one.
+        const loaded = await loadContract(
+          tx,
+          opts.leavingOutside ? "current" : "live",
+          at,
+          tenant.organizationId,
+        );
         if (!loaded) throw new NotFoundError("this organization has no contracted subscription");
         const found = await lockSubscriptionAndReloadHistory(tx, loaded);
         const { record } = found;
@@ -688,7 +699,7 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         async (scoped) => {
           const seen = await loadContract(
             scoped as unknown as WriteTx,
-            "live",
+            "current",
             at0,
             organizationId,
           );
@@ -706,7 +717,7 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         if (!tenant) return { changed: false };
         const at = now();
         const today = utcDateOf(at);
-        const loaded = await loadContract(tx, "live", at, tenant.organizationId);
+        const loaded = await loadContract(tx, "current", at, tenant.organizationId);
         if (!loaded) return { changed: false }; // a mode is never invented for a tenant that has no contract
         const found = await lockSubscriptionAndReloadHistory(tx, loaded);
         // Asked AGAIN here, after the lock: a switch to a vendor (with the operator's mode) that landed since the caller decided must
@@ -739,10 +750,10 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
       });
     },
 
-    async hasLiveContract(organizationId) {
+    async hasContract(organizationId) {
       const at = now();
       return withOrgContext(deps.db, systemOrgContext(organizationId), (scoped) =>
-        orgHasLiveContract(scoped as unknown as WriteTx, organizationId, at),
+        orgHasContract(scoped as unknown as WriteTx, organizationId, at),
       );
     },
 

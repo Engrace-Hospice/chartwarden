@@ -8,6 +8,9 @@
 //
 //   scope "live"        a contract whose subscription is billable NOW: not canceled, not paused (the census records for these, and the
 //                       mode seam answers for these)
+//   scope "current"     a contract that has not been canceled: live OR paused. A paused contract still belongs to the tenant (it bills
+//                       again on resume), so "does this tenant have a contract" and the billing mode that must follow its clearinghouse
+//                       choice are asked here, never against "live" (which would let a paused contract slip past both)
 //   scope "statements"  a contract that can still need a statement: every subscription not canceled (a paused one still owes the months
 //                       before its pause), and a canceled one for POST_END_SETTLEMENT_MONTHS after it ended, so late-posting money is
 //                       still billed on a settlement statement in the month it posts
@@ -26,7 +29,7 @@ const PL = schema.plan;
 /** How long after a subscription ended it is still scanned for money that posts late (billed on a settlement statement). */
 export const POST_END_SETTLEMENT_MONTHS = 12;
 
-export type ContractScope = "live" | "statements" | "latest";
+export type ContractScope = "live" | "current" | "statements" | "latest";
 
 /**
  * The contract columns EVERY reader may see: the tenant role holds a COLUMN-level SELECT on exactly these (migration 1362), never on who
@@ -58,6 +61,7 @@ export interface ContractRecord {
 
 function scopeFilter(scope: ContractScope, at: Date): SQL | undefined {
   if (scope === "live") return notInArray(SUB.status, ["canceled", "paused"]);
+  if (scope === "current") return ne(SUB.status, "canceled");
   if (scope === "statements") {
     const cutoff = new Date(
       Date.UTC(at.getUTCFullYear(), at.getUTCMonth() - POST_END_SETTLEMENT_MONTHS, 1),

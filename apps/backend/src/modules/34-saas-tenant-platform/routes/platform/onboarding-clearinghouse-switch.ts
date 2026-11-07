@@ -5,7 +5,7 @@
 // mode on an outside tenant). Moving it to a vendor therefore means choosing the mode the vendor billing calls for, and only an operator
 // may: while the tenant has a contract the write must name the mode (`billingServiceMode`), which is set BEFORE the vendor and put back
 // if the vendor change fails. Everywhere else the field is refused, so it is never silently ignored.
-import { ValidationError } from "@chartwarden/types";
+import { ChartWardenError, ValidationError } from "@chartwarden/types";
 import type {
   OnboardingBillingModePort,
   OnboardingBillingServiceMode,
@@ -27,10 +27,40 @@ const refuse = (code: string, message: string): ValidationError =>
     { field: "billingServiceMode", code, message },
   ]);
 
+/**
+ * Whether the tenant holds a contract, asked of M35's port. A contract that cannot be read is NOT "no contract": answering that would let
+ * a switch put a vendor in front of billing mode none, so it is the same typed 503 the tenant's own lane gives, with the cause logged.
+ */
+async function contractExists(
+  deps: {
+    readonly billingMode?: Pick<OnboardingBillingModePort, "hasContract">;
+    readonly warn?: (message: string, context: Record<string, unknown>) => void;
+  },
+  organizationId: string,
+): Promise<boolean> {
+  try {
+    return (await deps.billingMode?.hasContract(organizationId)) === true;
+  } catch (cause) {
+    deps.warn?.(
+      "m34.onboarding data: the tenant's contract could not be read for a switch away from outside",
+      {
+        organizationId,
+        err: cause,
+      },
+    );
+    throw new ChartWardenError(
+      "CLEARINGHOUSE_CONTRACT_UNAVAILABLE",
+      "this tenant's contract could not be read, so the switch away from outside ChartWarden was not made",
+      503,
+    );
+  }
+}
+
 export async function planClearinghouseSwitch(
   deps: {
     readonly clearinghouse: Pick<OnboardingClearinghousePort, "get">;
     readonly billingMode?: Pick<OnboardingBillingModePort, "hasContract">;
+    readonly warn?: (message: string, context: Record<string, unknown>) => void;
   },
   scope: OnboardingWriteScope,
   fields: Readonly<Record<string, unknown>>,
@@ -48,8 +78,7 @@ export async function planClearinghouseSwitch(
   };
   const leavingOutside =
     current.source === "tenant" && current.vendor === "outside" && body.vendor !== "outside";
-  const contracted =
-    leavingOutside && (await deps.billingMode?.hasContract(scope.organizationId)) === true;
+  const contracted = leavingOutside && (await contractExists(deps, scope.organizationId));
   if (contracted) {
     if (billingServiceMode === undefined) {
       throw refuse(

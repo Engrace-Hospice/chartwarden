@@ -6,6 +6,26 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-06 — The operator switches a live tenant off "bills outside ChartWarden"
+
+**Why.** A live tenant that bills outside ChartWarden and holds a contract could not move to a vendor by any route: its own lane is
+blocked while a contract exists, and the operator's write was onboarding-only.
+
+- `PUT /api/v1/platform/tenants/{orgSlug}/clearinghouse` that moves a tenant with a contract from `outside` to a vendor (the body names
+  `billingServiceMode`) is now accepted for ANY tenant status. Every other clearinghouse write stays onboarding-only
+  (`409 TENANT_NOT_ONBOARDING`). For a live tenant the mode is dated the 1st of next month, like any mode change.
+- A body that names `billingServiceMode` also needs the pricing key `subscription.onboard_platform` (`403` with the clearinghouse key alone).
+- Everything that can be refused beforehand is refused BEFORE the mode is written (the plan's `422`s, the body's rules, `412`/`428` on the
+  If-Match, the switch's locks, a missing credential), so a plain input error writes no mode; a refusal is audited as a failed attempt.
+  After the vendor commits, the mode is asked for once more (idempotent), so a sync that ran in between cannot leave the tenant on none.
+- A contract that is PAUSED counts: the tenant's own switch is `409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR`, the operator names the
+  mode, and the outside-means-none rule applies to it. A canceled contract is none. A contract that cannot be read is
+  `503 CLEARINGHOUSE_CONTRACT_UNAVAILABLE` on the operator's route too.
+- `GET /api/v1/platform/tenants/{orgSlug}/clearinghouse` now carries `hasContract` (a contract that is not canceled): the server's answer to
+  whether the switch takes a billing mode, for a screen to use instead of inferring it.
+
+---
+
 ## 2026-11-06 — A platform operator uploads a tenant's signed BAA
 
 **Why.** Onboarding step 3 linked the signed agreement by a document id the operator had to be handed. The operator can now upload it.
