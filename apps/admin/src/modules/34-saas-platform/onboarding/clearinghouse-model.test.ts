@@ -31,6 +31,7 @@ const view = (over: Partial<ClearinghouseView> = {}): ClearinghouseView => ({
   activatedAt: null,
   version: 2,
   updatedAt: "2026-11-02T09:00:00.000Z",
+  hasContract: false,
   ...over,
 });
 

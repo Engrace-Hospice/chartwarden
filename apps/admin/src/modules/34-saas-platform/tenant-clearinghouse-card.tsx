@@ -17,6 +17,7 @@ import { NoticeFilingsDrawer } from "./notice-filings-drawer";
 import { VerifyBaa } from "./onboarding/clearinghouse-baa-verify";
 import { MODE_LABEL, VENDOR_LABEL, isTransmitting } from "./onboarding/clearinghouse-model";
 import type { ClearinghouseView } from "./onboarding/clearinghouse-model";
+import { SwitchToVendor } from "./onboarding/clearinghouse-switch";
 import { ContractModeBanner } from "./onboarding/contract-mode-banner";
 import { useLoad } from "./onboarding/use-load";
 import { cap } from "./saas-status";
@@ -29,8 +30,9 @@ const STATUS_TONE: Record<string, StatusTone> = {
 
 function Body({
   orgSlug,
+  tenantStatus,
   onOpenFilings,
-}: { orgSlug: string; onOpenFilings: () => void }): JSX.Element {
+}: { orgSlug: string; tenantStatus: string; onOpenFilings: () => void }): JSX.Element {
   const client = useApiClient();
   const load = useLoad<ClearinghouseView>(`hub-clearinghouse:${orgSlug}`, () =>
     client.GET("/api/v1/platform/tenants/{orgSlug}/clearinghouse", {
@@ -96,6 +98,12 @@ function Body({
         </p>
       ) : null}
       <div className="wx-drawer-actions">
+        <SwitchToVendor
+          orgSlug={orgSlug}
+          view={view}
+          tenantStatus={tenantStatus}
+          reload={() => load.reload(true)}
+        />
         {chosen ? (
           <VerifyBaa
             orgSlug={orgSlug}
@@ -112,7 +120,10 @@ function Body({
   );
 }
 
-export function TenantClearinghouseCard({ orgSlug }: { orgSlug: string }): JSX.Element {
+export function TenantClearinghouseCard({
+  orgSlug,
+  tenantStatus,
+}: { orgSlug: string; tenantStatus: string }): JSX.Element {
   const [shown, setShown] = useState(false);
   const [filingsOpen, setFilingsOpen] = useState(false);
   return (
@@ -127,7 +138,11 @@ export function TenantClearinghouseCard({ orgSlug }: { orgSlug: string }): JSX.E
           )}
         </div>
         {shown ? (
-          <Body orgSlug={orgSlug} onOpenFilings={() => setFilingsOpen(true)} />
+          <Body
+            orgSlug={orgSlug}
+            tenantStatus={tenantStatus}
+            onOpenFilings={() => setFilingsOpen(true)}
+          />
         ) : (
           <span className="wx-row-sub">
             Reading the clearinghouse and the contract's billing mode is recorded in the audit

@@ -112,6 +112,13 @@ clearinghouse, put back to none if the clearinghouse change fails, dated now whi
 is asked for a first choice, a vendor-to-vendor change or a tenant with no contract, and the server's own refusal of the field is shown.
 A stale pin (412) or a missing one (428) closes the form and the prompt, reloads the record and says so.
 
+Whether the choose form asks for the mode is the **server's** answer: the clearinghouse read carries `hasContract` (a contract that is not
+canceled, live or paused), and the panel never infers it from the Plan and contract step. A live tenant is not moved here (step 7 is
+read-only once the tenant is active): the tenant hub's clearinghouse card offers **Switch to a vendor** for a live tenant that bills
+outside and holds a contract. It reuses the choose form (Claim.MD or Stedi only) with the mode pick (no default; None is an explicit
+choice), says the mode takes effect from the 1st of next month, and sends one pinned write that sets the mode and the vendor together;
+the operator's write for that switch is accepted for any tenant status and needs the pricing key as well.
+
 A vendor is then walked to active, each fact shown as met or not yet:
 
 1. the credential is on file;

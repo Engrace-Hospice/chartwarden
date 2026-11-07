@@ -24,6 +24,7 @@ const NOTHING = {
   activatedAt: null,
   version: null,
   updatedAt: null,
+  hasContract: false,
 };
 const OUTSIDE = { ...NOTHING, vendor: "outside", status: "active", source: "tenant", version: 1 };
 const CLAIMMD = {
@@ -60,7 +61,12 @@ function mount(choice: unknown, contractMode: string | null = null) {
   });
   renderAt(
     "/x",
-    [{ path: "/x", element: <TenantClearinghouseCard orgSlug="cedar-ridge" /> }],
+    [
+      {
+        path: "/x",
+        element: <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus="active" />,
+      },
+    ],
     client,
   );
   return client;
@@ -129,7 +135,12 @@ describe("TenantClearinghouseCard", () => {
       });
       renderAt(
         "/x",
-        [{ path: "/x", element: <TenantClearinghouseCard orgSlug="cedar-ridge" /> }],
+        [
+          {
+            path: "/x",
+            element: <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus="active" />,
+          },
+        ],
         client,
       );
       fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
@@ -177,7 +188,12 @@ describe("TenantClearinghouseCard", () => {
       });
       renderAt(
         "/x",
-        [{ path: "/x", element: <TenantClearinghouseCard orgSlug="cedar-ridge" /> }],
+        [
+          {
+            path: "/x",
+            element: <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus="active" />,
+          },
+        ],
         client,
       );
       fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
@@ -244,12 +260,156 @@ describe("TenantClearinghouseCard", () => {
     });
     renderAt(
       "/x",
-      [{ path: "/x", element: <TenantClearinghouseCard orgSlug="cedar-ridge" /> }],
+      [
+        {
+          path: "/x",
+          element: <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus="active" />,
+        },
+      ],
       client,
     );
     fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
     expect(await screen.findByText(/Could not load the clearinghouse/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText(/Billing outside ChartWarden/)).toBeTruthy();
+  });
+});
+
+describe("TenantClearinghouseCard: switching a live outside tenant to a vendor", () => {
+  const SWITCHABLE = { ...OUTSIDE, version: 4, hasContract: true };
+  const reason = "The customer moves to Claim.MD, ticket CHG-9301";
+
+  function mountSwitch(
+    choice: unknown,
+    status: string,
+    put: () => ReturnType<typeof ok> | ReturnType<typeof refused> = () => ok({ ...CLAIMMD }),
+  ) {
+    const client = stubClient({
+      GET: { [CH]: () => ok(choice) },
+      PUT: { [CH]: put },
+    });
+    renderAt(
+      "/x",
+      [
+        {
+          path: "/x",
+          element: <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus={status} />,
+        },
+      ],
+      client,
+    );
+    return client;
+  }
+  const show = async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+    await screen.findByText(/Billing outside ChartWarden/);
+  };
+  const fillForm = () => {
+    fireEvent.click(screen.getByRole("button", { name: "Switch to a vendor" }));
+    fireEvent.change(screen.getByLabelText(/^Vendor credential/), {
+      target: { value: "vendor-credential-for-test-only" },
+    });
+  };
+
+  it("is offered for a live tenant that bills outside and holds a contract, and for no other", async () => {
+    mountSwitch(SWITCHABLE, "active");
+    await show();
+    expect(screen.getByRole("button", { name: "Switch to a vendor" })).toBeTruthy();
+    cleanup();
+
+    for (const [label, choice, status] of [
+      ["still onboarding (step 7 serves it)", SWITCHABLE, "onboarding"],
+      ["no contract (its own lane may switch)", { ...SWITCHABLE, hasContract: false }, "active"],
+      ["already on a vendor", { ...CLAIMMD, hasContract: true }, "active"],
+    ] as const) {
+      mountSwitch(choice, status);
+      fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+      await waitFor(() => expect(screen.queryByText(/Loading the clearinghouse/)).toBeNull());
+      expect(screen.queryByRole("button", { name: "Switch to a vendor" }), label).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("offers the two transmitting vendors only, requires the billing service mode (no default), and says when it takes effect", async () => {
+    mountSwitch(SWITCHABLE, "active");
+    await show();
+    fillForm();
+    const vendors = within(screen.getByRole("combobox", { name: "Clearinghouse" }))
+      .getAllByRole("option")
+      .map((o) => o.textContent);
+    expect(vendors).toEqual(["Claim.MD", "Stedi"]);
+    expect((screen.getByLabelText(/^Billing service mode/) as HTMLSelectElement).value).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText("Choose the billing service mode.")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText(/^Billing service mode/), {
+      target: { value: "managed_billing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(within(screen.getByRole("dialog")).getByText(/from the 1st of next month/)).toBeTruthy();
+  });
+
+  it("sends ONE pinned write with the mode, the vendor and the credential, then reads the choice again", async () => {
+    const client = mountSwitch(SWITCHABLE, "active");
+    await show();
+    fillForm();
+    fireEvent.change(screen.getByLabelText(/^Billing service mode/), {
+      target: { value: "managed_billing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: reason } });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Switch" }));
+
+    await waitFor(() => expect(client.PUT).toHaveBeenCalledTimes(1));
+    const [path, init] = client.PUT.mock.calls[0] as [
+      string,
+      { params: { header: Record<string, string> }; body: Record<string, unknown> },
+    ];
+    expect(path).toBe(CH);
+    expect(init.params.header["If-Match"]).toBe("4");
+    expect(init.params.header["Idempotency-Key"]).toMatch(/\S/);
+    expect(init.body).toEqual({
+      vendor: "claimmd",
+      mode: "production",
+      secret: "vendor-credential-for-test-only",
+      billingServiceMode: "managed_billing",
+      reason,
+    });
+    await waitFor(() => expect(reads(client, CH)).toBeGreaterThan(1));
+  });
+
+  it("closes the form and reads the choice again when the pin went stale (412), keeping no credential", async () => {
+    const client = mountSwitch(SWITCHABLE, "active", () =>
+      refused(
+        412,
+        "CLEARINGHOUSE_VERSION_CONFLICT",
+        "the clearinghouse config changed since it was read",
+      ),
+    );
+    await show();
+    fillForm();
+    fireEvent.change(screen.getByLabelText(/^Billing service mode/), { target: { value: "none" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: reason } });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Switch" }));
+
+    await waitFor(() => expect(reads(client, CH)).toBeGreaterThan(1));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByLabelText(/^Vendor credential/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Switch to a vendor" })).toBeTruthy();
+  });
+
+  it("offers Re-verify on a stale step-up, and keeps the form (without the credential being stored anywhere)", async () => {
+    mountSwitch(SWITCHABLE, "active", () => refused(403, "STEP_UP_REQUIRED"));
+    await show();
+    fillForm();
+    fireEvent.change(screen.getByLabelText(/^Billing service mode/), { target: { value: "none" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: reason } });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Switch" }));
+
+    expect(await screen.findByRole("link", { name: /Re-verify/ })).toBeTruthy();
+    expect(JSON.stringify(window.sessionStorage)).not.toContain("vendor-credential-for-test-only");
   });
 });

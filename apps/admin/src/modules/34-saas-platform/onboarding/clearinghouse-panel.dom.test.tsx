@@ -40,6 +40,7 @@ const NOTHING: ClearinghouseView = {
   activatedAt: null,
   version: null,
   updatedAt: null,
+  hasContract: false,
 };
 const CLAIMMD: ClearinghouseView = {
   ...NOTHING,
@@ -273,14 +274,17 @@ describe("ClearinghousePanel: choosing", () => {
 });
 
 describe("ClearinghousePanel: leaving outside for a vendor (a contracted tenant's billing mode)", () => {
+  // The SERVER says whether a contract exists (`hasContract`): the wizard's plan step is no evidence either way.
   const OUTSIDE_TENANT: ClearinghouseView = {
     ...NOTHING,
     vendor: "outside",
     status: "active",
     source: "tenant",
     version: 4,
+    hasContract: true,
   };
-  const withContract = () =>
+  const NO_CONTRACT: ClearinghouseView = { ...OUTSIDE_TENANT, hasContract: false };
+  const planStepDone = () =>
     wizardView([wizardStep("plan_contract", 1, { status: "done" }), step({ sequence: 2 })]);
   const open = async () => {
     fireEvent.click(await screen.findByRole("button", { name: "Change" }));
@@ -292,7 +296,7 @@ describe("ClearinghousePanel: leaving outside for a vendor (a contracted tenant'
   };
 
   it("asks for the billing service mode (no default), refuses to continue without it, and sends it with the pin", async () => {
-    const { client } = mount(OUTSIDE_TENANT, { PUT: { [CH]: () => ok(CLAIMMD) } }, withContract());
+    const { client } = mount(OUTSIDE_TENANT, { PUT: { [CH]: () => ok(CLAIMMD) } });
     await open();
     const modeBox = screen.getByLabelText(/^Billing service mode/) as HTMLSelectElement;
     expect(modeBox.value).toBe("");
@@ -315,7 +319,7 @@ describe("ClearinghousePanel: leaving outside for a vendor (a contracted tenant'
   });
 
   it("accepts an explicit None as the answer", async () => {
-    const { client } = mount(OUTSIDE_TENANT, { PUT: { [CH]: () => ok(CLAIMMD) } }, withContract());
+    const { client } = mount(OUTSIDE_TENANT, { PUT: { [CH]: () => ok(CLAIMMD) } });
     await open();
     fireEvent.change(screen.getByLabelText(/^Billing service mode/), { target: { value: "none" } });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
@@ -324,8 +328,14 @@ describe("ClearinghousePanel: leaving outside for a vendor (a contracted tenant'
     expect(lastCall(client.PUT.mock.calls)[1].body).toMatchObject({ billingServiceMode: "none" });
   });
 
-  it("does not ask, and sends no billing mode, for a tenant with no contract, a vendor-to-vendor change or a first choice", async () => {
-    const { client } = mount(OUTSIDE_TENANT, { PUT: { [CH]: () => ok(CLAIMMD) } }); // no plan_contract step: no contract
+  it("asks the mode of a contracted tenant whose plan step is NOT done (the server's word, not the step's)", async () => {
+    mount(OUTSIDE_TENANT, {}, view());
+    await open();
+    expect(screen.getByLabelText(/^Billing service mode/)).toBeTruthy();
+  });
+
+  it("does not ask, and sends no billing mode, for a tenant with no contract (even with its plan step done), a vendor-to-vendor change or a first choice", async () => {
+    const { client } = mount(NO_CONTRACT, { PUT: { [CH]: () => ok(CLAIMMD) } }, planStepDone());
     await open();
     expect(screen.queryByLabelText(/^Billing service mode/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
@@ -334,14 +344,14 @@ describe("ClearinghousePanel: leaving outside for a vendor (a contracted tenant'
     expect(lastCall(client.PUT.mock.calls)[1].body).not.toHaveProperty("billingServiceMode");
     cleanup();
 
-    mount(CLAIMMD, {}, withContract());
+    mount({ ...CLAIMMD, hasContract: true }, {}, planStepDone());
     fireEvent.click(await screen.findByRole("button", { name: "Change" }));
     expect(screen.queryByLabelText(/^Billing service mode/)).toBeNull();
   });
 
   it("shows the server's own refusal under the mode box when it judged the contract differently (422, field billingServiceMode)", async () => {
     mount(
-      OUTSIDE_TENANT,
+      NO_CONTRACT,
       {
         PUT: {
           [CH]: () =>
@@ -354,7 +364,7 @@ describe("ClearinghousePanel: leaving outside for a vendor (a contracted tenant'
             ]),
         },
       },
-      view(), // the console saw no contract; the server did
+      view(), // the console saw no contract (the read said so); the write's own check said otherwise
     );
     await open();
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));

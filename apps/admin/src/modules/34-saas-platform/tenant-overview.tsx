@@ -249,7 +249,7 @@ export function TenantOverview(): JSX.Element {
             }
           />
           <ContractCard orgSlug={orgSlug} />
-          <TenantClearinghouseCard orgSlug={orgSlug} />
+          <TenantClearinghouseCard orgSlug={orgSlug} tenantStatus={tenant.status} />
           <KeyRingCard
             tenant={tenant}
             onRotate={() => {

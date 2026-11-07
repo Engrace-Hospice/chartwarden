@@ -19,6 +19,7 @@ const NOTHING: ClearinghouseView = {
   activatedAt: null,
   version: null,
   updatedAt: null,
+  hasContract: false,
 };
 const OUTSIDE: ChoiceForm = { vendor: "outside", mode: "production", billingServiceMode: "" };
 

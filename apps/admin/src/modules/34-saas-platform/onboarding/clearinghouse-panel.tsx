@@ -149,13 +149,13 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
   const [testProblem, setTestProblem] = useState<string | null>(null);
   const write = useOpsWrite();
 
+  const current = load.data;
   const choiceContext: ChoiceContext = {
     tenantStatus: wizard.tenantStatus,
-    hasContract: wizard.steps.some(
-      (step) => step.key === "plan_contract" && step.status === "done",
-    ),
+    // The SERVER says whether a contract exists (live or paused): never inferred from the wizard's plan step, which can be done
+    // while the contract is canceled, or open while one exists, and would make the form unsatisfiable.
+    hasContract: current?.hasContract === true,
   };
-  const current = load.data;
   const available = current ? clearinghouseActions(current) : null;
 
   function closeDialog(): void {

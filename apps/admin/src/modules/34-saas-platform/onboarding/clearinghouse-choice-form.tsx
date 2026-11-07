@@ -40,11 +40,13 @@ const BILLING_MODE_NAME: Record<Exclude<BillingModePick, "">, string> = {
   managed_billing: "Managed billing",
 };
 
-const VENDORS: readonly { value: ClearinghouseVendor; label: string }[] = [
+export const VENDORS: readonly { value: ClearinghouseVendor; label: string }[] = [
   { value: "claimmd", label: "Claim.MD" },
   { value: "stedi", label: "Stedi" },
   { value: "outside", label: "Billing outside ChartWarden" },
 ];
+/** The vendors ChartWarden transmits through (the choices of a tenant moving OFF outside). */
+export const TRANSMITTING_VENDORS = VENDORS.filter((v) => v.value !== "outside");
 const MODES: readonly { value: ClearinghouseMode; label: string }[] = [
   { value: "production", label: "Production" },
   { value: "test", label: "Test (the vendor's sandbox)" },
@@ -143,12 +145,17 @@ export function ChoiceFormCard({
   onSecret,
   onCancel,
   onContinue,
+  vendors = VENDORS,
+  title,
 }: {
   view: ClearinghouseView;
   form: ChoiceForm;
   secret: string;
   errors: ChoiceErrors;
   context: ChoiceContext;
+  /** The vendors offered (all three by default; a switch OUT of outside offers only the two that transmit). */
+  vendors?: readonly { value: ClearinghouseVendor; label: string }[];
+  title?: string;
   onChange: (next: ChoiceForm) => void;
   onSecret: (value: string) => void;
   onCancel: () => void;
@@ -160,14 +167,17 @@ export function ChoiceFormCard({
   return (
     <section className="wx-drawer-card" aria-label="Clearinghouse choice">
       <div className="wx-drawer-card-head">
-        <h3>{view.vendor === null ? "Choose the clearinghouse" : "Change the clearinghouse"}</h3>
+        <h3>
+          {title ??
+            (view.vendor === null ? "Choose the clearinghouse" : "Change the clearinghouse")}
+        </h3>
       </div>
       <div className="wx-form-grid">
         <SelectField
           label="Clearinghouse"
           value={form.vendor}
           onChange={(e) => onChange({ ...form, vendor: e.target.value as ClearinghouseVendor })}
-          options={VENDORS}
+          options={vendors}
           error={errors.vendor}
         />
         {outside ? null : (
