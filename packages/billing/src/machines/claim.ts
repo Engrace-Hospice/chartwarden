@@ -38,6 +38,7 @@ export type ClaimTransitionEvent =
   | "submit"
   | "submission_failed"
   | "ack_999_accepted"
+  | "claimmd_receipt_accepted"
   | "ack_999_rejected"
   | "ack_277ca_accepted"
   | "ack_277ca_rejected"
@@ -83,6 +84,8 @@ export const CLAIM_TRANSITIONS: readonly ClaimTransition[] = [
 
   // SUBMITTED: 999 syntax accept → ACK_PENDING; 999 reject → ACK_REJECTED; portal failure → READY.
   { from: "submitted", event: "ack_999_accepted", to: "ack_pending" },
+  // A verified normalized Claim.MD clearinghouse receipt has the same stage effect, but is never recorded as a 999.
+  { from: "submitted", event: "claimmd_receipt_accepted", to: "ack_pending" },
   { from: "submitted", event: "ack_999_rejected", to: "ack_rejected" },
   { from: "submitted", event: "submission_failed", to: "ready" },
 

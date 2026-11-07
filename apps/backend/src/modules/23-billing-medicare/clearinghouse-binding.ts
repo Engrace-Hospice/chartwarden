@@ -67,6 +67,9 @@ export function buildClearinghouseFactories(
     },
     // ADR-0053 amendment 2026-11-04. Claim.MD does not dedupe uploads, so the durable attempt store is mandatory.
     claimmd: (env) => {
+      if (!env.CLAIMMD_ACCOUNT_REFERENCE?.trim()) {
+        throw new Error("CLAIMMD_ACCOUNT_REFERENCE is required for CLEARINGHOUSE_VENDOR=claimmd");
+      }
       if (!attempts) {
         throw new Error(
           "CLEARINGHOUSE_VENDOR=claimmd needs the durable attempt store, which needs a database; none is configured",

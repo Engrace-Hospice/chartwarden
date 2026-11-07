@@ -209,6 +209,11 @@ const REQUIREMENTS: readonly Requirement[] = [
     when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
   },
   {
+    key: "CLAIMMD_ACCOUNT_REFERENCE",
+    rule: (v) => (/^[A-Za-z0-9._:-]{1,128}$/.test(v) ? null : "must be a stable non-secret account reference"),
+    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
+  },
+  {
     key: "CLAIMMD_ACCOUNT_USAGE",
     rule: (v) => (v === "test" || v === "production" ? null : "must be 'test' or 'production'"),
     when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",

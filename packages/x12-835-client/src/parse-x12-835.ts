@@ -22,6 +22,7 @@ import {
   type ParsedCasGroupCode,
   type ParsedClaim835,
   type ParsedPaymentMethod,
+  type ParsedProviderAdjustment,
   type ParsedRemark,
   type ParsedRemittanceAdvice,
   type ParsedRemittanceParty,
@@ -56,6 +57,10 @@ const SVC_QUALIFIERS: ReadonlySet<string> = new Set([
   "NU",
   "UI",
   "WK",
+]);
+const KNOWN_835_SEGMENTS: ReadonlySet<string> = new Set([
+  "ST", "BPR", "TRN", "DTM", "N1", "N3", "N4", "REF", "PER", "CLP", "CAS", "NM1", "MIA", "MOA",
+  "SVC", "AMT", "QTY", "LQ", "PLB", "SE",
 ]);
 
 export interface ParseX12835Options {
@@ -151,6 +156,7 @@ interface LineDraft {
   submittedUnits?: number;
   adjs: AdjDraft[];
   remarks: ParsedRemark[];
+  references: { qualifier: string; value: string }[];
 }
 interface ClaimDraft {
   patientControlNumber?: string;
@@ -165,6 +171,7 @@ interface ClaimDraft {
   adjs: AdjDraft[];
   remarks: ParsedRemark[];
   lines: LineDraft[];
+  references: { qualifier: string; value: string }[];
 }
 
 function newClaim(seg: X12Segment): ClaimDraft {
@@ -184,6 +191,7 @@ function newClaim(seg: X12Segment): ClaimDraft {
     adjs: [],
     remarks: [],
     lines: [],
+    references: [],
   };
 }
 
@@ -216,6 +224,7 @@ function newLine(seg: X12Segment, compSep: string): LineDraft {
     ...(sub ? { submittedUnits: toNumber(sub, "SVC07") } : {}),
     adjs: [],
     remarks: [],
+    references: [],
   };
 }
 
@@ -224,6 +233,8 @@ function applyClaimSegment(claim: ClaimDraft, seg: X12Segment): void {
   const line = claim.lines[claim.lines.length - 1];
   if (id === "CAS") (line ?? claim).adjs.push(...parseCas(seg));
   else if (id === "LQ") (line ?? claim).remarks.push(...remarksOf(seg));
+  else if (id === "REF" && line && elem(seg, 1) && elem(seg, 2)) line.references.push({ qualifier: elem(seg, 1), value: elem(seg, 2) });
+  else if (id === "REF" && elem(seg, 1) && elem(seg, 2)) claim.references.push({ qualifier: elem(seg, 1), value: elem(seg, 2) });
   else if (id === "MIA" || id === "MOA") claim.remarks.push(...remarksOf(seg));
   else if (id === "AMT") toCents(elem(seg, 2), "AMT02");
   else if (id === "NM1" && (elem(seg, 1) === "QC" || elem(seg, 1) === "IL") && elem(seg, 9)) {
@@ -247,6 +258,7 @@ const toLine = (l: LineDraft): ParsedServiceLine => ({
   ...(l.submittedUnits !== undefined ? { submittedUnits: l.submittedUnits } : {}),
   adjustments: l.adjs.map((a) => a.adj),
   remarks: l.remarks,
+  ...(l.references.length ? { references: l.references } : {}),
 });
 
 const toClaim = (c: ClaimDraft): ParsedClaim835 => ({
@@ -262,6 +274,7 @@ const toClaim = (c: ClaimDraft): ParsedClaim835 => ({
   adjustments: c.adjs.map((a) => a.adj),
   remarks: c.remarks,
   serviceLines: c.lines.map(toLine),
+  ...(c.references.length ? { references: c.references } : {}),
 });
 
 interface TransactionSet {
@@ -331,14 +344,16 @@ function unwrapEnvelope(
   return { isa13, sets };
 }
 
-function parsePlb(seg: X12Segment): number[] {
-  const out: number[] = [];
+function parsePlb(seg: X12Segment, compSep: string): { readonly reason: string; readonly reference?: string; readonly cents: number }[] {
+  const out: { reason: string; reference?: string; cents: number }[] = [];
   for (let i = 3; i < seg.el.length; i += 2) {
-    const reason = elem(seg, i);
+    const reasonElement = elem(seg, i);
     const amount = elem(seg, i + 1);
-    if (!reason && !amount) continue;
-    if (!reason || !amount) fail("PLB reason/amount pair is incomplete");
-    out.push(toCents(amount, "PLB amount"));
+    if (!reasonElement && !amount) continue;
+    if (!reasonElement || !amount) fail("PLB reason/amount pair is incomplete");
+    const [reason, reference] = reasonElement.split(compSep, 2);
+    if (!reason) fail("PLB reason is missing");
+    out.push({ reason, ...(reference ? { reference } : {}), cents: toCents(amount, "PLB amount") });
   }
   return out;
 }
@@ -358,6 +373,7 @@ function applyPartyRef(party: ParsedRemittanceParty, kind: "PR" | "PE", seg: X12
   const q = elem(seg, 1);
   const v = elem(seg, 2);
   if (!v) return;
+  (party.references ??= []).push({ qualifier: q, value: v });
   if (kind === "PE" && q === "TJ") party.taxId = v;
   else if (kind === "PE" && q === "PQ") party.payerAssignedId = v;
   else if (kind === "PR" && q === "2U") party.additionalPayerId = v;
@@ -369,7 +385,7 @@ interface Body {
   readonly production: string | undefined;
   readonly parties: Readonly<Record<"PR" | "PE", ParsedRemittanceParty | undefined>>;
   readonly claims: readonly ClaimDraft[];
-  readonly plb: readonly number[];
+  readonly plb: readonly { readonly reason: string; readonly reference?: string; readonly cents: number }[];
 }
 
 /** Walk the transaction-set body into BPR/TRN/header facts, claim drafts and PLB amounts. */
@@ -384,7 +400,7 @@ function walkBody(body: readonly X12Segment[], compSep: string): Body {
   let party: ParsedRemittanceParty | undefined;
   let partyKind: "PR" | "PE" | undefined;
   const claims: ClaimDraft[] = [];
-  const plb: number[] = [];
+  const plb: { reason: string; reference?: string; cents: number }[] = [];
   for (const seg of body) {
     const id = segId(seg);
     const current = claims[claims.length - 1];
@@ -397,7 +413,7 @@ function walkBody(body: readonly X12Segment[], compSep: string): Body {
     } else if (id === "CLP") {
       if (!bpr || !trn) fail("CLP before BPR/TRN");
       claims.push(newClaim(seg));
-    } else if (id === "PLB") plb.push(...parsePlb(seg));
+    } else if (id === "PLB") plb.push(...parsePlb(seg, compSep));
     else if (id === "SVC") (current ?? fail("SVC outside a CLP")).lines.push(newLine(seg, compSep));
     else if (id === "N1" && !current) {
       const kind = elem(seg, 1);
@@ -438,13 +454,14 @@ function checkBalances(b: Body, total: number): void {
   checkPaymentBalance(
     total,
     b.claims.map((c) => c.paid),
-    b.plb,
+    b.plb.map((item) => item.cents),
   );
 }
 
 function buildSet(
   doc: { readonly componentSeparator: string },
   isa13: string,
+  gs06: string,
   chosen: TransactionSet,
   payerProgram: PayerProgram,
 ): ParsedRemittanceAdvice {
@@ -463,6 +480,7 @@ function buildSet(
     payerProgram,
     interchangeControlNumber: isa13,
     transactionSetControlNumber: st02,
+    functionalGroupControlNumber: gs06,
     checkOrEftTraceNumber: trace,
     ...(elem(b.trn, 3) ? { originatingCompanyId: elem(b.trn, 3) } : {}),
     payer: b.parties.PR as ParsedRemittanceParty,
@@ -470,7 +488,13 @@ function buildSet(
     paymentMethod: method,
     totalPaymentAmount: total / 100,
     ...(b.plb.length > 0
-      ? { providerAdjustmentTotal: b.plb.reduce((a, c) => a + c, 0) / 100 }
+      ? { providerAdjustmentTotal: b.plb.reduce((a, c) => a + c.cents, 0) / 100,
+          providerAdjustments: b.plb.map((x): ParsedProviderAdjustment => ({ reason: x.reason,
+            ...(x.reference ? { reference: x.reference } : {}), amount: x.cents / 100 })) }
+      : {}),
+    ...(chosen.body.some((segment) => !KNOWN_835_SEGMENTS.has(segId(segment)))
+      ? { unknownSegments: chosen.body.filter((segment) => !KNOWN_835_SEGMENTS.has(segId(segment)))
+          .map((segment) => ({ segmentId: segId(segment), elements: segment.el.slice(1) })) }
       : {}),
     productionDate: `${b.production}T00:00:00Z`,
     claims: b.claims.map(toClaim),
@@ -492,7 +516,8 @@ function build(
         : fail("the file holds several transaction sets; select one by ST02")
       : sets.find((x) => x.st02 === transactionSetControlNumber);
   if (!chosen) return fail("no transaction set with that ST02 in the file");
-  return buildSet(doc, isa13, chosen, payerProgram);
+  const gs = doc.segments.find((segment) => segId(segment) === "GS");
+  return buildSet(doc, isa13, gs ? elem(gs, 6) : "", chosen, payerProgram);
 }
 
 /** Parse raw 835 text. Never throws: any failure is a non-retryable degraded envelope (PHI-free reason). */
@@ -527,7 +552,10 @@ export function parseX12835AllSets(
     const { isa13, sets } = unwrapEnvelope(doc.segments, opts);
     return {
       ok: true,
-      value: sets.map((set) => buildSet(doc, isa13, set, payerProgram)),
+      value: sets.map((set) => {
+        const gs = doc.segments.find((segment) => segId(segment) === "GS");
+        return buildSet(doc, isa13, gs ? elem(gs, 6) : "", set, payerProgram);
+      }),
     };
   } catch (err) {
     if (err instanceof X12ParseError) return degraded835(err.code, err.message, "parse835", false);
