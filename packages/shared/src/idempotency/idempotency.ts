@@ -1,20 +1,57 @@
 // @chartwarden/shared — Idempotency helper (M1 Foundation §3.10; M1-T08).
 //
-// Core of the `Idempotency-Key` mutation guard (W-M1-10). The request fingerprint is a
-// SHA-256 of (organization_id, key, body) per SEC-025 / M01-F13, so the same key with a
-// different body is a CONFLICT rather than a silent replay. A `pending` state guards the
-// concurrent-duplicate race (M01-F15). Storage is dependency-injected (IdempotencyStore):
-// packages/shared is a leaf and never imports @chartwarden/db — the real Valkey/Postgres
-// store is supplied by the M1 backend bootstrap (M1-T10) and the HTTP middleware that
-// wraps this helper is wired there too.
-import { createHash } from "node:crypto";
+// Core of the `Idempotency-Key` mutation guard (W-M1-10). The request fingerprint is an HMAC-SHA-256 of
+// (organization_id, key, body) under a SERVER key (SEC-025 / M01-F13), so the same key with a different body is a
+// CONFLICT rather than a silent replay. It is KEYED because the body can be a credential: a plain hash in the
+// table would let anyone who can read it test guesses for the secret offline; an HMAC cannot be tested without the
+// server key. A `pending` state guards the concurrent-duplicate race (M01-F15). Storage is dependency-injected
+// (IdempotencyStore): packages/shared is a leaf and never imports @chartwarden/db or reads the environment — the real
+// Valkey/Postgres store and the server key are supplied by the M1 backend bootstrap (M1-T10), where the HTTP
+// middleware that wraps this helper is wired too.
+import { createHash, createHmac } from "node:crypto";
 
-/** SHA-256 hex of (organization_id, key, body) — the request fingerprint (SEC-025 / F13). */
-export function computeIdempotencyHash(organizationId: string, key: string, body: unknown): string {
-  // Stable, canonical-enough serialization: undefined bodies normalize to null so the
-  // hash is deterministic across "no body" representations.
-  const canonical = JSON.stringify({ organizationId, key, body: body ?? null });
-  return createHash("sha256").update(canonical).digest("hex");
+/** Marks a keyed fingerprint. A stored value without it is the pre-HMAC plain SHA-256 (see {@link idempotencyHashMatches}). */
+export const IDEMPOTENCY_HASH_PREFIX = "h1:";
+
+/** Stable, canonical-enough serialization: undefined bodies normalize to null so the hash is deterministic. */
+const canonicalRequest = (organizationId: string, key: string, body: unknown): string =>
+  JSON.stringify({ organizationId, key, body: body ?? null });
+
+/** `h1:` + HMAC-SHA-256 hex of (organization_id, key, body) under the server key — the request fingerprint (SEC-025 / F13). */
+export function computeIdempotencyHash(
+  organizationId: string,
+  key: string,
+  body: unknown,
+  hmacKey: string | Uint8Array,
+): string {
+  return `${IDEMPOTENCY_HASH_PREFIX}${createHmac("sha256", hmacKey)
+    .update(canonicalRequest(organizationId, key, body))
+    .digest("hex")}`;
+}
+
+/**
+ * The fingerprint this module stored BEFORE it was keyed: plain SHA-256 hex. Only ever COMPUTED, to recognise a record written
+ * before the deploy that introduced the keyed hash (records live 24 h), so a client's retry of an in-flight or completed request
+ * still replays instead of being re-executed. It is never written. ponytail: delete once one TTL has passed everywhere.
+ */
+export function legacyIdempotencyHash(organizationId: string, key: string, body: unknown): string {
+  return createHash("sha256")
+    .update(canonicalRequest(organizationId, key, body))
+    .digest("hex");
+}
+
+/**
+ * Does a STORED fingerprint belong to this request? A keyed (`h1:`) record matches only the same keyed value, so a record written
+ * under another server key (a rotated secret) is a clean mismatch (409), never a replay. A record without the prefix is the legacy
+ * form and matches when the legacy hash of the same request does; `legacy` is lazy so the plain hash is not computed otherwise.
+ */
+export function idempotencyHashMatches(
+  stored: string,
+  requestHash: string,
+  legacy: () => string,
+): boolean {
+  if (stored === requestHash) return true;
+  return !stored.startsWith(IDEMPOTENCY_HASH_PREFIX) && stored === legacy();
 }
 
 /** The cached outcome of a completed idempotent mutation. */
@@ -74,12 +111,17 @@ export async function runIdempotent(
   key: string,
   body: unknown,
   handler: () => Promise<IdempotentResponse>,
+  hmacKey: string | Uint8Array,
 ): Promise<IdempotentResponse> {
-  const requestHash = computeIdempotencyHash(organizationId, key, body);
+  const requestHash = computeIdempotencyHash(organizationId, key, body, hmacKey);
+  const matches = (stored: string) =>
+    idempotencyHashMatches(stored, requestHash, () =>
+      legacyIdempotencyHash(organizationId, key, body),
+    );
 
   const existing = await store.load(organizationId, key);
   if (existing) {
-    if (existing.requestHash !== requestHash) throw new IdempotencyConflictError(key);
+    if (!matches(existing.requestHash)) throw new IdempotencyConflictError(key);
     if (existing.state === "complete") return existing.response;
     throw new IdempotencyInFlightError(key);
   }
@@ -87,7 +129,7 @@ export async function runIdempotent(
   if (!(await store.putPending(organizationId, key, requestHash))) {
     // Lost the claim to a concurrent duplicate: never run the handler. Reload the winner's record.
     const winner = await store.load(organizationId, key);
-    if (winner && winner.requestHash !== requestHash) throw new IdempotencyConflictError(key);
+    if (winner && !matches(winner.requestHash)) throw new IdempotencyConflictError(key);
     if (winner?.state === "complete") return winner.response;
     throw new IdempotencyInFlightError(key);
   }

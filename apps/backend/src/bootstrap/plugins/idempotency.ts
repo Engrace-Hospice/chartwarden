@@ -3,20 +3,25 @@
 //
 // This is the HTTP wrapper the `@chartwarden/shared` idempotency helper's docstring promised
 // "is wired in M1-T10": it reuses that leaf's request fingerprint (computeIdempotencyHash
-// = SHA-256 over scope + key + body, the scope being org, user, method, route template, path
-// params and `If-Match`) and its injected IdempotencyStore port (Valkey /
-// Postgres `idempotency_key`), so the HTTP layer adds NO direct schema write.
+// = HMAC-SHA-256 over scope + key + body under a server key, the scope being org, user, method,
+// route template, path params and `If-Match`) and its injected IdempotencyStore port (Valkey /
+// Postgres `idempotency_key`), so the HTTP layer adds NO direct schema write. The fingerprint is
+// KEYED because a body can be a credential and the table must not hold something a reader can test
+// guesses against; the key is derived from BETTER_AUTH_SECRET (see `idempotencyHmacKey`).
 //
 // Contract (spec §4.6): only guards mutating methods carrying an `Idempotency-Key`; skips
 // unauthenticated routes (no org scope to key on). A first request records a `pending`
 // lock then captures its response on the way out (onSend) and marks it `complete`. A replay
 // with the SAME body returns the cached response; a DIFFERENT body is a 409
 // IDEMPOTENCY_CONFLICT; a concurrent duplicate still in flight is a 409 CONFLICT.
+import { createHmac, randomBytes } from "node:crypto";
 import {
   type IdempotencyRecord,
   type IdempotencyStore,
   type IdempotentResponse,
   computeIdempotencyHash,
+  idempotencyHashMatches,
+  legacyIdempotencyHash,
 } from "@chartwarden/shared";
 import { ConflictError, IdempotencyConflictError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -43,7 +48,41 @@ function parsePayload(payload: unknown): unknown {
   }
 }
 
-export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore): void {
+/** Domain separation: this key is for request fingerprints only, whatever else BETTER_AUTH_SECRET keys. */
+const FINGERPRINT_KEY_LABEL = "chartwarden:idempotency:request-fingerprint:v1";
+const MIN_SECRET_LENGTH = 32;
+
+/**
+ * The server key the request fingerprint is an HMAC under: HMAC-SHA-256(BETTER_AUTH_SECRET, purpose label). It must be the same on
+ * every replica and across restarts (an Idempotency-Key is replayed up to 24 h later), so it comes from configuration the platform
+ * already requires, never a constant in the code. Production refuses to boot without it. Outside production a missing secret gets a
+ * process-local random key: nothing is replayable across a restart there, which only costs a dev a clean 409. Rotating the secret
+ * makes every stored fingerprint a clean mismatch (409), never a replay and never a re-run.
+ */
+export function idempotencyHmacKey(env: NodeJS.ProcessEnv = process.env): Buffer {
+  const secret = env.BETTER_AUTH_SECRET;
+  if (secret !== undefined && secret.length >= MIN_SECRET_LENGTH) {
+    return createHmac("sha256", secret).update(FINGERPRINT_KEY_LABEL).digest();
+  }
+  if (env.NODE_ENV === "production") {
+    throw new Error(
+      `BETTER_AUTH_SECRET (at least ${MIN_SECRET_LENGTH} characters) is required in production: it keys the Idempotency-Key request fingerprint`,
+    );
+  }
+  return randomBytes(32);
+}
+
+export interface ApplyIdempotencyOptions {
+  /** The fingerprint's HMAC key. Default: {@link idempotencyHmacKey} over the process environment. */
+  readonly hmacKey?: string | Uint8Array;
+}
+
+export function applyIdempotency(
+  app: FastifyInstance,
+  store: IdempotencyStore,
+  options: ApplyIdempotencyOptions = {},
+): void {
+  const hmacKey = options.hmacKey ?? idempotencyHmacKey();
   app.addHook("preHandler", async (request, reply) => {
     if (request.method === "GET" || request.method === "HEAD") return;
     // A route that returns a ONE-TIME SECRET (GAP-020: the wristband token) opts out: its response must never be
@@ -69,9 +108,16 @@ export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore):
       request.params ?? null,
       request.headers["if-match"] ?? null,
     ]);
-    const requestHash = computeIdempotencyHash(scope, key, request.body ?? null);
+    const requestHash = computeIdempotencyHash(scope, key, request.body ?? null, hmacKey);
     const answerFrom = (existing: IdempotencyRecord) => {
-      if (existing.requestHash !== requestHash) throw new IdempotencyConflictError();
+      // a record stored before the keyed hash (24 h TTL) still matches the same request, so a retry across the deploy replays
+      if (
+        !idempotencyHashMatches(existing.requestHash, requestHash, () =>
+          legacyIdempotencyHash(scope, key, request.body ?? null),
+        )
+      ) {
+        throw new IdempotencyConflictError();
+      }
       if (existing.state === "complete") {
         const status = Number(existing.response.status) || 200;
         return reply.code(status).send(existing.response.body);
