@@ -172,7 +172,11 @@ describe("contact support-groups panel", () => {
         : { status: 200, body: [enrollment()] },
     );
     fireEvent.click(await screen.findByRole("button", { name: "Withdraw" }));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.getAttribute("aria-describedby")).toBeTruthy();
+    expect(
+      document.getElementById(dialog.getAttribute("aria-describedby") ?? "")?.textContent,
+    ).toContain("no longer on its roster");
     fireEvent.change(within(dialog).getByRole("combobox", { name: "Reason" }), {
       target: { value: "staff_removed" },
     });
@@ -184,5 +188,23 @@ describe("contact support-groups panel", () => {
     );
     expect(post?.body).toEqual({ reason: "staff_removed" });
     expect(post?.headers.get("Idempotency-Key")).toBeTruthy();
+  });
+
+  it("a 409 refusal on withdraw is said in place and the list is read again", async () => {
+    let reads = 0;
+    mount((method) => {
+      if (method === "POST")
+        return {
+          status: 409,
+          body: { error: { code: "ENROLLMENT_NOT_ACTIVE", message: "Already withdrawn." } },
+        };
+      reads += 1;
+      return { status: 200, body: [enrollment()] };
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Withdraw" }));
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Withdraw" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("Already withdrawn.");
+    await waitFor(() => expect(reads).toBe(2));
   });
 });

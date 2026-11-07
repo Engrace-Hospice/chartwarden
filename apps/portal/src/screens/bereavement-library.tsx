@@ -1,9 +1,10 @@
 import { Button, Glyph, useApiClient } from "@chartwarden/ui";
 // M31 bereavement support — the grief library the hospice team published (ADR-0109 D10, PR 3). M16 decides what is published; this section
 // lists it and, when the family chooses an item, asks for a short-lived link (`/url`) and opens it: a reading in a new tab, a video in a
-// player on the page. A transcript link is offered when the item has one. The link is held in memory only and never stored.
+// player on the page. A transcript link is offered when the item has one. The link is held in memory only, never stored, and dropped when
+// it expires; a video whose link expires mid-way is renewed and resumes where it was. Focus moves to the new link or player.
 // A route this account may not use shows nothing; a failure is said with a retry.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { SectionError, SectionLoading } from "./bereavement-section";
 import { humanize, readError } from "./portal-format";
@@ -112,32 +113,85 @@ export function BereavementLibrarySection(): JSX.Element | null {
   );
 }
 
+/** The shortest a just-minted link stays on the page (a skewed clock must not drop it at once; the server enforces the real expiry). */
+const LINK_FLOOR_MS = 60_000;
+const MAX_TIMEOUT_MS = 2 ** 31 - 1;
+const linkLifetimeMs = (expiresAt: string, now: number): number => {
+  const left = Date.parse(expiresAt) - now;
+  return Number.isFinite(left)
+    ? Math.min(Math.max(LINK_FLOOR_MS, left), MAX_TIMEOUT_MS)
+    : LINK_FLOOR_MS;
+};
+/** A video whose link keeps failing right after a renewal is broken, not expired: stop renewing after this many tries in a row. */
+const MAX_RENEWALS = 2;
+
+interface MintedLink {
+  part: Part;
+  url: string;
+  expiresAt: string;
+  /** Where a renewed video picks up (seconds), or null to start at the beginning. */
+  resumeAt: number | null;
+  /** The family asked for it: focus moves to the new link or player. A renewal behind the scenes keeps focus where it is. */
+  focus: boolean;
+}
+
 function LibraryEntry({ item }: { item: LibraryItem }): JSX.Element {
   const client = useApiClient();
   const [opening, setOpening] = useState<Part | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [link, setLink] = useState<{ part: Part; url: string } | null>(null);
+  const [notice, setNotice] = useState("");
+  const [link, setLink] = useState<MintedLink | null>(null);
+  const linkRef = useRef<HTMLAnchorElement>(null);
+  const playerRef = useRef<HTMLVideoElement>(null);
+  const renewals = useRef(0);
   const isVideo = item.kind === "video";
+  const playsHere = link !== null && link.part === "document" && isVideo;
 
-  async function open(part: Part): Promise<void> {
-    if (opening) return;
+  useEffect(() => {
+    if (link === null) return;
+    if (link.focus) (playsHere ? playerRef.current : linkRef.current)?.focus();
+    // A link to open is a credential: it is dropped when it expires, and the next Open mints a fresh one. The player keeps its source
+    // (it may be mid-way through); an expired source surfaces as an error, which renews it.
+    if (playsHere) return;
+    const timer = setTimeout(() => setLink(null), linkLifetimeMs(link.expiresAt, Date.now()));
+    return () => clearTimeout(timer);
+  }, [link, playsHere]);
+
+  /** Mint a short-lived link. `resumeAt` set: a video renewal, which keeps focus where it is. */
+  async function open(part: Part, resumeAt: number | null = null): Promise<boolean> {
+    if (opening) return false;
     setOpening(part);
     setError(null);
+    if (resumeAt === null) setNotice("");
     try {
       const res = await client.GET("/api/v1/portal/bereavement/library/{itemId}/url", {
         params: { path: { itemId: item.itemId }, query: { part } },
         cache: "no-store",
       });
       const url = res.data ? safeMintedUrl(res.data.url) : null;
-      if (res.error || !url) {
+      if (res.error || !res.data || !url) {
         setError("We couldn't open this right now. Please try again in a moment.");
-        return;
+        return false;
       }
-      setLink({ part, url });
+      setLink({ part, url, expiresAt: res.data.expiresAt, resumeAt, focus: resumeAt === null });
+      return true;
     } catch {
       setError("We couldn't open this right now. Please check your connection and try again.");
+      return false;
     } finally {
       setOpening(null);
+    }
+  }
+
+  async function renewVideo(at: number): Promise<void> {
+    if (renewals.current >= MAX_RENEWALS) {
+      setNotice("");
+      setError("This video can't be played right now. Please try again later.");
+      return;
+    }
+    renewals.current += 1;
+    if (await open("document", at)) {
+      setNotice("The video link had expired, so we renewed it and picked up where you left off.");
     }
   }
 
@@ -156,7 +210,10 @@ function LibraryEntry({ item }: { item: LibraryItem }): JSX.Element {
             tone="secondary"
             loading={opening === "document"}
             disabled={opening !== null}
-            onClick={() => void open("document")}
+            onClick={() => {
+              renewals.current = 0;
+              void open("document");
+            }}
           >
             {isVideo ? `Watch ${label}` : `Open ${label}`}
           </Button>
@@ -171,12 +228,28 @@ function LibraryEntry({ item }: { item: LibraryItem }): JSX.Element {
             </Button>
           ) : null}
         </div>
-        {link && link.part === "document" && isVideo ? (
+        {playsHere ? (
           // biome-ignore lint/a11y/useMediaCaption: captions are not part of the upload contract yet; the transcript is offered beside it
-          <video controls src={link.url} aria-label={label} className="wx-bereavement-video" />
+          <video
+            ref={playerRef}
+            // focusable everywhere (some engines do not focus a <video> programmatically), and still in the tab order
+            tabIndex={0}
+            controls
+            src={link.url}
+            aria-label={label}
+            className="wx-bereavement-video"
+            onLoadedMetadata={(e) => {
+              if (link.resumeAt !== null) e.currentTarget.currentTime = link.resumeAt;
+            }}
+            onPlaying={() => {
+              renewals.current = 0;
+            }}
+            onError={(e) => void renewVideo(e.currentTarget.currentTime || (link.resumeAt ?? 0))}
+          />
         ) : null}
-        {link && !(link.part === "document" && isVideo) ? (
+        {link && !playsHere ? (
           <a
+            ref={linkRef}
             className="wx-bereavement-resource__link"
             href={link.url}
             target="_blank"
@@ -187,6 +260,8 @@ function LibraryEntry({ item }: { item: LibraryItem }): JSX.Element {
             <Glyph name="arrow-right" size={16} aria-hidden="true" />
           </a>
         ) : null}
+        {/* biome-ignore lint/a11y/useSemanticElements: the region stays mounted so a renewal is announced */}
+        <div role="status">{notice}</div>
         {error ? (
           <div className="wx-bereavement-opt-error" role="alert">
             {error}

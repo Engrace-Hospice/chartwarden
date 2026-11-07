@@ -9,7 +9,8 @@ import type { JSX } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
-import { LINK_FLOOR_MS, MailingRunDetail, linkLifetimeMs } from "./mailing-run-detail";
+import { LINK_FLOOR_MS, linkLifetimeMs } from "./link-safety";
+import { MailingRunDetail } from "./mailing-run-detail";
 
 /** jest-dom's `toBeDisabled`: the control itself, or a descendant of a disabled fieldset (how these screens make a whole form inert). */
 const inert = (el: HTMLElement): boolean =>

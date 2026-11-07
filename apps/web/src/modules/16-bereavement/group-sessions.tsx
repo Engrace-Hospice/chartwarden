@@ -4,7 +4,7 @@
 // version in `If-Match`); `bereavement.group.run` records who came, and only once a session has started (the server refuses earlier). Every
 // write carries one `Idempotency-Key` per attempt; a refused stale write closes its dialog, reloads the sessions and says why.
 import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
-import { useCallback, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import type { JSX } from "react";
 import { errorMessage, isStaleWrite } from "./bereavement-api";
 import { dateTime, humanize, toneOf } from "./bereavement-status";
@@ -54,6 +54,8 @@ export function GroupSessions({
   mayRun,
   roster,
   announce,
+  refreshToken,
+  onSessionsChanged,
   onAttendanceRecorded,
 }: {
   group: Group;
@@ -61,6 +63,10 @@ export function GroupSessions({
   mayRun: boolean;
   roster: Loaded<GroupRoster>;
   announce: (message: string) => void;
+  /** The page bumps it after a group write (open, close, edit): the sessions re-read. */
+  refreshToken: number;
+  /** A session was added, cancelled or attended: the page re-reads the group (its next session). */
+  onSessionsChanged: () => void;
   onAttendanceRecorded: () => void;
 }): JSX.Element | null {
   const client = useApiClient();
@@ -70,6 +76,9 @@ export function GroupSessions({
   );
   const { state, reload } = useLoaded<GroupSession[]>(fetchSessions, SESSIONS_LOAD_FAILED);
   const [ceremony, setCeremony] = useState<Ceremony>(null);
+  useEffect(() => {
+    if (refreshToken > 0) void reload();
+  }, [refreshToken, reload]);
 
   if (state.kind === "hidden") return null;
   if (state.kind === "loading") return <LoadingSpinner label="Loading the sessions" />;
@@ -83,6 +92,7 @@ export function GroupSessions({
   const finish = (message: string): void => {
     setCeremony(null);
     void reload();
+    onSessionsChanged();
     announce(message);
   };
 
@@ -206,6 +216,14 @@ export function GroupSessions({
   );
 }
 
+const plainFieldset = {
+  border: 0,
+  padding: 0,
+  margin: 0,
+  display: "grid",
+  gap: "0.75rem",
+} as const;
+
 type Result<T> = { data: T | null; error: unknown; status: number };
 
 /** One write per dialog: an idempotency key per attempt, the dialog stays open on a failure that is not stale. */
@@ -271,6 +289,7 @@ function AddSessionModal({
       title="Add a session"
       onClose={onClose}
       busy={write.busy}
+      dirty={starts !== "" || ends !== ""}
       footer={
         <button
           type="button"
@@ -282,8 +301,10 @@ function AddSessionModal({
         </button>
       }
     >
-      <TextField label="Starts" type="datetime-local" value={starts} onChange={setStarts} />
-      <TextField label="Ends" type="datetime-local" value={ends} onChange={setEnds} />
+      <fieldset disabled={write.busy} style={plainFieldset}>
+        <TextField label="Starts" type="datetime-local" value={starts} onChange={setStarts} />
+        <TextField label="Ends" type="datetime-local" value={ends} onChange={setEnds} />
+      </fieldset>
       {write.error ? <ErrorText>{write.error}</ErrorText> : null}
     </Modal>
   );
@@ -382,6 +403,7 @@ function AttendanceModal({
       title={`Attendance for session ${session.sessionNo}`}
       onClose={onClose}
       busy={write.busy}
+      dirty={picked.size > 0}
       footer={
         <button
           type="button"

@@ -294,5 +294,58 @@ describe("memorial service — invitations", () => {
     expect(post?.body).toEqual({ attended: true });
     expect(post?.idempotencyKey).toBeTruthy();
     expect(post?.ifMatch).toBeNull();
+    // the reader acted inside the invitations table: the announcement does not pull focus to the top of the page
+    expect(document.activeElement?.tagName).not.toBe("OUTPUT");
+  });
+});
+
+describe("memorial service — stale edits and the join link", () => {
+  it("a 412 on edit closes the dialog, reloads the service and says why", async () => {
+    let reads = 0;
+    mount((req) => {
+      if (req.method === "PATCH")
+        return { status: 412, body: { error: { code: "PRECONDITION_FAILED", message: "moved" } } };
+      if (req.path === SERVICE_PATH) reads += 1;
+      return ok(service());
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(/This service changed while you were editing it/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(reads).toBe(2));
+  });
+
+  it("an edit that leaves a hidden join link untouched does not send joinUrl (never null)", async () => {
+    const { calls } = mount(
+      server(
+        () => service({ hasJoinUrl: true, joinUrl: null }),
+        [],
+        () => ok(service({ hasJoinUrl: true, version: 6 })),
+      ),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("The service was saved.")).toBeTruthy();
+    expect(calls.find((c) => c.method === "PATCH")?.body).not.toHaveProperty("joinUrl");
+  });
+
+  it("an edit that types a join link sends it", async () => {
+    const { calls } = mount(
+      server(
+        () => service(),
+        [],
+        () => ok(service({ hasJoinUrl: true, version: 6 })),
+      ),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Join link (https)"), {
+      target: { value: "https://meet.example.org/spring" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("The service was saved.")).toBeTruthy();
+    expect(calls.find((c) => c.method === "PATCH")?.body).toMatchObject({
+      joinUrl: "https://meet.example.org/spring",
+    });
   });
 });

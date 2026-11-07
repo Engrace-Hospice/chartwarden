@@ -182,7 +182,11 @@ describe("grief library — writes", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Publish When grief comes in waves" }),
     );
+    const dialog = await screen.findByRole("alertdialog");
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes, publish it" }));
     expect(await screen.findByText("When grief comes in waves is now published.")).toBeTruthy();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     const post = calls.find((c) => c.method === "POST");
     expect(post?.path).toBe(`${LIBRARY}/${ITEM_ID}/status`);
     expect(post?.body).toEqual({ status: "published" });
@@ -350,5 +354,163 @@ describe("grief library — writes", () => {
     await pickAndUpload(sizedFile("notes.txt", "text/plain", 10), "Notes");
     expect((await screen.findByRole("alert")).textContent).toContain("PDF, PNG, JPEG or MP4");
     expect(calls.some((c) => c.path === "/api/v1/document-uploads")).toBe(false);
+  });
+});
+
+describe("grief library — review fixes", () => {
+  it("archives only after the alertdialog is confirmed, and under a status filter re-reads the list", async () => {
+    let reads = 0;
+    mount((req) => {
+      if (req.method === "POST") return ok(item({ status: "archived", version: 4 }));
+      reads += 1;
+      return ok(req.query.get("status") === "published" ? [item({ status: "published" })] : []);
+    });
+    await screen.findByText("No library items");
+    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "published" } });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Archive When grief comes in waves" }),
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.getAttribute("aria-describedby")).toBeTruthy();
+    const before = reads;
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes, archive it" }));
+    expect(await screen.findByText("When grief comes in waves is now archived.")).toBeTruthy();
+    await waitFor(() => expect(reads).toBe(before + 1));
+  });
+
+  it("a video without a transcript cannot be published, and says why", async () => {
+    mount(() => ok([item({ kind: "video", mimeType: "video/mp4" })]));
+    const publish = (await screen.findByRole("button", {
+      name: "Publish When grief comes in waves",
+    })) as HTMLButtonElement;
+    expect(publish.disabled).toBe(true);
+    const reason = document.getElementById(publish.getAttribute("aria-describedby") ?? "");
+    expect(reason?.textContent).toBe("Add a transcript before publishing this video.");
+  });
+
+  it("shows the server's message when it still refuses a video without its transcript", async () => {
+    mount((req) =>
+      req.method === "POST"
+        ? {
+            status: 422,
+            body: {
+              error: {
+                code: "LIBRARY_TRANSCRIPT_REQUIRED",
+                message: "A video needs a transcript before it can be published.",
+              },
+            },
+          }
+        : ok([item({ kind: "video", mimeType: "video/mp4", transcriptDocumentId: DOC_ID })]),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Publish When grief comes in waves" }),
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes, publish it" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toContain(
+      "A video needs a transcript before it can be published.",
+    );
+  });
+
+  it("a stale edit closes the dialog, reloads the library and says why", async () => {
+    let reads = 0;
+    mount((req) => {
+      if (req.method === "PATCH")
+        return { status: 412, body: { error: { code: "PRECONDITION_FAILED", message: "moved" } } };
+      reads += 1;
+      return ok([item()]);
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Edit When grief comes in waves" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(/This item changed while you were editing it/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(reads).toBe(2));
+  });
+
+  it("refuses a transcript id that is not a valid id before sending", async () => {
+    const { calls } = mount(() => ok([item()]));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit When grief comes in waves" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/Transcript document id/), {
+      target: { value: "not-an-id" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("not a valid id");
+    expect(calls.some((c) => c.method === "PATCH")).toBe(false);
+  });
+
+  it("says plainly when the browser has no secure crypto, before any request", async () => {
+    vi.stubGlobal("crypto", {});
+    const { calls } = mount(() => ok([]));
+    fireEvent.click(await screen.findByRole("button", { name: "Upload item" }));
+    const file = new File(["%PDF-1.4 synthetic"], "guide.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByLabelText(/^File/), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Guide" } });
+    fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "a secure (https) connection is required",
+    );
+    expect(calls.some((c) => c.path === "/api/v1/document-uploads")).toBe(false);
+  });
+
+  it("says the file could not be read when hashing it fails", async () => {
+    vi.spyOn(globalThis.crypto.subtle, "digest").mockRejectedValue(new Error("read failed"));
+    mount(() => ok([]));
+    fireEvent.click(await screen.findByRole("button", { name: "Upload item" }));
+    const file = new File(["%PDF-1.4 synthetic"], "guide.pdf", { type: "application/pdf" });
+    Object.defineProperty(file, "arrayBuffer", { value: async () => new ArrayBuffer(8) });
+    fireEvent.change(screen.getByLabelText(/^File/), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Guide" } });
+    fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("The file could not be read");
+  });
+
+  it("Cancel upload aborts the PUT and releases the reservation", async () => {
+    vi.spyOn(globalThis.crypto.subtle, "digest").mockResolvedValue(
+      new Uint8Array(32).fill(0xab).buffer,
+    );
+    let putSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          putSignal = init.signal ?? undefined;
+          init.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }),
+    );
+    const { calls } = mount((req) =>
+      req.path === "/api/v1/document-uploads"
+        ? {
+            status: 201,
+            body: {
+              uploadId: UPLOAD_ID,
+              uploadUrl: "https://store.example/put",
+              requiredHeaders: {},
+              expiresAt: "2099-01-01T00:00:00.000Z",
+            },
+          }
+        : req.method === "DELETE"
+          ? { status: 204 }
+          : ok([]),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Upload item" }));
+    const file = new File(["%PDF-1.4 synthetic"], "guide.pdf", { type: "application/pdf" });
+    Object.defineProperty(file, "arrayBuffer", { value: async () => new ArrayBuffer(8) });
+    fireEvent.change(screen.getByLabelText(/^File/), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Guide" } });
+    fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+    await waitFor(() => expect(putSignal).toBeDefined());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel upload" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("The upload was cancelled");
+    expect(putSignal?.aborted).toBe(true);
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (c) => c.method === "DELETE" && c.path === `/api/v1/document-uploads/${UPLOAD_ID}`,
+        ),
+      ).toBe(true),
+    );
   });
 });

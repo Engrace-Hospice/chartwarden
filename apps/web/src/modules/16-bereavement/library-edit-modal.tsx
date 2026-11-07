@@ -1,5 +1,6 @@
 // apps/web/src/modules/16-bereavement — edit one grief-library item's details (ADR-0109 D10, route 79). The version the page READ goes in
-// `If-Match`; a 412 tells the page to reload. The document itself is never replaced here: upload a new item instead.
+// `If-Match`; a 412/409/404 closes the dialog, and the page reloads and says why. The document itself is never replaced here: upload a new
+// item instead.
 import { useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
@@ -13,7 +14,7 @@ import {
   primaryButtonStyle,
   useIdempotencyKey,
 } from "./bereavement-ui";
-import { LIBRARY_CATEGORIES, categoryLabel, intOrNull, orNull } from "./program-status";
+import { LIBRARY_CATEGORIES, categoryLabel, intOrNull, isUuid, orNull } from "./program-status";
 import { type LibraryCategory, type LibraryItem, updateLibraryItem } from "./programs-api";
 
 export function LibraryEditModal({
@@ -25,8 +26,8 @@ export function LibraryEditModal({
   item: LibraryItem;
   onClose: () => void;
   onSaved: (item: LibraryItem) => void;
-  /** The item moved under the reader: the page reloads. */
-  onStale: () => void;
+  /** The item moved under the reader: the page closes this dialog, says `message` and reloads. */
+  onStale: (message: string) => void;
 }): JSX.Element {
   const client = useApiClient();
   const keys = useIdempotencyKey();
@@ -42,6 +43,8 @@ export function LibraryEditModal({
     const order = intOrNull(sortOrder);
     if (!title.trim()) return setError("Give the item a title.");
     if (order === null || order < 0) return setError("Sort order must be a whole number.");
+    if (transcript.trim() && !isUuid(transcript))
+      return setError("The transcript document id is not a valid id.");
     const body = {
       title: title.trim(),
       summary: orNull(summary),
@@ -61,8 +64,16 @@ export function LibraryEditModal({
     keys.settle(res.status);
     setBusy(false);
     if (res.error || !res.data) {
-      if (isStaleWrite(res.status)) onStale();
-      setError(errorMessage(res.error, "The item could not be saved."));
+      const message = errorMessage(res.error, "The item could not be saved.");
+      if (isStaleWrite(res.status)) {
+        onStale(
+          res.status === 412
+            ? "This item changed while you were editing it. The library has been refreshed: check it and try again."
+            : message,
+        );
+        return;
+      }
+      setError(message);
       return;
     }
     onSaved(res.data);

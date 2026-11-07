@@ -3,12 +3,13 @@
 // Which memorial services this family is invited to, what they answered, and a place to record an answer they gave by PHONE. The panel exists
 // only for a reader who holds `bereavement.memorial.rsvp` (the family's counselor or oversight): without it nothing is requested and nothing
 // renders, and a 403 renders nothing either. An answer can be recorded only while the service is published (afterwards the RSVP is closed).
-// The write carries one Idempotency-Key per attempt; the row is replaced by the server's answer.
+// The write carries one Idempotency-Key per attempt; the row is replaced by the server's answer. A refusal (409: closed, full) is said in
+// place and the list is read again.
 import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";
-import { errorMessage } from "./bereavement-api";
+import { errorMessage, isStaleWrite } from "./bereavement-api";
 import { dateTime, humanize, toneOf } from "./bereavement-status";
 import {
   Card,
@@ -125,6 +126,7 @@ function InvitationsPanel({ contactId }: { contactId: string }): JSX.Element | n
           contactId={contactId}
           invitation={answering}
           onClose={() => setAnswering(null)}
+          onRefused={() => void reload()}
           onDone={(next) => {
             setAnswering(null);
             patch((prev) => prev.map((r) => (r.invitationId === next.invitationId ? next : r)));
@@ -146,11 +148,14 @@ function RsvpModal({
   contactId,
   invitation,
   onClose,
+  onRefused,
   onDone,
 }: {
   contactId: string;
   invitation: ContactInvitation;
   onClose: () => void;
+  /** The server refused because the invitation moved (closed, full, gone): the panel re-reads the list. */
+  onRefused: () => void;
   onDone: (row: ContactInvitation) => void;
 }): JSX.Element {
   const client = useApiClient();
@@ -184,6 +189,7 @@ function RsvpModal({
     setBusy(false);
     if (err || !data) {
       setError(errorMessage(err, "The RSVP could not be recorded."));
+      if (isStaleWrite(status)) onRefused();
       return;
     }
     onDone(data);

@@ -1,6 +1,7 @@
 // apps/web/src/modules/16-bereavement — upload and register one grief-library item (ADR-0109 D10, route 78 over M22's verified upload).
 // The file goes through M22 first (hash, reserve, PUT to storage, complete: a reservation that fails later is aborted), then the returned
 // document is registered as a DRAFT library item under one Idempotency-Key per attempt. A draft is not shown to families until published.
+// While the file is sent, "Cancel upload" aborts the PUT and releases the reservation.
 import { useApiClient } from "@chartwarden/ui";
 import { useId, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -11,6 +12,7 @@ import {
   SelectField,
   TextAreaField,
   TextField,
+  ghostButtonStyle,
   mutedStyle,
   primaryButtonStyle,
   useIdempotencyKey,
@@ -43,6 +45,9 @@ export function LibraryUploadModal({
   const [error, setError] = useState<string | null>(null);
   /** The document an earlier attempt already uploaded: a retry registers it rather than uploading the file twice. */
   const uploaded = useRef<{ file: File; documentId: string } | null>(null);
+  /** The in-flight upload's abort switch, null when no file is being sent. */
+  const sending = useRef<AbortController | null>(null);
+  const [cancellable, setCancellable] = useState(false);
 
   const submit = async (): Promise<void> => {
     const order = intOrNull(sortOrder);
@@ -53,7 +58,12 @@ export function LibraryUploadModal({
     setError(null);
     let documentId = uploaded.current?.file === file ? uploaded.current.documentId : null;
     if (documentId === null) {
-      const result = await uploadLibraryDocument(client, file, title.trim());
+      const controller = new AbortController();
+      sending.current = controller;
+      setCancellable(true);
+      const result = await uploadLibraryDocument(client, file, title.trim(), controller.signal);
+      sending.current = null;
+      setCancellable(false);
       if ("message" in result) {
         setBusy(false);
         setError(result.message);
@@ -89,14 +99,21 @@ export function LibraryUploadModal({
       busy={busy}
       dirty
       footer={
-        <button
-          type="button"
-          style={primaryButtonStyle}
-          disabled={busy}
-          onClick={() => void submit()}
-        >
-          {busy ? "Uploading…" : "Upload"}
-        </button>
+        <>
+          {cancellable ? (
+            <button type="button" style={ghostButtonStyle} onClick={() => sending.current?.abort()}>
+              Cancel upload
+            </button>
+          ) : null}
+          <button
+            type="button"
+            style={primaryButtonStyle}
+            disabled={busy}
+            onClick={() => void submit()}
+          >
+            {busy ? "Uploading…" : "Upload"}
+          </button>
+        </>
       }
     >
       <label htmlFor={fileId} style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>

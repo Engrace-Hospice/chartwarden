@@ -1,8 +1,8 @@
 import { createApiClient } from "@chartwarden/ui";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 // ADR-0109 D10 PR 3 — the grief library on the portal bereavement page: published items, opened through a freshly minted link (a video plays
 // in a <video controls> on the page), the transcript offered only when there is one, an empty state, a failure with a retry.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PortalApp } from "../src/app";
 
 const P1 = "11111111-1111-4111-8111-111111111111";
@@ -137,4 +137,85 @@ describe("portal grief library", () => {
     );
     expect(screen.queryByRole("link", { name: /Open When the Holidays Feel Hard/ })).toBeNull();
   });
+
+  it("moves focus to the new link after Open, and to the player after Watch", async () => {
+    renderPage((path) =>
+      path.endsWith("/url")
+        ? json({ url: "https://files.example.org/x1", expiresAt: "2099-01-01T00:00:00Z" })
+        : json({ items: [reading, video] }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open When the Holidays Feel Hard" }),
+    );
+    const link = await screen.findByRole("link", { name: /Open When the Holidays Feel Hard/ });
+    await waitFor(() => expect(document.activeElement).toBe(link));
+    fireEvent.click(screen.getByRole("button", { name: "Watch Talking With Children About Loss" }));
+    const player = await within(section()).findByLabelText("Talking With Children About Loss");
+    await waitFor(() => expect(document.activeElement).toBe(player));
+  });
+
+  it("drops a link once it expires, and the next Open mints a fresh one", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let minted = 0;
+    renderPage((path) => {
+      if (!path.endsWith("/url")) return json({ items: [reading] });
+      minted += 1;
+      return json({
+        url: `https://files.example.org/r${minted}`,
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      });
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open When the Holidays Feel Hard" }),
+    );
+    expect(
+      await screen.findByRole("link", { name: /Open When the Holidays Feel Hard \(new tab\)/ }),
+    ).toBeTruthy();
+    act(() => {
+      vi.advanceTimersByTime(5 * 60_000 + 1);
+    });
+    expect(screen.queryByRole("link", { name: /Open When the Holidays Feel Hard/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open When the Holidays Feel Hard" }));
+    const fresh = await screen.findByRole("link", { name: /Open When the Holidays Feel Hard/ });
+    expect(fresh.getAttribute("href")).toBe("https://files.example.org/r2");
+  });
+
+  it("renews a video whose link failed mid-way, resumes where it was and says so", async () => {
+    let minted = 0;
+    const gets = renderPage((path) => {
+      if (!path.endsWith("/url")) return json({ items: [video] });
+      minted += 1;
+      return json({
+        url: `https://files.example.org/v${minted}`,
+        expiresAt: "2099-01-01T00:00:00Z",
+      });
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Watch Talking With Children About Loss" }),
+    );
+    const player = (await within(section()).findByLabelText(
+      "Talking With Children About Loss",
+    )) as HTMLVideoElement;
+    let position = 42;
+    Object.defineProperty(player, "currentTime", {
+      configurable: true,
+      get: () => position,
+      set: (v: number) => {
+        position = v;
+      },
+    });
+    fireEvent.error(player);
+    await waitFor(() => expect(player.getAttribute("src")).toBe("https://files.example.org/v2"));
+    position = 0; // a new source starts at the beginning until it is told otherwise
+    fireEvent.loadedMetadata(player);
+    expect(position).toBe(42);
+    expect(within(section()).getByRole("status").textContent).toContain(
+      "renewed it and picked up where you left off",
+    );
+    expect(gets.filter((g) => g.endsWith("part=document"))).toHaveLength(2);
+  });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });

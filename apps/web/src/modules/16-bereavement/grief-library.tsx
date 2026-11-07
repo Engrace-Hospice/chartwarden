@@ -2,7 +2,8 @@
 // oversight. `bereavement.library.read` lists and previews; `bereavement.library.manage` uploads, edits and publishes / archives.
 //
 // A preview URL is a short-lived credential: it is minted on click, held only in this page's memory as an "Open preview" link (https only),
-// and dropped when clicked or when it expires. A 403 renders nothing; any other failure is announced; a status change carries `If-Match`.
+// and dropped when clicked or when it expires. A 403 renders nothing; any other failure is announced; a status change is confirmed in an
+// alertdialog and carries `If-Match`. A video is published only with its transcript (the server refuses one without: 422).
 import {
   Button,
   EmptyState,
@@ -11,7 +12,7 @@ import {
   StatusPill,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";
 import { errorMessage, isStaleWrite } from "./bereavement-api";
@@ -19,10 +20,13 @@ import { dateTime, humanize, toneOf } from "./bereavement-status";
 import {
   ErrorText,
   FilterRow,
+  Modal,
   SelectField,
   columnStyle,
+  dangerButtonStyle,
   mutedStyle,
   pageTitleStyle,
+  primaryButtonStyle,
   rowLine,
   tableStyle,
   td,
@@ -34,8 +38,8 @@ import {
 } from "./bereavement-ui";
 import { LibraryEditModal } from "./library-edit-modal";
 import { LibraryUploadModal } from "./library-upload-modal";
+import { isSafeBatchUrl, linkLifetimeMs } from "./link-safety";
 import { useLoaded } from "./mailing-load";
-import { isSafeBatchUrl, linkLifetimeMs } from "./mailing-run-detail";
 import {
   LIBRARY_MANAGE_PERMISSION,
   LIBRARY_STATUS_TONE,
@@ -60,6 +64,16 @@ const STATUS_ACTION: Record<LibraryStatus, string> = {
   archived: "Archive",
 };
 
+const STATUS_CONFIRM: Record<LibraryStatus, string> = {
+  draft: "The item goes back to draft and is no longer shown to families.",
+  published: "Families see the item in the portal's grief library as soon as it is published.",
+  archived: "Families no longer see the item. It stays here and can be republished.",
+};
+const TRANSCRIPT_NEEDED = "Add a transcript before publishing this video.";
+/** A video is published only with its transcript (the server refuses one without). */
+const needsTranscript = (item: LibraryItem, next: LibraryStatus): boolean =>
+  next === "published" && item.kind === "video" && !item.transcriptDocumentId;
+
 interface Preview {
   readonly itemId: string;
   readonly title: string;
@@ -83,6 +97,11 @@ export function GriefLibrary(): JSX.Element | null {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [confirming, setConfirming] = useState<{ item: LibraryItem; next: LibraryStatus } | null>(
+    null,
+  );
+  const confirmDescId = useId();
+  const reasonIdBase = useId();
   const previewRef = useRef<HTMLAnchorElement>(null);
   const inFlight = useRef(false);
   const keys = useIdempotencyKey();
@@ -135,12 +154,25 @@ export function GriefLibrary(): JSX.Element | null {
       );
       keys.settle(res.status);
       if (res.error || !res.data) {
-        if (isStaleWrite(res.status)) void reload();
-        setActionError(errorMessage(res.error, "The item's status could not be changed."));
+        const message = errorMessage(res.error, "The item's status could not be changed.");
+        if (isStaleWrite(res.status)) {
+          void reload();
+          setConfirming(null);
+          announce(
+            res.status === 412
+              ? "This item changed while you were working on it. The library has been refreshed: check it and try again."
+              : message,
+          );
+          return;
+        }
+        setActionError(message);
         return;
       }
       const saved = res.data;
-      patch((rows) => rows.map((r) => (r.itemId === saved.itemId ? saved : r)));
+      setConfirming(null);
+      // Under a status filter the changed row no longer belongs to the list: re-read it rather than patch it in place.
+      if (status === ALL) patch((rows) => rows.map((r) => (r.itemId === saved.itemId ? saved : r)));
+      else void reload();
       announce(`${saved.title} is now ${humanize(saved.status).toLowerCase()}.`);
     });
 
@@ -204,11 +236,12 @@ export function GriefLibrary(): JSX.Element | null {
           </a>{" "}
           <span style={mutedStyle}>
             ({preview.part === "transcript" ? "transcript of " : ""}
-            {preview.title}; opens in a new tab and expires at {dateTime(preview.expiresAt)})
+            {preview.title}; the file downloads, and the link expires at{" "}
+            {dateTime(preview.expiresAt)})
           </span>
         </span>
       ) : null}
-      {actionError ? <ErrorText>{actionError}</ErrorText> : null}
+      {actionError && confirming === null ? <ErrorText>{actionError}</ErrorText> : null}
       {rows.length > 0 ? (
         <table
           style={tableStyle}
@@ -278,16 +311,28 @@ export function GriefLibrary(): JSX.Element | null {
                             item.status === "archived" && next === "published"
                               ? "Republish"
                               : STATUS_ACTION[next];
+                          const blocked = needsTranscript(item, next);
+                          const reasonId = `${reasonIdBase}-${item.itemId}`;
                           return (
-                            <Button
-                              key={next}
-                              size="sm"
-                              disabled={busyId !== null}
-                              aria-label={`${label} ${item.title}`}
-                              onClick={() => void changeStatus(item, next)}
-                            >
-                              {label}
-                            </Button>
+                            <span key={next} style={{ display: "inline-flex", gap: "0.4rem" }}>
+                              <Button
+                                size="sm"
+                                disabled={busyId !== null || blocked}
+                                aria-label={`${label} ${item.title}`}
+                                {...(blocked ? { "aria-describedby": reasonId } : {})}
+                                onClick={() => {
+                                  setActionError(null);
+                                  setConfirming({ item, next });
+                                }}
+                              >
+                                {label}
+                              </Button>
+                              {blocked ? (
+                                <span id={reasonId} style={mutedStyle}>
+                                  {TRANSCRIPT_NEEDED}
+                                </span>
+                              ) : null}
+                            </span>
                           );
                         })}
                       </>
@@ -313,13 +358,52 @@ export function GriefLibrary(): JSX.Element | null {
         <LibraryEditModal
           item={editing}
           onClose={() => setEditing(null)}
-          onStale={() => void reload()}
+          onStale={(message) => {
+            setEditing(null);
+            announce(message);
+            void reload();
+          }}
           onSaved={(saved) => {
             setEditing(null);
             patch((rows) => rows.map((r) => (r.itemId === saved.itemId ? saved : r)));
             announce(`${saved.title} was saved.`);
           }}
         />
+      ) : null}
+      {confirming ? (
+        <Modal
+          title={`${
+            confirming.item.status === "archived" && confirming.next === "published"
+              ? "Republish"
+              : STATUS_ACTION[confirming.next]
+          } ${confirming.item.title}`}
+          onClose={() => setConfirming(null)}
+          busy={busyId !== null}
+          role="alertdialog"
+          describedBy={confirmDescId}
+          cancelLabel="Go back"
+          footer={
+            <button
+              type="button"
+              style={confirming.next === "archived" ? dangerButtonStyle : primaryButtonStyle}
+              disabled={busyId !== null}
+              onClick={() => void changeStatus(confirming.item, confirming.next)}
+            >
+              {busyId !== null
+                ? "Saving…"
+                : confirming.next === "archived"
+                  ? "Yes, archive it"
+                  : confirming.next === "published"
+                    ? "Yes, publish it"
+                    : "Yes, move it to draft"}
+            </button>
+          }
+        >
+          <span id={confirmDescId} style={mutedStyle}>
+            {STATUS_CONFIRM[confirming.next]}
+          </span>
+          {actionError ? <ErrorText>{actionError}</ErrorText> : null}
+        </Modal>
       ) : null}
     </div>
   );

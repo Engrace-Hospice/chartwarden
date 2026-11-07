@@ -75,6 +75,12 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
   const keys = useIdempotencyKey();
   const { announce, region } = useActionStatus();
   const closeDescId = useId();
+  /** Bumped after a group write: the sessions re-read (an open or a close schedules or cancels them). */
+  const [sessionsToken, setSessionsToken] = useState(0);
+  const refreshParts = (): void => {
+    setSessionsToken((n) => n + 1);
+    void roster.reload();
+  };
 
   if (state.kind === "hidden") return null;
   if (state.kind === "loading") return <LoadingSpinner label="Loading the support group" />;
@@ -94,6 +100,10 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
   }
 
   const group = state.data;
+  const openCeremony = (next: Ceremony): void => {
+    setActionError(null);
+    setCeremony(next);
+  };
   const write = async (
     name: Action,
     call: (key: string) => Promise<{ data: Group | null; error: unknown; status: number }>,
@@ -112,6 +122,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
       const message = res.status === 412 ? GROUP_MOVED : errorMessage(res.error, fallback);
       if (isStaleWrite(res.status)) {
         void reload();
+        refreshParts();
         if (ceremony !== null) {
           setCeremony(null);
           announce(message);
@@ -122,6 +133,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
       return;
     }
     adopt(res.data);
+    refreshParts();
     setCeremony(null);
     announce(success);
   };
@@ -204,7 +216,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
                 <Button
                   tone="secondary"
                   disabled={busy !== null}
-                  onClick={() => setCeremony("edit")}
+                  onClick={() => openCeremony("edit")}
                 >
                   Edit group
                 </Button>
@@ -229,7 +241,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
                 <Button
                   tone="secondary"
                   disabled={busy !== null}
-                  onClick={() => setCeremony("complete")}
+                  onClick={() => openCeremony("complete")}
                 >
                   Mark completed
                 </Button>
@@ -238,7 +250,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
                 <Button
                   tone="secondary"
                   disabled={busy !== null}
-                  onClick={() => setCeremony("cancel")}
+                  onClick={() => openCeremony("cancel")}
                 >
                   Cancel group
                 </Button>
@@ -255,6 +267,8 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
         mayRun={mayRun}
         roster={roster.state}
         announce={announce}
+        refreshToken={sessionsToken}
+        onSessionsChanged={() => void reload()}
         onAttendanceRecorded={() => void roster.reload()}
       />
       <GroupRosterCard state={roster.state} onRetry={() => void roster.reload()} />
@@ -267,9 +281,11 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
             setCeremony(null);
             announce(message);
             void reload();
+            refreshParts();
           }}
           onSaved={(next) => {
             adopt(next);
+            refreshParts();
             setCeremony(null);
             announce("The group was saved.");
           }}

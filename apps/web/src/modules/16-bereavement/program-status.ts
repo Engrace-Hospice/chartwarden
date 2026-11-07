@@ -129,6 +129,10 @@ export const isHttpsUrl = (value: string): boolean => {
   }
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** An id field the server validates as a uuid: checked before any request so the reader is told which field is wrong. */
+export const isUuid = (value: string): boolean => UUID_RE.test(value.trim());
+
 /** A blank string means "no value" on the wire. */
 export const orNull = (value: string): string | null => (value.trim() === "" ? null : value.trim());
 

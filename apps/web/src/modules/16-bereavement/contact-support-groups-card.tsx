@@ -5,17 +5,18 @@
 // server renders nothing either. Enrolling picks from the OPEN groups; a withdrawal records why (the family asked, or staff removed them).
 // Every write carries one Idempotency-Key per attempt; a refusal is said in place and the list is read again.
 import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
-import { useCallback, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { useSession } from "../../shell/session";
-import { errorMessage } from "./bereavement-api";
+import { errorMessage, isStaleWrite } from "./bereavement-api";
 import { humanize, shortDate, toneOf } from "./bereavement-status";
 import {
   Card,
   ErrorText,
   Modal,
   SelectField,
+  dangerButtonStyle,
   linkStyle,
   mutedStyle,
   primaryButtonStyle,
@@ -132,6 +133,7 @@ function SupportGroupsPanel({ contactId }: { contactId: string }): JSX.Element |
           contactId={contactId}
           exclude={enrolledIds}
           onClose={() => setEnrolling(false)}
+          onRefused={() => void reload()}
           onDone={(row) => {
             setEnrolling(false);
             announce(`Enrolled in ${row.groupName}.`);
@@ -143,6 +145,7 @@ function SupportGroupsPanel({ contactId }: { contactId: string }): JSX.Element |
         <WithdrawModal
           enrollment={withdrawing}
           onClose={() => setWithdrawing(null)}
+          onRefused={() => void reload()}
           onDone={(row) => {
             setWithdrawing(null);
             announce(`Withdrawn from ${row.groupName}.`);
@@ -158,11 +161,14 @@ function EnrollModal({
   contactId,
   exclude,
   onClose,
+  onRefused,
   onDone,
 }: {
   contactId: string;
   exclude: ReadonlySet<string>;
   onClose: () => void;
+  /** The server refused (409: full, closed, already enrolled): the panel re-reads the list. */
+  onRefused: () => void;
   onDone: (row: Enrollment) => void;
 }): JSX.Element {
   const client = useApiClient();
@@ -191,6 +197,7 @@ function EnrollModal({
     setBusy(false);
     if (err || !data) {
       setError(errorMessage(err, "The family could not be enrolled."));
+      if (isStaleWrite(status)) onRefused();
       return;
     }
     onDone(data);
@@ -236,13 +243,17 @@ function EnrollModal({
 function WithdrawModal({
   enrollment,
   onClose,
+  onRefused,
   onDone,
 }: {
   enrollment: Enrollment;
   onClose: () => void;
+  /** The server refused (409: already withdrawn, the group closed): the panel re-reads the list. */
+  onRefused: () => void;
   onDone: (row: Enrollment) => void;
 }): JSX.Element {
   const client = useApiClient();
+  const descId = useId();
   const keys = useIdempotencyKey();
   const [reason, setReason] = useState<WithdrawReason>("requested");
   const [busy, setBusy] = useState(false);
@@ -267,6 +278,7 @@ function WithdrawModal({
     setBusy(false);
     if (err || !data) {
       setError(errorMessage(err, "The family could not be withdrawn."));
+      if (isStaleWrite(status)) onRefused();
       return;
     }
     onDone(data);
@@ -277,10 +289,13 @@ function WithdrawModal({
       title={`Withdraw from ${enrollment.groupName}`}
       onClose={onClose}
       busy={busy}
+      role="alertdialog"
+      describedBy={descId}
+      cancelLabel="Keep enrolled"
       footer={
         <button
           type="button"
-          style={primaryButtonStyle}
+          style={dangerButtonStyle}
           disabled={busy}
           onClick={() => void submit()}
         >
@@ -288,6 +303,9 @@ function WithdrawModal({
         </button>
       }
     >
+      <span id={descId} style={mutedStyle}>
+        The family leaves {enrollment.groupName} and is no longer on its roster. Choose why below.
+      </span>
       <SelectField
         label="Reason"
         value={reason}

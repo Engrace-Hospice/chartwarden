@@ -116,12 +116,15 @@ export async function initiateUpload(
 export async function putUploadBytes(
   target: InitiateUploadResult,
   file: Blob,
+  /** Optional: aborting it cancels the PUT (the caller then aborts the reservation). */
+  signal?: AbortSignal,
 ): Promise<WriteResult<null>> {
   try {
     const res = await fetch(target.uploadUrl, {
       method: "PUT",
       headers: { ...target.requiredHeaders },
       body: file,
+      ...(signal ? { signal } : {}),
     });
     if (!res.ok) {
       return {

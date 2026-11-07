@@ -70,7 +70,7 @@ describe("portal memorial services", () => {
       }),
     );
     const link = await screen.findByRole("link", {
-      name: "Join Winter Candle Lighting online (opens in a new tab)",
+      name: "Join online: Winter Candle Lighting (opens in a new tab)",
     });
     expect(link.getAttribute("href")).toBe("https://meet.example.org/candle");
     expect(link.getAttribute("rel")).toContain("noreferrer");
@@ -102,6 +102,7 @@ describe("portal memorial services", () => {
         : json({ items: [invitation()] }),
     );
     await screen.findByRole("heading", { name: "Winter Candle Lighting" });
+    fireEvent.click(within(section()).getByRole("radio", { name: "Yes, I plan to come" }));
     fireEvent.change(within(section()).getByRole("spinbutton"), { target: { value: "2" } });
     fireEvent.click(within(section()).getByRole("button", { name: "Send my reply" }));
     expect(await within(section()).findByText("Thank you. We have your reply.")).toBeTruthy();
@@ -136,10 +137,73 @@ describe("portal memorial services", () => {
   it("does not thank the family when the reply fails", async () => {
     renderPage((method) => (method === "POST" ? json({}, 500) : json({ items: [invitation()] })));
     await screen.findByRole("heading", { name: "Winter Candle Lighting" });
+    fireEvent.click(within(section()).getByRole("radio", { name: "Maybe" }));
     fireEvent.click(within(section()).getByRole("button", { name: "Send my reply" }));
     expect((await within(section()).findByRole("alert")).textContent).toContain(
       "We couldn't send your reply",
     );
     expect(within(section()).queryByText("Thank you. We have your reply.")).toBeNull();
+  });
+
+  it("chooses no answer for the family: nothing is selected and the reply cannot be sent yet", async () => {
+    renderPage(() => json({ items: [invitation()] }));
+    await screen.findByRole("heading", { name: "Winter Candle Lighting" });
+    for (const radio of within(section()).getAllByRole("radio")) {
+      expect((radio as HTMLInputElement).checked).toBe(false);
+    }
+    expect(
+      (within(section()).getByRole("button", { name: "Send my reply" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("retries a dropped reply under the same key, and a changed reply under a new one", async () => {
+    let posts = 0;
+    const sent = renderPage((method) => {
+      if (method !== "POST") return json({ items: [invitation()] });
+      posts += 1;
+      if (posts <= 2) throw new TypeError("network down");
+      return json(invitation({ status: "rsvp_yes", guests: 1 }));
+    });
+    await screen.findByRole("heading", { name: "Winter Candle Lighting" });
+    fireEvent.click(within(section()).getByRole("radio", { name: "Yes, I plan to come" }));
+    const send = () =>
+      fireEvent.click(within(section()).getByRole("button", { name: "Send my reply" }));
+    send();
+    await within(section()).findByText(/couldn't confirm your reply/);
+    send();
+    await waitFor(() => expect(posts).toBe(2));
+    await within(section()).findByText(/couldn't confirm your reply/);
+    fireEvent.change(within(section()).getByRole("spinbutton"), { target: { value: "1" } });
+    send();
+    await within(section()).findByText("Thank you. We have your reply.");
+    const keys = sent
+      .filter((s) => s.method === "POST")
+      .map((s) => s.headers.get("Idempotency-Key"));
+    expect(keys[0]).toBeTruthy();
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[0]);
+  });
+
+  it("tells a reused-key conflict apart from closed replies", async () => {
+    let code = "IDEMPOTENCY_CONFLICT";
+    renderPage((method) =>
+      method === "POST"
+        ? json({ error: { code, message: "refused" } }, 409)
+        : json({ items: [invitation()] }),
+    );
+    await screen.findByRole("heading", { name: "Winter Candle Lighting" });
+    fireEvent.click(within(section()).getByRole("radio", { name: "Maybe" }));
+    fireEvent.click(within(section()).getByRole("button", { name: "Send my reply" }));
+    expect((await within(section()).findByRole("alert")).textContent).toContain(
+      "Your reply changed while it was being sent",
+    );
+    code = "MEMORIAL_RSVP_CLOSED";
+    fireEvent.click(within(section()).getByRole("button", { name: "Send my reply" }));
+    await waitFor(() =>
+      expect(within(section()).getByRole("alert").textContent).toContain(
+        "Replies for this service have closed",
+      ),
+    );
   });
 });

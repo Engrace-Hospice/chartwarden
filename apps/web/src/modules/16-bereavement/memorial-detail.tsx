@@ -268,7 +268,7 @@ function ServicePage({ serviceId }: { serviceId: string }): JSX.Element | null {
         <MemorialInvitations
           service={service}
           onRecorded={(m) => {
-            announce(m);
+            announce(m, { focus: false });
             void reload();
           }}
         />
@@ -278,6 +278,11 @@ function ServicePage({ serviceId }: { serviceId: string }): JSX.Element | null {
         <MemorialFormModal
           service={service}
           onClose={() => setCeremony(null)}
+          onStale={(message) => {
+            setCeremony(null);
+            announce(message);
+            void reload();
+          }}
           onSaved={(saved) => {
             adopt(saved);
             setCeremony(null);

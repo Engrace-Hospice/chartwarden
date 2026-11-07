@@ -17,7 +17,7 @@ import {
   primaryButtonStyle,
   useIdempotencyKey,
 } from "./bereavement-ui";
-import { intOrNull, isHttpsUrl, orNull } from "./program-status";
+import { intOrNull, isHttpsUrl, isUuid, orNull } from "./program-status";
 import {
   type Group,
   type GroupCreateBody,
@@ -115,6 +115,10 @@ export function GroupFormModal({
   const problem = (): string | null => {
     if (!draft.name.trim()) return "Give the group a name.";
     if (!draft.facilitatorUserId.trim()) return "Enter the facilitator's membership id.";
+    if (!isUuid(draft.facilitatorUserId))
+      return "The facilitator's membership id is not a valid id.";
+    if (draft.coFacilitatorUserId.trim() && !isUuid(draft.coFacilitatorUserId))
+      return "The co-facilitator's membership id is not a valid id.";
     if (!draft.timezone.trim()) return "Enter the time zone (for example America/Chicago).";
     if (draft.capacity.trim() !== "" && (intOrNull(draft.capacity) ?? 0) < 1)
       return "Capacity must be a whole number of at least 1, or blank for no limit.";
@@ -145,7 +149,10 @@ export function GroupFormModal({
       capacity: intOrNull(draft.capacity),
       timezone: draft.timezone.trim(),
       venueText: orNull(draft.venueText),
-      joinUrl: orNull(draft.joinUrl),
+      // Left as read: omitted, so the server keeps it (null would CLEAR a link this reader may not be shown).
+      ...(group !== null && draft.joinUrl === draftOf(group).joinUrl
+        ? {}
+        : { joinUrl: orNull(draft.joinUrl) }),
     };
     const rec = scheduleEditable ? (recurrenceOf(draft.recurrence) as GroupRecurrence) : null;
     setBusy(true);

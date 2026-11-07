@@ -424,11 +424,15 @@ export const LIBRARY_UPLOAD_MIME: readonly UploadMimeType[] = [
 export const LIBRARY_MAX_BYTES = 25 * 1024 * 1024;
 export const LIBRARY_MAX_VIDEO_BYTES = 500 * 1024 * 1024;
 
-/** Steps 1-4 of the M22 verified upload for an org-level, patient-facing library document; aborts the reservation on any later failure. */
+export const UPLOAD_CANCELLED = "The upload was cancelled. Nothing was saved.";
+
+/** Steps 1-4 of the M22 verified upload for an org-level, patient-facing library document; aborts the reservation on any later failure,
+ * and when `signal` aborts (the reader cancelled): the PUT stops and the reservation is released. */
 export async function uploadLibraryDocument(
   client: ApiClient,
   file: File,
   title: string,
+  signal?: AbortSignal,
 ): Promise<{ documentId: string } | { message: string }> {
   if (!LIBRARY_UPLOAD_MIME.includes(file.type as UploadMimeType)) {
     return { message: "Choose a PDF, PNG, JPEG or MP4 file." };
@@ -439,10 +443,18 @@ export async function uploadLibraryDocument(
       message: isVideo ? "That video is larger than 500 MB." : "That file is larger than 25 MB.",
     };
   }
+  // sha256Hex answers null both without `crypto.subtle` and on a failed read: tell the two apart here.
+  if (!globalThis.crypto?.subtle) {
+    return {
+      message:
+        "This browser cannot check the file before sending it: a secure (https) connection is required.",
+    };
+  }
   const digest = await sha256Hex(file);
   if (digest === null) {
-    return { message: "This browser cannot hash the file (a secure connection is required)." };
+    return { message: "The file could not be read. Choose it again and retry." };
   }
+  if (signal?.aborted) return { message: UPLOAD_CANCELLED };
   const body: InitiateUploadBody = {
     mode: "new_document",
     aggregateType: "bereavement_library_item",
@@ -460,10 +472,11 @@ export async function uploadLibraryDocument(
     return { message: "The server could not be reached. Nothing was uploaded." };
   }
   if (!started.ok) return { message: started.message };
-  const put = await putUploadBytes(started.value, file);
-  if (!put.ok) {
+  const put = signal?.aborted ? null : await putUploadBytes(started.value, file, signal);
+  const failure = put === null || signal?.aborted ? UPLOAD_CANCELLED : put.ok ? null : put.message;
+  if (failure !== null) {
     await abortUpload(client, started.value.uploadId).catch(() => undefined);
-    return { message: put.message };
+    return { message: failure };
   }
   const completed = await completeUpload(client, started.value.uploadId).catch(() => null);
   if (!completed?.ok) {

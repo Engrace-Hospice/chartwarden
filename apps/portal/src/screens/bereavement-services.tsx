@@ -2,7 +2,8 @@ import { Button, Glyph, useApiClient } from "@chartwarden/ui";
 // M31 bereavement support — the family's memorial-service invitations (ADR-0109 D10, PR 3), with a reply form while replies are open.
 // M16 decides who is invited and when replies close (`rsvpOpen`); this section only shows the invitation and sends the family's answer.
 // No invitation (or a route this account may not use) shows nothing at all; a failure is said with a retry. A reply carries one
-// Idempotency-Key per attempt: any server answer ends the attempt, a dropped connection keeps the key so a retry cannot reply twice.
+// Idempotency-Key per attempt, tied to what is sent: any server answer ends the attempt, a dropped connection keeps the key for a retry of
+// the SAME answer (so it cannot reply twice), and a changed answer or guest count gets a new key. No answer is chosen for the family.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { SectionError, SectionLoading } from "./bereavement-section";
@@ -48,6 +49,20 @@ function safeJoinUrl(value: string | null): string | null {
     return null;
   }
 }
+
+/** The server's machine code of a refusal (`{ error: { code } }`), or null. */
+const errorCode = (error: unknown): string | null => {
+  const code = (error as { error?: { code?: unknown } } | null | undefined)?.error?.code;
+  return typeof code === "string" ? code : null;
+};
+const REFUSAL_TEXT: Record<string, string> = {
+  MEMORIAL_RSVP_CLOSED:
+    "Replies for this service have closed. Please contact your hospice team if you would like to talk.",
+  MEMORIAL_FULL:
+    "This service is full. Please contact your hospice team if you would like to talk about coming.",
+  IDEMPOTENCY_CONFLICT:
+    "Your reply changed while it was being sent. Please check your answer and send it again.",
+};
 
 const newKey = (): string =>
   globalThis.crypto?.randomUUID?.() ?? `rsvp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -136,12 +151,13 @@ function ServiceCard({
 }): JSX.Element {
   const client = useApiClient();
   const formId = useId();
-  const [answer, setAnswer] = useState<Answer>(ANSWER_OF[item.status] ?? "yes");
+  const [answer, setAnswer] = useState<Answer | null>(ANSWER_OF[item.status] ?? null);
   const [guests, setGuests] = useState(String(item.guests));
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [thanks, setThanks] = useState(false);
-  const attemptKey = useRef<string | null>(null);
+  /** The key of the attempt in doubt (a dropped connection) and the reply it carried: reused only for that same reply. */
+  const attempt = useRef<{ fingerprint: string; key: string } | null>(null);
   const guestCount = answer === "no" ? 0 : Number(guests);
   const guestsValid = Number.isInteger(guestCount) && guestCount >= 0 && guestCount <= MAX_GUESTS;
   const when = formatPortalInstant(item.startsAt) ?? item.startsAt;
@@ -149,23 +165,26 @@ function ServiceCard({
   const replyBy = item.rsvpBy ? (formatPortalInstant(item.rsvpBy) ?? item.rsvpBy) : null;
 
   async function send(): Promise<void> {
-    if (sending || !guestsValid) return;
+    if (sending || !guestsValid || answer === null) return;
     setSending(true);
     setError(null);
     setThanks(false);
-    attemptKey.current ??= newKey();
+    const body = { response: answer, guests: guestCount };
+    const fingerprint = JSON.stringify(body);
+    if (attempt.current?.fingerprint !== fingerprint)
+      attempt.current = { fingerprint, key: newKey() };
     try {
       const res = await client.POST("/api/v1/portal/bereavement/memorials/{invitationId}/rsvp", {
         params: { path: { invitationId: item.invitationId } },
-        headers: { "Idempotency-Key": attemptKey.current },
-        body: { response: answer, guests: guestCount },
+        headers: { "Idempotency-Key": attempt.current.key },
+        body,
       });
-      attemptKey.current = null; // the server answered: a new reply is a new attempt
+      attempt.current = null; // the server answered: a new reply is a new attempt
       if (res.error || !res.data) {
+        const code = errorCode(res.error);
         setError(
-          res.response?.status === 409
-            ? "Replies for this service have closed. Please contact your hospice team if you would like to talk."
-            : "We couldn't send your reply. Please try again in a moment.",
+          (code ? REFUSAL_TEXT[code] : undefined) ??
+            "We couldn't send your reply. Please try again in a moment.",
         );
         return;
       }
@@ -197,7 +216,7 @@ function ServiceCard({
             href={joinUrl}
             target="_blank"
             rel="noopener noreferrer"
-            aria-label={`Join ${item.title} online (opens in a new tab)`}
+            aria-label={`Join online: ${item.title} (opens in a new tab)`}
           >
             Join online <Glyph name="arrow-right" size={16} aria-hidden="true" />
           </a>
@@ -247,7 +266,11 @@ function ServiceCard({
               {!guestsValid ? (
                 <p role="alert">Please enter a number of guests from 0 to {MAX_GUESTS}.</p>
               ) : null}
-              <Button type="submit" loading={sending} disabled={sending || !guestsValid}>
+              <Button
+                type="submit"
+                loading={sending}
+                disabled={sending || !guestsValid || answer === null}
+              >
                 Send my reply
               </Button>
             </fieldset>

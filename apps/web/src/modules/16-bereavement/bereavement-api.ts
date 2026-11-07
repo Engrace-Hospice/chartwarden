@@ -251,8 +251,7 @@ export function errorMessage(error: unknown, fallback: string): string {
     return "This record changed while you were working on it. Reload and re-apply your edit.";
   if (body?.status === 428)
     return "This edit is missing its version. Reload the record and try again.";
-  if (body?.status === 403)
-    return "You do not have access to this action for this bereavement plan.";
+  if (body?.status === 403) return "You don't have access to do this.";
   return fallback;
 }
 

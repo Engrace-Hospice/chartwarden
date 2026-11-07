@@ -4,7 +4,7 @@
 import { useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
-import { errorMessage } from "./bereavement-api";
+import { errorMessage, isStaleWrite } from "./bereavement-api";
 import {
   ErrorText,
   Modal,
@@ -46,8 +46,9 @@ const draftOf = (service: Memorial | null): Draft => ({
   inviteWindowMonths: service ? String(service.inviteWindowMonths) : DEFAULT_WINDOW_MONTHS,
 });
 
-/** The body, or the first problem a reader must fix (said before any request). */
-function toBody(d: Draft): MemorialBody | string {
+/** The body, or the first problem a reader must fix (said before any request). `keepJoinUrl`: the join-link field was left as read, so the
+ * body omits `joinUrl` (the server keeps it); null would CLEAR a link this reader may not be shown. */
+function toBody(d: Draft, keepJoinUrl: boolean): MemorialBody | string {
   const startsAt = localToIso(d.startsAt);
   const endsAt = localToIso(d.endsAt);
   if (!d.title.trim()) return "Give the service a title.";
@@ -68,7 +69,7 @@ function toBody(d: Draft): MemorialBody | string {
     endsAt,
     modality: d.modality,
     venueText: orNull(d.venueText),
-    joinUrl: join,
+    ...(keepJoinUrl ? {} : { joinUrl: join }),
     capacity,
     rsvpBy: orNull(d.rsvpBy),
     inviteWindowMonths: months,
@@ -79,11 +80,14 @@ export function MemorialFormModal({
   service,
   onClose,
   onSaved,
+  onStale,
 }: {
   /** null: create a new service; otherwise edit this one at the version read. */
   service: Memorial | null;
   onClose: () => void;
   onSaved: (saved: Memorial) => void;
+  /** An edit was refused because the service moved: the page closes this dialog, says `message` and reloads. */
+  onStale?: (message: string) => void;
 }): JSX.Element {
   const client = useApiClient();
   const keys = useIdempotencyKey();
@@ -96,7 +100,7 @@ export function MemorialFormModal({
       setDraft((prev) => ({ ...prev, [field]: value }));
 
   const save = async (): Promise<void> => {
-    const body = toBody(draft);
+    const body = toBody(draft, service !== null && draft.joinUrl === draftOf(service).joinUrl);
     if (typeof body === "string") {
       setError(body);
       return;
@@ -110,7 +114,16 @@ export function MemorialFormModal({
     keys.settle(res.status);
     setBusy(false);
     if (res.error || !res.data) {
-      setError(errorMessage(res.error, "The memorial service could not be saved."));
+      const message = errorMessage(res.error, "The memorial service could not be saved.");
+      if (service !== null && isStaleWrite(res.status) && onStale) {
+        onStale(
+          res.status === 412
+            ? "This service changed while you were editing it. The page has been refreshed: check it and try again."
+            : message,
+        );
+        return;
+      }
+      setError(message);
       return;
     }
     onSaved(res.data);

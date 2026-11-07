@@ -145,4 +145,24 @@ describe("contact memorial-invitations panel", () => {
     ).toBe(true);
     expect(sent.filter((s) => s.method === "PUT")).toHaveLength(0);
   });
+
+  it("a 409 refusal is said in place and the list is read again", async () => {
+    let reads = 0;
+    mount((method) => {
+      if (method === "PUT")
+        return {
+          status: 409,
+          body: { error: { code: "MEMORIAL_RSVP_CLOSED", message: "Replies have closed." } },
+        };
+      reads += 1;
+      return { status: 200, body: [invitation()] };
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Record phone RSVP" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save RSVP" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toContain(
+      "Replies have closed.",
+    );
+    await waitFor(() => expect(reads).toBe(2));
+  });
 });
