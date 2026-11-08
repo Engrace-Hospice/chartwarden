@@ -1,4 +1,4 @@
-// @chartwarden/db — `subscription_statement_review` (M35, slice 2 — migration 1362). One row per subscription-month the statement run could
+// @chartwarden/db — `subscription_statement_review` (M35, slice 2 — migration 1381). One row per subscription-month the statement run could
 // not bill (today: a live subscription whose month closed with no census day observed), written ONCE so an operator sees it without an
 // hourly log line. PLATFORM-ONLY: RLS enabled and FORCEd with no policy and no chartwarden_app grant; read and written by the platform
 // carrier, and audited through M1's baseline `chartwarden_audit_trigger()` (ids and a reason code only, so no denylist).
