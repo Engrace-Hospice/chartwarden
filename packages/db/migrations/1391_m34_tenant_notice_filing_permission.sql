@@ -1,6 +1,6 @@
 -- compat: expand
 -- M34 - tenant_notice_filing.withdraw_platform: a platform operator withdraws a tenant's mistaken "filed outside ChartWarden"
--- NOE / NOTR record (owner decision 2026-11-06). Mirrored into the DB catalog (the 1352 shape) and bound to the platform-owned
+-- NOE / NOTR record (owner decision 2026-11-06). Mirrored into the DB catalog (the 1388 shape) and bound to the platform-owned
 -- `platform_ops` role row where it already exists (the template grant in packages/auth/src/roles/templates.ts). Only platform_ops:
 -- the routes' `tenant_lifecycle_platform_ops` predicate admits the exact platform_ops role. A role row created later gets it from
 -- `db:platform-role grant`. No table, no column, no policy. Idempotent.

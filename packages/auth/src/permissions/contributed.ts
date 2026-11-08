@@ -3456,7 +3456,7 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
   // --- clearinghouse choice surface (ADR-0053 amendment 2026-11-06; owner decision D3) ---
   // ORG-LEVEL on purpose, unlike the provider-entity-scoped `billing.mac_credential.*` above: choosing the clearinghouse
   // re-routes EVERY provider entity's claims (PHI) to another vendor, so a billing manager scoped to one entity must not hold
-  // it. Granted to the org-wide admin roles only (`org_admin`, `administrator`; migration 1354 + the full-catalog template).
+  // it. Granted to the org-wide admin roles only (`org_admin`, `administrator`; migration 1390 + the full-catalog template).
   "billing.clearinghouse.read": {
     resource: "billing_clearinghouse",
     action: "read",

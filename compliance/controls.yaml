@@ -315,7 +315,7 @@ controls:
       - script: test:m23:tenant-clearinghouse:live
       - script: test:m23:clearinghouse-submit:live
       - ci: "M23 tenant clearinghouse"
-      - file: packages/db/migrations/1350_m23_tenant_clearinghouse_config.sql
+      - file: packages/db/migrations/1386_m23_tenant_clearinghouse_config.sql
       - file: apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/secret-cipher.ts
       - file: apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/baa.ts
       - file: apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/service.ts
@@ -335,7 +335,7 @@ controls:
       - ci: "M23 tenant clearinghouse"
       - file: apps/backend/src/modules/23-billing-medicare/services/external-notice-filing.ts
       - file: packages/billing/src/notice/external-filing.ts
-      - file: packages/db/migrations/1355_m34_tenant_notice_filing_permission.sql
+      - file: packages/db/migrations/1391_m34_tenant_notice_filing_permission.sql
       - file: apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-routes.ts
 
   - id: CW-AU-01

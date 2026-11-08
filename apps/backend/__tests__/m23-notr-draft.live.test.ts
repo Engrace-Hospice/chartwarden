@@ -531,7 +531,7 @@ describe.skipIf(!DB_URL)(
       // the publisher `Value.Check`s it and rolls the insert back on a mismatch.
       expect(announced[0].payload.terminationEffectiveDate).toBe(notrsA[0].effective_end_date);
     });
-    // ── an organization that bills outside ChartWarden files its NOTR itself (owner decision D4; migration 1353) ──
+    // ── an organization that bills outside ChartWarden files its NOTR itself (owner decision D4; migration 1389) ──
     // The NOTR twin of the NOE cases in `m23-noe-draft.live.test.ts`: the CHECKs, the same-state patch under RLS as
     // `chartwarden_app`, the audit trigger and the two deadline-tracker scans. The pure rules are unit-tested.
 
@@ -612,7 +612,7 @@ describe.skipIf(!DB_URL)(
       return { service, enqueued };
     }
 
-    it("migration 1353: external_filing_status is pending | filed, and the three filed_* columns move with `filed` (all set, or all NULL)", async () => {
+    it("migration 1389: external_filing_status is pending | filed, and the three filed_* columns move with `filed` (all set, or all NULL)", async () => {
       const id = await seedNotr(ORG_A);
       expect(await notrRow(id)).toMatchObject({ external_filing_status: null, filed_on: null });
       const set = (sql: string) => admin.query(`UPDATE notr_record SET ${sql} WHERE id=$1`, [id]);
@@ -632,7 +632,7 @@ describe.skipIf(!DB_URL)(
       expect(await notrRow(id)).toMatchObject({ external_filing_status: "filed", by: USER });
     });
 
-    it("migration 1353: external_filing_set_breach is NOT NULL, false by default, and can only be true on a notice recorded as filed", async () => {
+    it("migration 1389: external_filing_set_breach is NOT NULL, false by default, and can only be true on a notice recorded as filed", async () => {
       const id = await seedNotr(ORG_A);
       expect(await notrRow(id)).toMatchObject({ set_breach: false });
       const set = (sql: string) => admin.query(`UPDATE notr_record SET ${sql} WHERE id=$1`, [id]);

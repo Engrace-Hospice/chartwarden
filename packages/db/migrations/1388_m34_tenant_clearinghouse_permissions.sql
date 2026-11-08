@@ -5,8 +5,8 @@
 -- template grant in packages/auth/src/roles/templates.ts). Only platform_ops: the routes' `tenant_lifecycle_platform_ops`
 -- predicate admits the exact platform_ops role, so a binding on platform_admin / platform_owner would be a grant the predicate
 -- always denies. A role row created later gets them from `db:platform-role grant`.
--- No table, no column, no policy: the routes write through the tenant's own `tenant_clearinghouse_config` (1350) under the
--- target org's RLS. The tenant's own routes use billing.clearinghouse.read / .admin (migration 1354). Idempotent.
+-- No table, no column, no policy: the routes write through the tenant's own `tenant_clearinghouse_config` (1386) under the
+-- target org's RLS. The tenant's own routes use billing.clearinghouse.read / .admin (migration 1390). Idempotent.
 INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac", "description") VALUES
   ('tenant_clearinghouse.read_platform', 'tenant_clearinghouse', 'read_platform', 'platform', 'tenant_lifecycle_platform_ops', ''),
   ('tenant_clearinghouse.write_platform', 'tenant_clearinghouse', 'write_platform', 'platform', 'tenant_lifecycle_platform_ops', ''),
