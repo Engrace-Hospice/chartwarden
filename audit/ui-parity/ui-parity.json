@@ -2904,6 +2904,14 @@
       "app": "admin",
       "module": "35-subscription-billing",
       "moduleId": 35,
+      "id": "admin.pricing-plans",
+      "path": "/admin/pricing-plans",
+      "permission": "plan.admin.read"
+    },
+    {
+      "app": "admin",
+      "module": "35-subscription-billing",
+      "moduleId": 35,
       "id": "admin.promos",
       "path": "/admin/promos",
       "permission": "promo.admin.read"
