@@ -9,6 +9,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { type PortalSigningGrantKind, decideSigningAuthority } from "../portal-signing-authority";
+import { portalSigningBlocker } from "../signature-templates";
 
 const ACCOUNT = schema.portalAccounts;
 const GRANT = schema.portalAccessGrants;
@@ -78,18 +79,29 @@ export async function activePortalUserIds(
   });
 }
 
-/** True while the request is still waiting for the person: a signed, parked or withdrawn request is never pushed about. */
+/**
+ * True while the request is still waiting for the person AND they could sign it: a signed, parked or withdrawn request is never pushed
+ * about, and neither is draft wording (`portalSigningBlocker`), so an event queued before a gate applied is dropped at delivery.
+ */
 export async function signatureRequestStillPending(
   db: DbClient,
   organizationId: string,
   requestId: string,
+  allowUnreviewedTemplates: boolean,
 ): Promise<boolean> {
   return withOrgContext(db, { organizationId, userId: SYSTEM_READER }, async (tx) => {
     const [row] = await (tx as DbClient)
-      .select({ status: REQUEST.status })
+      .select({
+        status: REQUEST.status,
+        docKind: REQUEST.docKind,
+        templateVersion: REQUEST.templateVersion,
+      })
       .from(REQUEST)
       .where(eq(REQUEST.id, requestId))
       .limit(1);
-    return row?.status === "pending";
+    return (
+      row?.status === "pending" &&
+      portalSigningBlocker(row.docKind, row.templateVersion, allowUnreviewedTemplates) === null
+    );
   });
 }

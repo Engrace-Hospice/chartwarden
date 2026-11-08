@@ -655,6 +655,12 @@ function makeServer(
       return { contactsOptedOut: 1, alreadyOptedOut: 0 };
     },
   };
+  const bereavementMailingPreference = {
+    async setMailingPreference(input: unknown) {
+      provisioningCalls.push({ op: "bereavement.mailingPreference", input });
+      return { contactsUpdated: 1, alreadyInState: 0 };
+    },
+  };
   const accountAudit = {
     async viewsForUser(input: unknown) {
       provisioningCalls.push({ op: "audit.views", input });
@@ -928,7 +934,12 @@ function makeServer(
     ...(opts.caregiverAttestationUnbound ? {} : { caregiverAttestation }),
     ...(opts.provisioningUnbound
       ? {}
-      : { provisioning: provisioning as never, bereavementOptOut, accountAudit }),
+      : {
+          provisioning: provisioning as never,
+          bereavementOptOut,
+          bereavementMailingPreference,
+          accountAudit,
+        }),
     roomCipher: {
       async encrypt(_org: string, column: string, plaintext: string) {
         return `sealed:${column}:${plaintext}`;
@@ -1694,6 +1705,12 @@ describe("M31 route smoke — fixed findings", () => {
       ["POST", "/api/v1/portal/bereavement/opt-out", {}, CAREGIVER],
       [
         "POST",
+        "/api/v1/portal/bereavement/mailing-preference",
+        { allowMailings: false },
+        CAREGIVER,
+      ],
+      [
+        "POST",
         "/api/v1/admin/portal-invitations/11111111-aaaa-4aaa-8aaa-111111111111/revoke",
         {},
         STAFF,
@@ -1742,6 +1759,88 @@ describe("M31 route smoke — fixed findings", () => {
       portalAccountId: ACCOUNT,
     });
     await app.close();
+  });
+
+  describe("ADR-0109 D10 — POST /portal/bereavement/mailing-preference", () => {
+    const url = "/api/v1/portal/bereavement/mailing-preference";
+
+    it("hands the SESSION's account and the choice to M16's port; the contact stays in the program", async () => {
+      const { app, provisioningCalls } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url,
+        headers: { ...CAREGIVER, ...IDEMP("k-d10-stop") },
+        payload: { allowMailings: false },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ ok: true, contactsUpdated: 1, alreadyInState: 0 });
+      expect(
+        provisioningCalls.find((c) => c.op === "bereavement.mailingPreference")?.input,
+      ).toMatchObject({
+        portalAccountId: ACCOUNT,
+        allowMailings: false,
+      });
+      // never the opt-out port: stopping mailings is not leaving the program
+      expect(provisioningCalls.some((c) => c.op === "bereavement.optOut")).toBe(false);
+      await app.close();
+    });
+
+    it("resumes mailings with allowMailings: true", async () => {
+      const { app, provisioningCalls } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url,
+        headers: { ...CAREGIVER, ...IDEMP("k-d10-resume") },
+        payload: { allowMailings: true },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(
+        provisioningCalls.find((c) => c.op === "bereavement.mailingPreference")?.input,
+      ).toMatchObject({
+        allowMailings: true,
+      });
+      await app.close();
+    });
+
+    it.each([
+      ["no body fields", {}],
+      ["a non-boolean choice", { allowMailings: "no" }],
+    ])("rejects %s with a TypeBox 422", async (_name, payload) => {
+      const { app, provisioningCalls } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url,
+        headers: { ...CAREGIVER, ...IDEMP("k-d10-bad") },
+        payload,
+      });
+      expect(res.statusCode).toBe(422);
+      expect(provisioningCalls.some((c) => c.op === "bereavement.mailingPreference")).toBe(false);
+      await app.close();
+    });
+
+    it("requires an Idempotency-Key (400)", async () => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url,
+        headers: CAREGIVER,
+        payload: { allowMailings: false },
+      });
+      expect(res.statusCode).toBe(400);
+      await app.close();
+    });
+
+    it("never reports success without the M16 port (503)", async () => {
+      const { app } = makeServer({ provisioningUnbound: true });
+      const res = await app.inject({
+        method: "POST",
+        url,
+        headers: { ...CAREGIVER, ...IDEMP("k-d10-503") },
+        payload: { allowMailings: false },
+      });
+      expect(res.statusCode).toBe(503);
+      await app.close();
+    });
   });
 
   it("GAP-092: the public accept route needs no session and hands the token to provisioning", async () => {

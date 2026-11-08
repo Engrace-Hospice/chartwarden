@@ -19,10 +19,17 @@ import type {
   DocumentStorageProvider,
   ExtractionProvenanceReader,
   IntakeMetricsProvider,
+  OrgDocumentAccessProvider,
   PortalDocumentReader,
   RenderedDocumentProvider,
 } from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
+import type { StaffMintAccessLogPort } from "../routes/signed-url-service";
+import {
+  type OrgDocumentAccessPort,
+  REFUSING_ORG_DOCUMENT_ACCESS_PORT,
+  createOrgDocumentAccessProvider,
+} from "./org-document-access";
 import {
   createDocumentReader,
   createExtractionProvenanceReader,
@@ -42,6 +49,7 @@ import { createDocumentRenderer } from "./renderer";
 import { createDocumentStorageProvider } from "./storage-provider";
 export {
   createDrizzleDocumentReaderStore,
+  createDrizzleOrgDocumentAccessPort,
   createDrizzlePortalAccessLog,
   createDrizzleStaffMintAccessLog,
   createRefusingObjectStore,
@@ -100,6 +108,13 @@ export {
   createDocumentStorageProvider,
 } from "./storage-provider";
 export {
+  type OrgDocumentAccessDeps,
+  type OrgDocumentAccessPort,
+  type OrgDocumentFacts,
+  REFUSING_ORG_DOCUMENT_ACCESS_PORT,
+  createOrgDocumentAccessProvider,
+} from "./org-document-access";
+export {
   type DocumentReaderSeed,
   type DocumentReaderStore,
   type PortalConsentPort,
@@ -131,6 +146,10 @@ export interface DocumentSeamDeps {
   portalConsent?: PortalConsentPort;
   /** F-225 (#248) — the §164.528 `document_access_log` appender the portal mint writes through (Drizzle in prod). */
   portalAccessLog?: PortalAccessLogPort;
+  /** ADR-0109 D10 — the org-level document reader behind `OrgDocumentAccessProvider` (Drizzle in prod; the refusing port in the slice: every mint is denied). */
+  orgDocuments?: OrgDocumentAccessPort;
+  /** ADR-0109 D10 — the §164.528 ledger the org-level mint writes through (Drizzle in prod). Unbound ⇒ the provider refuses to mint (no un-logged URL). */
+  orgDocumentAccessLog?: StaffMintAccessLogPort;
 }
 
 /**
@@ -164,6 +183,19 @@ export function registerDocumentSeams(deps: DocumentSeamDeps = {}): void {
   );
   registerSeam("IntakeMetricsProvider", createIntakeMetricsProvider(readers));
   registerSeam("ExtractionProvenanceReader", createExtractionProvenanceReader(readers));
+  // ADR-0109 D10 — the org-level (patient-less) download mint (M16's internal mailing batch). The slice default refuses every mint.
+  registerSeam(
+    "OrgDocumentAccessProvider",
+    createOrgDocumentAccessProvider({
+      port: deps.orgDocuments ?? REFUSING_ORG_DOCUMENT_ACCESS_PORT,
+      objects,
+      accessLog: deps.orgDocumentAccessLog ?? {
+        async append() {
+          throw new Error("OrgDocumentAccessProvider: no access ledger is bound");
+        },
+      },
+    }),
+  );
 }
 
 /** Typed resolver for M22's DocumentRenderer (sound: registered real impl; validateSeams guards it). */
@@ -194,6 +226,11 @@ export function getPortalDocumentReader(): PortalDocumentReader {
 /** Typed resolver for M22's IntakeMetricsProvider (M33/M30 reporting resolve it). */
 export function getIntakeMetricsProvider(): IntakeMetricsProvider {
   return getSeam("IntakeMetricsProvider");
+}
+
+/** Typed resolver for M22's OrgDocumentAccessProvider (M16's mailing batch download resolves it). */
+export function getOrgDocumentAccessProvider(): OrgDocumentAccessProvider {
+  return getSeam("OrgDocumentAccessProvider");
 }
 
 /** Typed resolver for M22's ExtractionProvenanceReader (M28 FHIR Provenance / M30 resolve it). */

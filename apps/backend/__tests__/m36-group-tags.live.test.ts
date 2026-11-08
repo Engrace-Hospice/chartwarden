@@ -1,5 +1,5 @@
 /**
- * M36 ADR-0107 (PROPOSED) - group tags (@role, @care-team, @on-call), LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
+ * M36 ADR-0108 (PROPOSED) - group tags (@role, @care-team, @on-call), LIVE Postgres as the NOBYPASSRLS `chartwarden_app` role.
  *
  *   1. FLAG      off (absent) refuses every group kind with a typed 422 and stores nothing.
  *   2. TEAM      `@Care team` in a care-team conversation = its active members minus the author; frozen in message_group_tag_recipient;
@@ -32,7 +32,7 @@ const KEYS = ["messaging.read", "messaging.send"];
 const TEAM = "@Care team";
 const ON_CALL_RN = "@On-call RN";
 
-describe.skipIf(!DB_URL)("M36 ADR-0107 group tags - LIVE Postgres", () => {
+describe.skipIf(!DB_URL)("M36 ADR-0108 group tags - LIVE Postgres", () => {
   let kit: LiveKit;
   let svc: ReturnType<typeof createDbMessagingRouteService>;
   let author: string;

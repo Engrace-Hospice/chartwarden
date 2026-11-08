@@ -24,6 +24,7 @@ export const LIVE_DROP_ROLES: readonly string[] = [
   "chartwarden_platform_login",
   "chartwarden_body_backfill_login",
   "chartwarden_platform_live_test",
+  "claimmd_capture",
   "wp213_resealer",
   // post-1139 names
   "chartwarden_destruction",

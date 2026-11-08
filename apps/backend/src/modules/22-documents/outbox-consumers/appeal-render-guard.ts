@@ -73,8 +73,15 @@ export function buildAppealPacketRenderGuard(documents: () => AppealRenderGuardD
       ).catch(() => null);
       const reason = appealEnclosureRefusal(digest, null);
       // An ADR response is the record of what WAS filed: a document superseded since is still what was sent, so
-      // only a Part 2 reclassification (or an unreadable document) stops the retained copy from naming it.
-      if (reason !== null && (!isAdr || reason === "part2_restricted" || reason === "not_found")) {
+      // only a Part 2 reclassification, an internal-only document (never payer-facing) or an unreadable document
+      // stops the retained copy from naming it.
+      if (
+        reason !== null &&
+        (!isAdr ||
+          reason === "part2_restricted" ||
+          reason === "internal_only" ||
+          reason === "not_found")
+      ) {
         return { detail: `${documentId}:${reason}` };
       }
     }

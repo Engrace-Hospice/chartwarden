@@ -131,6 +131,7 @@ import {
   onboardingStatusProviderDenyStub,
   orderProviderDenyStub,
   orderSignatureProviderDenyStub,
+  orgDocumentAccessProviderDenyStub,
   organizationReaderDenyStub,
   patientAddressReaderDenyStub,
   patientAdmissionClearanceReaderDenyStub,
@@ -325,7 +326,7 @@ export const REQUIRED_SEAMS = [
     phi: true,
     denyStub: patientPrivacyFlagReaderDenyStub,
   },
-  // ADR-0108 — M5's active-patient census page for the M35 claims-billing add-on. Raw patient ids cross → phi:true
+  // ADR-0110 — M5's active-patient census page for the M35 claims-billing add-on. Raw patient ids cross → phi:true
   // (M35 pseudonymizes them in memory and stores only the HMAC).
   {
     key: "PatientCensusReader",
@@ -390,6 +391,13 @@ export const REQUIRED_SEAMS = [
     ownerModule: 22,
     phi: true,
     denyStub: extractionProvenanceReaderDenyStub,
+  },
+  // ADR-0109 D10 — the org-level (patient-less) document download mint. PHI: the document it hands out is M16's mailing batch (every addressee).
+  {
+    key: "OrgDocumentAccessProvider",
+    ownerModule: 22,
+    phi: true,
+    denyStub: orgDocumentAccessProviderDenyStub,
   },
   { key: "ConsentEvaluator", ownerModule: 39, phi: true, denyStub: consentEvaluatorDenyStub },
   // M2 published seams (§4.7): authenticated request context + auditor session minter. Not PHI
@@ -740,7 +748,7 @@ export const REQUIRED_SEAMS = [
     phi: false,
     denyStub: patientCounterProviderDenyStub,
   },
-  // ADR-0108, repurposed (ADR-0053 amendment 2026-11-06): may this org start NEW claims-billing work. Owner M23: it is
+  // ADR-0110, repurposed (ADR-0053 amendment 2026-11-06): may this org start NEW claims-billing work. Owner M23: it is
   // decided from the org's clearinghouse choice, with no add-on and no fee. Aggregate org metadata → phi:false.
   {
     key: "ClaimsBillingEntitlementReader",

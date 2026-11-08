@@ -108,10 +108,19 @@ export function sendOptions(known: {
   return out;
 }
 
+type ErrorBody = { error?: { code?: string; message?: string } } | null;
+
+/** The `code` of an API error body (`{ error: { code, message } }`), if any. */
+export function errorCode(error: unknown): string | undefined {
+  return (error as ErrorBody)?.error?.code;
+}
+
 /** The refusal text for an API error body (`{ error: { code, message } }`), by code where we have our own wording. */
 export function refusalMessage(error: unknown, fallback: string): string {
-  const e = (error as { error?: { code?: string; message?: string } } | null)?.error;
+  const e = (error as ErrorBody)?.error;
   switch (e?.code) {
+    case "UPLOADED_COPY_CHANGED":
+      return "A different copy was uploaded since this list was loaded. Open the new copy, then decide.";
     case "SIGNATURE_REQUEST_ALREADY_OPEN":
       return "A request for this document is already open for this patient.";
     case "SIGNATURE_TARGET_INVALID":

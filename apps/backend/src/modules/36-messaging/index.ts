@@ -319,7 +319,7 @@ export function mountMessagingRoutes(
       flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
       rateLimit?: ((request: FastifyRequest, reply: FastifyReply) => Promise<void>) | undefined;
     };
-    /** ADR-0107 (PROPOSED): group tags. `flags` reads `messaging.group_tags` (absent = off: the group kinds are refused on write and never offered). */
+    /** ADR-0108 (PROPOSED): group tags. `flags` reads `messaging.group_tags` (absent = off: the group kinds are refused on write and never offered). */
     groupTags?: {
       flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
     };

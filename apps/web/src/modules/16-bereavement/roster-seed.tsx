@@ -27,12 +27,12 @@ import { RELATIONSHIP_CODES, humanize, shortDate, shortId } from "./bereavement-
 import {
   Card,
   CheckboxField,
+  ErrorText,
   Field,
   Notice,
   SelectField,
   SummaryGrid,
   TextField,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
   linkStyle,
@@ -153,7 +153,7 @@ export function BereavementRosterSeed(): JSX.Element {
         </Notice>
       ) : null}
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? <ErrorText>{actionError}</ErrorText> : null}
 
       <Card title="Plan">
         <SummaryGrid>

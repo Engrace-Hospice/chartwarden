@@ -122,7 +122,7 @@ const PLATFORM_READ_TABLES = [
   "usage_period_aggregate",
   "patient_active_period",
   "user_active_period",
-  // ADR-0108 — the claims-billing add-on catalog and the per-org add-on rows (admin console list + usage).
+  // ADR-0110 — the claims-billing add-on catalog and the per-org add-on rows (admin console list + usage).
   "addon",
   "subscription_addon",
   // WX-PR-025 — M33 §2.4 nightly MV refresh source tables (see MV_REFRESH_MATERIALIZED_VIEWS below):
@@ -196,7 +196,7 @@ const PLATFORM_WRITE_TABLES = [
 
 /** The §5.2 admin ACTIONS' mutation surface (refunds / dunning / promos) — INSERT+UPDATE only. */
 const PLATFORM_MUTATE_TABLES = [
-  // ADR-0108 — platform-only grant/cancel of the claims-billing add-on (tenants hold SELECT only).
+  // ADR-0110 — platform-only grant/cancel of the claims-billing add-on (tenants hold SELECT only).
   "subscription_addon",
   "refund",
   "dunning_state",

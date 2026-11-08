@@ -10,7 +10,7 @@ import {
   useStepUpDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
-// apps/admin/src/modules/35-subscription-billing — ADR-0108 the Add-ons panel on the subscription detail. Lists the
+// apps/admin/src/modules/35-subscription-billing — ADR-0110 the Add-ons panel on the subscription detail. Lists the
 // subscription's add-ons (GET /api/admin/subscriptions/:id/addons), grants or starts a trial of the claims-billing
 // add-on (POST …/addons, step-up + Idempotency-Key) and cancels a live one (POST …/addons/:addonId/cancel). The
 // active-patient count is the current period's census (shown, not billed: Stripe charging is deferred).

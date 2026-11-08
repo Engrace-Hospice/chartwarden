@@ -62,6 +62,7 @@ import {
 } from "./bereavement-status";
 import {
   Card,
+  ErrorText,
   Field,
   Modal,
   Notice,
@@ -70,7 +71,6 @@ import {
   SummaryGrid,
   TextAreaField,
   TextField,
-  alertStyle,
   columnStyle,
   disabledButtonStyle,
   ghostButtonStyle,
@@ -199,7 +199,7 @@ export function BereavementPlanDetail(): JSX.Element {
         </Notice>
       ) : null}
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? <ErrorText>{actionError}</ErrorText> : null}
 
       <Card
         title="Plan"
@@ -548,7 +548,7 @@ function AddContactModal({
         M39 bereavement-outreach consent verdict is resolved server-side, and it fails CLOSED: an
         unconsented condolence call to a grieving family is the harm the rule exists to prevent.
       </Notice>
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -609,7 +609,7 @@ function PauseModal({
         onChange={setReason}
         hint="Pausing cancels every future-dated touchpoint. The reason is recorded on the plan."
       />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -677,7 +677,7 @@ function CloseModal({
         rows={5}
         hint={`${narrative.trim().length} / 40 characters minimum.`}
       />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -723,7 +723,7 @@ function CosignModal({
         membership — it is never taken from this form.
       </Notice>
       <TextAreaField label="Attestation (optional)" value={attestation} onChange={setAttestation} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -797,7 +797,7 @@ function FirstContactModal({
           />
         </>
       )}
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }

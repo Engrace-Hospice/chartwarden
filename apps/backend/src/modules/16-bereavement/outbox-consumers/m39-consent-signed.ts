@@ -339,9 +339,9 @@ async function appendContactScore(
         confidenceBand: row.confidenceBand,
       },
     },
-    // No `alerts` port bound here (matching the composition root's own `buildDrizzleM16WriteService`
-    // call, which supplies no `alerts` either) — `risk_tier_escalated` is best-effort per the runner's
-    // own rule 3 and is simply not emitted without a bound `AlertPort`, never a hard failure.
+    // No `alerts` port is passed here: `risk_tier_escalated` is best-effort per the runner's own rule 3 and is
+    // simply not emitted without a bound `AlertPort`, never a hard failure (it also has no M36 route yet,
+    // so the ADR-0109 D7 adapter would drop it).
   };
   await runEffects(tx, result.effects, effectCtx);
 }

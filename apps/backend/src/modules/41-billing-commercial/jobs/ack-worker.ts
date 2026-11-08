@@ -31,7 +31,12 @@ import { COMMERCIAL_UNSUPPORTED_CLEARINGHOUSES } from "@chartwarden/types";
 import { CH } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, eq, gte, inArray, or, sql } from "drizzle-orm";
-import { failureLabel, isPerOrgResolveFailure, withOrgBinding } from "../services/org-binding";
+import {
+  failureLabel,
+  isPerOrgResolveFailure,
+  isPlatformClaimMdBinding,
+  withOrgBinding,
+} from "../services/org-binding";
 import {
   ACK_POLL_MAX_AGE_DAYS,
   type AckCursorKey,
@@ -258,6 +263,7 @@ export async function pullOrgAcks(
   const failures: string[] = [];
   const backlog: string[] = [];
   const quarantined: { eventId: string; reason: string }[] = [];
+  if (isPlatformClaimMdBinding(deps.binding)) return { ...tally, failures, backlog, quarantined };
   const work = await outstanding(deps, organizationId);
   // Provider entities that hold events but have no live work left (their submission failed, the claim was voided) are still swept,
   // with no transport call, so a dead held event is abandoned instead of waiting forever.
@@ -290,6 +296,9 @@ export async function runAckPull(deps: AckWorkerDeps): Promise<AckPullResult> {
   const failures: string[] = [];
   const backlog: string[] = [];
   const quarantined: { eventId: string; reason: string }[] = [];
+  // Claim.MD's account-wide normalized stream is owned by the BIL-1.1 inbox. The
+  // legacy provider poller cannot safely attribute or label those events as X12.
+  if (isPlatformClaimMdBinding(deps.binding)) return { ...total, failures, backlog, quarantined };
   for (const { organizationId } of await deps.activeOrgs.listActiveOrgs()) {
     try {
       // Resolved once per org: the rest of this org's pull uses ITS clearinghouse; another org's pull is never affected by it.

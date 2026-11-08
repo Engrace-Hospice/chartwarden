@@ -1,5 +1,5 @@
 /**
- * ADR-0108 — LIVE Postgres proof of the claims-billing add-on data path (migration 1321) and the M35 add-on service.
+ * ADR-0110 — LIVE Postgres proof of the claims-billing add-on data path (migration 1321) and the M35 add-on service.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m35:claims-billing-addon:live
  *
@@ -48,7 +48,7 @@ const actor = (organizationId: string): M35WriteActor => ({
   stepUpRecent: true,
 });
 
-describe.skipIf(!DB_URL)("ADR-0108 claims-billing add-on — LIVE Postgres", () => {
+describe.skipIf(!DB_URL)("ADR-0110 claims-billing add-on — LIVE Postgres", () => {
   let admin: Client;
   let app: ReturnType<typeof createDbClient>;
   let platformDb: ReturnType<typeof createDbClient>;

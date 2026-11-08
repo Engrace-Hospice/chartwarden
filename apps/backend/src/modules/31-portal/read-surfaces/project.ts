@@ -205,6 +205,7 @@ export function projectBereavementScope(
       inWindow: s.inBereavementWindow,
       mayOptOut: s.mayOptOut,
       mayRescindOptOut: s.mayRescindOptOut,
+      mailingsAllowed: s.mailingsAllowed,
       statusLabel: layEnumLabel(s.status),
     })),
   };

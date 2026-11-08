@@ -94,7 +94,7 @@ export interface MessageReference {
 }
 
 export interface MessageReferenceInput {
-  /** ADR-0107: includes the server-resolved group tags (role, team, on_call). */
+  /** ADR-0108: includes the server-resolved group tags (role, team, on_call). */
   kind: MentionKind;
   entityId: string;
   start: number;

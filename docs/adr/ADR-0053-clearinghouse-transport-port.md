@@ -251,7 +251,8 @@ upload that may have landed answers `CH_IN_DOUBT` (never retried under a new con
 same key, is reconciled against Claim.MD's upload list by our own Filename before any resend.
 
 **Configuration.** `CLEARINGHOUSE_VENDOR=claimmd`, `CLAIMMD_ACCOUNT_KEY`, `CLAIMMD_ACCOUNT_USAGE` (`test` or
-`production`: which Claim.MD account the key opens; a call of the other usage answers `CH_NOT_WIRED`). The envelope ids
+`production`: which Claim.MD account the key opens; a call of the other usage answers `CH_NOT_WIRED`), and
+`CLAIMMD_ACCOUNT_REFERENCE` (stable, non-secret internal account identity; it is not the AccountKey). The envelope ids
 (ISA06/GS02 = account number, ISA08/GS03 = `CLAIMMD`) are `billing_edi_profile` rows under `route_key = 'claimmd'`.
 Production account settings: 837I on, Transmit Approval off, automatic corrected claims off, SFTP off.
 Claim.MD's limit (100 requests a minute per account, then an HTTP 403 block) is spent from one counter per usage mode,
@@ -329,7 +330,7 @@ once we send our control number there (or Claim.MD confirms it echoes CLM01); un
 
 **The Billing add-on.** After resolution the sweep asks a `BillingEntitlementPort`; an org without the add-on keeps its
 receipt encrypted as `awaiting_entitlement`, re-checked hourly and published once the add-on is granted, and becomes
-`expired_not_entitled` 90 days after receipt. The port is bound to ADR-0108's `isClaimsBillingEntitled`, so it follows
+`expired_not_entitled` 90 days after receipt. The port is bound to ADR-0110's `isClaimsBillingEntitled`, so it follows
 `CLAIMS_BILLING_ENFORCEMENT`: `off`/`shadow` publish for every resolved org; `enforce` reads M35, and a failed read retries
 without spending an attempt.
 
@@ -411,7 +412,7 @@ through the advance pass (migration 1351, `contract`: the previous release's eva
 reason "bills outside ChartWarden", through the wizard service's own skip path (so the audit and the strict sequence hold: a skip an earlier open step still locks waits for the next wizard change); switching back to a vendor reopens exactly the steps the
 system skipped, through the wizard's reopen path (a pending go-live attestation blocks a reopen, which is logged).
 
-**The gate (owner decision D1).** ADR-0108 is repurposed: new claims work follows this choice, not an add-on (see its 2026-11-06 amendment), and a suspended, paused or canceled ChartWarden subscription still blocks NEW claims and eligibility work regardless of the clearinghouse.
+**The gate (owner decision D1).** ADR-0110 is repurposed: new claims work follows this choice, not an add-on (see its 2026-11-06 amendment), and a suspended, paused or canceled ChartWarden subscription still blocks NEW claims and eligibility work regardless of the clearinghouse.
 M35's pricing reads the same choice through the `TenantClearinghouseReader` seam (owner M23) to apply "`outside` means no billing percentage"; this ADR implements no pricing.
 
 **`outside` and the notices (owner decision D4, supersedes the earlier "not decided here").** A tenant that bills outside ChartWarden files its NOE and NOTR itself. ChartWarden still tracks the 5-day deadline, shows "file with your biller", and lets the tenant record the date it was filed;

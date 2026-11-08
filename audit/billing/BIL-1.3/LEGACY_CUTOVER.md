@@ -1,0 +1,9 @@
+# Legacy polling coexistence and cutover
+
+M23's `runTransportAckPull` returns before provider polling when the binding vendor is `claimmd` (`jobs/m23-jobs.ts`); other vendors retain the existing 999/277CA path. M41's `runAckPull`, `pullOrgAcks`, `applyAckEvent`, `applyValidEvent` and held replay reject or bypass Claim.MD (`jobs/ack-worker.ts`, `ack-apply.ts`, `ack-held-replay.ts`). This removes concurrent Claim.MD status writers even while the new worker is off. The old provider cursors remain stored and are not advanced by BIL-1.3.
+
+The new dispatcher is explicitly off unless exactly one of `CLAIMMD_ACK_SHADOW_ENABLED=true` or `CLAIMMD_ACK_DISPATCH_ENABLED=true` is set. Conflicting flags fail startup. API-only processes do not construct it. The Claim.MD binding, tenant/platform pools, account reference, usage, inbox keyring and bootstrapped stream are required at startup when enabled. The resolver has its own independent false-by-default flag. Shadow mode reads verified resolutions and records classification without claim/outbox mutations; apply mode has separate delivery rows.
+
+Safe rollout order: merge BIL-1.2.2B, apply migrations to a private cluster, certify roles/RLS and synthetic event capture, verify shadow outcomes, validate vendor status semantics and account configuration, then enable a controlled test worker. Production requires a separate release decision. Rollback: disable the new flags; retain delivery, encrypted inbox and append-only history for reconciliation. Do not re-enable legacy Claim.MD provider polling as a rollback, because it can misattribute account-wide responses and fabricate X12 provenance. Other-vendor polling is unaffected.
+
+The BIL-1.1 capture service is not currently registered in `apps/backend/src/index.ts`; this implementation consumes existing captured rows only. The capture runtime and associated account-wide cursor certification remain activation blockers.

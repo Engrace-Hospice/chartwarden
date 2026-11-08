@@ -1,0 +1,61 @@
+# The SECOND-COPY host (ADR-0050 D6 amendment 2026-11-05): a RustFS on a machine separate from the primary, written
+# only by the primary's `object-copy` job (deploy/production/compose.object-copy.yml). Not deployed by deploy.yml;
+# an operator brings it up once (deploy/production/README.md, "Object store: second copy"):
+#
+#   cp copy-target-policy.json compose.yml /opt/chartwarden-replica/ && chmod 0644 copy-target-policy.json
+#   # .env (0600) on this host: RUSTFS_ROOT_USER, RUSTFS_ROOT_PASSWORD, COPY_TARGET_ACCESS_KEY, COPY_TARGET_SECRET_KEY
+#   docker compose up -d rustfs && docker compose run --rm rustfs-provision
+#
+# RustFS listens on 127.0.0.1 only: host Nginx terminates TLS in front of it (the copy carries PHI between hosts and
+# the job refuses http), and the host firewall admits the primary's address alone. The copy key is scoped to
+# `tenant-*` / `chartwarden-*` objects and bucket creation: no policy, user or bucket deletion rights.
+services:
+  rustfs:
+    image: rustfs/rustfs:1.0.4@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2
+    mem_limit: 2g
+    cpus: 2
+    restart: unless-stopped
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ROOT_USER:?set in .env}
+      RUSTFS_SECRET_KEY: ${RUSTFS_ROOT_PASSWORD:?set in .env}
+      RUSTFS_VOLUMES: /data
+      RUSTFS_CONSOLE_ENABLE: "false"
+    volumes:
+      - rustfs-data:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:9000/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # Idempotent: policy create overwrites, user add re-sets the secret. Rotating COPY_TARGET_SECRET_KEY is one run here
+  # plus the same value in the primary's OBJECT_COPY_TARGET_SECRET_KEY.
+  rustfs-provision:
+    image: rustfs/rc:v0.1.37@sha256:7e93fd410a8fe51514f89373e093392c92095b98dc6140335fcfe956810c4c80
+    mem_limit: 128m
+    cpus: 0.5
+    restart: "no"
+    environment:
+      RUSTFS_ROOT_USER: ${RUSTFS_ROOT_USER:?set in .env}
+      RUSTFS_ROOT_PASSWORD: ${RUSTFS_ROOT_PASSWORD:?set in .env}
+      COPY_TARGET_ACCESS_KEY: ${COPY_TARGET_ACCESS_KEY:?set in .env}
+      COPY_TARGET_SECRET_KEY: ${COPY_TARGET_SECRET_KEY:?set in .env}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        rc alias set local http://rustfs:9000 "$$RUSTFS_ROOT_USER" "$$RUSTFS_ROOT_PASSWORD" >/dev/null
+        rc admin policy create local/ chartwarden-copy /policy/copy-target-policy.json >/dev/null
+        rc admin user add local/ "$$COPY_TARGET_ACCESS_KEY" "$$COPY_TARGET_SECRET_KEY" >/dev/null
+        rc admin policy attach local/ chartwarden-copy --user "$$COPY_TARGET_ACCESS_KEY" >/dev/null
+        echo "copy-target key ready (policy chartwarden-copy)"
+    volumes:
+      - ./copy-target-policy.json:/policy/copy-target-policy.json:ro
+    depends_on:
+      rustfs:
+        condition: service_healthy
+
+volumes:
+  rustfs-data:

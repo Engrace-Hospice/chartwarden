@@ -731,7 +731,7 @@ export function createDbMessagingRouteService(
       /** Whether the user still holds messaging.break_glass.invoke (checked at every read under a grant). Absent => grants are not honoured. */
       holdsInvoke?: ((orgId: string, userId: string) => Promise<boolean>) | undefined;
     };
-    /** ADR-0107 (PROPOSED): group tags (`@role`, `@care-team`, `@on-call`). Omitted => the group kinds are refused (422) and never offered. */
+    /** ADR-0108 (PROPOSED): group tags (`@role`, `@care-team`, `@on-call`). Omitted => the group kinds are refused (422) and never offered. */
     groupTags?: GroupTagPorts;
     /** Operational warning sink (ids only); default: silent. */
     warn?: (message: string, context: Record<string, string>) => void;
@@ -941,7 +941,7 @@ export function createDbMessagingRouteService(
       if (needle && staff.length >= 20) break;
     }
 
-    // ADR-0107: group tags are offered by the picker only (the send path validates them itself).
+    // ADR-0108: group tags are offered by the picker only (the send path validates them itself).
     const groups = withGroups
       ? await withOrgContext(db, { organizationId: orgId, userId }, (tx) =>
           groupTagCandidates(
@@ -1626,7 +1626,7 @@ export function createDbMessagingRouteService(
         candidates.map((candidate) => [`${candidate.kind}:${candidate.entityId}`, candidate]),
       );
       for (const reference of references) {
-        if (isGroupTagKind(reference.kind)) continue; // ADR-0107: resolved and validated inside the send transaction
+        if (isGroupTagKind(reference.kind)) continue; // ADR-0108: resolved and validated inside the send transaction
         if (reference.kind === "patient") {
           if (
             input.body.slice(reference.start, reference.end) !== "@Patient" ||
@@ -1722,7 +1722,7 @@ export function createDbMessagingRouteService(
           // WP 3.10: a caller-supplied write that must commit or roll back with the message (never run on a replay).
           await input.inTransaction?.(tx, { messageId, createdAt });
           if (references.length > 0) {
-            // ADR-0107: group tags become people here, frozen in the same transaction (a refusal rolls the message back).
+            // ADR-0108: group tags become people here, frozen in the same transaction (a refusal rolls the message back).
             const groupTags = await resolveGroupTags(tx, opts.groupTags, {
               orgId,
               authorUserId: input.authorUserId,
@@ -1816,7 +1816,7 @@ export function createDbMessagingRouteService(
         const candidateByKey = new Map(
           candidates.map((candidate) => [`${candidate.kind}:${candidate.entityId}`, candidate]),
         );
-        // ADR-0107: an edit may keep a group tag the message was sent with (the snapshot is untouched, nobody is alerted again); it cannot add one.
+        // ADR-0108: an edit may keep a group tag the message was sent with (the snapshot is untouched, nobody is alerted again); it cannot add one.
         const keptTags = await withOrgContext(
           db,
           { organizationId: orgId, userId: input.userId },

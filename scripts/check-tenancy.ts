@@ -119,6 +119,20 @@ const NON_ORG_SCOPED = new Set<string>([
   "location", // the tenancy spine itself
   "system_status",
   "feature_flag", // platform/global (own RLS, ADR-0010 D3 read policy)
+  // BIL-1.1: unresolved Claim.MD account stream spans tenants. No tenant role has table grants;
+  // FORCE RLS admits only the dedicated capture role, which has no login of its own.
+  "claimmd_response_stream",
+  "claimmd_response_batch",
+  "claimmd_response_event",
+  "claimmd_response_resolution",
+  "claimmd_response_resolution_history",
+  // BIL-1.4: the central Claim.MD ERA cursor and encrypted source inbox are account-wide; tenant roles have no grants.
+  "claimmd_era_stream",
+  "claimmd_era_inbox",
+  "claimmd_era_resolution",
+  "claimmd_era_resolution_history",
+  "claimmd_era_delivery",
+  "claimmd_era_delivery_history",
   // M38 Terminology (§3.7): platform-shared canonical reference. Read-all `USING(true)`;
   // writes only via the `terminology_loader` role (no org column by design). The one
   // org-scoped M38 table, value_set_tenant_extension, is intentionally NOT listed here —
@@ -321,7 +335,7 @@ const NON_ORG_SCOPED = new Set<string>([
   "stripe_webhook_event",
   "platform_retained_invoice",
   "platform_retained_invoice_line",
-  // ADR-0108 — `addon`, the platform-owned add-on catalog (the `plan` shape, D11: platform pricing, no tenant
+  // ADR-0110 — `addon`, the platform-owned add-on catalog (the `plan` shape, D11: platform pricing, no tenant
   // overlay). Read-all `USING (true)` TO chartwarden_app, writes only via chartwarden_admin (migration 1321). Its
   // tenant half, `subscription_addon`, carries organization_id with app.org_id RLS and is NOT listed here.
   "addon",

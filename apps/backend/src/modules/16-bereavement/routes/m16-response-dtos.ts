@@ -9,8 +9,11 @@
 // tsc still type-checks this file (it is inside the module's compilation), so the pins are enforced.
 import type { Static } from "@sinclair/typebox";
 import type { CursorPage } from "./concurrency";
+import type { PreDeathDraftView as SvcPreDeathDraftView } from "./draft-service";
+import type { PhysicianLetterView as SvcPhysicianLetterView } from "./letter-service";
 import type {
   BereavedContactRowViewResponseSchema,
+  BereavementAssessmentTaskListResponseSchema,
   BereavementClosureViewResponseSchema,
   BereavementContactLogViewResponseSchema,
   BereavementOutreachPageResponseSchema,
@@ -21,17 +24,38 @@ import type {
   BereavementRiskScorePageResponseSchema,
   BereavementRiskScoreViewResponseSchema,
   CounselorDashboardViewResponseSchema,
+  PhysicianLetterPageResponseSchema,
+  PhysicianLetterViewResponseSchema,
   PlanActivationViewResponseSchema,
+  PreDeathDraftViewResponseSchema,
   ScheduleRegenerationViewResponseSchema,
   SupervisorDashboardViewResponseSchema,
 } from "./m16-typebox";
 import type {
+  MailingConfigView as SvcMailingConfigView,
+  MailingDownloadView as SvcMailingDownloadView,
+  MailingItemView as SvcMailingItemView,
+  MailingRunView as SvcMailingRunView,
+} from "./mailing-service";
+import type {
+  ContactTimelinePageResponseSchema,
+  MailingConfigListResponseSchema,
+  MailingConfigViewResponseSchema,
+  MailingDownloadViewResponseSchema,
+  MailingItemPageResponseSchema,
+  MailingItemViewResponseSchema,
+  MailingRunPageResponseSchema,
+  MailingRunViewResponseSchema,
+} from "./mailing-typebox";
+import type {
   BereavedContactRowView as SvcBereavedContactRowView,
+  BereavementAssessmentTaskList as SvcBereavementAssessmentTaskList,
   BereavementClosureView as SvcBereavementClosureView,
   BereavementOutreachRowView as SvcBereavementOutreachRowView,
   BereavementPlanDetail as SvcBereavementPlanDetail,
   BereavementPlanListItem as SvcBereavementPlanListItem,
   BereavementRiskScoreView as SvcBereavementRiskScoreView,
+  ContactTimelinePage as SvcContactTimelinePage,
   CounselorDashboardView as SvcCounselorDashboardView,
   SupervisorDashboardView as SvcSupervisorDashboardView,
 } from "./read-service";
@@ -98,4 +122,48 @@ type _OutreachPage = Conforms<
 type _RiskScorePage = Conforms<
   Static<typeof BereavementRiskScorePageResponseSchema>,
   CursorPage<SvcBereavementRiskScoreView>
+>;
+type _AssessmentTasks = Conforms<
+  Static<typeof BereavementAssessmentTaskListResponseSchema>,
+  SvcBereavementAssessmentTaskList
+>;
+type _PreDeathDraft = Conforms<
+  Static<typeof PreDeathDraftViewResponseSchema>,
+  SvcPreDeathDraftView
+>;
+type _PhysicianLetter = Conforms<
+  Static<typeof PhysicianLetterViewResponseSchema>,
+  SvcPhysicianLetterView
+>;
+type _PhysicianLetterPage = Conforms<
+  Static<typeof PhysicianLetterPageResponseSchema>,
+  CursorPage<SvcPhysicianLetterView>
+>;
+
+// ADR-0109 D10 — the mailing program and the contact timeline (routes 42-52).
+type _MailingConfig = Conforms<
+  Static<typeof MailingConfigViewResponseSchema>,
+  SvcMailingConfigView
+>;
+type _MailingConfigList = Conforms<
+  Static<typeof MailingConfigListResponseSchema>,
+  readonly SvcMailingConfigView[]
+>;
+type _MailingRun = Conforms<Static<typeof MailingRunViewResponseSchema>, SvcMailingRunView>;
+type _MailingRunPage = Conforms<
+  Static<typeof MailingRunPageResponseSchema>,
+  CursorPage<SvcMailingRunView>
+>;
+type _MailingItem = Conforms<Static<typeof MailingItemViewResponseSchema>, SvcMailingItemView>;
+type _MailingItemPage = Conforms<
+  Static<typeof MailingItemPageResponseSchema>,
+  CursorPage<SvcMailingItemView>
+>;
+type _MailingDownload = Conforms<
+  Static<typeof MailingDownloadViewResponseSchema>,
+  SvcMailingDownloadView
+>;
+type _ContactTimeline = Conforms<
+  Static<typeof ContactTimelinePageResponseSchema>,
+  SvcContactTimelinePage
 >;

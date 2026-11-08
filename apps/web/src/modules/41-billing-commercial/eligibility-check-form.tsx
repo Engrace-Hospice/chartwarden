@@ -48,7 +48,7 @@ export function EligibilityCheckForm({
   onChecked: (result: { planId: string; replayed: boolean }) => void;
 }): JSX.Element {
   const client = useApiClient();
-  // ADR-0108 — a new eligibility check is new claims-billing work: paused without the add-on (when enforced).
+  // ADR-0110 — a new eligibility check is new claims-billing work: paused without the add-on (when enforced).
   const claimsBilling = useClaimsBilling();
   const navigate = useNavigate();
   const [fields, setFields] = useState<Fields>({

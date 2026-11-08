@@ -1,5 +1,5 @@
 // @chartwarden/db — Module 35 (Subscription Billing) schema barrel: the twenty-one `ownedTables`
-// `architecture/module-manifest.ts` gives M35 (§3.3), plus ADR-0108's `addon` (platform catalog) and
+// `architecture/module-manifest.ts` gives M35 (§3.3), plus ADR-0110's `addon` (platform catalog) and
 // `subscription_addon` (tenant-scoped, SELECT-only to the app role).
 //
 // TENANT-SCOPED (twelve) — organization_id NOT NULL, RLS keyed ONLY on canonical app.org_id (§3.5):

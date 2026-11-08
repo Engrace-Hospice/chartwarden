@@ -35,6 +35,7 @@ import type {
   DocumentStorageProvider,
   ExtractionProvenanceReader,
   IntakeMetricsProvider,
+  OrgDocumentAccessProvider,
   PortalDocumentReader,
   RenderedDocumentProvider,
 } from "./documents";
@@ -180,7 +181,7 @@ export type SeamName =
   | "NonCoveredDmeSuppliesReader" // M21 — COP27: active dme/supply requests determined NOT hospice-covered (M6 election addendum)
   | "PatientAllergyReader" // M5 — the patient's current allergy list (M12 requestSignature allergy gate, GAP-036)
   | "PatientWristbandVerifier" // M5 — is the scanned wristband this patient's? verdict only (M13 BCMA wrong_patient arm, GAP-020)
-  | "PatientCensusReader" // M5 — ADR-0108: active-patient ids, paged (the M35 claims-billing add-on census pull)
+  | "PatientCensusReader" // M5 — ADR-0110: active-patient ids, paged (the M35 claims-billing add-on census pull)
   | "PatientPrivacyFlagReader" // M5 §3.5 — sex class + active privacy flags (M37 shared-room gate, GAP-061)
   | "ExternalGriefResourceReader" // M40 — TASK-015: bereaved-portal external resources list; deny-stub only (no M40 table yet)
   | "EmergencyServiceJurisdictionReader" // M40 — GAP-032: tenant-curated PSAP jurisdiction for an SOS (M20 terminus); deny-stub = unavailable
@@ -200,6 +201,7 @@ export type SeamName =
   | "PortalDocumentReader" // M22 — portal-safe document read seam (tags stripped, SUD filtered, mint download URL)
   | "IntakeMetricsProvider" // M22 — intake-throughput metrics read seam (bundles processed / time-to-review)
   | "ExtractionProvenanceReader" // M22 — per-chart-field extraction provenance read seam (data exists, DocLens OFF)
+  | "OrgDocumentAccessProvider" // M22 — org-level (patient-less) document download mint (M16's internal mailing batch; ADR-0109 D10)
   | "ConsentEvaluator" // M39 — disclosure/redaction gate
   | "SessionContextResolver" // M2 — authenticated, org-scoped request context (actor + step-up state)
   | "AuditorSessionMinter" // M2 — mint a time-boxed auditor magic-link session (M3 calls it)
@@ -489,7 +491,7 @@ export type SeamName =
   | "BillingStatusProvider" // M35 — the billing-block gate + Phase-1 open quota check (M28/M29/M32/M34)
   | "UsageMeteringIngest" // M35 — PHI-free usage-event ingest (M23/M24/M28/M29/M32; redactor-enforced)
   | "PatientCounterProvider" // M35 — pseudonymized active-patient count for a period (reconciles vs M5)
-  | "ClaimsBillingEntitlementReader" // M23 — ADR-0108 (repurposed): may this org start NEW claims-billing work (its clearinghouse choice)
+  | "ClaimsBillingEntitlementReader" // M23 — ADR-0110 (repurposed): may this org start NEW claims-billing work (its clearinghouse choice)
   | "SubscriptionWorkBlockReader" // M35 — owner decision D1: a suspended / paused / canceled subscription still blocks new claims work (read by M23's claims-billing decision)
   | "TenantClearinghouseReader" // M23 — ADR-0053 amendment 2026-11-06: the clearinghouse the org chose (stedi | claimmd | outside)
   | "RevenueMetricsProvider" // M35 — platform-shared MRR/ARR snapshots + status counts (M33 revenue dashboard)
@@ -1117,6 +1119,7 @@ export interface SeamContracts {
   PortalDocumentReader: PortalDocumentReader;
   IntakeMetricsProvider: IntakeMetricsProvider;
   ExtractionProvenanceReader: ExtractionProvenanceReader;
+  OrgDocumentAccessProvider: OrgDocumentAccessProvider;
   // M39's `ConsentEvaluator` is OPAQUE (`unknown`) here — the rich §4.3 interface lives in
   // @chartwarden/consent (rich-seam pattern, see the note above the interface block). Consumers that
   // list `39` in `dependsOn` import the real type from @chartwarden/consent and resolve via the
@@ -1441,7 +1444,7 @@ export interface SeamContracts {
   BillingStatusProvider: BillingStatusProvider;
   UsageMeteringIngest: UsageMeteringIngest;
   PatientCounterProvider: PatientCounterProvider;
-  // ADR-0108 — leaf-typed; the route gate + worker hold in apps/backend/src/bootstrap resolve it (fail closed).
+  // ADR-0110 — leaf-typed; the route gate + worker hold in apps/backend/src/bootstrap resolve it (fail closed).
   ClaimsBillingEntitlementReader: ClaimsBillingEntitlementReader;
   // M23 — the tenant's clearinghouse choice (leaf-typed in ./tenant-clearinghouse); aggregate org config, no PHI.
   TenantClearinghouseReader: TenantClearinghouseReader;

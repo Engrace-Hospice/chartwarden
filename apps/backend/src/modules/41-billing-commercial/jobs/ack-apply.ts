@@ -9,7 +9,7 @@ import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { type ValidAckEvent, validateAckEvent } from "../domain/ack-event";
 import { transitionForAck } from "../domain/ack-transition";
 import type { CommercialContextPort } from "../eligibility/service";
-import { withOrgBinding } from "../services/org-binding";
+import { isPlatformClaimMdBinding, withOrgBinding } from "../services/org-binding";
 import type { CommercialOutboxPort, CommercialTx } from "../services/types";
 import type { UnboundAlertPort } from "./unbound-alert";
 
@@ -37,6 +37,8 @@ export interface AckCursorStore {
 export interface AckBinding {
   readonly vendor: string | null;
   readonly transport: Pick<ClearinghouseTransport, "fetchAcknowledgments" | "fetchClaimStatus">;
+  /** `tenant` = built from the organization's own sealed credential (see isPlatformClaimMdBinding). */
+  readonly account?: "tenant";
   readonly forOrg?: (organizationId: string) => Promise<AckBinding>;
 }
 
@@ -165,6 +167,7 @@ export async function applyValidEvent(
   scope: Scope,
   event: ValidAckEvent,
 ): Promise<ApplyOutcome> {
+  if (isPlatformClaimMdBinding(deps.binding)) throw new Error("CLAIMMD_LEGACY_ACK_DISABLED");
   const S = schema.commercialSubmissions;
   const C = schema.commercialClaims;
   const held = (result: ApplyResult, reason: QuarantineReason): Promise<ApplyOutcome> =>
@@ -332,6 +335,7 @@ export async function applyAckEvent(
   raw: unknown,
 ): Promise<ApplyOutcome> {
   const deps = await withOrgBinding(rawDeps, scope.organizationId, rawDeps.log);
+  if (isPlatformClaimMdBinding(deps.binding)) throw new Error("CLAIMMD_LEGACY_ACK_DISABLED");
   const checked = validateAckEvent(raw);
   if (!checked.ok) {
     const eventId = checked.eventId ?? derivedEventId(raw);

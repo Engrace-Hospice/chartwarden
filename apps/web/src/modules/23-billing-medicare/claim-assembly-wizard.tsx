@@ -69,7 +69,7 @@ export function ClaimAssemblyWizard(): JSX.Element {
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // ADR-0108 — assembling a new claim is new claims-billing work: paused without the add-on (when enforced).
+  // ADR-0110 — assembling a new claim is new claims-billing work: paused without the add-on (when enforced).
   const claimsBilling = useClaimsBilling();
 
   useEffect(() => {
