@@ -25,12 +25,12 @@ interface Draft {
 
 const draftKey = (orgSlug: string): string => `wizard:${orgSlug}:account_created:profile`;
 
-/** The IANA zones the browser knows, as suggestions (the server is the judge of what it accepts). */
-function timeZoneSuggestions(): string[] {
+/** The IANA zones the browser knows, as suggestions (the server is the judge of what it accepts). Read once: the list never changes. */
+const TIME_ZONE_SUGGESTIONS: readonly string[] = (() => {
   const supported = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] })
     .supportedValuesOf;
   return typeof supported === "function" ? supported("timeZone") : [];
-}
+})();
 
 export function OrganisationPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   const client = useApiClient();
@@ -106,7 +106,7 @@ export function OrganisationPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
           error={failure?.fieldErrors.orgTimezone}
         />
         <datalist id="wx-org-timezones">
-          {timeZoneSuggestions().map((zone) => (
+          {TIME_ZONE_SUGGESTIONS.map((zone) => (
             <option key={zone} value={zone} />
           ))}
         </datalist>
