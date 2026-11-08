@@ -1400,6 +1400,43 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         expect(JSON.stringify(payload)).not.toMatch(/Morphine|patient/i);
       });
 
+      it("an order that exhausted its retries pages the administrator once (critical): the event used to be described as an M36 alert and had no consumer", async () => {
+        const patientId = await h.seedPatient(ORG_A, { synced: "501" });
+        const { orderId } = await h.seedOrder({
+          org: ORG_A,
+          patientId,
+          status: "queued_for_transmission",
+          sendState: "queued",
+        });
+        const vendor = new FakeDoseSpotVendor({
+          transmit: async () => {
+            throw new DegradedError(
+              "dosespot",
+              "transmitNewRx",
+              false,
+              "rejected (HTTP 422).",
+              "c-x",
+            );
+          },
+        });
+        await runTransmitNewRxForOrg(deps(vendor), ORG_A); // a permanent rejection exhausts the budget at once
+        expect((await orderRow(orderId)).status).toBe("transmission_failed");
+        await dispatcher.tick();
+        await dispatcher.tick();
+        const failed = await h.q(
+          "SELECT id, severity::text AS severity, payload FROM alert WHERE organization_id=$1 AND event_type=$2 AND payload->>'orderId'=$3",
+          [ORG_A, "m12.medication_order.transmission_failed", orderId],
+        );
+        expect(failed).toHaveLength(1);
+        expect(failed[0]?.severity).toBe("critical");
+        expect(await recipientsOf(failed[0]?.id as string)).toEqual([adminUserId]);
+        expect(failed[0]?.payload).toMatchObject({
+          orderId,
+          lastErrorClass: "degraded_non_retryable",
+        });
+        expect(JSON.stringify(failed[0]?.payload)).not.toMatch(/Morphine|patient/i);
+      });
+
       it("the registration's deactivation alert (raised directly by the clinic service) now has a recipient too", async () => {
         await alertAfterCommit(
           {

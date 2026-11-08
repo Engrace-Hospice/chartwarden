@@ -148,6 +148,10 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   drops one. It is at-least-once: a process that dies after its publish committed but before the confirm announces it a second time. The circuit
   breaker's own edges are still paired
   in-process (a restart while a breaker is open leaves that alert without its recovery notice).
+- A retry-exhausted transmission (`m12.medication_order.transmission_failed`, owner addition to the review of slice 4) pages the tenant's
+  administrators through the same M36 `dosespot-alerts` consumer and a seeded critical `tenant_admins` rule: it was described as "M36
+  high-severity" from the start and consumed by nobody, so an order that never reached the pharmacy told no one. The alert says it has NOT
+  reached the pharmacy and that the prescriber retransmits it.
 - An outcome DoseSpot left unconfirmed (review of slice 4, L-e): a 2xx that is unreadable or carries no prescription id means the prescription
   may already exist there, so `transmitNewRx` neither fails the order nor retries it (a second send could dispense twice). The order is HELD:
   still `queued_for_transmission` / `in_flight`, its transmission row `last_error_class = 'unconfirmed_outcome'` with a detail line, no retry

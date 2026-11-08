@@ -32,6 +32,12 @@ describe("M12 degradation alerting is wired in the composition root", () => {
     expect(construction).toMatch(/commandTimeout:\s*2_000/);
   });
 
+  it("the consumer handles the retry-exhausted transmission too (the event described as an M36 alert that nothing consumed)", () => {
+    expect([...M36_DOSESPOT_ALERT_EVENT_TYPES]).toContain(
+      "m12.medication_order.transmission_failed",
+    );
+  });
+
   it("the catalog declares M36 as the consumer of exactly the events the consumer handles", () => {
     for (const eventName of M36_DOSESPOT_ALERT_EVENT_TYPES) {
       const entry = M12_OUTBOX_EVENTS.find((e) => String(e.eventName) === eventName);

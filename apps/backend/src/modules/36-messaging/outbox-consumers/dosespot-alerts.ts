@@ -6,6 +6,8 @@
 //   m12.dosespot_recovered  -> m12.dosespot_recovered  info      (seeded tenant_admins rule)
 //   m12.medication_order.transmission_unconfirmed -> the same name  critical  (seeded tenant_admins rule): DoseSpot accepted a NewRx call
 //                           but did not answer readably, so the order is HELD (never retried) until a person checks the prescriber's DoseSpot account
+//   m12.medication_order.transmission_failed -> the same name  critical  (seeded tenant_admins rule): the retry budget was used up (or an
+//                           administrator resolved a held order as never sent): the prescription has NOT reached the pharmacy
 //
 // `m12.dosespot_config.deactivated` is NOT consumed here: the clinic service raises that alert directly after its commit, so a second
 // path would page twice (its seeded rule is in the same file as these two).
@@ -29,6 +31,7 @@ export const M36_DOSESPOT_ALERT_EVENT_TYPES = [
   "m12.dosespot_degraded",
   "m12.dosespot_recovered",
   "m12.medication_order.transmission_unconfirmed",
+  "m12.medication_order.transmission_failed",
 ] as const;
 
 export interface DosespotAlertPlan {
@@ -49,6 +52,10 @@ const BREAKER_DETAIL =
   "E-prescribing through DoseSpot is temporarily unavailable. New prescriptions wait in the queue and are sent automatically when the service recovers.";
 const RECOVERED_DETAIL =
   "The earlier DoseSpot e-prescribing problem has cleared. Queued prescriptions are being sent.";
+const FAILED_DETAIL =
+  "A signed prescription could not be sent to DoseSpot (every attempt failed, or the order cannot be sent as written). It has NOT reached the pharmacy. The prescriber must retransmit it from the order page.";
+const RESOLVED_NOT_SENT_DETAIL =
+  "An administrator confirmed that this prescription never reached DoseSpot. It has NOT been sent. The prescriber must retransmit it from the order page.";
 const UNCONFIRMED_DETAIL =
   "DoseSpot accepted this prescription request but its answer could not be read, so the prescription may already exist there. ChartWarden is holding the order and will not send it again. Check the prescriber's DoseSpot account: if the prescription is there, the order was sent; if it is not, discontinue this order and sign a new one.";
 
@@ -99,6 +106,23 @@ export function planDosespotAlert(event: DispatchableOutboxEvent): DosespotAlert
       severity: "critical",
       correlationId: `outbox:${name}:${event.id}`,
       payload: { eventType: name, orderId, lastErrorClass, detail: UNCONFIRMED_DETAIL },
+    };
+  }
+  if (name === "m12.medication_order.transmission_failed") {
+    const orderId = requireString(p, "orderId", name);
+    const lastErrorClass = requireString(p, "lastErrorClass", name);
+    const retryCount = typeof p.retryCount === "number" ? p.retryCount : 0;
+    return {
+      alertType: name,
+      severity: "critical",
+      correlationId: `outbox:${name}:${event.id}`,
+      payload: {
+        eventType: name,
+        orderId,
+        lastErrorClass,
+        retryCount,
+        detail: lastErrorClass === "resolved_not_sent" ? RESOLVED_NOT_SENT_DETAIL : FAILED_DETAIL,
+      },
     };
   }
   throw new Error(`${M36_DOSESPOT_ALERT_CONSUMER}: unexpected event ${name}`);

@@ -257,7 +257,7 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     eventName: "m12.medication_order.transmission_failed",
     moduleOwner: "m12",
     description:
-      "The `transmit-newrx` worker exhausted its retry budget; M36 high-severity, M30 survey log.",
+      "A signed prescription did not reach DoseSpot: the `transmit-newrx` worker exhausted its retry budget, or an administrator resolved a held order as never sent (`lastErrorClass` resolved_not_sent). It has NOT reached the pharmacy and the prescriber must retransmit it. Consumed by M36's `dosespot-alerts`, which alerts the tenant's administrators (critical).",
     payloadSchema: Type.Object({
       orderId: id,
       lastErrorClass: Type.String(),
@@ -269,8 +269,7 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     // both confirmed as `QualityMedicationOrderConsumer`'s only two real methods), neither about
     // transmission failures. No incident kind, measure, or seam anywhere references DoseSpot
     // transmission failures. A pure producer-side guess, the F-180 shape.
-    declaredConsumers: [],
-    seamConsumers: ["m36"],
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

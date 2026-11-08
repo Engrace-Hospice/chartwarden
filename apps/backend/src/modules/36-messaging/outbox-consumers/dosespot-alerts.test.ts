@@ -115,6 +115,44 @@ describe("M36 dosespot-alerts consumer", () => {
     ).toThrow(/orderId/);
   });
 
+  it("turns a retry-exhausted transmission into a critical alert naming the order, saying it has NOT reached the pharmacy", () => {
+    const plan = planDosespotAlert(
+      event(
+        "m12.medication_order.transmission_failed",
+        { orderId: "order-2", lastErrorClass: "degraded_retryable", retryCount: 5 },
+        "evt-4",
+      ),
+    );
+    expect(plan).toMatchObject({
+      alertType: "m12.medication_order.transmission_failed",
+      severity: "critical",
+      correlationId: "outbox:m12.medication_order.transmission_failed:evt-4",
+    });
+    expect(plan.payload).toMatchObject({
+      orderId: "order-2",
+      lastErrorClass: "degraded_retryable",
+      retryCount: 5,
+    });
+    expect(String(plan.payload.detail)).toMatch(/NOT reached the pharmacy/);
+    expect(String(plan.payload.detail)).toMatch(/retransmit/i);
+  });
+
+  it("says the administrator's own word when a held order was resolved as not sent, and refuses a payload with no order", () => {
+    const resolved = planDosespotAlert(
+      event("m12.medication_order.transmission_failed", {
+        orderId: "order-3",
+        lastErrorClass: "resolved_not_sent",
+        retryCount: 0,
+      }),
+    );
+    expect(String(resolved.payload.detail)).toMatch(/administrator confirmed/);
+    expect(() =>
+      planDosespotAlert(
+        event("m12.medication_order.transmission_failed", { lastErrorClass: "x", retryCount: 1 }),
+      ),
+    ).toThrow(/orderId/);
+  });
+
   it("refuses an event it does not own (the deactivation alert is raised directly, so a second path would page twice)", () => {
     expect(() => planDosespotAlert(event("m12.dosespot_config.deactivated", {}))).toThrow(
       /unexpected event/,
@@ -130,6 +168,7 @@ describe("M36 dosespot-alerts consumer", () => {
       "m12.dosespot_degraded",
       "m12.dosespot_recovered",
       "m12.medication_order.transmission_unconfirmed",
+      "m12.medication_order.transmission_failed",
     ]);
     await consumer.handle(
       event("m12.dosespot_degraded", { ...opened, organizationId: "attacker-org" }),

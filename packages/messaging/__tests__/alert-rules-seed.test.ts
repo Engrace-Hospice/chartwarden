@@ -249,6 +249,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m12.dosespot_recovered",
       // M12: a transmission whose outcome DoseSpot left unconfirmed is held, not retried.
       "m12.medication_order.transmission_unconfirmed",
+      // M12: a transmission that exhausted its retry budget (or was resolved by an administrator as never sent) pages the administrators.
+      "m12.medication_order.transmission_failed",
       "m12.dosespot_config.deactivated",
     ]);
     for (const row of toNewAlertRuleRows()) {

@@ -64,11 +64,12 @@ describe("DoseSpot alert codes have seeded platform rules", () => {
   const seeded = new Map(PLATFORM_DEFAULT_ALERT_RULES.map((r) => [r.eventType, r]));
   const codes = [...M36_DOSESPOT_ALERT_EVENT_TYPES, DEACTIVATED_ALERT];
 
-  it("names the four codes", () => {
+  it("names the five codes", () => {
     expect([...codes].sort()).toEqual([
       "m12.dosespot_config.deactivated",
       "m12.dosespot_degraded",
       "m12.dosespot_recovered",
+      "m12.medication_order.transmission_failed",
       "m12.medication_order.transmission_unconfirmed",
     ]);
   });
