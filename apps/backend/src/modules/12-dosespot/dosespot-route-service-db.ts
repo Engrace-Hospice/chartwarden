@@ -1613,6 +1613,7 @@ export function createDbDoseSpotBackend(
               mdmId: DP.externalPhysicianMdmId,
               vendorId: DP.dosespotPrescriberId,
               revokedAt: DP.revokedAt,
+              linkedBy: DP.linkedByMembershipId,
             })
             .from(DP)
             .where(and(eq(DP.organizationId, organizationId), eq(DP.membershipId, membershipId)))
@@ -1624,9 +1625,18 @@ export function createDbDoseSpotBackend(
           if (relinking && existing?.vendorId != null) throw prescriberVendorLinked();
           // WHO asserted the link (migration 1387): whoever sets or changes it, or reinstates a revoked row (the confirmation went with the
           // revocation, so the reinstatement is a fresh assertion). The prescriber cannot confirm a link they made themself.
+          // A member who linked THEMSELF is fixed by another roster administrator re-saving the same link: that member becomes the
+          // linker, and any confirmation the member wrote under their own link is cleared, so they confirm again under the new maker.
+          const reassertsSelfLink =
+            existing !== undefined &&
+            Boolean(externalPhysicianMdmId) &&
+            existing.mdmId === externalPhysicianMdmId &&
+            existing.linkedBy === membershipId &&
+            linkedByMembershipId !== membershipId;
           const linkAsserted =
             (Boolean(externalPhysicianMdmId) && existing?.mdmId !== externalPhysicianMdmId) ||
-            (existing !== undefined && existing.revokedAt !== null);
+            (existing !== undefined && existing.revokedAt !== null) ||
+            reassertsSelfLink;
           const linker = { linkedByMembershipId };
           const row = firstOrThrow(
             await tx
@@ -1646,6 +1656,7 @@ export function createDbDoseSpotBackend(
                   ...(externalPhysicianMdmId ? { externalPhysicianMdmId } : {}),
                   // a re-link carries nothing of the previous one: no stale NPI, and the PRESCRIBER's confirmation was of the old link
                   ...(relinking ? { npi: null, ...NO_LINK_CONFIRMATION } : {}),
+                  ...(reassertsSelfLink ? NO_LINK_CONFIRMATION : {}),
                   ...(linkAsserted ? linker : {}),
                   enrolledAt: at,
                   revokedAt: null,

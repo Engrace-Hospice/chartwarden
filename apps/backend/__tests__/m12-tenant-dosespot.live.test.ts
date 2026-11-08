@@ -2028,6 +2028,29 @@ describe.skipIf(!DB_URL)(
           expect((await linkService.view(asMember(m))).confirmed).toBe(true);
         });
 
+        it("another roster administrator re-saving a self-made link becomes its maker: the member's own earlier confirmation is cleared and they confirm again", async () => {
+          const m = await newMember();
+          await link(m, m.membershipId);
+          // a confirmation the member wrote around the service under their own link
+          await asDeclaredUser(
+            m.userId,
+            `UPDATE dosespot_prescriber SET link_confirmed_mdm_id=$2, link_confirmed_npi=$3, link_confirmed_at=now(),
+               link_confirmed_by_membership_id=membership_id WHERE membership_id=$1`,
+            [m.membershipId, m.physician.id, m.physician.npi],
+          );
+          await link(m, MEMBERSHIP);
+          expect(await linkerOf(m.membershipId)).toBe(MEMBERSHIP);
+          expect((await confirmationOf(m.membershipId))?.mdm).toBeNull();
+          expect((await linkService.view(asMember(m))).confirmed).toBe(false);
+          expect((await linkService.confirm(asMember(m), pin(m))).confirmed).toBe(true);
+          expect(await enrollment.enroll(tenantActor(ORG_A), m.membershipId)).toMatchObject({
+            enrolledWithDoseSpot: true,
+          });
+          // the member re-saving the same link themself does not take it back from the administrator
+          await link(m, m.membershipId);
+          expect(await linkerOf(m.membershipId)).toBe(MEMBERSHIP);
+        });
+
         it("a member who re-links themself to another record after an administrator's link cannot confirm the new one", async () => {
           const m = await newMember();
           await link(m, MEMBERSHIP);
