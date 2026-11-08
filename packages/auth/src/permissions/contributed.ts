@@ -1822,7 +1822,7 @@ export const M12_CONTRIBUTED_PERMISSIONS = {
   // The tenant's own DoseSpot clinic registration (tenant onboarding slice 4, ADR-0110). ORG-LEVEL on purpose, unlike the
   // roster key above: the registration decides where EVERY prescription of the organization goes (the clinic key, the
   // environment, activation), so a roster admin must not hold it. Granted to the org-wide admin roles only (`org_admin`,
-  // `administrator`; migration 1383 + the full-catalog template). Writes need a fresh step-up.
+  // `administrator`; migration 1398 + the full-catalog template). Writes need a fresh step-up.
   "prescribing.clinic.read": {
     resource: "dosespot_clinic",
     action: "read",

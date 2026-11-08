@@ -178,7 +178,7 @@ export const PLATFORM_ONBOARDING_DATA_KEYS = [
   // Owner decision 2026-11-06: an operator withdraws a tenant's mistaken "filed outside ChartWarden" NOE/NOTR record (migration 1391).
   "tenant_notice_filing.withdraw_platform",
   // Tenant onboarding slice 4 (ADR-0110): the tenant's DoseSpot clinic registration is onboarding data entered on its behalf,
-  // with the same predicate, step-up and reason (migration 1383).
+  // with the same predicate, step-up and reason (migration 1398).
   "tenant_dosespot.read_platform",
   "tenant_dosespot.write_platform",
 ] as const;

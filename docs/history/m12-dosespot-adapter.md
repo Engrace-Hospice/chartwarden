@@ -117,7 +117,7 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   which is how the demo roster is seeded (`db:seed:prescriber-roster`). NPPES with no row refuses in production and proceeds flagged
   (`nppesVerified: false` on the audit row) in sandbox, because the demo's synthetic NPIs are not in the real registry.
 - *The link from a member to that record was one administrator's word about another person.* The prescriber now confirms it from their
-  own account (`/api/v1/me/dosespot-prescriber-link`, migration 1384), pinned to the link and NPI they were shown, and enrolment on both
+  own account (`/api/v1/me/dosespot-prescriber-link`, migration 1399), pinned to the link and NPI they were shown, and enrolment on both
   lanes is refused 409 `DOSESPOT_PRACTITIONER_UNCONFIRMED` until a confirmation matches the current link. A re-link or revoke clears it;
   a table CHECK requires the recorded confirmer to be the row's own member, and a trigger refuses a write that sets or changes a
   confirmation unless the transaction's declared actor (`app.user_id`) is that member's user (clearing is open to any actor; the trigger is a
@@ -129,8 +129,8 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
 
 ## Operational notes
 
-- Deploy note: a local or CI database that applied an EARLIER copy of migration 1384 (before the confirmer CHECK and the actor trigger) or of
-  1385 must be recreated. Both were edited in place because neither had shipped, and the migration runner checksums applied files, so it
+- Deploy note: a local or CI database that applied an EARLIER copy of migration 1399 (before the confirmer CHECK and the actor trigger) or of
+  1400 must be recreated. Both were edited in place because neither had shipped, and the migration runner checksums applied files, so it
   will refuse them. Nothing in any shared environment applied the old copies.
 
 - Enabling a tenant = it (or an operator for it) registers, tests and activates its clinic (sandbox first), then enrols its prescribers
@@ -182,7 +182,7 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   unconfirmed outcome does not announce a held order a second time.
   The fence covered only the vendor call, so (MEDIUM-1 of the next review) every write the worker makes after its claim is conditional on the
   claim still being its own too: the settle locks the ORDER row with the `updated_at` the claim wrote, and after the fence the TRANSMISSION row
-  carrying the nonce the fence wrote (`call_token`, a uuid, migration 1386; it first was the stamp's own time, which two cycles on an equal clock
+  carrying the nonce the fence wrote (`call_token`, a uuid, migration 1401; it first was the stamp's own time, which two cycles on an equal clock
   could share: review of d333d1d9d..HEAD). `updated_at` cannot be the token after the fence: it is shared with a coverage save, allowed in every
   status, and a correction's version bump, and as the token it made such a write during the call orphan a prescription DoseSpot had accepted
   (review of 436fd3c1c..). A

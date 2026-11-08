@@ -877,7 +877,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
   });
 
   // Review of slice 4, M4: the per-tick age alert must be index-served, and reshaping it must not change what it finds.
-  describe("the queued-age probe is index-served (migration 1385)", () => {
+  describe("the queued-age probe is index-served (migration 1400)", () => {
     const cutoff = () => new Date(Date.now() - 60 * 60_000);
     const probe = (org: string) =>
       inOrg(h.handle.db, org, (tx) => staleQueuedOrdersQuery(tx, org, cutoff()));

@@ -26,7 +26,7 @@
  *     registration is `active`;
  *   - the enrolment claim on the real row lock and unique index (two concurrent enrolments: one vendor call, the loser a 409), the
  *     own-marker release, a revoked or suspended member never enrolled or linked;
- *   - migration 1383 over real org-admin / administrator / clinical / platform-level role rows;
+ *   - migration 1398 over real org-admin / administrator / clinical / platform-level role rows;
  *   - the operator port's `assertTxScopedToOrg` guard, and a slug never reaching another tenant's registration or roster;
  *   - `DOSESPOT_SANDBOX_ENABLED`: an active sandbox row stops being live with the flag off, and activation is refused;
  *   - every vendor request of the suite (token mint, clinician add) ran with no transaction open (per async call chain).
@@ -2601,14 +2601,14 @@ describe.skipIf(!DB_URL)(
         });
       });
 
-      it("the permission keys migration 1383 binds are on the platform_ops role row, and on the tenant org-wide admin roles only", async () => {
-        // A fresh database has no platform-owned `platform_ops` row yet (an operator creates it); migration 1383 binds the keys to it
+      it("the permission keys migration 1398 binds are on the platform_ops role row, and on the tenant org-wide admin roles only", async () => {
+        // A fresh database has no platform-owned `platform_ops` row yet (an operator creates it); migration 1398 binds the keys to it
         // WHERE IT EXISTS. Create the row, then re-run the migration's own idempotent binding, as a deploy over a live row does.
         await admin.query(
           "INSERT INTO role (organization_id,key,name,category,enabled) VALUES (NULL,'platform_ops','Platform ops','platform_staff',true) ON CONFLICT DO NOTHING",
         );
         await admin.query(
-          readFileSync(join(MIGRATIONS_DIR, "1383_m12_tenant_dosespot_permissions.sql"), "utf8"),
+          readFileSync(join(MIGRATIONS_DIR, "1398_m12_tenant_dosespot_permissions.sql"), "utf8"),
         );
         const platformOps = await q<{ permission_key: string }>(
           "SELECT rp.permission_key FROM role_permission rp JOIN role r ON r.id = rp.role_id WHERE r.organization_id IS NULL AND r.key='platform_ops'",
@@ -2632,7 +2632,7 @@ describe.skipIf(!DB_URL)(
         const lookalikeA = await seedRole(ORG_A, "org_admin_assistant", "admin_executive");
         const platformAdministrator = await seedRole(null, "administrator", "platform_staff");
         const migrationSql = readFileSync(
-          join(MIGRATIONS_DIR, "1383_m12_tenant_dosespot_permissions.sql"),
+          join(MIGRATIONS_DIR, "1398_m12_tenant_dosespot_permissions.sql"),
           "utf8",
         );
         await admin.query(migrationSql);

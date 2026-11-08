@@ -169,7 +169,7 @@ export const medicationOrders = pgTable(
       .on(t.organizationId, t.triggeringReconciliationDecisionId)
       .where(sql`triggering_reconciliation_decision_id IS NOT NULL`),
     byCreatedAt: index("medication_order_created_idx").on(t.createdAt),
-    // Migration 1385: the queued set the transmit age alert probes. Partial, so it holds only the orders
+    // Migration 1400: the queued set the transmit age alert probes. Partial, so it holds only the orders
     // still waiting to go out.
     byQueued: index("medication_order_queued_idx")
       .on(t.organizationId, t.id)

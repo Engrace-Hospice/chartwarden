@@ -1,9 +1,9 @@
 -- compat: expand
 -- M12 / M34 - the DoseSpot clinic registration permission keys (tenant onboarding slice 4, ADR-0110), mirrored into the DB
--- catalog (the 1330 / 1352 / 1354 shape):
+-- catalog (the 1330 / 1388 / 1390 shape):
 --   prescribing.clinic.read / .admin   the tenant's OWN surface (GET|PUT /api/v1/tenant/dosespot ...). ORG-LEVEL on purpose: the
 --                                      registration decides where EVERY prescription of the organization goes, so it is bound
---                                      to the org-wide admin roles ONLY (org_admin and administrator, by role key, as 1354 does
+--                                      to the org-wide admin roles ONLY (org_admin and administrator, by role key, as 1390 does
 --                                      for billing.clearinghouse.*): the prescriber-roster key (prescribing.admin.roster) does not
 --                                      open it, and no other role gets it here or from the role-template planner (the two
 --                                      full-catalog roles take every non-platform key; every other template lists its grants).
@@ -13,7 +13,7 @@
 --                                      routes' `tenant_lifecycle_platform_ops` predicate admits the exact platform_ops role, so a
 --                                      binding on platform_admin / platform_owner would be a grant the predicate always denies. A
 --                                      role row created later gets them from `db:platform-role grant`.
--- No table, no column, no policy: both lanes write through the tenant's own `dosespot_clinic_registration` (1380) under the
+-- No table, no column, no policy: both lanes write through the tenant's own `dosespot_clinic_registration` (1395) under the
 -- target org's RLS. Existing tenants get the tenant grant here; new tenants from the role templates. Idempotent.
 INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac", "description") VALUES
   ('prescribing.clinic.read', 'dosespot_clinic', 'read', 'compliance', 'none', ''),
