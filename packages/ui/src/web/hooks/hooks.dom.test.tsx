@@ -81,6 +81,126 @@ describe("useDrawerA11y", () => {
   });
 });
 
+describe("useDrawerA11y focus hand-off", () => {
+  /** A list with a drawer per selected row, like the admin list screens: the open row is `tr.is-selected`. */
+  function RowsWithDrawer({
+    setSelection,
+  }: { setSelection: (set: (id: string | null) => void) => void }): JSX.Element {
+    const [id, setId] = useState<string | null>(null);
+    setSelection(setId);
+    return (
+      <div>
+        <input aria-label="filter" />
+        <table>
+          <tbody>
+            {["a", "b"].map((row) => (
+              <tr
+                key={row}
+                aria-label={`row ${row}`}
+                className={id === row ? "is-selected" : undefined}
+                tabIndex={0}
+                onClick={() => setId(row)}
+              >
+                <td>{row}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {id ? <KeyedDrawer key={id} onClose={() => setId(null)} /> : null}
+      </div>
+    );
+  }
+  function KeyedDrawer({ onClose }: { onClose: () => void }): JSX.Element {
+    const props = useDrawerA11y<HTMLElement>(onClose);
+    return (
+      <aside aria-label="Detail" {...props}>
+        <button type="button">act</button>
+      </aside>
+    );
+  }
+  const mountRows = (): { select: (id: string | null) => void } => {
+    let select: (id: string | null) => void = () => undefined;
+    render(<RowsWithDrawer setSelection={(set) => (select = set)} />);
+    return { select: (id) => act(() => select(id)) };
+  };
+
+  it("hands focus to the selected row when the drawer opened with nothing focused (a deep link)", () => {
+    const { select } = mountRows();
+    expect(document.activeElement).toBe(document.body);
+    select("a");
+    const drawer = screen.getByRole("complementary", { name: "Detail" });
+    expect(document.activeElement).toBe(drawer);
+    select(null);
+    expect(document.activeElement).toBe(screen.getByRole("row", { name: "row a" }));
+  });
+
+  it("does nothing harmful when the opener left the page and no row is selected", () => {
+    function Opener(): JSX.Element {
+      const [open, setOpen] = useState(false);
+      const [openerShown, setOpenerShown] = useState(true);
+      return (
+        <div>
+          {openerShown ? (
+            <button type="button" onClick={() => setOpen(true)}>
+              open
+            </button>
+          ) : null}
+          <button type="button" onClick={() => setOpenerShown(false)}>
+            hide opener
+          </button>
+          {open ? <KeyedDrawer onClose={() => setOpen(false)} /> : null}
+        </div>
+      );
+    }
+    render(<Opener />);
+    const opener = screen.getByRole("button", { name: "open" });
+    opener.focus();
+    fireEvent.click(opener);
+    fireEvent.click(screen.getByRole("button", { name: "hide opener" }));
+    expect(() =>
+      fireEvent.keyDown(screen.getByRole("complementary", { name: "Detail" }), { key: "Escape" }),
+    ).not.toThrow();
+    expect(screen.queryByRole("complementary")).toBeNull();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("does not take focus from a text field outside the drawer", () => {
+    const { select } = mountRows();
+    const filter = screen.getByLabelText("filter");
+    filter.focus();
+    select("a");
+    expect(screen.getByRole("complementary", { name: "Detail" })).toBeTruthy();
+    expect(document.activeElement).toBe(filter);
+    select(null);
+    expect(document.activeElement).toBe(filter);
+  });
+
+  it("still takes focus from a button or checkbox outside the drawer", () => {
+    const { select } = mountRows();
+    const row = screen.getByRole("row", { name: "row a" });
+    row.focus();
+    select("a");
+    expect(document.activeElement).toBe(screen.getByRole("complementary", { name: "Detail" }));
+  });
+
+  it("after Back/Forward between two records, the next drawer's opener is its own row, not the previous one", () => {
+    const { select } = mountRows();
+    const rowA = screen.getByRole("row", { name: "row a" });
+    const rowB = screen.getByRole("row", { name: "row b" });
+    rowA.focus();
+    fireEvent.click(rowA);
+    rowB.focus();
+    fireEvent.click(rowB);
+    // Focus sits inside B's drawer when the URL moves back to A: B's drawer unmounts, focus falls to the body.
+    expect(document.activeElement).toBe(screen.getByRole("complementary", { name: "Detail" }));
+    select("a");
+    expect(document.activeElement).toBe(screen.getByRole("complementary", { name: "Detail" }));
+    select(null);
+    expect(document.activeElement).toBe(rowA);
+    expect(document.activeElement).not.toBe(rowB);
+  });
+});
+
 describe("useDebouncedValue", () => {
   it("follows the source only after it has been still for the delay", () => {
     vi.useFakeTimers();

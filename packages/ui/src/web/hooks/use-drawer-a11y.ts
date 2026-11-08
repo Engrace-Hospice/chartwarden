@@ -1,7 +1,9 @@
 // packages/ui/src/web/hooks — keyboard and focus behaviour for the right-hand detail drawer (`aside.wx-admission-drawer`).
 //
 // Spread the result onto the `<aside>`: opening a drawer moves focus into it, Escape closes it, and closing returns focus
-// to whatever opened it (the row or button), so a keyboard user is never dropped back at the top of the page.
+// to whatever opened it (the row or button), so a keyboard user is never dropped back at the top of the page. When nothing
+// was focused at opening (a deep link, Back/Forward) the list's selected row stands in as the opener; a drawer that opens while
+// the user is typing in a field elsewhere leaves that field focused.
 //
 // Escape is left alone while the keystroke belongs to something else: a text field, a native select, or a dialog stacked over the
 // drawer (which handles its own Escape). And once the user has typed or chosen anything inside the drawer, Escape no longer closes
@@ -23,6 +25,32 @@ export interface DrawerA11yProps<T extends HTMLElement> {
   onChange: (event: FormEvent<T>) => void;
 }
 
+/** A list's open row, which a drawer returns focus to when nothing better is known. */
+const SELECTED_ROW = "tr.is-selected, tr[aria-selected='true'], [role='row'][aria-selected='true']";
+const NON_TEXT_INPUTS = new Set([
+  "button",
+  "checkbox",
+  "color",
+  "file",
+  "image",
+  "radio",
+  "range",
+  "reset",
+  "submit",
+]);
+
+const isTextEntry = (el: HTMLElement): boolean =>
+  el instanceof HTMLTextAreaElement ||
+  el instanceof HTMLSelectElement ||
+  (el instanceof HTMLInputElement && !NON_TEXT_INPUTS.has(el.type)) ||
+  el.closest("[contenteditable]:not([contenteditable='false'])") !== null;
+
+/** The page's selected row, ignoring anything inside the drawer itself. */
+const selectedRow = (drawer: HTMLElement | null): HTMLElement | null =>
+  Array.from(document.querySelectorAll<HTMLElement>(SELECTED_ROW)).find(
+    (el) => !drawer?.contains(el),
+  ) ?? null;
+
 const OWN_ESCAPE =
   "input, textarea, select, [role='dialog'], [role='alertdialog'], [contenteditable='true']";
 
@@ -40,18 +68,25 @@ export function useDrawerA11y<T extends HTMLElement = HTMLElement>(
 
   useEffect(() => {
     const node = ref.current;
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    node?.focus({ preventScroll: true });
+    const active = document.activeElement;
+    const focusedOutside = active instanceof HTMLElement && !node?.contains(active);
+    // Focus the drawer — unless the user is typing in a field outside it (a filter box whose result opened this drawer).
+    if (!(focusedOutside && isTextEntry(active))) node?.focus({ preventScroll: true });
+    // Nothing focused (a deep link, or the previous drawer unmounted with focus inside it): the opener is the selected row.
+    const opener = focusedOutside && active !== document.body ? active : selectedRow(node);
+    const openerWasSelectedRow = opener !== null && opener === selectedRow(node);
     return () => {
       // Hand focus back only if the opener is still on the page (a re-rendered row is a new element), and only if the user has
       // not already moved focus somewhere else: picking row B while row A's keyed drawer is open unmounts A's drawer, and
       // pulling focus back to row A there would make B's drawer remember the wrong opener.
-      const active = document.activeElement;
-      const focusMoved = active && active !== document.body && !node?.contains(active);
+      const current = document.activeElement;
+      const focusMoved = current && current !== document.body && !node?.contains(current);
       if (focusMoved) return;
-      if (opener && opener !== document.body && document.contains(opener)) {
-        opener.focus({ preventScroll: true });
-      }
+      // The selection moved to another row (Back/Forward between two records): this drawer is being replaced, not closed.
+      const selected = selectedRow(node);
+      if (openerWasSelectedRow && selected && selected !== opener) return;
+      const target = opener?.isConnected ? opener : selected;
+      target?.focus({ preventScroll: true });
     };
   }, []);
 
