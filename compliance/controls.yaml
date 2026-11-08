@@ -358,15 +358,24 @@ controls:
     title: >-
       An e-prescription whose DoseSpot outcome is unknown is HELD for a person, never failed and never sent a second time, and only an
       organization administrator resolves it. When DoseSpot accepts a NewRx call (2xx) but its answer is unreadable or carries no prescription
-      id, or a worker dies after the call began, the order stays in flight with its transmission row marked unconfirmed_outcome (the row is
-      stamped just before the call): it is not retried, not failed, and neither the claim nor the stale-claim drain touches it, so the
-      prescription is not sent again (a stale claim that never reached the vendor is still released and re-sent). The tenant's administrators
-      are alerted when it is held and again after 24 hours: one alert and one reminder per episode, shared by every replica, each announcement a
-      short-lived claim confirmed only after its event commits, so a crash delays one and never drops it. The order leaves the hold only through
+      id, or a worker dies after the call began, the order stays in flight with its transmission row marked unconfirmed_outcome. The row is
+      stamped just before the call, by a conditional update that only the worker that still owns the claim can pass (a worker whose claim was
+      drained and taken over makes no call), and that update also restarts the stale clock at the call. The held order is not retried and not
+      failed: the claim takes only queued orders, and the stale-claim drain never re-queues a claim whose call began, so the prescription is not
+      sent again. The drain holds such a claim itself, up to 100 per pass (the rest wait unmoved, still in flight, for the next pass); only a
+      stale claim whose call never began is released and re-sent. A DoseSpot prescription id is never recorded on two orders of an organization
+      (webhooks bind an order by it): a per-organization, per-id advisory lock and check refuse it, an order whose vendor-returned id is already
+      on another order is held instead, and a created-but-unsent prescription id is persisted so a retry on another replica re-runs only the send.
+      The tenant's administrators are alerted when an order is held and reminded after 24 hours: one alert per held order, and one reminder per
+      episode, so while any order stays held past 24 hours the episode stays open and a second order that ages meanwhile is covered by it, not by
+      a new reminder. Alert and reminder are shared by every replica, each announcement a short-lived claim re-checked against its state and
+      confirmed only after its event commits, so a crash delays one and never drops it. The order leaves the hold only through
       POST /api/v1/medication-orders/:id/resolve-held-transmission, which needs the org-level administrator key (prescribing.clinic.admin), a
-      fresh step-up, a human (non-AI) actor, an Idempotency-Key and a recorded reason: "sent" needs the DoseSpot prescription id and makes the order
-      transmitted (the status poll then follows it); "not sent" makes it a failed transmission that the prescriber retransmits, never back on the
-      queue. It is accepted only while the hold marker is on the transmission row, under a row lock and a conditional update, so two resolutions,
+      fresh step-up, a human (non-AI) actor, an Idempotency-Key and a recorded reason of at least 10 characters once trimmed: "sent" needs the
+      DoseSpot prescription id (refused with a 409 when another order of the organization already carries it) and makes the order transmitted (the
+      status poll then follows it); "not sent" makes it a failed transmission that the prescriber retransmits, never back on the queue. The held
+      marker, not the failure timestamp, decides that an order is held, so a hold that followed an earlier retry resolves the same way. A
+      resolution is accepted only while the hold marker is on the transmission row, under a row lock and a conditional update, so two resolutions,
       or a resolution racing the drain, cannot both win; an order of another organization is a 404; the audit entry carries ids and the outcome
       only, and the reason is kept on a column the write-audit trigger denylists. A transmission that exhausts its retries also alerts the
       administrators.
@@ -382,11 +391,12 @@ controls:
       - file: apps/backend/src/modules/12-dosespot/jobs/hold.ts
       - file: apps/backend/src/modules/12-dosespot/jobs/transmit-newrx.ts
       - file: apps/backend/src/modules/12-dosespot/jobs/episode-store.ts
+      - file: apps/backend/src/modules/12-dosespot/prescription-id.ts
       - file: packages/dosespot/src/lifecycle/medication-order-machine.ts
       - file: apps/backend/__tests__/m12-tenant-dosespot-routes.test.ts
       - file: apps/web/src/modules/12-dosespot/held-transmission-modal.tsx
     gap:
-      reason: The resolution is an administrator's attestation. ChartWarden cannot read the prescriber's DoseSpot account (its status read needs the prescription id an unconfirmed outcome lacks), so a wrong "sent" leaves the status poll watching a prescription that does not exist (it times out after 24 hours) and a wrong "not sent" can make the retransmit a duplicate. DoseSpot's dedupe by Idempotency-Key is unverified until a sandbox run. An order whose worker died after the call began is held only at the next recovery drain (the 10-minute stale window plus the 5-minute drain, so up to about 15 minutes), and its alert is that late.
+      reason: The resolution is an administrator's attestation. ChartWarden cannot read the prescriber's DoseSpot account (its status read needs the prescription id an unconfirmed outcome lacks). The prescription id is taken as typed and is refused only when it duplicates another order of the organization, so a mistyped id that matches nothing is recorded and the status poll watches a prescription that does not exist until it times out after 24 hours. DoseSpot shows drafts alongside sent prescriptions, so an administrator can read a draft as sent, or miss a draft when resolving "not sent", after which the retransmit duplicates it; the modal asks for "sent to the pharmacy (not a draft)" and, for "not sent", a confirmation that no prescription of any status exists, but that stays the administrator's judgement. DoseSpot's dedupe by Idempotency-Key is unverified until a sandbox run. An order whose worker died after the call began is held only at the next recovery drain (the 10-minute stale window, now measured from the call, plus the 5-minute drain, so up to about 15 minutes, and longer when more than 100 such claims are waiting), and its alert is that late. The 24-hour reminder is one per episode, not one per order.
       owner: engineering
       review_by: 2027-01-31
 
