@@ -12,6 +12,7 @@ import {
   useDebouncedValue,
   useDrawerA11y,
   useRequestGuard,
+  useStaleSelection,
 } from "@chartwarden/ui";
 import type { GlyphName, paths } from "@chartwarden/ui";
 // apps/web/src/modules/34-saas — Feature Flags admin (M34, §4.7 / D13, platform-ops surface).
@@ -26,6 +27,7 @@ import type { GlyphName, paths } from "@chartwarden/ui";
 // list table, and the selected flag in an `aside.wx-admission-drawer`.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
+import { useSearchParams } from "react-router-dom";
 import { FLAG_KIND_TONE, statusLabel } from "./saas-status";
 
 // §4.7 wire enums (platform-typebox `FLAG_KIND` / `FLAG_VALUE_TYPE`) — the UI owns its copy.
@@ -76,7 +78,10 @@ export function FeatureFlags(): JSX.Element {
   const [flags, setFlags] = useState<FeatureFlagView[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<FeatureFlagView | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  // The open flag lives in the URL (`?flag=<id>`), so Back closes the drawer and a link reopens it.
+  const [params, setParams] = useSearchParams();
+  const selectedId = params.get("flag");
   const [ceremony, setCeremony] = useState<FeatureFlagView | null>(null);
   const [committing, setCommitting] = useState(false);
 
@@ -89,6 +94,7 @@ export function FeatureFlags(): JSX.Element {
       const isCurrent = guard();
       loadedKey.current = filterKey(flagKind, org);
       setLoading(true);
+      setLoaded(false);
       setError(null);
       const query: NonNullable<
         paths["/api/v1/platform/feature-flags"]["get"]["parameters"]["query"]
@@ -106,6 +112,7 @@ export function FeatureFlags(): JSX.Element {
       }
       const page = data as FeatureFlagPage | undefined;
       setFlags(page?.items ?? []);
+      setLoaded(true);
       setLoading(false);
     },
     [client, guard, flagKind, debouncedOrg],
@@ -136,12 +143,16 @@ export function FeatureFlags(): JSX.Element {
       setCommitting(false);
       setCeremony(null);
       if (!err) {
-        setSelected(null);
+        setParams({});
         void load();
       }
     },
-    [ceremony, client, load],
+    [ceremony, client, load, setParams],
   );
+
+  // While the list cannot be read no drawer is shown: the flag it would show is the last read, not what the server holds now.
+  const selected = selectedId && !error ? flags.find((f) => f.id === selectedId) : undefined;
+  useStaleSelection({ param: "flag", ready: loaded, found: selected !== undefined });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -160,24 +171,22 @@ export function FeatureFlags(): JSX.Element {
 
         <FlagKpis flags={flags} loadFailed={error !== null} />
 
-        <div className="wx-list-toolbar">
-          <div className="grid w-full gap-3 md:grid-cols-2">
-            <SelectField
-              label="Flag kind"
-              value={flagKind}
-              options={KIND_OPTIONS}
-              onChange={(e) => setFlagKind(e.target.value as FlagKind | "")}
-            />
-            <TextField
-              label="Tenant organization id"
-              placeholder="Optional"
-              value={orgFilter}
-              onChange={(e) => setOrgFilter(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void load(orgFilter);
-              }}
-            />
-          </div>
+        <div className="wx-list-toolbar wx-list-toolbar-fields">
+          <SelectField
+            label="Flag kind"
+            value={flagKind}
+            options={KIND_OPTIONS}
+            onChange={(e) => setFlagKind(e.target.value as FlagKind | "")}
+          />
+          <TextField
+            label="Tenant organization id"
+            placeholder="Optional"
+            value={orgFilter}
+            onChange={(e) => setOrgFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void load(orgFilter);
+            }}
+          />
         </div>
 
         <FlagsTable
@@ -185,14 +194,14 @@ export function FeatureFlags(): JSX.Element {
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={setSelected}
+          onSelect={(f) => setParams({ flag: f.id })}
           onRetry={() => void load()}
         />
       </div>
       {selected ? (
         <FlagDrawer
           flag={selected}
-          onClose={() => setSelected(null)}
+          onClose={() => setParams({})}
           onArmKillSwitch={() => setCeremony(selected)}
         />
       ) : null}
@@ -202,13 +211,13 @@ export function FeatureFlags(): JSX.Element {
           epcs
           title={ceremony.killSwitchActive ? "Disarm kill switch" : "Arm kill switch"}
           attestation={
-            <div className="flex flex-col gap-2">
+            <div className="wx-form-stack">
               <div>
                 You are about to <strong>{ceremony.killSwitchActive ? "disarm" : "arm"}</strong> the
                 kill switch for <span className="wx-data-md">{ceremony.flagKey}</span> (
                 {scopeLabel(ceremony).toLowerCase()}).
               </div>
-              <div className="text-[0.8125rem] text-[var(--color-on-surface-variant)]">
+              <div className="wx-row-sub">
                 Arming the kill switch immediately disables this capability for every affected
                 tenant and emits a platform-emergency alert.
               </div>
@@ -285,7 +294,7 @@ function StatCard({
       </span>
       <div>
         <span className="wx-stat-label">{label}</span>
-        <span className={`wx-stat-value wx-nums${alert ? " text-[var(--color-alert)]" : ""}`}>
+        <span className={`wx-stat-value wx-nums${alert ? " wx-text-alert" : ""}`}>
           {value ?? "—"}
         </span>
         <span className="wx-row-sub">{sub}</span>
@@ -368,14 +377,12 @@ function FlagsTable({
                 <td className="wx-data-md">{renderValue(f)}</td>
                 <td>
                   {f.killSwitchActive ? (
-                    <span className="inline-flex items-center gap-1.5 text-[0.8125rem] font-semibold text-[var(--color-alert)]">
+                    <span className="wx-inline-flag wx-text-alert">
                       <Glyph name="alert" size={14} label="Kill switch armed" />
                       Armed
                     </span>
                   ) : (
-                    <span className="text-[0.8125rem] text-[var(--color-on-surface-variant)]">
-                      Inactive
-                    </span>
+                    <span className="wx-inline-flag wx-text-muted">Inactive</span>
                   )}
                 </td>
               </tr>
@@ -426,13 +433,13 @@ function FlagDrawer({
             {flag.organizationId ? (
               <>
                 <dt>Tenant organization</dt>
-                <dd className="wx-data-md break-words">{flag.organizationId}</dd>
+                <dd className="wx-data-md">{flag.organizationId}</dd>
               </>
             ) : null}
             <dt>Value type</dt>
             <dd>{statusLabel(flag.valueType)}</dd>
             <dt>Value</dt>
-            <dd className="wx-data-md break-words">{renderValue(flag)}</dd>
+            <dd className="wx-data-md">{renderValue(flag)}</dd>
             <dt>Rollout</dt>
             <dd className="wx-nums">
               {flag.rolloutPercent !== null ? `${flag.rolloutPercent}%` : "—"}

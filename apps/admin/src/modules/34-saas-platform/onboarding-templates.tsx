@@ -4,6 +4,7 @@ import {
   GuardChip,
   InlineAlert,
   LoadingSpinner,
+  SelectField,
   StatusPill,
   TextField,
   focusFirstInvalid,
@@ -40,6 +41,11 @@ interface TemplateListPage {
 }
 
 type OriginFilter = "" | "canonical" | "tenant";
+const ORIGIN_OPTIONS: readonly { value: OriginFilter; label: string }[] = [
+  { value: "", label: "All templates" },
+  { value: "canonical", label: "Canonical (platform)" },
+  { value: "tenant", label: "Tenant additions" },
+];
 
 const LIST_LIMIT = 100;
 const ORDER_MIN = 0;
@@ -111,18 +117,18 @@ export function OnboardingTemplates(): JSX.Element {
             <p>The onboarding step catalog: the canonical platform steps plus tenant additions.</p>
           </div>
           <div className="wx-list-toolbar-end">
-            <select
-              aria-label="Filter by origin"
-              value={origin}
-              onChange={(e) => setOrigin(e.target.value as OriginFilter)}
-            >
-              <option value="">All templates</option>
-              <option value="canonical">Canonical (platform)</option>
-              <option value="tenant">Tenant additions</option>
-            </select>
             <Button onClick={() => setParams({ template: NEW_TEMPLATE })}>Add template</Button>
           </div>
         </header>
+
+        <div className="wx-list-toolbar wx-list-toolbar-fields">
+          <SelectField
+            label="Filter by origin"
+            value={origin}
+            options={ORIGIN_OPTIONS}
+            onChange={(e) => setOrigin(e.target.value as OriginFilter)}
+          />
+        </div>
 
         <TemplateTable
           items={visible}

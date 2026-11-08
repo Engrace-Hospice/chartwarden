@@ -73,6 +73,10 @@ const STATUS_FILTERS: readonly (SignupIntentStatus | "all")[] = [
   "abandoned",
   "rejected",
 ];
+const STATUS_OPTIONS = STATUS_FILTERS.map((s) => ({
+  value: s,
+  label: s === "all" ? "All statuses" : cap(s),
+}));
 
 interface Banner {
   tone: "success" | "error";
@@ -167,20 +171,16 @@ export function Signups(): JSX.Element {
             <h1>Signup intents</h1>
             <p>The pre-provision intake funnel: qualify an intent to provision it, or reject it.</p>
           </div>
-          <div className="wx-list-toolbar-end">
-            <select
-              aria-label="Intent status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as SignupIntentStatus | "all")}
-            >
-              {STATUS_FILTERS.map((s) => (
-                <option key={s} value={s}>
-                  {s === "all" ? "All statuses" : cap(s)}
-                </option>
-              ))}
-            </select>
-          </div>
         </header>
+
+        <div className="wx-list-toolbar wx-list-toolbar-fields">
+          <SelectField
+            label="Intent status"
+            value={statusFilter}
+            options={STATUS_OPTIONS}
+            onChange={(e) => setStatusFilter(e.target.value as SignupIntentStatus | "all")}
+          />
+        </div>
 
         {banner ? <InlineAlert tone={banner.tone}>{banner.text}</InlineAlert> : null}
 
@@ -337,11 +337,11 @@ function IntentDrawer({
           </div>
           <dl className="wx-kv">
             <dt>Intent id</dt>
-            <dd className="wx-data-md break-words">{intent.id}</dd>
+            <dd className="wx-data-md">{intent.id}</dd>
             <dt>Contact email</dt>
-            <dd className="wx-data-md break-words">{intent.contactEmail}</dd>
+            <dd className="wx-data-md">{intent.contactEmail}</dd>
             <dt>Intended first admin</dt>
-            <dd className="wx-data-md break-words">{intent.intendedFirstAdminEmail}</dd>
+            <dd className="wx-data-md">{intent.intendedFirstAdminEmail}</dd>
             <dt>Source</dt>
             <dd>{cap(intent.source)}</dd>
             <dt>Received</dt>
@@ -355,13 +355,13 @@ function IntentDrawer({
             {intent.rejectionReason ? (
               <>
                 <dt>Rejection reason</dt>
-                <dd className="break-words">{intent.rejectionReason}</dd>
+                <dd>{intent.rejectionReason}</dd>
               </>
             ) : null}
             {intent.tenantAccountId ? (
               <>
                 <dt>Tenant account</dt>
-                <dd className="wx-data-md break-words">{intent.tenantAccountId}</dd>
+                <dd className="wx-data-md">{intent.tenantAccountId}</dd>
               </>
             ) : null}
           </dl>

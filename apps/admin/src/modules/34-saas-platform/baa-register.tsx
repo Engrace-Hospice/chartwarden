@@ -11,6 +11,7 @@ import {
   useDebouncedValue,
   useDrawerA11y,
   useRequestGuard,
+  useStaleSelection,
 } from "@chartwarden/ui";
 import type { paths } from "@chartwarden/ui";
 // apps/web/src/modules/34-saas — Platform-tenant BAA register (M34, §3.8 / D11, platform-ops surface).
@@ -22,6 +23,7 @@ import type { paths } from "@chartwarden/ui";
 // redesign's list + right drawer (outbox is the reference).
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PLATFORM_BAA_TONE, statusLabel } from "./saas-status";
 
 // §3.8 wire enum (platform-typebox `BAA_STATUS`) — the UI owns its copy.
@@ -68,7 +70,10 @@ export function BaaRegister(): JSX.Element {
   const [records, setRecords] = useState<BaaRecordView[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<BaaRecordView | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  // The open record lives in the URL (`?baa=<id>`), so Back closes the drawer and a link reopens it.
+  const [params, setParams] = useSearchParams();
+  const selectedId = params.get("baa");
 
   // The filter the list was last fetched with: Enter/Apply/Refresh load the typed text at once, and the debounced value then
   // catches up to the same text — without this the effect would fetch the identical query a second time.
@@ -79,6 +84,7 @@ export function BaaRegister(): JSX.Element {
       const isCurrent = guard();
       loadedKey.current = filterKey(status, tenant);
       setLoading(true);
+      setLoaded(false);
       setError(null);
       const query: NonNullable<
         paths["/api/v1/platform/baa-register"]["get"]["parameters"]["query"]
@@ -96,6 +102,7 @@ export function BaaRegister(): JSX.Element {
       }
       const page = data as BaaRegisterPage | undefined;
       setRecords(page?.items ?? []);
+      setLoaded(true);
       setLoading(false);
     },
     [client, guard, status, debouncedTenant],
@@ -105,6 +112,10 @@ export function BaaRegister(): JSX.Element {
     if (loadedKey.current === filterKey(status, debouncedTenant)) return;
     void load();
   }, [load, status, debouncedTenant]);
+
+  // While the list cannot be read no drawer is shown: the record it would show is the last read, not what the server holds now.
+  const selected = selectedId && !error ? records.find((r) => r.id === selectedId) : undefined;
+  useStaleSelection({ param: "baa", ready: loaded, found: selected !== undefined });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -121,24 +132,22 @@ export function BaaRegister(): JSX.Element {
           </div>
         </header>
 
-        <div className="wx-list-toolbar">
-          <div className="grid w-full gap-3 md:grid-cols-2">
-            <SelectField
-              label="BAA status"
-              value={status}
-              options={STATUS_OPTIONS}
-              onChange={(e) => setStatus(e.target.value as BaaStatus | "")}
-            />
-            <TextField
-              label="Tenant account id"
-              placeholder="Optional"
-              value={tenantFilter}
-              onChange={(e) => setTenantFilter(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void load(tenantFilter);
-              }}
-            />
-          </div>
+        <div className="wx-list-toolbar wx-list-toolbar-fields">
+          <SelectField
+            label="BAA status"
+            value={status}
+            options={STATUS_OPTIONS}
+            onChange={(e) => setStatus(e.target.value as BaaStatus | "")}
+          />
+          <TextField
+            label="Tenant account id"
+            placeholder="Optional"
+            value={tenantFilter}
+            onChange={(e) => setTenantFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void load(tenantFilter);
+            }}
+          />
         </div>
 
         <RegisterTable
@@ -146,11 +155,11 @@ export function BaaRegister(): JSX.Element {
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={setSelected}
+          onSelect={(r) => setParams({ baa: r.id })}
           onRetry={() => void load()}
         />
       </div>
-      {selected ? <RecordDrawer record={selected} onClose={() => setSelected(null)} /> : null}
+      {selected ? <RecordDrawer record={selected} onClose={() => setParams({})} /> : null}
     </div>
   );
 }
@@ -160,7 +169,7 @@ function ExpiresOn({ record }: { record: BaaRecordView }): JSX.Element {
   if (!record.expiresOn) return <>—</>;
   const expired = isExpired(record);
   return (
-    <span className={expired ? "wx-nums text-[var(--color-error)]" : "wx-nums"}>
+    <span className={expired ? "wx-nums wx-text-error" : "wx-nums"}>
       {record.expiresOn}
       {expired ? " (expired)" : ""}
     </span>
@@ -286,9 +295,9 @@ function RecordDrawer({
           </div>
           <dl className="wx-kv">
             <dt>Tenant account</dt>
-            <dd className="wx-data-md break-words">{record.tenantAccountId}</dd>
+            <dd className="wx-data-md">{record.tenantAccountId}</dd>
             <dt>Organization</dt>
-            <dd className="wx-data-md break-words">{record.organizationId}</dd>
+            <dd className="wx-data-md">{record.organizationId}</dd>
             <dt>Executed</dt>
             <dd className="wx-nums">{record.executedOn ?? "—"}</dd>
             <dt>Effective</dt>
@@ -303,7 +312,7 @@ function RecordDrawer({
           <h3>Evidence</h3>
           <dl className="wx-kv">
             <dt>Document</dt>
-            <dd className={record.documentId ? "wx-data-md break-words" : undefined}>
+            <dd className={record.documentId ? "wx-data-md" : undefined}>
               {record.documentId ?? "— (none linked)"}
             </dd>
             <dt>Attested</dt>

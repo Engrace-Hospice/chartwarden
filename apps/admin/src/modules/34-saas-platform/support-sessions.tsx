@@ -5,6 +5,7 @@ import {
   Glyph,
   InlineAlert,
   LoadingSpinner,
+  SelectField,
   StatusPill,
   type StatusTone,
   interactiveRowProps,
@@ -71,6 +72,10 @@ const STATUS_FILTERS: readonly (SupportSessionStatus | "all")[] = [
   "expired",
   "closed",
 ];
+const STATUS_OPTIONS = STATUS_FILTERS.map((s) => ({
+  value: s,
+  label: s === "all" ? "All statuses" : cap(s),
+}));
 
 interface Banner {
   tone: "success" | "error";
@@ -166,20 +171,18 @@ export function SupportSessions(): JSX.Element {
             <p>Tenant-consented break-glass sessions, with every action on the surveyor ledger.</p>
           </div>
           <div className="wx-list-toolbar-end">
-            <select
-              aria-label="Session status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as SupportSessionStatus | "all")}
-            >
-              {STATUS_FILTERS.map((s) => (
-                <option key={s} value={s}>
-                  {s === "all" ? "All statuses" : cap(s)}
-                </option>
-              ))}
-            </select>
             <Button onClick={() => setCeremonyOpen(true)}>Start session</Button>
           </div>
         </header>
+
+        <div className="wx-list-toolbar wx-list-toolbar-fields">
+          <SelectField
+            label="Session status"
+            value={statusFilter}
+            options={STATUS_OPTIONS}
+            onChange={(e) => setStatusFilter(e.target.value as SupportSessionStatus | "all")}
+          />
+        </div>
 
         {banner ? <InlineAlert tone={banner.tone}>{banner.text}</InlineAlert> : null}
 
@@ -336,13 +339,13 @@ function SessionDrawer({
           </div>
           <dl className="wx-kv">
             <dt>Session id</dt>
-            <dd className="wx-data-md break-words">{session.id}</dd>
+            <dd className="wx-data-md">{session.id}</dd>
             <dt>Consent grant</dt>
-            <dd className="wx-data-md break-words">{session.supportConsentGrantId}</dd>
+            <dd className="wx-data-md">{session.supportConsentGrantId}</dd>
             <dt>Actor membership</dt>
-            <dd className="wx-data-md break-words">{session.actorMembershipId}</dd>
+            <dd className="wx-data-md">{session.actorMembershipId}</dd>
             <dt>Tenant</dt>
-            <dd className="wx-data-md break-words">{session.tenantAccountId ?? "—"}</dd>
+            <dd className="wx-data-md">{session.tenantAccountId ?? "—"}</dd>
             <dt>Window</dt>
             <dd className="wx-nums">
               {new Date(session.startedAt).toLocaleString()} →{" "}
@@ -361,7 +364,7 @@ function SessionDrawer({
           ) : events.length === 0 ? (
             <span className="wx-row-sub">No ledger entries recorded yet.</span>
           ) : (
-            <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            <ul className="wx-form-stack">
               {events.map((ev) => (
                 <li key={ev.id}>
                   <span className="wx-row-title">{cap(ev.eventKind)}</span>
