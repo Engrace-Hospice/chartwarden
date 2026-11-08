@@ -145,7 +145,11 @@ export function createTenantClearinghouseRuntime(
           );
     // Bound to this organization AND to the mode of this very row: a call naming another org, or another mode, is refused
     // before it reaches the vendor (L2: the usage a context carries is read apart from this binding).
-    return { vendor, transport: bindTransportToOrg(transport, row.organizationId, mode) };
+    return {
+      vendor,
+      account: "tenant",
+      transport: bindTransportToOrg(transport, row.organizationId, mode),
+    };
   }
 
   async function forOrg(organizationId: string): Promise<ClearinghouseBinding> {

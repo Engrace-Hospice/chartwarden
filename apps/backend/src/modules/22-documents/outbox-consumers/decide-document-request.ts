@@ -47,7 +47,7 @@ import type { DocumentAggregateType, DocumentRetentionClass } from "@chartwarden
  *
  * GAP-023/024/038 rewrote this list. It previously held eight names, five of which
  * (`m6.document_requested`, `m9.assessment.document_requested`, `m14.packet.document_requested`,
- * `m16.bereavement.document_requested`, `m23.abn.document_requested`) are declared by NO module's event
+ * `m16.bereavement.document_requested` (since declared by M16, ADR-0109), `m23.abn.document_requested`) are declared by NO module's event
  * catalog — see {@link M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS}. The boot dispatcher routes off the catalog,
  * so those names could never be delivered: subscribing to them read as coverage while covering nothing, and
  * it is what made the M23 ABN mismatch (M23 declares `m23.abn.required`) invisible for a whole audit cycle. */
@@ -69,6 +69,10 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   // M22 renders it, and M37's back-ref column names the template.
   "m10.hope.summary_requested", // hope_summary
   "m16.bereavement.outreach_artifact_requested", // bereavement_welcome_packet (payload names the key)
+  // ADR-0109 D6 / D9 — M16's two plan-level documents: the approved physician condolence letter (aggregate = the letter) and the
+  // internal discharge summary (aggregate = the closure). One event, the payload names the template; promoted out of the
+  // anticipated list now that M16's catalog declares it and two producers emit it.
+  "m16.bereavement.document_requested", // bereavement_physician_condolence_letter | bereavement_discharge_summary_internal
   "m20.safety.incident_report_requested", // safety_incident_report
   "m25.appeal_packet.render_requested", // appeal_packet
   "m25.adr_packet.render_requested", // adr_response_packet
@@ -248,7 +252,8 @@ export const M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS = [
   // emitted, the effect-interpreter gap). It is now consumed (F-144, #248) — the DB write service reads
   // the tenant PDF-policy flag and emits it at `commit`, the fix the old note here anticipated.
   "m14.packet.document_requested", // idg_patient_packet / idg_minutes
-  "m16.bereavement.document_requested", // bereavement_letter (letterKind discriminator)
+  // `m16.bereavement.document_requested` used to sit here as "bereavement_letter (letterKind discriminator)": no catalog declared it.
+  // M16 now declares it (ADR-0109) with a different shape (`documentKind` + `templateKey`), so it is consumed above instead.
 ] as const;
 
 /** One of the §4.11 render-request event names M22 consumes. */

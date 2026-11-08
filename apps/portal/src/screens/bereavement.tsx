@@ -16,6 +16,12 @@ interface Resource {
 interface ProgramItem {
   label?: string;
   detail?: string;
+  /** ADR-0109 D10 — false once this contact stopped mailings (it stays in the program; calls continue). */
+  mailingsAllowed?: boolean;
+  /** False once the 13-month program has ended for this contact: there is nothing left to stop or change. */
+  inWindow?: boolean;
+  /** False when this contact may no longer opt out (the program ended, or they already did). */
+  mayOptOut?: boolean;
 }
 type ResourceState<T> =
   | { status: "loading"; items: [] }
@@ -103,8 +109,13 @@ function BereavementForPatient({
   const [optedOut, setOptedOut] = useState(false);
   const [optingOut, setOptingOut] = useState(false);
   const [optOutError, setOptOutError] = useState<string | null>(null);
+  // ADR-0109 D10 — the family's choice this session (null = nothing changed yet; the server's program view decides).
+  const [mailingsChoice, setMailingsChoice] = useState<boolean | null>(null);
+  const [changingMailings, setChangingMailings] = useState(false);
+  const [mailingsError, setMailingsError] = useState<string | null>(null);
   const mounted = useRef(true);
   const requestInFlight = useRef(false);
+  const mailingsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -117,6 +128,8 @@ function BereavementForPatient({
     void programAttempt;
     let active = true;
     setProgram({ status: "loading", items: [] });
+    // A fresh read is the server's word again: this session's earlier choice no longer overrides it.
+    setMailingsChoice(null);
     if (!patientId)
       return () => {
         active = false;
@@ -192,6 +205,50 @@ function BereavementForPatient({
       active = false;
     };
   }, [client, patientId, resourcesAttempt]);
+
+  /** Mailings are stopped when this session said so, else when every contact the server lists has stopped them. */
+  const mailingsStopped =
+    mailingsChoice !== null
+      ? !mailingsChoice
+      : program.status === "ready" &&
+        program.items.length > 0 &&
+        program.items.every((item) => item.mailingsAllowed === false);
+  // The server says what is still possible for each contact; with none listed, or none saying otherwise, offer the controls.
+  const programItems = program.status === "ready" ? program.items : [];
+  const programEnded = programItems.length > 0 && programItems.every((i) => i.inWindow === false);
+  const mayOptOut = !(programItems.length > 0 && programItems.every((i) => i.mayOptOut === false));
+
+  // After Stop the Resume button replaces it (and the reverse): keep keyboard focus on the control that took its place.
+  useEffect(() => {
+    if (mailingsChoice !== null) mailingsRef.current?.querySelector("button")?.focus();
+  }, [mailingsChoice]);
+
+  /** Stop (or resume) MAILINGS only: the contact stays in the program and the counselor keeps calling. */
+  async function setMailings(allowMailings: boolean): Promise<void> {
+    if (!patientId || program.status !== "ready" || requestInFlight.current) return;
+    requestInFlight.current = true;
+    setChangingMailings(true);
+    setMailingsError(null);
+    try {
+      const response = await client.POST("/api/v1/portal/bereavement/mailing-preference", {
+        body: { allowMailings },
+      });
+      if (!mounted.current) return;
+      if ("error" in response) {
+        setMailingsError(readError(response.response?.status));
+        return;
+      }
+      setMailingsChoice(allowMailings);
+    } catch {
+      if (mounted.current)
+        setMailingsError(
+          "We couldn't confirm your mailing preference. Please check with your hospice team before trying again.",
+        );
+    } finally {
+      requestInFlight.current = false;
+      if (mounted.current) setChangingMailings(false);
+    }
+  }
 
   async function optOut(): Promise<void> {
     if (
@@ -407,19 +464,81 @@ function BereavementForPatient({
               </div>
             ) : (
               <>
-                <p>
-                  You can choose not to receive bereavement outreach. This will not change
-                  information already made available here.
-                </p>
-                <Button
-                  tone="secondary"
-                  onClick={() => {
-                    setConfirmOptOut(true);
-                    setOptOutError(null);
-                  }}
-                >
-                  Opt out of outreach
-                </Button>
+                {mayOptOut ? (
+                  <>
+                    <p>
+                      You can choose not to receive bereavement outreach. This will not change
+                      information already made available here.
+                    </p>
+                    <Button
+                      tone="secondary"
+                      onClick={() => {
+                        setConfirmOptOut(true);
+                        setOptOutError(null);
+                      }}
+                    >
+                      Opt out of outreach
+                    </Button>
+                  </>
+                ) : (
+                  <p>
+                    Outreach preferences can't be changed here any more
+                    {programEnded ? " because the support program has ended" : ""}. Contact your
+                    hospice team if you would like to talk about future support.
+                  </p>
+                )}
+                {programEnded ? null : (
+                  <div className="wx-bereavement-mailings" ref={mailingsRef}>
+                    <h3>Printed mailings</h3>
+                    {/* The status region stays mounted so each change (stopped, resumed) is announced. */}
+                    {/* biome-ignore lint/a11y/useSemanticElements: <output> allows phrasing content only; this status holds flow content. */}
+                    <div role="status">
+                      {mailingsStopped ? (
+                        <div className="wx-bereavement-opted-out">
+                          <Glyph name="check-circle" size={20} aria-hidden="true" />
+                          <p>
+                            Mailings are stopped. Your counselor will still be in touch by phone.
+                          </p>
+                        </div>
+                      ) : mailingsChoice === true ? (
+                        <div className="wx-bereavement-opted-out">
+                          <Glyph name="check-circle" size={20} aria-hidden="true" />
+                          <p>Mailings have resumed.</p>
+                        </div>
+                      ) : null}
+                    </div>
+                    {mailingsStopped ? (
+                      <Button
+                        tone="secondary"
+                        loading={changingMailings}
+                        disabled={changingMailings}
+                        onClick={() => void setMailings(true)}
+                      >
+                        Resume mailings
+                      </Button>
+                    ) : (
+                      <>
+                        <p>
+                          You can stop the cards, letters and invitations we send by post. Your
+                          counselor will still call.
+                        </p>
+                        <Button
+                          tone="secondary"
+                          loading={changingMailings}
+                          disabled={changingMailings}
+                          onClick={() => void setMailings(false)}
+                        >
+                          Stop mailings — you'll still hear from your counselor
+                        </Button>
+                      </>
+                    )}
+                    {mailingsError ? (
+                      <div className="wx-bereavement-opt-error" role="alert">
+                        {mailingsError}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </>
             )}
             {optOutError ? (

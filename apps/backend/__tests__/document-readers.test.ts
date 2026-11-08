@@ -253,6 +253,49 @@ describe("PortalDocumentReader", () => {
     expect(list[0]).not.toHaveProperty("retentionClass");
   });
 
+  // ADR-0109 D6 / D9 — M16's physician letter and discharge summary are internal: the portal refuses them even if a PATCH (or a
+  // producer bug) set `patient_facing` on the row, at the list, the version resolve and the mint.
+  it("never lists, resolves or mints an INTERNAL-ONLY document, even one flagged patient-facing", async () => {
+    const seed: DocumentReaderSeed = {
+      ...SEED,
+      documents: [
+        digest({ documentId: "d1", createdAt: "2026-06-20T00:00:00.000Z" }),
+        digest({
+          documentId: "int-summary",
+          createdAt: "2026-06-21T00:00:00.000Z",
+          aggregateType: "bereavement_discharge_summary",
+          retentionClass: "bereavement",
+        }),
+        digest({
+          documentId: "int-letter",
+          createdAt: "2026-06-22T00:00:00.000Z",
+          aggregateType: "bereavement_physician_letter",
+          retentionClass: "bereavement",
+        }),
+      ],
+    };
+    const portal = makePortal(seed);
+    const list = await portal.documentsForPatient({ patientId: "pat-1", organizationId: ORG });
+    expect(list.map((d) => d.documentId)).toEqual(["d1"]);
+    for (const id of ["int-summary", "int-letter"]) {
+      expect(
+        await portal.resolvePortalDocumentVersion({
+          documentId: id as never,
+          patientId: "pat-1" as never,
+          organizationId: ORG as never,
+        }),
+      ).toBeNull();
+      const res = await portal.mintPortalDownloadUrl({
+        documentVersionId: `${id}-v1` as never,
+        portalSessionId: "sess-1" as never,
+        portalAccountId: "acct-1" as never,
+        patientId: "pat-1" as never,
+        organizationId: ORG as never,
+      });
+      expect(res).toEqual({ denied: true, reason: "not_patient_facing" });
+    }
+  });
+
   it("mints a download URL on the happy path", async () => {
     const portal = makePortal();
     const res = await portal.mintPortalDownloadUrl({

@@ -225,9 +225,14 @@ describe("portal documents to sign (ADR-0107)", () => {
     expect((await within(dialog).findByRole("alert")).textContent).toContain("how you are related");
     await waitFor(() => expect(behalf.open).toBe(true));
 
-    fireEvent.change(within(dialog).getByLabelText("How are you related to the patient?"), {
-      target: { value: "Daughter" },
-    });
+    // The field now carries the refusal as its error (described, invalid, focused).
+    const relation = within(dialog).getByLabelText(/^How are you related to the patient\?/);
+    expect(relation.getAttribute("aria-invalid")).toBe("true");
+    expect(
+      document.getElementById(relation.getAttribute("aria-describedby") ?? "")?.textContent,
+    ).toContain("how you are related");
+    await waitFor(() => expect(document.activeElement).toBe(relation));
+    fireEvent.change(relation, { target: { value: "Daughter" } });
     fireEvent.change(within(dialog).getByLabelText("6-digit code from your authenticator app"), {
       target: { value: "654321" },
     });
@@ -241,7 +246,36 @@ describe("portal documents to sign (ADR-0107)", () => {
     );
   });
 
-  it("reuses the Idempotency-Key when a retry follows a failure that may have landed", async () => {
+  it("reuses the Idempotency-Key when a retry follows a network failure that may have landed", async () => {
+    const seen: Seen[] = [];
+    let signCalls = 0;
+    render(
+      <PortalApp
+        client={clientFor(
+          server((s) => {
+            if (s.path !== SIGN) return undefined;
+            signCalls += 1;
+            if (signCalls === 1) throw new TypeError("network down");
+            return json({ request: ITEMS[0], alreadySigned: false });
+          }),
+          seen,
+        )}
+      />,
+    );
+    const dialog = await openSigning();
+    await within(dialog).findByText(ATTEST);
+    fillAndSubmit(dialog);
+    await within(dialog).findByRole("alert");
+    fireEvent.change(within(dialog).getByLabelText("6-digit code from your authenticator app"), {
+      target: { value: "111111" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sign" }));
+    await waitFor(() => expect(signCalls).toBe(2));
+    const signs = seen.filter((s) => s.path === SIGN);
+    expect(signs[1]?.headers.get("idempotency-key")).toBe(signs[0]?.headers.get("idempotency-key"));
+  });
+
+  it("starts a fresh Idempotency-Key after a 5xx answer, which the server would otherwise replay", async () => {
     const seen: Seen[] = [];
     let signCalls = 0;
     render(
@@ -268,7 +302,9 @@ describe("portal documents to sign (ADR-0107)", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Sign" }));
     await waitFor(() => expect(signCalls).toBe(2));
     const signs = seen.filter((s) => s.path === SIGN);
-    expect(signs[1]?.headers.get("idempotency-key")).toBe(signs[0]?.headers.get("idempotency-key"));
+    expect(signs[1]?.headers.get("idempotency-key")).not.toBe(
+      signs[0]?.headers.get("idempotency-key"),
+    );
   });
 
   it.each([
@@ -447,5 +483,69 @@ describe("portal documents to sign (ADR-0107)", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
     await waitFor(() => expect(lists).toBe(2));
     expect(await screen.findByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+  it("announces through a live region already on the page, and moves focus to it after signing", async () => {
+    render(
+      <PortalApp
+        client={clientFor(
+          server((s) =>
+            s.path === SIGN ? json({ request: ITEMS[0], alreadySigned: false }) : undefined,
+          ),
+        )}
+      />,
+    );
+    await screen.findByText("Notice of privacy practices acknowledgement");
+    // Mounted (empty) before anything is announced, so the later text is a change a screen reader reads out.
+    const region = screen
+      .getAllByRole("status")
+      .find((el) => !el.closest("[role='dialog']")) as HTMLElement;
+    expect(region).toBeTruthy();
+    expect(region.textContent?.trim()).toBe("");
+    const dialog = await openSigning();
+    await within(dialog).findByText(ATTEST);
+    fillAndSubmit(dialog);
+    await waitFor(() => expect(region.textContent).toContain("Your signature was recorded"));
+    await waitFor(() => expect(document.activeElement).toBe(region));
+  });
+
+  it("starts a new attempt (fresh key) when the reason the patient could not sign is edited after a failure", async () => {
+    const seen: Seen[] = [];
+    let signCalls = 0;
+    render(
+      <PortalApp
+        client={clientFor(
+          server((s) => {
+            if (s.path !== SIGN) return undefined;
+            signCalls += 1;
+            // A network failure keeps the key on its own; only the edited field may start a new attempt.
+            if (signCalls === 1) throw new TypeError("network down");
+            return json({ request: ITEMS[0], alreadySigned: false });
+          }),
+          seen,
+        )}
+      />,
+    );
+    const dialog = await openSigning();
+    await within(dialog).findByText(ATTEST);
+    fillAndSubmit(dialog);
+    await within(dialog).findByRole("alert");
+    // Focus returns to the emptied code field, not <body>.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(dialog).getByLabelText("6-digit code from your authenticator app"),
+      ),
+    );
+    fireEvent.change(within(dialog).getByLabelText(/^Why is the patient not able to sign\?/), {
+      target: { value: "Asleep" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("6-digit code from your authenticator app"), {
+      target: { value: "111111" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sign" }));
+    await waitFor(() => expect(signCalls).toBe(2));
+    const signs = seen.filter((s) => s.path === SIGN);
+    expect(signs[1]?.headers.get("idempotency-key")).not.toBe(
+      signs[0]?.headers.get("idempotency-key"),
+    );
   });
 });

@@ -22,6 +22,7 @@ import type {
   PortalDocumentReader,
   RenderedDocumentProvider,
 } from "@chartwarden/types";
+import { isInternalOnlyAggregateType } from "../internal-documents";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { DocumentReaderStore, PortalAccessLogPort, PortalConsentPort } from "./readers-store";
 import type { ObjectStorePort } from "./store";
@@ -114,6 +115,8 @@ export function createPortalDocumentReader(deps: {
         d.organizationId !== organizationId ||
         d.patientId !== patientId ||
         !d.patientFacing ||
+        // ADR-0109 — an internal-only document never reaches the portal, whatever `patient_facing` says.
+        isInternalOnlyAggregateType(d.aggregateType) ||
         d.activeVersionId === null ||
         d.status === "superseded" ||
         d.status === "destroyed_tombstone"
@@ -133,7 +136,12 @@ export function createPortalDocumentReader(deps: {
       // Portal only ever sees patient-facing documents (information-blocking-free per §1.1; no "hold for
       // review" pattern). Project the full digest down to the portal-safe shape (internal tags never present).
       return digests
-        .filter((d) => d.patientFacing && d.activeVersionId !== null)
+        .filter(
+          (d) =>
+            d.patientFacing &&
+            d.activeVersionId !== null &&
+            !isInternalOnlyAggregateType(d.aggregateType),
+        )
         .map(
           (d): PortalDocumentDigest => ({
             documentId: d.documentId,
@@ -158,7 +166,7 @@ export function createPortalDocumentReader(deps: {
       if (owner === null || owner.patientId !== patientId) {
         return { denied: true, reason: "not_owner" } as const;
       }
-      if (!owner.patientFacing) {
+      if (!owner.patientFacing || isInternalOnlyAggregateType(owner.aggregateType)) {
         return { denied: true, reason: "not_patient_facing" } as const;
       }
       if (owner.status === "superseded" || owner.status === "destroyed_tombstone") {

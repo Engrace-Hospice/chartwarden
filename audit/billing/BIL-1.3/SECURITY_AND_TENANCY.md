@@ -1,0 +1,9 @@
+# Security and tenancy
+
+The source reader runs only through `withPlatformContext` with registered `m23-claimmd-ack-dispatch` job ID and the audited platform bypass hook. It is restricted by configured account reference and test/production usage. The platform queue has no tenant-facing grant. The encrypted page and message content are never returned by a route or written to operational logs.
+
+The application transaction uses `withOrgContext(systemOrgContext(organizationId))`. Migration 1354 grants the app role only org-scoped SELECT on the current resolution; the encrypted inbox remains platform-only. The ledger has `organization_id`, `provider_entity_id`, `location_id`, FORCE RLS and tenant INSERT/SELECT grants. The historical evidence table already has tenant RLS and immutable triggers (migration 1352). The dispatcher compares current resolution version, algorithm, strategy, evidence ID/hash, account, usage, organization, provider, location, claim, module and submission. It decrypts the historical TIN only in memory and compares it with the original source; it never uses a current provider profile or caller-selected tenant.
+
+M23 and M41 owner adapters read and mutate their own tables. M41 outbox publication remains in the same org transaction. Only bounded code-shaped sender/status values are copied to the tenant ledger; raw message text, NPI and TIN remain in protected source/evidence storage. The new application row write has a scrubbed audit trigger. Operational logs contain mode and counts only.
+
+**Unverified:** private role/RLS tests must confirm `SELECT ... FOR SHARE` on the resolution is permitted to the app role, cross-tenant IDs reveal nothing, the platform principal has only intended grants, audit triggers fire, and no tenant route can read the account inbox or delivery queue. A passing static tenancy gate is source evidence, not live isolation certification.

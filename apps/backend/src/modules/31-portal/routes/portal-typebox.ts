@@ -311,6 +311,9 @@ export const PortalInvitationIssueResponse = Type.Object({
   inviteUrl: Type.Optional(Type.String()),
 });
 /** GAP-092 — the public, token-authenticated acceptance of an invitation. */
+/** ADR-0109 D10 — the bereaved family's mailing preference: `false` stops mailings (calls continue), `true` resumes them. */
+export const BereavementMailingPreferenceRequest = Type.Object({ allowMailings: Type.Boolean() });
+
 export const PortalInvitationAcceptRequest = Type.Object({
   token: Type.String({ minLength: 40, maxLength: 200 }),
 });
@@ -468,7 +471,11 @@ export const StaffSignatureRequestVoid = Type.Object(
 );
 /** Accept or reject an uploaded signed copy. Accepting records the signature through M39 (uploaded signed PDF); rejecting reopens the request. */
 export const StaffSignatureRequestReview = Type.Object(
-  { decision: Type.Union([Type.Literal("accepted"), Type.Literal("rejected")]) },
+  {
+    decision: Type.Union([Type.Literal("accepted"), Type.Literal("rejected")]),
+    // The uploaded copy the reviewer was shown (the row's uploadedDocumentId): a decision never lands on a copy replaced since.
+    uploadedDocumentId: Uuid,
+  },
   { additionalProperties: false },
 );
 export const StaffSignatureRequestView = Type.Object({

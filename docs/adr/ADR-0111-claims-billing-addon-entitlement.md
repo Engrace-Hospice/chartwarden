@@ -1,4 +1,8 @@
+<<<<<<<< HEAD:docs/adr/ADR-0111-claims-billing-addon-entitlement.md
 # ADR-0111 — Claims-billing add-on entitlement: a platform add-on, block new work and finish in-flight, census by pull, Stripe deferred
+========
+# ADR-0111 — Claims-billing add-on entitlement: a platform add-on, block new work and finish in-flight, census by pull, Stripe deferred
+>>>>>>>> feat/tenant-clearinghouse:docs/adr/ADR-0111-claims-billing-addon-entitlement.md
 
 - **Status:** **Proposed** (2026-11-05)
 - **Date:** 2026-11-05

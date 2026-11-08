@@ -1,6 +1,6 @@
-// apps/backend/src/modules/16-bereavement/bereavement-crypto.ts — the per-tenant DEK envelope for M16's four
-// `*_cipher` columns (GAP-129): `bereaved_contact.{email,phone,mailing_address}_cipher` and
-// `bereavement_contact_log.contact_notes_cipher`.
+// apps/backend/src/modules/16-bereavement/bereavement-crypto.ts — the per-tenant DEK envelope for M16's six
+// `*_cipher` columns (GAP-129): `bereaved_contact.{email,phone,mailing_address,care_goals}_cipher`,
+// `bereavement_physician_letter.personal_note_cipher` and `bereavement_contact_log.contact_notes_cipher`.
 //
 // Mirrors M31's `portal-crypto.ts` / M39's `consent-crypto.ts` / M12's `body-crypto.ts`: AES-256-GCM, the tenant DEK
 // resolved through an INJECTED key provider (the composition root binds M34's `getTenantKeyProvider()`, so this file
@@ -22,11 +22,13 @@ export interface BereavementKeyProvider {
   ): Promise<{ readonly version: string; readonly key: Buffer }>;
 }
 
-/** The four sealed columns. */
+/** The six sealed columns. */
 export type BereavementCipherColumn =
   | "bereaved_contact.email"
   | "bereaved_contact.phone"
   | "bereaved_contact.mailing_address"
+  | "bereaved_contact.care_goals"
+  | "bereavement_physician_letter.personal_note"
   | "bereavement_contact_log.contact_notes";
 
 export interface BereavementCipher {
@@ -36,6 +38,14 @@ export interface BereavementCipher {
     plaintext: string,
   ): Promise<string>;
   decrypt(organizationId: string, column: BereavementCipherColumn, blob: string): Promise<string>;
+}
+
+/** The blob itself cannot be opened (an unrecognised format, a tampered or lifted ciphertext, a failed auth tag). NOT a key-provider outage: those propagate untouched. */
+export class BereavementCipherBlobError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BereavementCipherBlobError";
+  }
 }
 
 const BLOB_VERSION = "v1";
@@ -65,18 +75,23 @@ export function createBereavementCipher(keys: BereavementKeyProvider): Bereaveme
     async decrypt(organizationId, column, blob) {
       const [v, dekVersion, nonce, tag, ct] = blob.split(".");
       if (v !== BLOB_VERSION || !dekVersion || !nonce || !tag || !ct) {
-        throw new Error("unrecognised bereavement cipher blob");
+        throw new BereavementCipherBlobError("unrecognised bereavement cipher blob");
       }
+      // The key provider's own failures (an outage, a rotated-out version) propagate as they are: they are retryable, a bad blob is not.
       const { key } = keys.dekForOrgVersion
         ? await keys.dekForOrgVersion(organizationId, dekVersion)
         : await keys.dekForOrg(organizationId);
-      const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(nonce, "base64url"));
-      decipher.setAAD(aad(organizationId, column));
-      decipher.setAuthTag(Buffer.from(tag, "base64url"));
-      return Buffer.concat([
-        decipher.update(Buffer.from(ct, "base64url")),
-        decipher.final(),
-      ]).toString("utf8");
+      try {
+        const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(nonce, "base64url"));
+        decipher.setAAD(aad(organizationId, column));
+        decipher.setAuthTag(Buffer.from(tag, "base64url"));
+        return Buffer.concat([
+          decipher.update(Buffer.from(ct, "base64url")),
+          decipher.final(),
+        ]).toString("utf8");
+      } catch {
+        throw new BereavementCipherBlobError("bereavement cipher blob failed to open");
+      }
     },
   };
 }

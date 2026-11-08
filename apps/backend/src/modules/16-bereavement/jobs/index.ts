@@ -11,6 +11,9 @@ export const M16_QUEUES = {
   anniversaryLookahead: "m16-anniversary-lookahead",
   missDeadline: "m16-miss-deadline",
   unreachableDetector: "m16-unreachable-detector",
+  // ADR-0109 D10 — the mailing program: a 5-minute sweep (drafts runs, re-sends a lost render hand-off, writes the activity log) and the render worker.
+  mailingSweep: "m16-mailing-sweep",
+  mailingGenerate: "m16-mailing-generate",
 } as const;
 
 export type M16QueueName = (typeof M16_QUEUES)[keyof typeof M16_QUEUES];
@@ -21,6 +24,8 @@ export const M16_DLQ = {
   anniversaryLookahead: "m16-anniversary-dlq",
   missDeadline: "m16-miss-deadline-dlq",
   unreachableDetector: "m16-unreachable-dlq",
+  mailingSweep: "m16-mailing-sweep-dlq",
+  mailingGenerate: "m16-mailing-generate-dlq",
 } as const;
 
 /** Repeatable job names (what a log line / BullMQ UI shows). */
@@ -29,6 +34,8 @@ export const M16_JOB_NAMES = {
   anniversaryLookahead: "m16.anniversary-lookahead.cron",
   missDeadline: "m16.miss-deadline.cron",
   unreachableDetector: "m16.unreachable-detector.cron",
+  mailingSweep: "m16.mailing-sweep.cron",
+  mailingGenerate: "m16.mailing-generate",
 } as const;
 
 /** §4.9 schedules (cron patterns, evaluated in UTC by BullMQ). */
@@ -37,6 +44,7 @@ export const M16_JOB_SCHEDULES = {
   anniversaryLookahead: "0 6 * * *",
   missDeadline: "0 * * * *",
   unreachableDetector: "0 3 * * *",
+  mailingSweep: "*/5 * * * *",
 } as const;
 
 /** §4.9 BullMQ parameters. Priority: BullMQ lower number = higher priority; low=10, normal=5. */
@@ -65,6 +73,19 @@ export const M16_QUEUE_PARAMS = {
     backoff: { type: "exponential", delay: 60_000 },
     concurrency: 2,
   },
+  mailingSweep: {
+    priority: 10,
+    attempts: 3,
+    backoff: { type: "exponential", delay: 30_000 },
+    concurrency: 1,
+  },
+  // A render is the expensive step and the only one that decrypts addresses: a modest pool, retried, then the failed set (the DLQ) and a `failed` run.
+  mailingGenerate: {
+    priority: 5,
+    attempts: 3,
+    backoff: { type: "exponential", delay: 30_000 },
+    concurrency: 2,
+  },
 } as const;
 
 /** §4.9 anniversary lookahead horizon. */
@@ -72,3 +93,9 @@ export const M16_ANNIVERSARY_LOOKAHEAD_DAYS = 14;
 
 /** Per-org rows handled per tick (the next tick drains the rest; every pass is idempotent). */
 export const M16_CRON_BATCH_LIMIT = 500;
+
+/** ADR-0109 D10 — activity-log rows the sweep writes per transaction (set-based `INSERT ... SELECT`), and the chunk cap per run per tick. */
+export const M16_MAILING_LOG_CHUNK = 500;
+export const M16_MAILING_LOG_MAX_CHUNKS_PER_TICK = 100;
+/** A run that has sat in `generating` this long lost its render hand-off (or its worker): the sweep re-sends it (idempotent by job id). */
+export const M16_MAILING_STALE_GENERATING_MS = 10 * 60 * 1000;

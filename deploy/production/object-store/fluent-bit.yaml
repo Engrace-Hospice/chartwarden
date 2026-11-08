@@ -1,0 +1,21 @@
+# SeaweedFS S3 audit log -> the api's access-log webhook (GAP-141). SeaweedFS emits one record per S3 call over
+# the Fluent forward protocol (audit.json); this forwards each batch as a JSON array with the webhook bearer.
+# Used verbatim by production compose and by scripts/object-store-conformance/seaweedfs-up.sh.
+service:
+  flush: 1
+  log_level: warn
+pipeline:
+  inputs:
+    - name: forward
+      listen: 0.0.0.0
+      port: 24224
+  outputs:
+    - name: http
+      match: "*"
+      host: ${AUDIT_SINK_HOST}
+      port: ${AUDIT_SINK_PORT}
+      uri: ${AUDIT_SINK_PATH}
+      format: json
+      json_date_key: date
+      header: Authorization Bearer ${AUDIT_SINK_TOKEN}
+      retry_limit: 5

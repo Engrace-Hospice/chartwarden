@@ -4,6 +4,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { DocumentAggregateType, DocumentRetentionClass } from "@chartwarden/types";
 import { ChartWardenError, DegradedError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
+import { assertNotInternalOnlyForWrite, isInternalOnlyAggregateType } from "../internal-documents";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";
 import { assertKindWritable } from "./immutable-kinds";
@@ -65,6 +66,7 @@ export interface VerifiedUploadService {
 }
 
 function validateInput(input: InitiateVerifiedUploadInput): void {
+  assertNotInternalOnlyForWrite(input.aggregateType);
   if ((input.mode === "new_version") !== Boolean(input.targetDocumentId)) {
     throw new ChartWardenError(
       "VALIDATION_FAILED",
@@ -178,6 +180,8 @@ export function createVerifiedUploadService(deps: {
             .where(eq(D.id, targetDocumentId))
             .limit(1);
           if (!doc) throw new NotFoundError("document");
+          // Render-only and never a version target for anyone: answer as if absent (no internal/unknown oracle).
+          if (isInternalOnlyAggregateType(doc.aggregateType)) throw new NotFoundError("document");
           assertKindWritable(doc.aggregateType);
           if (doc.status === "legal_hold" || doc.status === "destroyed_tombstone") {
             throw new ChartWardenError(

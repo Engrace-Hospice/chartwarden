@@ -23,6 +23,7 @@ export const m25ParseStatus = pgEnum("m25_parse_status", [
   "posted",
   "partial_posted",
   "failed",
+  "held_duplicate",
 ]);
 export const m25MatchState = pgEnum("m25_match_state", [
   "unmatched",

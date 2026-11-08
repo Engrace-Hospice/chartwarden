@@ -66,6 +66,19 @@ export interface PortalBereavementOptOutPort {
   }): Promise<{ readonly contactsOptedOut: number; readonly alreadyOptedOut: number }>;
 }
 
+/**
+ * ADR-0109 D10 — M16's mailing preference: a bereaved family member stops (or resumes) MAILINGS only. The contact stays active
+ * and the calls continue. `allowMailings: false` records a `no_mailings` opt-out per eligible contact; `true` rescinds it.
+ */
+export interface PortalBereavementMailingPreferencePort {
+  setMailingPreference(input: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly portalAccountId: string;
+    readonly allowMailings: boolean;
+  }): Promise<{ readonly contactsUpdated: number; readonly alreadyInState: number }>;
+}
+
 /** M4 — an account's own read trail (the §164.528 disclosure-accounting view an admin audits). */
 export interface PortalAccountAuditPort {
   viewsForUser(input: {

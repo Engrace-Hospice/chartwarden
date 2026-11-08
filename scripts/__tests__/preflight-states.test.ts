@@ -149,6 +149,16 @@ describe("preflight.sh across the infra-rename windows", () => {
     expect(r.out).toContain("chartwarden_minio-data");
   });
 
+  it("refuses a half-finished copy of the SeaweedFS volume (post-cutover object store)", () => {
+    const r = run({
+      env: ["CHARTWARDEN_VOLUME_PREFIX=chartwarden", "CHARTWARDEN_DB_NAME=wardenx", ...SMOKE],
+      volumes: ["wardenx_postgres-data", "wardenx_seaweedfs-data", "chartwarden_postgres-data"],
+      pgProjects: ["chartwarden"],
+    });
+    expect(r.code).toBe(67);
+    expect(r.out).toContain("chartwarden_seaweedfs-data");
+  });
+
   it("refuses when the key says chartwarden but the cluster still holds wardenx (rename not run)", () => {
     const r = run({
       env: ["CHARTWARDEN_VOLUME_PREFIX=wardenx", "CHARTWARDEN_DB_NAME=chartwarden", ...SMOKE],

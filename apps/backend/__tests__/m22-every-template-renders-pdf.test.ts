@@ -80,6 +80,9 @@ describe("every platform template renders a real PDF (GAP-033)", () => {
     "evv_verification",
     "dsar_bundle",
     "tenant_export_cover_letter",
+    // ADR-0109 D10 (bereavement-mailing-batch.test.ts): a batch with no letter, or a letter with no address, is a malformed request:
+    // printing a blank envelope window is worse than failing the render (the worker moves the run to `failed`).
+    "bereavement_mailing_batch",
   ]);
 
   it("covers the full template table (guards against the loop matching nothing)", () => {

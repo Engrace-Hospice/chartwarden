@@ -180,6 +180,17 @@ describe("createServerUploadService.createDocument", () => {
     expect(mem.objects.size).toBe(0);
   });
 
+  it("refuses to file a document under an internal-only aggregate type (render-only), storing nothing", async () => {
+    const { db, inserts } = fakeDb();
+    const mem = createInMemoryObjectStore();
+    const svc = createServerUploadService({ db, objects: mem.store });
+    await expect(
+      svc.createDocument(ORG, ACTOR, { ...ARGS, aggregateType: "bereavement_physician_letter" }),
+    ).rejects.toMatchObject({ code: "DOCUMENT_INTERNAL_ONLY", statusCode: 422 });
+    expect(inserts).toHaveLength(0);
+    expect(mem.objects.size).toBe(0);
+  });
+
   it("requires the referral reader for a referral aggregate", async () => {
     const { db } = fakeDb();
     const mem = createInMemoryObjectStore();
@@ -645,6 +656,18 @@ describe("createServerUploadService.createVersion", () => {
     await expect(
       svc.createVersion(ORG, ACTOR, DOC_ID, { content: ARGS.content }),
     ).rejects.toMatchObject({ statusCode: 409, code: "DOCUMENT_IMMUTABLE" });
+    expect(mem.objects.size).toBe(0);
+  });
+
+  it("refuses a new version of an internal-only document (render-only), storing nothing", async () => {
+    const { db } = fakeDb({
+      selects: [[{ ...writable, aggregateType: "bereavement_discharge_summary" }]],
+    });
+    const mem = createInMemoryObjectStore();
+    const svc = createServerUploadService({ db, objects: mem.store });
+    await expect(
+      svc.createVersion(ORG, ACTOR, DOC_ID, { content: ARGS.content }),
+    ).rejects.toMatchObject({ code: "DOCUMENT_INTERNAL_ONLY", statusCode: 422 });
     expect(mem.objects.size).toBe(0);
   });
 

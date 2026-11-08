@@ -60,6 +60,7 @@ export type {
   DocumentRenderer,
   DocumentStorageProvider,
   ExtractionProvenanceReader,
+  OrgDocumentAccessProvider,
   ElectionPeriodReader,
   EncounterCreator,
   EscalationRouter,

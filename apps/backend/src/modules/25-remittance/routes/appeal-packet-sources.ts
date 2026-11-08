@@ -82,7 +82,7 @@ export type EnclosureRefusal = AppealEnclosureRefusal;
 
 /** Pure: why a document may not be enclosed in this claim's appeal, or null when it may. */
 export function enclosureRefusal(
-  digest: Pick<DocumentDigest, "status" | "patientId" | "retentionClass"> | null,
+  digest: Pick<DocumentDigest, "status" | "patientId" | "retentionClass" | "aggregateType"> | null,
   claimPatientId: string,
 ): EnclosureRefusal | null {
   return appealEnclosureRefusal(digest, claimPatientId);

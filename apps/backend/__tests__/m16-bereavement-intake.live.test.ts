@@ -281,11 +281,20 @@ describe.skipIf(!DB_URL)("F-105 — M16 opens the bereavement plan, LIVE Postgre
         buildM16BereavementIntakeConsumer({
           db: handle.db,
           outbox: bind("m16") as never,
+          // ADR-0109 D7 — records the `death_intake` alert the intake emits when (and only when) it opens a plan.
+          alerts: {
+            emit: async (alert) => {
+              deathIntakeAlerts.push(alert);
+            },
+          },
           // M6's ORG-EXPLICIT reader. The §4.7 `AdmissionStatusReader` pins the tenant from the ambient
           // REQUEST scope, and a relay tick is not a request — binding that instead is how every one of
           // these deliveries dead-letters with `no ambient request context`.
           resolveAdmission: async (organizationId, admissionId) =>
             admissionSchedulingContextForOrg(handle.db, organizationId, admissionId),
+          // ADR-0109 D6 — M5's attending lookup as a named double the tests steer (a user id, null, or a throw).
+          resolveAttendingUserId: async (organizationId, patientId) =>
+            attendingFor(organizationId, patientId),
         }),
       ],
       eventCatalog: catalog,
@@ -297,6 +306,22 @@ describe.skipIf(!DB_URL)("F-105 — M16 opens the bereavement plan, LIVE Postgre
     await handle?.close();
     if (admin) await admin.end();
   });
+
+  /** What M5 answers when the intake asks for the patient's attending clinician. */
+  let attendingFor: (organizationId: string, patientId: string) => Promise<string | null> =
+    async () => null;
+  const letterFor = async (planId: string) =>
+    (await admin.query("SELECT * FROM bereavement_physician_letter WHERE plan_id=$1", [planId]))
+      .rows as Array<Record<string, unknown>>;
+
+  /** Every alert the intake consumer handed its `AlertPort`, in order. */
+  const deathIntakeAlerts: Array<{
+    organizationId: string;
+    kind: string;
+    payload: Record<string, unknown>;
+  }> = [];
+  const alertsForPlan = (planId: string) =>
+    deathIntakeAlerts.filter((a) => a.payload.planId === planId);
 
   it("opens the plan — `bereavement_plan`'s first row in any database", async () => {
     const at = "2026-03-01";
@@ -314,6 +339,63 @@ describe.skipIf(!DB_URL)("F-105 — M16 opens the bereavement plan, LIVE Postgre
     // D1 — created `eligible`, NOT `active`: a counselor has not been assigned and no roster exists.
     expect(plans[0].status).toBe("eligible");
     expect(plans[0].opened_at).toBeNull();
+    // ADR-0109 D7 — opening the plan tells the oversight roles (ids and the death date only), and (D6) that its physician
+    // letter awaits review.
+    expect(alertsForPlan(plans[0].id)).toEqual([
+      {
+        organizationId: ORG_A,
+        kind: "death_intake",
+        payload: { planId: plans[0].id, deathDate: at },
+      },
+      {
+        organizationId: ORG_A,
+        kind: "physician_letter_pending_review",
+        payload: { planId: plans[0].id },
+      },
+    ]);
+  });
+
+  it("opens the physician letter in the plan's transaction: pending_review, due death + 2 days, addressed to M5's attending (ADR-0109 D6)", async () => {
+    const attending = randomUUID();
+    attendingFor = async () => attending;
+    const at = "2026-05-01";
+    const { admissionId, patientId } = await decedent(ORG_A, at);
+    await dispatcher.tick();
+    attendingFor = async () => null;
+
+    const [plan] = await plansFor(admissionId);
+    const letters = await letterFor(plan.id);
+    expect(letters).toHaveLength(1);
+    expect(letters[0]).toMatchObject({
+      organization_id: ORG_A,
+      provider_entity_id: providerOf[ORG_A],
+      patient_id: patientId,
+      status: "pending_review",
+      attending_user_id: attending,
+      reviewed_at: null,
+      personal_note_cipher: null,
+      version: 0,
+    });
+    expect((letters[0].due_at as Date).toISOString()).toBe("2026-05-03T00:00:00.000Z");
+  });
+
+  it("leaves the recipient open when M5 resolves nobody or fails, and still opens the plan and the letter", async () => {
+    attendingFor = async () => {
+      throw new Error("care team seam unavailable");
+    };
+    const failed = await decedent(ORG_A, "2026-05-02");
+    await dispatcher.tick();
+    attendingFor = async () => null;
+    const none = await decedent(ORG_A, "2026-05-04");
+    await dispatcher.tick();
+
+    for (const { admissionId } of [failed, none]) {
+      const [plan] = await plansFor(admissionId);
+      expect(plan.status).toBe("eligible");
+      const letters = await letterFor(plan.id);
+      expect(letters).toHaveLength(1);
+      expect(letters[0]).toMatchObject({ status: "pending_review", attending_user_id: null });
+    }
   });
 
   it("anchors the 13-month clock on the DEATH, read through M6's census seam", async () => {
@@ -363,6 +445,13 @@ describe.skipIf(!DB_URL)("F-105 — M16 opens the bereavement plan, LIVE Postgre
     );
     await dispatcher.tick();
     expect(await plansFor(admissionId)).toHaveLength(1);
+    // the redelivery inserted nothing, so it alerts nothing and opens no second letter: one of each for the one plan.
+    const [plan] = await plansFor(admissionId);
+    expect(alertsForPlan(plan.id).map((a) => a.kind)).toEqual([
+      "death_intake",
+      "physician_letter_pending_review",
+    ]);
+    expect(await letterFor(plan.id)).toHaveLength(1);
   });
 
   it("does not leak across tenants — org B's death opens org B's plan only", async () => {
@@ -408,5 +497,13 @@ describe.skipIf(!DB_URL)("F-105 — M16 opens the bereavement plan, LIVE Postgre
     // The control that must pass in BOTH directions: it passes against the pre-fix code too, which is
     // what makes the other seven meaningful.
     expect(await plansFor(admissionId)).toHaveLength(0);
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM bereavement_physician_letter WHERE patient_id=$1",
+          [patientId],
+        )
+      ).rows[0].n,
+    ).toBe(0);
   });
 });

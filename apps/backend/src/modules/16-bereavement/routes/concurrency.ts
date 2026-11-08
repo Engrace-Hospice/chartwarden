@@ -12,7 +12,7 @@
 //     requires a client-supplied `Idempotency-Key`. This is the HTTP-layer guard against a duplicate
 //     client submission; it is NOT the §4.9 worker-side state-check, which §4.9's own note is explicit
 //     about keeping orthogonal.
-import { ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, ValidationError } from "@chartwarden/types";
 import type { PreHandler } from "./actor";
 
 /** ADR-0021 — every mutating route requires a client-supplied Idempotency-Key (1–128 chars). */
@@ -116,6 +116,34 @@ export function decodeCursor(raw: string | undefined | null): Cursor | null {
   } catch {
     return null;
   }
+}
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PG_INT4_MAX = 2147483647;
+const ANCHOR_SHAPE: Record<"date" | "instant" | "integer", (a: string) => boolean> = {
+  date: (a) => /^\d{4}-\d{2}-\d{2}$/.test(a) && !Number.isNaN(Date.parse(`${a}T00:00:00Z`)),
+  instant: (a) => !Number.isNaN(Date.parse(a)),
+  // a Postgres int4 (the anchor is compared against an `integer` column): 10 digits can still overflow it
+  integer: (a) => /^\d{1,10}$/.test(a) && Number(a) <= PG_INT4_MAX,
+};
+
+/**
+ * Decode a keyset cursor AND check its anchor and id have the shape the route's SQL will cast them to. `decodeCursor` only checks that both
+ * fields are strings, so a crafted cursor would otherwise reach a `::uuid` cast or a `new Date(...)` and surface as a 500. A malformed (not base64
+ * JSON) cursor still reads as "start from the beginning"; a well-formed one with a bad anchor or id is a 422 validation error.
+ */
+export function decodeCheckedCursor(
+  raw: string | undefined | null,
+  anchor: "date" | "instant" | "integer",
+): Cursor | null {
+  const cursor = decodeCursor(raw);
+  if (cursor === null) return null;
+  if (!ANCHOR_SHAPE[anchor](cursor.a) || !UUID_SHAPE.test(cursor.id)) {
+    throw new ValidationError("request validation failed", [
+      { field: "cursor", code: "INVALID", message: "the cursor is not one this route issued" },
+    ]);
+  }
+  return cursor;
 }
 
 /** Slice a `limit + 1` row set into the page envelope (the anchor is extracted per route). */

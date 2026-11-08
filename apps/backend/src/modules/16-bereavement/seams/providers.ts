@@ -321,7 +321,7 @@ export function createBereavedPortalScopeProvider(
     async scopeForPortalAccount(_orgId, portalAccountId) {
       const now = clock();
       const rows = await store.contactsForPortalAccount(portalAccountId);
-      return rows.map(({ contact, plan }): BereavedPortalScope => {
+      return rows.map(({ contact, plan, mailingsAllowed }): BereavedPortalScope => {
         const inWindow = isPlanInWindow(plan, now);
         const optedOut = contact.status === "opted_out";
         return {
@@ -329,14 +329,21 @@ export function createBereavedPortalScopeProvider(
           planId: contact.planId,
           status: contact.status,
           inBereavementWindow: inWindow,
-          mayOptOut: inWindow && !optedOut,
+          // `optOut` is legal only from `active` (lifecycle/contact.ts); a proposed or unreachable contact is
+          // not offered it, so the portal handler never hits ILLEGAL_TRANSITION midway through its loop.
+          mayOptOut: inWindow && contact.status === "active",
           mayRescindOptOut:
             inWindow &&
             optedOut &&
             contact.optedOutAt !== null &&
             isWithinOptOutRescindWindow(contact.optedOutAt, now),
+          mailingsAllowed,
         };
       });
+    },
+    async isWindowOpen({ portalAccountId, patientId, asOf }) {
+      const rows = await store.contactsForPortalAccount(portalAccountId);
+      return rows.some(({ plan }) => plan.patientId === patientId && isPlanInWindow(plan, asOf));
     },
   };
 }

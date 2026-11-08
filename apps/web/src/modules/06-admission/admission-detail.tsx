@@ -1603,6 +1603,11 @@ export function AdmissionDetail({
                   Record death
                 </Link>
               ) : null}
+              {hasPermission("bereavement.assessment_draft.read") ? (
+                <Link to={`/bereavement/pre-death/${admission.id}`} className="wx-btn-secondary">
+                  Pre-death assessment
+                </Link>
+              ) : null}
             </div>
           }
         >

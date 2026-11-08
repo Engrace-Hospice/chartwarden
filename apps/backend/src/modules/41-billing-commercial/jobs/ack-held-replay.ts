@@ -16,7 +16,7 @@
 import { schema } from "@chartwarden/db";
 import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { validateAckEvent } from "../domain/ack-event";
-import { withOrgBinding } from "../services/org-binding";
+import { isPlatformClaimMdBinding, withOrgBinding } from "../services/org-binding";
 import type { CommercialTx } from "../services/types";
 import {
   ACK_POLL_MAX_AGE_DAYS,
@@ -304,6 +304,7 @@ export async function replayHeldEvents(
   scope: Scope,
 ): Promise<{ readonly applied: number; readonly abandoned: number }> {
   const deps = await withOrgBinding(rawDeps, scope.organizationId, rawDeps.log);
+  if (isPlatformClaimMdBinding(deps.binding)) return { applied: 0, abandoned: 0 };
   const Q = schema.commercialAckQuarantine;
   const vendor = deps.binding.vendor;
   const cutoff = nowOf(deps).getTime() - ACK_POLL_MAX_AGE_DAYS * DAY_MS;

@@ -532,12 +532,27 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
   }> {
     const admissionId = await activeAdmission(org, randomUUID());
     await dispatcher.tick();
-    const [drafted] = await noesFor(admissionId);
+    let drafts = await noesFor(admissionId);
+    // A previous test can leave enough unrelated outbox rows ahead of this newly-created notice
+    // that one bounded dispatcher tick does not reach it. Keep the fixture deterministic.
+    for (let attempt = 0; drafts.length === 0 && attempt < 5; attempt++) {
+      await dispatcher.tick();
+      drafts = await noesFor(admissionId);
+    }
+    expect(drafts).toHaveLength(1);
+    const [drafted] = drafts;
     await withOrgContext(handle.db as never, { organizationId: org, userId: "" }, async (tx) => {
       const noes = new repositories.NoeRepository(tx as never);
       const noe = await noes.findById(drafted.id);
       await noes.transitionToState(drafted.id, noe?.version ?? 0, "ready");
-      await runNoeSubmit(tx as never, workerDeps, { organizationId: org, noeId: drafted.id });
+    });
+    const queued = await m23.submitNoe(actorOf(org), drafted.id);
+    await withOrgContext(handle.db as never, { organizationId: org, userId: "" }, async (tx) => {
+      await runNoeSubmit(tx as never, workerDeps, {
+        organizationId: org,
+        noeId: drafted.id,
+        submissionId: queued.submissionId!,
+      });
     });
     const { rows } = await admin.query(
       "SELECT id FROM claim_submission WHERE noe_id=$1 AND kind='noe' AND outcome='submitted'",
@@ -911,7 +926,11 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     // Through the ordinary submit queue, the worker and the ack routing.
     const queued = await m23.submitNoe(actorOf(ORG_A), correctedId);
     await withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, (tx) =>
-      runNoeSubmit(tx as never, workerDeps, { organizationId: ORG_A, noeId: correctedId }),
+      runNoeSubmit(tx as never, workerDeps, {
+        organizationId: ORG_A,
+        noeId: correctedId,
+        submissionId: queued.submissionId!,
+      }),
     );
     // Medicare accepts it on day +7 (two days late); we pull the 277CA a day later.
     const payerDate = addDays(admission, 7);
@@ -1002,7 +1021,11 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     const correctedId = filed.notice.noeId;
     const queued = await m23.submitNoe(actorOf(ORG_A), correctedId);
     await withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, (tx) =>
-      runNoeSubmit(tx as never, workerDeps, { organizationId: ORG_A, noeId: correctedId }),
+      runNoeSubmit(tx as never, workerDeps, {
+        organizationId: ORG_A,
+        noeId: correctedId,
+        submissionId: queued.submissionId!,
+      }),
     );
     const onTime = { ...workerDeps, now: () => new Date(`${addDays(admission, 4)}T14:00:00.000Z`) };
     parsed999 = [
@@ -1062,7 +1085,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     expect(await noesFor(admissionId)).toHaveLength(1);
     expect(await eventRows("m23.noe.correction_created", "correctsNoeId", noeId)).toHaveLength(0);
   }, 120_000);
-  // ── an organization that bills outside ChartWarden files its NOE itself (owner decision D4; migration 1353) ───────
+  // ── an organization that bills outside ChartWarden files its NOE itself (owner decision D4; migration 1389) ───────
   // ChartWarden transmits NOTHING for it: submit parks the notice, the tenant records the date it filed, and the deadline
   // tracker keeps counting until then. The pure rules are unit-tested (`m23-notice-external-filing.test.ts`); this proves the
   // SQL: the CHECKs, the same-state patch under RLS as `chartwarden_app`, the audit trigger, and the two tracker scans.
@@ -1134,7 +1157,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     return { service, enqueued };
   }
 
-  it("migration 1353: external_filing_status is pending | filed, and the three filed_* columns move with `filed` (all set, or all NULL)", async () => {
+  it("migration 1389: external_filing_status is pending | filed, and the three filed_* columns move with `filed` (all set, or all NULL)", async () => {
     const id = await seedNoe(ORG_A);
     expect(await noeRow(id)).toMatchObject({ external_filing_status: null, filed_on: null });
     const set = (sql: string) => admin.query(`UPDATE noe_record SET ${sql} WHERE id=$1`, [id]);
@@ -1157,7 +1180,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     );
   });
 
-  it("migration 1353: external_filing_set_breach is NOT NULL, false by default, and can only be true on a notice recorded as filed", async () => {
+  it("migration 1389: external_filing_set_breach is NOT NULL, false by default, and can only be true on a notice recorded as filed", async () => {
     const id = await seedNoe(ORG_A);
     expect(await noeRow(id)).toMatchObject({ set_breach: false });
     const set = (sql: string) => admin.query(`UPDATE noe_record SET ${sql} WHERE id=$1`, [id]);

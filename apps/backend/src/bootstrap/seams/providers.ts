@@ -95,6 +95,7 @@ import type {
   OnboardingStatusProvider,
   OrderProvider,
   OrderSignatureProvider,
+  OrgDocumentAccessProvider,
   OrganizationReader,
   PatientAddressReader,
   PatientAdmissionClearanceReader,
@@ -438,6 +439,13 @@ export const intakeMetricsProviderDenyStub: IntakeMetricsProvider = {
 export const extractionProvenanceReaderDenyStub: ExtractionProvenanceReader = {
   provenanceForTargetAggregate() {
     throw new NotImplementedError("ExtractionProvenanceReader");
+  },
+};
+
+/** M22 — org-level (patient-less) document download mint (ADR-0109 D10: M16's internal mailing batch). Denies until M22 registers the real provider. */
+export const orgDocumentAccessProviderDenyStub: OrgDocumentAccessProvider = {
+  mintOrgDownloadUrl() {
+    throw new NotImplementedError("OrgDocumentAccessProvider");
   },
 };
 
@@ -1489,6 +1497,9 @@ export const bereavementAssignmentReaderDenyStub: BereavementAssignmentReader = 
 /** M16 — the M31 bereaved-family session scope (§1.2 / D10 narrow: own row, own touchpoints, opt-out). */
 export const bereavedPortalScopeProviderDenyStub: BereavedPortalScopeProvider = {
   scopeForPortalAccount() {
+    throw new NotImplementedError("BereavedPortalScopeProvider");
+  },
+  isWindowOpen() {
     throw new NotImplementedError("BereavedPortalScopeProvider");
   },
 };
