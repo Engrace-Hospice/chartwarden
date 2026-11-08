@@ -154,7 +154,7 @@ function Body({
         </Button>
       </div>
       {/* always mounted, so a screen reader announces the text when it appears */}
-      <output className="wx-row-sub" aria-live="polite" style={{ display: "block" }}>
+      <output className="wx-row-sub" aria-live="polite">
         {released === null
           ? ""
           : released === 0

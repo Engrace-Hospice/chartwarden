@@ -283,7 +283,7 @@ export function TenantProvisionDrawer({
           />
         </section>
         {outcome ? (
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="wx-drawer-title-row">
             <InlineAlert tone={outcome.ok ? "success" : "error"}>
               {outcome.ok
                 ? "Provisioning requested. Open the tenant to follow its progress once it appears in the list."

@@ -236,7 +236,7 @@ export function TenantOverview(): JSX.Element {
           <ProvisioningCard key={orgSlug} orgSlug={orgSlug} onChanged={() => void load(true)} />
         ) : null}
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="wx-form-grid">
           <LifecycleCard tenant={tenant} onTransition={() => setTransitionOpen(true)} />
           <OnboardingCard
             tenant={tenant}
@@ -297,13 +297,15 @@ export function TenantOverview(): JSX.Element {
         title="Cryptographic shred"
         epcs
         attestation={
-          <>
-            This permanently destroys the DEK for <strong>{tenant.legalBusinessName}</strong> (
-            <span className="wx-data-md">{tenant.orgSlug}</span>). All tenant PHI becomes
-            cryptographically irrecoverable. This cannot be undone.
+          <div className="wx-form-stack">
+            <p>
+              This permanently destroys the DEK for <strong>{tenant.legalBusinessName}</strong> (
+              <span className="wx-data-md">{tenant.orgSlug}</span>). All tenant PHI becomes
+              cryptographically irrecoverable. This cannot be undone.
+            </p>
             {/* The two values the route REQUIRES. They live in the attestation slot rather than in
                 CeremonyModal itself so the shared component (15 other call sites) is untouched. */}
-            <div className="mt-3 grid gap-3">
+            <div className="wx-form-stack">
               <TextField
                 id="shred-cert-id"
                 label="M4 destruction-certificate id"
@@ -325,7 +327,7 @@ export function TenantOverview(): JSX.Element {
               />
               {shredError ? <InlineAlert tone="error">{shredError}</InlineAlert> : null}
             </div>
-          </>
+          </div>
         }
         legalText="I confirm the retention period has elapsed, no legal hold is active, and the M4 destruction certificate is approved."
         signer={{ name: "Platform Operator", role: "platform_ops" }}
@@ -457,15 +459,10 @@ function OnboardingCard({
     >
       {inWizard ? (
         <>
-          <span className="wx-nums text-sm">
+          <span className="wx-nums">
             {done} of {total} steps done
           </span>
-          <progress
-            value={pct}
-            max={100}
-            aria-label={`${pct}% complete`}
-            className="h-2 w-full appearance-none overflow-hidden rounded-full [&::-moz-progress-bar]:bg-[var(--color-primary)] [&::-webkit-progress-bar]:bg-[var(--color-surface-container)] [&::-webkit-progress-value]:bg-[var(--color-primary)]"
-          />
+          <progress value={pct} max={100} aria-label={`${pct}% complete`} />
           {awaitingApproval ? (
             <InlineAlert tone="warning">
               Waiting for your approval: the compliance officer has attested go-live readiness.
@@ -481,7 +478,7 @@ function OnboardingCard({
           )}
         </>
       ) : (
-        <span className="text-sm">
+        <span>
           {tenant.status === "active"
             ? "Onboarding is complete."
             : "Onboarding is closed for this tenant."}
@@ -541,7 +538,7 @@ function ContractBody({ orgSlug }: { orgSlug: string }): JSX.Element {
   return sub.data.contract ? (
     <ContractSummary contract={sub.data.contract} />
   ) : (
-    <span className="text-sm">No contract is signed yet. It is signed at onboarding step 2.</span>
+    <span>No contract is signed yet. It is signed at onboarding step 2.</span>
   );
 }
 
@@ -564,7 +561,7 @@ function KeyRingCard({
       }
     >
       {!kr ? (
-        <span className="text-sm">No key ring provisioned.</span>
+        <span>No key ring provisioned.</span>
       ) : destroyed ? (
         <p className="wx-source-line">
           <Glyph name="lock" size={16} label="DEK destroyed" />
@@ -612,7 +609,7 @@ function SupportCard({ tenant }: { tenant: TenantOverview }): JSX.Element {
         <dt>BAA status</dt>
         <dd>
           {tenant.baa ? (
-            <span className="flex flex-wrap items-center gap-2">
+            <span className="wx-drawer-title-row">
               <StatusPill
                 label={cap(tenant.baa.status)}
                 tone={BAA_TONE[tenant.baa.status] ?? "neutral"}

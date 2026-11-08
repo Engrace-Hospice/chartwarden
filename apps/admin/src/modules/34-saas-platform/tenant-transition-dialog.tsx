@@ -129,22 +129,22 @@ export function TenantTransitionDialog({
 
   return (
     <Modal open={open} onClose={onClose} ariaLabel="Transition status">
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Transition status</h2>
-        <p style={{ margin: 0, fontSize: "0.85rem" }}>
+      <div className="wx-modal-body">
+        <h2>Transition status</h2>
+        <p>
           <strong>{tenantName}</strong> is currently <strong>{statusLabel(fromStatus)}</strong>.
         </p>
         {targets.length === 0 ? (
           <>
             {fromStatus === "onboarding" ? (
-              <p style={{ margin: 0 }}>
+              <p>
                 A tenant goes live through the onboarding wizard: its compliance officer attests
                 readiness, then a different operator approves.
               </p>
             ) : (
-              <p style={{ margin: 0 }}>No status changes are available from this state.</p>
+              <p>No status changes are available from this state.</p>
             )}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+            <div className="wx-modal-actions">
               {fromStatus === "onboarding" && onOpenOnboarding ? (
                 <Button onClick={onOpenOnboarding}>Open onboarding</Button>
               ) : null}
@@ -180,7 +180,7 @@ export function TenantTransitionDialog({
               rows={3}
             />
             {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+            <div className="wx-modal-actions">
               <Button tone="secondary" onClick={onClose}>
                 Cancel
               </Button>

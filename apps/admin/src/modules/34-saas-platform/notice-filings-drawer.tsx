@@ -124,7 +124,7 @@ export function NoticeFilingsDrawer({
 
   return (
     <aside
-      className="wx-admission-drawer md:col-span-2 xl:col-span-3"
+      className="wx-admission-drawer"
       aria-label="Notices filed outside ChartWarden"
       {...drawer}
     >
