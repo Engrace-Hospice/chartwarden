@@ -59,7 +59,13 @@ function meterErrors(m: MeterDraft): Partial<Record<keyof MeterDraft, string>> {
   return errors;
 }
 
+/** Keyed on the plan id, so a move to another plan starts fresh (its meter draft, outcome and form are per plan). */
 export function PlanEdit(): JSX.Element {
+  const { id } = useParams<{ id: string }>();
+  return <PlanEditBody key={id} />;
+}
+
+function PlanEditBody(): JSX.Element {
   const client = useApiClient();
   const { id } = useParams<{ id: string }>();
   const [plan, setPlan] = useState<PlanDetail | null>(null);

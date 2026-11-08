@@ -110,9 +110,6 @@ export function pricingFormErrors(
   thresholds?: readonly number[],
 ): FieldErrors<FormKey> {
   const errors: FieldErrors<FormKey> = {};
-  if (thresholds && form.bandFees.length !== thresholds.length)
-    errors.band0 =
-      "The census bands changed since this form opened: cancel and enter one fee per band.";
   const slug = form.familySlug.trim();
   if (
     kind === "create" &&
@@ -125,6 +122,9 @@ export function pricingFormErrors(
   if (parsePriceCents(form.perUserPrice, MAX_PER_USER_CENTS) === null)
     errors.perUserPrice = PER_USER;
   bandErrors(form, errors);
+  if (thresholds && form.bandFees.length !== thresholds.length)
+    errors.band0 =
+      "The census bands changed since this form opened: close and reopen it to enter one fee per band.";
   rateErrors(form, errors);
   const term = form.termMonths.trim();
   if (!WHOLE.test(term) || Number(term) < 1 || Number(term) > TERM_MAX)

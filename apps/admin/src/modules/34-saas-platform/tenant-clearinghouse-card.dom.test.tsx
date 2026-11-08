@@ -393,6 +393,37 @@ describe("TenantClearinghouseCard", () => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
 
+    it("a draft left behind (Back from /step-up) is dropped by the next visit, so an unrelated step-up return opens nothing", async () => {
+      mountWith(CLAIMMD, () => refused(403, "STEP_UP_REQUIRED", "step up"));
+      await openRelease("Ticket OPS-81 retire the old key");
+      confirm();
+      fireEvent.click(
+        await within(screen.getByRole("dialog")).findByRole("link", { name: "Re-verify" }),
+      );
+      await screen.findByText("step-up page");
+      cleanup();
+      mountWith(CLAIMMD, () => ok({ released: 1, config: CLAIMMD })); // Back: the hub, no marker
+      cleanup();
+      // later, a step-up for something else (e.g. a key rotation) returns to the hub with the marker
+      const client = mountWith(CLAIMMD, () => ok({ released: 1, config: CLAIMMD }), {
+        pathname: "/x",
+        state: STEP_UP_RETURN_STATE,
+      });
+      expect(screen.getByRole("button", { name: "Show clearinghouse" })).toBeTruthy();
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(reads(client, CH)).toBe(0);
+    });
+
+    it("a step-up return with no release draft clears the marker and keeps the card closed", async () => {
+      const client = mountWith(CLAIMMD, () => ok({ released: 1, config: CLAIMMD }), {
+        pathname: "/x",
+        state: STEP_UP_RETURN_STATE,
+      });
+      await waitFor(() => expect(screen.getByTestId("marker").textContent).toBe("false"));
+      expect(screen.getByRole("button", { name: "Show clearinghouse" })).toBeTruthy();
+      expect(reads(client, CH)).toBe(0);
+    });
+
     it("a dropped connection says so and leaves the dialog usable", async () => {
       mountWith(CLAIMMD, () => {
         throw new TypeError("network down");

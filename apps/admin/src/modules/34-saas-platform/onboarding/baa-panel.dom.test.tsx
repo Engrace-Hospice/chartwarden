@@ -163,11 +163,47 @@ describe("BaaPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save BAA" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toMatch(/executed BAA needs the signed agreement/i);
-    expect(document.activeElement?.contains(alert)).toBe(true);
+    await waitFor(() => expect(document.activeElement?.contains(alert)).toBe(true));
     expect(
       screen.getByText(/marked Executed only if it already carries a signed agreement/),
     ).toBeTruthy();
     expect(client.POST).not.toHaveBeenCalled();
+  });
+
+  it("without the upload key, shows the server's 422 on the document and focuses it", async () => {
+    const session = {
+      ...ONBOARDING_OPERATOR,
+      permissions:
+        ONBOARDING_OPERATOR.permissions?.filter(
+          (k) => k !== "tenant_baa_document.upload_platform",
+        ) ?? [],
+    };
+    const { client } = mount(
+      [record({ baaStatus: "pending", documentId: DOC })],
+      {
+        PATCH: {
+          [ONE]: () =>
+            refused(422, "BAA_DOCUMENT_INVALID", "invalid", [
+              {
+                field: "documentId",
+                code: "BAA_DOCUMENT_INVALID",
+                message: "Not a signed BAA for this tenant.",
+              },
+            ]),
+        },
+      },
+      view(),
+      session,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit v1" }));
+    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "executed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save BAA" }));
+    const group = await screen.findByRole("group", { name: "Signed agreement" });
+    expect(within(group).getByRole("alert").textContent).toMatch(
+      /Not a signed BAA for this tenant/,
+    );
+    await waitFor(() => expect(document.activeElement).toBe(group));
+    expect(client.PATCH).toHaveBeenCalledTimes(1);
   });
 
   it("lists the records and the facts, and says the recorder cannot approve go-live", async () => {

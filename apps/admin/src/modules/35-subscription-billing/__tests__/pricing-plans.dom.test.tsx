@@ -562,6 +562,10 @@ describe("PricingPlans", () => {
     mount(`/admin/pricing-plans?plan=${DRAFT.id}`);
     const back = await drawer();
     expect(perUser(back)).toBe("77"); // the editor reopened with the typed prices
+    // and the reason typed in the dialog comes back when it next opens
+    fireEvent.click(within(back).getByRole("button", { name: "Save prices" }));
+    expect((within(dialog()).getByRole("textbox") as HTMLTextAreaElement).value).toBe(REASON);
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Cancel" }));
     fireEvent.click(within(back).getByRole("button", { name: "Cancel" }));
     fireEvent.click(within(back).getByRole("button", { name: "Edit prices" }));
     expect(perUser(back)).toBe("49"); // the stash was consumed: the saved prices, not the discarded edit

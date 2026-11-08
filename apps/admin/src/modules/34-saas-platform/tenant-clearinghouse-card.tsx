@@ -9,8 +9,8 @@ import {
   StatusPill,
   type StatusTone,
   isStepUpReturn,
-  peekStepUpMemoryDraft,
   useApiClient,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -38,12 +38,12 @@ function Body({
   orgSlug,
   tenantStatus,
   onOpenFilings,
-  returnedFromStepUp,
+  restoredReason,
 }: {
   orgSlug: string;
   tenantStatus: string;
   onOpenFilings: () => void;
-  returnedFromStepUp: boolean;
+  restoredReason: string | undefined;
 }): JSX.Element {
   const client = useApiClient();
   const [modeUnconfirmed, setModeUnconfirmed] = useState(false);
@@ -147,7 +147,7 @@ function Body({
           orgSlug={orgSlug}
           view={view}
           onReleased={setReleased}
-          returnedFromStepUp={returnedFromStepUp}
+          restoredReason={restoredReason}
         />
         <Button tone="secondary" size="sm" onClick={onOpenFilings}>
           Notices filed outside ChartWarden
@@ -170,18 +170,20 @@ export function TenantClearinghouseCard({
   tenantStatus,
 }: { orgSlug: string; tenantStatus: string }): JSX.Element {
   // A Re-verify from the release dialog comes back to the card open (the dialog reopens with the typed reason). Only on that return:
-  // a later visit with the draft still in memory opens nothing, so the audited clearinghouse read never happens without a click.
+  // every mount consumes the release draft, so a draft left behind (Back from /step-up) is dropped by the next visit and never opens
+  // the card on a later, unrelated step-up return; the audited clearinghouse read never happens without a click.
   // The marker is read once, then cleared from history, so Back/Forward or a reload never re-asserts it.
   const location = useLocation();
   const navigate = useNavigate();
   const [returnedFromStepUp] = useState(() => isStepUpReturn(location.state));
+  const draft = useStepUpMemoryDraft<{ reason: string }>(releaseDraftKey(orgSlug));
+  const restoredReason = returnedFromStepUp ? draft?.reason : undefined;
   useEffect(() => {
-    if (isStepUpReturn(location.state))
-      navigate(location.pathname + location.search, { replace: true, state: null });
+    if (!isStepUpReturn(location.state)) return;
+    const { pathname, search, hash } = location;
+    navigate({ pathname, search, hash }, { replace: true, state: null });
   }, [location, navigate]);
-  const [shown, setShown] = useState(
-    () => returnedFromStepUp && peekStepUpMemoryDraft(releaseDraftKey(orgSlug)) !== undefined,
-  );
+  const [shown, setShown] = useState(restoredReason !== undefined);
   const [filingsOpen, setFilingsOpen] = useState(false);
   return (
     <>
@@ -199,7 +201,7 @@ export function TenantClearinghouseCard({
             orgSlug={orgSlug}
             tenantStatus={tenantStatus}
             onOpenFilings={() => setFilingsOpen(true)}
-            returnedFromStepUp={returnedFromStepUp}
+            restoredReason={restoredReason}
           />
         ) : (
           <span className="wx-row-sub">

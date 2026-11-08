@@ -4,12 +4,7 @@
 // server refuses while the tenant's vendor responses may still arrive (409, shown by the dialog) and never says which credentials it freed.
 // Offered only to an operator who holds the release key (fail closed); the result is reported by the card, outside its actions row.
 import { CLEARINGHOUSE_RELEASE_QUIET_DAYS } from "@chartwarden/types";
-import {
-  Button,
-  stashStepUpMemoryDraft,
-  useApiClient,
-  useStepUpMemoryDraft,
-} from "@chartwarden/ui";
+import { Button, stashStepUpMemoryDraft, useApiClient } from "@chartwarden/ui";
 import { useRef, useState } from "react";
 import type { JSX } from "react";
 import type { ClearinghouseView } from "./clearinghouse-model";
@@ -24,23 +19,21 @@ export function ReleaseCredentials({
   orgSlug,
   view,
   onReleased,
-  returnedFromStepUp,
+  restoredReason,
 }: {
   orgSlug: string;
   view: ClearinghouseView;
-  /** The card was opened by a step-up return: only then does a stashed reason reopen the dialog. */
-  returnedFromStepUp: boolean;
+  /** The reason a Re-verify kept, when the card was opened by that step-up return: the dialog reopens with it. */
+  restoredReason: string | undefined;
   /** How many were released, for the card to report (null clears the report). */
   onReleased: (released: number | null) => void;
 }): JSX.Element | null {
   const client = useApiClient();
   const write = useOpsWrite();
   const mayRelease = useCan(ONBOARDING_KEYS.clearinghouseRelease);
-  // A step-up refusal sends the operator to /step-up and back; the dialog reopens with the typed reason.
-  const stashed = useStepUpMemoryDraft<{ reason: string }>(releaseDraftKey(orgSlug));
-  const restored = returnedFromStepUp ? stashed : undefined;
-  const [open, setOpen] = useState(restored !== undefined);
-  const [reason, setReason] = useState(restored?.reason ?? "");
+  // A step-up refusal sends the operator to /step-up and back; the dialog reopens with the typed reason (the card consumes the draft).
+  const [open, setOpen] = useState(restoredReason !== undefined);
+  const [reason, setReason] = useState(restoredReason ?? "");
   // What is in the box right now (a Re-verify must keep an edit typed after a refusal, not the last submitted text).
   const typedRef = useRef(reason);
 

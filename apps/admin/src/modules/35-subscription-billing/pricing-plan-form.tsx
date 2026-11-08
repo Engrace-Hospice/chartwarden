@@ -189,6 +189,7 @@ export function PlanEditor({
       return;
     }
     write.clear();
+    typedRef.current = lastReason;
     setAsking(true);
   };
 
@@ -300,6 +301,7 @@ export function PlanEditor({
         onConfirm={(reason) => void save(reason)}
         onCancel={() => {
           write.clear();
+          typedRef.current = lastReason;
           setAsking(false);
         }}
       />

@@ -232,12 +232,15 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   const fieldError = (field: keyof Form): string | undefined =>
     errors[field] ?? write.failure?.fieldErrors[field];
   const editorHeading = useEditorFocus(editing !== null && canWrite, "baa");
-  // Without the upload key the document field is hidden, so its refusal (ours or the server's 422) shows here and takes focus.
-  const documentAlert = useRef<HTMLDivElement>(null);
+  // A refused save (ours or the server's 422) focuses the first invalid control. Without the upload key the document field is hidden,
+  // so its refusal shows as an alert in a focusable group, which takes focus when no field before it is invalid.
+  const formRef = useRef<HTMLFormElement>(null);
+  const documentAlert = useRef<HTMLFieldSetElement>(null);
   useEffect(() => {
-    const message = errors.documentId ?? write.failure?.fieldErrors.documentId;
-    if (!mayUpload && message) documentAlert.current?.focus();
-  }, [errors, write.failure, mayUpload]);
+    if (Object.keys(errors).length === 0 && !write.failure) return;
+    const field = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    (field ?? documentAlert.current)?.focus();
+  }, [errors, write.failure]);
 
   return (
     <StepFrame ctx={ctx}>
@@ -304,6 +307,7 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
 
       {editing && canWrite ? (
         <form
+          ref={formRef}
           className="wx-drawer-card"
           aria-label="BAA form"
           noValidate
@@ -373,9 +377,14 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
                 what={`upload the signed agreement (that needs the ${ONBOARDING_KEYS.baaDocumentUpload} permission); a record can be marked Executed only if it already carries a signed agreement`}
               />
               {fieldError("documentId") ? (
-                <div ref={documentAlert} tabIndex={-1}>
+                <fieldset
+                  ref={documentAlert}
+                  tabIndex={-1}
+                  aria-label="Signed agreement"
+                  style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
+                >
                   <InlineAlert>{fieldError("documentId")}</InlineAlert>
-                </div>
+                </fieldset>
               ) : null}
             </>
           )}
