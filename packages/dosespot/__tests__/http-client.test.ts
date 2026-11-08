@@ -110,13 +110,16 @@ const NEWRX = {
   refillsAuthorized: 0,
 };
 
-function client(routes: Record<string, Responder>, extra: { sleeps?: number[] } = {}) {
+function client(
+  routes: Record<string, Responder>,
+  extra: { sleeps?: number[]; now?: () => Date } = {},
+) {
   const t = fakeTransport(routes);
   const edges: string[] = [];
   const c = createHttpDoseSpotClient({
     resolver: resolver(),
     fetch: t.fetchImpl,
-    now: () => new Date("2026-10-06T12:00:00.000Z"),
+    now: extra.now ?? (() => new Date("2026-10-06T12:00:00.000Z")),
     sleep: async (ms) => {
       extra.sleeps?.push(ms);
     },
@@ -533,6 +536,61 @@ describe("transmitNewRx", () => {
         String(status),
       ).toHaveLength(1);
     }
+  });
+
+  // A held send still counts against the breaker: an outage that fails only the send (the create succeeding each time) opens it.
+  for (const [name, answer] of [
+    ["a 502", { status: 502 }],
+    ["a timeout", "timeout"],
+    ["a dropped connection", "network"],
+  ] as const) {
+    it(`five sends held on ${name} open the breaker, and the next order is not sent at all`, async () => {
+      const r = routes([{ Id: 9001 }]);
+      r["POST /api/patients/501/prescriptions/send"] = () => answer;
+      const { c, calls, edges } = client(r);
+      for (let i = 0; i < 5; i += 1) {
+        const held = await c.transmitNewRx(ORG, NEWRX, `idem-brk-${i}`).catch((e) => e);
+        expect(isUnconfirmedOutcomeError(held)).toBe(true);
+      }
+      expect(edges).toEqual(["opened"]);
+      const before = calls.length;
+      const err = await c.transmitNewRx(ORG, NEWRX, "idem-brk-next").catch((e) => e);
+      expect(isUnconfirmedOutcomeError(err)).toBe(false);
+      expect(err.retryable).toBe(true);
+      expect(calls.length).toBe(before);
+    });
+  }
+
+  it("a half-open probe that ends in a hold re-opens the breaker instead of letting every later call through", async () => {
+    let at = Date.parse("2026-10-06T12:00:00.000Z");
+    let send: Responder = () => ({ status: 502 });
+    const r = routes([{ Id: 9001 }]);
+    r["POST /api/patients/501/prescriptions/send"] = (req, n) => send(req, n);
+    const { c, calls, edges } = client(r, { now: () => new Date(at) });
+    for (let i = 0; i < 5; i += 1)
+      await c.transmitNewRx(ORG, NEWRX, `idem-probe-${i}`).catch(() => undefined);
+    expect(edges).toEqual(["opened"]);
+    const sendsTo = () => calls.filter((x) => x.url.endsWith("/prescriptions/send")).length;
+    // the probe, long after the failure window emptied, answers 502: held, and the breaker opens again (it does not close)
+    at += 90_000;
+    expect(
+      isUnconfirmedOutcomeError(await c.transmitNewRx(ORG, NEWRX, "idem-probe-a").catch((e) => e)),
+    ).toBe(true);
+    at += 1_000;
+    let before = sendsTo();
+    await c.transmitNewRx(ORG, NEWRX, "idem-probe-b").catch(() => undefined);
+    expect(sendsTo()).toBe(before);
+    // the next probe gets an unreadable 2xx: held too, and that is not a recovery either
+    send = () => ({ status: 200, text: "<html>gateway</html>" });
+    at += 31_000;
+    expect(
+      isUnconfirmedOutcomeError(await c.transmitNewRx(ORG, NEWRX, "idem-probe-c").catch((e) => e)),
+    ).toBe(true);
+    at += 1_000;
+    before = sendsTo();
+    await c.transmitNewRx(ORG, NEWRX, "idem-probe-d").catch(() => undefined);
+    expect(sendsTo()).toBe(before);
+    expect(edges).toEqual(["opened"]); // never closed in between
   });
 
   it("a 500 on the CREATE (not the send) stays a retryable error, not a held one", async () => {

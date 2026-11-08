@@ -45,6 +45,7 @@ import {
   RetryableError,
   UnconfirmedOutcomeError,
   isRetryableError,
+  isUnconfirmedOutcomeError,
 } from "./errors";
 import {
   asString,
@@ -340,11 +341,16 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         // the request may have reached DoseSpot and been acted on before its answer was lost: AMBIGUOUS, not an outage (the token mint
         // above is outside this: a failed mint sent nothing)
         if (ambiguousOnLostAnswer && isRetryableError(err) && err.errorClass !== "connect_failed") {
-          throw new UnconfirmedOutcomeError(
-            "dosespot",
-            op,
-            "DoseSpot did not answer in time.",
-            correlationId,
+          // a timeout or a reset is an outage signal like any other call's: it counts against the breaker even though it is held
+          throw countedHold(
+            orgId,
+            err.errorClass,
+            new UnconfirmedOutcomeError(
+              "dosespot",
+              op,
+              "DoseSpot did not answer in time.",
+              correlationId,
+            ),
           );
         }
         throw err;
@@ -355,11 +361,16 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         continue;
       }
       if (ambiguousOnLostAnswer && isAmbiguousStatus(res.status)) {
-        throw new UnconfirmedOutcomeError(
-          "dosespot",
-          op,
-          `DoseSpot failed without confirming the outcome (HTTP ${res.status}).`,
-          correlationId,
+        // an outage that hits only the send must still open the breaker
+        throw countedHold(
+          orgId,
+          `5xx_${res.status}`,
+          new UnconfirmedOutcomeError(
+            "dosespot",
+            op,
+            `DoseSpot failed without confirming the outcome (HTTP ${res.status}).`,
+            correlationId,
+          ),
         );
       }
       const retryable = classifyRetryableStatus(res.status);
@@ -394,6 +405,18 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     throw degraded(op, false, "DoseSpot rejected the access token twice.", correlationId);
   }
 
+  /** Holds already counted against the breaker where they were raised, so a half-open probe does not count them twice. */
+  const breakerCountedHolds = new WeakSet<UnconfirmedOutcomeError>();
+  function countedHold(
+    orgId: string,
+    errorClass: string,
+    hold: UnconfirmedOutcomeError,
+  ): UnconfirmedOutcomeError {
+    noteBreaker(orgId, "failure", errorClass);
+    breakerCountedHolds.add(hold);
+    return hold;
+  }
+
   function noteBreaker(orgId: string, outcome: "success" | "failure", errorClass: string): void {
     const before = breakers.get(orgId) ?? INITIAL_BREAKER_SNAPSHOT;
     const after = applyOutcome(before, outcome, now().toISOString());
@@ -413,6 +436,8 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     body?: unknown,
     idempotencyKey?: string,
     purpose: DoseSpotConfigPurpose = "operate",
+    /** false for a step whose success is not yet the call's (a NewRx create: only the send's outcome says DoseSpot is healthy). */
+    countSuccess = true,
   ): Promise<unknown> {
     const correlationId = newCorrelationId();
     const endpoint: DoseSpotEndpoint = DOSESPOT_ENDPOINTS[name];
@@ -441,10 +466,19 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
           correlationId,
           AMBIGUOUS_ON_LOST_ANSWER.has(name),
         );
-        noteBreaker(orgId, "success", "");
+        if (countSuccess) noteBreaker(orgId, "success", "");
         return out;
       } catch (err) {
-        if (!isRetryableError(err)) throw err; // permanent: does not count against the breaker
+        // a half-open probe that ends in ANY hold (an unreadable 2xx included) is not a recovery: it re-opens the breaker rather than
+        // leaving it cooled, which would let every following call through as another probe
+        if (
+          isUnconfirmedOutcomeError(err) &&
+          gate.effectiveState === "half_open" &&
+          !breakerCountedHolds.has(err)
+        ) {
+          noteBreaker(orgId, "failure", "unconfirmed_outcome");
+        }
+        if (!isRetryableError(err)) throw err; // permanent (a hold's own counting aside): does not count against the breaker
         if (i < maxAttempts - 1) {
           await sleep(delays[i] ?? DOSESPOT_RETRY_CONFIG.baseDelayMs);
           continue;
@@ -565,6 +599,9 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
           { patientId: payload.dosespotPatientId },
           toCodedPrescriptionBody(payload),
           idempotencyKey,
+          "operate",
+          // a create's success must not reset the breaker: an outage that fails only the send would otherwise never open it
+          false,
         );
         prescriptionId = identifierOf(created);
         if (prescriptionId === undefined) {

@@ -114,6 +114,17 @@ describe("per-tenant circuit breaker (§2.5: 5 failures / 60s → open 30s → h
     expect(didTransition(snap, closed)).toBe("closed");
   });
 
+  it("a failed probe re-opens the stored OPEN snapshot even after its failure window emptied (it never closes it)", () => {
+    let snap = INITIAL_BREAKER_SNAPSHOT;
+    const base = Date.parse("2026-06-22T00:00:00.000Z");
+    for (let i = 0; i < 5; i++)
+      snap = applyOutcome(snap, "failure", new Date(base + i * 1000).toISOString());
+    const probeAt = new Date(base + 120_000).toISOString();
+    const after = applyOutcome(snap, "failure", probeAt);
+    expect(after).toMatchObject({ state: "open", openedAt: probeAt });
+    expect(didTransition(snap, after)).toBeNull();
+  });
+
   it("openCircuitError is retryable + PHI-free", () => {
     const e = openCircuitError("transmitNewRx", "corr-9");
     expect(e.retryable).toBe(true);
