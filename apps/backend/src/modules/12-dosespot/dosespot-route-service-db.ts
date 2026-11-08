@@ -736,14 +736,16 @@ export function createDbDoseSpotBackend(
           .where(eq(MOT.medicationOrderId, id))
           .orderBy(desc(MOT.queuedAt))
           .limit(1);
+        // The hold MARKER decides "held", not the failure timestamp: a retryable failure sets `transmission_failed_at` (the backoff needs it kept)
+        // and a hold can follow it. A resolved order's marker is gone (`resolved_*`), so it reads as what it became.
         const status = !t
           ? "not_transmitted"
           : t.transmissionSucceededAt
             ? "transmitted"
-            : t.transmissionFailedAt
-              ? "transmission_failed"
-              : t.lastErrorClass === UNCONFIRMED_OUTCOME_CLASS
-                ? "unconfirmed_outcome" // HELD: DoseSpot accepted the call but did not confirm what it created; an administrator resolves it
+            : t.lastErrorClass === UNCONFIRMED_OUTCOME_CLASS
+              ? "unconfirmed_outcome" // HELD: DoseSpot accepted the call but did not confirm what it created; an administrator resolves it
+              : t.transmissionFailedAt
+                ? "transmission_failed"
                 : t.transmissionStartedAt
                   ? "in_flight"
                   : "queued";

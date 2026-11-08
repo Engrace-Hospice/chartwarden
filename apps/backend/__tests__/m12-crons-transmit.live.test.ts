@@ -1333,6 +1333,62 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       }
     });
 
+    // H1: a retryable failure sets transmission_failed_at (the backoff needs it) and nothing cleared it, so a hold that followed an earlier retry was
+    // judged "failed" by the read and refused by the resolve. The marker, not the failure timestamp, says the order is held.
+    const failOnceThenHold = async () => {
+      const { orderId, transmissionId } = await queued();
+      const failing = new FakeDoseSpotVendor({
+        transmit: async () => {
+          throw retryable();
+        },
+      });
+      expect((await runTransmitNewRxForOrg(deps(failing, minutes(0)), ORG_A)).requeued).toBe(1);
+      expect((await txRow(transmissionId as string)).transmission_failed_at).not.toBeNull();
+      const unconfirmed = new FakeDoseSpotVendor({
+        transmit: async () => {
+          throw new UnconfirmedOutcomeError(
+            "dosespot",
+            "transmitNewRx",
+            "DoseSpot returned an unreadable response.",
+            "c-after-retry",
+          );
+        },
+      });
+      expect((await runTransmitNewRxForOrg(deps(unconfirmed, minutes(5)), ORG_A)).held).toBe(1);
+      return { orderId, transmissionId: transmissionId as string };
+    };
+
+    it("a hold that FOLLOWS an earlier retry is shown as held and resolves both ways", async () => {
+      const backend = createDbDoseSpotBackend(h.handle.db, h.outbox);
+      const asSent = await failOnceThenHold();
+      expect((await backend.getTransmission(ORG_A, asSent.orderId)).status).toBe(
+        "unconfirmed_outcome",
+      );
+      await resolver().resolve(await actorFor(), asSent.orderId, {
+        outcome: "sent",
+        reason: REASON,
+        dosespotPrescriptionId: "rx-after-retry",
+      });
+      expect(await orderRow(asSent.orderId)).toMatchObject({
+        status: "transmitted",
+        rx: "rx-after-retry",
+      });
+      expect((await backend.getTransmission(ORG_A, asSent.orderId)).status).toBe("transmitted");
+
+      const asNotSent = await failOnceThenHold();
+      expect((await backend.getTransmission(ORG_A, asNotSent.orderId)).status).toBe(
+        "unconfirmed_outcome",
+      );
+      await resolver().resolve(await actorFor(), asNotSent.orderId, {
+        outcome: "not_sent",
+        reason: REASON,
+      });
+      expect((await orderRow(asNotSent.orderId)).status).toBe("transmission_failed");
+      expect((await backend.getTransmission(ORG_A, asNotSent.orderId)).status).toBe(
+        "transmission_failed",
+      );
+    });
+
     it("the transmission read says unconfirmed_outcome while held and the resolved state after", async () => {
       const backend = createDbDoseSpotBackend(h.handle.db, h.outbox);
       const { orderId } = await hold();

@@ -129,8 +129,8 @@ export function createTransmissionResolveService(
           order.dosespotSendState === "in_flight" &&
           t !== undefined &&
           t.lastErrorClass === UNCONFIRMED_OUTCOME_CLASS &&
-          t.transmissionSucceededAt === null &&
-          t.transmissionFailedAt === null;
+          // the MARKER says held: transmission_failed_at is not part of it (an earlier retryable failure set it and the backoff needs it kept)
+          t.transmissionSucceededAt === null;
         if (!held) throw notHeld();
 
         const emit = (eventName: string, payload: Record<string, unknown>) =>
