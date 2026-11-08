@@ -14,8 +14,10 @@ import type {
   BereavedContactId,
   BereavedContactRelationship,
   BereavedContactStatus,
+  BereavementActivityKind,
   BereavementAnniversaryMark,
   BereavementConfidenceBand,
+  BereavementContactLogOutcome,
   BereavementDataCompleteness,
   BereavementExternalSourceMetadata,
   BereavementOutreachId,
@@ -48,6 +50,7 @@ import type {
   RiskScoreListQuery,
   SupervisorDashboardQuery,
 } from "./m16-typebox";
+import type { ContactTimelineQuery } from "./mailing-typebox";
 
 /** Route 1 — one row of the plan worklist. */
 export interface BereavementPlanListItem {
@@ -93,8 +96,16 @@ export interface BereavedContactRowView {
   readonly deceasedAt: IsoInstant | null;
   /** D9 — true while the 90-day self-service rescind window is still open on the active opt-out row. */
   readonly mayRescindOptOut: boolean;
+  /** ADR-0109 D10 — false while the contact holds an open `no_mailings` opt-out (the contact stays `active`; calls continue). */
+  readonly mailingsAllowed: boolean;
   /** Absent under the D10 volunteer scope / §7.13 redaction. */
   readonly currentRiskTier?: BereavementRiskTier | null;
+  /**
+   * ADR-0109 — the contact's 1-3 care goals (sealed free text). Present for a reader the D10 scope permits — `[]` when none
+   * are recorded — and ABSENT for a volunteer / portal session, and when the sealed value cannot be opened (never a
+   * partial list).
+   */
+  readonly careGoals?: readonly string[];
   readonly version: number;
 }
 
@@ -151,6 +162,11 @@ export interface BereavementClosureView {
   readonly cosignedAt: IsoInstant | null;
   readonly stats: M16OutreachStats;
   readonly bereavementSummaryDocumentId: DocumentId | null;
+  /**
+   * ADR-0109 D9 — the M22 render of the INTERNAL discharge summary, once rendered. Null until then, and null for any reader who may not
+   * open it: M22 admits only the scope-bypass roles and bereavement oversight to an internal document, so the id is shown only to them.
+   */
+  readonly dischargeSummaryDocumentId: DocumentId | null;
 }
 
 /** Route 19 — one scheduled or historical touchpoint. */
@@ -161,6 +177,12 @@ export interface BereavementOutreachRowView {
   readonly kind: BereavementOutreachKind;
   readonly status: BereavementOutreachStatus;
   readonly anniversaryMark: BereavementAnniversaryMark | null;
+  /**
+   * ADR-0109 D4 — the cadence-floor mark this touchpoint was generated for (`initial_outreach`, `three_month`,
+   * `anniversary`, `closeout_letter`, …): what the schedule screens label it by. Null on a row written before the column
+   * and on an ad-hoc touchpoint.
+   */
+  readonly cadenceMark: string | null;
   readonly dueAt: IsoInstant;
   readonly lateGraceUntil: IsoInstant;
   readonly startedAt: IsoInstant | null;
@@ -197,6 +219,29 @@ export interface BereavementRiskScoreView {
   readonly redactedCategories: readonly BereavementRedactedCategory[];
 }
 
+/** ADR-0109 D3 / route 37 — one assessment checkpoint (initial d28, midpoint d180) of one bereaved contact. */
+export interface BereavementAssessmentTaskView {
+  readonly taskId: string;
+  readonly planId: BereavementPlanId;
+  readonly contactId: BereavedContactId;
+  readonly taskKind: "initial_assessment" | "midpoint_reassessment";
+  readonly status: "scheduled" | "completed" | "missed" | "cancelled";
+  readonly dueAt: IsoInstant;
+  readonly lateGraceUntil: IsoInstant;
+  readonly completedAt: IsoInstant | null;
+  readonly completedByMembershipId: MembershipId | null;
+  /** The human-appended score that completed the task; null until completed. */
+  readonly riskScoreId: BereavementRiskScoreId | null;
+  readonly assigneeUserId: MembershipId | null;
+  readonly version: number;
+}
+
+/** Route 37 — the plan's assessment checkpoints. Empty (with the category named) when D10 withheld clinical content. */
+export interface BereavementAssessmentTaskList {
+  readonly items: readonly BereavementAssessmentTaskView[];
+  readonly redactedCategories: readonly BereavementRedactedCategory[];
+}
+
 /** Route 30 — the counselor's own caseload plus what is coming due. */
 export interface CounselorDashboardView {
   readonly counselorUserId: MembershipId;
@@ -223,6 +268,25 @@ export interface SupervisorDashboardView {
 }
 
 /**
+ * Route 52 — one entry of a contact's program timeline: a touchpoint (an outreach row's log) or a program activity (a mailing, a group session, a
+ * memorial attendance; ADR-0109 D10). Activity entries satisfy no cadence item and are never counted in M30. The sealed notes are never returned.
+ * `outcome` is ABSENT on an outreach entry for a bereavement volunteer: what happened on a call is clinical content (D10).
+ */
+export interface ContactTimelineEntry {
+  readonly entryId: string;
+  readonly at: IsoInstant;
+  readonly source: "outreach" | "program_activity";
+  readonly kind: BereavementOutreachKind | null;
+  readonly activityKind: BereavementActivityKind | null;
+  readonly outcome?: BereavementContactLogOutcome;
+}
+
+export interface ContactTimelinePage extends CursorPage<ContactTimelineEntry> {
+  /** §7.13 / D10 — what the caller is not cleared for on this contact's plan. */
+  readonly redactedCategories: readonly BereavementRedactedCategory[];
+}
+
+/**
  * The §4.1 GET surface. Implemented over Drizzle in prod (RLS-scoped per `withOrgContext`).
  *
  * Every plan-scoped read answers `null` when the plan is absent OR outside the caller's reach, and the
@@ -246,6 +310,17 @@ export interface M16ReadService {
     planId: string,
     query: RiskScoreListQuery,
   ): Promise<CursorPage<BereavementRiskScoreView> | null>;
+  /** Route 37 — the plan's assessment checkpoints (ADR-0109 D3), due-date order. `null` = plan absent / out of reach. */
+  listAssessmentTasks(
+    actor: M16ReadActor,
+    planId: string,
+  ): Promise<BereavementAssessmentTaskList | null>;
+  /** Route 52 — the contact's touchpoints and program activities, newest first (cursor-paginated). `null` = contact absent / out of reach. */
+  listContactTimeline(
+    actor: M16ReadActor,
+    contactId: string,
+    query: ContactTimelineQuery,
+  ): Promise<ContactTimelinePage | null>;
   counselorDashboard(
     actor: M16ReadActor,
     query: CounselorDashboardQuery,

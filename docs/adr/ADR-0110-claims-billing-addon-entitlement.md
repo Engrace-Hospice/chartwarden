@@ -1,4 +1,4 @@
-# ADR-0108 — Claims-billing add-on entitlement: a platform add-on, block new work and finish in-flight, census by pull, Stripe deferred
+# ADR-0110 — Claims-billing add-on entitlement: a platform add-on, block new work and finish in-flight, census by pull, Stripe deferred
 
 - **Status:** **Proposed** (2026-11-05)
 - **Date:** 2026-11-05

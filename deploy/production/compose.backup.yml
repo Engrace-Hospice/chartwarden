@@ -1,7 +1,8 @@
 # Coordinated, off-site, encrypted backups for the single-host stack (#857). An OVERLAY on compose.yml:
 #
 #   docker compose --env-file .env.production -f compose.yml -f compose.backup.yml build postgres
-#   docker compose --env-file .env.production -f compose.yml -f compose.backup.yml run --rm minio-backup-provision
+#   docker compose --env-file .env.production -f compose.yml -f compose.backup.yml run --rm object-store-provision
+#   docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate --wait seaweedfs
 #   docker compose --env-file .env.production -f compose.yml -f compose.backup.yml up -d postgres backup
 #
 # Enabling it recreates `postgres` once (same volume, same data) with WAL archiving on. deploy.sh never recreates
@@ -70,7 +71,7 @@ services:
       BACKUP_OFFSITE_S3_ACCESS_KEY: ${BACKUP_OFFSITE_S3_ACCESS_KEY:?set in .env.production (the backup key id)}
       BACKUP_OFFSITE_S3_SECRET_KEY_FILE: /run/secrets/backup_offsite_secret_key
       BACKUP_OBJECT_SSE_C_KEY_FILE: /run/secrets/backup_object_sse_c_key
-      BACKUP_SOURCE_MINIO_URL: http://minio:9000
+      BACKUP_SOURCE_MINIO_URL: http://seaweedfs:8333
       BACKUP_SOURCE_MINIO_ACCESS_KEY: ${BACKUP_SOURCE_MINIO_ACCESS_KEY:?set in .env.production}
       BACKUP_SOURCE_MINIO_SECRET_KEY_FILE: /run/secrets/backup_source_minio_secret_key
       BACKUP_SNAPSHOT_INTERVAL_S: ${BACKUP_SNAPSHOT_INTERVAL_S:-900}
@@ -111,32 +112,19 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      minio:
+      seaweedfs:
         condition: service_healthy
 
-  # Read-only MinIO account the backup lists and reads with (never the app account, which can delete).
-  minio-backup-provision:
-    image: chartwarden-backup:local
-    restart: "no"
-    user: postgres
-    command: ["cw-backup.sh", "provision-source-reader"]
-    cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
-    read_only: true
-    tmpfs:
-      - /tmp
+  # The read-only object-store key the backup lists and reads with (never the app key, which can delete): the overlay
+  # hands its secret to compose.yml's object-store-provision, which binds it to object-store/reader-policy.json.
+  # deploy.sh adds this overlay to that run whenever BACKUP_SOURCE_MINIO_ACCESS_KEY is configured, so a deploy never
+  # drops the reader. (SeaweedFS reads its identities at start: recreate seaweedfs after a manual run; see header.)
+  object-store-provision:
     environment:
-      BACKUP_STATE_DIR: /tmp/cw-backup
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      BACKUP_SOURCE_MINIO_URL: http://minio:9000
-      BACKUP_SOURCE_MINIO_ACCESS_KEY: ${BACKUP_SOURCE_MINIO_ACCESS_KEY:?set in .env.production}
-      BACKUP_SOURCE_MINIO_SECRET_KEY_FILE: /run/secrets/backup_source_minio_secret_key
+      SEAWEEDFS_READER_BACKUP_ACCESS_KEY: ${BACKUP_SOURCE_MINIO_ACCESS_KEY:?set in .env.production}
+      SEAWEEDFS_READER_BACKUP_SECRET_KEY_FILE: /run/secrets/backup_source_minio_secret_key
     secrets:
       - backup_source_minio_secret_key
-    depends_on:
-      minio:
-        condition: service_healthy
 
 secrets:
   backup_pg_local_cipher_pass:

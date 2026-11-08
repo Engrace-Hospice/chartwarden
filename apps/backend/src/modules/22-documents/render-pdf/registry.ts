@@ -5,6 +5,8 @@
 import { buildAdrResponseDoc } from "./adr-response-doc";
 import { buildAppealPacketDoc } from "./appeal-packet-doc";
 import { buildAuditResponseDoc } from "./audit-response-doc";
+import { buildBereavementDischargeSummaryDoc } from "./bereavement-discharge-summary-doc";
+import { buildBereavementMailingBatchDoc } from "./bereavement-mailing-batch-doc";
 import type { DocModel } from "./doc-model";
 import { buildElectionAddendumDoc } from "./election-addendum-doc";
 import { buildElectionStatementDoc } from "./election-statement-doc";
@@ -42,6 +44,10 @@ export const DEFAULT_PDF_RENDERERS: PdfRendererRegistry = {
   adr_response_packet: buildAdrResponseDoc,
   // Milestone 7a-2 - M25's typed AuditResponsePacketRenderPayload: cover sheet and enclosure index of a filed audit response.
   audit_response_packet: buildAuditResponseDoc,
+  // ADR-0109 D9 - M16's typed BereavementDischargeSummaryRenderPayload: the internal offered-versus-delivered record an auditor reads.
+  bereavement_discharge_summary_internal: buildBereavementDischargeSummaryDoc,
+  // ADR-0109 D10 - M16's typed BereavementMailingBatchRenderPayload: one letter per recipient, a page break between them (internal: it holds every address).
+  bereavement_mailing_batch: buildBereavementMailingBatchDoc,
 };
 
 /**

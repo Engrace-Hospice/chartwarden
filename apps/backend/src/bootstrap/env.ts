@@ -25,7 +25,7 @@ export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = [
   "claimmd",
 ];
 
-/** ADR-0108 D6 — the claims-billing add-on enforcement mode (the gate lives in ./claims-billing-gate.ts). */
+/** ADR-0110 D6 — the claims-billing add-on enforcement mode (the gate lives in ./claims-billing-gate.ts). */
 export const CLAIMS_BILLING_ENFORCEMENT_ENV = "CLAIMS_BILLING_ENFORCEMENT";
 export const CLAIMS_BILLING_ENFORCEMENT_MODES = ["off", "shadow", "enforce"] as const;
 export type ClaimsBillingEnforcementMode = (typeof CLAIMS_BILLING_ENFORCEMENT_MODES)[number];
@@ -231,6 +231,12 @@ const REQUIREMENTS: readonly Requirement[] = [
   // ADR-0053 amendment 2026-11-04: the Claim.MD account key and which account it opens (test or production).
   {
     key: "CLAIMMD_ACCOUNT_KEY",
+    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
+  },
+  {
+    key: "CLAIMMD_ACCOUNT_REFERENCE",
+    rule: (v) =>
+      /^[A-Za-z0-9._:-]{1,128}$/.test(v) ? null : "must be a stable non-secret account reference",
     when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
   },
   {

@@ -216,8 +216,18 @@ export const PAUSE_KINDS: readonly string[] = [
   "counselor_unavailable_temp",
 ];
 
-/** `bereavement_opt_out_kind` (§3.2 / D9). */
-export const OPT_OUT_KINDS: readonly string[] = ["full", "channel_specific", "pause_temporarily"];
+/** `bereavement_opt_out_kind` (§3.2 / D9 + ADR-0109 D10 `no_mailings`). */
+export const OPT_OUT_KINDS: readonly string[] = [
+  "full",
+  "channel_specific",
+  "pause_temporarily",
+  "no_mailings",
+];
+
+/** The counselor-facing label of an opt-out scope. `no_mailings` is the only one that is NOT a departure. */
+export function optOutKindLabel(kind: string | null | undefined): string {
+  return kind === "no_mailings" ? "No mailings (calls continue)" : humanize(kind);
+}
 
 /**
  * The default picker selections, named rather than written as `SOME_LIST[0]`. Under
@@ -246,6 +256,82 @@ export function anniversaryMarkLabel(mark: string | null | undefined): string {
       return "Anniversary";
     default:
       return humanize(mark);
+  }
+}
+
+/** ADR-0109 — a contact has at most this many care goals, each at most this long (mirrors the server's wire schema). */
+export const CARE_GOALS_MAX = 3;
+export const CARE_GOAL_MAX_CHARS = 280;
+
+/**
+ * ADR-0109 D2/D4 — a touchpoint's cadence-floor mark → the label the schedule screens show. The Medicare-aligned
+ * floor names its contacts by WHEN they fall (`initial_outreach` is the 1-4 week call), not by modality, so a mailed
+ * item re-modalized to a call still reads as the same floor item. `nine_month` (and its legacy anniversary mark
+ * `nine_month_high_risk_only`) is just "Month 9" now that every tier holds it. A row with no mark (an ad-hoc touchpoint,
+ * or one written before the column) falls back to the caller's own label.
+ */
+export function cadenceMarkLabel(mark: string | null | undefined): string | null {
+  switch (mark) {
+    case "immediate_screen":
+      return "Immediate screen";
+    case "condolence_letter":
+      return "Condolence letter";
+    case "week_1":
+      return "Week 1 contact";
+    case "week_2":
+      return "Week 2 contact";
+    case "initial_outreach":
+      return "1–4 week call";
+    case "one_month":
+      return "1-month call";
+    case "two_month":
+      return "Month 2";
+    case "three_month":
+      return "3-month call";
+    case "six_month":
+      return "6-month call";
+    case "nine_month":
+    case "nine_month_high_risk_only":
+      return "Month 9";
+    case "anniversary":
+      return "12-month card";
+    case "anniversary_call":
+      return "12-month call";
+    case "closeout_letter":
+      return "Closeout letter";
+    case null:
+    case undefined:
+      return null;
+    default:
+      return humanize(mark);
+  }
+}
+
+/** A touchpoint's heading: its floor mark when it has one, else its modality. */
+export function touchpointLabel(row: {
+  cadenceMark?: string | null;
+  kind?: string | null;
+}): string {
+  return cadenceMarkLabel(row.cadenceMark) ?? outreachKindLabel(row.kind);
+}
+
+/** `bereavement_assessment_task.status` (ADR-0109 D3). `missed` is the overdue signal oversight is alerted to. */
+export const ASSESSMENT_TASK_STATUS_TONE: Record<string, StatusTone> = {
+  scheduled: "progress",
+  completed: "success",
+  missed: "error",
+  cancelled: "neutral",
+};
+
+/** The two assessment checkpoints of the Medicare-aligned timeline (ADR-0109 D3). */
+export function assessmentTaskKindLabel(kind: string | null | undefined): string {
+  switch (kind) {
+    case "initial_assessment":
+      return "Initial assessment (day 28)";
+    case "midpoint_reassessment":
+      return "Midpoint reassessment (day 180)";
+    default:
+      return humanize(kind);
   }
 }
 
@@ -381,4 +467,9 @@ export function anniversaryCountdown(
 export function scoreLabel(value: number | null | undefined): string {
   if (value == null) return "—";
   return String(value);
+}
+
+/** A list count that is honest about a capped page: `100+` when the server said there is more. */
+export function countLabel(shown: number, hasMore: boolean): string {
+  return hasMore ? `${shown}+` : String(shown);
 }

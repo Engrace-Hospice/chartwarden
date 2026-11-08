@@ -18,9 +18,15 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import { DegradedError } from "@chartwarden/types";
-import type { DocumentDigest, IntakeMetrics, ProvenanceRecord } from "@chartwarden/types";
+import type {
+  DocumentAggregateType,
+  DocumentDigest,
+  IntakeMetrics,
+  ProvenanceRecord,
+} from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import type { StaffMintAccessLogPort } from "../routes/signed-url-service";
+import type { OrgDocumentAccessPort } from "./org-document-access";
 import type { DocumentReaderStore, PortalAccessLogPort } from "./readers-store";
 import type { ObjectStorePort } from "./store";
 
@@ -233,6 +239,7 @@ export function createDrizzleDocumentReaderStore(db: DbClient): DocumentReaderSt
             documentId: DV.documentId,
             patientId: DOC.patientId,
             patientFacing: DOC.patientFacing,
+            aggregateType: DOC.aggregateType,
             activeVersionId: DOC.activeVersionId,
             status: DOC.status,
             // F-225 (#248) — the version's REAL stored object key (the portal URL presigns it).
@@ -252,6 +259,7 @@ export function createDrizzleDocumentReaderStore(db: DbClient): DocumentReaderSt
           documentId: row.documentId,
           patientId: row.patientId,
           patientFacing: row.patientFacing,
+          aggregateType: row.aggregateType as DocumentAggregateType,
           isSudClass: metadata?.sudRedacted === true,
           status: row.status as DocumentDigest["status"],
           objectKey: row.objectKey,
@@ -398,6 +406,47 @@ export function createDrizzleStaffMintAccessLog(db: DbClient): StaffMintAccessLo
           recipientClass: entry.recipientClass,
           correlationId: entry.correlationId,
         });
+      });
+    },
+  };
+}
+
+/**
+ * ADR-0109 D10 — the Drizzle {@link OrgDocumentAccessPort}: one document and its ACTIVE version's object key, read under the caller's request context
+ * (the same wall as every reader in this file; the asserted `organizationId` is the second wall). The org-level / type / status refusals are the
+ * provider's, not the query's, so a refusal reads the same whatever the cause.
+ */
+export function createDrizzleOrgDocumentAccessPort(db: DbClient): OrgDocumentAccessPort {
+  return {
+    async loadDocument({ organizationId, documentId }) {
+      return withOrgContextFromRequest(db, async (tx: SeamTx) => {
+        const [row] = await tx
+          .select({
+            documentId: DOC.id,
+            aggregateType: DOC.aggregateType,
+            patientId: DOC.patientId,
+            status: DOC.status,
+            activeVersionId: DOC.activeVersionId,
+            objectKey: DV.minioObjectKey,
+          })
+          .from(DOC)
+          .leftJoin(DV, eq(DV.id, DOC.activeVersionId))
+          .where(and(eq(DOC.id, documentId), eq(DOC.organizationId, organizationId)))
+          .limit(1);
+        return row ?? null;
+      });
+    },
+    async activeMembershipId({ organizationId, userId }) {
+      return withOrgContextFromRequest(db, async (tx: SeamTx) => {
+        const M = schema.memberships;
+        const [row] = await tx
+          .select({ id: M.id })
+          .from(M)
+          .where(
+            and(eq(M.organizationId, organizationId), eq(M.userId, userId), eq(M.status, "active")),
+          )
+          .limit(1);
+        return row?.id ?? null;
       });
     },
   };

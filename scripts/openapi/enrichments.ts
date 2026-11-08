@@ -263,15 +263,18 @@ import {
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M16-T07
 // web screens call the surface these type.
 import {
+  ApproveLetterBody as M16ApproveLetterBody,
   AssignCounselorBody as M16AssignCounselorBody,
   AssignVolunteerBody as M16AssignVolunteerBody,
   CancelOutreachBody as M16CancelOutreachBody,
+  CareGoalsBody as M16CareGoalsBody,
   CloseEarlyBody as M16CloseEarlyBody,
   CompleteOutreachBody as M16CompleteOutreachBody,
   ConfirmContactBody as M16ConfirmContactBody,
   CosignCloseBody as M16CosignCloseBody,
   CounselorDashboardQuerySchema as M16CounselorDashboardQuerySchema,
   CreateContactBody as M16CreateContactBody,
+  DeclineLetterBody as M16DeclineLetterBody,
   DismissUnreachableProposalBody as M16DismissUnreachableProposalBody,
   FlagComplicatedGriefBody as M16FlagComplicatedGriefBody,
   InitiateContactBody as M16InitiateContactBody,
@@ -283,7 +286,9 @@ import {
   OutreachListQuerySchema as M16OutreachListQuerySchema,
   OutreachOutcomeBody as M16OutreachOutcomeBody,
   PausePlanBody as M16PausePlanBody,
+  PhysicianLetterListQuerySchema as M16PhysicianLetterListQuerySchema,
   PlanListQuerySchema as M16PlanListQuerySchema,
+  PreDeathDraftBody as M16PreDeathDraftBody,
   RecomputeRiskBody as M16RecomputeRiskBody,
   ReferExternalBody as M16ReferExternalBody,
   RegenerateScheduleBody as M16RegenerateScheduleBody,
@@ -295,6 +300,21 @@ import {
   SupervisorDashboardQuerySchema as M16SupervisorDashboardQuerySchema,
   UpdateContactBody as M16UpdateContactBody,
 } from "../../apps/backend/src/modules/16-bereavement/routes/m16-typebox";
+// ADR-0109 D10 — the M16 mailing program (routes 42-51) and the contact timeline (route 52).
+import {
+  ContactTimelinePageResponseSchema as M16ContactTimelinePageResponse,
+  ContactTimelineQuerySchema as M16ContactTimelineQuerySchema,
+  MailingConfigListResponseSchema as M16MailingConfigListResponse,
+  MailingConfigViewResponseSchema as M16MailingConfigResponse,
+  MailingDownloadViewResponseSchema as M16MailingDownloadResponse,
+  MailingItemListQuerySchema as M16MailingItemListQuerySchema,
+  MailingItemPageResponseSchema as M16MailingItemPageResponse,
+  MailingRunListQuerySchema as M16MailingRunListQuerySchema,
+  MailingRunPageResponseSchema as M16MailingRunPageResponse,
+  MailingRunViewResponseSchema as M16MailingRunResponse,
+  PutMailingConfigBody as M16PutMailingConfigBody,
+  UpdateMailingRunContentBody as M16UpdateMailingRunContentBody,
+} from "../../apps/backend/src/modules/16-bereavement/routes/mailing-typebox";
 // M19 On-Call Triage — the §4.2 request bodies + list queries the §4.1 route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M19-T08
 // web screens call the surface these type. Note what is deliberately ABSENT from every body and therefore
@@ -1098,6 +1118,7 @@ import {
 // same M16* aliases — dedupe on merge) + the new §4.1 RESPONSE DTOs. Every symbol M16-aliased.
 import {
   // ── request bodies + list queries (§4.2) ──
+  BereavementAssessmentTaskListResponseSchema as M16AssessmentTaskListResponse,
   BereavementClosureViewResponseSchema as M16ClosureResponse,
   BereavementContactLogViewResponseSchema as M16ContactLogResponse,
   // ── §4.1 response DTOs (F0 enrichment; pinned to the read/write service views by Conforms) ──
@@ -1105,9 +1126,12 @@ import {
   CounselorDashboardViewResponseSchema as M16CounselorDashboardResponse,
   BereavementOutreachPageResponseSchema as M16OutreachPageResponse,
   BereavementOutreachRowViewResponseSchema as M16OutreachRowResponse,
+  PhysicianLetterPageResponseSchema as M16PhysicianLetterPageResponse,
+  PhysicianLetterViewResponseSchema as M16PhysicianLetterResponse,
   PlanActivationViewResponseSchema as M16PlanActivationResponse,
   BereavementPlanDetailResponseSchema as M16PlanDetailResponse,
   BereavementPlanPageResponseSchema as M16PlanPageResponse,
+  PreDeathDraftViewResponseSchema as M16PreDeathDraftResponse,
   BereavementRiskScorePageResponseSchema as M16RiskScorePageResponse,
   BereavementRiskScoreViewResponseSchema as M16RiskScoreResponse,
   ScheduleRegenerationViewResponseSchema as M16ScheduleRegenResponse,
@@ -2396,6 +2420,7 @@ import {
   AckResponse as M31AckResponse,
   AmendmentSubmitRequest as M31AmendmentSubmitRequest,
   AmendmentSubmitResponse as M31AmendmentSubmitResponse,
+  BereavementMailingPreferenceRequest as M31BereavementMailingPreferenceRequest,
   CarePlanSummaryResponse as M31CarePlanSummaryResponse,
   CareSummaryResponse as M31CareSummaryResponse,
   CaregiverAttestedAdministrationRequest as M31CaregiverAttestRequest,
@@ -3189,7 +3214,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: M35SubscriptionAdminResponseDto,
     summary: "Pause subscription",
   },
-  // ADR-0108 — the claims-billing add-on (platform-ops).
+  // ADR-0110 — the claims-billing add-on (platform-ops).
   "GET /api/admin/addons": {
     response: M35AddonListResponseDto,
     summary: "List the add-on catalog (admin)",
@@ -4494,6 +4519,12 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   },
   "POST /api/v1/portal/bereavement/opt-out": {
     summary: "Self opt-out of the bereavement program (M16)",
+    response: M31AckResponse,
+  },
+  "POST /api/v1/portal/bereavement/mailing-preference": {
+    summary:
+      "Stop (allowMailings false) or resume (true) bereavement MAILINGS only — the contact stays in the program and calls continue (M16, ADR-0109 D10)",
+    body: M31BereavementMailingPreferenceRequest,
     response: M31AckResponse,
   },
   "GET /api/v1/portal/notification-preferences": {
@@ -7966,7 +7997,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/bereavement/plans/:planId/closure": {
     summary:
-      "The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it (§4.1 #10)",
+      "The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it; `dischargeSummaryDocumentId` (the internal discharge summary, once rendered) is shown to oversight only (§4.1 #10, ADR-0109 D9)",
     response: M16ClosureResponse,
   },
   "GET /api/v1/bereavement/plans/:planId/outreach": {
@@ -7998,11 +8029,120 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M16InitiateContactBody,
     response: M16OutreachRowResponse,
   },
+  "GET /api/v1/bereavement/plans/:planId/assessment-tasks": {
+    summary:
+      "The plan's two assessment checkpoints per survivor (initial d28, midpoint d180) with the human-appended score that completed each; empty when the reader's scope holds no clinical content (ADR-0109 D3, #37)",
+    response: M16AssessmentTaskListResponse,
+  },
+  "GET /api/v1/bereavement/pre-death-assessments/:admissionId": {
+    summary:
+      "The pre-death risk-assessment draft for an admission — eight tri-state factors, an empty all-unknown draft at version 0 when nothing is recorded; the care-team MSW / chaplain / bereavement counselor or oversight only (ADR-0109 D5, #35)",
+    response: M16PreDeathDraftResponse,
+  },
+  "PUT /api/v1/bereavement/pre-death-assessments/:admissionId": {
+    summary:
+      "Record the pre-death risk-assessment draft — replaces the whole eight-factor vector; `If-Match` (0 for the first write) and `Idempotency-Key` required; the substance-use slot is stored `unknown` unless the writer is cleared for 42 CFR Part 2; 409 `DRAFT_LOCKED` once a bereavement plan exists (ADR-0109 D5, #36)",
+    body: M16PreDeathDraftBody,
+    response: M16PreDeathDraftResponse,
+  },
+
+  // ── physician-letter.routes.ts (ADR-0109 D6) ──
+  "GET /api/v1/bereavement/physician-letters": {
+    summary:
+      "The physician condolence-letter review queue (`?status=`), oldest due first, cursor-paginated; bereavement oversight only (ADR-0109 D6, #38)",
+    query: M16PhysicianLetterListQuerySchema,
+    response: M16PhysicianLetterPageResponse,
+  },
+  "GET /api/v1/bereavement/plans/:planId/physician-letter": {
+    summary:
+      "The plan's physician condolence letter; 404 for a plan that has none; bereavement oversight only (ADR-0109 D6, #38)",
+    response: M16PhysicianLetterResponse,
+  },
+  "POST /api/v1/bereavement/physician-letters/:letterId/approve": {
+    summary:
+      "Approve a pending letter and request its render in the same transaction — an optional personal note (at most 1000 characters, sealed at rest) and, when the care team resolved no attending, the internal clinician who should receive it (an active member of the organization); `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #39)",
+    body: M16ApproveLetterBody,
+    response: M16PhysicianLetterResponse,
+  },
+  "POST /api/v1/bereavement/physician-letters/:letterId/decline": {
+    summary:
+      "Decline a pending letter with a documented reason of at least 20 characters; `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #40)",
+    body: M16DeclineLetterBody,
+    response: M16PhysicianLetterResponse,
+  },
+
+  // ── mailing.routes.ts (ADR-0109 D10) ──
+  "GET /api/v1/bereavement/mailings/config": {
+    summary:
+      "The four configurable mailings (quarterly newsletter, December holiday, Mother's Day, Father's Day), each merged with its stored config or a disabled default at version 0; bereavement oversight only (ADR-0109 D10, #42)",
+    response: M16MailingConfigListResponse,
+  },
+  "PUT /api/v1/bereavement/mailings/config/:mailingKey": {
+    summary:
+      "Configure one mailing: enabled, lead days (3..60), the occurrence dates, the audience and the agency's own wording (no default wording ships); `If-Match` (0 for the first write) and `Idempotency-Key` required (ADR-0109 D10, #43)",
+    body: M16PutMailingConfigBody,
+    response: M16MailingConfigResponse,
+  },
+  "GET /api/v1/bereavement/mailings/runs": {
+    summary:
+      "Mailing runs, newest scheduled first (`?status=`), cursor-paginated, each with its item counts; bereavement oversight only (ADR-0109 D10, #44)",
+    query: M16MailingRunListQuerySchema,
+    response: M16MailingRunPageResponse,
+  },
+  "GET /api/v1/bereavement/mailings/runs/:runId": {
+    summary:
+      "One mailing run: status, wording snapshot, recipient / excluded counts and per-state item counts; the batch document itself is reached only through download (ADR-0109 D10, #45)",
+    response: M16MailingRunResponse,
+  },
+  "GET /api/v1/bereavement/mailings/runs/:runId/items": {
+    summary:
+      "A run's items in letter order: contact id, relationship, channel, status and exclusion reason; never a name or an address (ADR-0109 D10, #46)",
+    query: M16MailingItemListQuerySchema,
+    response: M16MailingItemPageResponse,
+  },
+  "PATCH /api/v1/bereavement/mailings/runs/:runId/content": {
+    summary:
+      "Replace a DRAFT run's wording; 409 once the run is generating or later; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #47)",
+    body: M16UpdateMailingRunContentBody,
+    response: M16MailingRunResponse,
+  },
+  "POST /api/v1/bereavement/mailings/runs/:runId/generate": {
+    summary:
+      "Generate the batch: compare-and-set draft, failed or ready to generating, select the recipients set-based through the eligibility rule, hand the render to the worker (which re-checks eligibility just before rendering). From `ready` it REGENERATES a batch that went stale (download answered 409 `MAILING_RUN_STALE`): the old PDF is detached and a fresh one rendered; 422 `MAILING_CONTENT_EMPTY` when no wording was written (no default ships); a run with no eligible recipient lands `failed` (`NO_RECIPIENTS`); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #48)",
+    response: M16MailingRunResponse,
+  },
+  "GET /api/v1/bereavement/mailings/runs/:runId/download": {
+    summary:
+      "A short-lived URL for the rendered batch PDF (every recipient's name and address, across the whole tenant: internal-only), minted through the M22 org-level document seam, which records the access; needs a fresh step-up; the URL is served as an attachment; 409 `MAILING_RUN_NOT_READY` unless the run is ready; 409 `MAILING_RUN_ALREADY_MAILED` once it was confirmed mailed (the batch went out; there is no reprint); eligibility is re-checked first and a batch naming anyone no longer eligible is refused with 409 `MAILING_RUN_STALE` (a count only): regenerate it (#48) and download again; never cached (ADR-0109 D10, #49)",
+    response: M16MailingDownloadResponse,
+  },
+  "POST /api/v1/bereavement/mailings/runs/:runId/confirm-mailed": {
+    summary:
+      "Confirm the batch was mailed (bookkeeping): re-check eligibility over the rendered contacts (an opt-out or closure since the download is flagged `excluded_after_render` and never logged as mailed; staff pull that letter by its printed Ref; nothing recalls a letter already posted), ready to mailed, `m16.bereavement.mailing_run_mailed`; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #50)",
+    response: M16MailingRunResponse,
+  },
+  "POST /api/v1/bereavement/mailings/runs/:runId/cancel": {
+    summary:
+      "Cancel a draft, ready or failed run; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #51)",
+    response: M16MailingRunResponse,
+  },
+  "GET /api/v1/bereavement/contacts/:contactId/timeline": {
+    summary:
+      "The contact's touchpoints and program activities (mailings, sessions), newest first, cursor-paginated; program activities satisfy no cadence item; a bereavement volunteer sees no touchpoint outcome (ADR-0109 D10, #52)",
+    query: M16ContactTimelineQuerySchema,
+    response: M16ContactTimelinePageResponse,
+  },
 
   // ── contacts.routes.ts ──
   "POST /api/v1/bereavement/plans/:planId/contacts": {
     summary: "Add a bereaved contact to an open plan — lands `proposed` (§4.1 #11)",
     body: M16CreateContactBody,
+    response: M16ContactRowResponse,
+  },
+  "PUT /api/v1/bereavement/contacts/:contactId/care-plan": {
+    summary:
+      "Record the contact's care goals (ADR-0109, #41) — at most 3 goals of 1..280 characters, sealed with the tenant DEK; `If-Match` and `Idempotency-Key` required; an empty list clears them; a volunteer neither reads nor writes them",
+    body: M16CareGoalsBody,
     response: M16ContactRowResponse,
   },
   "PATCH /api/v1/bereavement/contacts/:contactId": {
@@ -10729,7 +10869,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/messaging/channels/:id/mention-candidates": {
     summary:
-      "Search staff, the linked patient and (ADR-0107, PROPOSED; only while the tenant flag `messaging.group_tags` is on) the group tags `role`, `team` and `on_call` eligible for a structured reference. A group candidate is a label: who is behind it is never listed",
+      "Search staff, the linked patient and (ADR-0108, PROPOSED; only while the tenant flag `messaging.group_tags` is on) the group tags `role`, `team` and `on_call` eligible for a structured reference. A group candidate is a label: who is behind it is never listed",
     query: M36MentionCandidateQuerySchema,
     response: M36MentionCandidateResponseSchema,
   },
@@ -10741,7 +10881,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/messaging/channels/:id/messages": {
     summary:
-      "Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original). A reference of kind `role`, `team` or `on_call` is a group tag (ADR-0107, PROPOSED; tenant flag `messaging.group_tags`): the server resolves it to people who are active members of the channel, freezes them, and sends each one an ordinary mention notification. Typed 422: GROUP_TAGS_DISABLED, GROUP_TAG_INVALID, GROUP_TAG_EMPTY, GROUP_TAG_TOO_MANY (50 people per tag, 3 tags per message), GROUP_TAG_ON_CALL_UNRESOLVED (no confirmed on-call person; nothing is sent)",
+      "Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original). A reference of kind `role`, `team` or `on_call` is a group tag (ADR-0108, PROPOSED; tenant flag `messaging.group_tags`): the server resolves it to people who are active members of the channel, freezes them, and sends each one an ordinary mention notification. Typed 422: GROUP_TAGS_DISABLED, GROUP_TAG_INVALID, GROUP_TAG_EMPTY, GROUP_TAG_TOO_MANY (50 people per tag, 3 tags per message), GROUP_TAG_ON_CALL_UNRESOLVED (no confirmed on-call person; nothing is sent)",
     headers: IDEMPOTENCY_KEY_HEADER,
     body: M36SendMessageBodySchema,
     response: M36SendMessageResponseSchema,

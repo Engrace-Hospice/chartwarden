@@ -137,6 +137,11 @@ function utcMidnight(localDate: string): number {
   return ms;
 }
 
+/** D4 — the ISO instant `offsetDays` after the UTC-midnight death date (the anchor every cadence offset counts from). */
+export function deathAnchoredInstant(deathDate: string, offsetDays: number): string {
+  return new Date(utcMidnight(deathDate) + offsetDays * MS_PER_DAY).toISOString();
+}
+
 /** D4 — the exclusive end of the bereavement window as an ISO instant (`death_date + 396 days`). M36
  *  pre-computes its channel `archives_at` from this and M5 expires the bereavement-window cache on it. */
 export function bereavementWindowEnd(deathDate: string): string {

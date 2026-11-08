@@ -96,6 +96,7 @@ import type {
   OnboardingStatusProvider,
   OrderProvider,
   OrderSignatureProvider,
+  OrgDocumentAccessProvider,
   OrganizationReader,
   PatientAddressReader,
   PatientAdmissionClearanceReader,
@@ -311,7 +312,7 @@ export const patientPrivacyFlagReaderDenyStub: PatientPrivacyFlagReader = {
   },
 };
 
-/** M5 — ADR-0108 the active-patient census page. Throws: an unread census must never count as zero patients. */
+/** M5 — ADR-0110 the active-patient census page. Throws: an unread census must never count as zero patients. */
 export const patientCensusReaderDenyStub: PatientCensusReader = {
   activePatientIdsPage() {
     throw new NotImplementedError("PatientCensusReader");
@@ -437,6 +438,13 @@ export const intakeMetricsProviderDenyStub: IntakeMetricsProvider = {
 export const extractionProvenanceReaderDenyStub: ExtractionProvenanceReader = {
   provenanceForTargetAggregate() {
     throw new NotImplementedError("ExtractionProvenanceReader");
+  },
+};
+
+/** M22 — org-level (patient-less) document download mint (ADR-0109 D10: M16's internal mailing batch). Denies until M22 registers the real provider. */
+export const orgDocumentAccessProviderDenyStub: OrgDocumentAccessProvider = {
+  mintOrgDownloadUrl() {
+    throw new NotImplementedError("OrgDocumentAccessProvider");
   },
 };
 
@@ -1490,6 +1498,9 @@ export const bereavedPortalScopeProviderDenyStub: BereavedPortalScopeProvider = 
   scopeForPortalAccount() {
     throw new NotImplementedError("BereavedPortalScopeProvider");
   },
+  isWindowOpen() {
+    throw new NotImplementedError("BereavedPortalScopeProvider");
+  },
 };
 
 /** M16 — the M30 HQRP measure inputs + M33 rollups, as COUNTS (never a pre-divided rate). */
@@ -1917,7 +1928,7 @@ export const patientCounterProviderDenyStub: PatientCounterProvider = {
   },
 };
 
-/** ADR-0108 — the claims-billing entitlement read. Throws until M35 registers the real reader: the route gate and
+/** ADR-0110 — the claims-billing entitlement read. Throws until M35 registers the real reader: the route gate and
  *  the worker hold treat a throw as "unavailable" and fail CLOSED (503 / hold), and boot refuses a non-`off`
  *  CLAIMS_BILLING_ENFORCEMENT while this stub is still bound. */
 export const claimsBillingEntitlementReaderDenyStub: ClaimsBillingEntitlementReader = {

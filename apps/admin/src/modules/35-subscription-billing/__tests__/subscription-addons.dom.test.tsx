@@ -1,5 +1,5 @@
 import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
-// ADR-0108 — the subscription detail's Add-ons panel: lists the subscription's add-ons, grants (or starts a trial of)
+// ADR-0110 — the subscription detail's Add-ons panel: lists the subscription's add-ons, grants (or starts a trial of)
 // the claims-billing add-on with a reason and an Idempotency-Key, cancels a live one, and shows the period's count.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -65,7 +65,7 @@ const liveRow = {
 
 afterEach(cleanup);
 
-describe("Add-ons panel (ADR-0108)", () => {
+describe("Add-ons panel (ADR-0110)", () => {
   it("grants the add-on with the operator's reason and an Idempotency-Key", async () => {
     const seen = mount([]);
     expect(await screen.findByText("No add-ons on this subscription.")).toBeTruthy();

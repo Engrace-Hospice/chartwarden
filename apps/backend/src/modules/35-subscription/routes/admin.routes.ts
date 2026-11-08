@@ -36,7 +36,7 @@ import {
 
 export interface AdminRouteDeps {
   readonly service: M35RouteService;
-  /** ADR-0108 — adds the claims-billing add-on census line to the tenant usage drill-down. */
+  /** ADR-0110 — adds the claims-billing add-on census line to the tenant usage drill-down. */
   readonly addons?: AddonService;
 }
 

@@ -149,4 +149,148 @@ describe("PR4.4 bereavement support", () => {
     });
     expect(screen.queryByText("Old patient private program")).toBeNull();
   });
+
+  describe("ADR-0109 D10 — stop mailings, keep the calls", () => {
+    const withBody = (
+      handler: (path: string, method: string, body: unknown) => Response | Promise<Response>,
+    ) => {
+      const bodies: unknown[] = [];
+      const client = createApiClient({
+        baseUrl: "http://localhost",
+        fetch: async (input) => {
+          const req = input instanceof Request ? input : new Request(input);
+          const path = new URL(req.url).pathname;
+          if (path === "/api/v1/portal/care-summary")
+            return json({ patient: { layLabel: "Example patient" } });
+          const text = req.method === "GET" ? "" : await req.clone().text();
+          const body = text === "" ? undefined : JSON.parse(text);
+          if (path.endsWith("/mailing-preference")) bodies.push(body);
+          return handler(path, req.method, body);
+        },
+      });
+      window.history.pushState({}, "", `/portal/p/${P1}/bereavement`);
+      render(<PortalApp client={client} />);
+      return bodies;
+    };
+    const base = (path: string, programBody: unknown = program) =>
+      path.endsWith("/program")
+        ? json(programBody)
+        : path.endsWith("/resources")
+          ? json(resources)
+          : json({ ok: true });
+
+    it("offers the control with the reassurance, and sends allowMailings false on one click", async () => {
+      const bodies = withBody((path) => base(path));
+      const stop = await screen.findByRole("button", {
+        name: "Stop mailings — you'll still hear from your counselor",
+      });
+      fireEvent.click(stop);
+      expect(await screen.findByText(/Mailings are stopped/)).toBeTruthy();
+      expect(bodies).toEqual([{ allowMailings: false }]);
+      // the program is still ours: this is not an opt-out
+      expect(screen.queryByText("Preference submitted")).toBeNull();
+      expect(screen.getByRole("button", { name: "Opt out of outreach" })).toBeTruthy();
+    });
+
+    it("starts in the stopped state when every contact has already stopped mailings, and resumes them", async () => {
+      const bodies = withBody((path) =>
+        base(path, { items: [{ label: "Support", mailingsAllowed: false }] }),
+      );
+      expect(await screen.findByText(/Mailings are stopped/)).toBeTruthy();
+      expect(
+        screen.queryByRole("button", {
+          name: "Stop mailings — you'll still hear from your counselor",
+        }),
+      ).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Resume mailings" }));
+      expect(
+        await screen.findByRole("button", {
+          name: "Stop mailings — you'll still hear from your counselor",
+        }),
+      ).toBeTruthy();
+      expect(bodies).toEqual([{ allowMailings: true }]);
+    });
+
+    it("does not claim mailings stopped when the request fails", async () => {
+      withBody((path) => (path.endsWith("/mailing-preference") ? json({}, 503) : base(path)));
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: "Stop mailings — you'll still hear from your counselor",
+        }),
+      );
+      expect(await screen.findByRole("alert")).toBeTruthy();
+      expect(screen.queryByText(/Mailings are stopped/)).toBeNull();
+      expect(
+        screen.getByRole("button", {
+          name: "Stop mailings — you'll still hear from your counselor",
+        }),
+      ).toBeTruthy();
+    });
+
+    it("keeps ONE status region mounted across stop and resume, and focus follows the control that replaces the clicked one", async () => {
+      withBody((path) => base(path));
+      const stop = await screen.findByRole("button", {
+        name: "Stop mailings — you'll still hear from your counselor",
+      });
+      const region = stop.closest(".wx-bereavement-mailings")?.querySelector('[role="status"]');
+      expect(region).toBeTruthy();
+      expect(region?.textContent).toBe("");
+      fireEvent.click(stop);
+      const resume = await screen.findByRole("button", { name: "Resume mailings" });
+      expect(region?.textContent).toMatch(/Mailings are stopped/);
+      expect(region?.isConnected).toBe(true);
+      await waitFor(() => expect(document.activeElement).toBe(resume));
+      fireEvent.click(resume);
+      const stopAgain = await screen.findByRole("button", {
+        name: "Stop mailings — you'll still hear from your counselor",
+      });
+      expect(region?.textContent).toMatch(/Mailings have resumed/);
+      expect(region?.isConnected).toBe(true);
+      await waitFor(() => expect(document.activeElement).toBe(stopAgain));
+    });
+
+    it("honours mayOptOut: no opt-out button once the server says this contact may not, but mailings stay controllable", async () => {
+      withBody((path) =>
+        base(path, { items: [{ label: "Support", mayOptOut: false, inWindow: true }] }),
+      );
+      expect(await screen.findByText(/can't be changed here any more/)).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Opt out of outreach" })).toBeNull();
+      expect(
+        screen.getByRole("button", {
+          name: "Stop mailings — you'll still hear from your counselor",
+        }),
+      ).toBeTruthy();
+    });
+
+    it("honours inWindow: once the program has ended there is nothing to opt out of or to stop", async () => {
+      withBody((path) =>
+        base(path, { items: [{ label: "Support", mayOptOut: false, inWindow: false }] }),
+      );
+      expect(await screen.findByText(/because the support program has ended/)).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Opt out of outreach" })).toBeNull();
+      expect(screen.queryByRole("button", { name: /Stop mailings|Resume mailings/ })).toBeNull();
+      expect(screen.queryByText("Printed mailings")).toBeNull();
+    });
+
+    it("keeps offering both controls while at least one contact is still in the program", async () => {
+      withBody((path) =>
+        base(path, {
+          items: [
+            { label: "Ended", mayOptOut: false, inWindow: false },
+            { label: "Open", mayOptOut: true, inWindow: true },
+          ],
+        }),
+      );
+      expect(await screen.findByRole("button", { name: "Opt out of outreach" })).toBeTruthy();
+      expect(screen.getByText("Printed mailings")).toBeTruthy();
+    });
+
+    it("is hidden once the family has opted out of outreach altogether", async () => {
+      withBody((path) => base(path));
+      fireEvent.click(await screen.findByRole("button", { name: "Opt out of outreach" }));
+      fireEvent.click(screen.getByRole("button", { name: "Confirm opt out" }));
+      expect(await screen.findByText("Preference submitted")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: /Stop mailings/ })).toBeNull();
+    });
+  });
 });

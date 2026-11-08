@@ -62,6 +62,11 @@ export type ReceiveAdviceResult =
   | { readonly outcome: "queued"; readonly adviceId: string }
   | { readonly outcome: "duplicate"; readonly existingAdviceId: string }
   | {
+      readonly outcome: "review_required";
+      readonly stageId: string;
+      readonly reason: "CLAIMMD_ERA_STAGE_MATCH";
+    }
+  | {
       readonly outcome: "malformed";
       readonly reason: string;
       /**
@@ -80,6 +85,11 @@ export type PostAdviceResult =
       readonly unmatchedLineCount: number;
     }
   | { readonly outcome: "failed"; readonly adviceId: string; readonly reason: string }
+  | {
+      readonly outcome: "held_duplicate";
+      readonly adviceId: string;
+      readonly reason: "CROSS_SOURCE_POSTED_IDENTITY" | "MISSING_FINANCIAL_IDENTITY";
+    }
   | { readonly outcome: "not_found"; readonly adviceId: string }
   /** Already posted/partial_posted — a re-delivery of `m25.edi.835_received` (dispatcher retry) is a no-op. */
   | { readonly outcome: "already_posted"; readonly adviceId: string };

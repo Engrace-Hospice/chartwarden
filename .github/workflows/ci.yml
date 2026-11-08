@@ -228,11 +228,14 @@ jobs:
       # with `out of shared memory`. That GUC needs a RESTART, so ALTER SYSTEM + pg_reload_conf()
       # cannot fix it from a step. Verified locally: Postgres at the default fails the baseline, M25,
       # M26 and M30 suites; at 4096 all fifteen pass.
-      - name: Start Postgres (pgvector image — M38 ships a `vector` column; raised lock limit)
+      # The image is built from deploy/production/postgres (production's Postgres: Wolfi + PG18 + pgvector, M38 ships a
+      # `vector` column). Pinned base and packages, so the runner's layer cache makes the build a no-op after the first.
+      - name: Start Postgres (production's Postgres image; raised lock limit)
         run: |
+          docker build -q -t chartwarden-postgres:ci deploy/production/postgres >/dev/null
           docker run -d --name chartwarden-ci-pg \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_test \
-            -p 5432:5432 pgvector/pgvector:pg18 \
+            -p 5432:5432 chartwarden-postgres:ci \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec chartwarden-ci-pg pg_isready -h 127.0.0.1 -U postgres -d chartwarden_test && exit 0
@@ -503,6 +506,7 @@ jobs:
           - { name: "M23 Clearinghouse attempts", scripts: "test:m23:clearinghouse-attempts:live" }
           # ADR-0053 amendment D7 - Claim.MD webhook intake: signature refusals, atomic batch, dedupe, encryption, platform-only table.
           - { name: "M23 Claim.MD webhook", scripts: "test:m23:claimmd-webhook:live" }
+          - { name: "M23 Claim.MD response inbox", scripts: "test:m23:claimmd-response-inbox:live" }
           # M23 per-(provider entity, route) EDI profile (migration 1269): the compare-and-set upsert, FORCEd RLS as chartwarden_app, the CHECKs, no delete, the audit row.
           - { name: "M23 EDI profile", scripts: "test:m23:edi-profile:live" }
           # M23 submit/retry workers and the 999/277CA crons over the bound clearinghouse transport (in-memory), real catalog-validating publisher, legacy portal forbidden (#707).
@@ -1005,7 +1009,7 @@ jobs:
           # ADR-0097 (PROPOSED) / WP 6.8 - acknowledge-required broadcast as chartwarden_app: flag-off 404 before parsing, author-only create, open never acks, idempotent per-person ack, every non-acknowledger listed, ineligible apart, guard triggers refuse forged writes.
           - { name: "M36 ack broadcast", scripts: "test:m36:ack-broadcast:live" }
           - { name: "M36 emergency message", scripts: "test:m36:emergency:live" }
-          # ADR-0107 (PROPOSED) - group tags (@role, @care-team, @on-call) as chartwarden_app: flag-off refusal, team/role/on-call resolved to active channel members only and frozen, a gap or unavailable roster refuses the send, size limits, insert-only snapshot, RLS, edit keeps but cannot add a tag.
+          # ADR-0108 (PROPOSED) - group tags (@role, @care-team, @on-call) as chartwarden_app: flag-off refusal, team/role/on-call resolved to active channel members only and frozen, a gap or unavailable roster refuses the send, size limits, insert-only snapshot, RLS, edit keeps but cannot add a tag.
           - { name: "M36 group tags", scripts: "test:m36:group-tags:live" }
           # ADR-0102 (PROPOSED) / WP 6.10 - alarm ingest (watch only) as chartwarden_app: flag-off 404/401, a signed alarm becomes ONE in-app alert capped at warn with a fixed message and no response request or message, replay / concurrency / failed-emit retry alert once, unmapped kinds recorded and refused, rotated / disabled / stale / tampered requests are one 401, the secret is sealed and absent from audit rows, the guard triggers refuse delete / critical / re-enable / mapping edits, cross-tenant credentials and RLS.
           - { name: "M36 alarm ingest", scripts: "test:m36:alarm-ingest:live" }
@@ -1127,6 +1131,12 @@ jobs:
           - {
               name: "M22 staff mint access log",
               scripts: "test:m22:staff-mint-access-log:live",
+            }
+          # ADR-0109 D6/D9 — M16's physician letter and discharge summary are INTERNAL: read by role only (a caseload member of
+          # the decedent's chart gets 404 by id, mint and list), render-only (every hand write refused 422), and never in the portal.
+          - {
+              name: "M22 internal documents",
+              scripts: "test:m22:internal-documents:live",
             }
           # F-235 (#248) — the DocLens → M5 demographics chart writeback (F-231 decisions A1 + B): review
           # completion decrypts server-side, writes provenance and `m22.extraction.commit_requested`; the
@@ -1329,6 +1339,7 @@ jobs:
           # artifact back-ref (m22.document.rendered), both through the real catalog-validating publisher.
           - { name: "M16 encounter-signed", scripts: "test:m16:encounter-signed:live" }
           - { name: "M16 document-rendered", scripts: "test:m16:document-rendered:live" }
+          - { name: "M16 mailings", scripts: "test:m16:mailings:live" }
           # Readmission workflow — re-election into the next benefit period, the period-3 F2F gate, and the
           # readmission NOE held until the prior election's NOTR / final claim is filed.
           - { name: "M6 readmission", scripts: "test:m6:readmission:live" }
@@ -1391,11 +1402,11 @@ jobs:
           # GAP-058/059/060/061 - M35 billing runtime: payment-method trust, refund cap + execution, signed
           # webhook -> dunning -> suspension, expiry watch, usage thresholds, revenue snapshot, reconciler.
           - { name: "M35 billing runtime", scripts: "test:m35:billing-runtime:live" }
-          # ADR-0108 - claims-billing add-on: no tenant self-grant as chartwarden_app, RLS isolation, one live row, audit + real-publisher events.
+          # ADR-0110 - claims-billing add-on: no tenant self-grant as chartwarden_app, RLS isolation, one live row, audit + real-publisher events.
           - { name: "M35 claims-billing add-on", scripts: "test:m35:claims-billing-addon:live" }
           # M34 - a platform operator enters a tenant's provider entity / location / MAC credential on its behalf: rows land in the target org under its RLS (real chartwarden_app), operator-attributed + audited with a reason, refused unless the tenant is provisioning/onboarding, no step-up / AI actor / missing reason refused, EIN + MAC secret never returned.
           - { name: "M34 onboarding data", scripts: "test:m34:onboarding-data:live" }
-          # ADR-0108 D8 - census pull: active-only, add-on orgs only, idempotent rerun, pseudonyms only, two-org RLS, reconcile drift.
+          # ADR-0110 D8 - census pull: active-only, add-on orgs only, idempotent rerun, pseudonyms only, two-org RLS, reconcile drift.
           - { name: "M35 claims-billing census", scripts: "test:m35:claims-billing-census:live" }
           # Slice 2 (tenant pricing) - the plan editor (a published version is frozen by the database, and cannot be un-frozen by changing its
           # tier), onboarding step 2 settling plan_contract through the wizard, the active-staff / daily-census / net-collections meters on seeded
@@ -1433,7 +1444,7 @@ jobs:
           # M23 and M27 once shared a BullMQ queue named `validation-run` (an M27 worker failed M23 jobs into the DLQ). Real
           # producers, one consumer per module: a job reaches only its own module; stranded legacy jobs are moved, not dropped.
           - { name: "M23/M27 validation queue isolation", scripts: "test:m23:validation-queue-isolation:live" }
-          # ADR-0108 D7 - a held claims-billing job is delayed on real BullMQ, no attempt spent, never failed (needs Valkey).
+          # ADR-0110 D7 - a held claims-billing job is delayed on real BullMQ, no attempt spent, never failed (needs Valkey).
           - { name: "Claims-billing worker hold", scripts: "test:claims-billing:worker-hold:live" }
     services:
       # F-025 (#59): four of the newly-wired suites gate on `CHARTWARDEN_TEST_REDIS_URL` as well as the
@@ -1463,11 +1474,12 @@ jobs:
         run: bun install --frozen-lockfile
       # Same explicit `docker run` + raised lock limit as rls-live, and for the same reason (see that job's
       # note): these suites replay the full migration set, partitioned parents included, in one transaction.
-      - name: Start Postgres (pgvector image; raised lock limit)
+      - name: Start Postgres (production's Postgres image; raised lock limit)
         run: |
+          docker build -q -t chartwarden-postgres:ci deploy/production/postgres >/dev/null
           docker run -d --name chartwarden-ci-pg-lifecycle \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_test \
-            -p 5432:5432 pgvector/pgvector:pg18 \
+            -p 5432:5432 chartwarden-postgres:ci \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec chartwarden-ci-pg-lifecycle pg_isready -h 127.0.0.1 -U postgres -d chartwarden_test && exit 0
@@ -1510,14 +1522,15 @@ jobs:
           bun-version: "1.3.5"
       - name: Install dependencies (frozen lockfile)
         run: bun install --frozen-lockfile
-      # Same pgvector image + raised lock limit as rls-live, and for the same reason: the full
+      # Same Postgres image + raised lock limit as rls-live, and for the same reason: the full
       # migration chain includes ~47 partitioned parents and blows past the default
       # max_locks_per_transaction=64.
-      - name: Start Postgres (pgvector image; raised lock limit)
+      - name: Start Postgres (production's Postgres image; raised lock limit)
         run: |
+          docker build -q -t chartwarden-postgres:ci deploy/production/postgres >/dev/null
           docker run -d --name chartwarden-ci-pg-migrate \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_migration_gate \
-            -p 5432:5432 pgvector/pgvector:pg18 \
+            -p 5432:5432 chartwarden-postgres:ci \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec chartwarden-ci-pg-migrate pg_isready -h 127.0.0.1 -U postgres -d chartwarden_migration_gate && exit 0
@@ -1574,11 +1587,12 @@ jobs:
         run: bun install --frozen-lockfile
       # Same explicit `docker run` as rls-live, and for the same reason: this suite applies the FULL
       # migration set, which exhausts the default max_locks_per_transaction=64. See the rls-live note.
-      - name: Start Postgres (pgvector image — M38 ships a `vector` column; raised lock limit)
+      - name: Start Postgres (production's Postgres image; raised lock limit)
         run: |
+          docker build -q -t chartwarden-postgres:ci deploy/production/postgres >/dev/null
           docker run -d --name chartwarden-ci-pg \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_test \
-            -p 5432:5432 pgvector/pgvector:pg18 \
+            -p 5432:5432 chartwarden-postgres:ci \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec chartwarden-ci-pg pg_isready -h 127.0.0.1 -U postgres -d chartwarden_test && exit 0
@@ -1633,12 +1647,13 @@ jobs:
           bun-version: "1.3.5"
       - name: Install dependencies (frozen lockfile)
         run: bun install --frozen-lockfile
-      # Same pgvector image + raised lock limit as rls-live: booting applies the full migration set.
-      - name: Start Postgres (pgvector image; raised lock limit)
+      # Same Postgres image + raised lock limit as rls-live: booting applies the full migration set.
+      - name: Start Postgres (production's Postgres image; raised lock limit)
         run: |
+          docker build -q -t chartwarden-postgres:ci deploy/production/postgres >/dev/null
           docker run -d --name chartwarden-ci-pg-boot \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_boot \
-            -p 5432:5432 pgvector/pgvector:pg18 \
+            -p 5432:5432 chartwarden-postgres:ci \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec chartwarden-ci-pg-boot pg_isready -h 127.0.0.1 -U postgres -d chartwarden_boot && exit 0
@@ -1690,6 +1705,58 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Shared fixed-window counter across two clients (real Valkey)
         run: bun run test:rate-limit-store:live
+
+  # ADR-0050 D6 — "proof before cutover". Production object storage moves MinIO -> SeaweedFS, with RustFS as the
+  # second copy (and the local/CI store). Runs the REAL M22 SigV4 adapter against both:
+  #   conformance (each store): SHA-256 checksums stored AND verified, presigned PUT/GET, the D12 version-aware
+  #     erase, the M25 prefix-expiry rule, the GAP-141 per-download audit record, the GAP-139 key scope;
+  #   resilience (SeaweedFS primary + RustFS copy): fault injection (paused / restarted store, upload cut
+  #     mid-body, hung copy target), tenant isolation, and backup -> loss -> restore via scripts/object-store-copy.ts.
+  # `docker run`, not `services:`: the stores need commands and config mounts, and the fault tests pause them.
+  object-store-conformance-live:
+    name: Object-store conformance + resilience live (SeaweedFS, RustFS) — ADR-0050 D6
+    runs-on: [self-hosted, Linux, X64, ci]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Start SeaweedFS + Fluent Bit, and RustFS
+        run: |
+          scripts/object-store-conformance/seaweedfs-up.sh
+          scripts/object-store-conformance/rustfs-up.sh
+      # an empty env would make a suite SKIP and the job go green: each step fails instead
+      - name: Conformance suite against SeaweedFS
+        run: |
+          eval "$(scripts/object-store-conformance/seaweedfs-up.sh --env)"
+          test -n "${OBJECT_STORE_ENDPOINT:-}" || { echo "OBJECT_STORE_ENDPOINT unset" >&2; exit 1; }
+          bun run test:object-store:conformance:live
+      - name: Conformance suite against RustFS
+        run: |
+          eval "$(scripts/object-store-conformance/rustfs-up.sh --env)"
+          test -n "${OBJECT_STORE_ENDPOINT:-}" || { echo "OBJECT_STORE_ENDPOINT unset" >&2; exit 1; }
+          bun run test:object-store:conformance:live
+      - name: Resilience suite (SeaweedFS primary, RustFS copy)
+        run: |
+          eval "$(scripts/object-store-conformance/seaweedfs-up.sh --env)"
+          eval "$(scripts/object-store-conformance/rustfs-up.sh --backup-env)"
+          export OBJECT_STORE_CONTAINER=cw-osc-seaweedfs
+          test -n "${OBJECT_STORE_ENDPOINT:-}" && test -n "${BACKUP_STORE_ENDPOINT:-}" || { echo "store env unset" >&2; exit 1; }
+          bun run test:object-store:resilience:live
+      - name: Store logs on failure
+        if: failure()
+        run: |
+          docker logs cw-osc-seaweedfs 2>&1 | tail -100 || true
+          docker logs cw-osc-fluent-bit 2>&1 | tail -50 || true
+          docker logs cw-osc-rustfs 2>&1 | tail -100 || true
+      - name: Cleanup stores
+        if: always()
+        run: |
+          scripts/object-store-conformance/seaweedfs-up.sh --down
+          scripts/object-store-conformance/rustfs-up.sh --down
 
   e2e:
     # F-024 (#41, second half): the 18-test Playwright suite — and the SIX axe-core WCAG 2A/AA scans it
@@ -1794,11 +1861,11 @@ jobs:
       # gateway capability gate is on (outside production an unset gate is OFF). Throwaway key, this run only.
       M24_CREDENTIAL_ENCRYPTION_KEY: Y2ktbTI0LWNyZWRlbnRpYWwta2VrLTAxMjM0NTY3ODk=
       M24_LAUNCH_GATEWAY_ENABLED: "true"
-      # Document upload (documents.spec) needs the MinIO/S3 adapter: without MINIO_* the upload route answers
+      # Document upload (documents.spec) needs the S3 adapter (RustFS here): without MINIO_* the upload route answers
       # 503 DEGRADED and the SPA drops to its maintenance page. The adapter creates its own buckets.
       MINIO_ENDPOINT: http://localhost:9000
       MINIO_ACCESS_KEY: chartwarden
-      MINIO_SECRET_KEY: chartwarden-minio-ci-secret
+      MINIO_SECRET_KEY: chartwarden-object-store-ci-secret
       MINIO_REGION: us-east-1
     steps:
       - uses: actions/checkout@v7
@@ -1810,31 +1877,32 @@ jobs:
         run: bun install --frozen-lockfile
       # Same explicit `docker run` + raised lock limit as rls-live, and for the same reason (see that
       # job's note): booting replays the full migration set, ~47 partitioned parents included.
-      - name: Start Postgres (pgvector image; raised lock limit)
+      - name: Start Postgres (production's Postgres image; raised lock limit)
         run: |
+          docker build -q -t chartwarden-postgres:ci deploy/production/postgres >/dev/null
           docker run -d --name chartwarden-ci-pg-e2e \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_e2e \
-            -p 5432:5432 pgvector/pgvector:pg18 \
+            -p 5432:5432 chartwarden-postgres:ci \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec chartwarden-ci-pg-e2e pg_isready -h 127.0.0.1 -U postgres -d chartwarden_e2e && exit 0
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg-e2e; exit 1
-      # `docker run`, not a `services:` container: MinIO needs its `server /data` argument, which a service
-      # container cannot take.
-      # Chainguard's build of the same MinIO server: MinIO no longer publishes `minio/minio` to Docker Hub
-      # (`docker pull` is denied).
-      - name: Start MinIO (document storage)
+      # `docker run`, not a `services:` container, so the readiness wait below can print the store's logs.
+      # RustFS replaced MinIO as the local/CI object store (the dev stack runs the same image).
+      - name: Start RustFS (document storage)
         run: |
-          docker run -d --name chartwarden-ci-minio-e2e \
-            -e MINIO_ROOT_USER=chartwarden -e MINIO_ROOT_PASSWORD=chartwarden-minio-ci-secret \
-            -p 9000:9000 cgr.dev/chainguard/minio:latest server /data
+          docker run -d --name chartwarden-ci-rustfs-e2e \
+            -e RUSTFS_ACCESS_KEY=chartwarden -e RUSTFS_SECRET_KEY=chartwarden-object-store-ci-secret \
+            -e RUSTFS_VOLUMES=/data -e RUSTFS_CONSOLE_ENABLE=false \
+            -e RUSTFS_CORS_ALLOWED_ORIGINS=http://localhost:5173 \
+            -p 9000:9000 rustfs/rustfs:1.0.4
           for i in $(seq 1 60); do
-            curl -sf http://localhost:9000/minio/health/live > /dev/null && exit 0
+            curl -sf http://localhost:9000/health/ready > /dev/null && exit 0
             sleep 1
           done
-          echo "MinIO did not become ready" >&2; docker logs chartwarden-ci-minio-e2e; exit 1
+          echo "RustFS did not become ready" >&2; docker logs chartwarden-ci-rustfs-e2e; exit 1
       # No `--with-deps`: it shells out to `sudo apt-get`, and the self-hosted runner user has no
       # passwordless sudo, so the job used to die here in ~20s ("sudo: a password is required") before a
       # single spec ran. The browser download itself needs no root.
@@ -1924,4 +1992,4 @@ jobs:
         if: always()
         run: |
           docker rm -f chartwarden-ci-pg-e2e 2>/dev/null || true
-          docker rm -f chartwarden-ci-minio-e2e 2>/dev/null || true
+          docker rm -fv chartwarden-ci-rustfs-e2e 2>/dev/null || true

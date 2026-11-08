@@ -1,8 +1,9 @@
-// apps/backend/src/modules/22-documents/access-log/minio-access-log.ts — the MinIO access-log ingestor (GAP-141;
-// M22 spec §4.8 `minio-access-log-ingestor`, D17): download CONFIRMATION for signed URLs.
+// apps/backend/src/modules/22-documents/access-log/minio-access-log.ts — the object-store access-log ingestor
+// (GAP-141; M22 spec §4.8 `minio-access-log-ingestor`, D17): download CONFIRMATION for signed URLs. The name is
+// historical: it reads MinIO, RustFS and SeaweedFS (production, via Fluent Bit) audit records alike.
 //
 // `signed_url_issued` is audited when the URL is MINTED; whether anyone actually FETCHED the object is only visible
-// to the object store. MinIO's AUDIT WEBHOOK posts one JSON record per S3 API call (cluster-wide — no per-bucket
+// to the object store. The store's AUDIT stream posts one JSON record per S3 API call (cluster-wide — no per-bucket
 // notification to configure for the dynamically-created `tenant-*` buckets). This module turns a successful
 // `GetObject` on a tenant bucket into an `access_kind='signed_url_consumed'` row in `document_access_log`.
 //
@@ -13,8 +14,9 @@
 // row (an unknown/expired URL, a direct admin read) is NOT attributed and is dropped: the spec accepts this audit gap
 // for the access-log stream ("best-effort ingest"), and a row with no accessor would violate the one-accessor CHECK.
 //
-// BEST EFFORT, BOUNDED. Replays are harmless: the consumed row's `correlation_id` is the MinIO request id, and an
-// existing row with that id is skipped. Only `GetObject` with a 2xx status counts (HEAD/PUT/list are not downloads).
+// BEST EFFORT, BOUNDED. Replays are harmless: the consumed row's `correlation_id` is the store's request id, and an
+// existing row with that id is skipped (the `minio:` prefix is kept for every store so ids stay comparable).
+// Only a GetObject with a 2xx status counts (HEAD/PUT/list are not downloads).
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -27,7 +29,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** A webhook delivery carries one record, or an array of them; more than this is not an audit stream. */
 export const MAX_RECORDS_PER_DELIVERY = 500;
 
-/** What the ingestor needs from one MinIO audit record. */
+/** What the ingestor needs from one object-store audit record. */
 export interface ObjectConsumption {
   readonly organizationId: string;
   readonly bucket: string;
@@ -39,42 +41,114 @@ export interface ObjectConsumption {
 const asRecord = (v: unknown): Record<string, unknown> | null =>
   typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 const asString = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+const asNumber = (v: unknown): number | null =>
+  typeof v === "number" && Number.isFinite(v) ? v : null;
+const is2xx = (status: number | null): boolean => status !== null && status >= 200 && status < 300;
+/** Epoch seconds (SeaweedFS) vs milliseconds (RustFS): no audit record predates 2001-09-09 in seconds' scale. */
+const EPOCH_MS_THRESHOLD = 1e12;
+
+/** One successful object download, before tenant checks. `keyEncoded` keys are percent-decoded. */
+interface Download {
+  readonly bucket: string | null;
+  readonly key: string | null;
+  readonly keyEncoded: boolean;
+  readonly requestId: string | null;
+  readonly time: Date | null;
+}
+
+const dateOf = (v: unknown): Date | null => {
+  const n = asNumber(v);
+  const d =
+    n !== null
+      ? new Date(n < EPOCH_MS_THRESHOLD ? n * 1000 : n)
+      : asString(v)
+        ? new Date(v as string)
+        : null;
+  return d && !Number.isNaN(d.getTime()) ? d : null;
+};
 
 /**
- * Parse a delivery body (a record or an array of records) into the CONSUMPTIONS in it: successful `GetObject`
- * calls on `tenant-<orgId>` buckets. Everything else (other APIs, other buckets, failed calls, malformed records)
- * is ignored — the stream is the whole cluster's S3 traffic.
+ * The three stores' record shapes, each reduced to a successful object GET (or null):
+ *   MinIO      `api.name: "GetObject"`, `api.statusCode`, `api.object` percent-encoded, `time` ISO, `requestID`
+ *   RustFS     `api.name: "s3:GetObject"`, `api.status_code`, `api.object` raw, `time` epoch ms, `requestID`
+ *   SeaweedFS  `operation: "REST.GET.OBJECT"`, `status`, top-level `bucket`/`key` raw, `time` epoch s, `request_id`
+ *              (its audit log is Fluent forward; Fluent Bit posts it here as JSON, deploy/production/object-store)
+ */
+function downloadOf(record: Record<string, unknown>): Download | null {
+  const api = asRecord(record.api);
+  if (api?.name === "GetObject") {
+    const statusCode = asNumber(api.statusCode);
+    if (!(statusCode !== null ? is2xx(statusCode) : api.status === "OK")) return null;
+    return {
+      bucket: asString(api.bucket),
+      key: asString(api.object),
+      keyEncoded: true,
+      requestId: asString(record.requestID),
+      time: dateOf(record.time),
+    };
+  }
+  if (api?.name === "s3:GetObject") {
+    if (!is2xx(asNumber(api.status_code))) return null;
+    return {
+      bucket: asString(api.bucket),
+      key: asString(api.object),
+      keyEncoded: false,
+      requestId: asString(record.requestID),
+      time: dateOf(record.time),
+    };
+  }
+  if (record.operation === "REST.GET.OBJECT") {
+    if (!is2xx(asNumber(record.status))) return null;
+    return {
+      bucket: asString(record.bucket),
+      key: asString(record.key),
+      keyEncoded: false,
+      requestId: asString(record.request_id),
+      time: dateOf(record.time),
+    };
+  }
+  return null;
+}
+
+/** A delivery's records: one record (MinIO), an array (MinIO batch, Fluent Bit) or `{ Records: [...] }` (RustFS). */
+function recordsOf(body: unknown): readonly unknown[] {
+  const items = Array.isArray(body) ? body : [body];
+  return items
+    .flatMap((item) => {
+      const records = asRecord(item)?.Records;
+      return Array.isArray(records) ? records : [item];
+    })
+    .slice(0, MAX_RECORDS_PER_DELIVERY);
+}
+
+/**
+ * Parse a delivery body into the CONSUMPTIONS in it: successful object GETs on `tenant-<orgId>` buckets, from
+ * MinIO, RustFS or SeaweedFS (see {@link downloadOf}). Everything else (other APIs, other buckets, failed calls,
+ * malformed records) is ignored — the stream is the whole cluster's S3 traffic.
  */
 export function parseConsumptions(body: unknown, fallbackNow: Date): readonly ObjectConsumption[] {
-  const records = Array.isArray(body) ? body.slice(0, MAX_RECORDS_PER_DELIVERY) : [body];
   const out: ObjectConsumption[] = [];
-  for (const raw of records) {
+  for (const raw of recordsOf(body)) {
     const record = asRecord(raw);
-    const api = asRecord(record?.api);
-    if (!record || !api) continue;
-    if (api.name !== "GetObject") continue;
-    const statusCode = typeof api.statusCode === "number" ? api.statusCode : null;
-    const ok = statusCode !== null ? statusCode >= 200 && statusCode < 300 : api.status === "OK";
-    if (!ok) continue;
-    const bucket = asString(api.bucket);
-    const rawKey = asString(api.object);
-    if (!bucket || !rawKey || !bucket.startsWith(TENANT_BUCKET_PREFIX)) continue;
+    const download = record ? downloadOf(record) : null;
+    const { bucket, key } = download ?? {};
+    if (!download || !bucket || !key || !bucket.startsWith(TENANT_BUCKET_PREFIX)) continue;
     const organizationId = bucket.slice(TENANT_BUCKET_PREFIX.length);
     if (!UUID_RE.test(organizationId)) continue;
-    let objectKey = rawKey;
-    try {
-      objectKey = decodeURIComponent(rawKey);
-    } catch {
-      // keep the raw key: an undecodable one simply will not match a document version
+    let objectKey = key;
+    if (download.keyEncoded) {
+      try {
+        objectKey = decodeURIComponent(key);
+      } catch {
+        // keep the raw key: an undecodable one simply will not match a document version
+      }
     }
-    const time = asString(record.time);
-    const parsed = time ? new Date(time) : null;
     out.push({
       organizationId,
       bucket,
       objectKey,
-      requestId: asString(record.requestID) ?? randomUUID(),
-      occurredAt: parsed && !Number.isNaN(parsed.getTime()) ? parsed : fallbackNow,
+      requestId: download.requestId ?? randomUUID(),
+      occurredAt: download.time ?? fallbackNow,
     });
   }
   return out;

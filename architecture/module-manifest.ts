@@ -743,6 +743,12 @@ export const MODULES: ModuleDef[] = [
       "bereavement_plan_closure",
       "bereavement_risk_score",
       "bereavement_idg_risk_flag",
+      "bereavement_assessment_task",
+      "bereavement_risk_assessment_draft",
+      "bereavement_physician_letter",
+      "bereavement_mailing_config",
+      "bereavement_mailing_run",
+      "bereavement_mailing_item",
       "tenant_bereavement_external_source_gate_override",
     ],
   },
@@ -941,6 +947,17 @@ export const MODULES: ModuleDef[] = [
       "claim_state_history",
       "claim_submission",
       "clearinghouse_ack_cursor",
+      "claimmd_response_stream",
+      "claimmd_response_batch",
+      "claimmd_response_event",
+      "claimmd_response_resolution",
+      "claimmd_response_resolution_history",
+      "claimmd_ack_application",
+      "claimmd_ack_delivery",
+      "claimmd_submission_evidence",
+      "claimmd_notice_submission_evidence",
+      "claimmd_notice_receipt_observation",
+      "claimmd_submission_receipt_observation",
       "clearinghouse_interchange_number",
       "clearinghouse_submission_attempt",
       "dde_change_cursor",
@@ -1033,6 +1050,14 @@ export const MODULES: ModuleDef[] = [
       "denial_playbook_case_step",
       "remittance_pull_cursor",
       "remittance_pull_refusal",
+      "claimmd_era_stream",
+      "claimmd_era_inbox",
+      "claimmd_era_m25_stage",
+      "claimmd_era_delivery",
+      "claimmd_era_delivery_history",
+      "claimmd_era_recovery_action",
+      "claimmd_era_resolution",
+      "claimmd_era_resolution_history",
       "appeal_tier_detail",
       "recorded_deadline",
       "payer_appeal_path",
@@ -1329,7 +1354,7 @@ export const MODULES: ModuleDef[] = [
     dependsOn: [1],
     /* ADR-0025: M34<->M35 seam-based both ways (no edge); minimal edge set finalized in M35's ADR-0005 D5 pass */ ownedTables:
       [
-        "addon", // ADR-0108 claims-billing add-on catalog (platform-shared)
+        "addon", // ADR-0110 claims-billing add-on catalog (platform-shared)
         "dunning_state",
         "invoice",
         "invoice_line",
@@ -1349,7 +1374,7 @@ export const MODULES: ModuleDef[] = [
         "stripe_api_call_audit",
         "stripe_webhook_event",
         "subscription",
-        "subscription_addon", // ADR-0108 (tenant read-only; platform-runner writes)
+        "subscription_addon", // ADR-0110 (tenant read-only; platform-runner writes)
         "subscription_contract", // slice 2 tenant pricing: the signed terms (tenant read-only; platform-runner writes)
         "subscription_contract_mode", // slice 2 tenant pricing: the billing service mode history (tenant read-only; append-only)
         "subscription_state_history",

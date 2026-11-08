@@ -198,6 +198,10 @@ describe("payee / payer identity and line identity (#625)", () => {
       id: "1999999999",
       taxId: "123456789",
       payerAssignedId: "PTAN01",
+      references: [
+        { qualifier: "TJ", value: "123456789" },
+        { qualifier: "PQ", value: "PTAN01" },
+      ],
     });
     expect(r.value.originatingCompanyId).toBe("1512345678");
   });

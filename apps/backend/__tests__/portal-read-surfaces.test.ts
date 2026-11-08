@@ -275,6 +275,16 @@ describe("projectBereavementScope (M16)", () => {
       inBereavementWindow: true,
       mayOptOut: true,
       mayRescindOptOut: false,
+      mailingsAllowed: true,
+    },
+    {
+      contactId: "c2",
+      planId: "p1",
+      status: "active",
+      inBereavementWindow: true,
+      mayOptOut: true,
+      mayRescindOptOut: false,
+      mailingsAllowed: false,
     },
   ];
   it("maps the scope rows and lay-labels the status", () => {
@@ -284,6 +294,16 @@ describe("projectBereavementScope (M16)", () => {
       planId: "p1",
       inWindow: true,
       mayOptOut: true,
+      mailingsAllowed: true,
+      statusLabel: "Active",
+    });
+  });
+
+  it("carries the mailing preference through: a family that stopped mailings is still an active contact (ADR-0109 D10)", () => {
+    const view = projectBereavementScope(scopes);
+    expect(view.items[1]).toMatchObject({
+      contactId: "c2",
+      mailingsAllowed: false,
       statusLabel: "Active",
     });
   });

@@ -71,7 +71,7 @@ export const ListMessagesQuerySchema = Type.Object({
   anchorMessageId: Type.Optional(Id),
 });
 
-/** ADR-0107: staff, patient and the three group tags (role, team, on_call). */
+/** ADR-0108: staff, patient and the three group tags (role, team, on_call). */
 export const MentionKindSchema = Type.Union(MENTION_KINDS.map((kind) => Type.Literal(kind)));
 
 export const MentionCandidateQuerySchema = Type.Object({

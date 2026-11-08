@@ -917,7 +917,7 @@ function classifySegment(seg: string, ctx: BashContext): BashVerdict | null {
     (/^(vitest|bunx|npx)$/.test(prog) && /\.live\.test/.test(argline))
   ) {
     return ask(
-      "Live suites DROP ROLE chartwarden_app. Confirm DATABASE_URL points at a private pgvector/pgvector:pg18 container (own port, fresh database), never the shared Docker cluster.",
+      "Live suites DROP ROLE chartwarden_app. Confirm DATABASE_URL points at a private chartwarden-postgres:dev container (own port, fresh database), never the shared Docker cluster.",
     );
   }
   return null;

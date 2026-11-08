@@ -251,7 +251,8 @@ upload that may have landed answers `CH_IN_DOUBT` (never retried under a new con
 same key, is reconciled against Claim.MD's upload list by our own Filename before any resend.
 
 **Configuration.** `CLEARINGHOUSE_VENDOR=claimmd`, `CLAIMMD_ACCOUNT_KEY`, `CLAIMMD_ACCOUNT_USAGE` (`test` or
-`production`: which Claim.MD account the key opens; a call of the other usage answers `CH_NOT_WIRED`). The envelope ids
+`production`: which Claim.MD account the key opens; a call of the other usage answers `CH_NOT_WIRED`), and
+`CLAIMMD_ACCOUNT_REFERENCE` (stable, non-secret internal account identity; it is not the AccountKey). The envelope ids
 (ISA06/GS02 = account number, ISA08/GS03 = `CLAIMMD`) are `billing_edi_profile` rows under `route_key = 'claimmd'`.
 Production account settings: 837I on, Transmit Approval off, automatic corrected claims off, SFTP off.
 Claim.MD's limit (100 requests a minute per account, then an HTTP 403 block) is spent from one counter per usage mode,
@@ -329,7 +330,7 @@ once we send our control number there (or Claim.MD confirms it echoes CLM01); un
 
 **The Billing add-on.** After resolution the sweep asks a `BillingEntitlementPort`; an org without the add-on keeps its
 receipt encrypted as `awaiting_entitlement`, re-checked hourly and published once the add-on is granted, and becomes
-`expired_not_entitled` 90 days after receipt. The port is bound to ADR-0108's `isClaimsBillingEntitled`, so it follows
+`expired_not_entitled` 90 days after receipt. The port is bound to ADR-0110's `isClaimsBillingEntitled`, so it follows
 `CLAIMS_BILLING_ENFORCEMENT`: `off`/`shadow` publish for every resolved org; `enforce` reads M35, and a failed read retries
 without spending an attempt.
 

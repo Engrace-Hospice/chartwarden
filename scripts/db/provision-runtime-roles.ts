@@ -122,7 +122,7 @@ const PLATFORM_READ_TABLES = [
   "usage_period_aggregate",
   "patient_active_period",
   "user_active_period",
-  // ADR-0108 — the claims-billing add-on catalog and the per-org add-on rows (admin console list + usage).
+  // ADR-0110 — the claims-billing add-on catalog and the per-org add-on rows (admin console list + usage).
   "addon",
   "subscription_addon",
   // Slice 2 (tenant pricing) — the census bands of a plan, the signed contract, the daily census and the monthly statement.
@@ -207,7 +207,7 @@ const PLATFORM_MUTATE_TABLES = [
   // `plan` and `plan_census_band` are NOT here: their grants are narrower than INSERT + table-wide UPDATE (see PLAN_PLATFORM_UPDATE_COLUMNS).
   "patient_census_daily",
   "subscription_statement",
-  // ADR-0108 — platform-only grant/cancel of the claims-billing add-on (tenants hold SELECT only).
+  // ADR-0110 — platform-only grant/cancel of the claims-billing add-on (tenants hold SELECT only).
   "subscription_addon",
   "refund",
   "dunning_state",

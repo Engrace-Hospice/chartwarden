@@ -215,6 +215,21 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m16.bereavement.contact_mailing_preference_changed",
+    moduleOwner: "m16",
+    description:
+      "ADR-0109 D10 — a survivor stopped (or resumed) MAILINGS only: the contact stays active and the calls continue. Deliberately not `contact_opted_out`, which would make M36 drop the family channel. Ids and a flag, no PHI.",
+    payloadSchema: Type.Object({
+      planId: Id,
+      contactId: Id,
+      mailingsAllowed: Type.Boolean(),
+      source: Str,
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m16.bereavement.contact_deceased",
     moduleOwner: "m16",
     description:
@@ -336,6 +351,45 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       payloadJsonb: Type.Unknown(),
     }),
     declaredConsumers: ["m22"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m16.bereavement.document_requested",
+    moduleOwner: "m16",
+    description:
+      "ADR-0109 D6/D9 — the outbox-only handoff to M22 for a plan-level document: the approved physician condolence letter (aggregate = the letter) and the internal discharge summary (aggregate = the closure). `documentKind` names which; `aggregateId` is the row M22 files the document against and the back-ref stamps. M22 answers with `m22.document.rendered`; M16 imports no M22 schema. `payloadJsonb` is the typed render payload M22 draws from (the letter's carries the death date only: the reviewer's sealed note never rides the outbox, M22 pulls it at render time; the discharge summary carries no contact names or notes, care goals, risk factors or substance-use data).",
+    payloadSchema: Type.Object({
+      planId: Id,
+      /** The DECEDENT — the chart M22 files the rendered document against. */
+      patientId: Id,
+      documentKind: Type.Union([
+        Type.Literal("physician_condolence_letter"),
+        Type.Literal("discharge_summary"),
+      ]),
+      aggregateId: Id,
+      templateKey: Str,
+      payloadJsonb: Type.Unknown(),
+    }),
+    declaredConsumers: ["m22"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m16.bereavement.mailing_run_mailed",
+    moduleOwner: "m16",
+    description:
+      "ADR-0109 D10 — staff confirmed a mailing run was mailed. Ids, enum tokens and counts only: no recipient, name or address (the batch PDF that holds them is an internal M22 document and never rides the outbox). M33 reports program volume over `report_mv.*`.",
+    payloadSchema: Type.Object({
+      runId: Id,
+      runKind: Str,
+      mailingKey: IdN,
+      occurrenceKey: Str,
+      scheduledFor: Str,
+      recipientCount: Count,
+      excludedCount: Count,
+      excludedAfterRenderCount: Count,
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {

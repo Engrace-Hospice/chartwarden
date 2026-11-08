@@ -11,6 +11,7 @@
 //
 // Optimistic concurrency is §2.5: every PATCH / state transition carries `expectedVersion` (the `If-Match`
 // header) and a mismatch raises `STALE_VERSION` → 412 with the current row.
+import type { ManualRiskFactors } from "@chartwarden/bereavement";
 import type { BereavementSideEffect } from "../lifecycle/index";
 import type { M16MutatingActor, M16WriteActor } from "./actor";
 import type {
@@ -141,6 +142,12 @@ export interface UpdateContactInput {
   readonly volunteerVisibleOnly?: boolean;
 }
 
+/** ADR-0109 / route 41 — replace the contact's care goals (`If-Match` required; an empty list clears them). */
+export interface SetCareGoalsInput {
+  readonly expectedVersion: number;
+  readonly goals: readonly string[];
+}
+
 /** Route 13 — proposed → active (the D6 consent verdict is resolved server-side, fail-CLOSED). */
 export interface ConfirmContactInput {
   readonly expectedVersion?: number;
@@ -240,6 +247,17 @@ export interface RegenerateScheduleInput {
 export interface RecomputeRiskInput {
   readonly bereavedContactId?: string;
   readonly requestAugmentation?: boolean;
+  /**
+   * ADR-0109 D3 — the assessment checkpoint this human-appended score completes. The automatic initial score at plan seed
+   * never carries one; only a counselor's recompute does. The task must belong to the plan (and to `bereavedContactId` when
+   * both are given), and its contact becomes the scored contact when `bereavedContactId` is omitted.
+   */
+  readonly assessmentTaskId?: string;
+  /** ADR-0109 D5 — the factors the assessor stated (route 28's `factors`, mapped off the wire). They merge "true wins". */
+  readonly manualFactors?: ManualRiskFactors;
+  /** §7.7 — the PG-13-adapted screen total; at or above 25 it promotes the tier to `complicated` (D8). */
+  readonly pg13Score?: number;
+  readonly ipgrScore?: number;
   /** §7.3 — a counselor override needs BOTH the tier it lands on and a ≥40-char documented reason. */
   readonly overrideTier?: string;
   readonly overrideReason?: string;
@@ -334,6 +352,12 @@ export interface M16WriteService {
     actor: M16WriteActor,
     contactId: string,
     input: UpdateContactInput,
+  ): Promise<BereavedContactRowView>;
+  /** ADR-0109 — 403 for the D10 volunteer scope; the goals are sealed with the tenant DEK (503 while no cipher is bound). */
+  setCareGoals(
+    actor: M16WriteActor,
+    contactId: string,
+    input: SetCareGoalsInput,
   ): Promise<BereavedContactRowView>;
   confirmContact(
     actor: M16WriteActor,
