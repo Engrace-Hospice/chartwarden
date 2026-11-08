@@ -177,6 +177,8 @@ export const ResolveHeldTransmissionBodySchema = Type.Object(
     reason: Type.String({
       minLength: 10,
       maxLength: 500,
+      // at least one non-whitespace character here; the service also requires 10 AFTER trimming (padding cannot satisfy the length)
+      pattern: "\\S",
       description:
         "What you checked and found. Kept on the transmission record (not in any audit image or event); do not put patient details in it.",
     }),

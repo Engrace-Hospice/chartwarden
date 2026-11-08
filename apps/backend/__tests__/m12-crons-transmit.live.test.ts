@@ -1445,6 +1445,24 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       expect((await orderRow(orderId)).s).toBe("in_flight");
     });
 
+    it("a reason that says nothing is refused (422 DOSESPOT_REASON_REQUIRED) however it is padded, and the stored reason is trimmed", async () => {
+      const { orderId, transmissionId } = await hold();
+      for (const reason of ["          ", "   short   ", "\n\t \n\t \n\t \n\t "]) {
+        expect(
+          await errorCodeOf(
+            resolver().resolve(await actorFor(), orderId, { outcome: "not_sent", reason }),
+          ),
+          JSON.stringify(reason),
+        ).toBe("DOSESPOT_REASON_REQUIRED");
+      }
+      expect((await orderRow(orderId)).s).toBe("in_flight");
+      await resolver().resolve(await actorFor(), orderId, {
+        outcome: "not_sent",
+        reason: `   ${REASON}   `,
+      });
+      expect((await txRow(transmissionId)).last_error_detail).toBe(REASON);
+    });
+
     it("sent needs the prescription id and not sent refuses one (422), before the order is touched", async () => {
       const { orderId } = await hold();
       expect(

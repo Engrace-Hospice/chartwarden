@@ -578,6 +578,8 @@ describe("an administrator's resolution of a held transmission", () => {
     for (const bad of [
       { ...SENT, outcome: "maybe" },
       { ...SENT, reason: "too short" },
+      { ...SENT, reason: "          " }, // ten spaces: long enough, says nothing
+      { ...SENT, reason: "\n\t \n\t \n\t \n\t " },
       { outcome: "sent", dosespotPrescriptionId: "9001" },
       { ...SENT, dosespotPrescriptionId: "has spaces" },
       { ...SENT, dosespotPrescriptionId: "x".repeat(65) },

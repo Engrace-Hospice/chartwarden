@@ -183179,6 +183179,7 @@
                   "reason": {
                     "minLength": 10,
                     "maxLength": 500,
+                    "pattern": "\\S",
                     "description": "What you checked and found. Kept on the transmission record (not in any audit image or event); do not put patient details in it.",
                     "type": "string"
                   },

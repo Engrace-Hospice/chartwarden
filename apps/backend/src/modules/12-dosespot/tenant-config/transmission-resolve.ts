@@ -76,6 +76,9 @@ export interface TransmissionResolveDeps {
   readonly now?: () => Date;
 }
 
+/** The shortest reason that can say what an administrator checked (the request schema's minimum, applied after trimming). */
+const MIN_REASON_LENGTH = 10;
+
 const notHeld = (): ChartWardenError =>
   new ChartWardenError(
     "DOSESPOT_TRANSMISSION_NOT_HELD",
@@ -95,6 +98,15 @@ export function createTransmissionResolveService(
   ): Promise<ResolveHeldResult> {
     const { organizationId } = actor;
     const prescriptionId = input.dosespotPrescriptionId?.trim() ?? "";
+    // the schema's length counts padding: a reason must say something once trimmed (and that is what is stored)
+    const reason = input.reason.trim();
+    if (reason.length < MIN_REASON_LENGTH) {
+      throw new ChartWardenError(
+        "DOSESPOT_REASON_REQUIRED",
+        `a reason of at least ${MIN_REASON_LENGTH} characters is required (what you checked)`,
+        422,
+      );
+    }
     if (input.outcome === "sent" && prescriptionId === "") {
       throw new ChartWardenError(
         "DOSESPOT_PRESCRIPTION_ID_REQUIRED",
@@ -183,7 +195,7 @@ export function createTransmissionResolveService(
               dosespotPrescriptionId: prescriptionId,
               dosespotResponseDigest: digest,
               lastErrorClass: RESOLVED_SENT_CLASS,
-              lastErrorDetail: input.reason,
+              lastErrorDetail: reason,
             })
             .where(eq(MOT.id, t.id));
           await emit("m12.medication_order.transmitted", {
@@ -214,7 +226,7 @@ export function createTransmissionResolveService(
             .set({
               transmissionFailedAt: at,
               lastErrorClass: RESOLVED_NOT_SENT_CLASS,
-              lastErrorDetail: input.reason,
+              lastErrorDetail: reason,
             })
             .where(eq(MOT.id, t.id));
           await emit("m12.medication_order.transmission_failed", {
