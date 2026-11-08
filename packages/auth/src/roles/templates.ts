@@ -157,6 +157,10 @@ export const M34_PLATFORM_OPS_ONBOARDING_KEYS = [
   "onboarding.manage_platform",
   "go_live.approve_platform",
   "platform_tenant_baa.write_platform",
+  // Migration 1407: the wizard's own read and its skip (both platform routes gate on tenant_lifecycle_platform_ops, so platform_ops
+  // alone can use them). Without the read key a template operator was refused the wizard itself; only the dev seed held both.
+  "onboarding.read_platform",
+  "onboarding.skip",
 ] as const;
 
 /**
