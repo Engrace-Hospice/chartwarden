@@ -11,7 +11,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ProvisioningCard } from "../provisioning-card";
 import { statusLabel } from "../saas-status";
@@ -30,6 +30,15 @@ import {
 const tenantPath = (orgSlug: string): string => `/tenants/${encodeURIComponent(orgSlug)}`;
 const stepPath = (orgSlug: string, key: string): string =>
   `${tenantPath(orgSlug)}/onboarding/${encodeURIComponent(key)}`;
+
+/** The shared list-screen frame (padding and width), as tenant-overview.tsx uses it. */
+function Frame({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">{children}</div>
+    </div>
+  );
+}
 
 export function TenantOnboardingWizard(): JSX.Element {
   const client = useApiClient();
@@ -72,23 +81,27 @@ export function TenantOnboardingWizard(): JSX.Element {
   if (wizard.failure) {
     const notFound = wizard.failure.kind === "not-found";
     return (
-      <div className="wx-list-state" role="alert">
-        <InlineAlert tone="error">
-          {notFound ? "Tenant not found." : "Could not load this tenant's onboarding."}
-        </InlineAlert>
-        {notFound ? null : (
-          <Button tone="secondary" onClick={() => void wizard.reload()}>
-            Try again
-          </Button>
-        )}
-      </div>
+      <Frame>
+        <div className="wx-list-state" role="alert">
+          <InlineAlert tone="error">
+            {notFound ? "Tenant not found." : "Could not load this tenant's onboarding."}
+          </InlineAlert>
+          {notFound ? null : (
+            <Button tone="secondary" onClick={() => void wizard.reload()}>
+              Try again
+            </Button>
+          )}
+        </div>
+      </Frame>
     );
   }
   if (!view) {
     return (
-      <div className="wx-list-state">
-        <LoadingSpinner label="Loading onboarding…" />
-      </div>
+      <Frame>
+        <div className="wx-list-state">
+          <LoadingSpinner label="Loading onboarding…" />
+        </div>
+      </Frame>
     );
   }
 
@@ -99,54 +112,56 @@ export function TenantOnboardingWizard(): JSX.Element {
 
   return (
     <StepTitlesContext.Provider value={titles}>
-      <header className="wx-page-head">
-        <div>
-          <h1>Onboarding · {name}</h1>
-          <p>
-            {progress.done} of {progress.total} steps done · {statusLabel(view.tenantStatus)}
-          </p>
-        </div>
-        <div className="wx-list-toolbar-end">
-          <Link to={tenantPath(orgSlug)}>Back to tenant</Link>
-        </div>
-      </header>
-
-      <StaleNotice stale={wizard.stale} onReload={() => void wizard.reload()} />
-
-      {view.tenantStatus === "provisioning" ? (
-        <ProvisioningCard key={orgSlug} orgSlug={orgSlug} onChanged={() => void refresh()} />
-      ) : null}
-
-      <div className="wx-wizard">
-        <nav className="wx-wizard-rail" aria-label="Onboarding steps">
-          <StepRail
-            ariaLabel="Onboarding steps"
-            steps={railItemsOf(view)}
-            activeKey={stepKey ?? null}
-            onSelect={(key) => navigate(stepPath(orgSlug, key))}
-          />
-        </nav>
-        {step && Panel ? (
-          <Panel
-            key={step.key}
-            ctx={{ orgSlug, view, step, actions: stepActionsOf(step, view), refresh }}
-          />
-        ) : stepKey ? (
-          <EmptyState
-            title={`There is no step called "${stepKey}"`}
-            description="It may have been retired. Open the current step instead."
-            action={
-              <Link to={resume ? stepPath(orgSlug, resume) : tenantPath(orgSlug)}>
-                Go to the current step
-              </Link>
-            }
-          />
-        ) : (
-          <div className="wx-list-state">
-            <LoadingSpinner label="Opening the current step…" />
+      <Frame>
+        <header className="wx-page-head">
+          <div>
+            <h1>Onboarding · {name}</h1>
+            <p>
+              {progress.done} of {progress.total} steps done · {statusLabel(view.tenantStatus)}
+            </p>
           </div>
-        )}
-      </div>
+          <div className="wx-list-toolbar-end">
+            <Link to={tenantPath(orgSlug)}>Back to tenant</Link>
+          </div>
+        </header>
+
+        <StaleNotice stale={wizard.stale} onReload={() => void wizard.reload()} />
+
+        {view.tenantStatus === "provisioning" ? (
+          <ProvisioningCard key={orgSlug} orgSlug={orgSlug} onChanged={() => void refresh()} />
+        ) : null}
+
+        <div className="wx-wizard">
+          <nav className="wx-wizard-rail" aria-label="Onboarding steps">
+            <StepRail
+              ariaLabel="Onboarding steps"
+              steps={railItemsOf(view)}
+              activeKey={stepKey ?? null}
+              onSelect={(key) => navigate(stepPath(orgSlug, key))}
+            />
+          </nav>
+          {step && Panel ? (
+            <Panel
+              key={step.key}
+              ctx={{ orgSlug, view, step, actions: stepActionsOf(step, view), refresh }}
+            />
+          ) : stepKey ? (
+            <EmptyState
+              title={`There is no step called "${stepKey}"`}
+              description="It may have been retired. Open the current step instead."
+              action={
+                <Link to={resume ? stepPath(orgSlug, resume) : tenantPath(orgSlug)}>
+                  Go to the current step
+                </Link>
+              }
+            />
+          ) : (
+            <div className="wx-list-state">
+              <LoadingSpinner label="Opening the current step…" />
+            </div>
+          )}
+        </div>
+      </Frame>
     </StepTitlesContext.Provider>
   );
 }
