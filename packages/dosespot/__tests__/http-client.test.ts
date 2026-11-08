@@ -561,6 +561,62 @@ describe("transmitNewRx", () => {
     });
   }
 
+  it("the breaker is per organization: org A's held sends open A's breaker while org B, on the same client, is still sent", async () => {
+    const two = createEnvTenantConfigResolver({
+      DOSESPOT_TENANT_CONFIGS: JSON.stringify({
+        ...JSON.parse(CONFIG_JSON),
+        [OTHER_ORG]: {
+          ...JSON.parse(CONFIG_JSON)[ORG],
+          baseUrl: "https://org-b.staging.dosespot.com/webapi/v2/",
+          clinicId: "clinic-2",
+        },
+      }),
+    });
+    const r = routes([{ Id: 9001 }]);
+    // org A's DoseSpot host fails the send; org B's echoes it
+    r["POST /api/patients/501/prescriptions/send"] = (req) =>
+      new URL(req.url).hostname.startsWith("org-b.")
+        ? { status: 200, body: [{ Id: 9001 }] }
+        : { status: 502 };
+    const t = fakeTransport(r);
+    const edges: Array<{ org: string; edge: string }> = [];
+    const c = createHttpDoseSpotClient({
+      resolver: two,
+      fetch: t.fetchImpl,
+      now: () => new Date("2026-10-06T12:00:00.000Z"),
+      sleep: async () => undefined,
+      newCorrelationId: () => "00000000-0000-4000-8000-0000000000ab",
+      onBreakerEdge: (e) => edges.push({ org: e.organizationId, edge: e.edge }),
+    });
+    for (let i = 0; i < 5; i += 1)
+      await c.transmitNewRx(ORG, NEWRX, `idem-a-${i}`).catch(() => undefined);
+    expect(edges).toEqual([{ org: ORG, edge: "opened" }]);
+    const out = await c.transmitNewRx(OTHER_ORG, NEWRX, "idem-b-1");
+    expect(out.dosespotPrescriptionId).toBe("9001");
+    const before = t.calls.length;
+    const stillOpen = await c.transmitNewRx(ORG, NEWRX, "idem-a-next").catch((e) => e);
+    expect(stillOpen.retryable).toBe(true);
+    expect(t.calls.length).toBe(before);
+  });
+
+  it("any successful DoseSpot call for the organization (a status read) closes a breaker its held sends opened", async () => {
+    let at = Date.parse("2026-10-06T12:00:00.000Z");
+    const r = routes([{ Id: 9001 }]);
+    r["POST /api/patients/501/prescriptions/send"] = () => ({ status: 502 });
+    r["GET /api/patients/501/prescriptions"] = () => ({ status: 200, body: { Items: [] } });
+    const { c, edges } = client(r, { now: () => new Date(at) });
+    for (let i = 0; i < 5; i += 1)
+      await c.transmitNewRx(ORG, NEWRX, `idem-read-${i}`).catch(() => undefined);
+    expect(edges).toEqual(["opened"]);
+    at += 31_000; // cooled: the read is the half-open probe, and its success closes the breaker
+    await c.getPrescriptionStatus(ORG, "501", "77").catch(() => undefined);
+    expect(edges).toEqual(["opened", "closed"]);
+    // and the count starts again: four more held sends do not re-open it
+    for (let i = 0; i < 4; i += 1)
+      await c.transmitNewRx(ORG, NEWRX, `idem-read-b${i}`).catch(() => undefined);
+    expect(edges).toEqual(["opened", "closed"]);
+  });
+
   it("a half-open probe that ends in a hold re-opens the breaker instead of letting every later call through", async () => {
     let at = Date.parse("2026-10-06T12:00:00.000Z");
     let send: Responder = () => ({ status: 502 });
