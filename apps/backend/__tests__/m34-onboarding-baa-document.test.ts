@@ -20,11 +20,14 @@ import type {
   OnboardingBaaDocumentPort,
   OnboardingBaaDocumentUpload,
 } from "../src/bootstrap/onboarding-baa-document-port";
+import { createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
+import { createRouteRateLimit } from "../src/bootstrap/plugins/route-rate-limit";
 import {
   type OnboardingDataService,
   type OnboardingOperator,
   buildDrizzleOnboardingDataService,
   mountTenantPlatformRoutes,
+  targetTenantScopeOf,
 } from "../src/modules/34-saas-tenant-platform/index";
 import { ONBOARDING_DATA_AUDIT_EVENTS } from "../src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-audit";
 
@@ -87,7 +90,10 @@ const grant = (userId: string, roleKey: string, permissionKeys: readonly string[
   grants: [{ roleKey, enabled: true, expiresAt: null, permissionKeys: [...permissionKeys] }],
 });
 
-function makeServer(calls: UploadCall[]) {
+function makeServer(
+  calls: UploadCall[],
+  baaUploadRateLimit?: (request: never, reply: never) => Promise<void>,
+) {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
       grant(OPERATOR_USER, "platform_ops", [KEY]),
@@ -109,7 +115,10 @@ function makeServer(calls: UploadCall[]) {
   registerAbacRegistry(reg);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   mountTenantPlatformRoutes(app, {} as DbClient, {
-    onboardingData: { service: recordingService(calls) },
+    onboardingData: {
+      service: recordingService(calls),
+      ...(baaUploadRateLimit ? { baaUploadRateLimit } : {}),
+    },
   });
   return app;
 }
@@ -136,6 +145,25 @@ afterEach(() => {
   resetAuthorizationContract();
   resetRbacEngine();
   resetAbacRegistry();
+});
+
+describe("POST baa-document: the per-user limiter", () => {
+  it("caps one operator's uploads for a tenant (429) before the service runs", async () => {
+    const limiter = createRouteRateLimit({
+      store: createInMemoryRateLimitStore(),
+      limit: { perUser: 2, perOrg: 10, windowMs: 60_000, failMode: "closed" },
+      keyPrefix: "t-baa-upload",
+      scopeOf: targetTenantScopeOf,
+    }) as unknown as (request: never, reply: never) => Promise<void>;
+    const calls: UploadCall[] = [];
+    const app = makeServer(calls, limiter);
+    const send = () => app.inject({ method: "POST", url: URL, headers: fresh(), payload: BODY });
+    expect((await send()).statusCode).toBe(201);
+    expect((await send()).statusCode).toBe(201);
+    expect((await send()).statusCode).toBe(429);
+    expect(calls).toHaveLength(2);
+    await app.close();
+  });
 });
 
 describe("POST baa-document: the guard stack", () => {

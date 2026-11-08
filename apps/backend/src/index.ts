@@ -6225,6 +6225,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 // operator): count per target tenant, so one tenant's probing neither starves another's nor escapes its own cap.
                 scopeOf: targetTenantScopeOf,
               }),
+              // The signed-BAA upload stores an object of up to 10 MiB per request: the same cap, counted the same way.
+              baaUploadRateLimit: createRouteRateLimit({
+                store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                limit: CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
+                keyPrefix: "m34-baa-upload",
+                scopeOf: targetTenantScopeOf,
+              }),
               service: buildDrizzleOnboardingDataService({
                 db: dbHandle.db,
                 // After a write commits the advance sweep settles the step the data satisfies (best effort).

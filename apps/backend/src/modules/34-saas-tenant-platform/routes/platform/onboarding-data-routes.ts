@@ -44,6 +44,8 @@ export interface OnboardingDataRouteDeps {
   readonly service: OnboardingDataService;
   /** Per-user cap on the clearinghouse `verify` (a vendor call per request); fail-open. Absent = unlimited. */
   readonly clearinghouseVerifyRateLimit?: PreHandler;
+  /** Per-user cap on the signed-BAA upload (each one stores an object of up to 10 MiB); fail-open. Absent = unlimited. */
+  readonly baaUploadRateLimit?: PreHandler;
 }
 
 const READ_KEY = "tenant_onboarding_data.read_platform";
@@ -279,6 +281,9 @@ export function registerOnboardingDataRoutes(
   const CLEARINGHOUSE_VERIFY: readonly PreHandler[] = deps.clearinghouseVerifyRateLimit
     ? [...CLEARINGHOUSE_WRITE, deps.clearinghouseVerifyRateLimit]
     : CLEARINGHOUSE_WRITE;
+  const BAA_UPLOAD: readonly PreHandler[] = deps.baaUploadRateLimit
+    ? [...BAA_DOCUMENT_UPLOAD, deps.baaUploadRateLimit]
+    : BAA_DOCUMENT_UPLOAD;
   const slugOf = (request: FastifyRequest): string =>
     parse(OrgSlugParamsSchema, request.params).orgSlug;
   const idParamsOf = (request: FastifyRequest) =>
@@ -481,12 +486,13 @@ export function registerOnboardingDataRoutes(
   // POST baa-document — the operator uploads the signed BAA for a tenant that is onboarding (step 3) or live (a renewal). The bytes go
   // through M22's own upload pipeline (type / size / magic-byte gate, scan, the tenant's bucket) on the tenant's RLS scope; the kind is
   // fixed server-side and no document is read or listed. The panel then records the BAA (the register row) with the returned document id.
-  // Only in BAA_DOCUMENT_UPLOAD_STATUSES (409 otherwise). The body is the bytes, their type and the reason, nothing else.
+  // Only in BAA_DOCUMENT_UPLOAD_STATUSES (409 otherwise). The body is the bytes, their type and the reason, nothing else. Rate-limited
+  // per user per target tenant like the clearinghouse verify (each upload stores an object).
   app.post(
     "/api/v1/platform/tenants/:orgSlug/baa-document",
     {
       onRequest: [refuseOversizedBaaUpload],
-      preHandler: [...BAA_DOCUMENT_UPLOAD],
+      preHandler: [...BAA_UPLOAD],
       bodyLimit: BAA_UPLOAD_BODY_LIMIT_BYTES,
     },
     async (request, reply) => {

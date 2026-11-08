@@ -329,6 +329,8 @@ export function mountTenantPlatformRoutes(
       service: OnboardingDataService;
       /** Per-user cap on the clearinghouse `verify` (a vendor call per request). */
       clearinghouseVerifyRateLimit?: (request: never, reply: never) => Promise<void>;
+      /** Per-user cap on the signed-BAA upload (each one stores an object). */
+      baaUploadRateLimit?: (request: never, reply: never) => Promise<void>;
     };
     public?: {
       service?: _SignupIntentRouteService;
@@ -387,6 +389,9 @@ export function mountTenantPlatformRoutes(
             clearinghouseVerifyRateLimit: services.onboardingData
               .clearinghouseVerifyRateLimit as never,
           }
+        : {}),
+      ...(services.onboardingData.baaUploadRateLimit
+        ? { baaUploadRateLimit: services.onboardingData.baaUploadRateLimit as never }
         : {}),
     });
   }
