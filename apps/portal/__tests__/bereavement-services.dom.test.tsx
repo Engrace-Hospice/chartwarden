@@ -181,6 +181,37 @@ describe("portal memorial services", () => {
     expect(within(section()).getByText("Thank you. We have your reply.")).toBeTruthy();
   });
 
+  it("a slow post-yes re-read never overwrites a newer answer", async () => {
+    let releaseReread: (r: Response) => void = () => undefined;
+    let gets = 0;
+    let stored = invitation();
+    renderPage((method) => {
+      if (method === "POST") {
+        const yes = stored.status !== "rsvp_yes";
+        stored = invitation({ status: yes ? "rsvp_yes" : "rsvp_no" });
+        return json(stored);
+      }
+      gets += 1;
+      // the first GET loads the page; the second is the post-yes re-read, which we hold until after a newer "no"
+      if (gets === 2) return new Promise<Response>((resolve) => (releaseReread = resolve));
+      return json({ items: [stored] });
+    });
+    await screen.findByRole("heading", { name: "Winter Candle Lighting" });
+    fireEvent.click(within(section()).getByRole("radio", { name: "Yes, I plan to come" }));
+    fireEvent.click(within(section()).getByRole("button", { name: "Send my reply" }));
+    expect(await within(section()).findByText("You told us you plan to come.")).toBeTruthy();
+    fireEvent.click(
+      within(section()).getByRole("radio", { name: /can't make it|cannot make it|No/ }),
+    );
+    fireEvent.click(within(section()).getByRole("button", { name: "Send my reply" }));
+    expect(await within(section()).findByText(/You told us you can't make it/)).toBeTruthy();
+    // the stale re-read (taken after the yes) now lands: it must not bring the yes back
+    releaseReread(json({ items: [invitation({ status: "rsvp_yes" })] }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(within(section()).getByText(/You told us you can't make it/)).toBeTruthy();
+    expect(within(section()).queryByText("You told us you plan to come.")).toBeNull();
+  });
+
   it("retries a dropped reply under the same key, and a changed reply under a new one", async () => {
     let posts = 0;
     const sent = renderPage((method) => {

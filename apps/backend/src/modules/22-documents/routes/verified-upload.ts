@@ -11,6 +11,7 @@ import { and, eq, sql } from "drizzle-orm";
 import {
   assertNotInternalOnlyForWrite,
   assertNotOrgLibraryForEdit,
+  assertOrgLibraryIsOrgLevel,
   isInternalOnlyAggregateType,
 } from "../internal-documents";
 import { deriveTenantBucket } from "../lifecycle/storage";
@@ -38,9 +39,12 @@ const isLibraryType = (aggregateType: string): boolean =>
 export const MP4_MAJOR_BRANDS: ReadonlySet<string> = new Set([
   "isom",
   "iso2",
+  "iso5",
+  "iso6",
   "mp41",
   "mp42",
   "avc1",
+  "dash",
   "M4V ",
 ]);
 
@@ -115,16 +119,7 @@ function validateInput(input: InitiateVerifiedUploadInput): void {
     throw new ChartWardenError("UNSUPPORTED_MEDIA_TYPE", "unsupported document MIME type", 415);
   }
   // A grief-library document is agency content: never filed on a patient's chart.
-  if (
-    isLibraryType(input.aggregateType) &&
-    (input.patientId !== null || input.admissionId !== null)
-  ) {
-    throw new ChartWardenError(
-      "VALIDATION_FAILED",
-      "a grief-library document is org-level: it names no patient or admission",
-      422,
-    );
-  }
+  assertOrgLibraryIsOrgLevel(input.aggregateType, input.patientId, input.admissionId);
   const maxBytes = isVideo ? MAX_LIBRARY_VIDEO_BYTES : MAX_DOCUMENT_UPLOAD_BYTES;
   if (!Number.isSafeInteger(input.byteSize) || input.byteSize < 1 || input.byteSize > maxBytes) {
     throw new ChartWardenError(

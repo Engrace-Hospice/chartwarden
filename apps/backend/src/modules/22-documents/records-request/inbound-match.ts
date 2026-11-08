@@ -19,7 +19,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { findRecordsRequestCodes } from "@chartwarden/intake-extraction";
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { assertAdoptableByIntake } from "../internal-documents";
+import { isInternalOnlyAggregateType, isOrgLibraryAggregateType } from "../internal-documents";
 import {
   RECORDS_REQUEST_AWAITING,
   RECORDS_REQUEST_FILEABLE,
@@ -151,11 +151,28 @@ export async function matchInboundRecordsRequest(
       .from(DOC)
       .where(eq(DOC.id, b.documentId))
       .limit(1);
-    if (src) assertAdoptableByIntake(src.aggregateType);
-    await tx
-      .update(DOC)
-      .set({ patientId: adoptPatient })
-      .where(and(eq(DOC.id, b.documentId), isNull(DOC.patientId)));
+    // An internal-only or grief-library source never moves onto a chart. This runs inside the inbound-match JOB: a throw would poison it, so the
+    // document stays where it is, the batch still links, and the skip is logged (ids only).
+    if (
+      src &&
+      (isInternalOnlyAggregateType(src.aggregateType) ||
+        isOrgLibraryAggregateType(src.aggregateType))
+    ) {
+      // eslint-disable-next-line no-console -- ids only, the M22 worker logging convention
+      console.warn(
+        "m22.records-request.match: a non-adoptable source document was not moved onto the chart",
+        {
+          batchId: args.batchId,
+          documentId: b.documentId,
+          aggregateType: src.aggregateType,
+        },
+      );
+    } else {
+      await tx
+        .update(DOC)
+        .set({ patientId: adoptPatient })
+        .where(and(eq(DOC.id, b.documentId), isNull(DOC.patientId)));
+    }
   }
   await markReceivedOnArrival(tx, req.id, args.now ?? new Date());
   return {

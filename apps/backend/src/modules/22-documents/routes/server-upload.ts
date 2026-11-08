@@ -20,7 +20,11 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { DocumentAggregateType, OrgId } from "@chartwarden/types";
 import { ChartWardenError, DegradedError, NotFoundError } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { assertNotInternalOnlyForWrite, assertNotOrgLibraryForEdit } from "../internal-documents";
+import {
+  assertNotInternalOnlyForWrite,
+  assertNotOrgLibraryForEdit,
+  assertOrgLibraryIsOrgLevel,
+} from "../internal-documents";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";
 import type {
@@ -337,6 +341,7 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
   return {
     async createDocument(organizationId, actor, args) {
       assertNotInternalOnlyForWrite(args.aggregateType);
+      assertOrgLibraryIsOrgLevel(args.aggregateType, args.patientId, args.admissionId);
       requireStore();
       const verified = verifyUploadContent(args.content);
       await assertReferralAccess(

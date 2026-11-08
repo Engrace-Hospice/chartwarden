@@ -74,10 +74,12 @@ export async function applyMemorialRsvp(
   if (!found) throw notFound();
   // The portal door answers only for a contact whose OWN plan is still open (an account linked to a closed plan and an open one reaches only
   // the open one's invitations). An opted-out family may still answer an invitation it already holds (owner decision).
+  // ...and never for a contact who has died or been found ineligible since the invitation.
   if (
     args.portalAccountId !== undefined &&
-    found.planStatus !== "active" &&
-    found.planStatus !== "paused"
+    ((found.planStatus !== "active" && found.planStatus !== "paused") ||
+      found.contactStatus === "deceased" ||
+      found.contactStatus === "ineligible_post_review")
   ) {
     throw notFound();
   }

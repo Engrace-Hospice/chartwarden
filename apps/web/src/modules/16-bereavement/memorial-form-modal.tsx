@@ -92,6 +92,8 @@ export function MemorialFormModal({
   const client = useApiClient();
   const keys = useIdempotencyKey();
   const [draft, setDraft] = useState<Draft>(() => draftOf(service));
+  // The link as the reader saw it when the dialog OPENED: a late reload of `service` must not read as "changed" (and clear the stored link).
+  const [openedJoinUrl] = useState(() => draftOf(service).joinUrl);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set =
@@ -100,7 +102,7 @@ export function MemorialFormModal({
       setDraft((prev) => ({ ...prev, [field]: value }));
 
   const save = async (): Promise<void> => {
-    const body = toBody(draft, service !== null && draft.joinUrl === draftOf(service).joinUrl);
+    const body = toBody(draft, service !== null && draft.joinUrl === openedJoinUrl);
     if (typeof body === "string") {
       setError(body);
       return;

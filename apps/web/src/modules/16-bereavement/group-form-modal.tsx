@@ -103,6 +103,8 @@ export function GroupFormModal({
 }): JSX.Element {
   const client = useApiClient();
   const [draft, setDraft] = useState<Draft>(() => draftOf(group));
+  // The link as the reader saw it when the dialog OPENED: a late reload of `group` (now without the plaintext link) must not read as "changed".
+  const [openedJoinUrl] = useState(() => draftOf(group).joinUrl);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const keys = useIdempotencyKey();
@@ -151,7 +153,7 @@ export function GroupFormModal({
       timezone: draft.timezone.trim(),
       venueText: orNull(draft.venueText),
       // Left as read: omitted, so the server keeps it (null would CLEAR a link this reader may not be shown).
-      ...(group !== null && draft.joinUrl === draftOf(group).joinUrl
+      ...(group !== null && draft.joinUrl === openedJoinUrl
         ? {}
         : { joinUrl: orNull(draft.joinUrl) }),
     };

@@ -236,10 +236,23 @@ describe("grief library: the video policy and the item kind", () => {
     expect(hasMp4FtypBox(new TextEncoder().encode("%PDF-1.7\n%..."))).toBe(false);
     expect(hasMp4FtypBox(ftypHead.slice(0, 7))).toBe(false);
     // an ftyp box with a brand that is not an MP4 video (a QuickTime movie, a HEIF image) is refused
-    const brand = (b: string) => Uint8Array.from([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, ...[...b].map((c) => c.charCodeAt(0))]);
+    const brand = (b: string) =>
+      Uint8Array.from([
+        0,
+        0,
+        0,
+        0x20,
+        0x66,
+        0x74,
+        0x79,
+        0x70,
+        ...[...b].map((c) => c.charCodeAt(0)),
+      ]);
     expect(hasMp4FtypBox(brand("qt  "))).toBe(false);
     expect(hasMp4FtypBox(brand("heic"))).toBe(false);
-    for (const ok of ["iso2", "mp41", "mp42", "avc1", "M4V "]) expect(hasMp4FtypBox(brand(ok))).toBe(true);
+    for (const ok of ["iso2", "iso5", "iso6", "mp41", "mp42", "avc1", "dash", "M4V "]) {
+      expect(hasMp4FtypBox(brand(ok))).toBe(true);
+    }
   });
 
   it("the item kind follows the verified MIME type", () => {

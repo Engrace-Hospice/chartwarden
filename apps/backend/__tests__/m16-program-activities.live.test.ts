@@ -39,6 +39,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer, registerSeam } from "../src/bootstrap/index";
+import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { registerBereavementAbacPredicates } from "../src/modules/16-bereavement/abac-predicates";
 import { buildDrizzleBereavementAbacResolver } from "../src/modules/16-bereavement/abac-resolver-drizzle";
@@ -362,6 +363,8 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
       authenticate: headerAuth,
       db: handle.db as never,
       security: { rateLimitEnabled: false },
+      // the REAL idempotency store: a write's response body is persisted, so a leaked meeting link would be visible in it
+      idempotencyStore: createDbIdempotencyStore(handle.db),
     });
     // M31's real `bereaved_portal_window_open` over M16's real `BereavedPortalScopeProvider` (Drizzle store); the account row is M31's and is
     // stubbed active here (its own suites prove it).
@@ -491,8 +494,30 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
         "don",
         groupBody({ modality: "virtual", joinUrl: "https://meet.example.test/room-42" }),
       );
-      // a WRITE response never carries the plaintext link (it is stored with the idempotency key): the detail read does
-      expect(created.json()).toMatchObject({ hasJoinUrl: true, joinUrl: null });
+      // a WRITE response never carries the plaintext link (it is stored with the idempotency key): create, edit, open, close
+      const gid = created.json().groupId as string;
+      const writes = [
+        created,
+        await call(
+          "PATCH",
+          `${GROUPS}/${gid}`,
+          "don",
+          (({ format: _f, recurrence: _r, ...rest }) => rest)(
+            groupBody({ modality: "virtual", joinUrl: "https://meet.example.test/room-42" }),
+          ),
+          ifMatch(1),
+        ),
+        await call("POST", `${GROUPS}/${gid}/open`, "don", undefined, ifMatch(2)),
+      ];
+      writes.push(
+        await call("POST", `${GROUPS}/${gid}/close`, "don", { status: "completed" }, ifMatch(3)),
+      );
+      for (const w of writes) {
+        expect(w.statusCode).toBeLessThan(300);
+        expect(w.json()).toMatchObject({ hasJoinUrl: true, joinUrl: null });
+      }
+      // the store really holds these responses (control), and none of them carries the link
+      expect(await count("SELECT count(*)::int n FROM idempotency_key")).toBeGreaterThan(0);
       expect(
         await count(
           "SELECT count(*)::int n FROM idempotency_key WHERE response_body::text LIKE '%meet.example.test%'",
@@ -1092,30 +1117,53 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
         activity_ref_id: serviceId,
       });
 
-      const other = (
-        await call("POST", MEMORIALS, "don", {
-          title: "Spring remembrance",
-          description: null,
-          startsAt: day(40),
-          endsAt: day(40.1),
-          modality: "in_person",
-          venueText: "Chapel",
-          capacity: null,
-          rsvpBy: null,
-          inviteWindowMonths: 12,
-        })
-      ).json();
-      const pub = (
-        await call("POST", `${MEMORIALS}/${other.serviceId}/publish`, "don", undefined, ifMatch(1))
-      ).json();
+      // every memorial WRITE answers without the plaintext link (create, edit, publish, close)
+      const body = {
+        title: "Spring remembrance",
+        description: null,
+        startsAt: day(40),
+        endsAt: day(40.1),
+        modality: "virtual",
+        venueText: null,
+        joinUrl: "https://meet.example.test/spring",
+        capacity: null,
+        rsvpBy: null,
+        inviteWindowMonths: 12,
+      };
+      const created = await call("POST", MEMORIALS, "don", body);
+      const other = created.json();
+      const edited = await call(
+        "PATCH",
+        `${MEMORIALS}/${other.serviceId}`,
+        "don",
+        { ...body, title: "Spring remembrance evening" },
+        ifMatch(1),
+      );
+      const published = await call(
+        "POST",
+        `${MEMORIALS}/${other.serviceId}/publish`,
+        "don",
+        undefined,
+        ifMatch(2),
+      );
+      const pub = published.json();
       expect(pub.mailingRunId).not.toBeNull();
-      await call(
+      const closed = await call(
         "POST",
         `${MEMORIALS}/${other.serviceId}/close`,
         "don",
         { status: "cancelled" },
         ifMatch(pub.version),
       );
+      for (const w of [created, edited, published, closed]) {
+        expect(w.statusCode).toBeLessThan(300);
+        expect(w.json()).toMatchObject({ hasJoinUrl: true, joinUrl: null });
+      }
+      expect(
+        await count(
+          "SELECT count(*)::int n FROM idempotency_key WHERE response_body::text LIKE '%meet.example.test%'",
+        ),
+      ).toBe(0);
       expect(
         (
           await one<{ status: string }>("SELECT status FROM bereavement_mailing_run WHERE id=$1", [
@@ -1446,7 +1494,7 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
           payload: { response: "yes", guests: 1 },
         },
       );
-      expect(rsvp.json()).toMatchObject({ status: "rsvp_yes", guests: 1 });
+      expect(rsvp.json()).toMatchObject({ status: "rsvp_yes", guests: 1, joinUrl: null });
       expect(
         (await portalCall("GET", "/api/v1/portal/bereavement/library"))
           .json()
@@ -1465,6 +1513,38 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
         (await portalCall("GET", `/api/v1/portal/bereavement/library/${randomUUID()}/url`))
           .statusCode,
       ).toBe(404);
+    });
+
+    it("a contact who has since died (or was found ineligible) is not answered for in the portal, whatever the plan", async () => {
+      const contact = (
+        await one<{ c: string }>(
+          "SELECT bereaved_contact_id c FROM bereavement_memorial_invitation WHERE id=$1",
+          [invitationId],
+        )
+      ).c;
+      await admin.query(
+        "UPDATE bereaved_contact SET status='deceased', deceased_at=now() WHERE id=$1",
+        [contact],
+      );
+      try {
+        expect(
+          (await portalCall("GET", "/api/v1/portal/bereavement/memorials"))
+            .json()
+            .items.map((i: { invitationId: string }) => i.invitationId),
+        ).not.toContain(invitationId);
+        expect(
+          (
+            await portalCall("POST", `/api/v1/portal/bereavement/memorials/${invitationId}/rsvp`, {
+              payload: { response: "no", guests: 0 },
+            })
+          ).statusCode,
+        ).toBe(404);
+      } finally {
+        await admin.query(
+          "UPDATE bereaved_contact SET status='active', deceased_at=NULL WHERE id=$1",
+          [contact],
+        );
+      }
     });
 
     it("a session that is not the bereaved family's, or whose plan's window is closed, is refused every route", async () => {

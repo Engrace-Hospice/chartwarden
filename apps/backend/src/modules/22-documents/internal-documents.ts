@@ -105,3 +105,21 @@ export function assertAdoptableByIntake(aggregateType: string | null | undefined
   assertNotInternalOnlyForWrite(aggregateType);
   assertNotOrgLibraryForEdit(aggregateType);
 }
+
+/** ADR-0109 D10 (PR 3) — a grief-library document is agency content: it never names a patient or an admission (every upload path asserts this). */
+export function assertOrgLibraryIsOrgLevel(
+  aggregateType: string | null | undefined,
+  patientId: string | null | undefined,
+  admissionId: string | null | undefined,
+): void {
+  if (
+    isOrgLibraryAggregateType(aggregateType) &&
+    ((patientId ?? null) !== null || (admissionId ?? null) !== null)
+  ) {
+    throw new ChartWardenError(
+      "VALIDATION_FAILED",
+      "a grief-library document is org-level: it names no patient or admission",
+      422,
+    );
+  }
+}

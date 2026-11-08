@@ -93,12 +93,15 @@ export function BereavementServicesSection(): JSX.Element | null {
   const [state, setState] = useState<Loaded>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
   const mounted = useRef(true);
-  useEffect(
-    () => () => {
+  // Every answer bumps this; a post-yes re-read applies only if no newer answer landed while it was in flight.
+  const answerSeq = useRef(0);
+  useEffect(() => {
+    // StrictMode mounts, unmounts and mounts again: set it here, not only at ref creation.
+    mounted.current = true;
+    return () => {
       mounted.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   useEffect(() => {
     void attempt;
@@ -114,6 +117,8 @@ export function BereavementServicesSection(): JSX.Element | null {
 
   const replace = useCallback(
     (next: Invitation) => {
+      answerSeq.current += 1;
+      const seq = answerSeq.current;
       setState((prev) =>
         prev.kind === "ready"
           ? {
@@ -125,7 +130,7 @@ export function BereavementServicesSection(): JSX.Element | null {
       if (next.status !== "rsvp_yes") return;
       // The reply never carries the join link: re-read in place (what is on screen stays if the read fails).
       void readInvitations(client).then((fresh) => {
-        if (mounted.current && fresh.kind === "ready") setState(fresh);
+        if (mounted.current && seq === answerSeq.current && fresh.kind === "ready") setState(fresh);
       });
     },
     [client],
