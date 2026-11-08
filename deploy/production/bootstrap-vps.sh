@@ -112,6 +112,7 @@ if command -v nginx >/dev/null 2>&1; then
   # Maintenance switch (#865): the app vhosts include this snippet (the 503 page is inline in it).
   install -d -m 0755 /etc/nginx/snippets
   install -m 0644 "$SOURCE_DIR/nginx/chartwarden-maintenance.conf" /etc/nginx/snippets/chartwarden-maintenance.conf
+  install -m 0644 "$SOURCE_DIR/nginx/chartwarden-platform-proxy.conf" /etc/nginx/snippets/chartwarden-platform-proxy.conf
   install -m 0644 "$SOURCE_DIR/nginx/chartwarden-storage.conf" /etc/nginx/sites-available/chartwarden-storage.conf
   ln -sfn /etc/nginx/sites-available/chartwarden-storage.conf /etc/nginx/sites-enabled/chartwarden-storage.conf
   if [ -n "$TENANT_BASE_DOMAIN" ]; then

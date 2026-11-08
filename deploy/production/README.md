@@ -74,13 +74,24 @@ are not rolled back.
 
 The web image contains three static SPAs: the staff app at `/`, the patient/family portal at `/portal/`,
 and Platform Ops in a separate document root selected only for `platform112026.chartwarden.cloud`.
-After the image release is live, point `platform112026.chartwarden.cloud` to the VPS and copy
+After the image release is live, point `platform112026.chartwarden.cloud` to the VPS, install
+`nginx/chartwarden-platform-proxy.conf` to `/etc/nginx/snippets/` (`bootstrap-vps.sh` does this), copy
 `nginx/chartwarden-platform.conf` to `/etc/nginx/sites-available/`, symlink it into `sites-enabled/`,
 then run `nginx -t` before reloading. Issue a certificate with `certbot --nginx -d
 platform112026.chartwarden.cloud`. Preserve the existing entries in the VPS `.env.production` and add
 `https://platform112026.chartwarden.cloud` to `TRUSTED_ORIGINS`; recreate only `api` so CORS and Better
-Auth load the added origin. The vhost proxies the same-origin `/api/` and `/webhooks/` routes. Only the signed-BAA upload (`/api/v1/platform/tenants/<slug>/baa-document`) gets a
-16m body cap; every other route keeps nginx's 1 MiB default, so re-copy the file whenever it changes.
+Auth load the added origin. The vhost proxies the same-origin `/api/` and `/webhooks/` routes; both API
+locations `include` the shared proxy snippet. Only the signed-BAA upload
+(`/api/v1/platform/tenants/<slug>/baa-document`) gets a 16m body cap (plus a 30s body and 90s upstream read
+timeout); every other route keeps nginx's 1 MiB default.
+
+Updating a live host: certbot edits the installed vhost in place (it adds the `listen 443 ssl` block and
+the certificate paths), so **never copy `chartwarden-platform.conf` over the live file**. Re-install the
+snippet when it changes, and when the BAA location changes, edit the live vhost by hand: add or update the
+`location ~ ^/api/v1/platform/tenants/[^/]+/baa-document$` block (above the `/api/` block, in every
+`server` that proxies the API) to match the repo copy, and make the `/api/` location `include` the snippet.
+Alternatively copy the repo file and immediately rerun `certbot --nginx -d platform112026.chartwarden.cloud`
+to re-apply TLS. Either way, `nginx -t && systemctl reload nginx`.
 
 ## DocLens worker and the scoped object-store account (GAP-138 / GAP-139)
 
