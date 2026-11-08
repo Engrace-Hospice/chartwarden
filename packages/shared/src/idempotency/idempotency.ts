@@ -25,7 +25,9 @@ const KEYED_HASH = /^h1:([0-9a-f]{8}):[0-9a-f]{64}$/;
 /**
  * A short, non-secret label of the server key: the first 8 hex characters of HMAC(key, a fixed label). Every fingerprint carries it, so a
  * mismatch can be told apart as "the server's key changed since this record was written" (stale) from "another body" (conflict). It is
- * the same for every row under one key, so it gives a reader of the table nothing to test a body guess against.
+ * the same for every row under one key, so it gives a reader of the table nothing to test a BODY guess against. It does let a reader test
+ * CANDIDATE SERVER SECRETS offline (the label is public and the tag is 32 bits), so the fingerprint's strength against someone who can read
+ * the table rests on BETTER_AUTH_SECRET being generated high-entropy, never chosen; production boot checks its presence and length only.
  */
 export function idempotencyKeyId(hmacKey: string | Uint8Array): string {
   return createHmac("sha256", hmacKey).update(KEY_ID_LABEL).digest("hex").slice(0, 8);
