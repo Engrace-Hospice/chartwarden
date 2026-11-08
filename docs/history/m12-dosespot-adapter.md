@@ -192,6 +192,15 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   failure after a drain hold is deliberately NOT kept held: it is the call's own answer to what the hold was waiting for, so it is settled as an ordinary
   failure (retryable: requeued, one retry spent, the persisted created id re-sent, the marker replaced; permanent: the order fails and the
   administrators are told), and an administrator mid-resolution is then refused with 409 DOSESPOT_TRANSMISSION_NOT_HELD.
+- A replacement order was never sent (found in the review of d333d1d9d..HEAD, outside the reviewed range): the D8 key was sha256(prescriber, patient,
+  drug, strength, sig), unique per organization, and the sign-time enqueue reused an existing row on a conflict without asking whose it was. A retransmit by
+  the authoring prescriber (the standing rule allows it) mints a replacement with exactly the same content, so it found the FAILED order's row (or the
+  "resolved not sent" one's), was queued with none of its own, and sat queued forever: the worker finds transmissions by order id and skips an order
+  with none, and the age alert needs a transmission row too, so nothing said so. The same held for any second order with identical content, a refill
+  mint included. The order id is now part of the key (a retransmit is its own prescription, so DoseSpot's own dedupe, if it exists, cannot fold it
+  into the failed attempt; a double-sign of the SAME order still shares one row), and the enqueue refuses, loudly, a row under its key that is
+  another order's. After a "not sent" resolution that was a mistake the retransmit therefore duplicates the prescription, as the CW-AC-23 gap already
+  says. Orders already stuck queued with no row (demo data) are not repaired by this change: reseed them.
 - A created-but-unsent prescription survives a change of replica (LOW of the following review): the adapter used to remember a created
   `addCodedPrescription` id only in its own process memory, so a retry on another replica re-ran the create (a second prescription). The adapter now
   reports the id (`onCreated`) before the send and accepts it back (`createdPrescriptionId`); the worker persists it on the transmission row's

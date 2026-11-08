@@ -308,7 +308,7 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 - **BAA / PHI:** PHI-bearing. BAA required (§5). EPCS adds DEA controlled-substance requirements — out of scope for prod until ADR-006 certification kickoff; data model and architecture ready.
 - **Sandbox vs prod:** DoseSpot staging clinic + sandbox prescribers; synthetic patients only. CI uses recorded fixtures.
 - **Webhooks (inbound):** Script status updates; refill requests. Signature-verified, idempotent (dedup on DoseSpot event/message ID), audited. PHI bodies never logged in clear.
-- **Retry/idempotency:** NewRx is non-idempotent — guarded by idempotency key on `(prescriber, patient, rx_business_key)`. Patient sync is idempotent (upsert). Webhook handlers idempotent.
+- **Retry/idempotency:** NewRx is non-idempotent — guarded by idempotency key on `(prescriber, patient, rx_business_key, order)` (the order is part of it: a replacement order, such as a retransmit or a refill, is its own prescription and never collides with the earlier order's). Patient sync is idempotent (upsert). Webhook handlers idempotent.
 - **Rate-limit posture:** Per-clinic limits — TBD confirm with DoseSpot; adapter paces and respects 429 with backoff. Bulk patient sync throttled.
 - **Failure handling:** `DegradedError` → prescribing UI shows "e-prescribe temporarily unavailable; orders can be drafted and queued." Drafts persist locally; submitted on recovery. Refill inbox shows last-synced state with staleness indicator. SEV-2 if sustained (DR_BCP).
 - **Onboarding:** Module 34 wizard step "DoseSpot certification kickoff" — clinic registration, prescriber enrollment, EPCS deferred toggle.

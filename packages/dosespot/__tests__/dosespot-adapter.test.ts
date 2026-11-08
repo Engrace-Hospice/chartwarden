@@ -285,7 +285,7 @@ describe("D8 NewRx idempotency key", () => {
     expect(canonicalizeSig("  Take   1 Tab  PO  QD. ")).toBe("take 1 tab po qd");
   });
 
-  it("idempotencyKey binds prescriber + patient + rxBusinessKey (double-sign self-dedups)", () => {
+  it("idempotencyKey binds prescriber + patient + rxBusinessKey + order (double-sign of the same order self-dedups)", () => {
     const rxKey = computeRxBusinessKey({
       rxnormRxcui: "1191",
       strength: "81 mg",
@@ -295,11 +295,13 @@ describe("D8 NewRx idempotency key", () => {
       prescriberMembershipId: "pm-1",
       patientId: "p-1",
       rxBusinessKey: rxKey,
+      medicationOrderId: "mo-1",
     });
     const k2 = computeNewRxIdempotencyKey({
       prescriberMembershipId: "pm-1",
       patientId: "p-1",
       rxBusinessKey: rxKey,
+      medicationOrderId: "mo-1",
     });
     expect(k1).toBe(k2);
     // A different patient → distinct key (no cross-patient dedup).
@@ -307,8 +309,18 @@ describe("D8 NewRx idempotency key", () => {
       prescriberMembershipId: "pm-1",
       patientId: "p-2",
       rxBusinessKey: rxKey,
+      medicationOrderId: "mo-1",
     });
     expect(k1).not.toBe(k3);
+    // A different ORDER with identical content (a retransmit by the same prescriber, a refill) → distinct key: it is its own prescription, and
+    // must not collide with (or be deduped into) the earlier order's transmission row.
+    const k4 = computeNewRxIdempotencyKey({
+      prescriberMembershipId: "pm-1",
+      patientId: "p-1",
+      rxBusinessKey: rxKey,
+      medicationOrderId: "mo-2",
+    });
+    expect(k1).not.toBe(k4);
   });
 
   it("correction-of-record (changed sig) produces a distinct idempotency key", () => {
@@ -326,11 +338,13 @@ describe("D8 NewRx idempotency key", () => {
       prescriberMembershipId: "pm-1",
       patientId: "p-1",
       rxBusinessKey: orig,
+      medicationOrderId: "mo-1",
     });
     const kb = computeNewRxIdempotencyKey({
       prescriberMembershipId: "pm-1",
       patientId: "p-1",
       rxBusinessKey: corrected,
+      medicationOrderId: "mo-1",
     });
     expect(ka).not.toBe(kb);
   });

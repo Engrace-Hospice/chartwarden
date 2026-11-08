@@ -13,9 +13,12 @@ import {
   type DoseSpotFetch,
   NotEnabledError,
   UnconfirmedOutcomeError,
+  computeNewRxIdempotencyKey,
+  computeRxBusinessKey,
   createEnvTenantConfigResolver,
   createHttpDoseSpotClient,
   createLayeredTenantConfigResolver,
+  sigDirections,
 } from "@chartwarden/dosespot";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
@@ -1850,6 +1853,170 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       await drain;
       expect(await eventsFor("m12.medication_order.transmission_unconfirmed", orderId)).toEqual([]);
       expect((await txRow(transmissionId as string)).last_error_detail).toBe("worker hold");
+    });
+
+    // ITEM 0 of the next round: `idempotency_key` is sha256(prescriber, patient, drug, strength, sig) and unique per organization, and the sign-time
+    // enqueue REUSED an existing row on a conflict without asking whose it was. A retransmit by the authoring prescriber (the standing rule allows it)
+    // mints a replacement with exactly the same content, so it found the FAILED order's row and was queued with none of its own; the worker finds
+    // transmissions by order id, so the replacement sat queued forever, never sent. The same holds for any second order with the same content (a refill).
+    describe("a replacement order with the same content is sent under its OWN transmission row (retransmit, refill)", () => {
+      const enqueueSigned = async (orderId: string) =>
+        inOrg(h.handle.db, ORG_A, async (tx) => {
+          const { schema } = await import("@chartwarden/db");
+          const { eq } = await import("drizzle-orm");
+          const [row] = await tx
+            .select()
+            .from(schema.medicationOrders)
+            .where(eq(schema.medicationOrders.id, orderId));
+          return enqueueTransmissionIfBound(
+            tx,
+            h.outbox,
+            ORG_A,
+            row as NonNullable<typeof row>,
+            new Date(),
+          );
+        });
+      /** A signed order enqueued through the real sign-time path (so it carries the D8 key, not a seeded one). */
+      const signedAndEnqueued = async (patientId: string) => {
+        const { orderId } = await h.seedOrder({
+          org: ORG_A,
+          patientId,
+          status: "signed",
+          sendState: "not_required",
+          transmission: false,
+        });
+        expect(await enqueueSigned(orderId)).toBe(true);
+        return orderId;
+      };
+      const ownRows = async (orderId: string) =>
+        (await h.q(
+          "SELECT id, idempotency_key FROM medication_order_transmission WHERE medication_order_id=$1",
+          [orderId],
+        )) as { id: string; idempotency_key: string }[];
+      const sendsOf = (calls: { orderId: string; key: string }[], orderId: string) =>
+        calls.filter((c) => c.orderId === orderId);
+
+      for (const how of ["exhausted its retries", "was resolved NOT SENT"] as const) {
+        it(`a retransmit by the authoring prescriber of an order that ${how} gets its own row and a different Idempotency-Key, and is sent`, async () => {
+          const backend = createDbDoseSpotBackend(h.handle.db, h.outbox);
+          const patientId = await h.seedPatient(ORG_A, { synced: "501" });
+          const original = await signedAndEnqueued(patientId);
+          const calls: { orderId: string; key: string }[] = [];
+          const failing = new FakeDoseSpotVendor({
+            transmit: async (_org, payload, key) => {
+              calls.push({ orderId: payload.medicationOrderId, key });
+              throw how === "exhausted its retries" ? permanent() : unconfirmed();
+            },
+          });
+          await runTransmitNewRxForOrg(deps(failing), ORG_A);
+          if (how === "was resolved NOT SENT") await resolveNotSent(original);
+          expect((await orderRow(original)).status).toBe("transmission_failed");
+
+          // the replacement a retransmit mints (same patient, drug, strength and sig; the SAME prescriber), signed
+          const { newOrderId } = await backend.retransmit(ORG_A, h.memberOf[ORG_A], original, {
+            signerDisciplines: ["hospice_physician"],
+          });
+          await h.admin.query("UPDATE medication_order SET status='signed' WHERE id=$1", [
+            newOrderId,
+          ]);
+          expect(await enqueueSigned(newOrderId)).toBe(true);
+          expect(await ownRows(newOrderId)).toHaveLength(1); // its own row, not the failed order's
+
+          const ok = new FakeDoseSpotVendor({
+            transmit: async (_org, payload, key) => {
+              calls.push({ orderId: payload.medicationOrderId, key });
+              return { dosespotPrescriptionId: "rx-replacement", transmittedAt: T0.toISOString() };
+            },
+          });
+          const pass = await runTransmitNewRxForOrg(deps(ok, minutes(1)), ORG_A);
+          expect(pass).toMatchObject({ claimed: 1, transmitted: 1 });
+          expect(await orderRow(newOrderId)).toMatchObject({
+            status: "transmitted",
+            rx: "rx-replacement",
+          });
+          // a retransmit after a definite failure must not be deduped into the failed one at DoseSpot
+          const failedKey = sendsOf(calls, original)[0]?.key;
+          const replacementKey = sendsOf(calls, newOrderId)[0]?.key;
+          expect(replacementKey).toBeDefined();
+          expect(replacementKey).not.toBe(failedKey);
+        });
+      }
+
+      it("a second order with the same content as one already transmitted (a refill mint, say) is sent under its own row", async () => {
+        const patientId = await h.seedPatient(ORG_A, { synced: "501" });
+        const first = await signedAndEnqueued(patientId);
+        const calls: { orderId: string; key: string }[] = [];
+        const ok = new FakeDoseSpotVendor({
+          transmit: async (_org, payload, key) => {
+            calls.push({ orderId: payload.medicationOrderId, key });
+            return {
+              dosespotPrescriptionId: `rx-${calls.length}`,
+              transmittedAt: T0.toISOString(),
+            };
+          },
+        });
+        expect((await runTransmitNewRxForOrg(deps(ok), ORG_A)).transmitted).toBe(1);
+        const second = await signedAndEnqueued(patientId);
+        expect(await ownRows(second)).toHaveLength(1);
+        expect((await runTransmitNewRxForOrg(deps(ok, minutes(1)), ORG_A)).transmitted).toBe(1);
+        expect(await orderRow(second)).toMatchObject({ status: "transmitted", rx: "rx-2" });
+        expect(sendsOf(calls, second)[0]?.key).not.toBe(sendsOf(calls, first)[0]?.key);
+      });
+
+      it("the sign-time enqueue refuses, loudly, when its key is held by another order's row: it never queues an order no worker can pick up", async () => {
+        const patientId = await h.seedPatient(ORG_A, { synced: "501" });
+        const { orderId } = await h.seedOrder({
+          org: ORG_A,
+          patientId,
+          status: "signed",
+          sendState: "not_required",
+          transmission: false,
+        });
+        const other = await h.seedOrder({
+          org: ORG_A,
+          patientId,
+          status: "transmission_failed",
+          sendState: "failed",
+          transmission: false,
+        });
+        const [row] = await h.q(
+          "SELECT rxnorm_rxcui, strength, data, prescriber_membership_id FROM medication_order WHERE id=$1",
+          [orderId],
+        );
+        const rxBusinessKey = computeRxBusinessKey({
+          rxnormRxcui: row?.rxnorm_rxcui,
+          strength: row?.strength,
+          sigFreeText: sigDirections(row?.data.sigStructured),
+        });
+        await h.admin.query(
+          "INSERT INTO medication_order_transmission (organization_id, medication_order_id, idempotency_key, rx_business_key, correlation_id) VALUES ($1,$2,$3,$4,'c-foreign')",
+          [
+            ORG_A,
+            other.orderId,
+            computeNewRxIdempotencyKey({
+              prescriberMembershipId: row?.prescriber_membership_id,
+              patientId,
+              rxBusinessKey,
+              medicationOrderId: orderId,
+            }),
+            rxBusinessKey,
+          ],
+        );
+        await expect(enqueueSigned(orderId)).rejects.toThrow(/belongs to another order/);
+        expect((await orderRow(orderId)).status).toBe("signed"); // not queued
+      });
+
+      it("the sign-time enqueue of the SAME order twice still shares one row (the double-sign the key exists for)", async () => {
+        const patientId = await h.seedPatient(ORG_A, { synced: "501" });
+        const orderId = await signedAndEnqueued(patientId);
+        // a racing second sign of the same order: it saw `not_required` before the first committed, so it reaches the insert
+        await h.admin.query(
+          "UPDATE medication_order SET status='signed', dosespot_send_state='not_required' WHERE id=$1",
+          [orderId],
+        );
+        expect(await enqueueSigned(orderId)).toBe(true);
+        expect(await ownRows(orderId)).toHaveLength(1);
+      });
     });
 
     it("an ambiguous outcome among clean ones holds only its own order", async () => {

@@ -1,6 +1,6 @@
 // @chartwarden/db — `medication_order_transmission` (M12 §3.3). The "audit anchor" for every DoseSpot adapter
 // call: one row per NewRx transmission attempt, carrying the D8 idempotency key (sha256 of
-// prescriberMembershipId + patientId + rxBusinessKey) and the rx-business-key (sha256 of rxcui + strength +
+// prescriberMembershipId + patientId + rxBusinessKey + medicationOrderId) and the rx-business-key (sha256 of rxcui + strength +
 // canonicalized sig), the queue→start→succeeded/failed timestamps, the retry counter, and the PHI-scrubbed
 // last-error fields (`last_error_detail` denylisted from the audit diff, §7.6 — pharmacy NACK text may carry
 // PHI fragments). Org-scoped operational table (no patient column → no three-column rule); `medication_order_id`
@@ -19,7 +19,7 @@ export const medicationOrderTransmissions = pgTable(
       .references(() => organizations.id, { onDelete: "restrict" }),
     medicationOrderId: uuid("medication_order_id").notNull(), // M12 partitioned parent → no single-col FK
 
-    idempotencyKey: text("idempotency_key").notNull(), // D8: sha256(prescriberMembershipId, patientId, rxBusinessKey)
+    idempotencyKey: text("idempotency_key").notNull(), // D8: sha256(prescriberMembershipId, patientId, rxBusinessKey, medicationOrderId)
     rxBusinessKey: text("rx_business_key").notNull(), // D8: sha256(rxcui, strength, sig_canonical)
 
     queuedAt: timestamp("queued_at", { withTimezone: true }).notNull().defaultNow(),
