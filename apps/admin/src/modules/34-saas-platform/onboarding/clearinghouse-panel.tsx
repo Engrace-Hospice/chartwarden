@@ -436,10 +436,9 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
             }}
             error={noteError ?? write.failure?.fieldErrors.evidenceNote ?? undefined}
           />
-          <label className="inline-flex min-h-11 items-center gap-2">
+          <label className="wx-action-check">
             <input
               type="checkbox"
-              className="size-5"
               checked={notePhiFree}
               onChange={(e) => setNotePhiFree(e.target.checked)}
             />

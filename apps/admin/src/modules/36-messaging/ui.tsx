@@ -118,7 +118,7 @@ export function StateError({
   return (
     <div className="wx-list-state" role="alert">
       <InlineAlert tone="error">{message}</InlineAlert>
-      <Button tone="secondary" size="lg" onClick={onRetry}>
+      <Button tone="secondary" onClick={onRetry}>
         Try again
       </Button>
     </div>

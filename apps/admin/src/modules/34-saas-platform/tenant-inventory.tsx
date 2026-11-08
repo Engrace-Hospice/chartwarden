@@ -3,6 +3,7 @@ import {
   Glyph,
   InlineAlert,
   LoadingSpinner,
+  SelectField,
   StatusPill,
   TextField,
   interactiveRowProps,
@@ -168,27 +169,22 @@ export function TenantInventory(): JSX.Element {
         </header>
 
         <form className="wx-list-toolbar" onSubmit={onSearch}>
-          <select
-            aria-label="Lifecycle status"
+          <SelectField
+            label={<span className="wx-sr-only">Lifecycle status</span>}
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-          >
-            <option value="">All statuses</option>
-            {LIFECYCLE_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {statusLabel(s)}
-              </option>
-            ))}
-          </select>
-          <div className="min-w-60 flex-1">
-            <TextField
-              type="search"
-              label={<span className="wx-sr-only">Search legal business name</span>}
-              placeholder="Legal business name"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+            options={[
+              { value: "", label: "All statuses" },
+              ...LIFECYCLE_STATUSES.map((s) => ({ value: s, label: statusLabel(s) })),
+            ]}
+          />
+          <TextField
+            type="search"
+            label={<span className="wx-sr-only">Search legal business name</span>}
+            placeholder="Legal business name"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
           <Button type="submit" tone="secondary">
             Search
           </Button>

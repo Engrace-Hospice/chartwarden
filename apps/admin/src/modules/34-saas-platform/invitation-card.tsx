@@ -104,9 +104,9 @@ export function InvitationCard({
       {rows === null && !loadError ? <LoadingSpinner label="Loading invitations…" /> : null}
       {rows?.length === 0 ? <p>No invitation on record.</p> : null}
       {rows && rows.length > 0 ? (
-        <ul className="wx-kv" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+        <ul className="wx-fact-list">
           {rows.map((i) => (
-            <li key={i.id} className="flex flex-wrap items-center gap-2">
+            <li key={i.id} className="wx-drawer-title-row">
               <span>{i.firstAdminEmail}</span>
               <StatusPill label={i.status} tone={TONE[i.status] ?? "neutral"} />
               <span className="wx-nums wx-row-sub">

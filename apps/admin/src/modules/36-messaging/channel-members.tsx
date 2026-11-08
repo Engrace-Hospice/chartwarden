@@ -90,103 +90,105 @@ export function ChannelMembers(): JSX.Element {
   const members: readonly ChannelMember[] = state.kind === "ok" ? state.data : [];
 
   return (
-    <div className="wx-list-drawer-main">
-      <header className="wx-page-head">
-        <div>
-          <h1>Channel members</h1>
-          <p>Who can read and post in this channel, and how they got access.</p>
-        </div>
-        <div className="wx-list-toolbar-end">
-          <Button tone="secondary" size="lg" onClick={refresh}>
-            Refresh
-          </Button>
-        </div>
-      </header>
-
-      {state.kind !== "forbidden" ? (
-        <form
-          ref={addFormRef}
-          className="wx-list-toolbar"
-          onSubmit={(ev) => void onAdd(ev)}
-          aria-label="Add member"
-        >
-          <TextField
-            label="User ID"
-            value={userId}
-            onChange={(ev) => setUserId(ev.target.value)}
-            error={attempted && !userId.trim() ? "Enter the user id to add." : undefined}
-            autoComplete="off"
-          />
-          <SelectField
-            label="Role"
-            value={role}
-            onChange={(ev) => setRole(ev.target.value as MemberRole)}
-            options={MEMBER_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
-          />
-          <Button type="submit" size="lg" loading={busy}>
-            Add member
-          </Button>
-        </form>
-      ) : null}
-      {failure ? <InlineAlert tone="error">{failure}</InlineAlert> : null}
-
-      {fallback ??
-        (members.length === 0 ? (
-          <StateEmpty icon="users">This channel has no members.</StateEmpty>
-        ) : (
-          <div className="wx-list-table-wrap">
-            <table className="wx-list-table">
-              <caption className="wx-sr-only">Channel members</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Member</th>
-                  <th scope="col">Role</th>
-                  <th scope="col">Source</th>
-                  <th scope="col">
-                    <span className="wx-sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {members.map((m) => {
-                  const name = m.displayName || m.userId;
-                  return (
-                    <tr key={m.userId}>
-                      <td>
-                        <span className="wx-row-title">{name}</span>
-                        {m.displayName ? (
-                          <span className="wx-row-sub wx-data-md">{m.userId}</span>
-                        ) : null}
-                      </td>
-                      <td>
-                        <StatusPill
-                          label={roleLabel(m.role)}
-                          tone={m.role === "owner" ? "progress" : "neutral"}
-                        />
-                      </td>
-                      <td>{m.source}</td>
-                      <td>
-                        <Button
-                          tone="secondary"
-                          size="lg"
-                          disabled={busy}
-                          aria-label={`Remove ${name}`}
-                          onClick={() =>
-                            void run(() => removeMember(client, channelId, m.userId), {
-                              movesFocusToAdd: true,
-                            })
-                          }
-                        >
-                          Remove
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <header className="wx-page-head">
+          <div>
+            <h1>Channel members</h1>
+            <p>Who can read and post in this channel, and how they got access.</p>
           </div>
-        ))}
+          <div className="wx-list-toolbar-end">
+            <Button tone="secondary" onClick={refresh}>
+              Refresh
+            </Button>
+          </div>
+        </header>
+
+        {state.kind !== "forbidden" ? (
+          <form
+            ref={addFormRef}
+            className="wx-list-toolbar"
+            onSubmit={(ev) => void onAdd(ev)}
+            aria-label="Add member"
+          >
+            <TextField
+              label="User ID"
+              value={userId}
+              onChange={(ev) => setUserId(ev.target.value)}
+              error={attempted && !userId.trim() ? "Enter the user id to add." : undefined}
+              autoComplete="off"
+            />
+            <SelectField
+              label="Role"
+              value={role}
+              onChange={(ev) => setRole(ev.target.value as MemberRole)}
+              options={MEMBER_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
+            />
+            <Button type="submit" loading={busy}>
+              Add member
+            </Button>
+          </form>
+        ) : null}
+        {failure ? <InlineAlert tone="error">{failure}</InlineAlert> : null}
+
+        {fallback ??
+          (members.length === 0 ? (
+            <StateEmpty icon="users">This channel has no members.</StateEmpty>
+          ) : (
+            <div className="wx-list-table-wrap">
+              <table className="wx-list-table">
+                <caption className="wx-sr-only">Channel members</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Member</th>
+                    <th scope="col">Role</th>
+                    <th scope="col">Source</th>
+                    <th scope="col">
+                      <span className="wx-sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {members.map((m) => {
+                    const name = m.displayName || m.userId;
+                    return (
+                      <tr key={m.userId}>
+                        <td>
+                          <span className="wx-row-title">{name}</span>
+                          {m.displayName ? (
+                            <span className="wx-row-sub wx-data-md">{m.userId}</span>
+                          ) : null}
+                        </td>
+                        <td>
+                          <StatusPill
+                            label={roleLabel(m.role)}
+                            tone={m.role === "owner" ? "progress" : "neutral"}
+                          />
+                        </td>
+                        <td>{m.source}</td>
+                        <td>
+                          <Button
+                            tone="secondary"
+                            size="sm"
+                            disabled={busy}
+                            aria-label={`Remove ${name}`}
+                            onClick={() =>
+                              void run(() => removeMember(client, channelId, m.userId), {
+                                movesFocusToAdd: true,
+                              })
+                            }
+                          >
+                            Remove
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ))}
+      </div>
     </div>
   );
 }
