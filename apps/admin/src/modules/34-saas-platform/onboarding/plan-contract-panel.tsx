@@ -14,6 +14,7 @@ import {
 } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
+import { Link } from "react-router-dom";
 import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { RecordSaveDialog } from "./record-save-dialog";
@@ -330,7 +331,11 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
             <h3>Sign a plan</h3>
           </div>
           {offered.length === 0 ? (
-            <p>No published plan to sign. A billing admin publishes plans; none is offered yet.</p>
+            <p>
+              No published plan to sign yet.{" "}
+              {/* A URL, not an import: M34 and M35 share no code edge (ADR-0025). */}
+              <Link to="/admin/pricing-plans">Create or publish a price plan</Link>.
+            </p>
           ) : (
             <>
               <div className="wx-form-grid">

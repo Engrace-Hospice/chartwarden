@@ -118,6 +118,9 @@ describe("PlanContractPanel", () => {
     mount({ GET: { [PLANS]: () => ok([]), [SUB]: () => ok(NO_CONTRACT) } });
     expect(await screen.findByText(/No published plan to sign/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sign contract" })).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Create or publish a price plan" }).getAttribute("href"),
+    ).toBe("/admin/pricing-plans");
   });
 
   it("shows the signed contract, and the plan it is on", async () => {
