@@ -148,7 +148,7 @@ export type MedicationOrderEvent =
   | {
       readonly type: "resolveHeldSent";
       /**
-       * An order HELD in `queued_for_transmission` because DoseSpot accepted the NewRx call but did not confirm what it created (the
+       * An order HELD in `queued_for_transmission` because DoseSpot did not confirm what became of the NewRx call (the
        * transmit worker never fails or re-sends it): an organization administrator who has checked the prescriber's DoseSpot account says
        * the prescription WAS sent, and names it. Not a system-actor transition; the worker would have recorded the same facts.
        */

@@ -26,7 +26,8 @@ F-058 local activation (`not_required`) is unchanged.
 `createHttpDoseSpotClient` implements the `DoseSpotClient` port over the DoseSpot v2 REST API:
 OAuth2 token minting and caching per (tenant, clinician) with early refresh and one forced re-mint on a 401; the
 `Subscription-Key` + `Authorization: Bearer` headers; a hard request timeout; 429/5xx/network => retryable with the per-call
-250/500 ms backoff, then a retryable `DegradedError` for the BullMQ layer; other 4xx and `Result.ResultCode = "ERROR"` =>
+250/500 ms backoff, then a retryable `DegradedError` for the BullMQ layer (the prescription SEND is the exception: only a 429, a 503
+or a connection never made is retryable, and every other send 5xx, a timeout or a reset is held as an unconfirmed outcome); other 4xx and `Result.ResultCode = "ERROR"` =>
 permanent; the per-tenant circuit breaker (open/close edges are published as `m12.dosespot_degraded` / `_recovered` by the next
 cron tick); NewRx idempotency (the D8 key is sent as `Idempotency-Key` AND a created-but-unsent prescription is remembered in
 process so a retry re-sends rather than creating a second).

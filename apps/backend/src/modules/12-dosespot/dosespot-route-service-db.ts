@@ -743,7 +743,7 @@ export function createDbDoseSpotBackend(
           : t.transmissionSucceededAt
             ? "transmitted"
             : t.lastErrorClass === UNCONFIRMED_OUTCOME_CLASS
-              ? "unconfirmed_outcome" // HELD: DoseSpot accepted the call but did not confirm what it created; an administrator resolves it
+              ? "unconfirmed_outcome" // HELD: DoseSpot did not confirm what became of the call; an administrator resolves it
               : t.transmissionFailedAt
                 ? "transmission_failed"
                 : t.transmissionStartedAt

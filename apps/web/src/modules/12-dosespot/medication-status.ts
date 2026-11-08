@@ -24,7 +24,7 @@ export const MED_ORDER_TONE: Record<string, StatusTone> = {
 
 // DoseSpotSendState — the §4.10 NewRx-transmission observed state.
 export const SEND_TONE: Record<string, StatusTone> = {
-  // an order HELD because DoseSpot accepted the call but did not confirm what it created: it waits for an administrator
+  // an order HELD because DoseSpot did not confirm what became of the call: it waits for an administrator
   unconfirmed_outcome: "warning",
   not_required: "neutral",
   queued: "progress",

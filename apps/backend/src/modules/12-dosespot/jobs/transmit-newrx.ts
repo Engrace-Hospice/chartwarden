@@ -61,7 +61,7 @@ export interface TransmitPassResult {
   readonly transmitted: number;
   readonly requeued: number;
   readonly failed: number;
-  /** Orders held because DoseSpot accepted the call but did not confirm what it created: neither retried nor failed. */
+  /** Orders held because DoseSpot did not confirm what became of the call: neither retried nor failed. */
   readonly held: number;
   /** Claims this worker no longer owned when it came to write (drained and taken over, or resolved meanwhile): nothing of its was written. */
   readonly skipped: number;

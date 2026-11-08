@@ -429,7 +429,7 @@ export type ResolveHeldResult = Ok<
 >;
 
 /**
- * An organization administrator resolves an order HELD because DoseSpot accepted its NewRx call but did not confirm what it created
+ * An organization administrator resolves an order HELD because DoseSpot did not confirm what became of its NewRx call
  * (POST .../resolve-held-transmission: `prescribing.clinic.admin` + a FRESH step-up + an Idempotency-Key, minted here per call). `sent`
  * (with the DoseSpot prescription id) makes it transmitted; `not_sent` makes it transmission_failed so the prescriber retransmits.
  * Nothing is sent either way. A refusal for want of a fresh step-up comes back as code `STEP_UP_REQUIRED` so the caller can route to the ceremony.

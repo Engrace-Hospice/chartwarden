@@ -161,7 +161,7 @@ export function registerTenantDoseSpotRoutes(
     );
   }
 
-  // An order HELD because DoseSpot accepted the call but did not confirm what it created (it is never failed, retried or re-sent) leaves that
+  // An order HELD because DoseSpot did not confirm what became of its call (it is never failed, retried or re-sent) leaves that
   // state only here: an administrator checks the prescriber's DoseSpot account and says SENT (with the prescription id: the order becomes
   // transmitted and is polled as normal) or NOT SENT (transmission_failed: the prescriber retransmits). Accepted only while the hold marker is
   // on the transmission row, under a row lock, so two resolutions cannot both win (409 DOSESPOT_TRANSMISSION_NOT_HELD).
