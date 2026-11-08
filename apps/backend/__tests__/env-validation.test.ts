@@ -16,6 +16,7 @@ import {
   hostnamesIn,
   integrationEnabled,
   isReservedPlaceholderHost,
+  platformClaimMdAccountReference,
   reservedPlaceholderProblem,
   withM24LaunchGatewayDefault,
 } from "../src/bootstrap/env";
@@ -525,6 +526,27 @@ describe("CLEARINGHOUSE_VENDOR (ADR-0053 D3)", () => {
         CLAIMMD_ACCOUNT_USAGE: "production",
       }),
     ).toEqual([]);
+  });
+  // `tenant:<org id>` is a tenant's OWN account in the evidence tables: the platform's reference may never take that namespace.
+  it("refuses a platform Claim.MD account reference in the tenant namespace, at boot and at every read", () => {
+    const base = {
+      CLEARINGHOUSE_VENDOR: "claimmd",
+      CLAIMMD_ACCOUNT_KEY: "a-real-looking-key-0001",
+      CLAIMMD_ACCOUNT_USAGE: "production",
+    };
+    expect(keysFor({ ...base, CLAIMMD_ACCOUNT_REFERENCE: "TENANT:abc" })).toContain(
+      "CLAIMMD_ACCOUNT_REFERENCE",
+    );
+    expect(keysFor({ ...base, CLAIMMD_ACCOUNT_REFERENCE: "acct-1" })).not.toContain(
+      "CLAIMMD_ACCOUNT_REFERENCE",
+    );
+    expect(() =>
+      platformClaimMdAccountReference({ CLAIMMD_ACCOUNT_REFERENCE: " tenant:x " }),
+    ).toThrow(/tenant:/);
+    expect(platformClaimMdAccountReference({ CLAIMMD_ACCOUNT_REFERENCE: " acct-1 " })).toBe(
+      "acct-1",
+    );
+    expect(platformClaimMdAccountReference({})).toBeUndefined();
   });
   it("the Claim.MD webhook is off by default and, once enabled, needs the account key and a payload key", () => {
     expect(keysFor({ CLAIMMD_WEBHOOK_ENABLED: "false" })).toEqual([]);

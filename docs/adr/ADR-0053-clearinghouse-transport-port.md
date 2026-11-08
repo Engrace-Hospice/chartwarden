@@ -428,3 +428,20 @@ A tenant cannot undo a "filed outside ChartWarden" record, and a cancel of a rec
 (the lock stands until then); a Stedi key-type versus mode check; a Claim.MD probe counted in the account's request budget; a MAC-credential check when a LIVE tenant switches from `outside` to a vendor (round 2, L6): the wizard reopens the MAC and payer-enrollment steps only while a tenant is onboarding,
 and neither a hard activation gate nor a payer-enrollment check is built, because MAC credentials are step 8 (after the clearinghouse, so a gate would deadlock onboarding unless split by tenant status), payer enrollment is a human attestation with no machine-readable fact,
 and a commercial-only or eligibility-only (M41) tenant legitimately has no Medicare MAC credential. Today a Medicare claim for such an org fails LOUDLY (the claim context refuses a provider entity with no MAC credential), never silently. A readiness warning on the live tenant's clearinghouse view needs an owner decision on commercial-only tenants. The tenant-facing UI for all of this is slices 5 and 7.
+
+## Amendment 2026-11-08 — Claim.MD responses and evidence are decided per account (owner decisions, merging main's BIL-1.x)
+
+Main's BIL-1.1 capture, identity resolution and BIL-1.3 dispatcher read the PLATFORM's Claim.MD account only. With tenant
+clearinghouses a binding built from a tenant's own sealed credential carries `account: "tenant"`, and the owner decided:
+
+- **Acks and ERAs per account.** The platform's Claim.MD account follows main's rules (no per-provider ack poll and no legacy
+  ERA pull while its capture or delivery runs). A tenant's own Claim.MD account is not in that capture: its acks and ERAs come
+  only through its own per-tenant poll, capture on or off. That poll is the legacy provider poller, so M23 records those acks as
+  `ack_999` / `ack_277ca` and M41 as `unknown_legacy`. A tenant account's M23 ack rows are keyed `clearinghouse:tenant:<org>:<event>`
+  and its poll cursors `<vendor>@tenant`, so two tenants' (or the platform's) id spaces never collide.
+- **Evidence per account.** Every Claim.MD send (M23 claims and notices, M41 commercial claims) first commits main's immutable
+  submission evidence. A tenant account commits it under its own organization with account reference `tenant:<organization id>`
+  (a namespace the platform's `CLAIMMD_ACCOUNT_REFERENCE` may not take); with no such store, or a failed write, nothing is sent.
+- **NOE / NOTR jobs keep main's contract.** Every job carries `submissionId`; it is checked against the stored attempt
+  (organization, provider entity, notice, kind) and `attemptIndex` is passed through. A job without it fails loudly; a park closes
+  only the job's own matching attempt.

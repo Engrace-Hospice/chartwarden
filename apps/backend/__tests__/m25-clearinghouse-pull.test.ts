@@ -389,7 +389,10 @@ describe("pullRemittances with a clearinghouse per organization (ADR-0053 amendm
   const scopeB = { ...DEFAULT_SCOPE, organizationId: ORG_B };
 
   function perOrg(
-    bindings: Record<string, { transport: InMemoryClearinghouse; vendor: string | null }>,
+    bindings: Record<
+      string,
+      { transport: InMemoryClearinghouse; vendor: string | null; account?: "tenant" }
+    >,
   ) {
     const cursors = cursorStore();
     const ingest = ingestDouble();
@@ -455,6 +458,27 @@ describe("pullRemittances with a clearinghouse per organization (ADR-0053 amendm
     expect(await cursors.store.get(key(ORG, "stedi"))).toBe("1");
     expect(await cursors.store.get(key(ORG_B, "claimmd"))).toBe("1");
     expect(await cursors.store.get(key(ORG, "claimmd"))).toBeNull();
+  });
+
+  // An org that moves from the platform's account to its OWN account of the same vendor must not reuse the platform's position
+  // (a different id space): a tenant account's cursor key is kept apart.
+  it("keeps a tenant account's cursor apart from the platform account's for the same vendor", async () => {
+    const far = new InMemoryClearinghouse();
+    await far.control.deliverRemittance("ERA-A", buildRawEdi("1", "0001"));
+    const { deps, cursors } = perOrg({
+      [ORG]: { transport: far, vendor: "claimmd", account: "tenant" },
+    });
+
+    await pullRemittances(deps, ORG);
+
+    const key = (vendor: string): RemittanceCursorKey => ({
+      organizationId: ORG,
+      providerEntityId: PE,
+      vendor,
+      usage: "test",
+    });
+    expect(await cursors.store.get(key("claimmd@tenant"))).toBe("1");
+    expect(await cursors.store.get(key("claimmd"))).toBeNull();
   });
 
   it("skips an organization with no clearinghouse (no call, no failure) while another still pulls", async () => {

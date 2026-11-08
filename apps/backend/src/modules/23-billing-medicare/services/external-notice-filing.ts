@@ -144,17 +144,35 @@ type Submissions = InstanceType<typeof repositories.ClaimSubmissionRepository>;
 type NoticeAttempt = Awaited<ReturnType<Submissions["findById"]>>;
 
 /**
- * The attempt row a NOE / NOTR job OWNS: the one it was enqueued for (`submissionId`), else (a job from before the id was
- * carried) the notice's latest attempt when that one is still queued. Never "whatever is latest": a stale job must not touch the
- * live attempt of a resubmit.
+ * The attempt row a NOE / NOTR job OWNS: the one it was enqueued for (`submissionId`, main's contract: every job carries it).
+ * A job without it is malformed and fails loudly; there is no "latest queued attempt" fallback, so a stale job can never touch
+ * the live attempt of a resubmit.
  */
 export async function ownedNoticeAttempt(
   submissions: Submissions,
-  input: { submissionId?: string; providerEntityId: string; controlNumber: string },
+  input: { readonly submissionId: string },
 ): Promise<NoticeAttempt> {
-  if (input.submissionId) return submissions.findById(input.submissionId);
-  const latest = await submissions.findLatestAttempt(input.providerEntityId, input.controlNumber);
-  return latest?.outcome === "queued" ? latest : null;
+  if (!input.submissionId) throw new Error("notice job has no submissionId");
+  return submissions.findById(input.submissionId);
+}
+
+/** True when `attempt` is this notice's own: same organization, provider entity, notice and kind. */
+export function noticeAttemptMatches(
+  attempt: NoticeAttempt,
+  input: {
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly kind: ExternalNoticeKind;
+    readonly noticeId: string;
+  },
+): attempt is NonNullable<NoticeAttempt> {
+  return (
+    !!attempt &&
+    attempt.organizationId === input.organizationId &&
+    attempt.providerEntityId === input.providerEntityId &&
+    (input.kind === "noe" ? attempt.noeId : attempt.notrId) === input.noticeId &&
+    attempt.kind === input.kind
+  );
 }
 
 /**

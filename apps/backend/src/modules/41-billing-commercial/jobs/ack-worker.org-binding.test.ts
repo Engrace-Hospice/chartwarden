@@ -32,7 +32,7 @@ vi.mock("@chartwarden/tenancy", async () => {
 
 import { ChartWardenError } from "@chartwarden/types";
 import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
-import type { AckBinding, AckWorkerDeps } from "./ack-apply";
+import { type AckBinding, type AckWorkerDeps, applyAckEvent } from "./ack-apply";
 import { heldQuarantineReport } from "./ack-held-replay";
 import { runAckPull } from "./ack-worker";
 import { M41_UNBOUND_WITH_WORK_ALERT, __resetUnboundAlertMemoryForTest } from "./unbound-alert";
@@ -200,5 +200,25 @@ describe("runAckPull with a clearinghouse per organization", () => {
 
     expect([bound.bound, unbound.bound]).toEqual([true, false]);
     expect(resolved).toEqual(["org-1", "org-2"]);
+  });
+
+  // The converse of the per-account rule (owner decision 2026-11-08): the PLATFORM's Claim.MD account (no `account: "tenant"`)
+  // belongs to main's BIL-1.1 inbox, so the legacy poller never reads it and never applies an event from it.
+  it("never pulls or applies for the platform's Claim.MD account, top-level or resolved per org", async () => {
+    const reached: ClearinghouseContext[] = [];
+    const { deps } = depsFor({});
+    const topLevel: AckWorkerDeps = { ...deps, binding: bindingOf("claimmd", reached) };
+    await expect(runAckPull(topLevel)).resolves.toMatchObject({ applied: 0, failures: [] });
+
+    const perOrg: AckWorkerDeps = {
+      ...deps,
+      binding: { ...bindingOf(null, []), forOrg: async () => bindingOf("claimmd", reached) },
+    };
+    await expect(runAckPull(perOrg)).resolves.toMatchObject({ applied: 0, failures: [] });
+    expect(reached).toEqual([]); // no transport call either way
+
+    await expect(
+      applyAckEvent(perOrg, { organizationId: "org-1", providerEntityId: PE }, { eventId: "e1" }),
+    ).rejects.toThrow("CLAIMMD_LEGACY_ACK_DISABLED");
   });
 });

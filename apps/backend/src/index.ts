@@ -150,6 +150,7 @@ import {
   integrationEnabled,
   noteInMemoryBinding,
   parseTenantBaseDomain,
+  platformClaimMdAccountReference,
   registerEraser,
   registerSeam,
   webAppBaseUrlFromEnv,
@@ -1346,7 +1347,8 @@ import {
 import { createClaimMdEraCapture } from "./modules/25-remittance/ingest/claimmd-era-capture";
 import {
   claimMdEraRuntimeConfig,
-  shouldRunLegacyClaimMdEraPull,
+  eraPullBindingForOrg,
+  shouldRunLegacyEraPullFor,
 } from "./modules/25-remittance/ingest/claimmd-era-config";
 import { createClaimMdEraDeliveryService } from "./modules/25-remittance/ingest/claimmd-era-delivery";
 import { startClaimMdEraDeliveryWorker } from "./modules/25-remittance/ingest/claimmd-era-delivery-worker";
@@ -4165,7 +4167,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     platformClearinghouseBinding.vendor === "claimmd" && dbHandle
       ? createClaimMdSubmissionEvidenceStore({
           db: dbHandle.db,
-          accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE!.trim(),
+          accountReference: platformClaimMdAccountReference(process.env)!,
           usage: process.env.CLAIMMD_ACCOUNT_USAGE as "test" | "production",
           cipher: createClaimMdEvidenceCipher({
             dekForOrg: (organizationId) => getTenantKeyProvider().dekForOrg(organizationId),
@@ -4179,7 +4181,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     platformClearinghouseBinding.vendor === "claimmd" && dbHandle
       ? createClaimMdNoticeEvidenceStore({
           db: dbHandle.db,
-          accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE!.trim(),
+          accountReference: platformClaimMdAccountReference(process.env)!,
           usage: process.env.CLAIMMD_ACCOUNT_USAGE as "test" | "production",
           cipher: createClaimMdEvidenceCipher({
             dekForOrg: (organizationId) => getTenantKeyProvider().dekForOrg(organizationId),
@@ -4203,7 +4205,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       : undefined;
   let claimMdResponseCapture: ReturnType<typeof createClaimMdResponseCapture> | undefined;
   if (claimMdResponseCaptureEnabled(process.env)) {
-    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const accountReference = platformClaimMdAccountReference(process.env);
     const accountKey = process.env.CLAIMMD_ACCOUNT_KEY?.trim();
     const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
     const inboxKeyRing = claimMdInboxKeyRingFromEnv(process.env);
@@ -4288,7 +4290,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       throw new Error(
         "Claim.MD identity resolver requires Claim.MD binding and both tenant/platform database clients",
       );
-    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const accountReference = platformClaimMdAccountReference(process.env);
     const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
     if (
       !accountReference ||
@@ -4713,7 +4715,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   let claimMdEraRecoveryService: ReturnType<typeof createClaimMdEraRecoveryService> | undefined;
   let claimMdEraResolutionWorker: ReturnType<typeof createClaimMdEraResolutionWorker> | undefined;
   let claimMdEraDelivery: ReturnType<typeof createClaimMdEraDeliveryService> | undefined;
-  const claimMdRecoveryAccount = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+  const claimMdRecoveryAccount = platformClaimMdAccountReference(process.env);
   const claimMdRecoveryUsage = process.env.CLAIMMD_ACCOUNT_USAGE;
   const claimMdRecoveryKeyRing = claimMdInboxKeyRingFromEnv(process.env);
   let claimMdEraResolver: ReturnType<typeof createClaimMdEraResolver> | undefined;
@@ -4785,7 +4787,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     });
   }
   if (claimMdEraConfig.captureEnabled) {
-    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const accountReference = platformClaimMdAccountReference(process.env);
     const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
     const accountKey = process.env.CLAIMMD_ACCOUNT_KEY;
     const keyRing = claimMdInboxKeyRingFromEnv(process.env);
@@ -4852,7 +4854,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     );
   }
   if (claimMdEraConfig.ownershipResolutionEnabled) {
-    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const accountReference = platformClaimMdAccountReference(process.env);
     const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
     const keyRing = claimMdInboxKeyRingFromEnv(process.env);
     if (
@@ -4950,7 +4952,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     );
   }
   if (claimMdEraConfig.deliveryEnabled) {
-    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const accountReference = platformClaimMdAccountReference(process.env);
     const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
     const keyRing = claimMdInboxKeyRingFromEnv(process.env);
     if (
@@ -5017,7 +5019,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       throw new Error(
         "Claim.MD acknowledgment dispatcher requires Claim.MD and tenant/platform database clients",
       );
-    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const accountReference = platformClaimMdAccountReference(process.env);
     const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
     if (
       !accountReference ||
@@ -9258,7 +9260,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   if (claimMdResponseCapture) {
     const stop = startClaimMdResponseCaptureWorker({
       capture: claimMdResponseCapture,
-      accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE!.trim(),
+      accountReference: platformClaimMdAccountReference(process.env)!,
       usage: process.env.CLAIMMD_ACCOUNT_USAGE as ClaimMdUsage,
       log: (summary) => {
         claimMdMetrics.record("response_capture", summary);
@@ -9304,7 +9306,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     );
   }
   if (claimMdEraCapture) {
-    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE!.trim();
+    const accountReference = platformClaimMdAccountReference(process.env)!;
     const usage = process.env.CLAIMMD_ACCOUNT_USAGE as ClaimMdEraUsage;
     const stop = startClaimMdEraCaptureWorker({
       runOnce: claimMdEraCapture.runOnce,
@@ -11025,29 +11027,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // With tenant clearinghouses the pull exists on every database boot and resolves each org's own vendor (an org with none is
     // skipped). The platform's Claim.MD account follows main's capture/delivery rule (its ERAs are captured centrally); a tenant's
     // OWN Claim.MD account is not in that capture and keeps its per-org pull (owner decision 2026-11-08).
-    const legacyM25ClaimMdPull = (binding: {
-      readonly vendor: string | null;
-      readonly account?: "tenant";
-    }) =>
-      binding.account === "tenant" ||
-      shouldRunLegacyClaimMdEraPull({
-        vendor: binding.vendor,
-        captureEnabled: claimMdEraConfig.captureEnabled,
-        deliveryEnabled: claimMdEraConfig.deliveryEnabled,
-      });
     const clearinghouseForOrg = clearinghouseBinding.forOrg;
     const m25RemittancePull =
       clearinghouseForOrg ||
-      (clearinghouseBinding.vendor && legacyM25ClaimMdPull(clearinghouseBinding))
+      (clearinghouseBinding.vendor &&
+        shouldRunLegacyEraPullFor(clearinghouseBinding, claimMdEraConfig))
         ? {
             ...(clearinghouseForOrg
               ? {
-                  forOrg: async (organizationId: string) => {
-                    const bound = await clearinghouseForOrg(organizationId);
-                    return legacyM25ClaimMdPull(bound)
-                      ? bound
-                      : { transport: bound.transport, vendor: null };
-                  },
+                  forOrg: async (organizationId: string) =>
+                    eraPullBindingForOrg(
+                      await clearinghouseForOrg(organizationId),
+                      claimMdEraConfig,
+                    ),
                 }
               : {
                   transport: clearinghouseBinding.transport,

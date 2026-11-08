@@ -18,6 +18,7 @@ import {
   bindingForOrg,
   claimMdFilename,
   compareStediClaimJsonToX12,
+  cursorVendorKey,
   extractX12NoticeEvidence,
   extractX12SubmissionEvidence,
   isPerOrgBinding,
@@ -458,9 +459,21 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}/;
 /** Map a port event to the M23 ack alphabet (two-stage routing per ADR-0053 D2). Pure. */
 export function ackFromEvent(
   event: AckEvent,
-  scope: { organizationId: string; providerEntityId: string; macJurisdiction: string },
+  scope: {
+    organizationId: string;
+    providerEntityId: string;
+    macJurisdiction: string;
+    /** `tenant` when the event came from the org's OWN vendor account (its own id space). */
+    account?: "tenant";
+  },
 ): TransportAck {
   const routed = routeAckEvent(event);
+  // claim_ack_file_uq is (jurisdiction, uri), not org-scoped: a tenant account's ids are its own, so its key names the org.
+  // The platform account's key is unchanged (rows already stored for it keep deduping).
+  const ackFileUri =
+    scope.account === "tenant"
+      ? `clearinghouse:tenant:${scope.organizationId}:${event.eventId}`
+      : `clearinghouse:${event.eventId}`;
   return {
     organizationId: scope.organizationId,
     providerEntityId: scope.providerEntityId,
@@ -471,7 +484,7 @@ export function ackFromEvent(
     payerControlNumber: event.payerClaimNumber ?? null,
     reasonCodes: event.reasonCodes,
     macJurisdiction: scope.macJurisdiction,
-    ackFileUri: `clearinghouse:${event.eventId}`,
+    ackFileUri,
     day: ISO_DAY.test(event.occurredAt) ? event.occurredAt.slice(0, 10) : null,
   };
 }
@@ -594,7 +607,11 @@ async function pullEntity(
     organizationId,
     providerEntityId,
     usage: ctx.usage,
-    vendor: vendor ?? "",
+    // A tenant's own account has its own position space (never the platform account's cursor, and vice versa).
+    vendor: cursorVendorKey({
+      vendor: vendor ?? "",
+      ...(transport.binding.account ? { account: transport.binding.account } : {}),
+    }),
     kind,
   };
   let state: AckCursorState = store ? await store.read(key) : { cursor: null, version: 0 };
@@ -658,7 +675,12 @@ async function pullEntity(
         }
         continue;
       }
-      const ack = ackFromEvent(event, { organizationId, providerEntityId, macJurisdiction });
+      const ack = ackFromEvent(event, {
+        organizationId,
+        providerEntityId,
+        macJurisdiction,
+        ...(transport.binding.account ? { account: transport.binding.account } : {}),
+      });
       if (ack.kind === kind) acks.push(ack);
     }
     if (acks.length > 0) await onPage(acks);

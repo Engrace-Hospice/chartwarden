@@ -15,7 +15,7 @@
 import { createHash } from "node:crypto";
 import { ChartWardenError } from "@chartwarden/types";
 import type { ClearinghouseContext, ClearinghouseTransport } from "@chartwarden/x12-837-client";
-import { CH } from "@chartwarden/x12-837-client";
+import { CH, cursorVendorKey } from "@chartwarden/x12-837-client";
 import type { M25IngestService } from "./service";
 
 /** Consecutive refusals of one remittance file before it is quarantined and the cursor advances past it. */
@@ -69,6 +69,8 @@ export interface RemittanceCursorStore {
 export interface RemittancePullBinding {
   readonly transport: ClearinghouseTransport;
   readonly vendor: string | null;
+  /** `tenant` on the org's OWN account: its cursor is kept apart from the platform account's. */
+  readonly account?: "tenant";
 }
 
 /**
@@ -94,14 +96,25 @@ export type RemittancePullDeps = {
 );
 
 /** The binding to pull this organization's remittances through; null when it has no usable clearinghouse. */
+type PullBinding = {
+  readonly transport: ClearinghouseTransport;
+  readonly vendor: string;
+  readonly account?: "tenant";
+};
+
 async function bindingOf(
   deps: RemittancePullDeps,
   organizationId: string,
-): Promise<{ readonly transport: ClearinghouseTransport; readonly vendor: string } | null> {
+): Promise<PullBinding | null> {
   const bound: RemittancePullBinding = deps.forOrg
     ? await deps.forOrg(organizationId)
     : { transport: deps.transport, vendor: deps.vendor };
-  return bound.vendor === null ? null : { transport: bound.transport, vendor: bound.vendor };
+  if (bound.vendor === null) return null;
+  return {
+    transport: bound.transport,
+    vendor: bound.vendor,
+    ...(bound.account ? { account: bound.account } : {}),
+  };
 }
 
 export interface RemittancePullResult {
@@ -186,7 +199,7 @@ export async function pullRemittances(
 
 async function pullOne(
   deps: RemittancePullDeps,
-  binding: { readonly transport: ClearinghouseTransport; readonly vendor: string },
+  binding: PullBinding,
   organizationId: string,
   providerEntityId: string,
   label: string,
@@ -198,7 +211,7 @@ async function pullOne(
   const key: RemittanceCursorKey = {
     organizationId,
     providerEntityId,
-    vendor: binding.vendor,
+    vendor: cursorVendorKey(binding),
     usage: ctx.usage,
   };
   let cursor = await deps.cursors.get(key);
