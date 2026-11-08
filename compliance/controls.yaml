@@ -353,9 +353,9 @@ controls:
       - file: apps/backend/src/modules/35-subscription/pricing/outside-reconcile.ts
       - file: apps/backend/src/modules/35-subscription/billing-runtime/workers.ts
       - file: apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts
-      - file: packages/db/migrations/1362_m35_subscription_contract_statement.sql
-      - file: packages/db/migrations/1363_m35_tenant_pricing_permissions.sql
-      - file: packages/db/migrations/1364_m35_tenant_pricing_platform_grants.sql
+      - file: packages/db/migrations/1381_m35_subscription_contract_statement.sql
+      - file: packages/db/migrations/1382_m35_tenant_pricing_permissions.sql
+      - file: packages/db/migrations/1383_m35_tenant_pricing_platform_grants.sql
       - file: scripts/db/provision-runtime-roles.ts
       - file: apps/backend/src/modules/35-subscription/routes/admin-transition.ts
       - file: apps/backend/__tests__/m35-tenant-pricing.live.test.ts
@@ -370,8 +370,8 @@ controls:
     evidence:
       - script: test:m35:tenant-pricing:live
       - ci: "M35 tenant pricing"
-      - file: packages/db/migrations/1365_m3_system_managed_role_key.sql
-      - file: packages/db/migrations/1366_m35_user_active_period_non_staff_observed.sql
+      - file: packages/db/migrations/1384_m3_system_managed_role_key.sql
+      - file: packages/db/migrations/1385_m35_user_active_period_non_staff_observed.sql
       - file: apps/backend/src/modules/03-authorization/routes/authz-routes.ts
 
   - id: CW-AC-20

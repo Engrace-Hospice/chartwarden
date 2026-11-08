@@ -1,10 +1,10 @@
 -- compat: expand
--- ADR-0111 - the claims-billing add-on (M35). Two new tables; nothing existing changes.
+-- ADR-0108 - the claims-billing add-on (M35). Two new tables; nothing existing changes.
 --
 --   * addon: the platform-owned add-on catalog, shaped like `plan` (D11: platform pricing, no tenant overlay). NO
 --     organization_id BY DESIGN (check-tenancy NON_ORG_SCOPED). Read-all to chartwarden_app, writes only as
 --     chartwarden_admin. Seeded with the one `claims_billing` row. unit_price_cents is NULL until platform ops sets a
---     price: Stripe charging is deferred (ADR-0111 D7), so nothing reads the price to bill yet.
+--     price: Stripe charging is deferred (ADR-0108 D7), so nothing reads the price to bill yet.
 --   * subscription_addon: which tenant subscription holds which add-on, and since when. Tenant-scoped on
 --     organization_id (no PHI, so provider_entity_id/location_id do not attach - the M35 posture). RLS ENABLE + FORCE
 --     with a SELECT-ONLY policy and grant for chartwarden_app: the entitlement reader runs on the tenant pool, but a
