@@ -18,6 +18,10 @@
 -- `medication_order` is PARTITION BY RANGE (created_at): CREATE INDEX on the partitioned parent creates the
 -- matching index on every partition (the 0385 precedent), and a partial predicate is allowed there. Both
 -- statements are idempotent (IF NOT EXISTS). Expand-only: an index changes no data and no contract.
+-- At scale: a plain CREATE INDEX takes a lock that BLOCKS WRITES to the table while it builds (and the runner wraps a migration in a transaction,
+-- where CREATE INDEX CONCURRENTLY is not allowed). Both tables are small at launch; on a large tenant base build these two indexes with
+-- CREATE INDEX CONCURRENTLY outside the migration transaction first (one per partition, then attach, for the partitioned `medication_order`),
+-- and let this migration's IF NOT EXISTS find them already there.
 CREATE INDEX IF NOT EXISTS "mot_order_idx"
   ON "medication_order_transmission" ("organization_id", "medication_order_id", "queued_at");
 

@@ -128,6 +128,10 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
 
 ## Operational notes
 
+- Deploy note: a local or CI database that applied an EARLIER copy of migration 1384 (before the confirmer CHECK and the actor trigger) or of
+  1385 must be recreated. Both were edited in place because neither had shipped, and the migration runner checksums applied files, so it
+  will refuse them. Nothing in any shared environment applied the old copies.
+
 - Enabling a tenant = it (or an operator for it) registers, tests and activates its clinic (sandbox first), then enrols its prescribers
   with DoseSpot; patient sync then populates `dosespot_patient_sync`. `DOSESPOT_TENANT_CONFIGS` is only the fallback for an org with no
   registration row (the demo tenant): the boot log names each such org, and a row takes over the day it exists. A tenant that loses its
