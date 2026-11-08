@@ -3,7 +3,8 @@ import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createInMemoryConfigStore } from "./config-store-memory";
 import { MAX_HELD_CREDENTIALS } from "./credential-reservation";
-import { buildClearinghouseSecretCipher } from "./secret-cipher";
+import { fingerprintKeysIncomplete } from "./fingerprint-key-check";
+import { buildClearinghouseSecretCipher, deriveFingerprintSubkey } from "./secret-cipher";
 import {
   type ClearinghouseActor,
   type ClearinghouseProbes,
@@ -1263,7 +1264,7 @@ describe("tenant clearinghouse service: one credential per organization", () => 
       { vendor: "claimmd", mode: "test", secret: "another-fake-key#2" },
       (await make(buildClearinghouseSecretCipher(oldKek)).view(store, ORG)).version ?? 0,
     ); // FAKE_KEY is now a retired credential: only its old-key fingerprint exists
-    const rotated = make(buildClearinghouseSecretCipher(newKek, [oldKek]));
+    const rotated = make(buildClearinghouseSecretCipher(newKek, [deriveFingerprintSubkey(oldKek)]));
     const otherPut = (service: ReturnType<typeof make>) =>
       codeOf(
         service.put(
@@ -1403,5 +1404,97 @@ describe("tenant clearinghouse service: one credential per organization", () => 
     const row = store.rows()[0];
     expect(row?.credentialFingerprint).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.stringify(row)).not.toContain(FAKE_KEY);
+  });
+});
+
+// Security review of cfd943e82: M2 (saves refused while unknown fingerprint keys are held; the current credential re-reserved under
+// every configured key) and L3 (no cipher needed when nothing must be re-reserved; the org's own current credential is never capped).
+describe("tenant clearinghouse service: fingerprint keys and the current credential", () => {
+  const PUT = { vendor: "claimmd", mode: "test", secret: FAKE_KEY } as const;
+  // a changed record, so the write is not a no-op on a row copied after the first BAA was recorded
+  const BAA_2 = { ...BAA, documentRef: "Claim.MD BAA, signed 2026-01-15, contract folder 8" };
+
+  it("refuses a credential save with a typed 503 while the fingerprint key check is not complete, on either lane; outside still saves", async () => {
+    const store = createInMemoryConfigStore();
+    const service = createTenantClearinghouseService({
+      cipher: buildClearinghouseSecretCipher(randomBytes(32)),
+      probes: {},
+      assertFingerprintKeysComplete: async () => {
+        throw fingerprintKeysIncomplete();
+      },
+    });
+    for (const actor of [ACTOR, OPERATOR]) {
+      const err = await service.put(store, actor, PUT, undefined).catch((e: unknown) => e);
+      expect(err).toMatchObject({
+        code: "CLEARINGHOUSE_FINGERPRINT_KEYS_INCOMPLETE",
+        statusCode: 503,
+      });
+    }
+    expect(store.rows()).toEqual([]);
+    await expect(
+      service.put(store, ACTOR, { vendor: "outside" }, undefined),
+    ).resolves.toMatchObject({ created: true });
+  });
+
+  it("on the next write, re-reserves the current credential under every configured key, and surfaces another org's hold as 409", async () => {
+    const kek = randomBytes(32);
+    const retired = randomBytes(32);
+    const store = createInMemoryConfigStore();
+    // saved while only the current KEK was configured: one reservation
+    await createTenantClearinghouseService({
+      cipher: buildClearinghouseSecretCipher(kek),
+      probes: {},
+    }).put(store, ACTOR, PUT, undefined);
+    expect(store.heldFingerprints(ORG)).toHaveLength(1);
+    const twoKeys = buildClearinghouseSecretCipher(kek, [deriveFingerprintSubkey(retired)]);
+    const service = createTenantClearinghouseService({ cipher: twoKeys, probes: {} });
+    await service.recordBaa(store, ACTOR, BAA);
+    expect(store.heldFingerprints(ORG)).toEqual(
+      twoKeys.fingerprints("claimmd", FAKE_KEY).map((f) => f.fingerprint),
+    ); // the missing retired-key row is repaired
+
+    // another org already holds the credential under the retired key: the holder's next write says so
+    const contested = createInMemoryConfigStore();
+    await contested.insert({ ...store.rows()[0] } as never);
+    const retiredFp = twoKeys.fingerprints("claimmd", FAKE_KEY)[1]?.fingerprint ?? "";
+    await contested.reserveCredential(OTHER_ORG, "claimmd", {
+      keyId: null,
+      fingerprint: retiredFp,
+    });
+    expect(await codeOf(service.recordBaa(contested, ACTOR, BAA_2))).toBe(
+      "CLEARINGHOUSE_ACCOUNT_IN_USE",
+    );
+  });
+
+  it("needs no cipher for a write that has nothing to re-reserve, and reserves an unopenable fingerprint under no key id", async () => {
+    const { store, service } = setup();
+    await service.put(store, ACTOR, PUT, undefined);
+    const noCipher = createTenantClearinghouseService({ probes: {} });
+    await expect(noCipher.recordBaa(store, ACTOR, BAA)).resolves.toMatchObject({
+      changedFields: ["baa"],
+    });
+    // a row with no held reservation: the stored fingerprint is reserved without the cipher, its key id unverifiable (NULL)
+    const bare = createInMemoryConfigStore();
+    const row = store.rows()[0];
+    await bare.insert({ ...row } as never);
+    await noCipher.recordBaa(bare, ACTOR, BAA_2);
+    expect(bare.heldFingerprints(ORG)).toEqual([row?.credentialFingerprint]);
+    expect(bare.rows()[0]?.credentialFingerprintKeyId).toBeNull();
+  });
+
+  it("re-reserves the org's own current credential even at the cap", async () => {
+    const { store, service } = setup();
+    await service.put(store, ACTOR, PUT, undefined);
+    const bare = createInMemoryConfigStore();
+    await bare.insert({ ...store.rows()[0] } as never); // its current credential has no reservation
+    for (let i = 0; i < MAX_HELD_CREDENTIALS; i++)
+      await bare.reserveCredential(ORG, "claimmd", {
+        keyId: null,
+        fingerprint: `${i}`.padStart(64, "0"),
+      });
+    await expect(service.recordBaa(bare, ACTOR, BAA)).resolves.toMatchObject({
+      changedFields: ["baa"],
+    });
+    expect(bare.heldFingerprints(ORG)).toHaveLength(MAX_HELD_CREDENTIALS + 1);
   });
 });

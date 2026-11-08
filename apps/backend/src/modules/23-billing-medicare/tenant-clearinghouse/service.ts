@@ -273,6 +273,7 @@ export function createTenantClearinghouseService(
       return { patch, credential: [] };
     }
     const mode = input.mode as TenantClearinghouseMode;
+    if (input.secret) await deps.assertFingerprintKeysComplete?.();
     const credential = input.secret ? requireCipher().fingerprints(input.vendor, input.secret) : [];
     // a pure check before anything is sealed or written (the reservation in `reserveFor` checks it again)
     if (credential.some((f) => deps.platformCredentialFingerprints?.has(f.fingerprint)))
@@ -316,13 +317,11 @@ export function createTenantClearinghouseService(
   }
 
   async function save(store: ConfigStore, row: ConfigRow, patch: ConfigPatch): Promise<ConfigRow> {
-    const full = await backfillFingerprint(
-      store,
-      row,
-      patch,
+    const full = await backfillFingerprint(store, row, patch, {
+      cipher: deps.cipher,
       requireCipher,
-      deps.platformCredentialFingerprints,
-    );
+      platformFingerprints: deps.platformCredentialFingerprints,
+    });
     let updated: ConfigRow | null;
     try {
       updated = await store.update(row.organizationId, row.version, { ...full, updatedAt: now() });

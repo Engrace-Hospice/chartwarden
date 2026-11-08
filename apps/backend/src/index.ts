@@ -1239,8 +1239,8 @@ import { platformFallbackFromEnv } from "./modules/23-billing-medicare/tenant-cl
 import {
   M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID,
   checkHeldCredentials,
-  unknownFingerprintKeyIds,
 } from "./modules/23-billing-medicare/tenant-clearinghouse/config-store";
+import { createFingerprintKeyGate } from "./modules/23-billing-medicare/tenant-clearinghouse/fingerprint-key-check";
 import { buildTenantClearinghouseOnboardingPort } from "./modules/23-billing-medicare/tenant-clearinghouse/onboarding-port";
 import { registerM23TenantClearinghouseSeams } from "./modules/23-billing-medicare/tenant-clearinghouse/register";
 import { createTenantClearinghouseRuntime } from "./modules/23-billing-medicare/tenant-clearinghouse/resolver";
@@ -6831,35 +6831,29 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               "m23.clearinghouse: credential fingerprint keys",
             );
           }
-          if (platformDbHandle && clearinghouseSecretCipher) {
-            const fingerprintKeyIds = clearinghouseSecretCipher.fingerprintKeyIds;
+          // The check (M1/M2 of the security review of cfd943e82) runs only where it can: with a platform DB and a cipher. Its result
+          // gates credential saves, fail-closed (fingerprint-key-check.ts): until it has run and found every held key id configured,
+          // a save carrying a credential is a typed 503. Without a platform DB there is no check and no gate (dev and tests).
+          const m23FingerprintKeyGate =
+            platformDbHandle && clearinghouseSecretCipher
+              ? createFingerprintKeyGate({
+                  run: () =>
+                    checkHeldCredentials(
+                      { platformDb: platformDbHandle.db, auditBypass: m34PlatformBypassAuditor },
+                      [...m23PlatformFingerprints],
+                    ),
+                  configuredKeyIds: clearinghouseSecretCipher.fingerprintKeyIds,
+                  log: app.log,
+                })
+              : undefined;
+          if (m23FingerprintKeyGate) {
             registerPlatformJob(M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID);
-            void checkHeldCredentials(
-              { platformDb: platformDbHandle.db, auditBypass: m34PlatformBypassAuditor },
-              [...m23PlatformFingerprints],
-            )
-              .then(({ held, keyIds }) => {
-                if (held > 0)
-                  app.log.error(
-                    { code: "M23_PLATFORM_CREDENTIAL_HELD_BY_TENANT", held },
-                    "m23.clearinghouse: a platform vendor key (CLAIMMD_ACCOUNT_KEY / STEDI_API_KEY) is also sealed by a tenant; give the platform its own account key",
-                  );
-                const unknown = unknownFingerprintKeyIds(keyIds, fingerprintKeyIds);
-                if (unknown.length > 0)
-                  app.log.error(
-                    { code: "M23_FINGERPRINT_KEY_UNCONFIGURED", keyIds: unknown },
-                    "m23.clearinghouse: credentials are reserved under a fingerprint key that is neither current nor retired, so they no longer block reuse; list the old KEK in M23_CLEARINGHOUSE_FINGERPRINT_RETIRED_KEKS (ops runbook §8.3)",
-                  );
-              })
-              .catch((err: unknown) =>
-                // error, not warn: a check that silently stops running (missing column grant, failed bypass audit) is a lost control
-                app.log.error(
-                  { err, code: "M23_PLATFORM_CREDENTIAL_CHECK_FAILED" },
-                  "m23.clearinghouse: the platform credential boot check failed",
-                ),
-              );
+            void m23FingerprintKeyGate.evaluate();
           }
           const tenantClearinghouseService = createTenantClearinghouseService({
+            ...(m23FingerprintKeyGate
+              ? { assertFingerprintKeysComplete: m23FingerprintKeyGate.assertComplete }
+              : {}),
             ...(clearinghouseSecretCipher
               ? {
                   cipher: clearinghouseSecretCipher,

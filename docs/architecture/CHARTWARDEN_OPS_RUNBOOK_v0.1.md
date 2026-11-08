@@ -1272,10 +1272,16 @@ secret) except for message bodies, which are not.
 fingerprint row records the public id of the key it was computed under (`credential_fingerprint_key_id`; NULL = before 1405). A
 re-encryption project for this key must:
 
-1. Put the old value in `M23_CLEARINGHOUSE_FINGERPRINT_RETIRED_KEKS` (comma-separated) when the new value goes live. From then on
-   every credential save reserves the key under the new **and** the retired fingerprint keys, so a reservation recorded under the old
-   key still collides. Nothing is decrypted with a retired value: each tenant's sealed credential must still be re-entered.
-2. Have each tenant re-enter its current credential (that save records it under the new key too).
+1. Before the new value goes live, derive the old value's **fingerprint subkey** (never put the old KEK itself anywhere):
+   `bun scripts/m23-derive-fingerprint-subkey.ts < old-kek-file` reads the KEK from stdin (or paste it and press Ctrl-D), never
+   echoes it, and prints `subkey=<base64>` and `keyId=<16 hex>`. Check that `keyId` matches the `keyId` the running API logs as
+   `M23_FINGERPRINT_KEY`. Put the subkey in `M23_CLEARINGHOUSE_RETIRED_FINGERPRINT_KEYS` (comma-separated, each padded standard
+   base64, 44 chars; the API refuses to boot on a malformed entry or on the current KEK itself) when the new value goes live. From
+   then on every credential save reserves the key under the new **and** the retired fingerprint keys, so a reservation recorded
+   under the old key still collides. A subkey only computes fingerprints: it cannot derive a DEK, so it opens nothing, and each
+   tenant's sealed credential must still be re-entered.
+2. Have each tenant re-enter its current credential (that save records it under the new key too). Any write to a tenant's config
+   whose credential opens (recording a BAA, verifying, activating) also re-reserves it under every configured key.
 3. **Retired credentials** (rotated away, or freed by a switch to `outside`) can only be matched while the old value is still
    configured: their plaintext is gone, so they can never be re-fingerprinted. Before removing the old value, list the unreleased
    reservations not under the new key (the API logs its current key id at boot, `M23_FINGERPRINT_KEY`):
@@ -1286,9 +1292,22 @@ re-encryption project for this key must:
    - a **current credential not yet re-entered** (the tenant's config still holds it under the old key): do NOT release it (the
      release route keeps it anyway); have the tenant re-enter it before the old value goes, or its protection lapses too;
    - a retired one: have platform ops release it, or accept in writing that its protection lapses.
-   Removing the old value ends the protection of every reservation only it computed. The API says so at boot: it logs
+   Removing the old value ends the protection of every reservation only it computed. The API says so at boot (the check runs when
+   the platform DB and the credential KEK are both configured; it is an audited cross-tenant platform read): it logs
    `M23_FINGERPRINT_KEY_UNCONFIGURED` (an error, naming only key ids) for held reservations under a key that is neither current nor
-   retired, and `M23_FINGERPRINT_KEY` lists the current and retired key ids it loaded.
+   retired, and `M23_FINGERPRINT_KEY` lists the current and retired key ids it loaded. **While any such key id is held, every
+   credential save (tenant and platform onboarding lanes) is refused with 503 `CLEARINGHOUSE_FINGERPRINT_KEYS_INCOMPLETE`**; so are
+   saves while the check has not finished or has failed (`M23_PLATFORM_CREDENTIAL_CHECK_FAILED`). The fix is to configure the missing
+   subkey and restart, or to release (platform ops) every reservation under the unknown key; a refused save re-runs the check at most
+   once a minute, so a release lifts the refusal without a restart.
+   Rows with a NULL key id (recorded before migration 1405, or re-reserved when the credential could not be opened) cannot be
+   attributed to a key: the check counts them and logs `M23_FINGERPRINT_KEY_UNVERIFIABLE` (an error, with the count only); they do
+   not block saves. They were computed under the KEK current when they were written. Before removing a retired value, resolve each
+   one like the rows above: the tenant re-enters the credential, or platform ops releases it, or you accept in writing that its
+   protection may lapse. `SELECT organization_id, vendor, reserved_at FROM tenant_clearinghouse_credential_reservation WHERE
+   released_at IS NULL AND credential_fingerprint_key_id IS NULL` lists them.
+   Releases happen only through the platform release route: migration 1406's trigger refuses setting `released_at` unless the
+   transaction carries the release path's own setting (`app.clearinghouse_release`), so no other app-role code path frees one.
 
 > **Update (M36 WP 2.13, ADR-0058 P1; code on branch `feat/m36-wp213-body-key-ring`, backfill not yet run anywhere):** message
 > bodies are moving off `MESSAGING_ENCRYPTION_KEY` onto the M34 wrapped-DEK ring (`tenant_key_ring`), which rotates (a new DEK

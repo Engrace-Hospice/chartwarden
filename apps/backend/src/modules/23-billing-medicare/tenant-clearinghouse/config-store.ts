@@ -4,10 +4,17 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import { and, eq, gte, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
+import type { CredentialCheckResult } from "./fingerprint-key-check";
 
 const C = schema.tenantClearinghouseConfig;
 const A = schema.clearinghouseSubmissionAttempts;
 const R = schema.tenantClearinghouseCredentialReservation;
+
+/**
+ * The transaction-local setting migration 1406's trigger requires before `released_at` may be set: only `releaseCredentials` (the
+ * platform-ops release) sets it, so no other code path on the app role can release a reservation.
+ */
+const RELEASE_GUC = "app.clearinghouse_release";
 
 export type ConfigRow = schema.TenantClearinghouseConfigRow;
 
@@ -76,11 +83,9 @@ export const M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID = "m23.clearinghouse.platform-
 
 /**
  * The boot check, on the platform carrier through the gated, audited `withPlatformContext` (migration 1405's column grant: id,
- * fingerprint, key id, released_at), across every organization:
- *   - `held`: how many unreleased reservations hold one of `fingerprints` (a platform vendor key changed to one a tenant sealed);
- *   - `keyIds`: the distinct key ids unreleased reservations were computed under, so a KEK change made without listing the old KEK
- *     as retired is caught (security review MEDIUM-1): such a key id is neither current nor retired, and its reservations no longer
- *     collide with anything.
+ * fingerprint, key id, released_at), across every organization: see `CredentialCheckResult`. Every reservation under an unknown key
+ * id (a KEK change made without listing the old subkey as retired; security review MEDIUM-1) is caught by `keyIds`; one with a NULL
+ * key id cannot be checked, so it is counted on its own (`unverifiable`) rather than dropped.
  */
 export async function checkHeldCredentials(
   deps: {
@@ -88,8 +93,8 @@ export async function checkHeldCredentials(
     readonly auditBypass: PlatformBypassAuditor<DbClient>;
   },
   fingerprints: readonly string[],
-): Promise<{ readonly held: number; readonly keyIds: readonly string[] }> {
-  return withPlatformContext<DbClient, { held: number; keyIds: string[] }>(
+): Promise<CredentialCheckResult> {
+  return withPlatformContext<DbClient, CredentialCheckResult>(
     deps.platformDb,
     {
       jobId: M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID,
@@ -112,19 +117,18 @@ export async function checkHeldCredentials(
         .selectDistinct({ keyId: R.credentialFingerprintKeyId })
         .from(R)
         .where(and(isNull(R.releasedAt), isNotNull(R.credentialFingerprintKeyId)));
+      const [nullKey] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(R)
+        .where(and(isNull(R.releasedAt), isNull(R.credentialFingerprintKeyId)));
       return {
         held: held.length,
         keyIds: keyIds.flatMap((r) => (r.keyId === null ? [] : [r.keyId])),
+        unverifiable: Number(nullKey?.n ?? 0),
       };
     },
   );
 }
-
-/** The held key ids that are neither the current fingerprint key nor a configured retired one (ids only, never keys). */
-export const unknownFingerprintKeyIds = (
-  held: readonly string[],
-  configured: readonly string[],
-): string[] => held.filter((id) => !configured.includes(id));
 
 /** The Drizzle store over a transaction already scoped to the org (the tenant's own, or a platform operator's on its behalf). */
 export function createDrizzleConfigStore(tx: DbClient): ConfigStore {
@@ -218,6 +222,7 @@ export function createDrizzleConfigStore(tx: DbClient): ConfigStore {
       return inserted.length > 0;
     },
     async releaseCredentials(organizationId, keep, release) {
+      await tx.execute(sql`SELECT set_config(${RELEASE_GUC}, 'platform', true)`);
       const rows = await tx
         .update(R)
         .set({

@@ -111,6 +111,11 @@ export interface TenantClearinghouseServiceDeps {
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
   /** Fingerprints of the platform's OWN vendor account keys (the env binding): a tenant may never seal one of those. */
   readonly platformCredentialFingerprints?: ReadonlySet<string>;
+  /**
+   * Throws a typed 503 while the boot credential check has not confirmed every held fingerprint key id is configured
+   * (fingerprint-key-check.ts); every save carrying a credential asks first, on either lane. Absent = no check (no platform DB).
+   */
+  readonly assertFingerprintKeysComplete?: () => Promise<void>;
 }
 
 /** What `prepareVerify` read: everything `completeVerify` needs, so no store call is open while the vendor is called. */

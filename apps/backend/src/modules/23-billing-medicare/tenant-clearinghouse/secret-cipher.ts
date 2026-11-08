@@ -14,6 +14,7 @@
 import { Buffer } from "node:buffer";
 import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes } from "node:crypto";
 import type { TenantClearinghouseMode, TransmittingClearinghouseVendor } from "@chartwarden/types";
+import { STRICT_KEY_LIST_PROBLEM, parseStrictKeyList } from "../../../bootstrap/strict-key-base64";
 import { MAC_SECRET_KEK_ENV, loadMacSecretKek } from "../routes/secret-cipher";
 
 export const CLEARINGHOUSE_SECRET_CIPHER_VERSION = 1;
@@ -31,11 +32,12 @@ const LABELS = {
 const KEY_ID_HEX = 16;
 
 /**
- * Previous values of the credential KEK, comma-separated base64 (32 bytes each). Read ONLY to fingerprint a credential under the
- * keys an older reservation may have used (migration 1405); nothing is ever sealed or opened with them, so a sealed credential
- * still needs re-entry after a KEK change (ops runbook §8.3).
+ * The DERIVED fingerprint subkeys of previous credential KEKs, comma-separated padded base64 (32 bytes each): HKDF-SHA256(old KEK,
+ * info = LABELS.fingerprintInfo), printed by `scripts/m23-derive-fingerprint-subkey.ts`. Never a KEK: a subkey only computes
+ * fingerprints under the key an older reservation may have used (migration 1405); it cannot derive a DEK, so it opens nothing, and a
+ * sealed credential still needs re-entry after a KEK change (ops runbook §8.3).
  */
-export const FINGERPRINT_RETIRED_KEKS_ENV = "M23_CLEARINGHOUSE_FINGERPRINT_RETIRED_KEKS";
+export const RETIRED_FINGERPRINT_KEYS_ENV = "M23_CLEARINGHOUSE_RETIRED_FINGERPRINT_KEYS";
 
 /** A credential's fingerprint under one fingerprint key, with that key's public id. */
 export interface CredentialFingerprint {
@@ -68,10 +70,10 @@ export interface ClearinghouseSecretCipher {
   fingerprint(vendor: TransmittingClearinghouseVendor, accountKey: string): string;
   /** The public id of the current fingerprint key (one-way from the key; names it in a row, never reveals it). */
   readonly fingerprintKeyId: string;
-  /** The public ids of every configured fingerprint key, current first, then each retired KEK's (boot logs them for ops). */
+  /** The public ids of every configured fingerprint key, current first, then each retired subkey's (boot logs them for ops). */
   readonly fingerprintKeyIds: readonly string[];
   /**
-   * The credential's fingerprint under every configured fingerprint key: the current one first, then each retired KEK's (migration
+   * The credential's fingerprint under every configured fingerprint key: the current one first, then each retired subkey's (migration
    * 1405). A save reserves all of them, so a reservation recorded under a retired key still collides while that key is configured.
    */
   fingerprints(
@@ -107,35 +109,40 @@ interface FingerprintKey {
   readonly mac: (vendor: TransmittingClearinghouseVendor, accountKey: string) => string;
 }
 
-const fingerprintKeyOf = (kek: Buffer): FingerprintKey => {
-  const key = Buffer.from(
-    hkdfSync("sha256", kek, Buffer.alloc(0), LABELS.fingerprintInfo, KEY_LEN),
-  );
+/** The fingerprint subkey of a KEK: what `RETIRED_FINGERPRINT_KEYS_ENV` lists for an old KEK (never the KEK itself). */
+export const deriveFingerprintSubkey = (kek: Buffer): Buffer =>
+  Buffer.from(hkdfSync("sha256", kek, Buffer.alloc(0), LABELS.fingerprintInfo, KEY_LEN));
+
+/** The public id of a fingerprint subkey (the value reservations record in `credential_fingerprint_key_id`). */
+export const fingerprintKeyIdOf = (subkey: Buffer): string =>
+  createHmac("sha256", subkey)
+    .update(LABELS.fingerprintKeyIdInfo, "utf8")
+    .digest("hex")
+    .slice(0, KEY_ID_HEX);
+
+const fingerprintKeyOf = (key: Buffer): FingerprintKey => {
   return {
-    keyId: createHmac("sha256", key)
-      .update(LABELS.fingerprintKeyIdInfo, "utf8")
-      .digest("hex")
-      .slice(0, KEY_ID_HEX),
+    keyId: fingerprintKeyIdOf(key),
     mac: (vendor, accountKey) =>
       createHmac("sha256", key).update(`${vendor}\n${accountKey.trim()}`, "utf8").digest("hex"),
   };
 };
 
 /**
- * Build the cipher over a validated KEK (copied, so the caller may zero its own buffer). `retiredKeks` only fingerprint (see
- * `FINGERPRINT_RETIRED_KEKS_ENV`); one equal to the current KEK is dropped.
+ * Build the cipher over a validated KEK (copied, so the caller may zero its own buffer). `retiredSubkeys` are DERIVED fingerprint
+ * subkeys (see `RETIRED_FINGERPRINT_KEYS_ENV`), used as-is and only to fingerprint; one equal to the current KEK's subkey is dropped.
  */
 export function buildClearinghouseSecretCipher(
   kek: Buffer,
-  retiredKeks: readonly Buffer[] = [],
+  retiredSubkeys: readonly Buffer[] = [],
 ): ClearinghouseSecretCipher {
   if (kek.length !== KEY_LEN) throw new Error(`clearinghouse secret KEK must be ${KEY_LEN} bytes`);
   const root = Buffer.from(kek);
-  const current = fingerprintKeyOf(root);
+  const current = fingerprintKeyOf(deriveFingerprintSubkey(root));
   const keys: FingerprintKey[] = [current];
-  for (const retired of retiredKeks) {
+  for (const retired of retiredSubkeys) {
     if (retired.length !== KEY_LEN)
-      throw new Error(`${FINGERPRINT_RETIRED_KEKS_ENV} entries must be ${KEY_LEN} bytes`);
+      throw new Error(`${RETIRED_FINGERPRINT_KEYS_ENV} entries must be ${KEY_LEN} bytes`);
     const k = fingerprintKeyOf(Buffer.from(retired));
     if (!keys.some((x) => x.keyId === k.keyId)) keys.push(k);
   }
@@ -194,30 +201,19 @@ export function buildClearinghouseSecretCipherFromEnv(
   if (!env[MAC_SECRET_KEK_ENV]?.trim()) return undefined;
   return buildClearinghouseSecretCipher(
     loadMacSecretKek(env[MAC_SECRET_KEK_ENV]),
-    retiredFingerprintKeks(env),
+    retiredFingerprintSubkeys(env),
   );
 }
 
-/**
- * Exactly a 32-byte key in standard base64 (44 characters, one pad). `Buffer.from(x, "base64")` skips characters it does not know, so
- * a typo'd entry could still decode to 32 bytes and protect nothing; this refuses it. bootstrap/env.ts keeps the same rule.
- */
-export const STRICT_KEY_BASE64 = /^[A-Za-z0-9+/]{43}=$/;
-
-/** The retired KEKs, fail-closed: a malformed entry throws at boot rather than silently dropping a key's protection. */
-export function retiredFingerprintKeks(
+/** The retired fingerprint subkeys, fail-closed: a malformed entry throws at boot rather than silently dropping a key's protection. */
+export function retiredFingerprintSubkeys(
   env: Readonly<Record<string, string | undefined>>,
 ): Buffer[] {
-  const raw = env[FINGERPRINT_RETIRED_KEKS_ENV]?.trim();
+  const raw = env[RETIRED_FINGERPRINT_KEYS_ENV]?.trim();
   if (!raw) return [];
-  return raw.split(",").map((entry) => {
-    const key = Buffer.from(entry.trim(), "base64");
-    if (!STRICT_KEY_BASE64.test(entry.trim()) || key.length !== KEY_LEN)
-      throw new Error(
-        `${FINGERPRINT_RETIRED_KEKS_ENV} must be comma-separated base64 keys of ${KEY_LEN} bytes`,
-      );
-    return key;
-  });
+  const keys = parseStrictKeyList(raw);
+  if (!keys) throw new Error(`${RETIRED_FINGERPRINT_KEYS_ENV} ${STRICT_KEY_LIST_PROBLEM}`);
+  return keys;
 }
 
 /** The platform env binding's own account keys, by vendor (the names its transports read). */

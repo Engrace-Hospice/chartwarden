@@ -25,7 +25,10 @@ export interface TenantClearinghouseRouteDeps {
   readonly tenantClearinghouseService: TenantClearinghouseRouteService;
   /** Per-user cap on `verify` (a vendor call per request); fail-open like the other route limits. Absent = unlimited. */
   readonly verifyRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-  /** Per-user cap on `PUT` (its 409 says a credential is held elsewhere); fail-open. Absent = unlimited. */
+  /**
+   * Per-user cap on `PUT` (its 409 says a credential is held elsewhere). Production wires CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT, which
+   * fails CLOSED: with its store down the PUT is a typed 503, never an unlimited oracle. Absent = unlimited (tests only).
+   */
   readonly putRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 }
 

@@ -86,6 +86,8 @@ export async function reserveCredential(
   vendor: string,
   fingerprints: readonly HeldFingerprint[],
   platformFingerprints: ReadonlySet<string> | undefined,
+  /** The row's OWN current credential being re-reserved (`backfillFingerprint`): not a new credential, so never capped. */
+  options: { readonly ownCurrent?: boolean } = {},
 ): Promise<void> {
   if (fingerprints.some((f) => platformFingerprints?.has(f.fingerprint))) throw accountInUse();
   const missing: HeldFingerprint[] = [];
@@ -93,9 +95,11 @@ export async function reserveCredential(
     if (!(await store.holdsCredential(organizationId, f.fingerprint))) missing.push(f);
   }
   if (missing.length === 0) return;
-  // ponytail: rows, not credentials (one row per key it was saved under); the cap scales with the configured keys. Concurrent saves
-  // by one org serialise on its config row lock, except the very first save (a race that can overshoot by one).
+  // ponytail: rows, not credentials (one row per key it was saved under); the cap is 20 x the keys configured at this save. Only a
+  // wholly new credential is capped. Concurrent saves by one org serialise on its config row lock, except the very first save (a
+  // race that can overshoot by one).
   if (
+    !options.ownCurrent &&
     missing.length === fingerprints.length &&
     (await store.heldReservationCount(organizationId)) >= MAX_HELD_CREDENTIALS * fingerprints.length
   ) {
@@ -135,90 +139,87 @@ export async function assertReleasable(
 }
 
 /**
- * Keep the row's CURRENT credential reserved on every write that does not replace it.
+ * Keep the row's CURRENT credential reserved on every write that does not replace it (never capped: it is not a new credential).
  *   - A row sealed before migration 1403 has a credential and no fingerprint; 1404's CHECK refuses any write that keeps it that way.
- *     The write unseals it, fingerprints it under every configured key and reserves it (the same refusals as a fresh save).
- *   - A row whose fingerprint has no held reservation (written by a pre-1404 build during the `contract` halt window; security
- *     review LOW-1) has that fingerprint reserved again, under the key it was computed with.
+ *     The write unseals it (this alone needs the cipher: 503 without one), fingerprints it under every configured key and reserves
+ *     it (the same refusals as a fresh save).
+ *   - A row with a fingerprint: when the credential opens, it is reserved under EVERY configured key, so a missing reservation (a
+ *     pre-1404 build's write, security review LOW-1; a retired key's row) is repaired, and one another organization holds surfaces
+ *     as CLEARINGHOUSE_ACCOUNT_IN_USE. The row's key id is re-derived from the match (a stale label, LOW-5). When it does not open
+ *     (no cipher, or a KEK it was not sealed under), only the stored fingerprint is reserved, under no verifiable key id (NULL).
  */
 export async function backfillFingerprint(
   store: ConfigStore,
   row: ConfigRow,
   patch: ConfigPatch,
-  cipherOf: () => ClearinghouseSecretCipher,
-  platformFingerprints: ReadonlySet<string> | undefined,
+  deps: {
+    readonly cipher: ClearinghouseSecretCipher | undefined;
+    readonly requireCipher: () => ClearinghouseSecretCipher;
+    readonly platformFingerprints: ReadonlySet<string> | undefined;
+  },
 ): Promise<ConfigPatch> {
   if (patch.credentialFingerprint !== undefined || patch.secretCipher !== undefined) return patch;
   if (row.secretCipher === null) return patch;
   if (row.vendor !== "stedi" && row.vendor !== "claimmd") return patch;
-  if (row.credentialFingerprint !== null) {
-    if (await store.holdsCredential(row.organizationId, row.credentialFingerprint)) return patch;
-    // The row's key id may be stale (a pre-1405 build rewrote the fingerprint and left the old label; security review LOW-5), so it
-    // is re-derived from the credential when it opens: the key whose fingerprint matches, else null (unknown). Unopenable: null.
-    const keyId = await keyIdOf(row, cipherOf, row.credentialFingerprint);
-    await reserveCredential(
+  const reserve = (fingerprints: readonly HeldFingerprint[]) =>
+    reserveCredential(
       store,
       row.organizationId,
       row.vendor,
-      [{ keyId, fingerprint: row.credentialFingerprint }],
-      platformFingerprints,
+      fingerprints,
+      deps.platformFingerprints,
+      { ownCurrent: true },
     );
-    return keyId === row.credentialFingerprintKeyId
+  const stored = row.credentialFingerprint;
+  if (stored === null) {
+    if (row.mode !== "test" && row.mode !== "production") return patch;
+    const fingerprints = await openFingerprints(row, deps.requireCipher());
+    if (!fingerprints) {
+      throw new ChartWardenError(
+        "CLEARINGHOUSE_SECRET_UNREADABLE",
+        "the stored credential could not be opened; enter it again",
+        409,
+      );
+    }
+    await reserve(fingerprints);
+    const [current] = fingerprints as [CredentialFingerprint];
+    return {
+      ...patch,
+      credentialFingerprint: current.fingerprint,
+      credentialFingerprintKeyId: current.keyId,
+    };
+  }
+  const opened = deps.cipher ? await openFingerprints(row, deps.cipher) : null;
+  if (!opened) {
+    if (await store.holdsCredential(row.organizationId, stored)) return patch;
+    await reserve([{ keyId: null, fingerprint: stored }]);
+    return row.credentialFingerprintKeyId === null
       ? patch
-      : { ...patch, credentialFingerprintKeyId: keyId };
+      : { ...patch, credentialFingerprintKeyId: null };
   }
-  if (row.mode !== "test" && row.mode !== "production") return patch;
-  const cipher = cipherOf();
-  let secret: string;
-  try {
-    secret = await cipher.decrypt(
-      row.organizationId,
-      { vendor: row.vendor, mode: row.mode as TenantClearinghouseMode },
-      row.secretCipher,
-    );
-  } catch {
-    throw new ChartWardenError(
-      "CLEARINGHOUSE_SECRET_UNREADABLE",
-      "the stored credential could not be opened; enter it again",
-      409,
-    );
-  }
-  const fingerprints = cipher.fingerprints(row.vendor, secret);
-  await reserveCredential(
-    store,
-    row.organizationId,
-    row.vendor,
-    fingerprints,
-    platformFingerprints,
-  );
-  const [current] = fingerprints as [CredentialFingerprint];
-  return {
-    ...patch,
-    credentialFingerprint: current.fingerprint,
-    credentialFingerprintKeyId: current.keyId,
-  };
+  const match = opened.find((f) => f.fingerprint === stored);
+  await reserve(match ? opened : [...opened, { keyId: null, fingerprint: stored }]);
+  const keyId = match?.keyId ?? null;
+  return keyId === row.credentialFingerprintKeyId
+    ? patch
+    : { ...patch, credentialFingerprintKeyId: keyId };
 }
 
-/** The configured key a stored fingerprint was computed under, from the unsealed credential; null when unknown or unopenable. */
-async function keyIdOf(
+/** The row's credential fingerprinted under every configured key; null when it cannot be opened. Never throws. */
+async function openFingerprints(
   row: ConfigRow,
-  cipherOf: () => ClearinghouseSecretCipher,
-  fingerprint: string,
-): Promise<string | null> {
+  cipher: ClearinghouseSecretCipher,
+): Promise<readonly CredentialFingerprint[] | null> {
   if (row.secretCipher === null || (row.vendor !== "stedi" && row.vendor !== "claimmd"))
     return null;
   if (row.mode !== "test" && row.mode !== "production") return null;
-  const cipher = cipherOf();
   try {
     const secret = await cipher.decrypt(
       row.organizationId,
       { vendor: row.vendor, mode: row.mode as TenantClearinghouseMode },
       row.secretCipher,
     );
-    return (
-      cipher.fingerprints(row.vendor, secret).find((f) => f.fingerprint === fingerprint)?.keyId ??
-      null
-    );
+    return cipher.fingerprints(row.vendor, secret);
   } catch {
     return null;
   }
