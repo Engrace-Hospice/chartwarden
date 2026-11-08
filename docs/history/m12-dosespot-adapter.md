@@ -155,7 +155,10 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   and M36's `dosespot-alerts` pages the tenant's administrators once, naming the order. The way out is a person's: check the prescriber's
   DoseSpot account (found there = it was sent; not there = discontinue the order and sign a new one). There is no resolve action in the product
   yet, and a held order stays `in_flight` until someone acts. (The same 2xx-but-no-id ambiguity after the create step used to be a permanent
-  refusal; it is now this class, like an enrolment's.)
+  refusal; it is now this class, like an enrolment's.) The claim also stamps `transmission_started_at` in its own committed transaction just
+  BEFORE the vendor call (and clears it when the order goes back to the queue), so a worker that dies, or whose settle fails, after the call began
+  leaves a stale claim the recovery drain HOLDS (same marker, same event) instead of re-queueing; a stale claim without the stamp never reached
+  the vendor and is released and re-sent as before. The hold is therefore committed either by the settle or, at the latest, by the next drain.
 - A tenant with an outage longer than ~31 minutes of real failed attempts sees orders land in `transmission_failed`; the existing
   `retransmit` route mints the corrected order. Breaker-open ticks do not count.
 - Live proof: `test:m12:crons-transmit:live` and `test:m12:crons-housekeeping:live` (CI job "M12 DoseSpot crons"), run against a

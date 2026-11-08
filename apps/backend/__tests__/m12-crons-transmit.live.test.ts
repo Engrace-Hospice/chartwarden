@@ -618,6 +618,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
     const t = await txRow(transmissionId as string);
     expect(t.retry_count).toBe(0);
     expect(t.transmission_failed_at).toBeNull();
+    expect(t.transmission_started_at).toBeNull(); // the stamp the call left was cleared: the vendor never saw this attempt
     // once the vendor is back the SAME order goes out on the next tick
     const ok = new FakeDoseSpotVendor({
       transmit: async () => ({
@@ -956,6 +957,76 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       const drain = await runRecoveryDrainForOrg(deps(vendor), ORG_A);
       expect(drain.released).toBe(1);
       expect(sendsOf(vendor)).toBe(1);
+    });
+
+    // Residual of the review: a worker that dies (or whose settle hits a database error) AFTER the vendor's 2xx but BEFORE the hold commits
+    // leaves a stale claim with no marker. The claim now records when the vendor call BEGAN, so such a claim is held for a person, while a
+    // claim that never reached the vendor is still released and re-sent.
+    it("the transmission row records that the vendor call began BEFORE the call is made, and no earlier than that", async () => {
+      const { orderId, transmissionId } = await queued();
+      let seenAtCall: Record<string, unknown> | undefined;
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async () => {
+          seenAtCall = await txRow(transmissionId as string);
+          return { dosespotPrescriptionId: "rx-1", transmittedAt: new Date().toISOString() };
+        },
+      });
+      await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+      expect(seenAtCall?.transmission_started_at).not.toBeNull(); // written and committed before the vendor was asked
+      expect((await orderRow(orderId)).status).toBe("transmitted");
+    });
+
+    it("a claim whose vendor call began and whose worker then died is HELD by the drain (not re-sent), with the event; one that never reached the vendor is released", async () => {
+      await h.admin.query(
+        "DELETE FROM outbox_event WHERE event_type='m12.medication_order.transmission_unconfirmed'",
+      );
+      const afterCall = await queued();
+      const beforeCall = await queued();
+      await h.admin.query(
+        "UPDATE medication_order SET dosespot_send_state='in_flight', updated_at = now() - interval '3 hours' WHERE id = ANY($1::uuid[])",
+        [[afterCall.orderId, beforeCall.orderId]],
+      );
+      await h.admin.query(
+        "UPDATE medication_order_transmission SET transmission_started_at = now() - interval '3 hours' WHERE id=$1",
+        [afterCall.transmissionId],
+      ); // the call began; no settle ever ran
+      const sent: string[] = [];
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async (_org, payload) => {
+          sent.push(payload.medicationOrderId);
+          return { dosespotPrescriptionId: "rx-2", transmittedAt: new Date().toISOString() };
+        },
+      });
+      const drain = await runRecoveryDrainForOrg(deps(vendor), ORG_A);
+      expect(drain.released).toBe(1);
+      expect(sent).toEqual([beforeCall.orderId]); // only the claim that never reached the vendor was sent
+      expect((await orderRow(afterCall.orderId)).s).toBe("in_flight");
+      const t = await txRow(afterCall.transmissionId as string);
+      expect(t.last_error_class).toBe("unconfirmed_outcome");
+      expect(String(t.last_error_detail)).toMatch(/stopped after the call to DoseSpot was made/);
+      const events = await h.eventsOf("m12.medication_order.transmission_unconfirmed", ORG_A);
+      expect(events.map((e) => (e.payload as { orderId: string }).orderId)).toEqual([
+        afterCall.orderId,
+      ]);
+      // and it stays held: a second drain neither re-sends it nor announces it again
+      const again = await runRecoveryDrainForOrg(deps(vendor, minutes(300)), ORG_A);
+      expect(again.released).toBe(0);
+      expect(sent).toEqual([beforeCall.orderId]);
+      expect(await h.eventsOf("m12.medication_order.transmission_unconfirmed", ORG_A)).toHaveLength(
+        1,
+      );
+    });
+
+    it("a retryable failure puts the order back with no 'call began' mark, so a later stale claim of it that never called is released", async () => {
+      const { orderId, transmissionId } = await queued();
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async () => {
+          throw retryable();
+        },
+      });
+      expect((await runTransmitNewRxForOrg(deps(vendor), ORG_A)).requeued).toBe(1);
+      expect((await orderRow(orderId)).s).toBe("queued");
+      expect((await txRow(transmissionId as string)).transmission_started_at).toBeNull();
     });
 
     it("an ambiguous outcome among clean ones holds only its own order", async () => {

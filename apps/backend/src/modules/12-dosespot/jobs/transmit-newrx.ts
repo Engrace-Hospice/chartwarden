@@ -5,10 +5,11 @@
 //   0. PREFLIGHT: the org's DoseSpot config is resolved once. A credential / resolver fault skips the pass whole (nothing claimed,
 //      nothing written, one alert per episode): see `runTransmitNewRxForOrg`.
 //   1. CLAIM (tx): `queued_for_transmission` + `dosespot_send_state='queued'` orders, `FOR UPDATE SKIP LOCKED`, those
-//      whose retry backoff (1,2,4,8 min by retry count) has elapsed are moved to `in_flight` and their transmission
-//      row stamped `transmission_started_at`. A concurrent tick cannot re-claim them.
-//   2. CALL: build the NewRx from the stored order + the recorded DoseSpot patient/prescriber ids, call
-//      `DoseSpotClient.transmitNewRx` with the D8 idempotency key held on the transmission row.
+//      whose retry backoff (1,2,4,8 min by retry count) has elapsed are moved to `in_flight`. A concurrent tick cannot re-claim them.
+//   2. CALL: build the NewRx from the stored order + the recorded DoseSpot patient/prescriber ids, STAMP the transmission row's
+//      `transmission_started_at` in its own committed transaction (the call is about to be made), then call
+//      `DoseSpotClient.transmitNewRx` with the D8 idempotency key held on the transmission row. The stamp is what tells a stale claim
+//      apart: one WITHOUT it never reached the vendor and is released for a re-send; one WITH it may have, and the drain HOLDS it.
 //   3. SETTLE (tx), every UPDATE matches the order by ID and asserts the row count (the partition-key timestamp
 //      round-trips lossily, so matching `created_at` never hits):
 //        success    -> `transmitted` / send_state `transmitted`, prescription id recorded, `m12.medication_order.transmitted`.
@@ -24,7 +25,7 @@
 //                       account and either find it sent or discontinue the order and sign a new one.
 // Nothing here ever marks an order transmitted without a real `DoseSpotNewRxResponse`.
 import { createHash } from "node:crypto";
-import { schema } from "@chartwarden/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   type DoseSpotNewRxPayload,
   RX_TRANSMISSION_MAX_RETRIES,
@@ -52,6 +53,8 @@ export const RECOVERY_BATCH_SIZE = 100;
 export const IN_FLIGHT_STALE_MS = 10 * 60_000;
 /** The transmission row's `last_error_class` while an order is HELD for an outcome DoseSpot left unconfirmed. */
 export const UNCONFIRMED_OUTCOME_CLASS = "unconfirmed_outcome";
+const STALE_CALL_DETAIL =
+  "A worker stopped after the call to DoseSpot was made, before the answer was recorded. The prescription may already exist at DoseSpot.";
 const MAX_BACKOFF_MINUTES = 60;
 
 type OrderRow = typeof MO.$inferSelect;
@@ -118,12 +121,6 @@ async function claim(
         .where(and(eq(MO.id, order.id), eq(MO.dosespotSendState, "queued")))
         .returning({ id: MO.id });
       if (moved.length !== 1) continue;
-      const stamped = await tx
-        .update(MOT)
-        .set({ transmissionStartedAt: now })
-        .where(eq(MOT.id, transmission.id))
-        .returning({ id: MOT.id });
-      if (stamped.length !== 1) throw new Error("transmission row vanished while claiming");
       claimed.push({ order, transmission });
     }
     return claimed;
@@ -189,6 +186,27 @@ async function buildPayload(
   };
 }
 
+/**
+ * Commit "the vendor call is about to be made" on the transmission row BEFORE making it. A worker that dies after this and before its
+ * settle leaves a stale claim the drain cannot safely re-send (the vendor may have accepted it), so it holds it instead. A failure here
+ * throws and the order is not called: it stays a claim without the stamp, which the drain releases.
+ */
+async function markCallStarted(
+  deps: M12CronDeps,
+  organizationId: string,
+  c: Claimed,
+): Promise<void> {
+  const now = nowOf(deps);
+  await inOrg(deps.db, organizationId, async (tx) => {
+    const stamped = await tx
+      .update(MOT)
+      .set({ transmissionStartedAt: now })
+      .where(eq(MOT.id, c.transmission.id))
+      .returning({ id: MOT.id });
+    if (stamped.length !== 1) throw new Error("transmission row vanished before the vendor call");
+  });
+}
+
 type Outcome =
   | { kind: "success"; prescriptionId: string; transmittedAt: Date }
   | { kind: "outage" }
@@ -220,6 +238,12 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
       permanent: true,
       syncPatient: false,
     };
+  }
+  try {
+    await markCallStarted(deps, organizationId, c);
+  } catch {
+    // the stamp could not be committed, so the vendor was NOT called: the order waits (no retry spent) and the drain releases the claim
+    return { kind: "outage" };
   }
   try {
     const res = await deps.client.transmitNewRx(
@@ -280,6 +304,11 @@ async function settle(
         .where(and(eq(MO.id, orderId), eq(MO.dosespotSendState, "in_flight")))
         .returning({ id: MO.id });
       if (back.length !== 1) throw new Error("order not in flight at outage release");
+      // nothing reached the vendor (an open circuit, a registration not live, a config fault, or the stamp itself failed): no call began
+      await tx
+        .update(MOT)
+        .set({ transmissionStartedAt: null })
+        .where(eq(MOT.id, c.transmission.id));
       return "deferred";
     }
 
@@ -356,6 +385,8 @@ async function settle(
       .update(MOT)
       .set({
         transmissionFailedAt: now,
+        // the attempt is over: a claim of the requeued order that later dies before its vendor call must not look like one that called
+        ...(plan.exhausted ? {} : { transmissionStartedAt: null }),
         retryCount: plan.transmissionUpdate.retryCount,
         lastErrorClass: outcome.errorClass,
         lastErrorDetail: outcome.detail,
@@ -478,6 +509,61 @@ export async function runTransmitNewRxForOrg(
 }
 
 /**
+ * A stale claim whose transmission row says the vendor call BEGAN (`transmission_started_at`, stamped just before the call) belongs to a
+ * worker that died, or whose settle failed, somewhere after that: DoseSpot may have accepted the prescription. It is HELD exactly like an
+ * unconfirmed outcome (marker, detail, event) so the drain below skips it and a person is told, instead of being re-queued and re-sent.
+ * A claim without the stamp never reached the vendor and is left for the release.
+ */
+async function holdStaleCallsInProgress(
+  deps: M12CronDeps,
+  tx: DbClient,
+  organizationId: string,
+  cutoff: Date,
+): Promise<void> {
+  const stale = await tx
+    .select({ id: MO.id })
+    .from(MO)
+    .where(
+      and(
+        eq(MO.status, "queued_for_transmission"),
+        eq(MO.dosespotSendState, "in_flight"),
+        lt(MO.updatedAt, cutoff),
+      ),
+    )
+    .limit(RECOVERY_BATCH_SIZE)
+    .for("update", { skipLocked: true });
+  if (stale.length === 0) return;
+  const called = await tx
+    .select({ id: MOT.id, orderId: MOT.medicationOrderId })
+    .from(MOT)
+    .where(
+      and(
+        inArray(
+          MOT.medicationOrderId,
+          stale.map((o) => o.id),
+        ),
+        sql`${MOT.transmissionStartedAt} IS NOT NULL`,
+        sql`${MOT.lastErrorClass} IS DISTINCT FROM ${UNCONFIRMED_OUTCOME_CLASS}`,
+      ),
+    );
+  for (const t of called) {
+    const held = await tx
+      .update(MOT)
+      .set({ lastErrorClass: UNCONFIRMED_OUTCOME_CLASS, lastErrorDetail: STALE_CALL_DETAIL })
+      .where(eq(MOT.id, t.id))
+      .returning({ id: MOT.id });
+    if (held.length !== 1) throw new Error("transmission row vanished while holding a stale call");
+    await deps.outbox.publish(tx, {
+      eventName: "m12.medication_order.transmission_unconfirmed",
+      payload: { orderId: t.orderId, lastErrorClass: UNCONFIRMED_OUTCOME_CLASS },
+      organizationId,
+      aggregateKind: "medication_order",
+      aggregateId: t.orderId,
+    });
+  }
+}
+
+/**
  * `dosespot.transmit_queued_on_recovery` (§4.8 / D11): re-queue claims a crashed worker abandoned (`in_flight`
  * past {@link IN_FLIGHT_STALE_MS}, except an order HELD for an unconfirmed outcome), then drain the accumulated `queued` backlog with the larger recovery batch.
  * Returns how many stale claims were released.
@@ -489,6 +575,7 @@ export async function runRecoveryDrainForOrg(
   const now = nowOf(deps);
   const cutoff = new Date(now.getTime() - IN_FLIGHT_STALE_MS);
   const released = await inOrg(deps.db, organizationId, async (tx) => {
+    await holdStaleCallsInProgress(deps, tx, organizationId, cutoff);
     const rows = await tx
       .update(MO)
       .set({ dosespotSendState: "queued", updatedAt: now })
