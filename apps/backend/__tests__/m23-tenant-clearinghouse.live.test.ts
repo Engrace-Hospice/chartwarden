@@ -68,13 +68,16 @@ import {
   M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID,
   checkHeldCredentials,
   createDrizzleConfigStore,
-  unknownFingerprintKeyIds,
 } from "../src/modules/23-billing-medicare/tenant-clearinghouse/config-store";
+import { unknownFingerprintKeyIds } from "../src/modules/23-billing-medicare/tenant-clearinghouse/fingerprint-key-check";
 import { buildTenantClearinghouseOnboardingPort } from "../src/modules/23-billing-medicare/tenant-clearinghouse/onboarding-port";
 import { registerM23TenantClearinghouseSeams } from "../src/modules/23-billing-medicare/tenant-clearinghouse/register";
 import { createTenantClearinghouseRuntime } from "../src/modules/23-billing-medicare/tenant-clearinghouse/resolver";
 import { registerTenantClearinghouseRoutes } from "../src/modules/23-billing-medicare/tenant-clearinghouse/routes";
-import { buildClearinghouseSecretCipher } from "../src/modules/23-billing-medicare/tenant-clearinghouse/secret-cipher";
+import {
+  buildClearinghouseSecretCipher,
+  deriveFingerprintSubkey,
+} from "../src/modules/23-billing-medicare/tenant-clearinghouse/secret-cipher";
 import { createTenantClearinghouseService } from "../src/modules/23-billing-medicare/tenant-clearinghouse/service";
 import { buildDrizzleTenantClearinghouseRouteService } from "../src/modules/23-billing-medicare/tenant-clearinghouse/tenant-service";
 import {
@@ -603,6 +606,19 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     expect(steal.statusCode, steal.body).toBe(409);
     expect(errorCode(steal)).toBe("CLEARINGHOUSE_ACCOUNT_IN_USE");
 
+    // migration 1406: the app role's column grant alone cannot release it; only the platform release path's setting can
+    await expect(
+      asTenant(
+        ORG_H,
+        `UPDATE tenant_clearinghouse_credential_reservation SET released_at=now() WHERE id='${held[0]?.id}'`,
+      ),
+    ).rejects.toThrow(/released only by the platform release/);
+    await expect(
+      q("UPDATE tenant_clearinghouse_credential_reservation SET released_at=now() WHERE id=$1", [
+        held[0]?.id,
+      ]),
+    ).rejects.toThrow(/released only by the platform release/);
+
     // the tenant's own admin has no release route; the platform operator releases it, with a reason, audited
     const release = await platformCall("POST", "ch-h", "/credentials/release", {
       reason: "account moved to another organization, ticket OPS-77",
@@ -701,13 +717,35 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID],
     );
     expect(audited.map((r) => r.severity)).toContain("critical");
+
+    // security review of cfd943e82, M1: a reservation with NULL key id (1404-backfilled) is counted as unverifiable, not dropped
+    const before = await checkHeldCredentials(
+      { platformDb: platformPool.db, auditBypass: m34PlatformBypassAuditor },
+      [],
+    );
+    const [legacy] = await q<{ id: string }>(
+      "INSERT INTO tenant_clearinghouse_credential_reservation (organization_id, vendor, credential_fingerprint) VALUES ($1, 'claimmd', $2) RETURNING id",
+      [ORG_A, "e".repeat(64)],
+    );
+    try {
+      const after = await checkHeldCredentials(
+        { platformDb: platformPool.db, auditBypass: m34PlatformBypassAuditor },
+        [],
+      );
+      expect(after.unverifiable).toBe(before.unverifiable + 1);
+      expect(after.keyIds).toEqual(before.keyIds);
+    } finally {
+      await q("DELETE FROM tenant_clearinghouse_credential_reservation WHERE id=$1", [legacy?.id]);
+    }
   });
 
   // Security review LOW-3: with a retired key configured, a save inserts one reservation per key; when a LATER key conflicts, the
   // refusal rolls the earlier key's row back with it, so no stray reservation blocks the true holder's re-entry.
   it("a two-key save refused on its retired key leaves no reservation behind", async () => {
     const twoKey = createTenantClearinghouseService({
-      cipher: buildClearinghouseSecretCipher(Buffer.alloc(32, 12), [Buffer.alloc(32, 11)]),
+      cipher: buildClearinghouseSecretCipher(Buffer.alloc(32, 12), [
+        deriveFingerprintSubkey(Buffer.alloc(32, 11)),
+      ]),
       probes: {},
     });
     const actor = { organizationId: ORG_D, userId: TENANT_ADMIN, membershipId: MEMBERSHIP };

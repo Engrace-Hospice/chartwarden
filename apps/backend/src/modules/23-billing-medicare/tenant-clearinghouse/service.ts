@@ -148,6 +148,11 @@ export interface TenantClearinghouseServiceDeps {
   readonly waitingWork?: (organizationId: string, tx: ConfigStore["tx"]) => Promise<WaitingWork>;
   /** Fingerprints of the platform's OWN vendor account keys (the env binding): a tenant may never seal one of those. */
   readonly platformCredentialFingerprints?: ReadonlySet<string>;
+  /**
+   * Throws a typed 503 while the boot credential check has not confirmed every held fingerprint key id is configured
+   * (fingerprint-key-check.ts); every save carrying a credential asks first, on either lane. Absent = no check (no platform DB).
+   */
+  readonly assertFingerprintKeysComplete?: () => Promise<void>;
 }
 
 /** What `prepareVerify` read: everything `completeVerify` needs, so no store call is open while the vendor is called. */
@@ -418,6 +423,7 @@ export function createTenantClearinghouseService(
       return { patch, credential: [] };
     }
     const mode = input.mode as TenantClearinghouseMode;
+    if (input.secret) await deps.assertFingerprintKeysComplete?.();
     const credential = input.secret ? requireCipher().fingerprints(input.vendor, input.secret) : [];
     // a pure check before anything is sealed or written (the reservation in `reserveFor` checks it again)
     if (credential.some((f) => deps.platformCredentialFingerprints?.has(f.fingerprint)))
@@ -461,13 +467,11 @@ export function createTenantClearinghouseService(
   }
 
   async function save(store: ConfigStore, row: ConfigRow, patch: ConfigPatch): Promise<ConfigRow> {
-    const full = await backfillFingerprint(
-      store,
-      row,
-      patch,
+    const full = await backfillFingerprint(store, row, patch, {
+      cipher: deps.cipher,
       requireCipher,
-      deps.platformCredentialFingerprints,
-    );
+      platformFingerprints: deps.platformCredentialFingerprints,
+    });
     let updated: ConfigRow | null;
     try {
       updated = await store.update(row.organizationId, row.version, { ...full, updatedAt: now() });

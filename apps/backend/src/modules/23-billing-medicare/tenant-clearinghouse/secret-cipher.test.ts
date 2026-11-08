@@ -2,8 +2,10 @@ import { createHmac, hkdfSync, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   buildClearinghouseSecretCipher,
+  deriveFingerprintSubkey,
+  fingerprintKeyIdOf,
   platformCredentialFingerprints,
-  retiredFingerprintKeks,
+  retiredFingerprintSubkeys,
 } from "./secret-cipher";
 
 describe("the platform's own account fingerprints", () => {
@@ -90,19 +92,22 @@ describe("clearinghouse secret cipher", () => {
     expect(fp).not.toBe(createHmac("sha256", kek).update(`claimmd\n${KEY}`, "utf8").digest("hex"));
   });
 
-  // Migration 1405 (security review MEDIUM-1): a retired KEK only fingerprints. A credential is fingerprinted under the current key
-  // first, then each retired one, each with its key's public id; the old cipher's fingerprint is among them, so a reservation it
-  // recorded still collides on the unique index.
-  it("fingerprints under the current key and each retired KEK, with a stable public key id", () => {
+  // Migration 1405 (security review MEDIUM-1): a retired entry is the old KEK's DERIVED fingerprint subkey and only fingerprints. A
+  // credential is fingerprinted under the current key first, then each retired one, each with its key's public id; the old cipher's
+  // fingerprint and key id are among them, so a reservation it recorded still collides on the unique index.
+  it("fingerprints under the current key and each retired subkey, with a stable public key id", () => {
     const oldKek = randomBytes(32);
     const newKek = randomBytes(32);
     const before = buildClearinghouseSecretCipher(oldKek);
-    const after = buildClearinghouseSecretCipher(newKek, [oldKek, newKek]);
+    const after = buildClearinghouseSecretCipher(newKek, [
+      deriveFingerprintSubkey(oldKek),
+      deriveFingerprintSubkey(newKek),
+    ]);
     const all = after.fingerprints("claimmd", KEY);
     expect(all).toEqual([
       { keyId: after.fingerprintKeyId, fingerprint: after.fingerprint("claimmd", KEY) },
       { keyId: before.fingerprintKeyId, fingerprint: before.fingerprint("claimmd", KEY) },
-    ]); // a retired entry equal to the current KEK is dropped
+    ]); // a retired entry equal to the current KEK's subkey is dropped
     expect(after.fingerprintKeyId).toMatch(/^[0-9a-f]{16}$/);
     expect(after.fingerprintKeyId).not.toBe(before.fingerprintKeyId);
     expect(buildClearinghouseSecretCipher(newKek).fingerprintKeyId).toBe(after.fingerprintKeyId);
@@ -110,20 +115,33 @@ describe("clearinghouse secret cipher", () => {
     expect(after.fingerprintKeyIds).toEqual([after.fingerprintKeyId, before.fingerprintKeyId]);
   });
 
-  it("reads the retired KEKs fail-closed", () => {
+  it("reads the retired subkeys fail-closed, with the shared strict reader, never echoing an entry", () => {
     const a = Buffer.alloc(32, 1).toString("base64");
     const b = Buffer.alloc(32, 2).toString("base64");
-    const env = (v: string) => ({ M23_CLEARINGHOUSE_FINGERPRINT_RETIRED_KEKS: v });
-    expect(retiredFingerprintKeks({})).toEqual([]);
-    expect(retiredFingerprintKeks(env(` ${a} , ${b}`)).map((k) => k.toString("base64"))).toEqual([
-      a,
-      b,
-    ]);
-    expect(() => retiredFingerprintKeks(env(`${a},short`))).toThrow(/32 bytes/);
-    // a typo Buffer.from would skip (here a stray `*`) still decodes to 32 bytes: refused
+    const env = (v: string) => ({ M23_CLEARINGHOUSE_RETIRED_FINGERPRINT_KEYS: v });
+    expect(retiredFingerprintSubkeys({})).toEqual([]);
+    expect(retiredFingerprintSubkeys(env(` ${a} , ${b}`)).map((k) => k.toString("base64"))).toEqual(
+      [a, b],
+    );
+    expect(() => retiredFingerprintSubkeys(env(`${a},short`))).toThrow(
+      /padded standard base64 \(44 chars\)/,
+    );
+    // a typo Buffer.from would skip (here a stray `*`) still decodes to 32 bytes: refused, and the value is not in the message
     const typo = `${a.slice(0, 10)}*${a.slice(10)}`;
     expect(Buffer.from(typo, "base64").length).toBe(32);
-    expect(() => retiredFingerprintKeks(env(typo))).toThrow(/32 bytes/);
+    expect(() => retiredFingerprintSubkeys(env(typo))).toThrow(/44 chars/);
+    expect(() => retiredFingerprintSubkeys(env(typo))).not.toThrow(a.slice(0, 10));
+  });
+
+  // The key id of a subkey is the key id the KEK's own cipher records: rows reserved before the rename still match.
+  it("derives the same public key id from a KEK's subkey as from the KEK's cipher", () => {
+    const kek = Buffer.alloc(32, 5);
+    const subkey = deriveFingerprintSubkey(kek);
+    expect(subkey).toHaveLength(32);
+    expect(subkey.equals(kek)).toBe(false);
+    expect(fingerprintKeyIdOf(subkey)).toBe(buildClearinghouseSecretCipher(kek).fingerprintKeyId);
+    // a master KEK listed by mistake is a DIFFERENT key: it does not reproduce the old key id
+    expect(fingerprintKeyIdOf(kek)).not.toBe(buildClearinghouseSecretCipher(kek).fingerprintKeyId);
   });
 
   it("rejects a KEK that is not 32 bytes", () => {

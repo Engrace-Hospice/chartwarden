@@ -16,8 +16,12 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
-import { createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
 import {
+  type RateLimitStore,
+  createInMemoryRateLimitStore,
+} from "../src/bootstrap/plugins/rate-limit-store";
+import {
+  CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT,
   CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
 } from "../src/bootstrap/plugins/route-rate-limit";
@@ -69,7 +73,7 @@ interface Call {
   readonly expectedVersion?: number | undefined;
 }
 
-function makeServer(opts: { verifyLimit?: number } = {}) {
+function makeServer(opts: { verifyLimit?: number; putStore?: RateLimitStore } = {}) {
   const calls: Call[] = [];
   const service: TenantClearinghouseRouteService = {
     async get(actor) {
@@ -125,6 +129,15 @@ function makeServer(opts: { verifyLimit?: number } = {}) {
             store: createInMemoryRateLimitStore(),
             limit: { ...CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT, perUser: opts.verifyLimit },
             keyPrefix: "test-ch-verify",
+          }) as never,
+        }
+      : {}),
+    ...(opts.putStore
+      ? {
+          putRateLimit: createRouteRateLimit({
+            store: opts.putStore,
+            limit: CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT,
+            keyPrefix: "test-ch-put",
           }) as never,
         }
       : {}),
@@ -322,5 +335,35 @@ describe("tenant clearinghouse routes", () => {
     expect(limited.statusCode).toBe(429);
     expect(calls.filter((c) => c.method === "verify")).toHaveLength(2);
     await app.close();
+  });
+
+  // Security review of cfd943e82, L5: the PUT's 409 is an oracle, so its limiter fails CLOSED when its store is down.
+  it("refuses the PUT with a typed 503 when the rate-limit store is unavailable, and never calls the service", async () => {
+    const down: RateLimitStore = {
+      increment: async () => {
+        throw new Error("valkey unreachable");
+      },
+    };
+    const { app, calls } = makeServer({ putStore: down });
+    const res = await app.inject({
+      method: "PUT",
+      url: URL,
+      headers: { ...ADMIN, ...idem() },
+      payload: BODY,
+    });
+    expect(res.statusCode, res.body).toBe(503);
+    expect(res.json()).toMatchObject({ error: { code: "DEGRADED" } });
+    expect(calls).toEqual([]);
+    // the same limiter with a working store lets the PUT through
+    const up = makeServer({ putStore: createInMemoryRateLimitStore() });
+    const ok = await up.app.inject({
+      method: "PUT",
+      url: URL,
+      headers: { ...ADMIN, ...idem() },
+      payload: BODY,
+    });
+    expect(ok.statusCode, ok.body).toBe(201);
+    await app.close();
+    await up.app.close();
   });
 });
