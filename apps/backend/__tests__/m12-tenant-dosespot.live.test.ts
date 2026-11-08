@@ -1922,9 +1922,10 @@ describe.skipIf(!DB_URL)(
           );
         const linkerOf = async (membershipId: string) =>
           (
-            await q("SELECT linked_by_membership_id AS by FROM dosespot_prescriber WHERE membership_id=$1", [
-              membershipId,
-            ])
+            await q(
+              "SELECT linked_by_membership_id AS by FROM dosespot_prescriber WHERE membership_id=$1",
+              [membershipId],
+            )
           )[0]?.by;
         const pin = (m: { physician: SeededPhysician }) => ({
           externalPhysicianMdmId: m.physician.id,

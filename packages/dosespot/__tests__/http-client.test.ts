@@ -489,7 +489,10 @@ describe("transmitNewRx", () => {
       const err = await c.transmitNewRx(ORG, NEWRX, "idem-2").catch((e) => e);
       expect(isUnconfirmedOutcomeError(err), name).toBe(true);
       expect(err.retryable, name).toBe(false);
-      expect(calls.filter((x) => x.url.endsWith("/prescriptions/send")), name).toHaveLength(1);
+      expect(
+        calls.filter((x) => x.url.endsWith("/prescriptions/send")),
+        name,
+      ).toHaveLength(1);
     }
   });
 
@@ -500,7 +503,10 @@ describe("transmitNewRx", () => {
       const { c, calls } = client(r);
       const err = await c.transmitNewRx(ORG, NEWRX, "idem-lost").catch((e) => e);
       expect(isUnconfirmedOutcomeError(err), lost).toBe(true);
-      expect(calls.filter((x) => x.url.endsWith("/prescriptions/send")), lost).toHaveLength(1);
+      expect(
+        calls.filter((x) => x.url.endsWith("/prescriptions/send")),
+        lost,
+      ).toHaveLength(1);
     }
   });
 
@@ -516,7 +522,10 @@ describe("transmitNewRx", () => {
       expect(err, name).toBeInstanceOf(DegradedError);
       expect(isUnconfirmedOutcomeError(err), name).toBe(false);
       expect(err.retryable, name).toBe(true);
-      expect(calls.filter((x) => x.url.endsWith("/prescriptions/send")), name).toHaveLength(1);
+      expect(
+        calls.filter((x) => x.url.endsWith("/prescriptions/send")),
+        name,
+      ).toHaveLength(1);
     }
   });
 

@@ -122,7 +122,11 @@ const AMBIGUOUS_ON_LOST_ANSWER: ReadonlySet<keyof typeof DOSESPOT_ENDPOINTS> = n
   "sendPrescriptions",
 ]);
 /** Socket errors that mean the connection was never made, so nothing reached DoseSpot. */
-const NOT_CONNECTED_CODES: ReadonlySet<string> = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"]);
+const NOT_CONNECTED_CODES: ReadonlySet<string> = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+]);
 const UNSUPPORTED_MESSAGE =
   "This operation is not available against the verified DoseSpot API surface; it requires DoseSpot sandbox verification before it can be enabled.";
 

@@ -644,7 +644,9 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
           transmission_failed_at: null,
           dosespot_prescription_id: "9001", // the created id is kept: a person resolves against it
         });
-        expect(await h.eventsOf("m12.medication_order.transmission_unconfirmed", ORG_A)).toHaveLength(1);
+        expect(
+          await h.eventsOf("m12.medication_order.transmission_unconfirmed", ORG_A),
+        ).toHaveLength(1);
         expect(await h.eventsOf("m12.medication_order.transmission_failed", ORG_A)).toEqual([]);
         // neither the next tick nor the recovery drain long after the stale window sends it again
         sendAnswer = "echo";
@@ -1098,7 +1100,8 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         // the settle of `broken` throws inside its transaction (a stand-in for a database fault), with a value in its message
         outbox: {
           publish: async (tx, ev) => {
-            if (ev.aggregateId === broken) throw new TypeError(`bound value ${broken} Jane Synthetic`);
+            if (ev.aggregateId === broken)
+              throw new TypeError(`bound value ${broken} Jane Synthetic`);
             return h.outbox.publish(tx, ev);
           },
         },

@@ -48,7 +48,12 @@ describe("resolving a held transmission", () => {
       throw new TypeError(`Failed query: update ... params: ${REASON}`);
     });
     const err = await h.service
-      .resolve(actor, ORDER, { outcome: "not_sent", reason: REASON }, { actorIsAdministrator: true })
+      .resolve(
+        actor,
+        ORDER,
+        { outcome: "not_sent", reason: REASON },
+        { actorIsAdministrator: true },
+      )
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ChartWardenError);
     expect(err).toMatchObject({ code: "DOSESPOT_RESOLVE_FAILED", statusCode: 500 });

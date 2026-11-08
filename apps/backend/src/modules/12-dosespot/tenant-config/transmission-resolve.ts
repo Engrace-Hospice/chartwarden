@@ -114,7 +114,9 @@ export function createTransmissionResolveService(
   ): Promise<ResolveHeldResult> {
     const { organizationId } = actor;
     if (!authorization.actorIsAdministrator) {
-      throw new ForbiddenError("only an organization administrator can resolve a held transmission");
+      throw new ForbiddenError(
+        "only an organization administrator can resolve a held transmission",
+      );
     }
     const prescriptionId = input.dosespotPrescriptionId?.trim() ?? "";
     // the schema's length counts padding: a reason must say something once trimmed (and that is what is stored)
