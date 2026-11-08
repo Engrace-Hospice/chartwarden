@@ -29,6 +29,7 @@ async function setup() {
     encrypt: cipher.encrypt,
     fingerprint: cipher.fingerprint,
     fingerprintKeyId: cipher.fingerprintKeyId,
+    fingerprintKeyIds: cipher.fingerprintKeyIds,
     fingerprints: cipher.fingerprints,
     decrypt: (...args: Parameters<typeof cipher.decrypt>) => {
       decrypts += 1;

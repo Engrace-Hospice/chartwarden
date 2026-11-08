@@ -107,6 +107,7 @@ describe("clearinghouse secret cipher", () => {
     expect(after.fingerprintKeyId).not.toBe(before.fingerprintKeyId);
     expect(buildClearinghouseSecretCipher(newKek).fingerprintKeyId).toBe(after.fingerprintKeyId);
     expect(platformCredentialFingerprints(after, { CLAIMMD_ACCOUNT_KEY: KEY }).size).toBe(2);
+    expect(after.fingerprintKeyIds).toEqual([after.fingerprintKeyId, before.fingerprintKeyId]);
   });
 
   it("reads the retired KEKs fail-closed", () => {
@@ -119,6 +120,10 @@ describe("clearinghouse secret cipher", () => {
       b,
     ]);
     expect(() => retiredFingerprintKeks(env(`${a},short`))).toThrow(/32 bytes/);
+    // a typo Buffer.from would skip (here a stray `*`) still decodes to 32 bytes: refused
+    const typo = `${a.slice(0, 10)}*${a.slice(10)}`;
+    expect(Buffer.from(typo, "base64").length).toBe(32);
+    expect(() => retiredFingerprintKeks(env(typo))).toThrow(/32 bytes/);
   });
 
   it("rejects a KEK that is not 32 bytes", () => {

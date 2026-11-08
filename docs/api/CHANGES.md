@@ -6,6 +6,23 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-08 — Releasing a tenant's earlier clearinghouse credentials
+
+**New route.** `POST /api/v1/platform/tenants/{orgSlug}/clearinghouse/credentials/release` frees every clearinghouse credential a
+tenant still holds except its current one, so another organization may connect it. Platform ops only
+(`tenant_clearinghouse.release_credential_platform`, a fresh step-up, an `Idempotency-Key` and a `reason`; an AI actor is refused).
+Refused with 409 `CLEARINGHOUSE_RESPONSES_PENDING` while the tenant has a production submission in flight or sent one in the last
+90 days.
+
+**The reason is visible to the tenant.** It is recorded as given on the tenant's own audit trail. Give a ticket reference only,
+never the name of the organization an account moved to.
+
+**Saving a credential.** `PUT /api/v1/tenant/clearinghouse` (and the platform operator's onboarding PUT) answer 409
+`CLEARINGHOUSE_ACCOUNT_IN_USE` for a credential another organization (or the platform) holds, and 409
+`CLEARINGHOUSE_CREDENTIAL_LIMIT` once the organization holds 20 earlier credentials per configured fingerprint key.
+
+---
+
 ## 2026-11-08 — Price plan writes are pinned to the version read
 
 **Why.** Two operators editing one draft price plan could overwrite each other's prices, or publish prices the publisher never saw.

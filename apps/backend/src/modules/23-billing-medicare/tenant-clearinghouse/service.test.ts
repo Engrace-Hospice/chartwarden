@@ -1295,6 +1295,23 @@ describe("tenant clearinghouse service: one credential per organization", () => 
     expect(bare.heldFingerprints(ORG)).toEqual([row?.credentialFingerprint]);
   });
 
+  it("re-reserves under the key the fingerprint was really computed with, not a stale label (review LOW-5)", async () => {
+    const { store, service } = setup();
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    const row = store.rows()[0];
+    const bare = createInMemoryConfigStore();
+    // a pre-1405 build rewrote the fingerprint and left an earlier credential's key id behind
+    await bare.insert({ ...row, credentialFingerprintKeyId: "0123456789abcdef" } as never);
+    await service.recordBaa(bare, ACTOR, BAA);
+    expect(bare.rows()[0]?.credentialFingerprintKeyId).toBe(row?.credentialFingerprintKeyId);
+    expect(bare.heldFingerprints(ORG)).toEqual([row?.credentialFingerprint]);
+  });
+
   it("caps the credentials one organization holds unreleased (review LOW-4)", async () => {
     const { store, service } = setup();
     await service.put(

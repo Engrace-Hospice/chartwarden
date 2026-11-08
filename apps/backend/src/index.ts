@@ -1238,7 +1238,8 @@ import { resolveInpatientCapDifferential } from "./modules/23-billing-medicare/s
 import { platformFallbackFromEnv } from "./modules/23-billing-medicare/tenant-clearinghouse/choice";
 import {
   M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID,
-  countHeldCredentials,
+  checkHeldCredentials,
+  unknownFingerprintKeyIds,
 } from "./modules/23-billing-medicare/tenant-clearinghouse/config-store";
 import { buildTenantClearinghouseOnboardingPort } from "./modules/23-billing-medicare/tenant-clearinghouse/onboarding-port";
 import { registerM23TenantClearinghouseSeams } from "./modules/23-billing-medicare/tenant-clearinghouse/register";
@@ -6820,28 +6821,40 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // boot. Shared-account responses are applied only on immutable ownership evidence (CW-AC-10), so nothing is misapplied
           // meanwhile, and failing the boot would take every tenant offline for an operator's env mistake. The fix is the env key.
           if (clearinghouseSecretCipher) {
-            // the public id of the current fingerprint key, for the KEK re-encryption procedure (ops runbook §8.3)
+            // the public ids of the configured fingerprint keys, current first, for the KEK re-encryption procedure (ops runbook §8.3)
             app.log.info(
-              { code: "M23_FINGERPRINT_KEY", keyId: clearinghouseSecretCipher.fingerprintKeyId },
-              "m23.clearinghouse: credential fingerprint key",
+              {
+                code: "M23_FINGERPRINT_KEY",
+                keyId: clearinghouseSecretCipher.fingerprintKeyId,
+                retiredKeyIds: clearinghouseSecretCipher.fingerprintKeyIds.slice(1),
+              },
+              "m23.clearinghouse: credential fingerprint keys",
             );
           }
-          if (platformDbHandle && m23PlatformFingerprints.size > 0) {
+          if (platformDbHandle && clearinghouseSecretCipher) {
+            const fingerprintKeyIds = clearinghouseSecretCipher.fingerprintKeyIds;
             registerPlatformJob(M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID);
-            void countHeldCredentials(
+            void checkHeldCredentials(
               { platformDb: platformDbHandle.db, auditBypass: m34PlatformBypassAuditor },
               [...m23PlatformFingerprints],
             )
-              .then((held) => {
+              .then(({ held, keyIds }) => {
                 if (held > 0)
                   app.log.error(
                     { code: "M23_PLATFORM_CREDENTIAL_HELD_BY_TENANT", held },
                     "m23.clearinghouse: a platform vendor key (CLAIMMD_ACCOUNT_KEY / STEDI_API_KEY) is also sealed by a tenant; give the platform its own account key",
                   );
+                const unknown = unknownFingerprintKeyIds(keyIds, fingerprintKeyIds);
+                if (unknown.length > 0)
+                  app.log.error(
+                    { code: "M23_FINGERPRINT_KEY_UNCONFIGURED", keyIds: unknown },
+                    "m23.clearinghouse: credentials are reserved under a fingerprint key that is neither current nor retired, so they no longer block reuse; list the old KEK in M23_CLEARINGHOUSE_FINGERPRINT_RETIRED_KEKS (ops runbook §8.3)",
+                  );
               })
               .catch((err: unknown) =>
-                app.log.warn(
-                  { err },
+                // error, not warn: a check that silently stops running (missing column grant, failed bypass audit) is a lost control
+                app.log.error(
+                  { err, code: "M23_PLATFORM_CREDENTIAL_CHECK_FAILED" },
                   "m23.clearinghouse: the platform credential boot check failed",
                 ),
               );
