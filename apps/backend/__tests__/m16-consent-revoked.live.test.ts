@@ -226,6 +226,39 @@ describe.skipIf(!DB_URL)("F-151 — M16's M39 consent-revocation cascade — LIV
     });
   });
 
+  it("cancels a never-attempted outreach row and a checkpoint even when PAST DUE, so the miss cron cannot count them (ADR-0109)", async () => {
+    const consentId = "aaaaaaaa-0000-4000-8000-000000000011";
+    const { planId, contactId } = await seedContact({
+      organizationId: ORG_A,
+      providerEntityId: providerA,
+      consentRecordId: consentId,
+      status: "active",
+    });
+    await admin.query(
+      `INSERT INTO bereavement_outreach
+           (organization_id, provider_entity_id, plan_id, bereaved_contact_id, kind, status,
+            death_anchor_at, due_at, late_grace_until)
+         VALUES ($1, $2, $3, $4, 'phone_call', 'scheduled',
+                 now() - interval '40 days', now() - interval '10 days', now() - interval '3 days')`,
+      [ORG_A, providerA, planId, contactId],
+    );
+    await admin.query(
+      `INSERT INTO bereavement_assessment_task
+           (organization_id, provider_entity_id, plan_id, bereaved_contact_id, task_kind, due_at, late_grace_until)
+         VALUES ($1, $2, $3, $4, 'initial_assessment', now() - interval '10 days', now() - interval '3 days')`,
+      [ORG_A, providerA, planId, contactId],
+    );
+
+    await consumer.handle({ organizationId: ORG_A, payload: { consentRecordId: consentId } });
+
+    expect(await outreachStatuses(contactId)).toEqual(["cancelled"]);
+    const task = await admin.query(
+      "SELECT status FROM bereavement_assessment_task WHERE bereaved_contact_id = $1",
+      [contactId],
+    );
+    expect(task.rows.map((r) => r.status)).toEqual(["cancelled"]);
+  });
+
   it("is a no-op redelivery once the contact already opted out (idempotent)", async () => {
     const consentId = "aaaaaaaa-0000-4000-8000-000000000002";
     const { contactId } = await seedContact({

@@ -251,7 +251,8 @@ upload that may have landed answers `CH_IN_DOUBT` (never retried under a new con
 same key, is reconciled against Claim.MD's upload list by our own Filename before any resend.
 
 **Configuration.** `CLEARINGHOUSE_VENDOR=claimmd`, `CLAIMMD_ACCOUNT_KEY`, `CLAIMMD_ACCOUNT_USAGE` (`test` or
-`production`: which Claim.MD account the key opens; a call of the other usage answers `CH_NOT_WIRED`). The envelope ids
+`production`: which Claim.MD account the key opens; a call of the other usage answers `CH_NOT_WIRED`), and
+`CLAIMMD_ACCOUNT_REFERENCE` (stable, non-secret internal account identity; it is not the AccountKey). The envelope ids
 (ISA06/GS02 = account number, ISA08/GS03 = `CLAIMMD`) are `billing_edi_profile` rows under `route_key = 'claimmd'`.
 Production account settings: 837I on, Transmit Approval off, automatic corrected claims off, SFTP off.
 Claim.MD's limit (100 requests a minute per account, then an HTTP 403 block) is spent from one counter per usage mode,

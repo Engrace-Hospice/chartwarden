@@ -320,7 +320,8 @@ function assertS3Credentials(config: S3ObjectStoreConfig, constructorName: strin
   }
 }
 
-function createS3SignedFetch(
+/** One header-signed SigV4 request; used by the adapter and by the object-store copy tool (scripts/object-store-copy.ts). */
+export function createS3SignedFetch(
   config: S3ObjectStoreConfig,
   deps: S3ObjectStoreDeps,
   constructorName: string,

@@ -157,6 +157,7 @@ export async function applyValidEvent(
   scope: Scope,
   event: ValidAckEvent,
 ): Promise<ApplyOutcome> {
+  if (deps.binding.vendor === "claimmd") throw new Error("CLAIMMD_LEGACY_ACK_DISABLED");
   const S = schema.commercialSubmissions;
   const C = schema.commercialClaims;
   const held = (result: ApplyResult, reason: QuarantineReason): Promise<ApplyOutcome> =>
@@ -323,6 +324,7 @@ export async function applyAckEvent(
   scope: Scope,
   raw: unknown,
 ): Promise<ApplyOutcome> {
+  if (deps.binding.vendor === "claimmd") throw new Error("CLAIMMD_LEGACY_ACK_DISABLED");
   const checked = validateAckEvent(raw);
   if (!checked.ok) {
     const eventId = checked.eventId ?? derivedEventId(raw);

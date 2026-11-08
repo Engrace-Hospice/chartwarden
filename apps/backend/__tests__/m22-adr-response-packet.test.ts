@@ -117,6 +117,13 @@ describe("the render guard for an ADR response", () => {
     });
     expect(await g(req([D_OK, D_P2]))).toEqual({ detail: `${D_P2}:part2_restricted` });
   });
+  it("refuses an internal-only document (never payer-facing) even though the record is of what WAS filed", async () => {
+    const g = guard({
+      [D_OK]: digestOf({}),
+      [D_P2]: digestOf({ aggregateType: "bereavement_physician_letter" }),
+    });
+    expect(await g(req([D_OK, D_P2]))).toEqual({ detail: `${D_P2}:internal_only` });
+  });
   it("refuses a document that can no longer be read", async () => {
     expect(await guard({ [D_OK]: digestOf({}) })(req([D_OK, D_OLD]))).toEqual({
       detail: `${D_OLD}:not_found`,

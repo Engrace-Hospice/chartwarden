@@ -10,7 +10,7 @@
  * real `chartwarden_app` connection, real M5/M6/M7/M8 seams and the real catalog-validating outbox publisher.
  *
  * Run (host; needs the app-role URL that the Docker stack uses):
- *   DATABASE_URL="$(docker compose exec -T worker printenv DATABASE_URL | sed 's/@postgres:/@localhost:/')" \
+ *   DATABASE_URL="$(docker compose exec -T worker bun -e 'console.log(process.env.DATABASE_URL)' | sed 's/@postgres:/@localhost:/')" \
  *   REDIS_URL=redis://localhost:6379 bun run db:idg:packet-build
  */
 import { createDbClient } from "@chartwarden/db";

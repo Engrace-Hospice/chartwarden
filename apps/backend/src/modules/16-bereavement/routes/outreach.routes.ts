@@ -74,8 +74,8 @@ export function registerBereavementOutreachRoutes(
       const { outreachId } = parse(OutreachParams, request.params);
       const body = parse(CompleteOutreachBody, request.body);
       return writeService.completeOutreach(writeActorOf(request), outreachId, {
-        expectedVersion: ifMatchVersion(request, true),
         ...body,
+        expectedVersion: ifMatchVersion(request, true),
       });
     },
   );
@@ -95,8 +95,8 @@ export function registerBereavementOutreachRoutes(
       const { outreachId } = parse(OutreachParams, request.params);
       const body = parse(OutreachOutcomeBody, request.body);
       return writeService.declineOutreach(writeActorOf(request), outreachId, {
-        expectedVersion: ifMatchVersion(request, true),
         ...body,
+        expectedVersion: ifMatchVersion(request, true),
       });
     },
   );
@@ -115,8 +115,8 @@ export function registerBereavementOutreachRoutes(
       const { outreachId } = parse(OutreachParams, request.params);
       const body = parse(OutreachOutcomeBody, request.body);
       return writeService.noResponseOutreach(writeActorOf(request), outreachId, {
-        expectedVersion: ifMatchVersion(request, true),
         ...body,
+        expectedVersion: ifMatchVersion(request, true),
       });
     },
   );
@@ -135,8 +135,8 @@ export function registerBereavementOutreachRoutes(
       const { outreachId } = parse(OutreachParams, request.params);
       const body = parse(CancelOutreachBody, request.body);
       return writeService.cancelOutreach(writeActorOf(request), outreachId, {
-        expectedVersion: ifMatchVersion(request, true),
         ...body,
+        expectedVersion: ifMatchVersion(request, true),
       });
     },
   );

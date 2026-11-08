@@ -62,6 +62,7 @@ import {
   type HoldableJob,
   holdUnlessClaimsBillingEntitled,
 } from "../../../bootstrap/claims-billing-gate";
+import { shouldRunLegacyClaimMdAckPoll } from "../claimmd-capture/config";
 import { type Claim837iSubmitDeps, renderClaimForTransport } from "../services/claim-837i-submit";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
 import { isVoidM23Claim } from "../void-claim";
@@ -150,10 +151,12 @@ export interface ClaimSubmitRetryJob {
 export interface NoeSubmitJob {
   readonly organizationId: string;
   readonly noeId: string;
+  readonly submissionId: string;
 }
 export interface NotrSubmitJob {
   readonly organizationId: string;
   readonly notrId: string;
+  readonly submissionId: string;
 }
 export interface EligibilityRefreshJob {
   readonly organizationId: string;
@@ -285,6 +288,12 @@ export interface MacPortalPort {
     /** The same claim as Stedi's JSON; a Stedi-bound transport sends this instead of the raw X12. */
     readonly stediJson?: StediClaimJson;
     readonly controlNumber: string;
+    /** Present for claim submissions so Claim.MD evidence binds the real M23 source attempt. */
+    readonly claimId?: string;
+    readonly submissionId?: string;
+    readonly attemptIndex?: number;
+    readonly locationId?: string | null;
+    readonly noticeId?: string;
   }): Promise<{
     readonly accepted: boolean;
     readonly generatedFileUri: string;
@@ -528,6 +537,9 @@ export interface M23WorkerDeps {
    * Unset or an unbound binding keeps the legacy ports.
    */
   readonly transport?: M23TransportDeps;
+  /** When account-wide Claim.MD capture or dispatch is active, disable provider-scoped legacy ack polls. */
+  readonly claimMdResponseCaptureActive?: boolean;
+  readonly claimMdAckDispatcherActive?: boolean;
   /**
    * The 837I loader's ports (admission, MBI unlock, patient identity/address, parties). When a clearinghouse vendor is
    * bound the claim submit/retry workers render the claim through the loader with these, and fail the attempt on a gap;
@@ -970,6 +982,9 @@ export async function runClaimSubmit(
       x12: generated.x12,
       stediJson: generated.stediJson,
       controlNumber: job.claimControlNumber,
+      claimId: job.claimId,
+      submissionId: job.submissionId,
+      attemptIndex: job.attemptIndex,
     });
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
@@ -1203,6 +1218,9 @@ export async function runClaimSubmitRetry(
         x12: generated.x12,
         stediJson: generated.stediJson,
         controlNumber: claimControlNumber,
+        claimId: job.claimId,
+        submissionId: job.submissionId,
+        attemptIndex,
       });
       if (!uploaded.accepted) failureReason = "MAC portal rejected the retry upload";
     }
@@ -1279,9 +1297,9 @@ async function recordNoticeTransmission(
 }
 
 /**
- * `noe.submit` (§4.8): drain `m23.noe.submit_requested` — generate the NOE via the x12 sidecar, upload to the
- * MAC portal, append the `claim_submission` (kind='noe') row, drive the §2.2 NOE READY → SUBMITTED transition
- * (pure `noeMachine.reduce`, version-checked), and emit `m23.noe.submitted`.
+ * `noe.submit` (§4.8): drain `m23.noe.submit_requested` — validate the durable queued attempt, generate the NOE
+ * via the X12 sidecar, upload through the configured transport (legacy MAC portal when no vendor is bound),
+ * terminalize that same `claim_submission`, then drive the §2.2 NOE READY → SUBMITTED transition.
  */
 export async function runNoeSubmit(
   tx: BillingDb,
@@ -1295,6 +1313,15 @@ export async function runNoeSubmit(
 
   const noe = await noes.findById(job.noeId);
   if (!noe) throw new Error(`noe_record ${job.noeId} not found`);
+  const attempt = await submissions.findById(job.submissionId);
+  if (
+    !attempt ||
+    attempt.organizationId !== job.organizationId ||
+    attempt.providerEntityId !== noe.providerEntityId ||
+    attempt.noeId !== noe.id ||
+    attempt.kind !== "noe"
+  )
+    throw new Error("NOE submission attempt does not match the notice");
 
   const generated = await x12Of(deps).generateNoe({
     organizationId: job.organizationId,
@@ -1307,6 +1334,9 @@ export async function runNoeSubmit(
     kind: "noe",
     x12: generated.x12,
     controlNumber: noe.noeControlNumber,
+    noticeId: noe.id,
+    submissionId: attempt.id,
+    attemptIndex: attempt.attemptIndex,
   });
   const submission = await recordNoticeTransmission(submissions, {
     organizationId: job.organizationId,
@@ -1314,13 +1344,13 @@ export async function runNoeSubmit(
     kind: "noe",
     noeId: job.noeId,
     claimControlNumber: noe.noeControlNumber,
-    attemptIndex: 0,
+    attemptIndex: attempt.attemptIndex,
     outcome: uploaded.accepted ? "submitted" : "failed_portal",
     generatedFileUri: uploaded.generatedFileUri,
     submittedAt: uploaded.accepted ? now : null,
     workerCorrelationId: generated.correlationId,
   });
-  if (!uploaded.accepted) throw new Error("MAC portal rejected the NOE upload");
+  if (!uploaded.accepted) throw new Error("configured transport rejected the NOE upload");
 
   const next = noeMachine.reduce(noe.state, "submit");
   if (next.error)
@@ -1356,6 +1386,15 @@ export async function runNotrSubmit(
 
   const notr = await notrs.findById(job.notrId);
   if (!notr) throw new Error(`notr_record ${job.notrId} not found`);
+  const attempt = await submissions.findById(job.submissionId);
+  if (
+    !attempt ||
+    attempt.organizationId !== job.organizationId ||
+    attempt.providerEntityId !== notr.providerEntityId ||
+    attempt.notrId !== notr.id ||
+    attempt.kind !== "notr"
+  )
+    throw new Error("NOTR submission attempt does not match the notice");
 
   const generated = await x12Of(deps).generateNotr({
     organizationId: job.organizationId,
@@ -1368,6 +1407,9 @@ export async function runNotrSubmit(
     kind: "notr",
     x12: generated.x12,
     controlNumber: notr.notrControlNumber,
+    noticeId: notr.id,
+    submissionId: attempt.id,
+    attemptIndex: attempt.attemptIndex,
   });
   const submission = await recordNoticeTransmission(submissions, {
     organizationId: job.organizationId,
@@ -1375,13 +1417,13 @@ export async function runNotrSubmit(
     kind: "notr",
     notrId: job.notrId,
     claimControlNumber: notr.notrControlNumber,
-    attemptIndex: 0,
+    attemptIndex: attempt.attemptIndex,
     outcome: uploaded.accepted ? "submitted" : "failed_portal",
     generatedFileUri: uploaded.generatedFileUri,
     submittedAt: uploaded.accepted ? now : null,
     workerCorrelationId: generated.correlationId,
   });
-  if (!uploaded.accepted) throw new Error("MAC portal rejected the NOTR upload");
+  if (!uploaded.accepted) throw new Error("configured transport rejected the NOTR upload");
 
   const next = notrMachine.reduce(notr.state, "submit");
   if (next.error)
@@ -1934,6 +1976,9 @@ async function runTransportAckPull(
   transport: M23TransportDeps,
   kind: "ack_999" | "ack_277ca",
 ): Promise<void> {
+  // Claim.MD /services/response/ is an account-wide normalized API feed, not literal 999/277CA.
+  // BIL-1.1 captures it centrally; only the separately gated BIL-1.3 dispatcher may interpret it.
+  if (transport.binding.vendor === "claimmd") return;
   const now = deps.now ?? (() => new Date());
   const failures: string[] = [];
   for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
@@ -2019,6 +2064,14 @@ async function runTransportAckPull(
 /** `ack.pull-999` (§4.8 cron). Exported for the transfer-notice and NOE/NOTR live suites. */
 export async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
   const transport = activeTransport(deps);
+  if (
+    !shouldRunLegacyClaimMdAckPoll({
+      captureActive: deps.claimMdResponseCaptureActive === true,
+      dispatcherActive: deps.claimMdAckDispatcherActive === true,
+      vendor: transport?.binding.vendor,
+    })
+  )
+    return;
   if (transport) return runTransportAckPull(deps, transport, "ack_999");
   const portal = macPortalOf(deps);
   const x12 = x12Of(deps);
@@ -2054,6 +2107,14 @@ export async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
 /** `ack.pull-277ca` (§4.8 cron): the 277CA twin of {@link runAckPull999} (accepted/rejected/partial outcomes). */
 export async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
   const transport = activeTransport(deps);
+  if (
+    !shouldRunLegacyClaimMdAckPoll({
+      captureActive: deps.claimMdResponseCaptureActive === true,
+      dispatcherActive: deps.claimMdAckDispatcherActive === true,
+      vendor: transport?.binding.vendor,
+    })
+  )
+    return;
   if (transport) return runTransportAckPull(deps, transport, "ack_277ca");
   const portal = macPortalOf(deps);
   const x12 = x12Of(deps);
@@ -2943,6 +3004,8 @@ export function buildM23WorkerDeps(deps: {
   x12?: X12ClientPort;
   macPortal?: MacPortalPort;
   transport?: M23TransportDeps;
+  claimMdResponseCaptureActive?: boolean;
+  claimMdAckDispatcherActive?: boolean;
   claim837i?: Claim837iSubmitDeps;
   renderClaim?: typeof renderClaimForTransport;
   hets?: HetsEligibilityPort;
@@ -2964,6 +3027,8 @@ export function buildM23WorkerDeps(deps: {
     x12: deps.x12,
     macPortal: deps.macPortal,
     transport: deps.transport,
+    claimMdResponseCaptureActive: deps.claimMdResponseCaptureActive,
+    claimMdAckDispatcherActive: deps.claimMdAckDispatcherActive,
     claim837i: deps.claim837i,
     renderClaim: deps.renderClaim,
     hets: deps.hets,

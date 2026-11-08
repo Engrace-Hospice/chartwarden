@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { CH } from "@chartwarden/x12-837-client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,10 +25,68 @@ import {
   classifyTransportRefusal,
   drainOrg,
   endingFor,
+  reserveM41ClaimMdEvidence,
   retryDelayMs,
   runSubmissionDrain,
   transportKeyFor,
 } from "./submission-worker";
+
+const syntheticClaimX12 = readFileSync(
+  new URL(
+    "../../../../../../packages/x12-837-client/src/clearinghouse/__fixtures__/stedi-claim.x12",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
+describe("M41 Claim.MD evidence reservation", () => {
+  const base = {
+    vendor: "claimmd",
+    evidence: {
+      accountReference: "acct-synthetic",
+      usage: "test" as const,
+      reserve: vi.fn(async () => "evidence-id"),
+      observe: vi.fn(),
+    },
+    organizationId: "00000000-0000-4000-8000-000000000001",
+    providerEntityId: "00000000-0000-4000-8000-000000000002",
+    locationId: null,
+    claimId: "00000000-0000-4000-8000-000000000003",
+    submissionId: "00000000-0000-4000-8000-000000000004",
+    controlNumber: "WXHOSP0001",
+    attemptCount: 1,
+    payerId: "STEDI",
+    billingNpi: "1234567893",
+    usage: "test" as const,
+    x12: syntheticClaimX12,
+    outboundReference: "cw-synthetic.837",
+    now: new Date("2026-01-01T00:00:00.000Z"),
+  };
+
+  it("reserves the exact M41 attempt with extracted identity before transport", async () => {
+    await expect(reserveM41ClaimMdEvidence(base)).resolves.toBe("evidence-id");
+    expect(base.evidence.reserve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        billingModule: "M41",
+        claimId: base.claimId,
+        attemptKey: `${base.submissionId}:1`,
+        accountReference: "acct-synthetic",
+        usage: "test",
+        payloadSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        x12Claim: expect.objectContaining({ billingTin: "931234567" }),
+      }),
+    );
+  });
+
+  it("keeps non-Claim.MD submissions unchanged and refuses missing Claim.MD evidence", async () => {
+    await expect(
+      reserveM41ClaimMdEvidence({ ...base, vendor: "stedi", evidence: undefined }),
+    ).resolves.toBeNull();
+    await expect(reserveM41ClaimMdEvidence({ ...base, evidence: undefined })).rejects.toThrow(
+      "CLAIMMD_EVIDENCE_NOT_CONFIGURED",
+    );
+  });
+});
 
 describe("classifyTransportRefusal", () => {
   it("retries only an unavailable transport", () => {

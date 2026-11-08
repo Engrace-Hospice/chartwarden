@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1936,
-    "enriched": 1936,
+    "routes": 1923,
+    "enriched": 1923,
     "deficit": 0,
-    "mutating": 1110,
+    "mutating": 1096,
     "mutatingNoBody": 1,
-    "gets": 773,
+    "gets": 774,
     "getsNoResponse": 9
   },
   "modules": [
@@ -151,12 +151,12 @@
     },
     {
       "module": "16-bereavement",
-      "routes": 34,
-      "enriched": 34,
+      "routes": 53,
+      "enriched": 53,
       "deficit": 0,
-      "mutating": 27,
+      "mutating": 36,
       "mutatingNoBody": 0,
-      "gets": 7,
+      "gets": 17,
       "getsNoResponse": 0
     },
     {
@@ -221,12 +221,12 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 101,
-      "enriched": 101,
+      "routes": 96,
+      "enriched": 96,
       "deficit": 0,
-      "mutating": 53,
+      "mutating": 49,
       "mutatingNoBody": 0,
-      "gets": 46,
+      "gets": 45,
       "getsNoResponse": 0
     },
     {
@@ -301,10 +301,10 @@
     },
     {
       "module": "31-portal",
-      "routes": 67,
-      "enriched": 67,
+      "routes": 68,
+      "enriched": 68,
       "deficit": 0,
-      "mutating": 33,
+      "mutating": 34,
       "mutatingNoBody": 0,
       "gets": 34,
       "getsNoResponse": 0
@@ -331,22 +331,22 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 80,
-      "enriched": 80,
+      "routes": 58,
+      "enriched": 58,
       "deficit": 0,
-      "mutating": 51,
+      "mutating": 34,
       "mutatingNoBody": 0,
-      "gets": 28,
+      "gets": 23,
       "getsNoResponse": 0
     },
     {
       "module": "35-subscription",
-      "routes": 58,
-      "enriched": 58,
+      "routes": 54,
+      "enriched": 54,
       "deficit": 0,
-      "mutating": 32,
+      "mutating": 30,
       "mutatingNoBody": 1,
-      "gets": 25,
+      "gets": 23,
       "getsNoResponse": 0
     },
     {
@@ -401,12 +401,12 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 28,
-      "enriched": 28,
+      "routes": 26,
+      "enriched": 26,
       "deficit": 0,
-      "mutating": 17,
+      "mutating": 16,
       "mutatingNoBody": 0,
-      "gets": 11,
+      "gets": 10,
       "getsNoResponse": 0
     },
     {

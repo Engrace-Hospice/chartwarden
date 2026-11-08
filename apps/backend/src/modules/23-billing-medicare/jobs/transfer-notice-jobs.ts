@@ -47,6 +47,10 @@ export type UploadTransferNotice = (input: {
   readonly kind: "transfer_notice";
   readonly x12: string;
   readonly controlNumber: string;
+  readonly noticeId: string;
+  readonly submissionId: string;
+  readonly attemptIndex: number;
+  readonly locationId?: string | null;
 }) => Promise<{ readonly accepted: boolean; readonly generatedFileUri: string }>;
 
 export interface TransferNoticeOutbox {
@@ -81,7 +85,13 @@ export async function runTransferNoticeSubmit(
   const notice = await notices.findById(job.transferNoticeId);
   if (!notice) throw new Error(`transfer_notice_record ${job.transferNoticeId} not found`);
   const submission = await submissions.findById(job.submissionId);
-  if (!submission || submission.transferNoticeId !== notice.id) {
+  if (
+    !submission ||
+    submission.organizationId !== job.organizationId ||
+    submission.providerEntityId !== notice.providerEntityId ||
+    submission.transferNoticeId !== notice.id ||
+    submission.kind !== "transfer_notice"
+  ) {
     throw new Error(`claim_submission ${job.submissionId} is not this transfer notice's attempt`);
   }
   if (submission.outcome !== "queued") return; // a relay redelivery of an attempt already settled
@@ -139,13 +149,20 @@ export async function runTransferNoticeSubmit(
       kind: "transfer_notice",
       x12: generated.x12,
       controlNumber: notice.controlNumber,
+      noticeId: notice.id,
+      submissionId: submission.id,
+      attemptIndex: submission.attemptIndex,
+      locationId: notice.locationId ?? null,
     });
   } catch (err) {
-    await fail("failed_portal", `MAC upload failed: ${(err as Error).message}`);
+    await fail(
+      "failed_portal",
+      `configured transfer-notice transport failed: ${(err as Error).message}`,
+    );
     return;
   }
   if (!uploaded.accepted) {
-    await fail("failed_portal", "the MAC portal refused the transfer-notice upload");
+    await fail("failed_portal", "the configured transport refused the transfer-notice upload");
     return;
   }
   const submittedAt = ports.now();

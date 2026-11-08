@@ -220,6 +220,85 @@ describe.skipIf(!DB_URL)(
       expect(rows[0].rolbypassrls).toBe(false);
     });
 
+    it("tenant role cannot enumerate the account-wide Claim.MD cursor or encrypted ERA inbox", async () => {
+      await db.query("SET ROLE claimmd_capture");
+      try {
+        await db.query(`INSERT INTO claimmd_era_stream(account_reference,usage,cursor)
+          VALUES('synthetic-era-rls','test','0') ON CONFLICT DO NOTHING`);
+        const central = await db.query(
+          `SELECT id FROM claimmd_era_stream WHERE account_reference='synthetic-era-rls'`,
+        );
+        expect(central.rows.length).toBeGreaterThan(0);
+      } finally {
+        await db.query("RESET ROLE");
+      }
+      await expect(
+        withOrg(ORG_A, () => db.query("SELECT id FROM claimmd_era_stream")),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () => db.query("SELECT id FROM claimmd_era_inbox")),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () => db.query("SELECT id FROM claimmd_era_resolution")),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () => db.query("SELECT id FROM claimmd_era_resolution_history")),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () => db.query("SELECT id FROM claimmd_era_delivery")),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () => db.query("SELECT id FROM claimmd_era_delivery_history")),
+      ).rejects.toThrow();
+      await db.query("SET ROLE claimmd_capture");
+      try {
+        await db.query("SELECT id FROM claimmd_era_resolution LIMIT 0");
+        await db.query("SELECT id FROM claimmd_era_resolution_history LIMIT 0");
+        await db.query("SELECT id FROM claimmd_era_delivery LIMIT 0");
+        await db.query("SELECT id FROM claimmd_era_delivery_history LIMIT 0");
+      } finally {
+        await db.query("RESET ROLE");
+      }
+    });
+
+    it("Claim.MD staging is visible only in its owner tenant and rejects a cross-tenant write", async () => {
+      const stage = (
+        await db.query(
+          `INSERT INTO claimmd_era_m25_stage(organization_id,provider_entity_id,source_inbox_id,
+        account_reference,usage,era_id,file_index,interchange_control_number,transaction_set_control_number,
+        original_835_digest,source_evidence,state)
+        VALUES($1,gen_random_uuid(),gen_random_uuid(),'synthetic-era-rls','test','77',0,'000000077','0001',
+        repeat('a',64),'{"codes":["EXACT_PAYEE_NPI"]}'::jsonb,'staged') RETURNING id`,
+          [ORG_A],
+        )
+      ).rows[0].id as string;
+      expect(
+        (
+          await withOrg(ORG_A, () =>
+            db.query("SELECT id FROM claimmd_era_m25_stage WHERE id=$1", [stage]),
+          )
+        ).rows,
+      ).toHaveLength(1);
+      expect(
+        (
+          await withOrg(ORG_B, () =>
+            db.query("SELECT id FROM claimmd_era_m25_stage WHERE id=$1", [stage]),
+          )
+        ).rows,
+      ).toHaveLength(0);
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO claimmd_era_m25_stage(organization_id,provider_entity_id,
+        source_inbox_id,account_reference,usage,era_id,file_index,interchange_control_number,transaction_set_control_number,
+        original_835_digest,source_evidence,state) VALUES($1,gen_random_uuid(),gen_random_uuid(),'synthetic-era-rls',
+        'test','78',0,'000000078','0002',repeat('b',64),'{}','staged')`,
+            [ORG_A],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
     it("every M25 RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
       const rls = readFileSync(join(MIGRATIONS_DIR, "0083_remittance_m25_rls.sql"), "utf8");
       const policyBlocks = rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? [];

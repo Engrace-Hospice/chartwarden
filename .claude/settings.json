@@ -39,10 +39,7 @@
       "Edit(/deploy/production/**)",
       "Bash(git push *)",
       "Bash(gh pr merge *)",
-      "Bash(gh secret *)",
-      "Bash(ssh *)",
-      "Bash(scp *)",
-      "Bash(rsync *)"
+      "Bash(gh secret *)"
     ],
     "allow": [
       "Bash(bun run build)",

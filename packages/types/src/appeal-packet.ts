@@ -8,7 +8,7 @@
 // (not @chartwarden/forms) because M25 produces it and M22 consumes it - neither may import the other (ADR-0005).
 import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { DocumentDigest } from "./documents";
+import { type DocumentDigest, INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES } from "./documents";
 
 export const APPEAL_TIERS = [
   "redetermination",
@@ -274,7 +274,8 @@ export type AppealEnclosureRefusal =
   | "not_found"
   | "not_active"
   | "other_patient"
-  | "part2_restricted";
+  | "part2_restricted"
+  | "internal_only";
 
 /**
  * Pure: why `digest` (M22's `DocumentReader.documentMetadata`, or null when the document is not visible to the org)
@@ -283,15 +284,18 @@ export type AppealEnclosureRefusal =
  * a document's status or retention class can change between submit and render).
  *   - a 42 CFR Part 2 record is never named in a payer filing from here (checked first: it wins over every other
  *     reason); there is no consent override on this reference-only path;
+ *   - an INTERNAL-only document (M16's physician condolence letter / discharge summary, ADR-0109) is never enclosed in a payer
+ *     filing: it is the agency's own record, filed on the decedent's chart, and no consent makes it payer-facing;
  *   - ACTIVE or on legal hold is enclosable (a hold blocks destruction, not use); superseded / destroyed is not;
  *   - the document must be linked to the claim's patient (a document with no patient is refused).
  */
 export function appealEnclosureRefusal(
-  digest: Pick<DocumentDigest, "status" | "patientId" | "retentionClass"> | null,
+  digest: Pick<DocumentDigest, "status" | "patientId" | "retentionClass" | "aggregateType"> | null,
   claimPatientId: string | null,
 ): AppealEnclosureRefusal | null {
   if (digest === null) return "not_found";
   if (digest.retentionClass === "compliance_42cfr_part2") return "part2_restricted";
+  if (INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES.has(digest.aggregateType)) return "internal_only";
   if (digest.status !== "active" && digest.status !== "legal_hold") return "not_active";
   if (claimPatientId !== null && (digest.patientId === null || digest.patientId !== claimPatientId))
     return "other_patient";

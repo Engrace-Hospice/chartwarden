@@ -37,7 +37,8 @@ function concretePath(path: string): string {
 
 /** True once nothing is still loading and no error boundary (ours or react-router's default) fired. */
 function settledWithoutCrash(container: HTMLElement): void {
-  expect(container.querySelector("output")).toBeNull(); // no leftover LoadingSpinner
+  // No leftover LoadingSpinner. Its own marker, not any <output>: a screen may keep a persistent live region mounted.
+  expect(container.querySelector("[data-chartwarden-loading-spinner]")).toBeNull();
   // Our ErrorBoundary fallback carries a dedicated marker (NOT a bare role="alert" query or a text
   // match — M1's own /error system page legitimately headlines "Something went wrong" too) and
   // react-router's own default error element has a fixed, distinctive string.
