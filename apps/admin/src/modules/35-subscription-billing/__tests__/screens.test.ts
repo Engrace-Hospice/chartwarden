@@ -19,8 +19,8 @@ describe("M35 §5.2 admin screen registry (M35A-T04)", () => {
     expect(subscriptionAdminScreens.slug).toBe("35-subscription-billing");
   });
 
-  it("registers the fourteen §5.2 screens, each bound to a component", () => {
-    expect(subscriptionAdminScreens.screens).toHaveLength(14);
+  it("registers the fifteen screens (the fourteen §5.2 screens and price plans), each bound to a component", () => {
+    expect(subscriptionAdminScreens.screens).toHaveLength(15);
     for (const s of subscriptionAdminScreens.screens) {
       expect(s.screen, `${s.id} must bind a component`).toBeTruthy();
     }

@@ -1,6 +1,6 @@
 import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/admin/src/modules/35-subscription-billing — M35 §5.2 platform-ops screen registration (ADR-0030).
-// The fourteen ChartWarden-staff subscription-billing screens contributed into the M34 admin shell. Each
+// The ChartWarden-staff subscription-billing screens (the fourteen §5.2 screens plus price plans) contributed into the M34 admin shell. Each
 // `requiredPermission` is a REAL §4.7 M35 `billing_admin.*` key the matching /api/admin route gates on
 // (M35_CONTRIBUTED_PERMISSIONS in @chartwarden/auth) — the server stays the authoritative enforcer; this only
 // gates nav visibility. M34 owns the apps/admin shell; M35 owns this slice and registers into it at
@@ -12,6 +12,9 @@ import type { ComponentType } from "react";
 const Dunning = lazy(() => import("./dunning").then((m) => ({ default: m.Dunning })));
 const PlanEdit = lazy(() => import("./plan-edit").then((m) => ({ default: m.PlanEdit })));
 const PlansList = lazy(() => import("./plans-list").then((m) => ({ default: m.PlansList })));
+const PricingPlans = lazy(() =>
+  import("./pricing-plans").then((m) => ({ default: m.PricingPlans })),
+);
 const Promos = lazy(() => import("./promos").then((m) => ({ default: m.Promos })));
 const RefundApprove = lazy(() =>
   import("./refund-approve").then((m) => ({ default: m.RefundApprove })),
@@ -56,6 +59,15 @@ export const subscriptionAdminScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "plan.admin.write",
       screen: PlanEdit,
+    },
+    {
+      // Tenant price plans (slice 2 pricing): what the onboarding wizard's plan step signs a tenant to.
+      id: "admin.pricing-plans",
+      path: "/admin/pricing-plans",
+      title: "Price plans",
+      navGroup: "Billing",
+      requiredPermission: "plan.admin.read",
+      screen: PricingPlans,
     },
     {
       id: "admin.promos",

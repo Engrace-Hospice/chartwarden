@@ -47,6 +47,7 @@ const SECTIONS: readonly { label: string; screens: readonly Placement[] }[] = [
     label: "Subscription billing",
     screens: [
       { id: "admin.plans", icon: "layout-grid" },
+      { id: "admin.pricing-plans", icon: "dollar" },
       { id: "admin.promos", icon: "target" },
       { id: "admin.subscriptions", icon: "receipt" },
       { id: "admin.refunds", icon: "rotate-ccw" },
