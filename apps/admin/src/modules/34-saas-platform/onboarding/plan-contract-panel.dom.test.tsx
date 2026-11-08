@@ -194,6 +194,42 @@ describe("PlanContractPanel", () => {
     expect(client.POST).not.toHaveBeenCalled();
   });
 
+  it("staff, census and collections parse as plain digits: 1.005, 1e3 and 0x1f price nothing", async () => {
+    const { client } = mount({
+      GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok(NO_CONTRACT) },
+      POST: { [PREVIEW]: () => ok(PREVIEW_RESULT) },
+    });
+    await screen.findByLabelText("Plan");
+    const set = (label: string | RegExp, value: string): void => {
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    };
+    const preview = (): void => {
+      fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+    };
+    set("Average daily census", "14");
+    for (const staff of ["1e1", "0x1f"]) {
+      set("Staff accounts", staff);
+      preview();
+      expect(screen.getByText(/Enter the staff accounts/)).toBeTruthy();
+    }
+    set("Staff accounts", "12");
+    set("Average daily census", "1e3");
+    preview();
+    expect(screen.getByText(/Enter the average daily census/)).toBeTruthy();
+    set("Average daily census", "14");
+    for (const collections of ["1.005", "1e3", "0x1f"]) {
+      set(/^Expected net collections/, collections);
+      preview();
+      expect(screen.getByText(/as dollars, with up to two decimals/)).toBeTruthy();
+    }
+    expect(client.POST).not.toHaveBeenCalled();
+    set(/^Expected net collections/, "0.29");
+    preview();
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    const [, init] = client.POST.mock.calls[0] as [string, { body: Record<string, unknown> }];
+    expect(init.body.expectedNetCollectionsCents).toBe(29); // 0.29 * 100 is 28.999… as a float
+  });
+
   it("billing through ChartWarden needs the expected collections; a tenant billing outside need not give any", async () => {
     const { client } = mount({
       GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok(NO_CONTRACT) },

@@ -10,6 +10,8 @@ import {
   REASON_RULES,
   SelectField,
   TextField,
+  parsePriceCents,
+  parseWholeNumber,
   useApiClient,
 } from "@chartwarden/ui";
 import { useState } from "react";
@@ -204,24 +206,26 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
   const plan = offered.find((p) => p.slug === (planSlug || offered[0]?.slug));
 
   async function runPreview(): Promise<void> {
-    // A blank box is not zero: Number("") is 0, which would price a tenant with no staff.
-    const asNumber = (text: string): number => (text.trim() === "" ? Number.NaN : Number(text));
-    const staffCount = asNumber(staff);
+    // A blank box is not zero (Number("") is 0), and "1e3" or "0x1f" is not a census: plain digits and a decimal point only.
+    const asNumber = (text: string): number =>
+      /^\d+(\.\d+)?$/.test(text.trim()) ? Number(text.trim()) : Number.NaN;
+    const staffCount = parseWholeNumber(staff);
     const averageDailyCensus = asNumber(census);
-    const dollars = collections.trim() === "" ? 0 : Number(collections);
+    // String math, never a float multiply ("1.005" or "1e3" is not an amount an operator meant).
+    const collectionsCents = collections.trim() === "" ? 0 : parsePriceCents(collections);
     const problem =
-      !Number.isInteger(staffCount) || staffCount < 0
+      staffCount === null
         ? "Enter the staff accounts (a whole number)."
         : !Number.isFinite(averageDailyCensus) || averageDailyCensus < 0
           ? "Enter the average daily census."
           : mode !== "none" && collections.trim() === ""
             ? "Enter the expected net collections: the billing percentage is charged on them."
-            : !Number.isFinite(dollars) || dollars < 0
-              ? "Enter the expected net collections as dollars."
+            : collectionsCents === null
+              ? "Enter the expected net collections as dollars, with up to two decimals."
               : !plan
                 ? "Pick a plan."
                 : null;
-    if (problem !== null || !plan) {
+    if (problem !== null || !plan || staffCount === null || collectionsCents === null) {
       setInputError(problem);
       return;
     }
@@ -230,7 +234,7 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
       planId: plan.id,
       staffCount,
       averageDailyCensus,
-      expectedNetCollectionsCents: Math.round(dollars * 100),
+      expectedNetCollectionsCents: collectionsCents,
       billingServiceMode: mode,
     };
     const outcome = await previewWrite.run(JSON.stringify(body), () =>

@@ -7,12 +7,14 @@ import {
   focusFirstInvalid,
   interactiveRowProps,
   isValid,
-  stashStepUpDraft,
+  parsePriceCents,
+  parseWholeNumber,
+  stashStepUpMemoryDraft,
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
   useStaleSelection,
-  useStepUpDraft,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Plans list + create (`/admin/plans`, plan.admin.read).
@@ -47,33 +49,6 @@ const EMPTY_FORM = {
 };
 type PlanForm = typeof EMPTY_FORM;
 
-/** Plain digits with at most two decimals: no sign, exponent, hex or binary ("1e3", "0x1f" are not prices). */
-const DECIMAL_SHAPE = /^\d+(\.\d{1,2})?$/;
-
-/**
- * A typed decimal ("49", "4.5", "19.99") to a whole count of hundredths, by string math (a float multiply rounds "1.005" and
- * "0.145" the wrong way); null for anything else, more than two decimals included, or above `max`.
- */
-export function parseHundredths(raw: string, max: number = Number.MAX_SAFE_INTEGER): number | null {
-  const text = raw.trim();
-  if (!DECIMAL_SHAPE.test(text)) return null;
-  const [whole = "0", fraction = ""] = text.split(".");
-  const value = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
-  return Number.isSafeInteger(value) && value <= max ? value : null;
-}
-
-/** Dollars typed by the operator to integer cents; null unless it is 0 or more with at most two decimals ("abc" is not a $0 plan). */
-export const parsePriceCents = (raw: string, maxCents?: number): number | null =>
-  parseHundredths(raw, maxCents);
-
-/** Whole trial days >= 0; null for anything else. */
-export function parseTrialDays(raw: string): number | null {
-  const text = raw.trim();
-  if (text === "") return null;
-  const days = Number(text);
-  return Number.isInteger(days) && days >= 0 ? days : null;
-}
-
 const SLUG_SHAPE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const PLAN_DRAFT_KEY = "plan-create";
 
@@ -88,7 +63,7 @@ export function planFormErrors(form: PlanForm): FieldErrors<keyof PlanForm> {
   if (form.basePrice.trim() === "") errors.basePrice = "Enter a price in dollars, e.g. 49.00.";
   else if (parsePriceCents(form.basePrice) === null)
     errors.basePrice = "Enter a number of dollars, 0 or more, with up to two decimals, e.g. 49.00.";
-  if (parseTrialDays(form.trialDays) === null)
+  if (parseWholeNumber(form.trialDays) === null)
     errors.trialDays = "Enter a whole number of days, 0 or more.";
   return errors;
 }
@@ -112,7 +87,7 @@ export function PlansList(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   // A step-up refusal sends the operator to /step-up and back; the typed plan is restored and the drawer reopens.
-  const restored = useStepUpDraft<PlanForm>(PLAN_DRAFT_KEY);
+  const restored = useStepUpMemoryDraft<PlanForm>(PLAN_DRAFT_KEY);
   const [showCreate, setShowCreate] = useState(restored !== undefined);
   const [form, setForm] = useState<PlanForm>(restored ?? EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -142,7 +117,7 @@ export function PlansList(): JSX.Element {
 
   const create = useCallback(async () => {
     const basePriceCents = parsePriceCents(form.basePrice);
-    const trialPeriodDays = parseTrialDays(form.trialDays);
+    const trialPeriodDays = parseWholeNumber(form.trialDays);
     if (!isValid(planFormErrors(form)) || basePriceCents === null || trialPeriodDays === null)
       return;
     setSaving(true);
@@ -199,7 +174,10 @@ export function PlansList(): JSX.Element {
           </div>
         </header>
         {outcome ? (
-          <OutcomeBanner {...outcome} onReverify={() => stashStepUpDraft(PLAN_DRAFT_KEY, form)} />
+          <OutcomeBanner
+            {...outcome}
+            onReverify={() => stashStepUpMemoryDraft(PLAN_DRAFT_KEY, form)}
+          />
         ) : null}
         {loading ? (
           <StateLoading label="Loading plans…" />

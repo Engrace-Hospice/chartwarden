@@ -3,9 +3,9 @@ import {
   Panel,
   TextField,
   focusFirstInvalid,
-  stashStepUpDraft,
+  stashStepUpMemoryDraft,
   useApiClient,
-  useStepUpDraft,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Apply promo to a subscription
 // (`/admin/subscriptions/:id/apply_promo`, promo.admin.apply). POST /api/admin/subscriptions/:id/apply_promo
@@ -25,7 +25,7 @@ export function SubscriptionApplyPromo(): JSX.Element {
   const { gate, retry } = useSubscriptionGate(id);
   // A step-up refusal sends the operator to /step-up and back; the typed code is restored.
   const draftKey = `subscription-apply-promo:${id ?? ""}`;
-  const restored = useStepUpDraft<string>(draftKey);
+  const restored = useStepUpMemoryDraft<string>(draftKey);
   const [code, setCode] = useState(restored ?? "");
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -91,7 +91,10 @@ export function SubscriptionApplyPromo(): JSX.Element {
                   placeholder="e.g. LAUNCH25"
                 />
                 {outcome ? (
-                  <OutcomeBanner {...outcome} onReverify={() => stashStepUpDraft(draftKey, code)} />
+                  <OutcomeBanner
+                    {...outcome}
+                    onReverify={() => stashStepUpMemoryDraft(draftKey, code)}
+                  />
                 ) : null}
                 <div className="wx-action-row is-end">
                   <Button tone="tertiary" onClick={() => navigate(`/admin/subscriptions/${id}`)}>

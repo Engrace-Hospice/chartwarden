@@ -7,9 +7,10 @@ import {
   TextField,
   focusFirstInvalid,
   isValid,
-  stashStepUpDraft,
+  parsePriceCents,
+  stashStepUpMemoryDraft,
   useApiClient,
-  useStepUpDraft,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 New refund request (`/admin/refunds/new`,
 // refund.request). POST /api/admin/refunds (step-up + Idempotency-Key). The §4.8 four-eyes rule keeps
@@ -44,10 +45,10 @@ export function refundFormErrors(form: RefundForm): FieldErrors<keyof RefundForm
   const invoice = form.invoiceId.trim();
   if (invoice === "") errors.invoiceId = "Enter the invoice id.";
   else if (!INVOICE_UUID.test(invoice)) errors.invoiceId = "The invoice id is a UUID, e.g. 3f2b…";
-  const amount = Number(form.amount);
+  const amount = parsePriceCents(form.amount);
   if (form.amount.trim() === "") errors.amount = "Enter the refund amount in dollars.";
-  else if (!Number.isFinite(amount) || amount <= 0)
-    errors.amount = "Enter a dollar amount greater than 0, e.g. 25.00.";
+  else if (amount === null || amount <= 0)
+    errors.amount = "Enter a dollar amount greater than 0, with up to two decimals, e.g. 25.00.";
   const length = form.detail.trim().length;
   if (length < MIN_REASON)
     errors.detail = `Describe the reason in at least ${MIN_REASON} characters (${length} so far).`;
@@ -58,7 +59,7 @@ export function RefundNew(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   // A step-up refusal sends the operator to /step-up and back; the typed request is restored.
-  const restored = useStepUpDraft<RefundForm>(REFUND_DRAFT_KEY);
+  const restored = useStepUpMemoryDraft<RefundForm>(REFUND_DRAFT_KEY);
   const [form, setForm] = useState<RefundForm>(
     () =>
       restored ?? {
@@ -88,7 +89,8 @@ export function RefundNew(): JSX.Element {
     const res = await client.POST("/api/admin/refunds", {
       body: {
         invoiceId: form.invoiceId.trim(),
-        amountCents: Math.round(Number(form.amount) * 100),
+        // refundFormErrors passed, so the amount parses (string math: "1.005" or "1e3" never reach here)
+        amountCents: parsePriceCents(form.amount) ?? 0,
         kind: form.kind as "full" | "partial" | "credit_only",
         reasonCode: form.reasonCode as
           | "duplicate"
@@ -187,7 +189,7 @@ export function RefundNew(): JSX.Element {
               {outcome ? (
                 <OutcomeBanner
                   {...outcome}
-                  onReverify={() => stashStepUpDraft(REFUND_DRAFT_KEY, form)}
+                  onReverify={() => stashStepUpMemoryDraft(REFUND_DRAFT_KEY, form)}
                 />
               ) : null}
               <div className="wx-action-row is-end">
