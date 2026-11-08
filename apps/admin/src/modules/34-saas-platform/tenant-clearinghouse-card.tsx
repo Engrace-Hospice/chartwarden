@@ -8,6 +8,7 @@ import {
   LoadingSpinner,
   StatusPill,
   type StatusTone,
+  peekStepUpMemoryDraft,
   useApiClient,
 } from "@chartwarden/ui";
 import { useState } from "react";
@@ -17,7 +18,7 @@ import { NoticeFilingsDrawer } from "./notice-filings-drawer";
 import { VerifyBaa } from "./onboarding/clearinghouse-baa-verify";
 import { MODE_LABEL, VENDOR_LABEL, isTransmitting } from "./onboarding/clearinghouse-model";
 import type { ClearinghouseView } from "./onboarding/clearinghouse-model";
-import { ReleaseCredentials } from "./onboarding/clearinghouse-release";
+import { ReleaseCredentials, releaseDraftKey } from "./onboarding/clearinghouse-release";
 import { SwitchToVendor } from "./onboarding/clearinghouse-switch";
 import { ContractModeBanner } from "./onboarding/contract-mode-banner";
 import { ModeUnconfirmedNotice } from "./onboarding/mode-unconfirmed-notice";
@@ -38,6 +39,8 @@ function Body({
 }: { orgSlug: string; tenantStatus: string; onOpenFilings: () => void }): JSX.Element {
   const client = useApiClient();
   const [modeUnconfirmed, setModeUnconfirmed] = useState(false);
+  // What the last release freed, reported outside the actions row; any next action on the card clears it.
+  const [released, setReleased] = useState<number | null>(null);
   const load = useLoad<ClearinghouseView>(`hub-clearinghouse:${orgSlug}`, () =>
     client.GET("/api/v1/platform/tenants/{orgSlug}/clearinghouse", {
       params: { path: { orgSlug } },
@@ -113,7 +116,7 @@ function Body({
           ChartWarden transmits nothing for this tenant: it files its own notices and claims.
         </p>
       ) : null}
-      <div className="wx-drawer-actions">
+      <div className="wx-drawer-actions" onClickCapture={() => setReleased(null)}>
         <SwitchToVendor
           orgSlug={orgSlug}
           view={view}
@@ -132,11 +135,19 @@ function Body({
             onVerified={() => load.reload(true)}
           />
         ) : null}
-        <ReleaseCredentials orgSlug={orgSlug} view={view} />
+        <ReleaseCredentials orgSlug={orgSlug} view={view} onReleased={setReleased} />
         <Button tone="secondary" size="sm" onClick={onOpenFilings}>
           Notices filed outside ChartWarden
         </Button>
       </div>
+      {/* always mounted, so a screen reader announces the text when it appears */}
+      <p className="wx-row-sub" role="status" aria-live="polite">
+        {released === null
+          ? ""
+          : released === 0
+            ? "This tenant held no earlier credentials."
+            : `Released ${released} earlier credential${released === 1 ? "" : "s"}.`}
+      </p>
     </>
   );
 }
@@ -145,7 +156,10 @@ export function TenantClearinghouseCard({
   orgSlug,
   tenantStatus,
 }: { orgSlug: string; tenantStatus: string }): JSX.Element {
-  const [shown, setShown] = useState(false);
+  // A Re-verify from the release dialog comes back to the card open (the dialog reopens with the typed reason).
+  const [shown, setShown] = useState(
+    () => peekStepUpMemoryDraft(releaseDraftKey(orgSlug)) !== undefined,
+  );
   const [filingsOpen, setFilingsOpen] = useState(false);
   return (
     <>

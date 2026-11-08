@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { VENDOR_LABEL, clearinghouseActions } from "./clearinghouse-model";
 import type { ClearinghouseView } from "./clearinghouse-model";
+import { ONBOARDING_KEYS, useCan } from "./permissions";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { useOpsWrite } from "./use-ops-write";
 
@@ -28,6 +29,7 @@ export function VerifyBaa({
 }): JSX.Element | null {
   const client = useApiClient();
   const write = useOpsWrite();
+  const mayVerify = useCan(ONBOARDING_KEYS.clearinghouseVerifyBaa);
   const [open, setOpen] = useState(false);
   const [stale, setStale] = useState(false);
   const baa = view.baa && !view.baa.verified ? view.baa : null;
@@ -62,7 +64,7 @@ export function VerifyBaa({
     }
   }
 
-  if (!clearinghouseActions(view).canVerifyBaa) return null;
+  if (!clearinghouseActions(view).canVerifyBaa || !mayVerify) return null;
   return (
     <>
       <Button

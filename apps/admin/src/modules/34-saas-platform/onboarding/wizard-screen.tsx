@@ -17,6 +17,7 @@ import { ProvisioningCard } from "../provisioning-card";
 import { statusLabel } from "../saas-status";
 import { StepTitlesContext } from "./failure-notice";
 import { panelFor } from "./panels";
+import { usePermissions } from "./permissions";
 import { StaleNotice } from "./stale-notice";
 import { useLoad } from "./use-load";
 import {
@@ -44,6 +45,8 @@ export function TenantOnboardingWizard(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const { orgSlug = "", stepKey } = useParams<{ orgSlug: string; stepKey?: string }>();
+  // what the operator may write (fail closed while the session loads)
+  const held = usePermissions();
   const wizard = useLoad<WizardView>(`wizard:${orgSlug}`, () =>
     client.GET("/api/v1/platform/tenants/{orgSlug}/onboarding", { params: { path: { orgSlug } } }),
   );
@@ -143,7 +146,7 @@ export function TenantOnboardingWizard(): JSX.Element {
           {step && Panel ? (
             <Panel
               key={step.key}
-              ctx={{ orgSlug, view, step, actions: stepActionsOf(step, view), refresh }}
+              ctx={{ orgSlug, view, step, actions: stepActionsOf(step, view, held), refresh }}
             />
           ) : stepKey ? (
             <EmptyState

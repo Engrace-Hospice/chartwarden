@@ -15,6 +15,7 @@ import {
 } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
+import { ONBOARDING_KEYS, useCan } from "./onboarding/permissions";
 import { RecordSaveDialog } from "./onboarding/record-save-dialog";
 import { StaleNotice } from "./onboarding/stale-notice";
 import { useLoad } from "./onboarding/use-load";
@@ -76,6 +77,7 @@ export function NoticeFilingsDrawer({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const write = useOpsWrite();
+  const mayWithdraw = useCan(ONBOARDING_KEYS.noticeWithdraw);
 
   const items = list.data?.items ?? [];
   const target =
@@ -191,18 +193,20 @@ export function NoticeFilingsDrawer({
                     <BreachCell filing={f} />
                   </td>
                   <td>
-                    <Button
-                      size="sm"
-                      tone="tertiary"
-                      aria-label={`Withdraw the ${KIND_LABEL[f.noticeKind]} record ${f.noticeId.slice(0, 8)}, filed on ${filedOn(f)}`}
-                      onClick={() => {
-                        write.clear();
-                        setStale(false);
-                        setSelectedId(f.noticeId);
-                      }}
-                    >
-                      Withdraw
-                    </Button>
+                    {mayWithdraw ? (
+                      <Button
+                        size="sm"
+                        tone="tertiary"
+                        aria-label={`Withdraw the ${KIND_LABEL[f.noticeKind]} record ${f.noticeId.slice(0, 8)}, filed on ${filedOn(f)}`}
+                        onClick={() => {
+                          write.clear();
+                          setStale(false);
+                          setSelectedId(f.noticeId);
+                        }}
+                      >
+                        Withdraw
+                      </Button>
+                    ) : null}
                   </td>
                 </tr>
               ))}

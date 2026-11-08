@@ -1,6 +1,7 @@
 // apps/admin/src/modules/34-saas-platform/onboarding — what the operator is told for each code the wizard's writes answer with.
 // The server's sentence is the fallback (the envelope never carries record content); these say what to DO next. Authorization-class
 // codes (step-up, forbidden) are not here: `describeOpsError` gives them their own kinds.
+import { CLEARINGHOUSE_RELEASE_QUIET_DAYS } from "@chartwarden/types";
 import type { OpsErrorCopy } from "@chartwarden/ui";
 
 export const WIZARD_ERROR_COPY: OpsErrorCopy = {
@@ -45,6 +46,9 @@ export const WIZARD_ERROR_COPY: OpsErrorCopy = {
   INVALID_DISPLAY_NAME: "That display name is not valid.",
   IF_MATCH_REQUIRED:
     "This record changed while you were looking at it. It has been reloaded. Review what it says now and enter your change again.",
+  CLEARINGHOUSE_RESPONSES_PENDING: `This tenant may still receive vendor responses on its earlier keys, so they stay reserved. Try again once it has had no production claim in flight and none sent for ${CLEARINGHOUSE_RELEASE_QUIET_DAYS} days.`,
+  CLEARINGHOUSE_CREDENTIAL_LIMIT:
+    "This tenant holds the most earlier clearinghouse keys it may keep. Release the ones it no longer uses at the vendor, then save the new key.",
   VERSION_CONFLICT:
     "This record changed since you opened it. It has been reloaded. Review what it says now and enter your change again.",
 };

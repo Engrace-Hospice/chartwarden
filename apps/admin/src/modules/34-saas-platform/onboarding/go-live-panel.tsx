@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import type { PanelContext } from "./panel-types";
+import { ONBOARDING_KEYS, useCan } from "./permissions";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { StepFrame } from "./step-frame";
 import { useOpsWrite } from "./use-ops-write";
@@ -50,6 +51,7 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
     setDone((d) => (d && !d.left && goLive.state !== d.from ? { ...d, left: true } : d));
   }, [goLive.state]);
   const write = useOpsWrite();
+  const mayDecide = useCan(ONBOARDING_KEYS.goLiveApprove);
 
   const open = view.steps.filter(
     (s) => s.isCanonical && !s.optional && s.key !== GO_LIVE_STEP_KEY && !isSettled(s),
@@ -179,26 +181,30 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
               A different operator approves than the one who recorded the BAA. Approving re-checks
               every activation guard and opens the tenant's organization.
             </InlineAlert>
-            <div className="wx-drawer-actions">
-              <Button
-                disabled={expired}
-                onClick={() => {
-                  write.clear();
-                  setDialog("approve");
-                }}
-              >
-                Approve go-live
-              </Button>
-              <Button
-                tone="secondary"
-                onClick={() => {
-                  write.clear();
-                  setDialog("revoke");
-                }}
-              >
-                Revoke attestation
-              </Button>
-            </div>
+            {mayDecide ? (
+              <div className="wx-drawer-actions">
+                <Button
+                  disabled={expired}
+                  onClick={() => {
+                    write.clear();
+                    setDialog("approve");
+                  }}
+                >
+                  Approve go-live
+                </Button>
+                <Button
+                  tone="secondary"
+                  onClick={() => {
+                    write.clear();
+                    setDialog("revoke");
+                  }}
+                >
+                  Revoke attestation
+                </Button>
+              </div>
+            ) : (
+              <p className="wx-row-sub">Your role cannot approve or revoke a go-live.</p>
+            )}
           </>
         ) : null}
 

@@ -3,7 +3,7 @@
 // recorded as filed outside ChartWarden. Read on request, like the contract: each read of a tenant's billing setup is audited.
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
-import { ok, refused, renderAt, stubClient } from "./onboarding/test-support";
+import { ONBOARDING_OPERATOR, ok, refused, renderAt, stubClient } from "./onboarding/test-support";
 import { TenantClearinghouseCard } from "./tenant-clearinghouse-card";
 
 const CH = "/api/v1/platform/tenants/{orgSlug}/clearinghouse";
@@ -144,6 +144,26 @@ describe("TenantClearinghouseCard", () => {
       baa: { ...CLAIMMD.baa, recordedAt: RECORDED, verified: null, ...over },
     });
     const POST = [BAA_VERIFY];
+
+    it("is not offered to an operator without the BAA-verify key (fail closed)", async () => {
+      const client = stubClient({
+        GET: { [CH]: () => ok(withBaa()), [SUBSCRIPTION]: () => ok({ contract: null }) },
+      });
+      renderAt(
+        "/x",
+        [
+          {
+            path: "/x",
+            element: <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus="active" />,
+          },
+        ],
+        client,
+        { ...ONBOARDING_OPERATOR, permissions: [] },
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+      await screen.findByRole("button", { name: "Notices filed outside ChartWarden" });
+      expect(screen.queryByRole("button", { name: "Verify the vendor BAA" })).toBeNull();
+    });
 
     it("offers it only for a recorded BAA that is not verified yet, and pins the call to the record that was read", async () => {
       const client = stubClient({
@@ -291,18 +311,133 @@ describe("TenantClearinghouseCard", () => {
       expect(await screen.findByText("Released 2 earlier credentials.")).toBeTruthy();
     });
 
-    it("shows the server's refusal while vendor responses may still arrive, and frees nothing", async () => {
-      mountWith(CLAIMMD, () =>
-        refused(409, "CLEARINGHOUSE_RESPONSES_PENDING", "vendor responses may still arrive"),
-      );
+    const openRelease = async (reason = "Retire the rotated key, ticket OPS-78") => {
       fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
       fireEvent.click(await screen.findByRole("button", { name: "Release earlier credentials" }));
-      fireEvent.change(screen.getByLabelText(/^Reason/), {
-        target: { value: "Retire the rotated key, ticket OPS-78" },
-      });
+      fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: reason } });
+    };
+    const confirm = () =>
       fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Release" }));
-      expect(await screen.findByText(/vendor responses may still arrive/)).toBeTruthy();
+
+    it("shows the server's refusal in an alert, keeps the dialog open and usable, and frees nothing", async () => {
+      mountWith(CLAIMMD, () =>
+        refused(
+          409,
+          "CLEARINGHOUSE_RESPONSES_PENDING",
+          "server sentence not shown to the operator",
+        ),
+      );
+      await openRelease();
+      confirm();
+      const alert = await within(screen.getByRole("dialog")).findByRole("alert");
+      expect(alert.textContent).toMatch(/Try again once it has had no production claim in flight/);
+      const button = within(screen.getByRole("dialog")).getByRole("button", { name: "Release" });
+      await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
       expect(screen.queryByText(/^Released/)).toBeNull();
+    });
+
+    it("a step-up refusal offers Re-verify and keeps the dialog open; the return reopens the card and the dialog with the reason", async () => {
+      mountWith(CLAIMMD, () => refused(403, "STEP_UP_REQUIRED", "step up"));
+      await openRelease("Ticket OPS-79 retire the old key");
+      confirm();
+      fireEvent.click(
+        await within(screen.getByRole("dialog")).findByRole("link", { name: "Re-verify" }),
+      );
+      expect(await screen.findByText("step-up page")).toBeTruthy();
+      cleanup();
+      mountWith(CLAIMMD, () => ok({ released: 1, config: CLAIMMD }));
+      const back = within(await screen.findByRole("dialog"));
+      expect((back.getByLabelText(/^Reason/) as HTMLTextAreaElement).value).toBe(
+        "Ticket OPS-79 retire the old key",
+      );
+    });
+
+    it("a dropped connection says so and leaves the dialog usable", async () => {
+      mountWith(CLAIMMD, () => {
+        throw new TypeError("network down");
+      });
+      await openRelease();
+      confirm();
+      expect(await within(screen.getByRole("dialog")).findByText(/reach the server/i)).toBeTruthy();
+      const button = within(screen.getByRole("dialog")).getByRole("button", { name: "Release" });
+      await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    });
+
+    it("a reason that is too short sends nothing; Cancel closes the dialog", async () => {
+      const client = mountWith(CLAIMMD, () => ok({ released: 1, config: CLAIMMD }));
+      await openRelease("short");
+      confirm();
+      expect(client.POST).not.toHaveBeenCalled();
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    });
+
+    it("a double submit sends one request, and one freed credential is reported in the singular outside the actions", async () => {
+      let answer: (v: unknown) => void = () => undefined;
+      const client = mountWith(
+        CLAIMMD,
+        () =>
+          new Promise((r) => {
+            answer = r;
+          }),
+      );
+      await openRelease();
+      const button = within(screen.getByRole("dialog")).getByRole("button", { name: "Release" });
+      fireEvent.click(button);
+      fireEvent.click(button);
+      await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+      answer(ok({ released: 1, config: CLAIMMD }));
+      const status = await screen.findByText("Released 1 earlier credential.");
+      expect(status.getAttribute("role")).toBe("status");
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      // the report is not inside the actions row, and the next action clears it
+      expect(status.closest(".wx-drawer-actions")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Notices filed outside ChartWarden" }));
+      expect(status.textContent).toBe("");
+    });
+
+    it("says when nothing was freed", async () => {
+      mountWith(CLAIMMD, () => ok({ released: 0, config: CLAIMMD }));
+      await openRelease();
+      confirm();
+      expect(await screen.findByText("This tenant held no earlier credentials.")).toBeTruthy();
+    });
+
+    it("is not offered to an operator without the release key, nor on the platform's own binding", async () => {
+      const client = stubClient({
+        GET: { [CH]: () => ok(CLAIMMD), [SUBSCRIPTION]: () => ok({ contract: null }) },
+      });
+      const element = <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus="active" />;
+      renderAt("/x", [{ path: "/x", element }], client, {
+        ...ONBOARDING_OPERATOR,
+        permissions:
+          ONBOARDING_OPERATOR.permissions?.filter(
+            (k) => k !== "tenant_clearinghouse.release_credential_platform",
+          ) ?? [],
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+      await screen.findByRole("button", { name: "Notices filed outside ChartWarden" });
+      expect(screen.queryByRole("button", { name: "Release earlier credentials" })).toBeNull();
+      cleanup();
+      renderAt("/x", [{ path: "/x", element }], client, null);
+      fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+      await screen.findByRole("button", { name: "Notices filed outside ChartWarden" });
+      expect(screen.queryByRole("button", { name: "Release earlier credentials" })).toBeNull(); // fail closed
+      cleanup();
+      mountWith({ ...CLAIMMD, source: "platform_env" }, () => ok({ released: 0, config: CLAIMMD }));
+      fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+      await screen.findByRole("button", { name: "Notices filed outside ChartWarden" });
+      expect(screen.queryByRole("button", { name: "Release earlier credentials" })).toBeNull();
+    });
+
+    it("the dialog warns what a release cannot undo and asks for a ticket reference", async () => {
+      mountWith(CLAIMMD, () => ok({ released: 0, config: CLAIMMD }));
+      await openRelease();
+      const text = screen.getByRole("dialog").textContent ?? "";
+      expect(text).toMatch(/stopped using at the vendor/);
+      expect(text).toMatch(/cannot use it again/);
+      expect(text).toMatch(/in flight or sent one in the last 90 days/);
+      expect(text).toMatch(/ticket reference/);
     });
 
     it("offers nothing for a tenant that never chose a clearinghouse", async () => {

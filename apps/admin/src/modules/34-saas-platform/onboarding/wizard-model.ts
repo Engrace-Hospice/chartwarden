@@ -9,6 +9,20 @@ export type WizardView = WizardResponse;
 export type WizardStep = WizardResponse["steps"][number];
 export type WizardOwner = WizardStep["owner"];
 
+/** The keys the platform onboarding routes require (onboarding-data-routes.ts, onboarding-wizard-routes.ts). */
+export const ONBOARDING_KEYS = {
+  manageSteps: "onboarding.manage_platform",
+  skipStep: "onboarding.skip",
+  onboardingData: "tenant_onboarding_data.write_platform",
+  clearinghouseWrite: "tenant_clearinghouse.write_platform",
+  clearinghouseVerifyBaa: "tenant_clearinghouse.verify_baa_platform",
+  clearinghouseRelease: "tenant_clearinghouse.release_credential_platform",
+  noticeWithdraw: "tenant_notice_filing.withdraw_platform",
+  baaDocumentUpload: "tenant_baa_document.upload_platform",
+  pricingWrite: "subscription.onboard_platform",
+  goLiveApprove: "go_live.approve_platform",
+} as const;
+
 /** The step the platform settles through the two-party approval: never attested, skipped or re-opened by hand. */
 export const GO_LIVE_STEP_KEY = "go_live_checklist_complete";
 
@@ -91,24 +105,50 @@ function readOnlyReasonOf(step: WizardStep, view: WizardView): string | null {
   return null;
 }
 
-export function stepActionsOf(step: WizardStep, view: WizardView): StepActions {
-  const readOnlyReason = readOnlyReasonOf(step, view);
+/**
+ * The key a step's own data writes need (its panel's save), where the step has a panel that writes. A step whose key the operator does
+ * not hold is read-only for them; the frame's attest / re-open need `onboarding.manage_platform`, skip `onboarding.skip`.
+ */
+const STEP_WRITE_KEY: Readonly<Record<string, string>> = {
+  account_created: ONBOARDING_KEYS.manageSteps,
+  compliance_officer_assigned: ONBOARDING_KEYS.manageSteps,
+  plan_contract: ONBOARDING_KEYS.pricingWrite,
+  clearinghouse_selected: ONBOARDING_KEYS.clearinghouseWrite,
+  baa_executed: ONBOARDING_KEYS.baaDocumentUpload,
+  ccn_registered: ONBOARDING_KEYS.onboardingData,
+  locations_seeded: ONBOARDING_KEYS.onboardingData,
+  mac_configured: ONBOARDING_KEYS.onboardingData,
+  [GO_LIVE_STEP_KEY]: ONBOARDING_KEYS.goLiveApprove,
+};
+const NO_ROLE = "Your role cannot change this step. A ChartWarden operator who holds it can.";
+
+/** What the operator may do on a step: the step's state, then the keys `held` (the session's; fail closed when it has none). */
+export function stepActionsOf(
+  step: WizardStep,
+  view: WizardView,
+  held: ReadonlySet<string>,
+): StepActions {
+  const stateReason = readOnlyReasonOf(step, view);
+  const dataKey = STEP_WRITE_KEY[step.key];
+  const readOnlyReason =
+    stateReason ?? (dataKey !== undefined && !held.has(dataKey) ? NO_ROLE : null);
   if (readOnlyReason !== null) return { ...NONE, reopenBlockedBy: null, readOnlyReason };
   if (step.key === GO_LIVE_STEP_KEY)
     return { ...NONE, reopenBlockedBy: null, readOnlyReason: null };
+  const manage = held.has(ONBOARDING_KEYS.manageSteps);
   if (isSettled(step)) {
     const pending = view.goLive.state === "awaiting_approval";
     return {
       ...NONE,
-      canReopen: !pending,
+      canReopen: manage && !pending,
       reopenBlockedBy: pending ? "go_live_pending" : null,
       readOnlyReason: null,
     };
   }
   return {
-    canAttest: step.completionMode !== "auto",
+    canAttest: manage && step.completionMode !== "auto",
     // The server owns the skippable list and refuses any other skip; the view carries it per step.
-    canSkip: step.skippable,
+    canSkip: step.skippable && held.has(ONBOARDING_KEYS.skipStep),
     canReopen: false,
     reopenBlockedBy: null,
     readOnlyReason: null,

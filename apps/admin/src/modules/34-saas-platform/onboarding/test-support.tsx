@@ -5,7 +5,7 @@ import type { ReactElement } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { vi } from "vitest";
 import { ActorSessionProvider, type Session } from "../../../shell/session";
-import type { WizardStep, WizardView } from "./wizard-model";
+import { ONBOARDING_KEYS, type WizardStep, type WizardView } from "./wizard-model";
 
 const SERVER_SKIPPABLE: ReadonlySet<string> = new Set([
   "mac_configured",
@@ -139,12 +139,27 @@ function Where(): ReactElement {
 }
 
 /** Renders `element` at `routes` (a list of route patterns), starting at `url`, with the stub client and a location probe. */
+/** Every onboarding write key: the default operator of a panel test may do everything (a test narrows it to prove a gate). */
+export const ALL_ONBOARDING_KEYS: ReadonlySet<string> = new Set(Object.values(ONBOARDING_KEYS));
+
+/** The default signed-in operator of these tests. */
+export const ONBOARDING_OPERATOR: Session = {
+  userId: "u-operator",
+  organizationId: "o-platform",
+  membershipId: "m-operator",
+  roles: ["platform_ops"],
+  permissions: [...ALL_ONBOARDING_KEYS],
+};
+
 export function renderAt(
   url: string,
   routes: { path: string; element: ReactElement }[],
   client: StubClient,
-  /** The signed-in operator (permission-gated affordances); none by default. */
-  session?: Session,
+  /**
+   * The signed-in operator (permission-gated affordances). By default a platform operator holding every onboarding write key (and
+   * nothing else, so a plan.admin.* gate stays closed); `null` renders with no session at all, to prove a gate fails closed.
+   */
+  session: Session | null = ONBOARDING_OPERATOR,
 ) {
   const routed = (
     <>
@@ -177,5 +192,11 @@ export function panelCtx(
   refresh = vi.fn(async () => undefined),
 ): PanelContext {
   const step = view.steps.find((s) => s.key === stepKey) as WizardStep;
-  return { orgSlug: ORG_SLUG, view, step, actions: stepActionsOf(step, view), refresh };
+  return {
+    orgSlug: ORG_SLUG,
+    view,
+    step,
+    actions: stepActionsOf(step, view, ALL_ONBOARDING_KEYS),
+    refresh,
+  };
 }

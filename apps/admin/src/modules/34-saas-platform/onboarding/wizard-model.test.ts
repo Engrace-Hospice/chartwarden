@@ -3,6 +3,7 @@
 // operator is not shown a button the server is certain to refuse.
 import { describe, expect, it } from "vitest";
 import {
+  ONBOARDING_KEYS,
   type WizardStep,
   type WizardView,
   defaultStepKey,
@@ -10,6 +11,8 @@ import {
   railItemsOf,
   stepActionsOf,
 } from "./wizard-model";
+
+const ALL: ReadonlySet<string> = new Set(Object.values(ONBOARDING_KEYS));
 
 const step = (key: string, sequence: number, over: Partial<WizardStep> = {}): WizardStep => ({
   id: `task-${key}`,
@@ -131,9 +134,25 @@ describe("railItemsOf", () => {
 });
 
 describe("stepActionsOf", () => {
+  it("fails closed on the operator's keys: no manage key, no attest; no data key, the step is read-only for them", () => {
+    const v = view(STEPS());
+    const open = v.steps[1] as WizardStep;
+    const noManage = new Set([...ALL].filter((k) => k !== ONBOARDING_KEYS.manageSteps));
+    expect(stepActionsOf(open, v, noManage).canAttest).toBe(false);
+    expect(stepActionsOf(open, v, new Set()).readOnlyReason).toMatch(
+      /Your role cannot change this step/,
+    );
+    const data = { ...open, key: "locations_seeded" } as WizardStep;
+    const noData = new Set([...ALL].filter((k) => k !== ONBOARDING_KEYS.onboardingData));
+    expect(stepActionsOf(data, v, noData).readOnlyReason).toMatch(
+      /Your role cannot change this step/,
+    );
+    expect(stepActionsOf(data, v, ALL).readOnlyReason).toBeNull();
+  });
+
   it("offers evidence-attest on an open attestation step the operator may act on", () => {
     const v = view(STEPS());
-    const a = stepActionsOf(v.steps[1] as WizardStep, v);
+    const a = stepActionsOf(v.steps[1] as WizardStep, v, ALL);
     expect(a).toMatchObject({
       canAttest: true,
       canSkip: false,
@@ -144,7 +163,7 @@ describe("stepActionsOf", () => {
 
   it("offers nothing on a locked step and says why", () => {
     const v = view(STEPS());
-    const a = stepActionsOf(v.steps[3] as WizardStep, v);
+    const a = stepActionsOf(v.steps[3] as WizardStep, v, ALL);
     expect(a.canAttest).toBe(false);
     expect(a.canSkip).toBe(false);
     expect(a.readOnlyReason).toMatch(/plan_contract/);
@@ -154,7 +173,7 @@ describe("stepActionsOf", () => {
     const steps = STEPS();
     steps[2] = step("baa_executed", 3, { completionMode: "auto" });
     const v = view(steps);
-    expect(stepActionsOf(v.steps[2] as WizardStep, v).canAttest).toBe(false);
+    expect(stepActionsOf(v.steps[2] as WizardStep, v, ALL).canAttest).toBe(false);
   });
 
   it("offers skip only where the server marks the step skippable (it refuses any other skip)", () => {
@@ -178,7 +197,7 @@ describe("stepActionsOf", () => {
     );
     const v = view(steps);
     const skippable = steps
-      .filter((s) => stepActionsOf(s, v).canSkip)
+      .filter((s) => stepActionsOf(s, v, ALL).canSkip)
       .map((s) => s.key)
       .sort();
     expect(skippable).toEqual(
@@ -194,7 +213,7 @@ describe("stepActionsOf", () => {
   it("never offers attest or skip on go-live: it is settled by the two-party approval", () => {
     const steps = STEPS().map((s) => ({ ...s, locked: false, lockedBy: null }));
     const v = view(steps);
-    const a = stepActionsOf(v.steps[5] as WizardStep, v);
+    const a = stepActionsOf(v.steps[5] as WizardStep, v, ALL);
     expect(a.canAttest).toBe(false);
     expect(a.canSkip).toBe(false);
     expect(a.canReopen).toBe(false);
@@ -203,7 +222,7 @@ describe("stepActionsOf", () => {
   it("offers re-open on a settled step, but not while a go-live attestation is pending, and says what to do instead", () => {
     const steps = STEPS();
     const v = view(steps);
-    expect(stepActionsOf(v.steps[0] as WizardStep, v)).toMatchObject({ canReopen: true });
+    expect(stepActionsOf(v.steps[0] as WizardStep, v, ALL)).toMatchObject({ canReopen: true });
     const pending = view(steps, {
       goLive: {
         state: "awaiting_approval",
@@ -212,25 +231,27 @@ describe("stepActionsOf", () => {
         complianceOfficerMembershipId: null,
       },
     });
-    const a = stepActionsOf(pending.steps[0] as WizardStep, pending);
+    const a = stepActionsOf(pending.steps[0] as WizardStep, pending, ALL);
     expect(a.canReopen).toBe(false);
     expect(a.reopenBlockedBy).toBe("go_live_pending");
   });
 
   it("is read-only once the tenant is not onboarding", () => {
     const v = view(STEPS(), { tenantStatus: "provisioning" });
-    const a = stepActionsOf(v.steps[1] as WizardStep, v);
+    const a = stepActionsOf(v.steps[1] as WizardStep, v, ALL);
     expect(a).toMatchObject({ canAttest: false, canSkip: false, canReopen: false });
     expect(a.readOnlyReason).toMatch(/provisioning/i);
     const live = view(STEPS(), { tenantStatus: "active" });
-    expect(stepActionsOf(live.steps[0] as WizardStep, live).readOnlyReason).toMatch(/live|active/i);
+    expect(stepActionsOf(live.steps[0] as WizardStep, live, ALL).readOnlyReason).toMatch(
+      /live|active/i,
+    );
   });
 
   it("a step with no task row yet (a null id) cannot be acted on", () => {
     const steps = STEPS();
     steps[1] = step("plan_contract", 2, { id: null });
     const v = view(steps);
-    expect(stepActionsOf(v.steps[1] as WizardStep, v).canAttest).toBe(false);
+    expect(stepActionsOf(v.steps[1] as WizardStep, v, ALL).canAttest).toBe(false);
   });
 });
 

@@ -18,6 +18,7 @@ import {
   validateChoice,
 } from "./clearinghouse-choice-form";
 import type { ClearinghouseView } from "./clearinghouse-model";
+import { ONBOARDING_KEYS, useCan } from "./permissions";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { useEditorFocus } from "./use-editor-focus";
 import { useOpsWrite } from "./use-ops-write";
@@ -54,6 +55,8 @@ export function SwitchToVendor({
 }): JSX.Element | null {
   const client = useApiClient();
   const write = useOpsWrite();
+  // the switch always names the billing mode, so it takes the pricing key as well as the clearinghouse one
+  const mayWrite = useCan(ONBOARDING_KEYS.clearinghouseWrite, ONBOARDING_KEYS.pricingWrite);
   // Coming back from Re-verify: the form and its pin are restored (the credential is typed again).
   const restored = useStepUpDraft<{ form: ChoiceForm; pinnedVersion: number | null }>(
     draftKey(orgSlug),
@@ -68,7 +71,7 @@ export function SwitchToVendor({
   const [secret, setSecret] = useState("");
   const [errors, setErrors] = useState<ChoiceErrors>({});
   const heading = useEditorFocus(open, "clearinghouse-switch");
-  if (!canSwitchToVendor(view, tenantStatus)) return null;
+  if (!canSwitchToVendor(view, tenantStatus) || !mayWrite) return null;
   const context = { tenantStatus, hasContract: view.hasContract };
 
   function begin(): void {
