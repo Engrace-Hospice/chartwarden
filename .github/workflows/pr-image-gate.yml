@@ -89,7 +89,7 @@ jobs:
   # publishes. Starts it, proves pgvector and the Debian-compatible socket, then scans with unfixed findings counted
   # too (the publish does the same), so a base or package bump that brings a CVE is red here first. The same job then
   # builds deploy/production/backup (the image production actually runs under compose.backup.yml: this Postgres plus a
-  # source-built pgBackRest and Chainguard's mc) on the Postgres it just built, and scans it the same way: one job so
+  # source-built pgBackRest and mc) on the Postgres it just built, and scans it the same way: one job so
   # the second image reuses the first's local layers instead of costing a second runner start.
   postgres-scan:
     name: Postgres image smoke and CVE scan

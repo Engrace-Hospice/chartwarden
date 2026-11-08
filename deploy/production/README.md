@@ -438,7 +438,7 @@ rehearsal record `audit/restore-drill/2026-11-08-wolfi-migration-rehearsal.md` e
 again before using another); merges to `main` are paused from step 1 until step 10 passes, and no `deploy` run is in
 flight (`main` auto-deploys, and `deploy.sh` starts a stopped `postgres`, runs `migrate` and force-recreates
 `api`/`worker`: writers back mid-REINDEX); `cosign` is installed (Supply chain, below); `docker login ghcr.io` was done
-on the host (the package is private) and it can reach cgr.dev and github.com (the build compiles pgBackRest);
+on the host (the package is private) and it can reach cgr.dev, github.com and proxy.golang.org/sum.golang.org (the build compiles pgBackRest and `mc`);
 `dc ps backup` is healthy.
 
 1. **Verify the base digest, and keep the evidence.** Refuse to continue unless `signature ok` and `SBOM attestation

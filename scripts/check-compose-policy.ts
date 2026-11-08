@@ -304,8 +304,8 @@ export function checkRustEnvExample(text: string): string[] {
 
 /** The wolfi-base digest and PG_VERSION the postgres Dockerfile and the backup build stage each carry a copy of. */
 const BACKUP_BASE_PINS: readonly (readonly [string, RegExp])[] = [
-  ["wolfi-base digest", /^FROM\s+\S*wolfi-base@(sha256:[0-9a-f]{64})/m],
-  ["PG_VERSION", /^ARG PG_VERSION=(\S+)/m],
+  ["wolfi-base digest", /^FROM\s+\S*wolfi-base@(sha256:[0-9a-f]{64})/gm],
+  ["PG_VERSION", /^ARG PG_VERSION=(\S+)/gm],
 ];
 
 /** The backup image must be built on the Postgres production runs, with the Postgres Dockerfile's libpq and glibc. */
@@ -324,14 +324,17 @@ export function checkBackupImageChain(
       `${BACKUP_DOCKERFILE_PATH}: POSTGRES_IMAGE default "${defaultImage}" must equal compose.yml's postgres image "${String(composeImage)}"`,
     );
   }
+  // Every copy in the backup Dockerfile (each build stage carries one) must equal the postgres Dockerfile's.
   for (const [label, re] of BACKUP_BASE_PINS) {
-    const backup = re.exec(backupDockerfile)?.[1];
-    const postgres = re.exec(postgresDockerfile)?.[1];
-    if (backup === undefined || postgres === undefined) {
+    const backups = [...backupDockerfile.matchAll(re)].map((m) => m[1]);
+    const postgres = [...postgresDockerfile.matchAll(re)][0]?.[1];
+    if (backups.length === 0 || postgres === undefined) {
       failures.push(
-        `no ${label} found in ${backup === undefined ? BACKUP_DOCKERFILE_PATH : POSTGRES_DOCKERFILE_PATH}`,
+        `no ${label} found in ${backups.length === 0 ? BACKUP_DOCKERFILE_PATH : POSTGRES_DOCKERFILE_PATH}`,
       );
-    } else if (backup !== postgres) {
+      continue;
+    }
+    for (const backup of backups.filter((b) => b !== postgres)) {
       failures.push(
         `${BACKUP_DOCKERFILE_PATH}: ${label} "${backup}" must equal ${POSTGRES_DOCKERFILE_PATH}'s "${postgres}"`,
       );
