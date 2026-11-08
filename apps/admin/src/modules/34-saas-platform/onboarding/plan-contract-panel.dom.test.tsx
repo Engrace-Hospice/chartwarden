@@ -97,10 +97,15 @@ const PREVIEW_RESULT = {
 };
 const view = (over = {}, stepOver = {}) =>
   wizardView([wizardStep("plan_contract", 1, { title: "Plan & contract", ...stepOver })], over);
-function mount(handlers: Parameters<typeof stubClient>[0], v = view()) {
+const PLAN_READER = { userId: "u1", organizationId: "o1", permissions: ["plan.admin.read"] };
+function mount(
+  handlers: Parameters<typeof stubClient>[0],
+  v = view(),
+  session?: Parameters<typeof renderAt>[3],
+) {
   const client = stubClient(handlers);
   const ctx = panelCtx(v, "plan_contract");
-  renderAt("/x", [{ path: "/x", element: <PlanContractPanel ctx={ctx} /> }], client);
+  renderAt("/x", [{ path: "/x", element: <PlanContractPanel ctx={ctx} /> }], client, session);
   return { client, ctx };
 }
 const NO_CONTRACT = { contract: null, statements: [] };
@@ -114,13 +119,19 @@ describe("formatCents", () => {
 });
 
 describe("PlanContractPanel", () => {
-  it("is an honest empty state when no plan is published", async () => {
-    mount({ GET: { [PLANS]: () => ok([]), [SUB]: () => ok(NO_CONTRACT) } });
+  it("is an honest empty state when no plan is published, linking to price plans for an operator who can read them", async () => {
+    mount({ GET: { [PLANS]: () => ok([]), [SUB]: () => ok(NO_CONTRACT) } }, view(), PLAN_READER);
     expect(await screen.findByText(/No published plan to sign/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sign contract" })).toBeNull();
     expect(
       screen.getByRole("link", { name: "Create or publish a price plan" }).getAttribute("href"),
     ).toBe("/admin/pricing-plans");
+  });
+
+  it("without plan.admin.read the empty state says who publishes plans, with no link to a refusal", async () => {
+    mount({ GET: { [PLANS]: () => ok([]), [SUB]: () => ok(NO_CONTRACT) } });
+    expect(await screen.findByText(/A billing admin publishes plans/)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Create or publish a price plan" })).toBeNull();
   });
 
   it("shows the signed contract, and the plan it is on", async () => {
@@ -181,6 +192,42 @@ describe("PlanContractPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
     expect(screen.getByText(/Enter the average daily census/)).toBeTruthy();
     expect(client.POST).not.toHaveBeenCalled();
+  });
+
+  it("staff, census and collections parse as plain digits: 1.005, 1e3 and 0x1f price nothing", async () => {
+    const { client } = mount({
+      GET: { [PLANS]: () => ok([PLAN]), [SUB]: () => ok(NO_CONTRACT) },
+      POST: { [PREVIEW]: () => ok(PREVIEW_RESULT) },
+    });
+    await screen.findByLabelText("Plan");
+    const set = (label: string | RegExp, value: string): void => {
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    };
+    const preview = (): void => {
+      fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+    };
+    set("Average daily census", "14");
+    for (const staff of ["1e1", "0x1f"]) {
+      set("Staff accounts", staff);
+      preview();
+      expect(screen.getByText(/Enter the staff accounts/)).toBeTruthy();
+    }
+    set("Staff accounts", "12");
+    set("Average daily census", "1e3");
+    preview();
+    expect(screen.getByText(/Enter the average daily census/)).toBeTruthy();
+    set("Average daily census", "14");
+    for (const collections of ["1.005", "1e3", "0x1f"]) {
+      set(/^Expected net collections/, collections);
+      preview();
+      expect(screen.getByText(/as dollars, with up to two decimals/)).toBeTruthy();
+    }
+    expect(client.POST).not.toHaveBeenCalled();
+    set(/^Expected net collections/, "0.29");
+    preview();
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    const [, init] = client.POST.mock.calls[0] as [string, { body: Record<string, unknown> }];
+    expect(init.body.expectedNetCollectionsCents).toBe(29); // 0.29 * 100 is 28.999… as a float
   });
 
   it("billing through ChartWarden needs the expected collections; a tenant billing outside need not give any", async () => {

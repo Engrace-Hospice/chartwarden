@@ -94,15 +94,50 @@ export interface PricingPlanService {
     input: CreatePricingPlanInput,
     reason: unknown,
   ): Promise<PricingPlanView>;
+  /**
+   * The writes on an existing version are pinned (`If-Match`): `expectedUpdatedAt` is the `updatedAt` the operator read, and a
+   * version that changed since is a 409 PRICING_PLAN_CHANGED carrying its current `updatedAt` (so nobody publishes, archives or
+   * copies prices they did not see).
+   */
   replaceDraft(
     actor: M35WriteActor,
     planId: string,
     input: PlanPricingInput,
     reason: unknown,
+    expectedUpdatedAt: string,
   ): Promise<PricingPlanView>;
-  publish(actor: M35WriteActor, planId: string, reason: unknown): Promise<PricingPlanView>;
-  newVersion(actor: M35WriteActor, planId: string, reason: unknown): Promise<PricingPlanView>;
-  archive(actor: M35WriteActor, planId: string, reason: unknown): Promise<PricingPlanView>;
+  publish(
+    actor: M35WriteActor,
+    planId: string,
+    reason: unknown,
+    expectedUpdatedAt: string,
+  ): Promise<PricingPlanView>;
+  newVersion(
+    actor: M35WriteActor,
+    planId: string,
+    reason: unknown,
+    expectedUpdatedAt: string,
+  ): Promise<PricingPlanView>;
+  archive(
+    actor: M35WriteActor,
+    planId: string,
+    reason: unknown,
+    expectedUpdatedAt: string,
+  ): Promise<PricingPlanView>;
+}
+
+export const PLAN_CHANGED_CODE = "PRICING_PLAN_CHANGED";
+
+/** A locked version the operator did not read is refused; the current `updatedAt` rides in the details (a timestamp, nothing else). */
+export function assertPinned(row: { readonly updatedAt: Date }, expectedUpdatedAt: string): void {
+  const current = row.updatedAt.toISOString();
+  if (current === expectedUpdatedAt) return;
+  throw new ChartWardenError(
+    PLAN_CHANGED_CODE,
+    "this plan changed since you read it; re-read it and confirm again",
+    409,
+    [{ field: "currentUpdatedAt", code: PLAN_CHANGED_CODE, message: current }],
+  );
 }
 
 export interface PricingPlanServiceDeps {
@@ -239,7 +274,11 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
       .values(bands.map((b) => ({ planId, minAdc: b.minAdc, monthlyFeeCents: b.monthlyFeeCents })));
   }
 
-  async function loadDraft(tx: WriteTx, planId: string): Promise<PlanRow> {
+  async function loadDraft(
+    tx: WriteTx,
+    planId: string,
+    expectedUpdatedAt: string,
+  ): Promise<PlanRow> {
     const [plan] = await tx.select().from(PL).where(eq(PL.id, planId)).for("update").limit(1);
     if (!plan || plan.tier !== "census_banded") throw new NotFoundError("plan not found");
     if (statusOf(plan) !== "draft") {
@@ -247,6 +286,7 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
         `only a draft can be edited or published; this plan is ${statusOf(plan)}`,
       );
     }
+    assertPinned(plan, expectedUpdatedAt);
     return plan;
   }
 
@@ -322,13 +362,13 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
       });
     },
 
-    async replaceDraft(actor, planId, input, reasonRaw) {
+    async replaceDraft(actor, planId, input, reasonRaw, expectedUpdatedAt) {
       const reason = normalizeReason(reasonRaw);
       const text = planText(input);
       const issues = validatePlanPricing(asPricing(input));
       if (issues.length > 0) failIssues(issues);
       return platformRunner(async (tx) => {
-        const draft = await loadDraft(tx, planId);
+        const draft = await loadDraft(tx, planId, expectedUpdatedAt);
         const [plan] = await tx
           .update(PL)
           .set({
@@ -354,10 +394,10 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
       });
     },
 
-    async publish(actor, planId, reasonRaw) {
+    async publish(actor, planId, reasonRaw, expectedUpdatedAt) {
       const reason = normalizeReason(reasonRaw);
       return platformRunner(async (tx) => {
-        const draft = await loadDraft(tx, planId);
+        const draft = await loadDraft(tx, planId, expectedUpdatedAt);
         const bands = await loadBands(tx, planId);
         const issues = validatePlanPricing({
           perUserPriceCents: draft.perUserPriceCents ?? Number.NaN,
@@ -382,10 +422,10 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
       });
     },
 
-    async newVersion(actor, planId, reasonRaw) {
+    async newVersion(actor, planId, reasonRaw, expectedUpdatedAt) {
       const reason = normalizeReason(reasonRaw);
       return platformRunner(async (tx) => {
-        const [source] = await tx.select().from(PL).where(eq(PL.id, planId)).limit(1);
+        const [source] = await tx.select().from(PL).where(eq(PL.id, planId)).for("update").limit(1);
         if (!source || source.tier !== "census_banded" || !source.familySlug) {
           throw new NotFoundError("plan not found");
         }
@@ -394,6 +434,7 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
             "a draft is edited in place; only a published or archived plan is versioned",
           );
         }
+        assertPinned(source, expectedUpdatedAt);
         const family = await tx
           .select({ id: PL.id, version: PL.version, publishedAt: PL.publishedAt })
           .from(PL)
@@ -437,7 +478,7 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
       });
     },
 
-    async archive(actor, planId, reasonRaw) {
+    async archive(actor, planId, reasonRaw, expectedUpdatedAt) {
       const reason = normalizeReason(reasonRaw);
       return platformRunner(async (tx) => {
         const [plan] = await tx.select().from(PL).where(eq(PL.id, planId)).for("update").limit(1);
@@ -447,6 +488,7 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
             `only a published plan can be archived; this plan is ${statusOf(plan)}`,
           );
         }
+        assertPinned(plan, expectedUpdatedAt);
         const at = now();
         const [archived] = await tx
           .update(PL)

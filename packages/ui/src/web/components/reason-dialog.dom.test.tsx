@@ -113,6 +113,27 @@ describe("ReasonDialog", () => {
     expect(screen.getByRole("button", { name: /Confirm .*updated record/i })).toBeTruthy();
   });
 
+  it("starts with the reason the caller hands back when it reopens, and empty without one", () => {
+    const props = {
+      title: "Save prices",
+      rule: REASON_RULES.pricing,
+      confirmLabel: "Save",
+      onConfirm: () => undefined,
+      onCancel: () => undefined,
+    };
+    const { rerender } = render(
+      <ReasonDialog open initialReason="TICKET-42 price fix" {...props} />,
+    );
+    const box = () => screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(box().value).toBe("TICKET-42 price fix");
+    fireEvent.change(box(), { target: { value: "TICKET-42 edited" } });
+    rerender(<ReasonDialog open initialReason="something else" {...props} />);
+    expect(box().value).toBe("TICKET-42 edited"); // never overwritten while open
+    rerender(<ReasonDialog open={false} {...props} />);
+    rerender(<ReasonDialog open {...props} />);
+    expect(box().value).toBe("");
+  });
+
   it("renders nothing while closed", () => {
     const { container } = render(
       <ReasonDialog

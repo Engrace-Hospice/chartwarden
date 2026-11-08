@@ -3,6 +3,8 @@ import {
   StatusPill,
   TextField,
   focusFirstInvalid,
+  parsePriceCents,
+  parseWholeNumber,
   useApiClient,
   useRequestGuard,
 } from "@chartwarden/ui";
@@ -30,6 +32,25 @@ import {
 type PlanDetail =
   operations["getApiAdminPlansById"]["responses"][200]["content"]["application/json"];
 type Meter = PlanDetail["meters"][number];
+
+interface MeterDraft {
+  eventType: string;
+  inclusive: string;
+  overage: string;
+  threshold: string;
+}
+
+/** The new meter's field messages (strict: "1e3" and "0x1f" are not quantities or prices). */
+function meterErrors(m: MeterDraft): Partial<Record<keyof MeterDraft, string>> {
+  const errors: Partial<Record<keyof MeterDraft, string>> = {};
+  if (!m.eventType.trim()) errors.eventType = "Enter the event type to meter.";
+  if (parseWholeNumber(m.inclusive) === null) errors.inclusive = "Enter a whole number, 0 or more.";
+  if (parsePriceCents(m.overage) === null)
+    errors.overage = "Enter dollars, 0 or more, with up to two decimals.";
+  if (parseWholeNumber(m.threshold, 100) === null)
+    errors.threshold = "Enter a whole percentage from 0 to 100.";
+  return errors;
+}
 
 export function PlanEdit(): JSX.Element {
   const client = useApiClient();
@@ -88,12 +109,22 @@ export function PlanEdit(): JSX.Element {
   );
 
   const [meterAttempted, setMeterAttempted] = useState(false);
+  const meterIssues = meterAttempted ? meterErrors(meter) : {};
   const meterRowRef = useRef<HTMLDivElement>(null);
 
   const addMeter = useCallback(() => {
     if (!id) return;
     setMeterAttempted(true);
-    if (!meter.eventType.trim()) {
+    const issues = meterErrors(meter);
+    const inclusive = parseWholeNumber(meter.inclusive);
+    const overage = parsePriceCents(meter.overage);
+    const threshold = parseWholeNumber(meter.threshold, 100);
+    if (
+      Object.keys(issues).length > 0 ||
+      inclusive === null ||
+      overage === null ||
+      threshold === null
+    ) {
       focusFirstInvalid(meterRowRef.current);
       return;
     }
@@ -104,10 +135,10 @@ export function PlanEdit(): JSX.Element {
           body: {
             eventType: meter.eventType.trim(),
             label: meter.eventType.trim(),
-            inclusiveQuantity: Number(meter.inclusive) || 0,
-            overageUnitPriceCents: Math.round(Number(meter.overage) * 100) || 0,
+            inclusiveQuantity: inclusive,
+            overageUnitPriceCents: overage,
             billingAggregation: "sum",
-            warningThresholdPercent: Number(meter.threshold) || 80,
+            warningThresholdPercent: threshold,
           },
           headers: { "Idempotency-Key": idempotencyKey() },
         }),
@@ -201,28 +232,27 @@ export function PlanEdit(): JSX.Element {
             label="Event type"
             value={meter.eventType}
             onChange={(e) => setMeter({ ...meter, eventType: e.target.value })}
-            error={
-              meterAttempted && !meter.eventType.trim()
-                ? "Enter the event type to meter."
-                : undefined
-            }
+            error={meterIssues.eventType}
           />
           <TextField
             label="Included qty"
             value={meter.inclusive}
             inputMode="numeric"
+            error={meterIssues.inclusive}
             onChange={(e) => setMeter({ ...meter, inclusive: e.target.value })}
           />
           <TextField
             label="Overage $/unit"
             value={meter.overage}
             inputMode="decimal"
+            error={meterIssues.overage}
             onChange={(e) => setMeter({ ...meter, overage: e.target.value })}
           />
           <TextField
             label="Warn %"
             value={meter.threshold}
             inputMode="numeric"
+            error={meterIssues.threshold}
             onChange={(e) => setMeter({ ...meter, threshold: e.target.value })}
           />
           <Button onClick={addMeter} disabled={busy}>

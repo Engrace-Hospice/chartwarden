@@ -74,12 +74,14 @@ const NONE: Omit<StepActions, "readOnlyReason" | "reopenBlockedBy"> = {
   canReopen: false,
 };
 
+/** True while the wizard's steps can be worked: only an onboarding tenant (provisioning has not opened them, a live tenant closed them). */
+export const isOnboardingOpen = (tenantStatus: string): boolean => tenantStatus === "onboarding";
+
 function readOnlyReasonOf(step: WizardStep, view: WizardView): string | null {
-  if (view.tenantStatus === "provisioning") {
-    return "This tenant is still provisioning. Steps open when provisioning finishes.";
-  }
-  if (view.tenantStatus === "active") return "This tenant is live. Onboarding is complete.";
-  if (view.tenantStatus !== "onboarding") {
+  if (!isOnboardingOpen(view.tenantStatus)) {
+    if (view.tenantStatus === "provisioning")
+      return "This tenant is still provisioning. Steps open when provisioning finishes.";
+    if (view.tenantStatus === "active") return "This tenant is live. Onboarding is complete.";
     return `Onboarding is closed for this tenant (${view.tenantStatus}).`;
   }
   if (step.id === null) return "This step is created when provisioning finishes.";

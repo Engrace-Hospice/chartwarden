@@ -1,4 +1,10 @@
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
+import {
+  ApiClientProvider,
+  ToastProvider,
+  createApiClient,
+  parsePriceCents,
+  parseWholeNumber,
+} from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — shared list behaviour of the four drawer lists (plans, promos,
 // subscriptions, refunds): a stale ?param is cleared with a notice, Enter opens a row's drawer, Escape closes it and
 // hands focus back to the row; plus the create-plan form (Enter submits, a non-numeric price cannot be submitted).
@@ -6,7 +12,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { JSX } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PlansList, parsePriceCents, parseTrialDays } from "../plans-list";
+import { PlansList } from "../plans-list";
 import { Promos } from "../promos";
 import { RefundsQueue } from "../refunds-queue";
 import { SubscriptionsList } from "../subscriptions-list";
@@ -229,8 +235,10 @@ describe("price and trial parsing", () => {
     expect(parsePriceCents("abc")).toBeNull();
     expect(parsePriceCents("-1")).toBeNull();
     expect(parsePriceCents("Infinity")).toBeNull();
-    expect(parseTrialDays("14")).toBe(14);
-    expect(parseTrialDays("1.5")).toBeNull();
-    expect(parseTrialDays("x")).toBeNull();
+    expect(parseWholeNumber("14")).toBe(14);
+    expect(parseWholeNumber("1.5")).toBeNull();
+    expect(parseWholeNumber("x")).toBeNull();
+    expect(parseWholeNumber("0x10")).toBeNull();
+    expect(parseWholeNumber("1e1")).toBeNull();
   });
 });

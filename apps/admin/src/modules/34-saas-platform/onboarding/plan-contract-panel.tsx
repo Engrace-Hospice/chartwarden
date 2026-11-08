@@ -10,11 +10,14 @@ import {
   REASON_RULES,
   SelectField,
   TextField,
+  parsePriceCents,
+  parseWholeNumber,
   useApiClient,
 } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { useSession } from "../../../shell/session";
 import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { RecordSaveDialog } from "./record-save-dialog";
@@ -161,6 +164,8 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
   const client = useApiClient();
   const { orgSlug, actions } = ctx;
   const canWrite = actions.readOnlyReason === null;
+  // The price plans screen is plan.admin.read; an operator without it is told who publishes plans instead of sent to a refusal.
+  const canReadPlans = useSession()?.permissions?.includes("plan.admin.read") ?? false;
   const plans = useLoad<Plan[]>(
     `plans:${orgSlug}`,
     () =>
@@ -201,24 +206,26 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
   const plan = offered.find((p) => p.slug === (planSlug || offered[0]?.slug));
 
   async function runPreview(): Promise<void> {
-    // A blank box is not zero: Number("") is 0, which would price a tenant with no staff.
-    const asNumber = (text: string): number => (text.trim() === "" ? Number.NaN : Number(text));
-    const staffCount = asNumber(staff);
+    // A blank box is not zero (Number("") is 0), and "1e3" or "0x1f" is not a census: plain digits and a decimal point only.
+    const asNumber = (text: string): number =>
+      /^\d+(\.\d+)?$/.test(text.trim()) ? Number(text.trim()) : Number.NaN;
+    const staffCount = parseWholeNumber(staff);
     const averageDailyCensus = asNumber(census);
-    const dollars = collections.trim() === "" ? 0 : Number(collections);
+    // String math, never a float multiply ("1.005" or "1e3" is not an amount an operator meant).
+    const collectionsCents = collections.trim() === "" ? 0 : parsePriceCents(collections);
     const problem =
-      !Number.isInteger(staffCount) || staffCount < 0
+      staffCount === null
         ? "Enter the staff accounts (a whole number)."
         : !Number.isFinite(averageDailyCensus) || averageDailyCensus < 0
           ? "Enter the average daily census."
           : mode !== "none" && collections.trim() === ""
             ? "Enter the expected net collections: the billing percentage is charged on them."
-            : !Number.isFinite(dollars) || dollars < 0
-              ? "Enter the expected net collections as dollars."
+            : collectionsCents === null
+              ? "Enter the expected net collections as dollars, with up to two decimals."
               : !plan
                 ? "Pick a plan."
                 : null;
-    if (problem !== null || !plan) {
+    if (problem !== null || !plan || staffCount === null || collectionsCents === null) {
       setInputError(problem);
       return;
     }
@@ -227,7 +234,7 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
       planId: plan.id,
       staffCount,
       averageDailyCensus,
-      expectedNetCollectionsCents: Math.round(dollars * 100),
+      expectedNetCollectionsCents: collectionsCents,
       billingServiceMode: mode,
     };
     const outcome = await previewWrite.run(JSON.stringify(body), () =>
@@ -331,11 +338,17 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
             <h3>Sign a plan</h3>
           </div>
           {offered.length === 0 ? (
-            <p>
-              No published plan to sign yet.{" "}
-              {/* A URL, not an import: M34 and M35 share no code edge (ADR-0025). */}
-              <Link to="/admin/pricing-plans">Create or publish a price plan</Link>.
-            </p>
+            canReadPlans ? (
+              <p>
+                No published plan to sign yet.{" "}
+                {/* A URL, not an import: M34 and M35 share no code edge (ADR-0025). */}
+                <Link to="/admin/pricing-plans">Create or publish a price plan</Link>.
+              </p>
+            ) : (
+              <p>
+                No published plan to sign. A billing admin publishes plans; none is offered yet.
+              </p>
+            )
           ) : (
             <>
               <div className="wx-form-grid">

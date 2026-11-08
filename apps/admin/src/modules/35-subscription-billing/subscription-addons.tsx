@@ -5,9 +5,9 @@ import {
   StatusPill,
   TextAreaField,
   TextField,
-  stashStepUpDraft,
+  stashStepUpMemoryDraft,
   useApiClient,
-  useStepUpDraft,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — ADR-0110 the Add-ons panel on the subscription detail. Lists the
@@ -40,7 +40,9 @@ export function AddonsPanel({
 }): JSX.Element {
   const client = useApiClient();
   const draftKey = `subscription-addons:${subscriptionId}`;
-  const restored = useStepUpDraft<{ mode: Mode; trialEndsAt: string; reason: string }>(draftKey);
+  const restored = useStepUpMemoryDraft<{ mode: Mode; trialEndsAt: string; reason: string }>(
+    draftKey,
+  );
   const [rows, setRows] = useState<SubscriptionAddon[] | null>(null);
   const [mode, setMode] = useState<Mode>(restored?.mode ?? "grant");
   const [trialEndsAt, setTrialEndsAt] = useState(restored?.trialEndsAt ?? "");
@@ -216,7 +218,7 @@ export function AddonsPanel({
         {outcome ? (
           <OutcomeBanner
             {...outcome}
-            onReverify={() => stashStepUpDraft(draftKey, { mode, trialEndsAt, reason })}
+            onReverify={() => stashStepUpMemoryDraft(draftKey, { mode, trialEndsAt, reason })}
           />
         ) : null}
       </div>

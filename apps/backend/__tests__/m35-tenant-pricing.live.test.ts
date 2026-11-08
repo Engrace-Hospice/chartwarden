@@ -132,6 +132,8 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
   let platformRunner: PlatformRunner;
   let outbox: WriteOutboxPort;
   let plans: PricingPlanService;
+  /** The `updatedAt` pin a write on an existing version carries (what an operator read). */
+  const pinOf = async (id: string): Promise<string> => (await plans.get(id)).updatedAt;
   let wizardCalls: {
     attests: Array<Record<string, unknown>>;
     failAttest: boolean;
@@ -489,11 +491,17 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         planV1,
         plan({ perUserPriceCents: 12_000 }),
         "price list correction",
+        await pinOf(planV1),
       );
       expect(edited.perUserPriceCents).toBe(12_000);
       expect((await plans.listOffered()).map((p) => p.id)).not.toContain(planV1); // a draft is never offered
 
-      const published = await plans.publish(operator, planV1, "approved by the owner");
+      const published = await plans.publish(
+        operator,
+        planV1,
+        "approved by the owner",
+        await pinOf(planV1),
+      );
       expect(published).toMatchObject({ status: "published", offered: true });
       expect(published.publishedAt).not.toBeNull();
 
@@ -519,7 +527,13 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         ),
       ).rejects.toThrow(/published/);
       await expect(
-        plans.replaceDraft(operator, planV1, plan(), "try to edit a published plan"),
+        plans.replaceDraft(
+          operator,
+          planV1,
+          plan(),
+          "try to edit a published plan",
+          await pinOf(planV1),
+        ),
       ).rejects.toThrow(/draft/);
       // ... while its name and offered state can still move (archive does)
       await expect(
@@ -563,7 +577,12 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
     });
 
     it("a price change is a NEW VERSION that supersedes the old one; archiving stops offering the old one", async () => {
-      const v2 = await plans.newVersion(operator, planV1, "2028 price increase");
+      const v2 = await plans.newVersion(
+        operator,
+        planV1,
+        "2028 price increase",
+        await pinOf(planV1),
+      );
       planV2Id = v2.id;
       planV2Slug = v2.slug;
       expect(v2).toMatchObject({
@@ -574,16 +593,37 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       });
       expect(v2.bands).toHaveLength(5);
       await expect(
-        plans.newVersion(operator, planV1, "a second draft of the same family"),
+        plans.newVersion(
+          operator,
+          planV1,
+          "a second draft of the same family",
+          await pinOf(planV1),
+        ),
       ).rejects.toThrow(/draft/);
       await plans.replaceDraft(
         operator,
         planV2Id,
         plan({ perUserPriceCents: 15_000 }),
         "2028 prices",
+        await pinOf(planV2Id),
       );
-      await plans.publish(operator, planV2Id, "approved by the owner");
-      await plans.archive(operator, planV1, "superseded by v2");
+      // a pin from before the edit (another operator changed the draft since): refused, nothing published
+      const stale = "2020-01-01T00:00:00.000Z";
+      await expect(
+        plans.publish(operator, planV2Id, "approved by the owner", stale),
+      ).rejects.toMatchObject({
+        code: "PRICING_PLAN_CHANGED",
+        statusCode: 409,
+        details: [{ field: "currentUpdatedAt", message: await pinOf(planV2Id) }],
+      });
+      expect((await plans.get(planV2Id)).status).toBe("draft");
+      await expect(
+        plans.archive(operator, planV1, "superseded by v2", stale),
+      ).rejects.toMatchObject({
+        code: "PRICING_PLAN_CHANGED",
+      });
+      await plans.publish(operator, planV2Id, "approved by the owner", await pinOf(planV2Id));
+      await plans.archive(operator, planV1, "superseded by v2", await pinOf(planV1));
       const offered = await plans.listOffered();
       expect(offered.map((p) => p.slug)).toEqual([planV2Slug]);
       const all = await plans.list();
@@ -593,7 +633,9 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       ]);
       // v1 is archived but its prices are untouched: a subscription that signed it keeps them
       expect((await plans.get(planV1)).perUserPriceCents).toBe(12_000);
-      await expect(plans.archive(operator, planV1, "archive twice")).rejects.toThrow(/published/);
+      await expect(
+        plans.archive(operator, planV1, "archive twice", await pinOf(planV1)),
+      ).rejects.toThrow(/published/);
     });
 
     it("writes one structured audit row per change, naming the operator and the reason", async () => {
@@ -816,7 +858,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         "a plan the freeze probes attack",
       );
       frozenId = probe.id;
-      await plans.publish(operator, frozenId, "publish the freeze probe");
+      await plans.publish(operator, frozenId, "publish the freeze probe", await pinOf(frozenId));
       // Step 1: ONE statement leaves census_banded, nulls every contracted column and un-publishes the row; the old
       // guard checked only OLD.tier = census_banded rows, so this passed and the row was an editable flat plan.
       const leave = `UPDATE plan SET tier='starter', family_slug=NULL, per_user_price_cents=NULL, billing_software_bps=NULL,
@@ -907,6 +949,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
           draftId,
           plan({ familySlug: "freeze-probe-draft" }),
           "edit the draft",
+          await pinOf(draftId),
         ),
       ).resolves.toBeDefined();
     });
@@ -959,6 +1002,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         operator,
         planV2Id,
         "a v3 draft that is never published",
+        await pinOf(planV2Id),
       );
       await expect(
         contracts.createForTenant(operator, "pricing-a", body(draft.slug)),
@@ -1965,7 +2009,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         plan({ familySlug: "per-user-heavy", perUserPriceCents: 100_000 }),
         "a plan priced per seat",
       );
-      await plans.publish(operator, p.id, "approved by the owner");
+      await plans.publish(operator, p.id, "approved by the owner", await pinOf(p.id));
       perUserPlanSlug = p.slug;
       await contracts.createForTenant(operator, "pricing-c", {
         planSlug: perUserPlanSlug,
@@ -2247,7 +2291,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         plan({ familySlug: "min-floor", minimumMonthlyCents: 150_000 }),
         "a plan with a monthly minimum",
       );
-      await plans.publish(operator, minPlan.id, "approved by the owner");
+      await plans.publish(operator, minPlan.id, "approved by the owner", await pinOf(minPlan.id));
       minPlanSlug = minPlan.slug;
       await sign("pricing-j", minPlanSlug, "billing_software");
       await goLive(ORG_J, "2026-11-01T00:00:00Z");

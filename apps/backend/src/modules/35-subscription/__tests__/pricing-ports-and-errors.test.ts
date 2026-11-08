@@ -106,7 +106,9 @@ describe("plan writes that return no row are a typed PERSIST_FAILED 500", () => 
     contractTermMonths: 12,
     implementationFeeCents: 0,
     minimumMonthlyCents: null,
+    updatedAt: new Date("2026-11-01T00:00:00.000Z"),
   };
+  const pin = "2026-11-01T00:00:00.000Z";
   const published = { ...draft, publishedAt: new Date("2026-11-01T00:00:00Z") };
   const input = {
     name: "Plan",
@@ -131,10 +133,10 @@ describe("plan writes that return no row are a typed PERSIST_FAILED 500", () => 
       service([[]]).create(actor, { familySlug: "fam", ...input }, reason),
     ));
   it("replaceDraft (the update)", () =>
-    expectPersistFailed(() => service([[draft]]).replaceDraft(actor, "p1", input, reason)));
+    expectPersistFailed(() => service([[draft]]).replaceDraft(actor, "p1", input, reason, pin)));
   it("publish (the update)", () =>
     expectPersistFailed(() =>
-      service([[draft], [{ minAdc: 0, monthlyFeeCents: 100 }]]).publish(actor, "p1", reason),
+      service([[draft], [{ minAdc: 0, monthlyFeeCents: 100 }]]).publish(actor, "p1", reason, pin),
     ));
   it("newVersion (the insert)", () =>
     expectPersistFailed(() =>
@@ -142,8 +144,23 @@ describe("plan writes that return no row are a typed PERSIST_FAILED 500", () => 
         [published],
         [{ id: "p1", version: 1, publishedAt: published.publishedAt }],
         [],
-      ]).newVersion(actor, "p1", reason),
+      ]).newVersion(actor, "p1", reason, pin),
     ));
   it("archive (the update)", () =>
-    expectPersistFailed(() => service([[published]]).archive(actor, "p1", reason)));
+    expectPersistFailed(() => service([[published]]).archive(actor, "p1", reason, pin)));
+  it("a stale pin is a 409 PRICING_PLAN_CHANGED carrying the current updatedAt, before any write", async () => {
+    for (const call of [
+      () => service([[draft]]).replaceDraft(actor, "p1", input, reason, "2026-10-01T00:00:00.000Z"),
+      () => service([[draft]]).publish(actor, "p1", reason, "2026-10-01T00:00:00.000Z"),
+      () => service([[published]]).newVersion(actor, "p1", reason, "2026-10-01T00:00:00.000Z"),
+      () => service([[published]]).archive(actor, "p1", reason, "2026-10-01T00:00:00.000Z"),
+    ]) {
+      const error = await call().catch((e) => e);
+      expect(error).toMatchObject({
+        code: "PRICING_PLAN_CHANGED",
+        statusCode: 409,
+        details: [{ field: "currentUpdatedAt", message: pin }],
+      });
+    }
+  });
 });

@@ -31468,6 +31468,8 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
+                /** @description The plan's `updatedAt` (UTC ISO timestamp) as the operator read it; 428 IF_MATCH_REQUIRED without one, and a plan changed since is refused with 409 PRICING_PLAN_CHANGED carrying its current value in the error details as {field: "currentUpdatedAt", message: <timestamp>}. */
+                "If-Match": string;
             };
             path: {
                 id: string;
@@ -31543,6 +31545,8 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
+                /** @description The plan's `updatedAt` (UTC ISO timestamp) as the operator read it; 428 IF_MATCH_REQUIRED without one, and a plan changed since is refused with 409 PRICING_PLAN_CHANGED carrying its current value in the error details as {field: "currentUpdatedAt", message: <timestamp>}. */
+                "If-Match": string;
             };
             path: {
                 id: string;
@@ -31605,6 +31609,8 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
+                /** @description The plan's `updatedAt` (UTC ISO timestamp) as the operator read it; 428 IF_MATCH_REQUIRED without one, and a plan changed since is refused with 409 PRICING_PLAN_CHANGED carrying its current value in the error details as {field: "currentUpdatedAt", message: <timestamp>}. */
+                "If-Match": string;
             };
             path: {
                 id: string;
@@ -31667,6 +31673,8 @@ export interface operations {
             header: {
                 /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
                 "Idempotency-Key": string;
+                /** @description The plan's `updatedAt` (UTC ISO timestamp) as the operator read it; 428 IF_MATCH_REQUIRED without one, and a plan changed since is refused with 409 PRICING_PLAN_CHANGED carrying its current value in the error details as {field: "currentUpdatedAt", message: <timestamp>}. */
+                "If-Match": string;
             };
             path: {
                 id: string;

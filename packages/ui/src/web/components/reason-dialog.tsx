@@ -7,7 +7,7 @@
 // - A PINNED action (an If-Match on a record the operator read) passes `record`, the facts being acted on; when the record changed
 //   since it was read it passes `stale`, which says so and re-words the confirm button. The caller re-reads the record and passes the
 //   fresh one; nothing is retried on the operator's behalf.
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { type ReasonRule, checkReason, normalizeReason } from "../../core/ops-write/reason";
 import { Modal } from "../system/modal";
@@ -38,6 +38,8 @@ export interface ReasonDialogProps {
   readonly stale?: boolean;
   /** Replaces the default reason label. */
   readonly reasonLabel?: string;
+  /** The reason the box starts with when it opens (the operator's earlier attempt, after closing to fix a field); empty by default. */
+  readonly initialReason?: string;
   readonly onConfirm: (reason: string) => void;
   readonly onCancel: () => void;
 }
@@ -55,15 +57,20 @@ export function ReasonDialog({
   record,
   stale = false,
   reasonLabel = "Reason",
+  initialReason,
   onConfirm,
   onCancel,
 }: ReasonDialogProps): JSX.Element | null {
   const [reason, setReason] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const descriptionId = useId();
-  // A dialog that stays mounted must not show the last attempt's reason the next time it opens.
+  // A dialog that stays mounted must not show the last attempt's reason the next time it opens, unless the caller hands it back.
+  // Read through a ref: the reason is seeded when the dialog opens, never overwritten while the operator types.
+  const initialRef = useRef(initialReason);
+  initialRef.current = initialReason;
   useEffect(() => {
-    if (!open) {
+    if (open) setReason(initialRef.current ?? "");
+    else {
       setReason("");
       setProblem(null);
     }

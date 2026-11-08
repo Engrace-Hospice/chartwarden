@@ -179,6 +179,8 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
   let platformPool: ReturnType<typeof createDbClient>;
   let server: FastifyInstance;
   let plans: PricingPlanService;
+  /** The `updatedAt` pin a write on an existing version carries (what an operator read). */
+  const pinOf = async (id: string): Promise<string> => (await plans.get(id)).updatedAt;
   let contracts: ContractService;
   /** The real clearinghouse adapter (over the real service), for a data service a story wraps with its own fault or race. */
   let realPort: OnboardingClearinghousePort;
@@ -1942,7 +1944,12 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         },
         "price list for the attribution story",
       );
-      const published = await plans.publish(operator, draft.id, "approved by the owner");
+      const published = await plans.publish(
+        operator,
+        draft.id,
+        "approved by the owner",
+        await pinOf(draft.id),
+      );
       planSlugMemo = published.slug;
       return published.slug;
     };

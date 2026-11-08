@@ -4,6 +4,7 @@ import { render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { vi } from "vitest";
+import { ActorSessionProvider, type Session } from "../../../shell/session";
 import type { WizardStep, WizardView } from "./wizard-model";
 
 const SERVER_SKIPPABLE: ReadonlySet<string> = new Set([
@@ -142,17 +143,25 @@ export function renderAt(
   url: string,
   routes: { path: string; element: ReactElement }[],
   client: StubClient,
+  /** The signed-in operator (permission-gated affordances); none by default. */
+  session?: Session,
 ) {
+  const routed = (
+    <>
+      <Where />
+      <Routes>
+        {routes.map((r) => (
+          <Route key={r.path} path={r.path} element={r.element} />
+        ))}
+        <Route path="/step-up" element={<p>step-up page</p>} />
+      </Routes>
+    </>
+  );
+  // No session: no provider at all (a provider with none would self-load the actor context through the stub client).
   return render(
     <MemoryRouter initialEntries={[url]}>
       <ApiClientProvider client={client as unknown as ApiClient}>
-        <Where />
-        <Routes>
-          {routes.map((r) => (
-            <Route key={r.path} path={r.path} element={r.element} />
-          ))}
-          <Route path="/step-up" element={<p>step-up page</p>} />
-        </Routes>
+        {session ? <ActorSessionProvider initial={session}>{routed}</ActorSessionProvider> : routed}
       </ApiClientProvider>
     </MemoryRouter>,
   );

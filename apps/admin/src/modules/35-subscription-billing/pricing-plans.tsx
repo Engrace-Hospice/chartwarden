@@ -1,145 +1,70 @@
 import {
   Button,
-  type FieldErrors,
+  InlineAlert,
   REASON_RULES,
   ReasonDialog,
   StatusPill,
   type StatusTone,
-  TextField,
-  focusFirstInvalid,
   interactiveRowProps,
-  isValid,
   useApiClient,
   useDrawerA11y,
+  useOpsWrite,
   useRequestGuard,
   useStaleSelection,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — tenant price plans (`/admin/pricing-plans`, plan.admin.read): the plans the
 // onboarding wizard's plan step signs a tenant to. A plan is a platform fee (the greater of per-user x staff and the census-band fee),
-// the billing-service rates in basis points and an implementation fee. Lifecycle over /api/admin/pricing/plans: create a draft, publish
-// it, start a new version of a published plan (a draft copy), archive. Every write is plan.admin.write (step-up, Idempotency-Key and a
-// recorded reason, enforced server-side); the reason is asked for in one dialog before the write runs.
+// the billing-service rates in basis points and an implementation fee. Lifecycle over /api/admin/pricing/plans (plan-service.ts): a draft
+// is edited in place and published (its prices then freeze for good); a published plan is archived; a published or archived plan
+// starts a new draft version, while its family has no draft yet. Every write is plan.admin.write (step-up, Idempotency-Key, a recorded
+// reason and, on an existing version, If-Match: the updatedAt read, enforced server-side); the write buttons show only to an operator
+// who holds it (read from the actor context the shell reads too: this module may not import the shell, which M34 owns).
 import { useCallback, useEffect, useState } from "react";
-import type { FormEvent, JSX } from "react";
+import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
-import { parsePriceCents } from "./plans-list";
-import { cap, formatCents, idempotencyKey } from "./status";
+import { PlanEditor, WriteFailure } from "./pricing-plan-form";
 import {
-  DrawerHead,
-  type Outcome,
-  OutcomeBanner,
-  StateEmpty,
-  StateError,
-  StateLoading,
-  failureOutcome,
-} from "./ui";
+  ACTION_COPY,
+  type PlanAction,
+  type PlanForm,
+  type PricingPlan,
+  actionsFor,
+  blankForm,
+  formFromPlan,
+  pinOf,
+  priceLines,
+} from "./pricing-plan-model";
+import { cap, formatCents } from "./status";
+import { DrawerHead, StateEmpty, StateError, StateLoading } from "./ui";
 
-type PricingPlan =
-  operations["getApiAdminPricingPlans"]["responses"][200]["content"]["application/json"][number];
 type Defaults =
   operations["getApiAdminPricingDefaults"]["responses"][200]["content"]["application/json"];
-type Action = "publish" | "new-version" | "archive";
 
 const STATUS_TONE: Record<PricingPlan["status"], StatusTone> = {
   draft: "neutral",
   published: "success",
   archived: "warning",
 };
-const ACTION_COPY: Record<Action, { label: string; done: string; tone?: "danger" }> = {
-  publish: { label: "Publish", done: "published" },
-  "new-version": { label: "Start a new version", done: "copied to a new draft version" },
-  archive: { label: "Archive", done: "archived", tone: "danger" },
-};
-const SLUG_SHAPE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-const MAX_BPS = 10_000;
+const CREATE_DRAFT_KEY = "pricing-plan-create";
+const editDraftKey = (id: string): string => `pricing-plan-edit:${id}`;
+const UNREACHABLE = "Could not reach the server. Check your connection and try again.";
 
-/** A percentage typed by the operator ("4.5") to whole basis points (450); null unless 0 to 100. */
-export function parsePercentBps(raw: string): number | null {
-  const text = raw.trim();
-  if (text === "") return null;
-  const bps = Math.round(Number(text) * 100);
-  return Number.isFinite(bps) && bps >= 0 && bps <= MAX_BPS ? bps : null;
+interface LoadError {
+  readonly message: string;
+  readonly retry: boolean;
 }
-
-interface PlanForm {
-  familySlug: string;
-  name: string;
-  perUserPrice: string;
-  /** One monthly fee (dollars) per census band, in the order of the defaults' thresholds. */
-  bandFees: readonly string[];
-  billingSoftwarePct: string;
-  managedBillingPct: string;
-  termMonths: string;
-  implementationFee: string;
-  minimumMonthly: string;
+/** A success, shown in the drawer of the plan it is about (a different row starts clean). */
+interface PlanOutcome {
+  readonly planId: string;
+  readonly message: string;
 }
-const blankForm = (bands: number): PlanForm => ({
-  familySlug: "",
-  name: "",
-  perUserPrice: "",
-  bandFees: Array.from({ length: bands }, () => ""),
-  billingSoftwarePct: "",
-  managedBillingPct: "",
-  termMonths: "12",
-  implementationFee: "0",
-  minimumMonthly: "",
-});
-
-type FormKey = Exclude<keyof PlanForm, "bandFees"> | `band${number}`;
-
-/** Per-field messages for the new-plan form; empty when it can be submitted. */
-export function pricingFormErrors(form: PlanForm): FieldErrors<FormKey> {
-  const errors: FieldErrors<FormKey> = {};
-  if (!SLUG_SHAPE.test(form.familySlug.trim()) || form.familySlug.trim().length < 3)
-    errors.familySlug = "Use 3 or more lowercase letters, numbers and hyphens, e.g. hospice-core.";
-  if (form.name.trim() === "") errors.name = "Enter a plan name.";
-  const money = "Enter a number of dollars, 0 or more.";
-  if (parsePriceCents(form.perUserPrice) === null) errors.perUserPrice = money;
-  form.bandFees.forEach((fee, i) => {
-    if (parsePriceCents(fee) === null) errors[`band${i}`] = money;
-  });
-  const pct = "Enter a percentage from 0 to 100, e.g. 4.5.";
-  if (parsePercentBps(form.billingSoftwarePct) === null) errors.billingSoftwarePct = pct;
-  if (parsePercentBps(form.managedBillingPct) === null) errors.managedBillingPct = pct;
-  const term = Number(form.termMonths);
-  if (!Number.isInteger(term) || term < 1 || term > 120)
-    errors.termMonths = "Enter a whole number of months from 1 to 120.";
-  if (parsePriceCents(form.implementationFee) === null) errors.implementationFee = money;
-  if (form.minimumMonthly.trim() !== "" && parsePriceCents(form.minimumMonthly) === null)
-    errors.minimumMonthly = "Leave empty for no minimum, or enter dollars, 0 or more.";
-  return errors;
-}
-
-/** The create body for a valid form (call only when `pricingFormErrors` is empty). */
-function createBody(form: PlanForm, thresholds: readonly number[], reason: string) {
-  const cents = (raw: string): number => parsePriceCents(raw) ?? 0;
-  return {
-    familySlug: form.familySlug.trim(),
-    name: form.name.trim(),
-    perUserPriceCents: cents(form.perUserPrice),
-    bands: thresholds.map((minAdc, i) => ({
-      minAdc,
-      monthlyFeeCents: cents(form.bandFees[i] ?? ""),
-    })),
-    billingSoftwareBps: parsePercentBps(form.billingSoftwarePct) ?? 0,
-    managedBillingBps: parsePercentBps(form.managedBillingPct) ?? 0,
-    contractTermMonths: Number(form.termMonths),
-    implementationFeeCents: cents(form.implementationFee),
-    minimumMonthlyCents: form.minimumMonthly.trim() === "" ? null : cents(form.minimumMonthly),
-    reason,
-  };
-}
-
-const bandLabel = (thresholds: readonly number[], i: number): string => {
-  const next = thresholds[i + 1];
-  return next === undefined
-    ? `${thresholds[i]}+ patients a day`
-    : `${thresholds[i]}-${next - 1} patients a day`;
-};
 
 export function PricingPlans(): JSX.Element {
   const client = useApiClient();
+  // Fail closed: until the actor context answers (or if it cannot), no write buttons.
+  const [canWrite, setCanWrite] = useState(false);
   const [params, setParams] = useSearchParams();
   const selectedId = params.get("plan");
   const creating = selectedId === "new";
@@ -147,8 +72,8 @@ export function PricingPlans(): JSX.Element {
   const [defaults, setDefaults] = useState<Defaults | null>(null);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [error, setError] = useState<LoadError | null>(null);
+  const [outcome, setOutcome] = useState<PlanOutcome | null>(null);
   const guard = useRequestGuard();
 
   const load = useCallback(async () => {
@@ -156,85 +81,135 @@ export function PricingPlans(): JSX.Element {
     setLoading(true);
     setLoaded(false);
     setError(null);
-    const [list, defs] = await Promise.all([
-      client.GET("/api/admin/pricing/plans"),
-      client.GET("/api/admin/pricing/defaults"),
-    ]);
-    if (!isCurrent()) return;
-    if (list.error || defs.error) {
-      setError("Price plans unavailable.");
-      setLoading(false);
-      return;
+    try {
+      const [list, defs, actor] = await Promise.all([
+        client.GET("/api/admin/pricing/plans"),
+        client.GET("/api/admin/pricing/defaults"),
+        client.GET("/api/v1/auth/context"),
+      ]);
+      if (!isCurrent()) return;
+      setCanWrite(actor.data?.permissions?.includes("plan.admin.write") ?? false);
+      if (list.error || defs.error) {
+        const forbidden = (list.error ? list.response : defs.response).status === 403;
+        setError(
+          forbidden
+            ? {
+                message:
+                  "You do not have access to price plans. A platform billing admin manages them.",
+                retry: false,
+              }
+            : { message: "Price plans unavailable.", retry: true },
+        );
+        return;
+      }
+      setPlans(list.data);
+      setDefaults(defs.data);
+      setLoaded(true);
+    } catch {
+      if (isCurrent()) setError({ message: UNREACHABLE, retry: true });
+    } finally {
+      if (isCurrent()) setLoading(false);
     }
-    setPlans(list.data);
-    setDefaults(defs.data);
-    setLoaded(true);
-    setLoading(false);
   }, [client, guard]);
 
   useEffect(() => {
     void load();
   }, [load]);
+  // A success belongs to the plan it is about: opening another row (or New plan) drops it.
+  useEffect(() => {
+    setOutcome((o) => (o && o.planId === selectedId ? o : null));
+  }, [selectedId]);
 
+  // While the list cannot be read no drawer is shown: the plan it would show is the last read, not what the server holds now.
   const selected =
-    selectedId && !creating ? (plans.find((p) => p.id === selectedId) ?? null) : null;
+    selectedId && !creating && !error ? (plans.find((p) => p.id === selectedId) ?? null) : null;
   useStaleSelection({ param: "plan", ready: loaded, found: selected !== null, ignore: ["new"] });
   const close = (): void => setParams({});
-  const done = async (message: string, openId?: string): Promise<void> => {
-    setOutcome({ ok: true, message });
-    setParams(openId ? { plan: openId } : {});
+  const done = async (planId: string, message: string): Promise<void> => {
+    setOutcome({ planId, message });
+    setParams({ plan: planId });
     await load();
   };
+  const showCreate = creating && defaults !== null && canWrite && !error;
 
   return (
-    <div className={`wx-list-drawer${creating || selected ? " has-drawer" : ""}`}>
+    <div className={`wx-list-drawer${showCreate || selected ? " has-drawer" : ""}`}>
       <div className="wx-list-drawer-main">
         <header className="wx-page-head">
           <div>
             <h1>Price plans</h1>
             <p>The plans a tenant signs during onboarding. Only a published plan can be signed.</p>
           </div>
-          <div className="wx-list-toolbar-end">
-            <Button disabled={!defaults} onClick={() => setParams({ plan: "new" })}>
-              New plan
-            </Button>
-          </div>
+          {canWrite ? (
+            <div className="wx-list-toolbar-end">
+              <Button disabled={!defaults} onClick={() => setParams({ plan: "new" })}>
+                New plan
+              </Button>
+            </div>
+          ) : null}
         </header>
-        {outcome ? <OutcomeBanner {...outcome} /> : null}
-        {loading ? (
-          <StateLoading label="Loading price plans…" />
-        ) : error ? (
-          <StateError message={error} onRetry={() => void load()} />
-        ) : plans.length === 0 ? (
-          <StateEmpty icon="layout-grid">
-            No price plans yet. Create one, then publish it so tenants can sign it.
-          </StateEmpty>
-        ) : (
-          <PlansTable
-            plans={plans}
-            selectedId={selectedId}
-            onOpen={(id) => setParams({ plan: id })}
-          />
-        )}
+        {creating && loaded && !canWrite ? (
+          <InlineAlert tone="info">
+            Only a platform billing admin can create price plans. You can read the plans below.
+          </InlineAlert>
+        ) : null}
+        <PlansMain
+          error={error}
+          loading={loading}
+          plans={plans}
+          selectedId={selectedId}
+          onRetry={() => void load()}
+          onOpen={(id) => setParams({ plan: id })}
+        />
       </div>
-      {creating && defaults ? (
+      {showCreate ? (
         <CreateDrawer
           thresholds={defaults.bandThresholds}
           onClose={close}
-          onOutcome={setOutcome}
-          onCreated={(plan) => done(`Draft "${plan.name}" created.`, plan.id)}
+          onCreated={(plan) => done(plan.id, `Draft "${plan.name}" created.`)}
         />
       ) : selected ? (
         <PlanDrawer
           key={selected.id}
           plan={selected}
+          family={plans.filter((p) => p.familySlug === selected.familySlug)}
+          canWrite={canWrite}
+          reloading={loading}
+          outcome={outcome?.planId === selected.id ? outcome.message : null}
           onClose={close}
-          onOutcome={setOutcome}
           onDone={done}
+          onReload={load}
         />
       ) : null}
     </div>
   );
+}
+
+function PlansMain({
+  error,
+  loading,
+  plans,
+  selectedId,
+  onRetry,
+  onOpen,
+}: {
+  error: LoadError | null;
+  loading: boolean;
+  plans: readonly PricingPlan[];
+  selectedId: string | null;
+  onRetry: () => void;
+  onOpen: (id: string) => void;
+}): JSX.Element {
+  if (error) return <StateError message={error.message} {...(error.retry ? { onRetry } : {})} />;
+  if (loading && plans.length === 0) return <StateLoading label="Loading price plans…" />;
+  if (plans.length === 0)
+    return (
+      <StateEmpty icon="layout-grid">
+        No price plans yet. Create one, then publish it so tenants can sign it.
+      </StateEmpty>
+    );
+  // The table stays during a reload, so the open drawer's row (and the focus it returns to) is kept.
+  return <PlansTable plans={plans} selectedId={selectedId} onOpen={onOpen} />;
 }
 
 function PlansTable({
@@ -294,116 +269,220 @@ function PlansTable({
   );
 }
 
-/** The actions a plan's status allows (the server refuses the rest). */
-const actionsFor = (status: PricingPlan["status"]): readonly Action[] =>
-  status === "draft"
-    ? ["publish", "archive"]
-    : status === "published"
-      ? ["new-version", "archive"]
-      : [];
+/** A plan's version, status and prices. */
+function PlanDetails({ plan }: { plan: PricingPlan }): JSX.Element {
+  return (
+    <>
+      <div className="wx-drawer-card-head">
+        <h3>Version {plan.version}</h3>
+        <StatusPill label={cap(plan.status)} tone={STATUS_TONE[plan.status]} />
+      </div>
+      <dl className="wx-kv">
+        {priceLines(plan, plan.currencyCode).map((line) => (
+          <div key={line.label}>
+            <dt>{line.label}</dt>
+            <dd className="wx-nums">{line.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </>
+  );
+}
 
-function PlanDrawer({
+/** The writes this operator may start on this plan. */
+function PlanActions({
   plan,
+  family,
+  canWrite,
+  locked,
+  onEdit,
+  onAsk,
+}: {
+  plan: PricingPlan;
+  family: readonly PricingPlan[];
+  canWrite: boolean;
+  locked: boolean;
+  onEdit: () => void;
+  onAsk: (action: PlanAction) => void;
+}): JSX.Element | null {
+  if (!canWrite) return null;
+  const actions = actionsFor(plan, family);
+  const editable = plan.status === "draft";
+  if (actions.length === 0 && !editable) return null;
+  return (
+    <div className="wx-drawer-actions">
+      {editable ? (
+        <Button tone="secondary" disabled={locked} onClick={onEdit}>
+          Edit prices
+        </Button>
+      ) : null}
+      {actions.map((a) => (
+        <Button
+          key={a}
+          tone={a === "archive" ? "secondary" : "primary"}
+          disabled={locked}
+          onClick={() => onAsk(a)}
+        >
+          {ACTION_COPY[a].label}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The reason dialog of a publish, archive or new version. It re-reads the plan when it opens and shows the prices being acted on
+ * (marked when they changed since the drawer was read); the write pins that read (If-Match), and a 409 re-reads it again.
+ */
+function ActionDialog({
+  plan,
+  action,
   onClose,
-  onOutcome,
   onDone,
 }: {
   plan: PricingPlan;
+  action: PlanAction | null;
   onClose: () => void;
-  onOutcome: (o: Outcome | null) => void;
-  onDone: (message: string, openId?: string) => Promise<void>;
+  onDone: (planId: string, message: string) => Promise<void>;
 }): JSX.Element {
   const client = useApiClient();
-  const drawer = useDrawerA11y<HTMLElement>(onClose);
-  const [asking, setAsking] = useState<Action | null>(null);
-  const [busy, setBusy] = useState(false);
-  const money = (cents: number | null): string =>
-    cents === null ? "None" : formatCents(cents, plan.currencyCode);
-  const pct = (bps: number | null): string => (bps === null ? "—" : `${bps / 100}%`);
+  const write = useOpsWrite();
+  const guard = useRequestGuard();
+  // What the operator is confirming: the drawer's plan until the re-read answers (a failed re-read leaves it; the pin still guards).
+  const [fresh, setFresh] = useState<PricingPlan | null>(null);
 
-  async function run(action: Action, reason: string): Promise<void> {
-    if (busy) return;
-    setBusy(true);
-    onOutcome(null);
-    const init = {
-      params: { path: { id: plan.id }, header: { "Idempotency-Key": idempotencyKey() } },
-      body: { reason },
-    };
-    const res =
-      action === "publish"
-        ? await client.POST("/api/admin/pricing/plans/{id}/publish", init)
-        : action === "archive"
-          ? await client.POST("/api/admin/pricing/plans/{id}/archive", init)
-          : await client.POST("/api/admin/pricing/plans/{id}/new-version", init);
-    setBusy(false);
-    setAsking(null);
-    if (res.error) {
-      onOutcome(
-        failureOutcome(res.error, `Could not ${ACTION_COPY[action].label.toLowerCase()} the plan.`),
-      );
-      return;
+  const reread = useCallback(async () => {
+    const isCurrent = guard();
+    try {
+      const res = await client.GET("/api/admin/pricing/plans/{id}", {
+        params: { path: { id: plan.id } },
+      });
+      if (isCurrent() && res.data) setFresh(res.data);
+    } catch {
+      // The drawer's read stands; the server refuses a stale pin.
     }
-    await onDone(`"${plan.name}" ${ACTION_COPY[action].done}.`, res.data?.id);
+  }, [client, guard, plan.id]);
+
+  useEffect(() => {
+    if (action === null) setFresh(null);
+    else void reread();
+  }, [action, reread]);
+
+  const shown = fresh ?? plan;
+  const copy = action ? ACTION_COPY[action] : null;
+
+  async function run(chosen: PlanAction, reason: string): Promise<void> {
+    const init = (key: string) => ({
+      params: {
+        path: { id: plan.id },
+        header: { "Idempotency-Key": key, "If-Match": pinOf(shown) },
+      },
+      body: { reason },
+    });
+    const result = await write.run(
+      JSON.stringify({ action: chosen, id: plan.id, pin: shown.updatedAt, reason }),
+      (key) =>
+        chosen === "publish"
+          ? client.POST("/api/admin/pricing/plans/{id}/publish", init(key))
+          : chosen === "archive"
+            ? client.POST("/api/admin/pricing/plans/{id}/archive", init(key))
+            : client.POST("/api/admin/pricing/plans/{id}/new-version", init(key)),
+      (data) => onDone(data.id, `"${plan.name}" ${ACTION_COPY[chosen].done}.`),
+    );
+    if (result.ok) onClose();
+    else if (result.failure.kind === "conflict") await reread();
   }
 
-  const copy = asking ? ACTION_COPY[asking] : null;
+  return (
+    <ReasonDialog
+      open={action !== null}
+      title={copy ? `${copy.label} "${plan.name}"` : ""}
+      description={copy?.explain(shown) ?? ""}
+      record={action ? priceLines(shown, shown.currencyCode) : []}
+      stale={shown.updatedAt !== plan.updatedAt || shown.status !== plan.status}
+      rule={REASON_RULES.pricing}
+      confirmLabel={copy?.label ?? ""}
+      {...(copy?.tone ? { tone: copy.tone } : {})}
+      busy={write.busy}
+      {...(write.failure && copy
+        ? { error: <WriteFailure failure={write.failure} failed={copy.failed} /> }
+        : {})}
+      onConfirm={(reason) => action && void run(action, reason)}
+      onCancel={() => {
+        write.clear();
+        onClose();
+      }}
+    />
+  );
+}
+
+function PlanDrawer({
+  plan,
+  family,
+  canWrite,
+  reloading,
+  outcome,
+  onClose,
+  onDone,
+  onReload,
+}: {
+  plan: PricingPlan;
+  family: readonly PricingPlan[];
+  canWrite: boolean;
+  reloading: boolean;
+  outcome: string | null;
+  onClose: () => void;
+  onDone: (planId: string, message: string) => Promise<void>;
+  onReload: () => Promise<void>;
+}): JSX.Element {
+  // A step-up refusal sends the operator to /step-up and back; the typed prices come back ONCE (Cancel or a save drops them).
+  const restored = useStepUpMemoryDraft<PlanForm>(editDraftKey(plan.id));
+  const [stash, setStash] = useState<PlanForm | undefined>(restored);
+  const [editing, setEditing] = useState(
+    restored !== undefined && plan.status === "draft" && canWrite,
+  );
+  const [asking, setAsking] = useState<PlanAction | null>(null);
+  // The edited flag (Escape stops closing a drawer once something was typed) resets when the dialog or the editor closes.
+  const drawer = useDrawerA11y<HTMLElement>(onClose, editing ? "editing" : asking);
+  const stopEditing = (): void => {
+    setStash(undefined);
+    setEditing(false);
+    // Focus goes back to the drawer (its buttons return), not to the page.
+    drawer.ref.current?.focus({ preventScroll: true });
+  };
+
   return (
     <aside className="wx-admission-drawer" aria-label="Price plan" {...drawer}>
       <DrawerHead icon="layout-grid" title={plan.name} sub={plan.slug} onClose={onClose} />
       <div className="wx-drawer-body">
-        <section className="wx-drawer-card">
-          <div className="wx-drawer-card-head">
-            <h3>Version {plan.version}</h3>
-            <StatusPill label={cap(plan.status)} tone={STATUS_TONE[plan.status]} />
-          </div>
-          <dl className="wx-kv">
-            <dt>Per user</dt>
-            <dd className="wx-nums">{money(plan.perUserPriceCents)} a month</dd>
-            <dt>Census bands</dt>
-            <dd className="wx-nums">
-              {plan.bands
-                .map(
-                  (b) =>
-                    `${b.minAdc}${b.maxAdc === null ? "+" : `-${b.maxAdc}`}: ${money(b.monthlyFeeCents)}`,
-                )
-                .join(" · ")}
-            </dd>
-            <dt>Billing software</dt>
-            <dd className="wx-nums">{pct(plan.billingSoftwareBps)} of net collections</dd>
-            <dt>Managed billing</dt>
-            <dd className="wx-nums">{pct(plan.managedBillingBps)} of net collections</dd>
-            <dt>Term</dt>
-            <dd className="wx-nums">{plan.contractTermMonths ?? "—"} months</dd>
-            <dt>Implementation fee</dt>
-            <dd className="wx-nums">{money(plan.implementationFeeCents)}</dd>
-            <dt>Monthly minimum</dt>
-            <dd className="wx-nums">{money(plan.minimumMonthlyCents)}</dd>
-          </dl>
-          {actionsFor(plan.status).length > 0 ? (
-            <div className="wx-drawer-actions">
-              {actionsFor(plan.status).map((a) => (
-                <Button
-                  key={a}
-                  tone={a === "archive" ? "secondary" : "primary"}
-                  onClick={() => setAsking(a)}
-                >
-                  {ACTION_COPY[a].label}
-                </Button>
-              ))}
-            </div>
-          ) : null}
-        </section>
+        {outcome ? <InlineAlert tone="success">{outcome}</InlineAlert> : null}
+        {editing ? (
+          <PlanEditor
+            mode={{ kind: "edit", plan }}
+            initial={stash ?? formFromPlan(plan)}
+            draftKey={editDraftKey(plan.id)}
+            onCancel={stopEditing}
+            onConflict={() => void onReload()}
+            onSaved={async (saved) => {
+              stopEditing();
+              await onDone(saved.id, `"${saved.name}" prices saved.`);
+            }}
+          />
+        ) : (
+          <section className="wx-drawer-card">
+            <PlanDetails plan={plan} />
+            <PlanActions
+              plan={plan}
+              family={family}
+              canWrite={canWrite}
+              locked={reloading || asking !== null}
+              onEdit={() => setEditing(true)}
+              onAsk={setAsking}
+            />
+          </section>
+        )}
       </div>
-      <ReasonDialog
-        open={asking !== null}
-        title={copy ? `${copy.label} "${plan.name}"` : ""}
-        rule={REASON_RULES.pricing}
-        confirmLabel={copy?.label ?? ""}
-        {...(copy?.tone ? { tone: copy.tone } : {})}
-        busy={busy}
-        onConfirm={(reason) => asking && void run(asking, reason)}
-        onCancel={() => setAsking(null)}
-      />
+      <ActionDialog plan={plan} action={asking} onClose={() => setAsking(null)} onDone={onDone} />
     </aside>
   );
 }
@@ -411,107 +490,30 @@ function PlanDrawer({
 function CreateDrawer({
   thresholds,
   onClose,
-  onOutcome,
   onCreated,
 }: {
   thresholds: readonly number[];
   onClose: () => void;
-  onOutcome: (o: Outcome | null) => void;
   onCreated: (plan: PricingPlan) => Promise<void>;
 }): JSX.Element {
-  const client = useApiClient();
   const drawer = useDrawerA11y<HTMLElement>(onClose);
-  const [form, setForm] = useState<PlanForm>(() => blankForm(thresholds.length));
-  const [attempted, setAttempted] = useState(false);
-  const [asking, setAsking] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const errors = attempted ? pricingFormErrors(form) : {};
-  const set = (patch: Partial<PlanForm>): void => setForm((f) => ({ ...f, ...patch }));
-
-  const submit = (e: FormEvent<HTMLFormElement>): void => {
-    e.preventDefault();
-    if (!isValid(pricingFormErrors(form))) {
-      setAttempted(true);
-      focusFirstInvalid(e.currentTarget);
-      return;
-    }
-    setAsking(true);
-  };
-  // ponytail: a step-up refusal leaves for /step-up and the typed form is not stashed (plans-list.tsx stashes with
-  // stashStepUpDraft); add it if operators hit Re-verify mid-create often.
-  async function create(reason: string): Promise<void> {
-    if (busy) return;
-    setBusy(true);
-    onOutcome(null);
-    const res = await client.POST("/api/admin/pricing/plans", {
-      params: { header: { "Idempotency-Key": idempotencyKey() } },
-      body: createBody(form, thresholds, reason),
-    });
-    setBusy(false);
-    setAsking(false);
-    if (res.error) {
-      onOutcome(failureOutcome(res.error, "Could not create the plan (check the fields)."));
-      return;
-    }
-    await onCreated(res.data);
-  }
-
-  const field = (key: Exclude<keyof PlanForm, "bandFees">, label: string, hint?: string) => (
-    <TextField
-      label={label}
-      required={key !== "minimumMonthly"}
-      {...(hint ? { hint } : {})}
-      error={errors[key]}
-      value={form[key]}
-      onChange={(e) => set({ [key]: e.target.value })}
-    />
-  );
+  // A step-up refusal sends the operator to /step-up and back; the typed plan comes back (when the bands still match).
+  const restored = useStepUpMemoryDraft<PlanForm>(CREATE_DRAFT_KEY);
+  const initial =
+    restored && restored.bandFees.length === thresholds.length
+      ? restored
+      : blankForm(thresholds.length);
   return (
     <aside className="wx-admission-drawer" aria-label="New price plan" {...drawer}>
       <DrawerHead icon="plus" title="New price plan" sub="Created as a draft" onClose={onClose} />
       <div className="wx-drawer-body">
-        <form className="wx-drawer-card" onSubmit={submit} noValidate>
-          {field(
-            "familySlug",
-            "Plan family",
-            "Lowercase letters, numbers and hyphens, e.g. hospice-core.",
-          )}
-          {field("name", "Name")}
-          {field("perUserPrice", "Per user a month (USD)")}
-          {thresholds.map((_, i) => (
-            <TextField
-              // biome-ignore lint/suspicious/noArrayIndexKey: one fixed field per band, in threshold order
-              key={i}
-              label={`Census band ${bandLabel(thresholds, i)}, a month (USD)`}
-              required
-              error={errors[`band${i}`]}
-              value={form.bandFees[i] ?? ""}
-              onChange={(e) =>
-                set({ bandFees: form.bandFees.map((v, j) => (j === i ? e.target.value : v)) })
-              }
-            />
-          ))}
-          {field("billingSoftwarePct", "Billing software (% of net collections)")}
-          {field("managedBillingPct", "Managed billing (% of net collections)")}
-          {field("termMonths", "Contract term (months)")}
-          {field("implementationFee", "Implementation fee (USD)")}
-          {field("minimumMonthly", "Monthly minimum (USD)", "Leave empty for no minimum.")}
-          <div className="wx-drawer-actions">
-            <Button type="submit" disabled={busy}>
-              Create draft
-            </Button>
-          </div>
-        </form>
+        <PlanEditor
+          mode={{ kind: "create", thresholds }}
+          initial={initial}
+          draftKey={CREATE_DRAFT_KEY}
+          onSaved={onCreated}
+        />
       </div>
-      <ReasonDialog
-        open={asking}
-        title="Create this price plan"
-        rule={REASON_RULES.pricing}
-        confirmLabel="Create draft"
-        busy={busy}
-        onConfirm={(reason) => void create(reason)}
-        onCancel={() => setAsking(false)}
-      />
     </aside>
   );
 }

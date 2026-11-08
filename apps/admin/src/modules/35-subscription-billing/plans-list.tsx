@@ -7,12 +7,14 @@ import {
   focusFirstInvalid,
   interactiveRowProps,
   isValid,
-  stashStepUpDraft,
+  parsePriceCents,
+  parseWholeNumber,
+  stashStepUpMemoryDraft,
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
   useStaleSelection,
-  useStepUpDraft,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Plans list + create (`/admin/plans`, plan.admin.read).
@@ -47,22 +49,6 @@ const EMPTY_FORM = {
 };
 type PlanForm = typeof EMPTY_FORM;
 
-/** Dollars typed by the operator to integer cents; null unless it is a finite number >= 0 ("abc" is not a $0 plan). */
-export function parsePriceCents(raw: string): number | null {
-  const text = raw.trim();
-  if (text === "") return null;
-  const dollars = Number(text);
-  return Number.isFinite(dollars) && dollars >= 0 ? Math.round(dollars * 100) : null;
-}
-
-/** Whole trial days >= 0; null for anything else. */
-export function parseTrialDays(raw: string): number | null {
-  const text = raw.trim();
-  if (text === "") return null;
-  const days = Number(text);
-  return Number.isInteger(days) && days >= 0 ? days : null;
-}
-
 const SLUG_SHAPE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const PLAN_DRAFT_KEY = "plan-create";
 
@@ -76,8 +62,8 @@ export function planFormErrors(form: PlanForm): FieldErrors<keyof PlanForm> {
   if (form.name.trim() === "") errors.name = "Enter a plan name.";
   if (form.basePrice.trim() === "") errors.basePrice = "Enter a price in dollars, e.g. 49.00.";
   else if (parsePriceCents(form.basePrice) === null)
-    errors.basePrice = "Enter a number of dollars, 0 or more, e.g. 49.00.";
-  if (parseTrialDays(form.trialDays) === null)
+    errors.basePrice = "Enter a number of dollars, 0 or more, with up to two decimals, e.g. 49.00.";
+  if (parseWholeNumber(form.trialDays) === null)
     errors.trialDays = "Enter a whole number of days, 0 or more.";
   return errors;
 }
@@ -101,7 +87,7 @@ export function PlansList(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   // A step-up refusal sends the operator to /step-up and back; the typed plan is restored and the drawer reopens.
-  const restored = useStepUpDraft<PlanForm>(PLAN_DRAFT_KEY);
+  const restored = useStepUpMemoryDraft<PlanForm>(PLAN_DRAFT_KEY);
   const [showCreate, setShowCreate] = useState(restored !== undefined);
   const [form, setForm] = useState<PlanForm>(restored ?? EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -131,7 +117,7 @@ export function PlansList(): JSX.Element {
 
   const create = useCallback(async () => {
     const basePriceCents = parsePriceCents(form.basePrice);
-    const trialPeriodDays = parseTrialDays(form.trialDays);
+    const trialPeriodDays = parseWholeNumber(form.trialDays);
     if (!isValid(planFormErrors(form)) || basePriceCents === null || trialPeriodDays === null)
       return;
     setSaving(true);
@@ -188,7 +174,10 @@ export function PlansList(): JSX.Element {
           </div>
         </header>
         {outcome ? (
-          <OutcomeBanner {...outcome} onReverify={() => stashStepUpDraft(PLAN_DRAFT_KEY, form)} />
+          <OutcomeBanner
+            {...outcome}
+            onReverify={() => stashStepUpMemoryDraft(PLAN_DRAFT_KEY, form)}
+          />
         ) : null}
         {loading ? (
           <StateLoading label="Loading plans…" />

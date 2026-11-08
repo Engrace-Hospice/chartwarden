@@ -7,12 +7,14 @@ import {
   focusFirstInvalid,
   interactiveRowProps,
   isValid,
-  stashStepUpDraft,
+  parsePriceCents,
+  parseWholeNumber,
+  stashStepUpMemoryDraft,
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
   useStaleSelection,
-  useStepUpDraft,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Promos (`/admin/promos`, promo.admin.read/write).
@@ -55,15 +57,16 @@ export function promoFormErrors(form: PromoForm): FieldErrors<keyof PromoForm> {
   const errors: FieldErrors<keyof PromoForm> = {};
   if (form.code.trim() === "") errors.code = "Enter a promo code.";
   if (form.kind === "percent_off") {
-    const percent = Number(form.percent);
+    const percent = parseWholeNumber(form.percent, 100);
     if (form.percent.trim() === "") errors.percent = "Enter a percentage from 1 to 100.";
-    else if (!Number.isInteger(percent) || percent < 1 || percent > 100)
+    else if (percent === null || percent < 1)
       errors.percent = "Enter a whole percentage from 1 to 100.";
   } else {
-    const amount = Number(form.amount);
+    const amount = parsePriceCents(form.amount);
     if (form.amount.trim() === "") errors.amount = "Enter an amount in dollars, e.g. 10.00.";
-    else if (!Number.isFinite(amount) || Math.round(amount * 100) < 1)
-      errors.amount = "Enter a dollar amount of at least 0.01, e.g. 10.00.";
+    else if (amount === null || amount < 1)
+      errors.amount =
+        "Enter a dollar amount of at least 0.01, with up to two decimals, e.g. 10.00.";
   }
   return errors;
 }
@@ -99,7 +102,7 @@ export function Promos(): JSX.Element {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
   // A step-up refusal sends the operator to /step-up and back; the typed promo is restored and the drawer reopens.
-  const restored = useStepUpDraft<PromoForm>(PROMO_DRAFT_KEY);
+  const restored = useStepUpMemoryDraft<PromoForm>(PROMO_DRAFT_KEY);
   const [showCreate, setShowCreate] = useState(restored !== undefined);
   const [params, setParams] = useSearchParams();
   const selectedId = params.get("promo");
@@ -138,11 +141,10 @@ export function Promos(): JSX.Element {
         stripeCouponId: form.coupon.trim() || form.code.trim(),
         stripePromotionCodeId: form.promotion.trim() || form.code.trim(),
         kind: form.kind as "percent_off" | "amount_off",
-        percentOff: form.kind === "percent_off" ? Number(form.percent) || undefined : undefined,
+        percentOff:
+          form.kind === "percent_off" ? (parseWholeNumber(form.percent) ?? undefined) : undefined,
         fixedOffCents:
-          form.kind === "amount_off"
-            ? Math.round(Number(form.amount) * 100) || undefined
-            : undefined,
+          form.kind === "amount_off" ? (parsePriceCents(form.amount) ?? undefined) : undefined,
         duration: form.duration as "once" | "repeating" | "forever",
       },
       headers: { "Idempotency-Key": idempotencyKey() },
@@ -206,7 +208,10 @@ export function Promos(): JSX.Element {
           </div>
         </header>
         {outcome ? (
-          <OutcomeBanner {...outcome} onReverify={() => stashStepUpDraft(PROMO_DRAFT_KEY, form)} />
+          <OutcomeBanner
+            {...outcome}
+            onReverify={() => stashStepUpMemoryDraft(PROMO_DRAFT_KEY, form)}
+          />
         ) : null}
         {loading ? (
           <StateLoading label="Loading promos…" />
