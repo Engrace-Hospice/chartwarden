@@ -514,7 +514,7 @@ export function createS3ObjectStore(
       };
     },
 
-    async getObject({ bucket, objectKey, maxBytes, signal }) {
+    async getObject({ bucket, objectKey, maxBytes, firstBytes, signal }) {
       const res = await signedFetch({
         method: "GET",
         bucket,
@@ -522,6 +522,9 @@ export function createS3ObjectStore(
         query: [],
         payload: null,
         ...(signal ? { signal } : {}),
+        ...(firstBytes === undefined
+          ? {}
+          : { extraHeaders: { range: `bytes=0-${firstBytes - 1}` } }),
       });
       if (res.status === 404) return null;
       if (!res.ok) throw opError("getObject", res.status, bucket, objectKey);

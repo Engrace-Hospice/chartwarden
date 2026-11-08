@@ -32,10 +32,27 @@ import {
 import { rejectOffsetPagination } from "./concurrency";
 import { ABAC_ACCOUNT, ABAC_BEREAVED, ABAC_GRANT, P } from "./guards";
 import type { PortalRouteDeps } from "./index";
-import { PortalMessageHistoryQuery, WithinQuery, parseQuery } from "./portal-typebox";
+import {
+  PortalLibraryItemParams,
+  PortalLibraryUrlQuery,
+  PortalMessageHistoryQuery,
+  WithinQuery,
+  parseQuery,
+} from "./portal-typebox";
 
 const NO_OFFSET = rejectOffsetPagination();
 const PHI = (resourceKind: string, list = true) => ({ auditRead: { resourceKind, list } });
+
+/** ADR-0109 D10 (PR 3) — an unbound M16 portal-content seam is a 503 (never an empty list that reads as "nothing for you"). */
+function contentUnavailable(error: unknown): unknown {
+  return error instanceof Error && error.name === "NotImplementedError"
+    ? new ChartWardenError(
+        "BEREAVEMENT_PORTAL_CONTENT_UNAVAILABLE",
+        "This is not available right now. Please contact your care team.",
+        503,
+      )
+    : error;
+}
 const within = (q: unknown, def: number): number =>
   (parseQuery(WithinQuery, q).within ?? def) as number;
 
@@ -465,6 +482,98 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
     async (request) => {
       const actor = actorOf(request);
       return resolveBereavementScope(actor.organizationId, portalAccountIdOf(actor));
+    },
+  );
+
+  // ADR-0109 D10 (PR 3) — the family's own memorial invitations (M16 `BereavementPortalContentProvider`), window-gated. M16 decides which rows are
+  // this account's; only published services are listed.
+  app.get(
+    "/api/v1/portal/bereavement/memorials",
+    {
+      preHandler: [
+        P("portal.bereavement.read_program"),
+        ABAC_BEREAVED("portal.bereavement.read_program"),
+      ],
+      config: PHI("portal_bereavement"),
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      try {
+        const items = await getSeam(
+          "BereavementPortalContentProvider",
+        ).memorialInvitationsForPortalAccount({
+          organizationId: actor.organizationId,
+          userId: actor.userId,
+          portalAccountId: portalAccountIdOf(actor),
+        });
+        return { items };
+      } catch (error) {
+        throw contentUnavailable(error);
+      }
+    },
+  );
+
+  // ADR-0109 D10 (PR 3) — the agency's PUBLISHED grief library (M16), window-gated. Agency content: no person is named.
+  app.get(
+    "/api/v1/portal/bereavement/library",
+    {
+      preHandler: [
+        P("portal.bereavement.read_resources"),
+        ABAC_BEREAVED("portal.bereavement.read_resources"),
+      ],
+      config: {
+        auditRead: {
+          none: "the agency's published grief-library titles; no patient or family is named",
+        },
+      },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      try {
+        const items = await getSeam("BereavementPortalContentProvider").libraryForPortal({
+          organizationId: actor.organizationId,
+          userId: actor.userId,
+        });
+        return { items };
+      } catch (error) {
+        throw contentUnavailable(error);
+      }
+    },
+  );
+
+  // ADR-0109 D10 (PR 3) — a short-lived URL for one published library file (or its transcript). M22's portal door admits the library type only and
+  // records the account and session on `document_access_log` first; never cached.
+  app.get(
+    "/api/v1/portal/bereavement/library/:itemId/url",
+    {
+      preHandler: [
+        P("portal.bereavement.read_resources"),
+        ABAC_BEREAVED("portal.bereavement.read_resources"),
+      ],
+      config: {
+        auditRead: { resourceKind: "bereavement_library_item", resourceIdParam: "itemId" },
+      },
+    },
+    async (request, reply) => {
+      const actor = actorOf(request);
+      const { itemId } = parseQuery(PortalLibraryItemParams, request.params);
+      const { part } = parseQuery(PortalLibraryUrlQuery, request.query);
+      let minted: { readonly url: string; readonly expiresAt: string } | null;
+      try {
+        minted = await getSeam("BereavementPortalContentProvider").mintLibraryUrlForPortal({
+          organizationId: actor.organizationId,
+          userId: actor.userId,
+          portalAccountId: portalAccountIdOf(actor),
+          portalSessionId: portalSessionIdOf(actor),
+          itemId,
+          part: part ?? "document",
+        });
+      } catch (error) {
+        throw contentUnavailable(error);
+      }
+      if (minted === null) throw new NotFoundError("library item");
+      void reply.header("cache-control", "no-store");
+      return minted;
     },
   );
 

@@ -4904,6 +4904,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bereavement/contacts/{contactId}/memorial-invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One contact's memorial invitations, newest service first (ADR-0109 D10, #76) */
+        get: operations["getApiV1BereavementContactsByContactIdMemorialinvitations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/contacts/{contactId}/memorial-invitations/{invitationId}/rsvp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Record a family's RSVP taken by phone (yes with a guest count, no, maybe) until the service starts; 409 `MEMORIAL_FULL` over capacity; emits `m16.bereavement.memorial_rsvp_recorded`; `Idempotency-Key` required (ADR-0109 D10, #74) */
+        put: operations["putApiV1BereavementContactsByContactIdMemorialinvitationsByInvitationIdRsvp"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bereavement/contacts/{contactId}/opt-out": {
         parameters: {
             query?: never;
@@ -4955,6 +4989,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bereavement/contacts/{contactId}/support-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One contact's support-group enrollments, live and past (ADR-0109 D10, #66) */
+        get: operations["getApiV1BereavementContactsByContactIdSupportgroups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bereavement/contacts/{contactId}/timeline": {
         parameters: {
             query?: never;
@@ -4998,6 +5049,248 @@ export interface paths {
         };
         /** Full-tenant bereavement rollups, optionally narrowed to one CCN / location — COUNTS, never rates (§4.1 #31) */
         get: operations["getApiV1BereavementDashboardSupervisor"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support groups, newest first (`?status=`), cursor-paginated, each with its enrolled count and next session; bereavement oversight or bereavement-capable staff; names no family (ADR-0109 D10, #53) */
+        get: operations["getApiV1BereavementGroups"];
+        put?: never;
+        /** Create a DRAFT support group (recurring with its schedule, or drop-in), in person or virtual, facilitated by bereavement-capable staff or a bereavement volunteer; oversight only; `Idempotency-Key` required (ADR-0109 D10, #54) */
+        post: operations["postApiV1BereavementGroups"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/groups/{groupId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One support group with its meeting link (ADR-0109 D10, #55) */
+        get: operations["getApiV1BereavementGroupsByGroupId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a draft or open group (a recurring group's schedule only while a draft); oversight or the group's staff facilitator; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #56) */
+        patch: operations["patchApiV1BereavementGroupsByGroupId"];
+        trace?: never;
+    };
+    "/api/v1/bereavement/groups/{groupId}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete or cancel a group: live enrollments are withdrawn (`group_ended`) and future sessions cancelled; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #58) */
+        post: operations["postApiV1BereavementGroupsByGroupIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/groups/{groupId}/enrollments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enroll a program family member (active plan and contact, no full / pause opt-out) into an open group under capacity; the contact's counselor or oversight; idempotent for a contact already enrolled; `Idempotency-Key` required (ADR-0109 D10, #63) */
+        post: operations["postApiV1BereavementGroupsByGroupIdEnrollments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/groups/{groupId}/enrollments/{contactId}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a contact's live enrollment (requested by the family, or removed by staff); `Idempotency-Key` required (ADR-0109 D10, #64) */
+        post: operations["postApiV1BereavementGroupsByGroupIdEnrollmentsByContactIdWithdraw"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/groups/{groupId}/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open a draft group: a recurring group's sessions are materialized (group-local wall time, kept across DST); a volunteer facilitator must pass the 418.78 gates now (422 `GROUP_FACILITATOR_INELIGIBLE`); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #57) */
+        post: operations["postApiV1BereavementGroupsByGroupIdOpen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/groups/{groupId}/roster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The roster of live program families (an opted-out or closed-plan contact drops off); oversight, the staff facilitator, or a volunteer facilitator passing the 418.78 gates, who gets the reduced projection (display name, enrollment status, attended) (ADR-0109 D10, #62) */
+        get: operations["getApiV1BereavementGroupsByGroupIdRoster"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/groups/{groupId}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A group's sessions by start, with attendee counts (ADR-0109 D10, #59) */
+        get: operations["getApiV1BereavementGroupsByGroupIdSessions"];
+        put?: never;
+        /** Add one session (a drop-in meeting, or an extra meeting of a recurring group); `Idempotency-Key` required (ADR-0109 D10, #60) */
+        post: operations["postApiV1BereavementGroupsByGroupIdSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/groups/{groupId}/sessions/{sessionId}/attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record who attended a session that has started (idempotent per contact): each new attendee gets a contact-log activity row (`support_group_session`, outcome `attended`) that satisfies no cadence item; emits `m16.bereavement.support_group_attendance_recorded`; `Idempotency-Key` required (ADR-0109 D10, #65) */
+        post: operations["postApiV1BereavementGroupsByGroupIdSessionsBySessionIdAttendance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/groups/{groupId}/sessions/{sessionId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a scheduled session; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #61) */
+        post: operations["postApiV1BereavementGroupsByGroupIdSessionsBySessionIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every grief-library item (`?status=`), portal order; bereavement oversight only; agency content, no person named (ADR-0109 D10, #77) */
+        get: operations["getApiV1BereavementLibrary"];
+        put?: never;
+        /** Register an uploaded M22 `bereavement_library_item` document (active, org-level; checked through the M22 seam) as a DRAFT item; its kind and MIME type come from the document; a transcript must be a PDF; 409 when the file is already listed; `Idempotency-Key` required (ADR-0109 D10, #78) */
+        post: operations["postApiV1BereavementLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/library/{itemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit an item's title, summary, category, transcript and order; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #79) */
+        patch: operations["patchApiV1BereavementLibraryByItemId"];
+        trace?: never;
+    };
+    "/api/v1/bereavement/library/{itemId}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish an item to the bereaved portal, archive it, or return it to draft; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #80) */
+        post: operations["postApiV1BereavementLibraryByItemIdStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/library/{itemId}/url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A short-lived preview URL for the item's file (`?part=transcript` for its transcript), minted through M22's org-level seam, which records the access; never cached (ADR-0109 D10, #81) */
+        get: operations["getApiV1BereavementLibraryByItemIdUrl"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5170,6 +5463,110 @@ export interface paths {
         get: operations["getApiV1BereavementMailingsRunsByRunIdItems"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/memorials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Memorial services, newest start first (`?status=`), cursor-paginated, each with its RSVP counts; oversight or bereavement-capable staff; names no family (ADR-0109 D10, #67) */
+        get: operations["getApiV1BereavementMemorials"];
+        put?: never;
+        /** Create a DRAFT memorial service (title, time, place or meeting link, capacity, RSVP-by date, invitation window of 1..13 months, default 12); oversight only; `Idempotency-Key` required (ADR-0109 D10, #68) */
+        post: operations["postApiV1BereavementMemorials"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/memorials/{serviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One memorial service with its meeting link and RSVP counts (ADR-0109 D10, #69) */
+        get: operations["getApiV1BereavementMemorialsByServiceId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a draft or published service (the invitation window is fixed once published); oversight only; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #70) */
+        patch: operations["patchApiV1BereavementMemorialsByServiceId"];
+        trace?: never;
+    };
+    "/api/v1/bereavement/memorials/{serviceId}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a started service held, or cancel a draft or published one (its unmailed invitation run is cancelled too); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #72) */
+        post: operations["postApiV1BereavementMemorialsByServiceIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/memorials/{serviceId}/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every invitation of a service by family name, with delivery, RSVP and attendance; oversight only (ADR-0109 D10, #73) */
+        get: operations["getApiV1BereavementMemorialsByServiceIdInvitations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/memorials/{serviceId}/invitations/{invitationId}/attendance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark an invitee attended (a contact-log activity row `memorial_service_attendance`, no cadence item; final) or a no-show, once the service has started; oversight only; `Idempotency-Key` required (ADR-0109 D10, #75) */
+        post: operations["postApiV1BereavementMemorialsByServiceIdInvitationsByInvitationIdAttendance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bereavement/memorials/{serviceId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish: invite, set-based, every program family whose decedent died within the window before the service (`mailing` when the mailing rule lets them receive a letter, else `portal_only`) and draft ONE `memorial_invitation` mailing run for the mailing invitees (no default wording); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #71) */
+        post: operations["postApiV1BereavementMemorialsByServiceIdPublish"];
         delete?: never;
         options?: never;
         head?: never;
@@ -21591,6 +21988,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portal/bereavement/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The agency's PUBLISHED grief library (title, summary, category, kind), window-gated (M16, ADR-0109 D10) */
+        get: operations["getApiV1PortalBereavementLibrary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/bereavement/library/{itemId}/url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A short-lived URL for one published library file (`?part=transcript` for its transcript); M22's portal door serves the library type only and records the account and session first; never cached (M16, ADR-0109 D10) */
+        get: operations["getApiV1PortalBereavementLibraryByItemIdUrl"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portal/bereavement/mailing-preference": {
         parameters: {
             query?: never;
@@ -21602,6 +22033,40 @@ export interface paths {
         put?: never;
         /** Stop (allowMailings false) or resume (true) bereavement MAILINGS only — the contact stays in the program and calls continue (M16, ADR-0109 D10) */
         post: operations["postApiV1PortalBereavementMailingpreference"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/bereavement/memorials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The bereaved family's own memorial-service invitations (published services only; a virtual link once they said yes), window-gated (M16, ADR-0109 D10) */
+        get: operations["getApiV1PortalBereavementMemorials"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/bereavement/memorials/{invitationId}/rsvp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The family's own RSVP (yes with a guest count, no, maybe); 404 for another family's invitation, 409 `MEMORIAL_RSVP_CLOSED` after the RSVP-by date or once the service started, 409 `MEMORIAL_FULL` over capacity; `Idempotency-Key` required (M16, ADR-0109 D10) */
+        post: operations["postApiV1PortalBereavementMemorialsByInvitationIdRsvp"];
         delete?: never;
         options?: never;
         head?: never;
@@ -42759,6 +43224,86 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BereavementContactsByContactIdMemorialinvitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        invitationId: string;
+                        serviceId: string;
+                        serviceTitle: string;
+                        startsAt: string;
+                        serviceStatus: "draft" | "published" | "held" | "cancelled";
+                        delivery: "mailing" | "portal_only";
+                        status: "invited" | "rsvp_yes" | "rsvp_no" | "rsvp_maybe" | "attended" | "no_show" | "withdrawn";
+                        guests: number;
+                        rsvpSource: ("staff_phone" | "portal") | null;
+                        rsvpAt: string | null;
+                        version: number;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1BereavementContactsByContactIdMemorialinvitationsByInvitationIdRsvp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contactId: string;
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    response: "yes" | "no" | "maybe";
+                    guests: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        invitationId: string;
+                        serviceId: string;
+                        serviceTitle: string;
+                        startsAt: string;
+                        serviceStatus: "draft" | "published" | "held" | "cancelled";
+                        delivery: "mailing" | "portal_only";
+                        status: "invited" | "rsvp_yes" | "rsvp_no" | "rsvp_maybe" | "attended" | "no_show" | "withdrawn";
+                        guests: number;
+                        rsvpSource: ("staff_phone" | "portal") | null;
+                        rsvpAt: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1BereavementContactsByContactIdOptout: {
         parameters: {
             query?: never;
@@ -42903,6 +43448,40 @@ export interface operations {
                         careGoals?: string[];
                         version: number;
                     };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementContactsByContactIdSupportgroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enrollmentId: string;
+                        groupId: string;
+                        groupName: string;
+                        groupStatus: "draft" | "open" | "completed" | "cancelled";
+                        contactId: string;
+                        status: "enrolled" | "withdrawn";
+                        withdrawnReason: ("requested" | "staff_removed" | "opted_out" | "plan_closed" | "group_ended") | null;
+                        enrolledAt: string;
+                        withdrawnAt: string | null;
+                    }[];
                 };
             };
             "4XX": components["responses"]["Error"];
@@ -43082,6 +43661,857 @@ export interface operations {
                         };
                         unassignedPlanCount: number;
                         externalSourceCosignPendingCount: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementGroups: {
+        parameters: {
+            query?: {
+                status?: "draft" | "open" | "completed" | "cancelled";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            groupId: string;
+                            name: string;
+                            description: string | null;
+                            format: "recurring" | "drop_in";
+                            modality: "in_person" | "virtual";
+                            enrollmentRequired: boolean;
+                            facilitatorKind: "staff" | "volunteer";
+                            facilitatorUserId: string;
+                            coFacilitatorUserId: string | null;
+                            capacity: number | null;
+                            status: "draft" | "open" | "completed" | "cancelled";
+                            recurrence: {
+                                firstDate: string;
+                                startTime: string;
+                                durationMinutes: number;
+                                intervalWeeks: number;
+                                count: number;
+                            } | null;
+                            timezone: string;
+                            venueText: string | null;
+                            hasJoinUrl: boolean;
+                            enrolledCount: number;
+                            nextSessionAt: string | null;
+                            openedAt: string | null;
+                            closedAt: string | null;
+                            version: number;
+                            createdAt: string;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    description: string | null;
+                    modality: "in_person" | "virtual";
+                    enrollmentRequired: boolean;
+                    facilitatorKind: "staff" | "volunteer";
+                    /** Format: uuid */
+                    facilitatorUserId: string;
+                    coFacilitatorUserId: string | null;
+                    capacity: number | null;
+                    timezone: string;
+                    venueText: string | null;
+                    joinUrl?: string | null;
+                    format: "recurring" | "drop_in";
+                    recurrence: {
+                        firstDate: string;
+                        startTime: string;
+                        durationMinutes: number;
+                        intervalWeeks: number;
+                        count: number;
+                    } | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        groupId: string;
+                        name: string;
+                        description: string | null;
+                        format: "recurring" | "drop_in";
+                        modality: "in_person" | "virtual";
+                        enrollmentRequired: boolean;
+                        facilitatorKind: "staff" | "volunteer";
+                        facilitatorUserId: string;
+                        coFacilitatorUserId: string | null;
+                        capacity: number | null;
+                        status: "draft" | "open" | "completed" | "cancelled";
+                        recurrence: {
+                            firstDate: string;
+                            startTime: string;
+                            durationMinutes: number;
+                            intervalWeeks: number;
+                            count: number;
+                        } | null;
+                        timezone: string;
+                        venueText: string | null;
+                        hasJoinUrl: boolean;
+                        enrolledCount: number;
+                        nextSessionAt: string | null;
+                        openedAt: string | null;
+                        closedAt: string | null;
+                        version: number;
+                        createdAt: string;
+                        joinUrl: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementGroupsByGroupId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        groupId: string;
+                        name: string;
+                        description: string | null;
+                        format: "recurring" | "drop_in";
+                        modality: "in_person" | "virtual";
+                        enrollmentRequired: boolean;
+                        facilitatorKind: "staff" | "volunteer";
+                        facilitatorUserId: string;
+                        coFacilitatorUserId: string | null;
+                        capacity: number | null;
+                        status: "draft" | "open" | "completed" | "cancelled";
+                        recurrence: {
+                            firstDate: string;
+                            startTime: string;
+                            durationMinutes: number;
+                            intervalWeeks: number;
+                            count: number;
+                        } | null;
+                        timezone: string;
+                        venueText: string | null;
+                        hasJoinUrl: boolean;
+                        enrolledCount: number;
+                        nextSessionAt: string | null;
+                        openedAt: string | null;
+                        closedAt: string | null;
+                        version: number;
+                        createdAt: string;
+                        joinUrl: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1BereavementGroupsByGroupId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    description: string | null;
+                    modality: "in_person" | "virtual";
+                    enrollmentRequired: boolean;
+                    facilitatorKind: "staff" | "volunteer";
+                    /** Format: uuid */
+                    facilitatorUserId: string;
+                    coFacilitatorUserId: string | null;
+                    capacity: number | null;
+                    timezone: string;
+                    venueText: string | null;
+                    joinUrl?: string | null;
+                    recurrence?: {
+                        firstDate: string;
+                        startTime: string;
+                        durationMinutes: number;
+                        intervalWeeks: number;
+                        count: number;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        groupId: string;
+                        name: string;
+                        description: string | null;
+                        format: "recurring" | "drop_in";
+                        modality: "in_person" | "virtual";
+                        enrollmentRequired: boolean;
+                        facilitatorKind: "staff" | "volunteer";
+                        facilitatorUserId: string;
+                        coFacilitatorUserId: string | null;
+                        capacity: number | null;
+                        status: "draft" | "open" | "completed" | "cancelled";
+                        recurrence: {
+                            firstDate: string;
+                            startTime: string;
+                            durationMinutes: number;
+                            intervalWeeks: number;
+                            count: number;
+                        } | null;
+                        timezone: string;
+                        venueText: string | null;
+                        hasJoinUrl: boolean;
+                        enrolledCount: number;
+                        nextSessionAt: string | null;
+                        openedAt: string | null;
+                        closedAt: string | null;
+                        version: number;
+                        createdAt: string;
+                        joinUrl: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementGroupsByGroupIdClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: "completed" | "cancelled";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        groupId: string;
+                        name: string;
+                        description: string | null;
+                        format: "recurring" | "drop_in";
+                        modality: "in_person" | "virtual";
+                        enrollmentRequired: boolean;
+                        facilitatorKind: "staff" | "volunteer";
+                        facilitatorUserId: string;
+                        coFacilitatorUserId: string | null;
+                        capacity: number | null;
+                        status: "draft" | "open" | "completed" | "cancelled";
+                        recurrence: {
+                            firstDate: string;
+                            startTime: string;
+                            durationMinutes: number;
+                            intervalWeeks: number;
+                            count: number;
+                        } | null;
+                        timezone: string;
+                        venueText: string | null;
+                        hasJoinUrl: boolean;
+                        enrolledCount: number;
+                        nextSessionAt: string | null;
+                        openedAt: string | null;
+                        closedAt: string | null;
+                        version: number;
+                        createdAt: string;
+                        joinUrl: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementGroupsByGroupIdEnrollments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    contactId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enrollmentId: string;
+                        groupId: string;
+                        groupName: string;
+                        groupStatus: "draft" | "open" | "completed" | "cancelled";
+                        contactId: string;
+                        status: "enrolled" | "withdrawn";
+                        withdrawnReason: ("requested" | "staff_removed" | "opted_out" | "plan_closed" | "group_ended") | null;
+                        enrolledAt: string;
+                        withdrawnAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementGroupsByGroupIdEnrollmentsByContactIdWithdraw: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+                contactId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: "requested" | "staff_removed";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enrollmentId: string;
+                        groupId: string;
+                        groupName: string;
+                        groupStatus: "draft" | "open" | "completed" | "cancelled";
+                        contactId: string;
+                        status: "enrolled" | "withdrawn";
+                        withdrawnReason: ("requested" | "staff_removed" | "opted_out" | "plan_closed" | "group_ended") | null;
+                        enrolledAt: string;
+                        withdrawnAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementGroupsByGroupIdOpen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        groupId: string;
+                        name: string;
+                        description: string | null;
+                        format: "recurring" | "drop_in";
+                        modality: "in_person" | "virtual";
+                        enrollmentRequired: boolean;
+                        facilitatorKind: "staff" | "volunteer";
+                        facilitatorUserId: string;
+                        coFacilitatorUserId: string | null;
+                        capacity: number | null;
+                        status: "draft" | "open" | "completed" | "cancelled";
+                        recurrence: {
+                            firstDate: string;
+                            startTime: string;
+                            durationMinutes: number;
+                            intervalWeeks: number;
+                            count: number;
+                        } | null;
+                        timezone: string;
+                        venueText: string | null;
+                        hasJoinUrl: boolean;
+                        enrolledCount: number;
+                        nextSessionAt: string | null;
+                        openedAt: string | null;
+                        closedAt: string | null;
+                        version: number;
+                        createdAt: string;
+                        joinUrl: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementGroupsByGroupIdRoster: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        groupId: string;
+                        projection: "staff" | "volunteer";
+                        entries: {
+                            contactId: string;
+                            displayName: string;
+                            enrollmentStatus: "enrolled" | "withdrawn";
+                            attendedSessions: number;
+                            relationshipCode?: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                            planId?: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementGroupsByGroupIdSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sessionId: string;
+                        groupId: string;
+                        sessionNo: number;
+                        startsAt: string;
+                        endsAt: string;
+                        status: "scheduled" | "held" | "cancelled";
+                        attendeeCount: number;
+                        version: number;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementGroupsByGroupIdSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    startsAt: string;
+                    /** Format: date-time */
+                    endsAt: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sessionId: string;
+                        groupId: string;
+                        sessionNo: number;
+                        startsAt: string;
+                        endsAt: string;
+                        status: "scheduled" | "held" | "cancelled";
+                        attendeeCount: number;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementGroupsByGroupIdSessionsBySessionIdAttendance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    contactIds: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sessionId: string;
+                        recordedCount: number;
+                        alreadyRecordedCount: number;
+                        attendeeCount: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementGroupsByGroupIdSessionsBySessionIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sessionId: string;
+                        groupId: string;
+                        sessionNo: number;
+                        startsAt: string;
+                        endsAt: string;
+                        status: "scheduled" | "held" | "cancelled";
+                        attendeeCount: number;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementLibrary: {
+        parameters: {
+            query?: {
+                status?: "draft" | "published" | "archived";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        itemId: string;
+                        title: string;
+                        summary: string | null;
+                        category: "understanding_grief" | "coping" | "children_and_teens" | "holidays_and_anniversaries" | "practical_matters" | "other";
+                        kind: "pdf" | "video" | "other";
+                        mimeType: string;
+                        documentId: string;
+                        transcriptDocumentId: string | null;
+                        status: "draft" | "published" | "archived";
+                        sortOrder: number;
+                        publishedAt: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title: string;
+                    summary: string | null;
+                    category: "understanding_grief" | "coping" | "children_and_teens" | "holidays_and_anniversaries" | "practical_matters" | "other";
+                    transcriptDocumentId: string | null;
+                    sortOrder: number;
+                    /** Format: uuid */
+                    documentId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        itemId: string;
+                        title: string;
+                        summary: string | null;
+                        category: "understanding_grief" | "coping" | "children_and_teens" | "holidays_and_anniversaries" | "practical_matters" | "other";
+                        kind: "pdf" | "video" | "other";
+                        mimeType: string;
+                        documentId: string;
+                        transcriptDocumentId: string | null;
+                        status: "draft" | "published" | "archived";
+                        sortOrder: number;
+                        publishedAt: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1BereavementLibraryByItemId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title: string;
+                    summary: string | null;
+                    category: "understanding_grief" | "coping" | "children_and_teens" | "holidays_and_anniversaries" | "practical_matters" | "other";
+                    transcriptDocumentId: string | null;
+                    sortOrder: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        itemId: string;
+                        title: string;
+                        summary: string | null;
+                        category: "understanding_grief" | "coping" | "children_and_teens" | "holidays_and_anniversaries" | "practical_matters" | "other";
+                        kind: "pdf" | "video" | "other";
+                        mimeType: string;
+                        documentId: string;
+                        transcriptDocumentId: string | null;
+                        status: "draft" | "published" | "archived";
+                        sortOrder: number;
+                        publishedAt: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementLibraryByItemIdStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: "draft" | "published" | "archived";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        itemId: string;
+                        title: string;
+                        summary: string | null;
+                        category: "understanding_grief" | "coping" | "children_and_teens" | "holidays_and_anniversaries" | "practical_matters" | "other";
+                        kind: "pdf" | "video" | "other";
+                        mimeType: string;
+                        documentId: string;
+                        transcriptDocumentId: string | null;
+                        status: "draft" | "published" | "archived";
+                        sortOrder: number;
+                        publishedAt: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementLibraryByItemIdUrl: {
+        parameters: {
+            query?: {
+                part?: "document" | "transcript";
+            };
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        itemId: string;
+                        url: string;
+                        expiresAt: string;
                     };
                 };
             };
@@ -43596,6 +45026,445 @@ export interface operations {
                         next_cursor: string | null;
                         has_more: boolean;
                         total_count?: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementMemorials: {
+        parameters: {
+            query?: {
+                status?: "draft" | "published" | "held" | "cancelled";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            serviceId: string;
+                            title: string;
+                            description: string | null;
+                            startsAt: string;
+                            endsAt: string;
+                            modality: "in_person" | "virtual";
+                            venueText: string | null;
+                            hasJoinUrl: boolean;
+                            capacity: number | null;
+                            rsvpBy: string | null;
+                            inviteWindowMonths: number;
+                            status: "draft" | "published" | "held" | "cancelled";
+                            publishedAt: string | null;
+                            invitedCount: number;
+                            rsvpCounts: {
+                                invited: number;
+                                yes: number;
+                                no: number;
+                                maybe: number;
+                                attended: number;
+                                noShow: number;
+                                guestsExpected: number;
+                            };
+                            mailingRunId: string | null;
+                            version: number;
+                            createdAt: string;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementMemorials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title: string;
+                    description: string | null;
+                    /** Format: date-time */
+                    startsAt: string;
+                    /** Format: date-time */
+                    endsAt: string;
+                    modality: "in_person" | "virtual";
+                    venueText: string | null;
+                    joinUrl?: string | null;
+                    capacity: number | null;
+                    rsvpBy: string | null;
+                    inviteWindowMonths: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        serviceId: string;
+                        title: string;
+                        description: string | null;
+                        startsAt: string;
+                        endsAt: string;
+                        modality: "in_person" | "virtual";
+                        venueText: string | null;
+                        hasJoinUrl: boolean;
+                        capacity: number | null;
+                        rsvpBy: string | null;
+                        inviteWindowMonths: number;
+                        status: "draft" | "published" | "held" | "cancelled";
+                        publishedAt: string | null;
+                        invitedCount: number;
+                        rsvpCounts: {
+                            invited: number;
+                            yes: number;
+                            no: number;
+                            maybe: number;
+                            attended: number;
+                            noShow: number;
+                            guestsExpected: number;
+                        };
+                        mailingRunId: string | null;
+                        version: number;
+                        createdAt: string;
+                        joinUrl: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementMemorialsByServiceId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        serviceId: string;
+                        title: string;
+                        description: string | null;
+                        startsAt: string;
+                        endsAt: string;
+                        modality: "in_person" | "virtual";
+                        venueText: string | null;
+                        hasJoinUrl: boolean;
+                        capacity: number | null;
+                        rsvpBy: string | null;
+                        inviteWindowMonths: number;
+                        status: "draft" | "published" | "held" | "cancelled";
+                        publishedAt: string | null;
+                        invitedCount: number;
+                        rsvpCounts: {
+                            invited: number;
+                            yes: number;
+                            no: number;
+                            maybe: number;
+                            attended: number;
+                            noShow: number;
+                            guestsExpected: number;
+                        };
+                        mailingRunId: string | null;
+                        version: number;
+                        createdAt: string;
+                        joinUrl: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1BereavementMemorialsByServiceId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title: string;
+                    description: string | null;
+                    /** Format: date-time */
+                    startsAt: string;
+                    /** Format: date-time */
+                    endsAt: string;
+                    modality: "in_person" | "virtual";
+                    venueText: string | null;
+                    joinUrl?: string | null;
+                    capacity: number | null;
+                    rsvpBy: string | null;
+                    inviteWindowMonths: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        serviceId: string;
+                        title: string;
+                        description: string | null;
+                        startsAt: string;
+                        endsAt: string;
+                        modality: "in_person" | "virtual";
+                        venueText: string | null;
+                        hasJoinUrl: boolean;
+                        capacity: number | null;
+                        rsvpBy: string | null;
+                        inviteWindowMonths: number;
+                        status: "draft" | "published" | "held" | "cancelled";
+                        publishedAt: string | null;
+                        invitedCount: number;
+                        rsvpCounts: {
+                            invited: number;
+                            yes: number;
+                            no: number;
+                            maybe: number;
+                            attended: number;
+                            noShow: number;
+                            guestsExpected: number;
+                        };
+                        mailingRunId: string | null;
+                        version: number;
+                        createdAt: string;
+                        joinUrl: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementMemorialsByServiceIdClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: "held" | "cancelled";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        serviceId: string;
+                        title: string;
+                        description: string | null;
+                        startsAt: string;
+                        endsAt: string;
+                        modality: "in_person" | "virtual";
+                        venueText: string | null;
+                        hasJoinUrl: boolean;
+                        capacity: number | null;
+                        rsvpBy: string | null;
+                        inviteWindowMonths: number;
+                        status: "draft" | "published" | "held" | "cancelled";
+                        publishedAt: string | null;
+                        invitedCount: number;
+                        rsvpCounts: {
+                            invited: number;
+                            yes: number;
+                            no: number;
+                            maybe: number;
+                            attended: number;
+                            noShow: number;
+                            guestsExpected: number;
+                        };
+                        mailingRunId: string | null;
+                        version: number;
+                        createdAt: string;
+                        joinUrl: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BereavementMemorialsByServiceIdInvitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        invitationId: string;
+                        serviceId: string;
+                        contactId: string;
+                        planId: string;
+                        displayName: string;
+                        relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                        delivery: "mailing" | "portal_only";
+                        status: "invited" | "rsvp_yes" | "rsvp_no" | "rsvp_maybe" | "attended" | "no_show" | "withdrawn";
+                        guests: number;
+                        rsvpSource: ("staff_phone" | "portal") | null;
+                        rsvpAt: string | null;
+                        attendedAt: string | null;
+                        version: number;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementMemorialsByServiceIdInvitationsByInvitationIdAttendance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serviceId: string;
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    attended: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        invitationId: string;
+                        serviceId: string;
+                        contactId: string;
+                        planId: string;
+                        displayName: string;
+                        relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                        delivery: "mailing" | "portal_only";
+                        status: "invited" | "rsvp_yes" | "rsvp_no" | "rsvp_maybe" | "attended" | "no_show" | "withdrawn";
+                        guests: number;
+                        rsvpSource: ("staff_phone" | "portal") | null;
+                        rsvpAt: string | null;
+                        attendedAt: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BereavementMemorialsByServiceIdPublish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        serviceId: string;
+                        title: string;
+                        description: string | null;
+                        startsAt: string;
+                        endsAt: string;
+                        modality: "in_person" | "virtual";
+                        venueText: string | null;
+                        hasJoinUrl: boolean;
+                        capacity: number | null;
+                        rsvpBy: string | null;
+                        inviteWindowMonths: number;
+                        status: "draft" | "published" | "held" | "cancelled";
+                        publishedAt: string | null;
+                        invitedCount: number;
+                        rsvpCounts: {
+                            invited: number;
+                            yes: number;
+                            no: number;
+                            maybe: number;
+                            attended: number;
+                            noShow: number;
+                            guestsExpected: number;
+                        };
+                        mailingRunId: string | null;
+                        version: number;
+                        createdAt: string;
+                        joinUrl: string | null;
                     };
                 };
             };
@@ -59356,16 +61225,16 @@ export interface operations {
                     /** Format: uuid */
                     admissionId?: string;
                     retentionClass: "compliance" | "clinical_record" | "bereavement" | "operational" | "intake_artifact" | "compliance_42cfr_part2";
-                    aggregateType: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
+                    aggregateType: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "bereavement_library_item" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
                     /** Format: uuid */
                     aggregateId?: string;
                     title: string;
                     patientFacing?: boolean;
-                    mimeType: "application/pdf" | "image/jpeg" | "image/png" | "image/tiff" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                    mimeType: ("application/pdf" | "image/jpeg" | "image/png" | "image/tiff" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document") | "video/mp4";
                     byteSize: number;
                     sha256Hex: string;
                     sourceMetadata?: {
-                        documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
+                        documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "bereavement_library_item" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
                         sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
                         /** Format: date-time */
                         receivedAt?: string;
@@ -59499,7 +61368,7 @@ export interface operations {
                             patientFacing: boolean;
                             attachToDisclosures: boolean;
                             metadata: {
-                                documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
+                                documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "bereavement_library_item" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
                                 sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
                                 /** Format: date-time */
                                 receivedAt?: string;
@@ -59541,7 +61410,7 @@ export interface operations {
                     /** Format: uuid */
                     admissionId?: string;
                     retentionClass: "compliance" | "clinical_record" | "bereavement" | "operational" | "intake_artifact" | "compliance_42cfr_part2";
-                    aggregateType: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
+                    aggregateType: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "bereavement_library_item" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
                     /** Format: uuid */
                     aggregateId?: string;
                     title: string;
@@ -59598,7 +61467,7 @@ export interface operations {
                         patientFacing: boolean;
                         attachToDisclosures: boolean;
                         metadata: {
-                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
+                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "bereavement_library_item" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
                             sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
                             /** Format: date-time */
                             receivedAt?: string;
@@ -59659,7 +61528,7 @@ export interface operations {
                         patientFacing: boolean;
                         attachToDisclosures: boolean;
                         metadata: {
-                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
+                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "bereavement_library_item" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
                             sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
                             /** Format: date-time */
                             receivedAt?: string;
@@ -59750,7 +61619,7 @@ export interface operations {
                         patientFacing: boolean;
                         attachToDisclosures: boolean;
                         metadata: {
-                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
+                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "bereavement_library_item" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "election_addendum" | "other";
                             sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
                             /** Format: date-time */
                             receivedAt?: string;
@@ -93362,6 +95231,66 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PortalBereavementLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            itemId: string;
+                            title: string;
+                            summary: string | null;
+                            category: string;
+                            kind: "pdf" | "video" | "other";
+                            hasTranscript: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PortalBereavementLibraryByItemIdUrl: {
+        parameters: {
+            query?: {
+                part?: "document" | "transcript";
+            };
+            header?: never;
+            path: {
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        url: string;
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PortalBereavementMailingpreference: {
         parameters: {
             query?: never;
@@ -93385,6 +95314,87 @@ export interface operations {
                 content: {
                     "application/json": {
                         ok: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PortalBereavementMemorials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            invitationId: string;
+                            title: string;
+                            description: string | null;
+                            startsAt: string;
+                            endsAt: string;
+                            modality: "in_person" | "virtual";
+                            venueText: string | null;
+                            joinUrl: string | null;
+                            rsvpBy: string | null;
+                            status: "invited" | "rsvp_yes" | "rsvp_no" | "rsvp_maybe" | "attended" | "no_show" | "withdrawn";
+                            guests: number;
+                            rsvpOpen: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PortalBereavementMemorialsByInvitationIdRsvp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    response: "yes" | "no" | "maybe";
+                    guests: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        invitationId: string;
+                        title: string;
+                        description: string | null;
+                        startsAt: string;
+                        endsAt: string;
+                        modality: "in_person" | "virtual";
+                        venueText: string | null;
+                        joinUrl: string | null;
+                        rsvpBy: string | null;
+                        status: "invited" | "rsvp_yes" | "rsvp_no" | "rsvp_maybe" | "attended" | "no_show" | "withdrawn";
+                        guests: number;
+                        rsvpOpen: boolean;
                     };
                 };
             };

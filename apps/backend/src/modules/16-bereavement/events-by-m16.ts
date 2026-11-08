@@ -393,6 +393,38 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m16.bereavement.support_group_attendance_recorded",
+    moduleOwner: "m16",
+    description:
+      "ADR-0109 D10 (PR 3) — a support-group session's attendance was recorded (each attendee also gets a contact-log activity row, which satisfies no cadence item). Ids and counts only: no attendee, name or contact id. M33 reports program volume over `report_mv.*`.",
+    payloadSchema: Type.Object({
+      groupId: Id,
+      sessionId: Id,
+      sessionNo: Count,
+      attendeeCount: Count,
+      newlyRecordedCount: Count,
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m16.bereavement.memorial_rsvp_recorded",
+    moduleOwner: "m16",
+    description:
+      "ADR-0109 D10 (PR 3) — a family's memorial-service RSVP was recorded (by staff from a call, or by the family in the bereaved portal). Ids, enum tokens and a guest COUNT only: no name. M33 reports program volume over `report_mv.*`.",
+    payloadSchema: Type.Object({
+      serviceId: Id,
+      invitationId: Id,
+      response: Str,
+      guests: Count,
+      source: Str,
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m16.bereavement.risk_score_computed",
     moduleOwner: "m16",
     description:

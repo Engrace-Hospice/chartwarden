@@ -65,9 +65,16 @@ type SeedIds = {
   mailingConfig: string;
   mailingRun: string;
   mailingItem: string;
+  group: string;
+  groupSession: string;
+  groupEnrollment: string;
+  groupAttendance: string;
+  memorialService: string;
+  memorialInvitation: string;
+  libraryItem: string;
 };
 
-/** The 9 manifest-owned M16 tables, each with the seeded row the isolation case looks for. */
+/** The manifest-owned M16 tables, each with the seeded row the isolation case looks for. */
 const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "bereavement_plan", key: "plan" },
   { table: "bereaved_contact", key: "contact" },
@@ -86,6 +93,15 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "bereavement_mailing_config", key: "mailingConfig" },
   { table: "bereavement_mailing_run", key: "mailingRun" },
   { table: "bereavement_mailing_item", key: "mailingItem" },
+  // ADR-0109 D10 (PR 3) — support groups, memorial services and the grief library (group, session, service and library item are org-level;
+  // enrollment, attendance and invitation name a plan and a contact).
+  { table: "bereavement_support_group", key: "group" },
+  { table: "bereavement_support_group_session", key: "groupSession" },
+  { table: "bereavement_support_group_enrollment", key: "groupEnrollment" },
+  { table: "bereavement_support_group_attendance", key: "groupAttendance" },
+  { table: "bereavement_memorial_service", key: "memorialService" },
+  { table: "bereavement_memorial_invitation", key: "memorialInvitation" },
+  { table: "bereavement_library_item", key: "libraryItem" },
 ];
 
 describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -292,7 +308,68 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
         [org, pe, location, mailingRun, plan, contact],
       )
     ).rows[0].id as string;
+    // ADR-0109 D10 (PR 3) — one group with a session, the contact enrolled and attending; one memorial inviting the contact; one library item.
+    const group = (
+      await db.query(
+        `INSERT INTO bereavement_support_group (organization_id, name, format, modality, facilitator_kind, facilitator_user_id,
+           created_by_membership_id, status, opened_at)
+         VALUES ($1,'Group','drop_in','in_person','staff',$2,$2,'open',now()) RETURNING id`,
+        [org, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
+    const groupSession = (
+      await db.query(
+        `INSERT INTO bereavement_support_group_session (organization_id, group_id, session_no, starts_at, ends_at)
+         VALUES ($1,$2,1, now() - interval '1 hour', now()) RETURNING id`,
+        [org, group],
+      )
+    ).rows[0].id as string;
+    const groupEnrollment = (
+      await db.query(
+        `INSERT INTO bereavement_support_group_enrollment (organization_id, provider_entity_id, location_id, group_id, plan_id,
+           bereaved_contact_id, enrolled_by_membership_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [org, pe, location, group, plan, contact, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
+    const groupAttendance = (
+      await db.query(
+        `INSERT INTO bereavement_support_group_attendance (organization_id, provider_entity_id, location_id, session_id, group_id,
+           plan_id, bereaved_contact_id, recorded_by_membership_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+        [org, pe, location, groupSession, group, plan, contact, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
+    const memorialService = (
+      await db.query(
+        `INSERT INTO bereavement_memorial_service (organization_id, title, starts_at, ends_at, modality, created_by_membership_id)
+         VALUES ($1,'Memorial', now() + interval '30 days', now() + interval '30 days 2 hours','in_person',$2) RETURNING id`,
+        [org, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
+    const memorialInvitation = (
+      await db.query(
+        `INSERT INTO bereavement_memorial_invitation (organization_id, provider_entity_id, location_id, service_id, plan_id,
+           bereaved_contact_id, delivery)
+         VALUES ($1,$2,$3,$4,$5,$6,'portal_only') RETURNING id`,
+        [org, pe, location, memorialService, plan, contact],
+      )
+    ).rows[0].id as string;
+    const libraryItem = (
+      await db.query(
+        `INSERT INTO bereavement_library_item (organization_id, title, category, kind, document_id, mime_type, created_by_membership_id)
+         VALUES ($1,'Leaflet','coping','pdf',gen_random_uuid(),'application/pdf',$2) RETURNING id`,
+        [org, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
     return {
+      group,
+      groupSession,
+      groupEnrollment,
+      groupAttendance,
+      memorialService,
+      memorialInvitation,
+      libraryItem,
       pe,
       location,
       plan,
@@ -347,11 +424,17 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       "1343_m16_risk_assessment_draft.sql",
       "1345_m16_physician_letter.sql",
       "1374_m16_mailings.sql",
+      "1390_m16_support_groups.sql",
+      "1391_m16_memorial_services.sql",
+      "1393_m16_grief_library.sql",
     ]
       .map((file) => readFileSync(join(MIGRATIONS_DIR, file), "utf8"))
       .join("\n");
     const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
-      (block) => COVERED.some(({ table }) => block.includes(`"${table}"`)),
+      // the tenant policies (the PR 3 files also carry their destruction-role policies, asserted separately below)
+      (block) =>
+        !block.includes("chartwarden_destruction") &&
+        COVERED.some(({ table }) => block.includes(`"${table}"`)),
     );
     expect(policyBlocks.length).toBe(COVERED.length);
     for (const block of policyBlocks) {
@@ -700,6 +783,62 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       "SELECT qual FROM pg_policies WHERE tablename='bereavement_mailing_item' AND policyname='bereavement_mailing_item_destruction'",
     );
     expect(policy.rows[0]?.qual).toContain("app.org_id");
+  });
+
+  it("ADR-0109 D10 (PR 3) — the destruction role holds SELECT + DELETE on exactly the three program tables that name a contact (org-pinned)", async () => {
+    const { rows } = await db.query<{ table_name: string; privilege_type: string }>(
+      `SELECT table_name, privilege_type FROM information_schema.role_table_grants
+       WHERE grantee='chartwarden_destruction'
+         AND table_name IN ('bereavement_support_group','bereavement_support_group_session','bereavement_support_group_enrollment',
+                            'bereavement_support_group_attendance','bereavement_memorial_service','bereavement_memorial_invitation',
+                            'bereavement_library_item')
+       ORDER BY table_name, privilege_type`,
+    );
+    expect(rows).toEqual(
+      [
+        "bereavement_memorial_invitation",
+        "bereavement_support_group_attendance",
+        "bereavement_support_group_enrollment",
+      ].flatMap((table_name) => [
+        { table_name, privilege_type: "DELETE" },
+        { table_name, privilege_type: "SELECT" },
+      ]),
+    );
+    for (const table of [
+      "bereavement_memorial_invitation",
+      "bereavement_support_group_attendance",
+      "bereavement_support_group_enrollment",
+    ]) {
+      const policy = await db.query<{ qual: string }>(
+        "SELECT qual FROM pg_policies WHERE tablename=$1 AND policyname=$2",
+        [table, `${table}_destruction`],
+      );
+      expect(policy.rows[0]?.qual).toContain("app.org_id");
+    }
+  });
+
+  it("ADR-0109 D10 (PR 3) — the program CHECKs: one live enrollment per contact per group, a withdrawal names why, guests stay 0..10, a recurring group has a schedule", async () => {
+    await expect(
+      db.query(
+        `INSERT INTO bereavement_support_group_enrollment (organization_id, provider_entity_id, group_id, plan_id, bereaved_contact_id, enrolled_by_membership_id)
+         SELECT organization_id, provider_entity_id, group_id, plan_id, bereaved_contact_id, enrolled_by_membership_id
+           FROM bereavement_support_group_enrollment WHERE id=$1`,
+        [a.groupEnrollment],
+      ),
+    ).rejects.toThrow(/berv_group_enrollment_live_uniq/);
+    await expect(
+      db.query("UPDATE bereavement_support_group_enrollment SET status='withdrawn' WHERE id=$1", [
+        a.groupEnrollment,
+      ]),
+    ).rejects.toThrow(/berv_group_enrollment_withdrawn_chk/);
+    await expect(
+      db.query("UPDATE bereavement_memorial_invitation SET guests=11 WHERE id=$1", [
+        a.memorialInvitation,
+      ]),
+    ).rejects.toThrow(/berv_memorial_inv_guests_chk/);
+    await expect(
+      db.query("UPDATE bereavement_support_group SET format='recurring' WHERE id=$1", [a.group]),
+    ).rejects.toThrow(/berv_group_recurrence_chk/);
   });
 
   it("chartwarden_app holds no DELETE on the M16 tables — destruction runs through the eraser (§8.5)", async () => {

@@ -46,6 +46,21 @@ const MailingRuns = lazy(() => import("./mailing-runs").then((m) => ({ default: 
 const MailingSettings = lazy(() =>
   import("./mailing-settings").then((m) => ({ default: m.MailingSettings })),
 );
+const GriefLibrary = lazy(() =>
+  import("./grief-library").then((m) => ({ default: m.GriefLibrary })),
+);
+const MemorialServiceDetail = lazy(() =>
+  import("./memorial-detail").then((m) => ({ default: m.MemorialServiceDetail })),
+);
+const MemorialServices = lazy(() =>
+  import("./memorial-list").then((m) => ({ default: m.MemorialServices })),
+);
+const SupportGroupDetail = lazy(() =>
+  import("./group-detail").then((m) => ({ default: m.SupportGroupDetail })),
+);
+const SupportGroups = lazy(() =>
+  import("./group-list").then((m) => ({ default: m.SupportGroups })),
+);
 const BereavementOutreachPlanner = lazy(() =>
   import("./outreach-planner").then((m) => ({ default: m.BereavementOutreachPlanner })),
 );
@@ -142,6 +157,45 @@ export const bereavementScreens: ScreenRegistryModule<ComponentType> = {
       title: "Mailing Run",
       requiredPermission: "bereavement.mailing.read",
       screen: MailingRunDetail,
+    },
+    // --- the family programs (ADR-0109 D10 PR 3, routes 53-81): groups, memorial services, the grief library ---
+    {
+      id: "bereavement.groups",
+      path: "/bereavement/groups",
+      title: "Support Groups",
+      navGroup: "Bereavement",
+      requiredPermission: "bereavement.group.read",
+      screen: SupportGroups,
+    },
+    {
+      id: "bereavement.groups.detail",
+      path: "/bereavement/groups/:groupId",
+      title: "Support Group",
+      requiredPermission: "bereavement.group.read",
+      screen: SupportGroupDetail,
+    },
+    {
+      id: "bereavement.memorials",
+      path: "/bereavement/memorials",
+      title: "Memorial Services",
+      navGroup: "Bereavement",
+      requiredPermission: "bereavement.memorial.rsvp",
+      screen: MemorialServices,
+    },
+    {
+      id: "bereavement.memorials.detail",
+      path: "/bereavement/memorials/:serviceId",
+      title: "Memorial Service",
+      requiredPermission: "bereavement.memorial.rsvp",
+      screen: MemorialServiceDetail,
+    },
+    {
+      id: "bereavement.library",
+      path: "/bereavement/library",
+      title: "Grief Library",
+      navGroup: "Bereavement",
+      requiredPermission: "bereavement.library.read",
+      screen: GriefLibrary,
     },
     // --- the touchpoint book (§5.1 #9, with the #10 / #11 modals) ---
     {

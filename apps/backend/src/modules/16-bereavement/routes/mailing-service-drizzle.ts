@@ -4,7 +4,7 @@
 // `version` AND status, so two staff members cannot both claim one run, and the `If-Match` header (never a body field) names the version the caller read.
 //
 //   generate        draft | failed | ready -> generating in one CAS, then the batch is SELECTED SET-BASED in the same transaction: every contact of every active
-//                   plan goes through the pure `decideMailingEligibility` and is upserted as an item (included / excluded + reason) in chunks. Only after the commit
+//                   plan (a memorial invitation run: its service's `mailing` invitees) goes through the pure `decideMailingEligibility` and is upserted as an item (included / excluded + reason) in chunks. Only after the commit
 //                   is the render handed to the `m16-mailing-generate` worker (a lost enqueue is re-sent by the sweep). Empty wording is refused: no default ships.
 //                   From `ready` it is the REGENERATE path: a batch that went stale (below) is re-selected and re-rendered; the old PDF is detached from the run
 //                   (every render attempt files its own document, so the run only ever names the PDF of the attempt that won its compare-and-set).
@@ -39,6 +39,7 @@ import {
   loadMailingCandidates,
   mailingFactsContextOf,
 } from "../mailings/facts-drizzle";
+import { memorialMailingInviteeIds } from "../memorials/publish-drizzle";
 import type { M16ReadActor, M16WriteActor } from "./actor";
 import { type Cursor, clampLimit, decodeCheckedCursor, toCursorPage } from "./concurrency";
 import type {
@@ -218,9 +219,13 @@ export function buildDrizzleM16MailingService(
    * candidate set cannot stay in the batch) and ordinals are cleared; the upsert then rewrites each candidate. The worker numbers the letters it renders.
    */
   async function selectBatch(tx: DbClient, run: RunRow): Promise<MailingItemCounts> {
+    // ADR-0109 D10 (PR 3) — a memorial invitation run selects exactly its service's `mailing` invitees (each decided again below); every other run
+    // selects every contact of every active plan.
     const candidates = await loadMailingCandidates(
       tx,
-      { kind: "active_plans" },
+      run.runKind === "memorial_invitation" && run.sourceRefId !== null
+        ? { kind: "contacts", contactIds: await memorialMailingInviteeIds(tx, run.sourceRefId) }
+        : { kind: "active_plans" },
       await mailingFactsContextOf(tx, run.mailingKey, emailChannelAvailable),
     );
     await tx
