@@ -4,7 +4,13 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import type { ClaimMdProtectedPayloadCipher } from "../../../bootstrap/claimmd-payload-cipher";
 import type { M25ReadActor } from "../routes/actor";
-import { decodeCursor, encodeCursor, type CursorPage } from "../routes/concurrency";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
+
+/** A page of review items plus the next signed cursor (null at the end). */
+interface CursorPage<T> {
+  readonly items: T[];
+  readonly nextCursor: string | null;
+}
 import { providerEntityScopeCondition } from "../routes/scope";
 
 const STAGE = schema.claimmdEraM25Stage;
@@ -109,19 +115,19 @@ export interface ClaimMdEraReviewService {
 export function buildDrizzleClaimMdEraReviewService(db: DbClient, cipher: ClaimMdProtectedPayloadCipher): ClaimMdEraReviewService {
   return {
     async list(actor, filters, rawCursor, requestedLimit) {
-      const cursor = decodeCursor(rawCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, rawCursor, "instant");
       const limit = Math.max(1, Math.min(PAGE_MAX, Math.floor(requestedLimit)));
       const rows = await withOrgContext(db, actor, async (tx) => tx.select().from(STAGE).where(and(
         eq(STAGE.organizationId, actor.organizationId),
         providerEntityScopeCondition(STAGE.providerEntityId, actor.providerEntityScope, filters.providerEntityId),
         filters.state ? eq(STAGE.state, filters.state) : undefined,
-        cursor ? or(lt(STAGE.createdAt, new Date(cursor.createdAt)), and(eq(STAGE.createdAt, new Date(cursor.createdAt)), lt(STAGE.id, cursor.id))) : undefined,
+        cursor ? or(lt(STAGE.createdAt, new Date(cursor.a)), and(eq(STAGE.createdAt, new Date(cursor.a)), lt(STAGE.id, cursor.id))) : undefined,
       )).orderBy(desc(STAGE.createdAt), desc(STAGE.id)).limit(limit + 1));
       const hasMore = rows.length > limit;
       const selected = rows.slice(0, limit) as StoredStage[];
       const items = selected.map((row) => projectClaimMdEraReviewItem(row, cipher));
       const last = selected.at(-1);
-      return { items, nextCursor: hasMore && last ? encodeCursor({ createdAt: last.createdAt instanceof Date ? last.createdAt.toISOString() : new Date(last.createdAt).toISOString(), id: last.id }) : null };
+      return { items, nextCursor: hasMore && last ? encodeCursor(actor.organizationId, { a: last.createdAt instanceof Date ? last.createdAt.toISOString() : new Date(last.createdAt).toISOString(), id: last.id }) : null };
     },
     async get(actor, id) {
       const [row] = await withOrgContext(db, actor, (tx) => tx.select().from(STAGE).where(and(

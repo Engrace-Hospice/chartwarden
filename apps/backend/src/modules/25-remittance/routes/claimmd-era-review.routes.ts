@@ -2,7 +2,7 @@ import { NotFoundError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { actorOf } from "./actor";
-import { clampLimit } from "./concurrency";
+import { clampLimit } from "./m25-typebox";
 import { P } from "./guards";
 import type { ClaimMdEraReviewService } from "../ingest/claimmd-era-review";
 
