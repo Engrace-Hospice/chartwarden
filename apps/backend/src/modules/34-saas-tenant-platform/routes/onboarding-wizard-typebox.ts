@@ -91,7 +91,7 @@ export const WizardStepViewSchema = Type.Object({
   }),
   skippable: Type.Boolean({
     description:
-      "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+      "True when a skip may settle this step (a tenant-added step, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
   }),
   createdAt: Nullable(Instant),
   templateKey: Type.String(),

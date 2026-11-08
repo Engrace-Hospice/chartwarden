@@ -6,6 +6,25 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-07 — Skippable steps, the BAA register's governing record, and a proxy's 413
+
+**Why.** The console offered Skip from its own list and guessed which BAA record go-live judges; both now come from the server.
+
+- Each step of `GET /api/v1/platform/tenants/{orgSlug}/onboarding` carries `skippable`: true for a tenant-added (non-canonical) step and
+  for the canonical steps on the server's allowlist (MAC configuration, payer enrollment, the DoseSpot kickoff, sample data). Go-live is
+  never skippable.
+- `POST /api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/skip` on any other step is `409 ONBOARDING_STEP_NOT_SKIPPABLE` (answered
+  before the sequence check, so it is final whatever is still open).
+- Each item of `GET /api/v1/platform/baa-register` carries `governing` (true on the one record per tenant that go-live and step 3 judge:
+  an undated termination, else the newest dated record, judged over the tenant's whole register whatever the status filter) and
+  `documentFiled` (on the governing record, whether its `documentId` is a signed BAA filed for that tenant, false with no link; null on any
+  other record, or when no check is configured).
+- `POST /api/v1/platform/tenants/{orgSlug}/baa-document` behind the production proxy: the Platform Ops vhost admits bodies up to 16m on this
+  route only. A body the proxy refuses is a `413` with an HTML page, not the error envelope (no `code`); treat any `413` with no envelope as
+  "too large at the edge". The API's own `413 BAA_UPLOAD_TOO_LARGE` and `422 UPLOAD_SIZE_INVALID` (over 10 MiB decoded) are unchanged.
+
+---
+
 ## 2026-11-06 — The operator switches a live tenant off "bills outside ChartWarden"
 
 **Why.** A live tenant that bills outside ChartWarden and holds a contract could not move to a vendor by any route: its own lane is
@@ -52,8 +71,10 @@ blocked while a contract exists, and the operator's write was onboarding-only.
   bytes (`415 UPLOAD_CONTENT_MISMATCH`), not base64 (`422`), a scanner refusal (`422 UPLOAD_REJECTED`), no object store configured
   (`503`). The size and digest are the server's.
 - New permission `tenant_baa_document.upload_platform`, held by `platform_ops` only. It is not `documents.upload`: it files one document
-  kind (`tenant_baa`) for the tenant in the path, and reads or lists no document. Only while the tenant is `provisioning` or `onboarding`
-  (`409 TENANT_NOT_ONBOARDING` otherwise). A successful upload voids a pending go-live attestation, like any other onboarding data write.
+  kind (`tenant_baa`) for the tenant in the path, and reads or lists no document. Accepted while the tenant is `provisioning`, `onboarding`,
+  `active`, `at_risk` or `suspended` (a live tenant's renewal files its new signed copy); any other status is `409 TENANT_NOT_ONBOARDING`.
+  A successful upload voids a pending go-live attestation, like any other onboarding data write; for a tenant that is no longer onboarding it
+  runs no onboarding pass (no step settles, no `m34.tenant.onboarding_overdue` is emitted).
 - The `tenant_baa` kind is not accepted by `POST /api/v1/documents`, and a `tenant_baa` document takes no new version, metadata edit, link or
   tag from any generic documents route (`409 DOCUMENT_IMMUTABLE`).
 - `POST /api/v1/platform/baa-register` and `PATCH /api/v1/platform/baa-register/{id}` now require `documentId` to be a signed BAA filed for

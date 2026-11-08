@@ -14971,7 +14971,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/platform/tenants/:orgSlug/onboarding/:taskId/skip": {
     summary:
-      "Skip an onboarding step with a recorded rationale (platform ops; step-up; strict sequence; go-live is not skippable)",
+      "Skip an onboarding step with a recorded rationale (platform ops; step-up; strict sequence). Only a tenant-added step or a canonical step on the server's allowlist (MAC configuration, payer enrollment, DoseSpot kickoff, sample data) is skippable; any other, go-live included, is 409 ONBOARDING_STEP_NOT_SKIPPABLE",
     body: M34SkipOnboardingTaskRequest,
     response: M34WizardStepViewSchema,
   },
