@@ -4,9 +4,9 @@ import { ApiClientProvider, createApiClient, discardStepUpDrafts } from "@chartw
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
+import { promoFormErrors, refundFormErrors } from "../form-rules";
 import { PlanEdit } from "../plan-edit";
-import { promoFormErrors } from "../promos";
-import { RefundNew, refundFormErrors } from "../refund-new";
+import { RefundNew } from "../refund-new";
 
 const BAD = ["1.005", "1e3", "0x1f"];
 const json = (body: unknown, status = 200): Response =>

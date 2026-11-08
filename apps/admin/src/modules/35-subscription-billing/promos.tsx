@@ -1,6 +1,5 @@
 import {
   Button,
-  type FieldErrors,
   SelectField,
   StatusPill,
   TextField,
@@ -25,6 +24,7 @@ import type { operations } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useSearchParams } from "react-router-dom";
+import { PROMO_EMPTY_FORM, type PromoForm, promoFormErrors } from "./form-rules";
 import { cap, formatCents, idempotencyKey } from "./status";
 import {
   DrawerHead,
@@ -39,37 +39,7 @@ import {
 type Promo =
   operations["getApiAdminPromos"]["responses"][200]["content"]["application/json"][number];
 
-const EMPTY_FORM = {
-  code: "",
-  coupon: "",
-  promotion: "",
-  kind: "percent_off",
-  percent: "",
-  amount: "",
-  duration: "once",
-};
-type PromoForm = typeof EMPTY_FORM;
-
 const PROMO_DRAFT_KEY = "promo-create";
-
-/** Per-field messages for the New promo form; empty when it can be submitted (#597, F-042). */
-export function promoFormErrors(form: PromoForm): FieldErrors<keyof PromoForm> {
-  const errors: FieldErrors<keyof PromoForm> = {};
-  if (form.code.trim() === "") errors.code = "Enter a promo code.";
-  if (form.kind === "percent_off") {
-    const percent = parseWholeNumber(form.percent, 100);
-    if (form.percent.trim() === "") errors.percent = "Enter a percentage from 1 to 100.";
-    else if (percent === null || percent < 1)
-      errors.percent = "Enter a whole percentage from 1 to 100.";
-  } else {
-    const amount = parsePriceCents(form.amount);
-    if (form.amount.trim() === "") errors.amount = "Enter an amount in dollars, e.g. 10.00.";
-    else if (amount === null || amount < 1)
-      errors.amount =
-        "Enter a dollar amount of at least 0.01, with up to two decimals, e.g. 10.00.";
-  }
-  return errors;
-}
 
 const KIND_OPTIONS = [
   { value: "percent_off", label: "Percent off" },
@@ -106,7 +76,7 @@ export function Promos(): JSX.Element {
   const [showCreate, setShowCreate] = useState(restored !== undefined);
   const [params, setParams] = useSearchParams();
   const selectedId = params.get("promo");
-  const [form, setForm] = useState<PromoForm>(restored ?? EMPTY_FORM);
+  const [form, setForm] = useState<PromoForm>(restored ?? PROMO_EMPTY_FORM);
   const [loaded, setLoaded] = useState(false);
   const guard = useRequestGuard();
 
@@ -154,7 +124,7 @@ export function Promos(): JSX.Element {
     else {
       setOutcome({ ok: true, message: `Promo "${form.code}" created.` });
       setShowCreate(false);
-      setForm(EMPTY_FORM);
+      setForm(PROMO_EMPTY_FORM);
       await load();
     }
     setBusy(false);

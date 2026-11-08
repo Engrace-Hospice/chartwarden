@@ -1,6 +1,5 @@
 import {
   Button,
-  type FieldErrors,
   SelectField,
   StatusPill,
   TextField,
@@ -25,6 +24,7 @@ import type { operations } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { PLAN_EMPTY_FORM, type PlanForm, planFormErrors } from "./form-rules";
 import { cap, formatCents, idempotencyKey } from "./status";
 import {
   DrawerHead,
@@ -39,34 +39,7 @@ import {
 type PlanRow =
   operations["getApiAdminPlans"]["responses"][200]["content"]["application/json"][number];
 
-const EMPTY_FORM = {
-  slug: "",
-  name: "",
-  tier: "starter",
-  cadence: "monthly",
-  basePrice: "",
-  trialDays: "0",
-};
-type PlanForm = typeof EMPTY_FORM;
-
-const SLUG_SHAPE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const PLAN_DRAFT_KEY = "plan-create";
-
-/** Per-field messages for the New plan form; empty when it can be submitted (#597, F-042). */
-export function planFormErrors(form: PlanForm): FieldErrors<keyof PlanForm> {
-  const errors: FieldErrors<keyof PlanForm> = {};
-  const slug = form.slug.trim();
-  if (slug === "") errors.slug = "Enter a slug.";
-  else if (!SLUG_SHAPE.test(slug))
-    errors.slug = "Use lowercase letters, numbers and hyphens only, e.g. starter-monthly.";
-  if (form.name.trim() === "") errors.name = "Enter a plan name.";
-  if (form.basePrice.trim() === "") errors.basePrice = "Enter a price in dollars, e.g. 49.00.";
-  else if (parsePriceCents(form.basePrice) === null)
-    errors.basePrice = "Enter a number of dollars, 0 or more, with up to two decimals, e.g. 49.00.";
-  if (parseWholeNumber(form.trialDays) === null)
-    errors.trialDays = "Enter a whole number of days, 0 or more.";
-  return errors;
-}
 
 const TIER_OPTIONS = [
   { value: "starter", label: "Starter" },
@@ -89,7 +62,7 @@ export function PlansList(): JSX.Element {
   // A step-up refusal sends the operator to /step-up and back; the typed plan is restored and the drawer reopens.
   const restored = useStepUpMemoryDraft<PlanForm>(PLAN_DRAFT_KEY);
   const [showCreate, setShowCreate] = useState(restored !== undefined);
-  const [form, setForm] = useState<PlanForm>(restored ?? EMPTY_FORM);
+  const [form, setForm] = useState<PlanForm>(restored ?? PLAN_EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const guard = useRequestGuard();
@@ -139,7 +112,7 @@ export function PlansList(): JSX.Element {
     } else {
       setOutcome({ ok: true, message: `Draft plan "${form.name}" created.` });
       setShowCreate(false);
-      setForm(EMPTY_FORM);
+      setForm(PLAN_EMPTY_FORM);
       await load();
     }
     setSaving(false);
