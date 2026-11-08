@@ -22,7 +22,7 @@ import { GO_LIVE_STEP_KEY, type WizardStep } from "./wizard-model";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const GUARD_COPY: Readonly<Record<string, string>> = {
   canonicalTasksComplete: "Every required step is done or skipped",
-  baaExecuted: "The latest BAA is executed",
+  baaExecuted: "The latest BAA is executed, with the signed agreement filed for this tenant",
   baaExpiryClearsNinetyDays: "The executed BAA has more than 90 days left",
 };
 
