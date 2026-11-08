@@ -112,7 +112,7 @@ describe("TenantInventory: onboarding progress", () => {
   it("lists the tenants waiting for this operator's approval above the table, each a link to its go-live step", async () => {
     mount();
     const strip = await screen.findByRole("region", { name: "Needs your attention" });
-    expect(within(strip).getByText(/1 tenant is waiting for your go-live approval/)).toBeTruthy();
+    expect(within(strip).getByText(/1 tenant is waiting for a go-live approval/)).toBeTruthy();
     fireEvent.click(within(strip).getByRole("button", { name: "Review go-live: birch Hospice" }));
     expect(await screen.findByText("wizard step")).toBeTruthy();
     expect(document.title).toBe("/tenants/birch/onboarding/go_live_checklist_complete");

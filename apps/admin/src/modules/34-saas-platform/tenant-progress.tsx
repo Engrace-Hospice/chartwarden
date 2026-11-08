@@ -70,8 +70,8 @@ export function AttentionStrip({
   return (
     <section className="wx-drawer-card" aria-label="Needs your attention">
       <p>
-        {waiting.length} {waiting.length === 1 ? "tenant is" : "tenants are"} waiting for your
-        go-live approval.
+        {waiting.length} {waiting.length === 1 ? "tenant is" : "tenants are"} waiting for a go-live
+        approval.
       </p>
       <div className="wx-drawer-actions">
         {waiting.map((t) => (
