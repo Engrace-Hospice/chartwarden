@@ -377,7 +377,7 @@ function Card({
   return (
     <section className="wx-drawer-card">
       <div className="wx-drawer-card-head">
-        <h3>{title}</h3>
+        <h2>{title}</h2>
         {cta}
       </div>
       {children}

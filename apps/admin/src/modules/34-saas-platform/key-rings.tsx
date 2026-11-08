@@ -206,9 +206,9 @@ function KeyRingDashboard({
     <div className="wx-form-stack">
       <section className="wx-drawer-card">
         <div className="wx-drawer-card-head">
-          <h3>
+          <h2>
             <Glyph name="lock" size={16} label="Key ring" /> Data-encryption key
-          </h3>
+          </h2>
           <StatusPill label={cap(status)} tone={ringTone(status)} />
         </div>
         <dl className="wx-kv">
@@ -243,7 +243,9 @@ function KeyRingDashboard({
       </section>
       {destroyed ? (
         <section className="wx-drawer-card">
-          <h3>Destruction</h3>
+          <div className="wx-drawer-card-head">
+            <h2>Destruction</h2>
+          </div>
           <dl className="wx-kv">
             <dt>Destroyed at</dt>
             <dd className="wx-nums">

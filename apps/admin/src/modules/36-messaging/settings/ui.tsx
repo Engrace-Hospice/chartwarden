@@ -20,8 +20,18 @@ export interface Banner {
   readonly message: string;
 }
 
-/** The banner is announced by InlineAlert itself (an error is `role="alert"`, a success an `<output>`); a wrapper live region would nest a second one. */
-export function BannerView({ banner }: { banner: Banner | null }): JSX.Element | null {
-  if (!banner) return null;
-  return <InlineAlert tone={banner.ok ? "success" : "error"}>{banner.message}</InlineAlert>;
+/** Both live regions stay mounted so a banner appearing or changing is announced (a region inserted with its text is not).
+ *  Deliberately kept over the no-nested-live-region rule: an inserted `<output>` is announced unreliably. */
+export function BannerView({ banner }: { banner: Banner | null }): JSX.Element {
+  return (
+    <>
+      {/* biome-ignore lint/a11y/useSemanticElements: <output> is the shared loading-spinner marker (screens-smoke settles on none) */}
+      <div role="status">
+        {banner?.ok ? <InlineAlert tone="success">{banner.message}</InlineAlert> : null}
+      </div>
+      <div role="alert">
+        {banner && !banner.ok ? <InlineAlert tone="error">{banner.message}</InlineAlert> : null}
+      </div>
+    </>
+  );
 }
