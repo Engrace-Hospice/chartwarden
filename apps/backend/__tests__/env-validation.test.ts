@@ -256,9 +256,10 @@ describe("collectEnvProblems", () => {
     ]);
   });
 
-  it("checks the retired clearinghouse fingerprint KEKs only when set (migration 1405)", () => {
-    const KEY = "M23_CLEARINGHOUSE_FINGERPRINT_RETIRED_KEKS";
+  it("checks the retired clearinghouse fingerprint subkeys only when set, with the cipher's own strict reader (migration 1405)", () => {
+    const KEY = "M23_CLEARINGHOUSE_RETIRED_FINGERPRINT_KEYS";
     const retired = Buffer.alloc(32, 7).toString("base64");
+    const problem = "must be comma-separated 32-byte keys, each padded standard base64 (44 chars)";
     expect(
       collectEnvProblems({
         ...GOOD,
@@ -266,14 +267,18 @@ describe("collectEnvProblems", () => {
       }),
     ).toEqual([]);
     expect(collectEnvProblems({ ...GOOD, [KEY]: `${retired},short` })).toEqual([
-      { key: KEY, problem: "must be comma-separated base64 keys of 32 bytes" },
+      { key: KEY, problem },
     ]);
     // strict base64: a typo Buffer.from would skip still decodes to 32 bytes, and is refused
     expect(
       collectEnvProblems({ ...GOOD, [KEY]: `${retired.slice(0, 10)}*${retired.slice(10)}` }),
-    ).toEqual([{ key: KEY, problem: "must be comma-separated base64 keys of 32 bytes" }]);
+    ).toEqual([{ key: KEY, problem }]);
     expect(collectEnvProblems({ ...GOOD, [KEY]: GOOD.M24_CREDENTIAL_ENCRYPTION_KEY })).toEqual([
-      { key: KEY, problem: "must not repeat the current M24_CREDENTIAL_ENCRYPTION_KEY" },
+      {
+        key: KEY,
+        problem:
+          "must hold derived fingerprint subkeys, never the M24_CREDENTIAL_ENCRYPTION_KEY itself",
+      },
     ]);
   });
 

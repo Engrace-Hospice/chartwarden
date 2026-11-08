@@ -9,6 +9,7 @@
 // keep their safe fallbacks (the check is a no-op outside production).
 import { Buffer } from "node:buffer";
 import { rustBridgeEnvProblems } from "./rust-bridge/config";
+import { STRICT_KEY_LIST_PROBLEM, parseStrictKeyList } from "./strict-key-base64";
 
 /** Environment surface this validator reads — `process.env` in production, an injected map in tests. */
 export type EnvLike = Record<string, string | undefined>;
@@ -235,19 +236,17 @@ const REQUIREMENTS: readonly Requirement[] = [
     },
   },
   {
-    // M23 (migration 1405) — optional: earlier M24_CREDENTIAL_ENCRYPTION_KEY values, read only to fingerprint clearinghouse
-    // credentials under the keys older reservations used. Set, every entry must be a 32-byte key and none the current KEK.
-    key: "M23_CLEARINGHOUSE_FINGERPRINT_RETIRED_KEKS",
-    when: (env) => Boolean(env.M23_CLEARINGHOUSE_FINGERPRINT_RETIRED_KEKS?.trim()),
+    // M23 (migration 1405) — optional: the DERIVED fingerprint subkeys of earlier M24_CREDENTIAL_ENCRYPTION_KEY values (never a
+    // KEK; scripts/m23-derive-fingerprint-subkey.ts), read only to fingerprint clearinghouse credentials under the keys older
+    // reservations used. Set, every entry must be a strict 32-byte key (the cipher's own reader), and none the current KEK itself.
+    key: "M23_CLEARINGHOUSE_RETIRED_FINGERPRINT_KEYS",
+    when: (env) => Boolean(env.M23_CLEARINGHOUSE_RETIRED_FINGERPRINT_KEYS?.trim()),
     rule: (value, env) => {
+      const keys = parseStrictKeyList(value);
+      if (!keys) return STRICT_KEY_LIST_PROBLEM;
       const current = env.M24_CREDENTIAL_ENCRYPTION_KEY?.trim();
-      for (const entry of value.split(",").map((e) => e.trim())) {
-        // strict: Buffer.from skips unknown characters, so a typo could still decode to 32 bytes (secret-cipher STRICT_KEY_BASE64)
-        if (!/^[A-Za-z0-9+/]{43}=$/.test(entry) || Buffer.from(entry, "base64").length !== 32)
-          return "must be comma-separated base64 keys of 32 bytes";
-        if (current && entry === current)
-          return "must not repeat the current M24_CREDENTIAL_ENCRYPTION_KEY";
-      }
+      if (current && keys.some((k) => k.toString("base64") === current))
+        return "must hold derived fingerprint subkeys, never the M24_CREDENTIAL_ENCRYPTION_KEY itself";
       return null;
     },
   },

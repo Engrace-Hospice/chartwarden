@@ -102,6 +102,11 @@ const ACK_ACTOR_GUARD_HEAD =
 // ADR-0078: `app.ack_supervisor_reassign` is the transaction-local marker the application sets for a supervisor reassign; the same
 // backstop, the same two functions, never a policy.
 const ACK_ACTOR_VARS = new Set<string>(["app.user_id", "app.ack_supervisor_reassign"]);
+// M23 migration 1406 (security review of cfd943e82, L2): `app.clearinghouse_release` is the transaction-local marker the platform-ops
+// credential release sets; the reservation release guard reads it. The same backstop rule: that one function head, never a policy.
+const RELEASE_GUARD_HEAD =
+  /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?tenant_clearinghouse_credential_reservation_release_guard\s*\(/i;
+const RELEASE_GUARD_VARS = new Set<string>(["app.clearinghouse_release"]);
 // Tables that are NOT tenant-scoped by org_id (user-owned cross-org, or pure platform reference).
 // A spec opts a table out by adding it here with a justification (reviewed change).
 const NON_ORG_SCOPED = new Set<string>([
@@ -810,6 +815,7 @@ for (const base of allPaths) {
       // SQL only: for TypeScript `text` is the whole file, where this would mean nothing — the
       // tsPolicies windows below are what keeps the exemption out of a policy there.
       const isAckActorGuard = isSql && ACK_ACTOR_GUARD_HEAD.test(statementHead(text));
+      const isReleaseGuard = isSql && RELEASE_GUARD_HEAD.test(statementHead(text));
       const buildsPolicy = isSql && /\b(?:CREATE|ALTER)\s+POLICY\b/i.test(text);
       let m: RegExpExecArray | null;
       SESSION_VAR_RE.lastIndex = 0;
@@ -821,6 +827,7 @@ for (const base of allPaths) {
         if (!buildsPolicy && AUDIT_CONTEXT_VARS.has(m[1]!) && isAuditCapture) continue;
         if (!buildsPolicy && KEY_RING_CONTEXT_VARS.has(m[1]!) && isKeyRingDefiner) continue;
         if (!buildsPolicy && ACK_ACTOR_VARS.has(m[1]!) && isAckActorGuard) continue;
+        if (!buildsPolicy && RELEASE_GUARD_VARS.has(m[1]!) && isReleaseGuard) continue;
         violations.push({
           file,
           rule: "rls-session-variable",
