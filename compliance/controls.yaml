@@ -314,7 +314,7 @@ controls:
 
   - id: CW-AC-17
     title: >-
-      A tenant's clearinghouse credential is sealed per tenant (AES-256-GCM under a per-organization key derived from the custodied KEK, the envelope bound to its organization, vendor and mode) and never returned. A tenant-held Stedi or Claim.MD configuration goes live only after, in order: the tenant records the vendor BAA (holder, date, document reference); a platform operator verifies it (tenant_clearinghouse.verify_baa_platform, a fresh step-up, a human (non-AI) actor, If-Match pinned to the BAA record the operator read, an audit row); a connection test passes; and the tenant billing admin activates it with a fresh step-up. A database CHECK ties a live configuration to a BAA recorded for its own vendor; a credential, vendor or mode change returns the configuration to draft until a fresh connection test re-verifies it; a rejected credential holds only that tenant's work. Acknowledgments and remittances for a tenant-held account are pulled only through that tenant's own binding, never through the platform account's Claim.MD capture (CW-AC-10).
+      A tenant's clearinghouse credential is sealed per tenant (AES-256-GCM under a per-organization key derived from the custodied KEK, the envelope bound to its organization, vendor and mode) and never returned. A tenant-held Stedi or Claim.MD configuration goes live only after, in order: the tenant records the vendor BAA (holder, date, document reference); a platform operator verifies it (tenant_clearinghouse.verify_baa_platform, a fresh step-up, a human (non-AI) actor, If-Match pinned to the BAA record the operator read, an audit row); a connection test passes; and the tenant billing admin activates it with a fresh step-up. A database CHECK ties a live configuration to a BAA recorded for its own vendor; a credential, vendor or mode change returns the configuration to draft until a fresh connection test re-verifies it; a rejected credential holds only that tenant's work. Acknowledgments and remittances for a tenant-held account are pulled only through that tenant's own binding, never through the platform account's Claim.MD capture (CW-AC-10). Every Claim.MD send on a tenant-held account (M23 claims and notices, M41 commercial claims) first commits the same immutable submission evidence the platform account does (the exact X12 identity, its hash and the sealed billing TIN), under that tenant's own organization and its own account reference (tenant:<organization id>), never the platform account's; a tenant send with no such store, or whose evidence cannot be written, is not sent.
     hipaa: ["164.312(a)(2)(iv)", "164.312(d)", "164.308(b)(1)", "164.314(a)(1)"]
     soc2: ["CC6.1", "CC6.7", "CC9.2"]
     status: implemented
@@ -327,6 +327,9 @@ controls:
       - file: apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/baa.ts
       - file: apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/service.ts
       - file: apps/backend/src/modules/23-billing-medicare/jobs/clearinghouse-credential-guard.ts
+      - file: apps/backend/src/modules/23-billing-medicare/claimmd-evidence/store.ts
+      - file: apps/backend/src/modules/23-billing-medicare/jobs/clearinghouse-submission.test.ts
+      - file: apps/backend/src/modules/41-billing-commercial/jobs/submission-worker.org-isolation.test.ts
 
   - id: CW-AC-20
     title: >-

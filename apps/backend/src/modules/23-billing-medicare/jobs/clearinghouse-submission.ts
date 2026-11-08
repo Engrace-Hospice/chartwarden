@@ -25,9 +25,11 @@ import {
   scopeKey,
 } from "@chartwarden/x12-837-client";
 import type { ClaimMdNoticeEvidencePort } from "../claimmd-evidence/notice-store";
-import type {
-  ClaimMdReceiptIdentifier,
-  ClaimMdSubmissionEvidencePort,
+import {
+  type ClaimMdReceiptIdentifier,
+  type ClaimMdSubmissionEvidencePort,
+  type TenantClaimMdEvidence,
+  claimMdEvidenceFor,
 } from "../claimmd-evidence/store";
 import {
   type CredentialAlertPort,
@@ -55,6 +57,8 @@ export interface M23TransportDeps {
   /** Mandatory for Claim.MD; committed before the vendor transport is invoked. */
   readonly claimMdEvidence?: ClaimMdSubmissionEvidencePort;
   readonly claimMdNoticeEvidence?: ClaimMdNoticeEvidencePort;
+  /** The stores a tenant's OWN Claim.MD account (`account: "tenant"`) records under; absent, such a send fails closed. */
+  readonly tenantClaimMdEvidence?: TenantClaimMdEvidence;
   /** Separate, default-off gate. A configured clearinghouse vendor alone never enables notice uploads. */
   readonly claimMdNoticeUploadsEnabled?: boolean;
   /** Durable ack cursors (#749); absent, every ack pull starts from a null cursor. */
@@ -214,6 +218,8 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
       );
     }
     const ctx = await transport.contexts.contextFor(input.organizationId, input.providerEntityId);
+    // A tenant's own Claim.MD account records under its own stores, the platform account under the platform's (never crossed).
+    const evidence = claimMdEvidenceFor(transport, input.organizationId, ctx.usage);
     let evidenceId: string | null = null;
     let noticeEvidenceId: string | null = null;
     if (transport.binding.vendor === "claimmd") {
@@ -221,7 +227,7 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
       if (exact.format !== "x12")
         throw failure(kind, CH.INVALID_REQUEST, "Claim.MD evidence requires the final X12 payload");
       if (kind === "claim") {
-        const evidenceStore = transport.claimMdEvidence;
+        const evidenceStore = evidence.submission;
         if (
           !evidenceStore ||
           !input.claimId ||
@@ -292,7 +298,7 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
         }
       } else {
         const noticeKind = input.kind === "claim_837i" ? null : input.kind;
-        const noticeStore = transport.claimMdNoticeEvidence;
+        const noticeStore = evidence.notice;
         if (!noticeKind || !transport.claimMdNoticeUploadsEnabled || !noticeStore)
           throw failure(
             kind,
@@ -367,10 +373,7 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
         : transport.binding.transport.submitNotice(ctx, submission),
     );
     if (!result.ok) throw failure(kind, result.degraded.code, result.degraded.reason);
-    if (
-      (evidenceId && transport.claimMdEvidence) ||
-      (noticeEvidenceId && transport.claimMdNoticeEvidence)
-    ) {
+    if ((evidenceId && evidence.submission) || (noticeEvidenceId && evidence.notice)) {
       const value = result.data.clearinghouseSubmissionId;
       const fieldNamespace: Record<
         string,
@@ -403,9 +406,7 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
         },
       ];
       try {
-        const evidencePort = evidenceId
-          ? transport.claimMdEvidence!
-          : transport.claimMdNoticeEvidence!;
+        const evidencePort = evidenceId ? evidence.submission! : evidence.notice!;
         await evidencePort.observe({
           evidenceId: evidenceId ?? noticeEvidenceId!,
           organizationId: input.organizationId,
