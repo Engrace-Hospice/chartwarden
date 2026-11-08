@@ -488,8 +488,12 @@ async function settle(
           ),
         )
         .returning({ id: MOT.id });
-      // already held (the drain held this claim while the call was still running): announced once, not again
-      if (held.length === 0) return "held";
+      // already held (the drain held this claim while the call was still running): announced once, not again. The drain knew only that a worker
+      // stopped; this worker knows WHY (a duplicate id, an unreadable answer), which is what the administrator reads, so the detail is replaced.
+      if (held.length === 0) {
+        await tx.update(MOT).set({ lastErrorDetail: detail }).where(eq(MOT.id, c.transmission.id));
+        return "held";
+      }
       await emit("m12.medication_order.transmission_unconfirmed", {
         orderId,
         lastErrorClass: UNCONFIRMED_OUTCOME_CLASS,

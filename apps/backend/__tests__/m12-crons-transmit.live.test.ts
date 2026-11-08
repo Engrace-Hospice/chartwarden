@@ -1303,6 +1303,49 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       expect((await backend.getTransmission(ORG_A, orderId)).status).toBe("queued");
     });
 
+    // LOW (review of 436fd3c1c..): when the drain had already held the order, the worker's own hold matched no row, so the detail the administrator
+    // reads stayed the drain's generic "a worker stopped ..." even when the worker then found a duplicate id or an unreadable answer.
+    it("a hold the drain already set takes the worker's real cause as its detail (a duplicate id, an unreadable answer), and is still announced once", async () => {
+      await h.seedOrder({
+        org: ORG_A,
+        patientId: await h.seedPatient(ORG_A, { synced: "501" }),
+        status: "active",
+        sendState: "acked",
+        dosespotPrescriptionId: "rx-clash-2",
+        transmittedAt: T0,
+      });
+      for (const cause of ["duplicate id", "unreadable answer"] as const) {
+        await h.admin.query(
+          "DELETE FROM medication_order_transmission WHERE medication_order_id IN (SELECT id FROM medication_order WHERE dosespot_prescription_id IS NULL)",
+        );
+        await h.admin.query("DELETE FROM medication_order WHERE dosespot_prescription_id IS NULL");
+        const { orderId, transmissionId } = await queued();
+        const vendor = new FakeDoseSpotVendor({
+          transmit: async () => {
+            await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A);
+            expect(
+              String((await txRow(transmissionId as string)).last_error_detail),
+              cause,
+            ).toMatch(/A worker stopped/);
+            if (cause === "unreadable answer") throw unconfirmed();
+            return { dosespotPrescriptionId: "rx-clash-2", transmittedAt: T0.toISOString() };
+          },
+        });
+        const pass = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+        expect(pass, cause).toMatchObject({ held: 1, transmitted: 0 });
+        const t = await txRow(transmissionId as string);
+        expect(t.last_error_class, cause).toBe("unconfirmed_outcome");
+        expect(String(t.last_error_detail), cause).toMatch(
+          cause === "duplicate id" ? /already recorded on another order/ : /unreadable response/,
+        );
+        expect(String(t.last_error_detail), cause).not.toMatch(/A worker stopped/);
+        expect(
+          await eventsFor("m12.medication_order.transmission_unconfirmed", orderId),
+          cause,
+        ).toHaveLength(1);
+      }
+    });
+
     // What a late DEFINITIVE failure does after the drain held the order, pinned (the CW-AC-23 text states it): the call's own answer settles what the
     // hold was waiting to learn, through the ordinary failure path. A retryable one puts the order back on the queue (a retry spent, the persisted
     // created id re-sent, the hold marker replaced by the failure's class); a permanent one fails the order. Neither keeps it held.
