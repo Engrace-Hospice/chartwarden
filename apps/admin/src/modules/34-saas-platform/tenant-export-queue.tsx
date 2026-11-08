@@ -9,6 +9,7 @@ import {
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useStaleSelection,
 } from "@chartwarden/ui";
 import type { paths } from "@chartwarden/ui";
 // apps/web/src/modules/34-saas — tenant-export queue (M34 SaaS Tenant Platform, R2 Phase-3).
@@ -20,6 +21,7 @@ import type { paths } from "@chartwarden/ui";
 // is the reference).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { useSearchParams } from "react-router-dom";
 import { TENANT_EXPORT_TONE, cap } from "./saas-status";
 
 // The tenant-export job view (mirrors the backend TenantExportJobViewSchema).
@@ -75,13 +77,16 @@ export function TenantExportQueue(): JSX.Element {
   const [loading, setLoading] = useState(false);
   const guard = useRequestGuard();
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<TenantExportJob | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  // The open job lives in the URL (`?export=<id>`), so Back closes the drawer and a link reopens it.
+  const [params, setParams] = useSearchParams();
+  const selectedId = params.get("export");
 
   const load = useCallback(async () => {
     const isCurrent = guard();
     setLoading(true);
+    setLoaded(false);
     setError(null);
-    setSelected(null);
     const query: NonNullable<
       paths["/api/v1/tenant/tenant-export-jobs"]["get"]["parameters"]["query"]
     > = { limit: 50 };
@@ -96,6 +101,7 @@ export function TenantExportQueue(): JSX.Element {
       return;
     }
     setItems(((data as TenantExportListPage | undefined)?.items ?? []) as TenantExportJob[]);
+    setLoaded(true);
     setLoading(false);
   }, [client, guard, status]);
 
@@ -108,6 +114,10 @@ export function TenantExportQueue(): JSX.Element {
     () => (purpose ? items.filter((j) => j.requestedPurpose === purpose) : items),
     [items, purpose],
   );
+
+  // Looked up in the loaded list (not the purpose-filtered one), and not while the list cannot be read.
+  const selected = selectedId && !error ? items.find((j) => j.id === selectedId) : undefined;
+  useStaleSelection({ param: "export", ready: loaded, found: selected !== undefined });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -124,21 +134,19 @@ export function TenantExportQueue(): JSX.Element {
           </div>
         </header>
 
-        <div className="wx-list-toolbar">
-          <div className="grid w-full gap-3 md:grid-cols-2">
-            <SelectField
-              label="Status"
-              value={status}
-              options={STATUS_OPTIONS}
-              onChange={(e) => setStatus(e.target.value as Status | "")}
-            />
-            <SelectField
-              label="Purpose"
-              value={purpose}
-              options={PURPOSE_OPTIONS}
-              onChange={(e) => setPurpose(e.target.value as Purpose | "")}
-            />
-          </div>
+        <div className="wx-list-toolbar wx-list-toolbar-fields">
+          <SelectField
+            label="Status"
+            value={status}
+            options={STATUS_OPTIONS}
+            onChange={(e) => setStatus(e.target.value as Status | "")}
+          />
+          <SelectField
+            label="Purpose"
+            value={purpose}
+            options={PURPOSE_OPTIONS}
+            onChange={(e) => setPurpose(e.target.value as Purpose | "")}
+          />
         </div>
 
         <ExportTable
@@ -146,11 +154,11 @@ export function TenantExportQueue(): JSX.Element {
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={setSelected}
+          onSelect={(j) => setParams({ export: j.id })}
           onRetry={() => void load()}
         />
       </div>
-      {selected ? <ExportDrawer job={selected} onClose={() => setSelected(null)} /> : null}
+      {selected ? <ExportDrawer job={selected} onClose={() => setParams({})} /> : null}
     </div>
   );
 }
@@ -273,7 +281,7 @@ function ExportDrawer({
           </div>
           <dl className="wx-kv">
             <dt>Job id</dt>
-            <dd className="wx-data-md break-words">{job.id}</dd>
+            <dd className="wx-data-md">{job.id}</dd>
             <dt>Purpose</dt>
             <dd>{purposeLabel(job.requestedPurpose)}</dd>
             <dt>Requested at</dt>

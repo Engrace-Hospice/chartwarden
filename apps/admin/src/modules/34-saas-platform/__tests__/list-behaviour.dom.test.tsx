@@ -84,6 +84,50 @@ interface ParamCase {
   routes: Record<string, unknown>;
 }
 
+const flag = {
+  id: "flag-1",
+  flagKey: "beta.thing",
+  organizationId: null,
+  flagKind: "product",
+  valueType: "bool",
+  value: true,
+  rolloutPercent: null,
+  killSwitchActive: false,
+  updatedAt: NOW,
+};
+const baa = {
+  id: "baa-1",
+  organizationId: "org-1",
+  tenantAccountId: "tenant-1",
+  addendumVersion: "v2",
+  baaStatus: "executed",
+  executedOn: null,
+  effectiveOn: null,
+  expiresOn: null,
+  documentId: null,
+  attestedAt: null,
+};
+const dsar = {
+  id: "dsar-1",
+  patientId: "patient-1",
+  requestSource: "patient",
+  status: "requested",
+  requestedAt: NOW,
+  slaDueAt: NOW,
+  extendedUntil: null,
+  fulfilledAt: null,
+  deniedReason: null,
+  createdAt: NOW,
+};
+const exportJob = {
+  id: "export-1",
+  requestedPurpose: "migration",
+  status: "fulfilled",
+  requestedAt: NOW,
+  fulfilledAt: NOW,
+  bundleSizeBytes: 10,
+  createdAt: NOW,
+};
 const PARAM_CASES: ParamCase[] = [
   {
     name: "Signups",
@@ -175,6 +219,42 @@ const PARAM_CASES: ParamCase[] = [
       ]),
     },
   },
+  {
+    name: "FeatureFlags",
+    element: <FeatureFlags />,
+    path: "/flags",
+    param: "flag",
+    id: "flag-1",
+    drawer: "Feature flag",
+    routes: { "/api/v1/platform/feature-flags": page([flag]) },
+  },
+  {
+    name: "BaaRegister",
+    element: <BaaRegister />,
+    path: "/baa",
+    param: "baa",
+    id: "baa-1",
+    drawer: "BAA record",
+    routes: { "/api/v1/platform/baa-register": page([baa]) },
+  },
+  {
+    name: "DsarQueue",
+    element: <DsarQueue />,
+    path: "/dsar",
+    param: "job",
+    id: "dsar-1",
+    drawer: "DSAR request",
+    routes: { "/api/v1/tenant/dsar-export-jobs": page([dsar]) },
+  },
+  {
+    name: "TenantExportQueue",
+    element: <TenantExportQueue />,
+    path: "/exports",
+    param: "export",
+    id: "export-1",
+    drawer: "Export job",
+    routes: { "/api/v1/tenant/tenant-export-jobs": page([exportJob]) },
+  },
 ];
 
 describe.each(PARAM_CASES)("$name list behaviour", (c) => {
@@ -228,100 +308,6 @@ describe("TenantInventory new-tenant link", () => {
     await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
     await waitFor(() => expect(search()).toBe(""));
   });
-});
-
-describe("state-held selections", () => {
-  const flag = {
-    id: "flag-1",
-    flagKey: "beta.thing",
-    organizationId: null,
-    flagKind: "product",
-    valueType: "bool",
-    value: true,
-    rolloutPercent: null,
-    killSwitchActive: false,
-    updatedAt: NOW,
-  };
-  const baa = {
-    id: "baa-1",
-    organizationId: "org-1",
-    tenantAccountId: "tenant-1",
-    addendumVersion: "v2",
-    baaStatus: "executed",
-    executedOn: null,
-    effectiveOn: null,
-    expiresOn: null,
-    documentId: null,
-    attestedAt: null,
-  };
-  const dsar = {
-    id: "dsar-1",
-    patientId: "patient-1",
-    requestSource: "patient",
-    status: "requested",
-    requestedAt: NOW,
-    slaDueAt: NOW,
-    extendedUntil: null,
-    fulfilledAt: null,
-    deniedReason: null,
-    createdAt: NOW,
-  };
-  const exportJob = {
-    id: "export-1",
-    requestedPurpose: "migration",
-    status: "fulfilled",
-    requestedAt: NOW,
-    fulfilledAt: NOW,
-    bundleSizeBytes: 10,
-    createdAt: NOW,
-  };
-  const cases = [
-    {
-      name: "FeatureFlags",
-      element: <FeatureFlags />,
-      route: "/api/v1/platform/feature-flags",
-      item: flag,
-      drawer: "Feature flag",
-    },
-    {
-      name: "BaaRegister",
-      element: <BaaRegister />,
-      route: "/api/v1/platform/baa-register",
-      item: baa,
-      drawer: "BAA record",
-    },
-    {
-      name: "DsarQueue",
-      element: <DsarQueue />,
-      route: "/api/v1/tenant/dsar-export-jobs",
-      item: dsar,
-      drawer: "DSAR request",
-    },
-    {
-      name: "TenantExportQueue",
-      element: <TenantExportQueue />,
-      route: "/api/v1/tenant/tenant-export-jobs",
-      item: exportJob,
-      drawer: "Export job",
-    },
-  ];
-
-  it.each(cases)(
-    "$name: Enter opens the drawer, Escape closes it and focus returns to the row",
-    async (c) => {
-      mount(c.element, "/x", { [c.route]: page([c.item]) });
-      await waitFor(() =>
-        expect(document.querySelector("tr.wx-data-row-interactive")).not.toBeNull(),
-      );
-      const row = firstRow();
-      row.focus();
-      fireEvent.keyDown(row, { key: "Enter" });
-      const drawer = await screen.findByRole("complementary", { name: c.drawer });
-      fireEvent.keyDown(drawer, { key: "Escape" });
-      await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
-      expect(document.activeElement).toBe(firstRow());
-    },
-  );
 });
 
 describe("debounced text filters", () => {

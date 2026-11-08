@@ -13,6 +13,7 @@ import {
   useDebouncedValue,
   useDrawerA11y,
   useRequestGuard,
+  useStaleSelection,
 } from "@chartwarden/ui";
 import type { paths } from "@chartwarden/ui";
 // apps/web/src/modules/34-saas — DSAR queue (M34 SaaS Tenant Platform, R2 Phase-3).
@@ -25,6 +26,7 @@ import type { paths } from "@chartwarden/ui";
 // laid out as the redesign's list + right drawer (outbox is the reference).
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PatientFinder } from "./patient-finder";
 import { DSAR_TONE, cap } from "./saas-status";
 
@@ -82,7 +84,10 @@ export function DsarQueue(): JSX.Element {
   const [items, setItems] = useState<DsarExportJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<DsarExportJob | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  // The open job lives in the URL (`?job=<id>`), so Back closes the drawer and a link reopens it.
+  const [params, setParams] = useSearchParams();
+  const selectedId = params.get("job");
 
   // The filter the list was last fetched with: Enter/Apply/Refresh load the typed text at once, and the debounced value then
   // catches up to the same text — without this the effect would fetch the identical query a second time.
@@ -93,8 +98,8 @@ export function DsarQueue(): JSX.Element {
       const isCurrent = guard();
       loadedKey.current = filterKey(status, patient);
       setLoading(true);
+      setLoaded(false);
       setError(null);
-      setSelected(null);
       const query: NonNullable<
         paths["/api/v1/tenant/dsar-export-jobs"]["get"]["parameters"]["query"]
       > = { limit: 50 };
@@ -110,6 +115,7 @@ export function DsarQueue(): JSX.Element {
         return;
       }
       setItems(((data as DsarListPage | undefined)?.items ?? []) as DsarExportJob[]);
+      setLoaded(true);
       setLoading(false);
     },
     [client, guard, debouncedPatientId, status],
@@ -119,6 +125,10 @@ export function DsarQueue(): JSX.Element {
     if (loadedKey.current === filterKey(status, debouncedPatientId)) return;
     void load();
   }, [load, status, debouncedPatientId]);
+
+  // While the list cannot be read no drawer is shown: the job it would show is the last read, not what the server holds now.
+  const selected = selectedId && !error ? items.find((j) => j.id === selectedId) : undefined;
+  useStaleSelection({ param: "job", ready: loaded, found: selected !== undefined });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -135,31 +145,29 @@ export function DsarQueue(): JSX.Element {
           </div>
         </header>
 
-        <div className="wx-list-toolbar">
-          <div className="grid w-full gap-3 md:grid-cols-3">
-            <PatientFinder
-              value={patientId}
-              onPick={(id) => {
-                setPatientId(id);
-                void load(id);
-              }}
-            />
-            <TextField
-              label="Patient id"
-              placeholder="Patient id"
-              value={patientId}
-              onChange={(e) => setPatientId(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void load(patientId);
-              }}
-            />
-            <SelectField
-              label="Status"
-              value={status}
-              options={STATUS_OPTIONS}
-              onChange={(e) => setStatus(e.target.value as Status | "")}
-            />
-          </div>
+        <div className="wx-list-toolbar wx-list-toolbar-fields">
+          <PatientFinder
+            value={patientId}
+            onPick={(id) => {
+              setPatientId(id);
+              void load(id);
+            }}
+          />
+          <TextField
+            label="Patient id"
+            placeholder="Patient id"
+            value={patientId}
+            onChange={(e) => setPatientId(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void load(patientId);
+            }}
+          />
+          <SelectField
+            label="Status"
+            value={status}
+            options={STATUS_OPTIONS}
+            onChange={(e) => setStatus(e.target.value as Status | "")}
+          />
         </div>
 
         <DsarTable
@@ -167,11 +175,11 @@ export function DsarQueue(): JSX.Element {
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={setSelected}
+          onSelect={(j) => setParams({ job: j.id })}
           onRetry={() => void load()}
         />
       </div>
-      {selected ? <DsarDrawer job={selected} onClose={() => setSelected(null)} /> : null}
+      {selected ? <DsarDrawer job={selected} onClose={() => setParams({})} /> : null}
     </div>
   );
 }
@@ -262,7 +270,7 @@ function DsarTable({
                   {isOpen(j.status) ? (
                     <SlaChip job={j} />
                   ) : (
-                    <span className="text-[var(--color-on-surface-variant)]">—</span>
+                    <span className="wx-text-muted">—</span>
                   )}
                 </td>
               </tr>
@@ -298,7 +306,7 @@ function DsarDrawer({ job, onClose }: { job: DsarExportJob; onClose: () => void 
           </div>
           <dl className="wx-kv">
             <dt>Job id</dt>
-            <dd className="wx-data-md break-words">{job.id}</dd>
+            <dd className="wx-data-md">{job.id}</dd>
             <dt>Patient</dt>
             <dd>
               <MaskedIdentifier value={job.patientId} label="Patient" />
@@ -317,7 +325,7 @@ function DsarDrawer({ job, onClose }: { job: DsarExportJob; onClose: () => void 
               {isOpen(job.status) ? (
                 <SlaChip job={job} />
               ) : (
-                <span className="wx-nums text-[var(--color-on-surface-variant)]">
+                <span className="wx-nums wx-text-muted">
                   {new Date(effectiveDue(job)).toLocaleDateString()}
                 </span>
               )}
