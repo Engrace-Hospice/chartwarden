@@ -179,6 +179,12 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   earlier order of its batch makes no call (it used to stamp and send with the same key: a double send), and the stale-claim clock runs from the
   call, not the claim. A hold the drain set while the original call was still running is cleared by that call's late success, and a late
   unconfirmed outcome does not announce a held order a second time.
+  The fence covered only the vendor call, so (MEDIUM-1 of the next review) every write the worker makes after its claim is conditional on the
+  claim still being its own too: the settle locks the ORDER row with the `updated_at` the worker owns (the claim's, or the fence's after it), and a
+  worker that lost its claim writes nothing and is counted `skipped` (it used to requeue or exhaust the new owner's claim and clear its stamp when its
+  payload build failed after a takeover, so the owner's success matched nothing and the prescription went out again). The order row is locked
+  before the transmission row, as in the administrator's resolution, so a late failure racing a resolution cannot deadlock, and a late outage
+  after a drain hold clears the stale hold marker.
 - A created-but-unsent prescription survives a change of replica (LOW of the following review): the adapter used to remember a created
   `addCodedPrescription` id only in its own process memory, so a retry on another replica re-ran the create (a second prescription). The adapter now
   reports the id (`onCreated`) before the send and accepts it back (`createdPrescriptionId`); the worker persists it on the transmission row's

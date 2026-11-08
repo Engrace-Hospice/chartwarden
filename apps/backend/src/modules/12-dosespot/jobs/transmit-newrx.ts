@@ -38,7 +38,7 @@ import {
   transitionMedicationOrder,
 } from "@chartwarden/dosespot";
 import { and, asc, eq, inArray, isNull, lt, notExists, or, sql } from "drizzle-orm";
-import { prescriptionIdTakenByAnotherOrder } from "../prescription-id";
+import { isPrescriptionIdTaken, lockPrescriptionId } from "../prescription-id";
 import { type M12CronDeps, errorClassOf, inOrg, isCircuitOpenError, nowOf } from "./cron-common";
 import { reportDegradation, reportRecovery } from "./degradation-reports";
 import { UNCONFIRMED_OUTCOME_CLASS } from "./hold";
@@ -69,6 +69,8 @@ export interface TransmitPassResult {
   readonly failed: number;
   /** Orders held because DoseSpot accepted the call but did not confirm what it created: neither retried nor failed. */
   readonly held: number;
+  /** Claims this worker no longer owned when it came to write (drained and taken over, or resolved meanwhile): nothing of its was written. */
+  readonly skipped: number;
   readonly deferredByOutage: number;
   /** 1 when the org's config could not be read or opened, so the pass was skipped whole (no claim, no write); 0 otherwise. */
   readonly skippedConfigFault: number;
@@ -196,14 +198,14 @@ async function buildPayload(
  * `transmission_started_at`. Zero rows at (1) means the claim was drained and taken over (or the order changed) while this worker was busy with
  * an earlier order of its batch: it returns false and the caller makes NO call, so the order cannot be sent twice with one key. Moving
  * `updated_at` also restarts the stale-claim clock at the call (it used to run from the claim, which a slow batch could outlast).
- * A worker that dies after this and before its settle leaves a stale claim carrying the stamp, which the drain HOLDS instead of re-sending.
- * A failure here throws and the order is not called: it stays a claim without the stamp, which the drain releases.
+ * It returns the `updated_at` the worker now owns (the fence time). A worker that dies after this and before its settle leaves a stale claim
+ * carrying the stamp, which the drain HOLDS instead of re-sending. A failure here throws and the order is not called: it stays a claim without the stamp, which the drain releases.
  */
 async function markCallStarted(
   deps: M12CronDeps,
   organizationId: string,
   c: Claimed,
-): Promise<boolean> {
+): Promise<Date | null> {
   const now = nowOf(deps);
   return inOrg(deps.db, organizationId, async (tx) => {
     const fenced = await tx
@@ -218,14 +220,14 @@ async function markCallStarted(
         ),
       )
       .returning({ id: MO.id });
-    if (fenced.length !== 1) return false;
+    if (fenced.length !== 1) return null;
     const stamped = await tx
       .update(MOT)
       .set({ transmissionStartedAt: now })
       .where(eq(MOT.id, c.transmission.id))
       .returning({ id: MOT.id });
     if (stamped.length !== 1) throw new Error("transmission row vanished before the vendor call");
-    return true;
+    return now;
   });
 }
 
@@ -263,33 +265,44 @@ type Outcome =
       syncPatient: boolean;
     };
 
-async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed): Promise<Outcome> {
+/** What a worker found and the `updated_at` its claim carries when it comes to write: the claim's own, or the fence's after the fence. */
+interface Attempt {
+  readonly outcome: Outcome;
+  readonly ownedAt: Date;
+}
+
+async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed): Promise<Attempt> {
+  const beforeFence = (outcome: Outcome): Attempt => ({ outcome, ownedAt: c.claimedAt });
   const built = await buildPayload(deps, organizationId, c.order);
   if (built.kind === "patient_not_synced") {
-    return {
+    return beforeFence({
       kind: "failure",
       errorClass: "patient_not_synced",
       detail: "no DoseSpot patient id is recorded yet; a patient sync was requested",
       permanent: false,
       syncPatient: true,
-    };
+    });
   }
   if (built.kind === "permanent") {
-    return {
+    return beforeFence({
       kind: "failure",
       errorClass: built.errorClass,
       detail: "the order cannot be transmitted as written",
       permanent: true,
       syncPatient: false,
-    };
+    });
   }
+  let ownedAt: Date;
   try {
-    // the fence: false = this worker no longer owns the claim (it was drained and taken over): make no call and touch nothing
-    if (!(await markCallStarted(deps, organizationId, c))) return { kind: "superseded" };
+    // the fence: null = this worker no longer owns the claim (it was drained and taken over): make no call and touch nothing
+    const fencedAt = await markCallStarted(deps, organizationId, c);
+    if (fencedAt === null) return beforeFence({ kind: "superseded" });
+    ownedAt = fencedAt;
   } catch {
     // the stamp could not be committed, so the vendor was NOT called: the order waits (no retry spent) and the drain releases the claim
-    return { kind: "outage" };
+    return beforeFence({ kind: "outage" });
   }
+  const owned = (outcome: Outcome): Attempt => ({ outcome, ownedAt });
   try {
     const res = await deps.client.transmitNewRx(
       organizationId,
@@ -303,40 +316,47 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
         onCreated: (id) => rememberCreated(deps, organizationId, c, id),
       },
     );
-    return {
+    return owned({
       kind: "success",
       prescriptionId: res.dosespotPrescriptionId,
       transmittedAt: new Date(res.transmittedAt),
-    };
+    });
   } catch (error) {
     // an open circuit, or a registration that stopped being live since this batch was claimed: the order WAITS (no retry spent)
     // A resolver / key-ring / KEK / credential / database fault (`ConfigUnavailableError`) is the platform's, not the order's: it waits too.
     if (isCircuitOpenError(error) || isNotEnabledError(error) || isConfigUnavailableError(error)) {
-      return { kind: "outage" };
+      return owned({ kind: "outage" });
     }
     // accepted but unreadable / no id: the prescription may exist, so the order is held, not failed and not retried
     if (isUnconfirmedOutcomeError(error)) {
-      return {
+      return owned({
         kind: "unconfirmed",
         detail: `${error.customerMessage} The prescription may already exist at DoseSpot.`,
-      };
+      });
     }
-    return {
+    return owned({
       kind: "failure",
       errorClass: errorClassOf(error),
       detail: isDegradedError(error) ? error.customerMessage : "unexpected adapter failure",
       permanent: isDegradedError(error) && !error.retryable,
       syncPatient: false,
-    };
+    });
   }
 }
 
+/**
+ * SETTLE: write what the attempt found. Every write is conditional on the claim still being THIS worker's (`in_flight` with the `updated_at` it
+ * owns), so a worker whose claim was drained and taken over (a slow batch, a payload build that failed after a takeover) can neither requeue,
+ * exhaust, hold nor record over the new owner: it writes nothing and answers "skipped". Lock order is the advisory lock for a prescription id
+ * (success only), then the ORDER row, then the transmission row: the order the administrator's resolution takes, so the two cannot deadlock.
+ */
 async function settle(
   deps: M12CronDeps,
   organizationId: string,
   c: Claimed,
-  outcome: Outcome,
+  attempt: Attempt,
 ): Promise<"transmitted" | "requeued" | "failed" | "deferred" | "held" | "skipped"> {
+  const { outcome, ownedAt } = attempt;
   // a superseded claim belongs to another worker now: nothing of this worker's is written
   if (outcome.kind === "superseded") return "skipped";
   const now = nowOf(deps);
@@ -350,18 +370,45 @@ async function settle(
         aggregateKind: "medication_order",
         aggregateId: orderId,
       });
+    /** The order row only while it is still this worker's claim; every MO write below repeats the predicate. */
+    const stillMine = and(
+      eq(MO.id, orderId),
+      eq(MO.status, "queued_for_transmission"),
+      eq(MO.dosespotSendState, "in_flight"),
+      eq(MO.updatedAt, ownedAt),
+    );
+
+    if (outcome.kind === "success")
+      await lockPrescriptionId(tx, organizationId, outcome.prescriptionId);
+    const [owned] = await tx.select({ id: MO.id }).from(MO).where(stillMine).limit(1).for("update");
+    if (!owned) {
+      if (outcome.kind === "success") {
+        // DoseSpot accepted a prescription for an order this worker no longer owns (an administrator resolved it meanwhile, say): it cannot be
+        // recorded over their decision, so it is said, with ids only
+        deps.warn?.(
+          { organizationId, orderId },
+          "M12 transmit: DoseSpot accepted a prescription for an order this worker no longer owns; nothing was recorded here",
+        );
+      }
+      return "skipped";
+    }
 
     if (outcome.kind === "outage") {
       const back = await tx
         .update(MO)
         .set({ dosespotSendState: "queued", updatedAt: now })
-        .where(and(eq(MO.id, orderId), eq(MO.dosespotSendState, "in_flight")))
+        .where(stillMine)
         .returning({ id: MO.id });
-      if (back.length !== 1) throw new Error("order not in flight at outage release");
-      // nothing reached the vendor (an open circuit, a registration not live, a config fault, or the stamp itself failed): no call began
+      if (back.length !== 1) return "skipped";
+      // nothing reached the vendor (an open circuit, a registration not live, a config fault, or the stamp itself failed): no call began, so the
+      // stamp goes, and so does a hold the drain set while this worker was still in its call (the order is queued again, not "held")
       await tx
         .update(MOT)
-        .set({ transmissionStartedAt: null })
+        .set({
+          transmissionStartedAt: null,
+          lastErrorClass: sql`CASE WHEN ${MOT.lastErrorClass} = ${UNCONFIRMED_OUTCOME_CLASS} THEN NULL ELSE ${MOT.lastErrorClass} END`,
+          lastErrorDetail: sql`CASE WHEN ${MOT.lastErrorClass} = ${UNCONFIRMED_OUTCOME_CLASS} THEN NULL ELSE ${MOT.lastErrorDetail} END`,
+        })
         .where(eq(MOT.id, c.transmission.id));
       return "deferred";
     }
@@ -393,9 +440,7 @@ async function settle(
     if (outcome.kind === "success") {
       // webhooks bind an order by its prescription id and take the first match: an id another order already carries must not be recorded
       // twice (the same guard the administrator's "sent" resolution uses). Held for a person, like any outcome that cannot be trusted.
-      if (
-        await prescriptionIdTakenByAnotherOrder(tx, organizationId, outcome.prescriptionId, orderId)
-      ) {
+      if (await isPrescriptionIdTaken(tx, organizationId, outcome.prescriptionId, orderId)) {
         return hold(DUPLICATE_ID_DETAIL);
       }
       transitionMedicationOrder("queued_for_transmission", {
@@ -419,10 +464,10 @@ async function settle(
           version: sql`${MO.version} + 1`,
           updatedAt: now,
         })
-        .where(and(eq(MO.id, orderId), eq(MO.dosespotSendState, "in_flight")))
+        .where(stillMine)
         .returning({ id: MO.id });
-      if (o.length !== 1) throw new Error("order not in flight at transmit settle");
-      const t = await tx
+      if (o.length !== 1) return "skipped";
+      await tx
         .update(MOT)
         .set({
           transmissionSucceededAt: outcome.transmittedAt,
@@ -432,9 +477,7 @@ async function settle(
           lastErrorClass: sql`CASE WHEN ${MOT.lastErrorClass} = ${UNCONFIRMED_OUTCOME_CLASS} THEN NULL ELSE ${MOT.lastErrorClass} END`,
           lastErrorDetail: sql`CASE WHEN ${MOT.lastErrorClass} = ${UNCONFIRMED_OUTCOME_CLASS} THEN NULL ELSE ${MOT.lastErrorDetail} END`,
         })
-        .where(eq(MOT.id, c.transmission.id))
-        .returning({ id: MOT.id });
-      if (t.length !== 1) throw new Error("transmission row not updated at success");
+        .where(eq(MOT.id, c.transmission.id));
       await emit(plan.event, {
         orderId,
         dosespotPrescriptionId: outcome.prescriptionId,
@@ -453,26 +496,27 @@ async function settle(
       lastErrorClass: outcome.errorClass,
       nowInstant: now.toISOString(),
     });
-    const t = await tx
-      .update(MOT)
-      .set({
-        transmissionFailedAt: now,
-        // the attempt is over: a claim of the requeued order that later dies before its vendor call must not look like one that called
-        ...(plan.exhausted ? {} : { transmissionStartedAt: null }),
-        retryCount: plan.transmissionUpdate.retryCount,
-        lastErrorClass: outcome.errorClass,
-        lastErrorDetail: outcome.detail,
-      })
-      .where(eq(MOT.id, c.transmission.id))
-      .returning({ id: MOT.id });
-    if (t.length !== 1) throw new Error("transmission row not updated at failure");
+    // the ORDER first (it is the ownership test), the transmission row only if the order matched
+    const recordFailure = () =>
+      tx
+        .update(MOT)
+        .set({
+          transmissionFailedAt: now,
+          // the attempt is over: a claim of the requeued order that later dies before its vendor call must not look like one that called
+          ...(plan.exhausted ? {} : { transmissionStartedAt: null }),
+          retryCount: plan.transmissionUpdate.retryCount,
+          lastErrorClass: outcome.errorClass,
+          lastErrorDetail: outcome.detail,
+        })
+        .where(eq(MOT.id, c.transmission.id));
     if (!plan.exhausted) {
       const back = await tx
         .update(MO)
         .set({ dosespotSendState: "queued", updatedAt: now })
-        .where(and(eq(MO.id, orderId), eq(MO.dosespotSendState, "in_flight")))
+        .where(stillMine)
         .returning({ id: MO.id });
-      if (back.length !== 1) throw new Error("order not in flight at requeue");
+      if (back.length !== 1) return "skipped";
+      await recordFailure();
       if (outcome.syncPatient) {
         await new DosespotSyncQueueRepository(tx).enqueue({
           organizationId,
@@ -495,9 +539,10 @@ async function settle(
         version: sql`${MO.version} + 1`,
         updatedAt: now,
       })
-      .where(and(eq(MO.id, orderId), eq(MO.dosespotSendState, "in_flight")))
+      .where(stillMine)
       .returning({ id: MO.id });
-    if (o.length !== 1) throw new Error("order not in flight at exhaustion");
+    if (o.length !== 1) return "skipped";
+    await recordFailure();
     await emit(plan.event, {
       orderId,
       lastErrorClass: outcome.errorClass,
@@ -549,6 +594,7 @@ export async function runTransmitNewRxForOrg(
       requeued: 0,
       failed: 0,
       held: 0,
+      skipped: 0,
       deferredByOutage: 0,
       skippedConfigFault: 1,
     };
@@ -559,14 +605,16 @@ export async function runTransmitNewRxForOrg(
   let requeued = 0;
   let failed = 0;
   let held = 0;
+  let skipped = 0;
   let deferredByOutage = 0;
   for (const c of claimed) {
-    const outcome = await attemptOne(deps, organizationId, c);
-    const result = await settle(deps, organizationId, c, outcome);
+    const attempt = await attemptOne(deps, organizationId, c);
+    const result = await settle(deps, organizationId, c, attempt);
     if (result === "transmitted") transmitted += 1;
     else if (result === "requeued") requeued += 1;
     else if (result === "failed") failed += 1;
     else if (result === "held") held += 1;
+    else if (result === "skipped") skipped += 1;
     else deferredByOutage += 1;
   }
   return {
@@ -575,6 +623,7 @@ export async function runTransmitNewRxForOrg(
     requeued,
     failed,
     held,
+    skipped,
     deferredByOutage,
     skippedConfigFault: 0,
   };

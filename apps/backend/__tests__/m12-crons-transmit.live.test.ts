@@ -469,6 +469,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
             requeued: 0,
             failed: 0,
             held: 0,
+            skipped: 0,
             deferredByOutage: 0,
             skippedConfigFault: 1,
           });
@@ -1240,17 +1241,14 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       expect((await orderRow(second.orderId)).rx).toBe("rx-2");
     });
 
+    // The drain's CLOCK is moved (not the order's updated_at): the drain only reads the claim, so a worker that is merely slow keeps owning it.
     it("a hold set by the drain while the original call was still running is cleared by that call's late success (no stale marker, read says transmitted)", async () => {
       const backend = createDbDoseSpotBackend(h.handle.db, h.outbox);
       const { orderId, transmissionId } = await queued();
       const vendor = new FakeDoseSpotVendor({
         transmit: async () => {
-          // the call is slower than the stale window: the drain (another worker) holds the stamped claim meanwhile
-          await h.admin.query(
-            "UPDATE medication_order SET updated_at = now() - interval '3 hours' WHERE id=$1",
-            [orderId],
-          );
-          await runRecoveryDrainForOrg(deps(never, minutes(30)), ORG_A);
+          // the call is slower than the stale window: the drain (another worker, a later clock) holds the stamped claim meanwhile
+          await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A);
           expect((await txRow(transmissionId as string)).last_error_class).toBe(
             "unconfirmed_outcome",
           );
@@ -1265,17 +1263,10 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
     });
 
     it("a late UNCONFIRMED outcome after the drain already held the order does not announce it a second time", async () => {
-      await h.admin.query(
-        "DELETE FROM outbox_event WHERE event_type='m12.medication_order.transmission_unconfirmed'",
-      );
       const { orderId } = await queued();
       const vendor = new FakeDoseSpotVendor({
         transmit: async () => {
-          await h.admin.query(
-            "UPDATE medication_order SET updated_at = now() - interval '3 hours' WHERE id=$1",
-            [orderId],
-          );
-          await runRecoveryDrainForOrg(deps(never, minutes(30)), ORG_A);
+          await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A);
           throw new UnconfirmedOutcomeError("dosespot", "transmitNewRx", "unreadable", "c-late");
         },
       });
@@ -1284,6 +1275,177 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         await eventsFor("m12.medication_order.transmission_unconfirmed", orderId),
       ).toHaveLength(1);
       expect((await orderRow(orderId)).s).toBe("in_flight");
+    });
+
+    it("a late OUTAGE after the drain already held the order requeues it AND clears the stale hold marker (no 'held' order that is queued)", async () => {
+      const backend = createDbDoseSpotBackend(h.handle.db, h.outbox);
+      const { orderId, transmissionId } = await queued();
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async () => {
+          await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A);
+          expect((await txRow(transmissionId as string)).last_error_class).toBe(
+            "unconfirmed_outcome",
+          );
+          throw circuitOpen(); // nothing reached the vendor after all
+        },
+      });
+      const pass = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+      expect(pass).toMatchObject({ deferredByOutage: 1, skipped: 0 });
+      expect(await orderRow(orderId)).toMatchObject({
+        status: "queued_for_transmission",
+        s: "queued",
+      });
+      const t = await txRow(transmissionId as string);
+      expect(t.last_error_class).toBeNull();
+      expect(t.transmission_started_at).toBeNull();
+      expect((await backend.getTransmission(ORG_A, orderId)).status).toBe("queued");
+    });
+
+    // MEDIUM-1 of the next review: the fence covered only the vendor call. A worker that lost its claim BEFORE the fence (its payload build then
+    // failed) still wrote its failure over the NEW owner's claim: it requeued or exhausted it and cleared its stamp, and the owner's success then
+    // matched nothing, so a prescription that WAS sent was never recorded and went out again on the next tick. Every write a worker makes after its
+    // claim is now conditional on the claim still being its own.
+    for (const flip of ["sync", "prescriber"] as const) {
+      it(`OWNERSHIP (${flip}): a worker whose claim was taken over, and whose payload build then fails, neither requeues nor exhausts the new owner's claim; the owner's success is recorded and nothing is sent again`, async () => {
+        const first = await queued();
+        const second = await queued();
+        const secondPatient = (
+          await h.q("SELECT patient_id FROM medication_order WHERE id=$1", [second.orderId])
+        )[0]?.patient_id as string;
+        let bEntered!: () => void;
+        const bIsCalling = new Promise<void>((resolve) => {
+          bEntered = resolve;
+        });
+        let releaseB!: () => void;
+        const bMayFinish = new Promise<void>((resolve) => {
+          releaseB = resolve;
+        });
+        const sendsB: string[] = [];
+        const vendorB = new FakeDoseSpotVendor({
+          transmit: async (_org, payload) => {
+            sendsB.push(payload.medicationOrderId);
+            bEntered();
+            await bMayFinish;
+            return { dosespotPrescriptionId: "rx-by-b", transmittedAt: new Date().toISOString() };
+          },
+        });
+        let takeover: Promise<unknown> | undefined;
+        const sendsA: string[] = [];
+        const vendorA = new FakeDoseSpotVendor({
+          transmit: async (_org, payload) => {
+            sendsA.push(payload.medicationOrderId);
+            if (payload.medicationOrderId === first.orderId) {
+              await h.admin.query(
+                "UPDATE medication_order SET updated_at = now() - interval '3 hours' WHERE id=$1",
+                [second.orderId],
+              );
+              takeover = runRecoveryDrainForOrg(deps(vendorB, minutes(30)), ORG_A); // B takes the second order over and is mid-call
+              await bIsCalling;
+              // B has built its payload; now the facts A is about to read change under it
+              if (flip === "sync")
+                await h.admin.query(
+                  "UPDATE dosespot_patient_sync SET last_sync_outcome='failed' WHERE patient_id=$1",
+                  [secondPatient],
+                );
+              else
+                await h.admin.query(
+                  "UPDATE dosespot_prescriber SET revoked_at = now() WHERE organization_id=$1",
+                  [ORG_A],
+                );
+            }
+            return { dosespotPrescriptionId: "rx-by-a", transmittedAt: new Date().toISOString() };
+          },
+        });
+        try {
+          const pass = await runTransmitNewRxForOrg(deps(vendorA), ORG_A);
+          expect(sendsA).toEqual([first.orderId]); // A never called for the second order
+          expect(pass).toMatchObject({
+            claimed: 2,
+            transmitted: 1,
+            skipped: 1,
+            requeued: 0,
+            failed: 0,
+          });
+          expect(pass.deferredByOutage).toBe(0); // a lost claim is not an outage
+          // B's claim is intact while B is still calling: not requeued, not exhausted, its stamp not cleared, no patient sync queued by A
+          expect(await orderRow(second.orderId)).toMatchObject({
+            status: "queued_for_transmission",
+            s: "in_flight",
+          });
+          expect(
+            (await txRow(second.transmissionId as string)).transmission_started_at,
+          ).not.toBeNull();
+          expect(
+            (
+              await h.q("SELECT count(*)::int AS n FROM dosespot_sync_queue WHERE patient_id=$1", [
+                secondPatient,
+              ])
+            )[0]?.n,
+          ).toBe(0);
+          releaseB();
+          await takeover; // B's success must be recorded (it used to throw: its order had been put back on the queue)
+          expect(await orderRow(second.orderId)).toMatchObject({
+            status: "transmitted",
+            rx: "rx-by-b",
+          });
+          expect(sendsB).toEqual([second.orderId]);
+          expect((await runTransmitNewRxForOrg(deps(never), ORG_A)).claimed).toBe(0); // nothing goes out again
+        } finally {
+          releaseB();
+          await takeover?.catch(() => undefined);
+          await h.admin.query(
+            "UPDATE dosespot_prescriber SET revoked_at = NULL WHERE organization_id=$1",
+            [ORG_A],
+          );
+        }
+      });
+    }
+
+    // LOW (lock order): the worker's settle now takes the ORDER row before the transmission row, the order the administrator's resolution takes, so a
+    // late failure racing a resolution cannot deadlock (40P01): one of them wins, the other is refused or skipped, and the state is coherent.
+    it("a late failure racing an administrator's resolution of the same hold never deadlocks and leaves a coherent order", async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const { orderId } = await queued();
+        const resolution: { current?: Promise<unknown> } = {};
+        const vendor = new FakeDoseSpotVendor({
+          transmit: async () => {
+            await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A); // the drain holds the slow claim
+            resolution.current = Promise.allSettled([
+              createTransmissionResolveService({
+                db: h.handle.db,
+                outbox: h.outbox,
+                audit: buildClinicAuditPort(),
+              }).resolve(
+                {
+                  organizationId: ORG_A,
+                  userId: USER,
+                  membershipId: (
+                    await h.q("SELECT id FROM membership WHERE organization_id=$1 LIMIT 1", [ORG_A])
+                  )[0]?.id as string,
+                },
+                orderId,
+                {
+                  outcome: "not_sent",
+                  reason: "Checked the prescriber's DoseSpot account: nothing there.",
+                },
+              ),
+            ]);
+            throw retryable(); // ... and the call's own late, retryable failure arrives at the same moment
+          },
+        });
+        const pass = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+        const [settled] = (await resolution.current) as PromiseSettledResult<unknown>[];
+        const status = (await orderRow(orderId)).status as string;
+        if (settled?.status === "fulfilled") {
+          expect(status, `attempt ${attempt}`).toBe("transmission_failed"); // the resolution won; the late failure was skipped
+          expect(pass.skipped + pass.requeued).toBe(1);
+        } else {
+          expect((settled as PromiseRejectedResult).reason, `attempt ${attempt}`).toMatchObject({
+            code: "DOSESPOT_TRANSMISSION_NOT_HELD", // the failure won (it replaced the marker): never a deadlock error
+          });
+          expect(status).toBe("queued_for_transmission");
+        }
+      }
     });
 
     it("an ambiguous outcome among clean ones holds only its own order", async () => {
