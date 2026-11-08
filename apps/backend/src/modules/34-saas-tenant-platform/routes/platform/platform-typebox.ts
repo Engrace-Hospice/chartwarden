@@ -15,6 +15,7 @@ import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   BaaRecordView as ServiceBaaRecordView,
+  BaaRegisterListItem as ServiceBaaRegisterListItem,
   FeatureFlagView as ServiceFeatureFlagView,
   KeyRingMetadataView as ServiceKeyRingMetadataView,
   OnboardingTemplateView as ServiceOnboardingTemplateView,
@@ -412,7 +413,19 @@ export const BaaRecordViewSchema = Type.Object({
   documentId: Type.Union([Type.String(), Type.Null()]),
   attestedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
 });
-export const BaaRegisterListResponseSchema = CursorPageOf(BaaRecordViewSchema);
+/** A register list row: the record plus what go-live judges of it (the governing record, and whether its document verifies). */
+export const BaaRegisterListItemSchema = Type.Object({
+  ...BaaRecordViewSchema.properties,
+  governing: Type.Boolean({
+    description:
+      "True on the record go-live and onboarding step 3 judge for its tenant (an undated termination, else the newest dated record).",
+  }),
+  documentFiled: Type.Union([Type.Boolean(), Type.Null()], {
+    description:
+      "On the governing record: whether its documentId is a signed BAA filed for this tenant (false with no link). Null on any other record.",
+  }),
+});
+export const BaaRegisterListResponseSchema = CursorPageOf(BaaRegisterListItemSchema);
 
 /**
  * A tenant-export job as the platform-ops list renders it (GAP-098). `heldForOversizedApproval` is
@@ -604,6 +617,7 @@ type _SessionEvent = Conforms<
 >;
 type _Intent = Conforms<Static<typeof SignupIntentViewSchema>, ServiceSignupIntentView>;
 type _Baa = Conforms<Static<typeof BaaRecordViewSchema>, ServiceBaaRecordView>;
+type _BaaListItem = Conforms<Static<typeof BaaRegisterListItemSchema>, ServiceBaaRegisterListItem>;
 type _Flag = Conforms<Static<typeof FeatureFlagViewSchema>, ServiceFeatureFlagView>;
 type _ExportJob = Conforms<Static<typeof TenantExportJobViewSchema>, ServiceTenantExportJobView>;
 

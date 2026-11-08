@@ -1,6 +1,7 @@
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/baa-guards.ts - what a platform BAA register write must
 // satisfy, shared by the Drizzle service and its in-memory twin so the two cannot drift.
 import { ChartWardenError } from "@chartwarden/types";
+import { pickGoverningBaa } from "./activation-guards";
 
 /**
  * An `executed` BAA must point at its executed document (the M22 document id of the signed PDF). The go-live BAA guard reads
@@ -96,4 +97,44 @@ export async function assertBaaDocumentFiled(
       },
     ],
   );
+}
+
+/** What the register list says of each record: whether it governs its tenant, and (the governing one only) whether its document verifies. */
+export interface GoverningFacts {
+  readonly governing: boolean;
+  /** M22's check on the governing record's link (no link: false); null for a record that does not govern, or with no check bound. */
+  readonly documentFiled: boolean | null;
+}
+
+/**
+ * The same judgment go-live and step 3 make, for the register list: per tenant, `pickGoverningBaa` over the tenant's rows IN REGISTER ORDER
+ * (`executed_on DESC, id DESC`; its fallback takes the first row), and `governingBaaDocumentFiled` on the governing row. So the console
+ * shows the facts of the record the server judges, not a record of its own choosing.
+ */
+export async function governingFactsOf<
+  T extends {
+    readonly id: string;
+    readonly tenantAccountId: string;
+    readonly organizationId: string;
+    readonly baaStatus: string;
+    readonly executedOn: string | null;
+    readonly expiresOn: string | null;
+    readonly documentId: string | null;
+  },
+>(rows: readonly T[], isFiled: BaaDocumentCheck | undefined): Promise<Map<string, GoverningFacts>> {
+  const byTenant = new Map<string, T[]>();
+  for (const r of rows)
+    byTenant.set(r.tenantAccountId, [...(byTenant.get(r.tenantAccountId) ?? []), r]);
+  const facts = new Map<string, GoverningFacts>(
+    rows.map((r) => [r.id, { governing: false, documentFiled: null }]),
+  );
+  for (const tenantRows of byTenant.values()) {
+    const governing = pickGoverningBaa(tenantRows);
+    if (!governing) continue;
+    facts.set(governing.id, {
+      governing: true,
+      documentFiled: isFiled ? await governingBaaDocumentFiled(governing, isFiled) : null,
+    });
+  }
+  return facts;
 }

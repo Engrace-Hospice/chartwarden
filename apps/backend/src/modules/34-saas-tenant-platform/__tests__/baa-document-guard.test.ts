@@ -4,6 +4,7 @@ import {
   assertBaaDocumentFiled,
   baaLinkNeedsJudging,
   governingBaaDocumentFiled,
+  governingFactsOf,
 } from "../routes/platform/baa-guards";
 
 const REF = { organizationId: "org-1", documentId: "doc-1" };
@@ -71,5 +72,53 @@ describe("baaLinkNeedsJudging", () => {
     expect(baaLinkNeedsJudging(executed, {})).toBe(false);
     expect(baaLinkNeedsJudging(executed, { documentId: "legacy-doc" })).toBe(false);
     expect(baaLinkNeedsJudging(executed, { baaStatus: "executed" })).toBe(false);
+  });
+});
+
+describe("governingFactsOf", () => {
+  const row = (
+    id: string,
+    tenantAccountId: string,
+    baaStatus: string,
+    executedOn: string | null,
+    documentId: string | null = null,
+  ) => ({
+    id,
+    tenantAccountId,
+    organizationId: `org-${tenantAccountId}`,
+    baaStatus,
+    executedOn,
+    expiresOn: null,
+    documentId,
+  });
+
+  it("marks the record the go-live guard picks, per tenant, and asks M22 about its document only", async () => {
+    const isFiled = vi.fn(async () => true);
+    const facts = await governingFactsOf(
+      [
+        row("t1-pending", "t1", "pending", null),
+        row("t1-new", "t1", "executed", "2026-10-01", "doc-new"),
+        row("t1-old", "t1", "executed", "2025-01-01", "doc-old"),
+        row("t2-term", "t2", "terminated", null),
+        row("t2-exec", "t2", "executed", "2026-01-01", "doc-2"),
+      ],
+      isFiled,
+    );
+    expect(facts.get("t1-new")).toEqual({ governing: true, documentFiled: true });
+    expect(facts.get("t1-old")).toEqual({ governing: false, documentFiled: null });
+    expect(facts.get("t1-pending")).toEqual({ governing: false, documentFiled: null });
+    // an undated termination governs, and with no document it is not filed
+    expect(facts.get("t2-term")).toEqual({ governing: true, documentFiled: false });
+    expect(facts.get("t2-exec")?.governing).toBe(false);
+    expect(isFiled).toHaveBeenCalledTimes(1);
+    expect(isFiled).toHaveBeenCalledWith({ organizationId: "org-t1", documentId: "doc-new" });
+  });
+
+  it("says null (not judged) when no M22 check is bound", async () => {
+    const facts = await governingFactsOf(
+      [row("a", "t1", "executed", "2026-01-01", "d")],
+      undefined,
+    );
+    expect(facts.get("a")).toEqual({ governing: true, documentFiled: null });
   });
 });

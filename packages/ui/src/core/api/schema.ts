@@ -21194,7 +21194,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Upload the signed business associate agreement for a tenant that is still onboarding (wizard step 3), through the documents module's own pipeline: size (10 MiB), type allowlist, magic bytes, the malware scan where one is bound, the tenant's bucket. The document is filed on the TENANT's RLS scope under the one kind this route files (tenant_baa); the body names no kind, patient or title, and nothing is read back or listed. The response carries the document id (what the BAA register row's `documentId` links) and the server-computed type, size and SHA-256. 409 TENANT_NOT_ONBOARDING unless the tenant is provisioning or onboarding; 415 for a type or content mismatch, 422 for a size, bad base64 or a scanner verdict, 503 when no object store is configured. tenant_baa_document.upload_platform (its own key, not documents.upload) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the document id and digest) are required; an AI actor is refused. A successful upload voids a pending go-live attestation like any other onboarding data write */
+        /** Upload the signed business associate agreement for a tenant that is onboarding (wizard step 3) or live (a renewal), through the documents module's own pipeline: size (10 MiB), type allowlist, magic bytes, the malware scan where one is bound, the tenant's bucket. The document is filed on the TENANT's RLS scope under the one kind this route files (tenant_baa); the body names no kind, patient or title, and nothing is read back or listed. The response carries the document id (what the BAA register row's `documentId` links) and the server-computed type, size and SHA-256. 409 TENANT_NOT_ONBOARDING unless the tenant is provisioning, onboarding, active, at risk or suspended (never once it is offboarding or later); 413 BAA_UPLOAD_TOO_LARGE past the size cap; 415 for a type or content mismatch, 422 for a size, bad base64 or a scanner verdict, 503 when no object store is configured. tenant_baa_document.upload_platform (its own key, not documents.upload) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the document id and digest) are required; an AI actor is refused. A successful upload voids a pending go-live attestation like any other onboarding data write */
         post: operations["postApiV1PlatformTenantsByOrgSlugBaadocument"];
         delete?: never;
         options?: never;
@@ -91722,6 +91722,10 @@ export interface operations {
                             expiresOn: string | null;
                             documentId: string | null;
                             attestedAt: string | null;
+                            /** @description True on the record go-live and onboarding step 3 judge for its tenant (an undated termination, else the newest dated record). */
+                            governing: boolean;
+                            /** @description On the governing record: whether its documentId is a signed BAA filed for this tenant (false with no link). Null on any other record. */
+                            documentFiled: boolean | null;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;

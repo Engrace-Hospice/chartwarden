@@ -19,6 +19,7 @@ import {
   assertBaaDocumentFiled,
   assertExecutedBaaHasDocument,
   baaLinkNeedsJudging,
+  governingFactsOf,
 } from "./baa-guards";
 import { type CursorPage, paginate } from "./concurrency";
 
@@ -181,6 +182,13 @@ export interface BaaRecordView {
   readonly expiresOn: string | null;
   readonly documentId: string | null;
   readonly attestedAt: string | null;
+}
+/** A register list row: the record plus what go-live judges of it (`governingFactsOf`). */
+export interface BaaRegisterListItem extends BaaRecordView {
+  /** This is the record go-live and step 3 judge for its tenant (`pickGoverningBaa`). */
+  readonly governing: boolean;
+  /** The governing record's link verifies as a signed BAA filed for this tenant (M22); null on a record that does not govern. */
+  readonly documentFiled: boolean | null;
 }
 /**
  * A tenant-export job as the §4.1 platform-ops list renders it (GAP-098).
@@ -400,7 +408,7 @@ export interface TenantPlatformRouteService {
     filter: { tenantAccountId?: string; status?: string },
     cursor: string | undefined,
     limit: number | undefined,
-  ): Promise<CursorPage<BaaRecordView>>;
+  ): Promise<CursorPage<BaaRegisterListItem>>;
   createBaaRecord(actorUserId: string, args: CreateBaaRecordArgs): Promise<BaaRecordView>;
   updateBaaRecord(
     baaId: string,
@@ -1091,14 +1099,20 @@ export function createInMemoryTenantPlatformBackend(
 
     // ── platform-tenant BAA register (§3.8 / D11) ──
     async listBaaRecords(filter, cursor, limit) {
-      const rows = desc(
-        [...baaRecords.values()]
-          .filter((b) =>
-            filter.tenantAccountId ? b.tenantAccountId === filter.tenantAccountId : true,
-          )
-          .filter((b) => (filter.status ? b.baaStatus === filter.status : true))
-          .map((b) => ({ ...b, createdAt: b.executedOn ?? b.effectiveOn ?? "0000-00-00" })),
+      // judged over each tenant's whole register (before the status filter), as go-live judges it
+      const all = desc(
+        [...baaRecords.values()].map((b) => ({
+          ...b,
+          createdAt: b.executedOn ?? b.effectiveOn ?? "0000-00-00",
+        })),
       );
+      const facts = await governingFactsOf(all, options.baaDocumentFiled);
+      const rows = all
+        .filter((b) =>
+          filter.tenantAccountId ? b.tenantAccountId === filter.tenantAccountId : true,
+        )
+        .filter((b) => (filter.status ? b.baaStatus === filter.status : true))
+        .map((b) => ({ ...b, ...(facts.get(b.id) ?? { governing: false, documentFiled: null }) }));
       const page = paginate(rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...b }) => b) };
     },

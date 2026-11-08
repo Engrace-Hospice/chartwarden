@@ -71,6 +71,7 @@ import {
   assertExecutedBaaHasDocument,
   baaLinkNeedsJudging,
   governingBaaDocumentFiled,
+  governingFactsOf,
 } from "./baa-guards";
 import {
   type CursorPage,
@@ -85,6 +86,7 @@ import { evaluateDestructionGuards, retentionEndsAtFrom } from "./offboarding-gu
 import { readOnboardingProgress } from "./onboarding-progress-drizzle";
 import type {
   BaaRecordView,
+  BaaRegisterListItem,
   CloseSupportSessionArgs,
   CreateBaaRecordArgs,
   ElevateSupportSessionArgs,
@@ -1272,15 +1274,21 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     },
 
     // ── platform-tenant BAA register (§3.8 / D11) ──
-    async listBaaRecords(filter, cursor, limit): Promise<CursorPage<BaaRecordView>> {
+    async listBaaRecords(filter, cursor, limit): Promise<CursorPage<BaaRegisterListItem>> {
       return inPlatformCtx("platform-ops list BAA records", async (tx) => {
         const rows = await tx.select().from(BAA).orderBy(desc(BAA.executedOn), desc(BAA.id));
-        const views: BaaRecordView[] = rows
-          .filter((b) =>
-            filter.tenantAccountId ? b.tenantAccountId === filter.tenantAccountId : true,
-          )
+        const tenantRows = rows.filter((b) =>
+          filter.tenantAccountId ? b.tenantAccountId === filter.tenantAccountId : true,
+        );
+        // What go-live judges, over each tenant's whole register in register order (before the status filter).
+        const facts = await governingFactsOf(tenantRows.map(baaView), boundTo(tx));
+        const views: BaaRegisterListItem[] = tenantRows
           .filter((b) => (filter.status ? b.baaStatus === filter.status : true))
-          .map(baaView);
+          .map(baaView)
+          .map((v) => ({
+            ...v,
+            ...(facts.get(v.id) ?? { governing: false, documentFiled: null }),
+          }));
         const withCursor = views.map((v) => ({
           ...v,
           createdAt: v.executedOn ?? v.effectiveOn ?? "0000-00-00",
