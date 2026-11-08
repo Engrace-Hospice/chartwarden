@@ -366,6 +366,7 @@ describe.skipIf(!DB_URL)(
     let linkService: ReturnType<typeof createPractitionerLinkService>;
     let onboardingData: ReturnType<typeof buildDrizzleOnboardingDataService>;
     let dosespotPort: ReturnType<typeof buildDoseSpotClinicOnboardingPort>;
+    let mdmDirectoryForList: ReturnType<typeof createMdmEntityProvider>;
     let outbox: DoseSpotWriteOutboxPort;
     let client: ReturnType<typeof createHttpDoseSpotClient>;
     let seq = 0;
@@ -592,6 +593,7 @@ describe.skipIf(!DB_URL)(
       });
       // the prescriber's OWN confirmation of the linked record, over the same real M40 provider and NPPES reader
       const mdmDirectory = createMdmEntityProvider(createDbMdmStore(tdb));
+      mdmDirectoryForList = mdmDirectory;
       linkService = createPractitionerLinkService({
         inTx: (organizationId, userId, fn) =>
           withOrgContext(tdb, { organizationId, userId }, (tx) =>
@@ -2091,6 +2093,54 @@ describe.skipIf(!DB_URL)(
           0,
         );
         expect(await listed()).toBe(false);
+      });
+
+      // One directory failure must not fail the operator's roster list: that row is simply not shown as confirmed, and the others still are.
+      it("the operator's roster list survives a directory failure on one row: that row reports unconfirmed, the others are unaffected, and the failure is logged without values", async () => {
+        const seed = async (n: number) => {
+          const userId = `9a000000-0000-4000-8000-00000000000${n}`;
+          const membershipId = `9b000000-0000-4000-8000-00000000000${n}`;
+          await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [
+            userId,
+            `rxlist${n}@ds.test`,
+          ]);
+          await admin.query(
+            "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,$2,$3,'active')",
+            [membershipId, userId, ORG_B],
+          );
+          return { membershipId, physician: await rosterWithPhysician(ORG_B, membershipId) };
+        };
+        const good = await seed(1);
+        const flaky = await seed(2);
+        const warned: { fields: Record<string, string | number>; message: string }[] = [];
+        const directory = {
+          resolvePhysician: (organizationId: string, mdmId: string) => {
+            if (mdmId === flaky.physician.id)
+              return Promise.reject(new Error("directory unavailable"));
+            return mdmDirectoryForList.resolvePhysician(organizationId, mdmId);
+          },
+        };
+        const port = buildDoseSpotClinicOnboardingPort({
+          db: tdb,
+          service,
+          outbox,
+          enrollment,
+          directory,
+          warn: (fields, message) => warned.push({ fields, message }),
+        });
+        const items = (await port.listPrescribers({
+          organizationId: ORG_B,
+          operatorUserId: OPERATOR,
+          operatorMembershipId: OPS_MEMBERSHIP,
+          operatorRoles: ["platform_ops"],
+          stepUpRecent: true,
+          request: { correlationId: "live-list-flaky", requestId: "req-list-flaky" },
+        })) as { membershipId: string; linkConfirmed: boolean }[];
+        expect(items.find((i) => i.membershipId === good.membershipId)?.linkConfirmed).toBe(true);
+        expect(items.find((i) => i.membershipId === flaky.membershipId)?.linkConfirmed).toBe(false);
+        expect(warned).toHaveLength(1);
+        expect(warned[0]?.fields).toMatchObject({ organizationId: ORG_B, cause: "Error" });
+        expect(JSON.stringify(warned)).not.toContain(flaky.physician.npi ?? "no-npi");
       });
 
       it("an active tenant is closed to the operator (409 TENANT_NOT_ONBOARDING, audited, nothing written) but a deactivation is allowed", async () => {

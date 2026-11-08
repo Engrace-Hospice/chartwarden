@@ -18,6 +18,7 @@ import type {
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 import { parse } from "../routes/dosespot-typebox";
 import { CLINIC_AUDIT_EVENTS } from "./audit-port";
+import { mapBounded } from "./bounded";
 import { createDrizzleConfigStore } from "./config-store";
 import {
   type ClinicAlertPort,
@@ -39,6 +40,9 @@ import type { ClinicActor, ClinicConfigView, DoseSpotClinicService, VerifyPlan }
 import { PutClinicBodySchema } from "./typebox";
 
 const P = schema.dosespotPrescribers;
+
+/** How many physician records the roster list resolves at once. */
+const LIST_DIRECTORY_CONCURRENCY = 8;
 
 interface RosterListRow {
   readonly organizationId: string;
@@ -71,25 +75,39 @@ export function buildDoseSpotClinicOnboardingPort(deps: {
   readonly enrollment: PrescriberEnrollmentService;
   /** The physician records' CURRENT NPI, so the roster list answers "confirmed?" exactly as the enrolment gate does. */
   readonly directory: PractitionerDirectoryPort;
+  /** A structured warning (pino's `(fields, message)` shape): organization id and error class only, never a value. */
+  readonly warn?: (fields: Record<string, string | number>, message: string) => void;
   readonly alerts?: ClinicAlertPort;
 }): OnboardingDoseSpotPort {
   const { db, service } = deps;
 
+  /** The enrolment gate's own test. A directory failure on this row is that row's `false`, never the whole list's failure. */
   async function isLinkConfirmed(r: RosterListRow): Promise<boolean> {
     if (r.mdmId === null || r.confirmedMdmId === null) return false;
-    const physician = await deps.directory.resolvePhysician(r.organizationId, r.mdmId);
-    const npi = physician?.canonical.identifierValue ?? null;
-    if (npi === null) return false;
-    return linkConfirmedBy(
-      {
-        membershipId: r.membershipId,
-        externalPhysicianMdmId: r.mdmId,
-        linkConfirmedMdmId: r.confirmedMdmId,
-        linkConfirmedNpi: r.confirmedNpi,
-        linkConfirmedByMembershipId: r.confirmedBy,
-      },
-      { physicianMdmId: r.mdmId, npi },
-    );
+    try {
+      const physician = await deps.directory.resolvePhysician(r.organizationId, r.mdmId);
+      const npi = physician?.canonical.identifierValue ?? null;
+      if (npi === null) return false;
+      return linkConfirmedBy(
+        {
+          membershipId: r.membershipId,
+          externalPhysicianMdmId: r.mdmId,
+          linkConfirmedMdmId: r.confirmedMdmId,
+          linkConfirmedNpi: r.confirmedNpi,
+          linkConfirmedByMembershipId: r.confirmedBy,
+        },
+        { physicianMdmId: r.mdmId, npi },
+      );
+    } catch (cause) {
+      deps.warn?.(
+        {
+          organizationId: r.organizationId,
+          cause: cause instanceof Error ? cause.name : "unknown",
+        },
+        "DoseSpot roster list: a physician record could not be resolved; that prescriber is shown as unconfirmed",
+      );
+      return false;
+    }
   }
 
   /**
@@ -213,19 +231,16 @@ export function buildDoseSpotClinicOnboardingPort(deps: {
             .limit(500),
       );
       // no NPI, no DEA number, no vendor id: only whether each roster prescriber is linked
-      const out: object[] = [];
-      for (const r of rows) {
-        out.push({
-          membershipId: r.membershipId,
-          onRoster: r.revokedAt === null,
-          enrolledWithDoseSpot: r.enrolledWithDoseSpot !== null,
-          vendorEnrollmentRequestedAt: r.requestedAt ? r.requestedAt.toISOString() : null,
-          // why an enrolment is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED): the prescriber has not confirmed the CURRENT link. Only the
-          // prescriber can; there is no operator route for it. The SAME test as the enrolment gate (`linkConfirmedBy`): the row's own member
-          // confirmed this record AND the NPI the record carries now.
-          linkConfirmed: await isLinkConfirmed(r),
-        });
-      }
+      const out = await mapBounded(rows, LIST_DIRECTORY_CONCURRENCY, async (r) => ({
+        membershipId: r.membershipId,
+        onRoster: r.revokedAt === null,
+        enrolledWithDoseSpot: r.enrolledWithDoseSpot !== null,
+        vendorEnrollmentRequestedAt: r.requestedAt ? r.requestedAt.toISOString() : null,
+        // why an enrolment is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED): the prescriber has not confirmed the CURRENT link. Only the
+        // prescriber can; there is no operator route for it. The SAME test as the enrolment gate (`linkConfirmedBy`): the row's own member
+        // confirmed this record AND the NPI the record carries now.
+        linkConfirmed: await isLinkConfirmed(r),
+      }));
       return out;
     },
 
