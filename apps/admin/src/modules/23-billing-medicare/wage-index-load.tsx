@@ -132,7 +132,7 @@ export function WageIndexLoad(): JSX.Element {
           </div>
         </header>
 
-        <div className="wx-work-summary" aria-label="Load summary">
+        <fieldset className="wx-work-summary" aria-label="Load summary">
           <div className="wx-stat-card">
             <div>
               <span className="wx-stat-label">Fiscal year</span>
@@ -170,7 +170,7 @@ export function WageIndexLoad(): JSX.Element {
               <span className="wx-row-sub">Fix every one before loading</span>
             </div>
           </div>
-        </div>
+        </fieldset>
 
         {draft ? (
           <InlineAlert tone="info">
@@ -179,7 +179,7 @@ export function WageIndexLoad(): JSX.Element {
         ) : null}
         <section className="wx-drawer-card">
           <div className="wx-drawer-card-head">
-            <h3>Source</h3>
+            <h2>Source</h2>
           </div>
           <p className="wx-source-line">
             Which fiscal year this table is for, and where it was published.
@@ -212,7 +212,7 @@ export function WageIndexLoad(): JSX.Element {
 
         <section className="wx-drawer-card">
           <div className="wx-drawer-card-head">
-            <h3>Wage-index table</h3>
+            <h2>Wage-index table</h2>
           </div>
           <p className="wx-source-line">
             One row per CCN: CCN, wage index — or CCN, CBSA, wage index. Comma, tab or semicolon
@@ -274,7 +274,7 @@ function PreviewPanel({ parsed }: { readonly parsed: Parsed }): JSX.Element {
   return (
     <section className="wx-drawer-card">
       <div className="wx-drawer-card-head">
-        <h3>Preview</h3>
+        <h2>Preview</h2>
       </div>
       {parsed.rows.length > PREVIEW_ROWS ? (
         <p className="wx-source-line">
@@ -282,8 +282,10 @@ function PreviewPanel({ parsed }: { readonly parsed: Parsed }): JSX.Element {
         </p>
       ) : null}
       {parsed.problems.length > 0 ? (
-        <InlineAlert tone="error">
-          <strong>{plural(parsed.problems.length, "problem")} in the table</strong>
+        <>
+          <InlineAlert tone="error">
+            <strong>{plural(parsed.problems.length, "problem")} in the table</strong>
+          </InlineAlert>
           <ul className="wx-bullet-list">
             {parsed.problems.slice(0, PROBLEMS_SHOWN).map((p) => (
               <li key={`${p.line}-${p.message}`}>
@@ -291,7 +293,7 @@ function PreviewPanel({ parsed }: { readonly parsed: Parsed }): JSX.Element {
               </li>
             ))}
           </ul>
-        </InlineAlert>
+        </>
       ) : null}
       {shown.length === 0 ? (
         <div className="wx-list-state">
@@ -398,9 +400,11 @@ function ConfirmLoadModal({
         </p>
         <p>Source: {sourceReference}</p>
         {failure ? (
-          <InlineAlert tone="error">
-            <strong>{failure.title}</strong>
-            <p>{failure.message}</p>
+          <>
+            {/* The alert is a <p>: only phrasing content fits in it, so the detail list follows it. */}
+            <InlineAlert tone="error">
+              <strong>{failure.title}</strong> {failure.message}
+            </InlineAlert>
             {failure.details.length > 0 ? (
               <ul className="wx-bullet-list">
                 {failure.details.map((d) => (
@@ -408,10 +412,12 @@ function ConfirmLoadModal({
                 ))}
               </ul>
             ) : null}
-          </InlineAlert>
+          </>
         ) : null}
         {failure?.stepUp ? (
-          <ReverifyLink onNavigate={onReverify}>Re-verify and come back</ReverifyLink>
+          <div className="wx-drawer-actions">
+            <ReverifyLink onNavigate={onReverify}>Re-verify and come back</ReverifyLink>
+          </div>
         ) : null}
         <div className="wx-modal-actions">
           <Button tone="tertiary" onClick={onClose} disabled={busy}>

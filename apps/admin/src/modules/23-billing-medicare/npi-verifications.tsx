@@ -163,7 +163,7 @@ function EntitiesBody({
     );
   if (loadFailed)
     return (
-      <div className="wx-list-state" role="alert">
+      <div className="wx-list-state">
         <InlineAlert tone="error">Could not load provider entities.</InlineAlert>
       </div>
     );
@@ -291,7 +291,11 @@ function VerifyDialog({
           rows={3}
         />
         {error ? <InlineAlert tone="error">{error.message}</InlineAlert> : null}
-        {error?.stepUp ? <ReverifyLink /> : null}
+        {error?.stepUp ? (
+          <div className="wx-drawer-actions">
+            <ReverifyLink />
+          </div>
+        ) : null}
         <div className="wx-modal-actions">
           <Button tone="tertiary" onClick={onClose} disabled={busy}>
             Cancel

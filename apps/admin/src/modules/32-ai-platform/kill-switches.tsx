@@ -205,7 +205,7 @@ export function KillSwitches(): JSX.Element {
               </StandingNotice>
             )}
 
-            <div className="wx-stat-grid" aria-label="Kill-switch summary">
+            <fieldset className="wx-stat-grid" aria-label="Kill-switch summary">
               <div className="wx-stat-card">
                 <div>
                   <span className="wx-stat-label">Platform-wide kills</span>
@@ -218,7 +218,7 @@ export function KillSwitches(): JSX.Element {
                   <span className="wx-stat-value wx-nums">{tenantKills.length}</span>
                 </div>
               </div>
-            </div>
+            </fieldset>
 
             <SectionTitle>Active platform-wide kills</SectionTitle>
             {platformKills.length === 0 ? (

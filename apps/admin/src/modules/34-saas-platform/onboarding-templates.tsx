@@ -171,7 +171,7 @@ function TemplateTable({
 }): JSX.Element {
   if (error)
     return (
-      <div className="wx-list-state" role="alert">
+      <div className="wx-list-state">
         <InlineAlert tone="error">{error}</InlineAlert>
         <Button tone="secondary" onClick={onRetry}>
           Try again

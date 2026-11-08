@@ -91,10 +91,9 @@ export function OrganizationSelect(): JSX.Element {
         </div>
         {state.kind === "loading" ? <LoadingSpinner label="Loading your organizations…" /> : null}
         {state.kind === "error" ? (
-          <div className="wx-form-stack" role="alert">
-            <strong>Unavailable</strong>
-            <InlineAlert tone="error">{state.message}</InlineAlert>
-          </div>
+          <InlineAlert tone="error">
+            <strong>Unavailable</strong> {state.message}
+          </InlineAlert>
         ) : null}
         {state.kind === "ready" && state.memberships.length === 0 ? (
           <EmptyState
@@ -107,7 +106,7 @@ export function OrganizationSelect(): JSX.Element {
             {state.memberships.map((m) => (
               <li key={m.membershipId} className="wx-drawer-card">
                 <div className="wx-drawer-card-head">
-                  <div>
+                  <div className="wx-card-head-main">
                     <span className="wx-row-title">{m.organizationName}</span>
                     {m.isAdmin ? <span className="wx-row-sub">Admin</span> : null}
                   </div>

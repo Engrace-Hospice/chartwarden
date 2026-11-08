@@ -79,7 +79,7 @@ export function OutboxEventDrawer({
             <LoadingSpinner label="Loading event…" />
           </div>
         ) : error || !event ? (
-          <div className="wx-list-state" role="alert">
+          <div className="wx-list-state">
             <InlineAlert tone="error">
               {error ?? "This outbox event could not be found."}
             </InlineAlert>

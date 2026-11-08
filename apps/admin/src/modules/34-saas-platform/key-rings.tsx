@@ -150,7 +150,7 @@ export function KeyRings(): JSX.Element {
             <LoadingSpinner label="Loading key ring…" />
           </div>
         ) : error ? (
-          <div className="wx-list-state" role="alert">
+          <div className="wx-list-state">
             <InlineAlert tone="error">{error}</InlineAlert>
             <Button tone="secondary" onClick={() => void load()}>
               Try again

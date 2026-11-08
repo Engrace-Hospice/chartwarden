@@ -101,7 +101,7 @@ export function Revenue(): JSX.Element {
           <StateError message={error ?? "No revenue data."} onRetry={() => void load()} />
         ) : (
           <>
-            <div className="wx-stat-grid" aria-label="Revenue summary">
+            <fieldset className="wx-stat-grid" aria-label="Revenue summary">
               {stats.map((s) => (
                 <div key={s.label} className="wx-stat-card">
                   <div>
@@ -110,7 +110,7 @@ export function Revenue(): JSX.Element {
                   </div>
                 </div>
               ))}
-            </div>
+            </fieldset>
             <h2 className="wx-action-title">Trailing snapshots</h2>
             {snapshots.length === 0 ? (
               <StateEmpty icon="bar-chart">

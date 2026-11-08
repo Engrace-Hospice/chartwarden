@@ -139,7 +139,7 @@ export function HallucinationQueue(): JSX.Element {
           />
         ) : (
           <>
-            <div className="wx-stat-grid" aria-label="Triage summary">
+            <fieldset className="wx-stat-grid" aria-label="Triage summary">
               {columns.map(({ status, items }) => (
                 <div key={status} className="wx-stat-card">
                   <div>
@@ -148,7 +148,7 @@ export function HallucinationQueue(): JSX.Element {
                   </div>
                 </div>
               ))}
-            </div>
+            </fieldset>
             <div className="wx-list-table-wrap">
               <table className="wx-list-table">
                 <caption className="wx-sr-only">Hallucination reports</caption>

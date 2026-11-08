@@ -99,7 +99,7 @@ export function OutboxList(): JSX.Element {
 
         {!loading && !error ? (
           <>
-            <div className="wx-stat-grid" aria-label="Outbox summary">
+            <fieldset className="wx-stat-grid" aria-label="Outbox summary">
               {counts.map(({ s, n }) => (
                 <div key={s} className="wx-stat-card">
                   <div>
@@ -111,7 +111,7 @@ export function OutboxList(): JSX.Element {
                   </div>
                 </div>
               ))}
-            </div>
+            </fieldset>
             <p className="wx-row-sub">
               Counts cover the {rows.length} most recent events in this view, not the whole outbox.
             </p>
@@ -123,7 +123,7 @@ export function OutboxList(): JSX.Element {
             <LoadingSpinner label="Loading outbox…" />
           </div>
         ) : error ? (
-          <div className="wx-list-state" role="alert">
+          <div className="wx-list-state">
             <InlineAlert tone="error">{error}</InlineAlert>
             <Button tone="secondary" onClick={() => void load()}>
               Try again

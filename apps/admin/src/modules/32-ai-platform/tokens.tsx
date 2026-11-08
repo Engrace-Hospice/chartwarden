@@ -109,7 +109,7 @@ export function TokenLedger(): JSX.Element {
           <ErrorState message={error} onRetry={() => void load()} />
         ) : (
           <>
-            <div className="wx-stat-grid" aria-label="Token summary">
+            <fieldset className="wx-stat-grid" aria-label="Token summary">
               {stats.map((s) => (
                 <div key={s.label} className="wx-stat-card">
                   <div>
@@ -118,7 +118,7 @@ export function TokenLedger(): JSX.Element {
                   </div>
                 </div>
               ))}
-            </div>
+            </fieldset>
 
             <SectionTitle>Forecast by capability</SectionTitle>
             {forecasts.length === 0 ? (

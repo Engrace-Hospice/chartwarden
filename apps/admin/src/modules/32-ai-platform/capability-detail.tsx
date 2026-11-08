@@ -194,6 +194,8 @@ function CapabilityDetailBody({ capabilityId }: { capabilityId: string }): JSX.E
         <div
           id={TAB_PANEL_ID}
           role="tabpanel"
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: a tabpanel is reached by keyboard (WAI-ARIA APG); not every tab has a focusable control
+          tabIndex={0}
           aria-labelledby={tabId(tab)}
           className="wx-form-stack"
         >
@@ -304,7 +306,7 @@ function LifecycleTab({ detail }: { detail: Detail }): JSX.Element {
                   </td>
                   <td>{cap(e.approvalKind)}</td>
                   <td>{cap(e.actorRole)}</td>
-                  <td>{e.rationaleText}</td>
+                  <td className="wx-cell-wrap">{e.rationaleText}</td>
                   <td className="wx-data-md">{e.linkedEvaluationRunId ?? "—"}</td>
                 </tr>
               ))}

@@ -85,7 +85,7 @@ export function TenantOnboardingWizard(): JSX.Element {
     const notFound = wizard.failure.kind === "not-found";
     return (
       <Frame>
-        <div className="wx-list-state" role="alert">
+        <div className="wx-list-state">
           <InlineAlert tone="error">
             {notFound ? "Tenant not found." : "Could not load this tenant's onboarding."}
           </InlineAlert>
