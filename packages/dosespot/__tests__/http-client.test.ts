@@ -513,9 +513,35 @@ describe("transmitNewRx", () => {
     }
   });
 
-  it("a send refused before anything was accepted (a 5xx, a connection never made) stays retryable, with no in-call retry", async () => {
+  it("a send answered 500, 502 or 504 may have reached the pharmacy: UNCONFIRMED, attempted once", async () => {
+    for (const status of [500, 502, 504]) {
+      const r = routes([{ Id: 9001 }]);
+      r["POST /api/patients/501/prescriptions/send"] = () => ({ status });
+      const { c, calls } = client(r);
+      const err = await c.transmitNewRx(ORG, NEWRX, "idem-5xx-held").catch((e) => e);
+      expect(isUnconfirmedOutcomeError(err), String(status)).toBe(true);
+      expect(err.retryable, String(status)).toBe(false);
+      expect(
+        calls.filter((x) => x.url.endsWith("/prescriptions/send")),
+        String(status),
+      ).toHaveLength(1);
+    }
+  });
+
+  it("a 500 on the CREATE (not the send) stays a retryable error, not a held one", async () => {
+    const r = routes([{ Id: 9001 }]);
+    r["POST /api/patients/501/prescriptions/coded"] = () => ({ status: 500 });
+    const err = await client(r)
+      .c.transmitNewRx(ORG, NEWRX, "idem-create-500")
+      .catch((e) => e);
+    expect(isUnconfirmedOutcomeError(err)).toBe(false);
+    expect(err.retryable).toBe(true);
+  });
+
+  it("a send refused before anything was accepted (a 429 or 503, a connection never made) stays retryable, with no in-call retry", async () => {
     for (const [name, answer] of [
       ["a 503", { status: 503 }],
+      ["a 429", { status: 429 }],
       ["a refused connection (undici shape)", "refused"],
       ["a refused connection (Bun shape)", "refused-bun"],
     ] as const) {

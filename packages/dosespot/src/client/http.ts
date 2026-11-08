@@ -121,6 +121,12 @@ const NO_IN_CALL_RETRY: ReadonlySet<keyof typeof DOSESPOT_ENDPOINTS> = new Set([
 const AMBIGUOUS_ON_LOST_ANSWER: ReadonlySet<keyof typeof DOSESPOT_ENDPOINTS> = new Set([
   "sendPrescriptions",
 ]);
+/**
+ * For those same endpoints, the 5xx answers that do NOT mean "not processed": a 500 (failed mid-way), a 502 or a 504 (a gateway lost the
+ * upstream's answer) may follow a send that reached the pharmacy, so they are held like a lost answer. 429 and 503 say the request was
+ * not taken and stay retryable.
+ */
+const AMBIGUOUS_STATUSES: ReadonlySet<number> = new Set([500, 502, 504]);
 /** Socket errors that mean the connection was never made, so nothing reached DoseSpot (a connect TIMEOUT is an abort, not one of these: it is held). */
 const NOT_CONNECTED_CODES: ReadonlySet<string> = new Set([
   "ECONNREFUSED",
@@ -345,6 +351,14 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         tokens.delete(tokenCacheKey(orgId, clinicianId, cfg.version));
         forceFresh = true;
         continue;
+      }
+      if (ambiguousOnLostAnswer && AMBIGUOUS_STATUSES.has(res.status)) {
+        throw new UnconfirmedOutcomeError(
+          "dosespot",
+          op,
+          `DoseSpot failed without confirming the outcome (HTTP ${res.status}).`,
+          correlationId,
+        );
       }
       const retryable = classifyRetryableStatus(res.status);
       if (retryable) throw retryable;
