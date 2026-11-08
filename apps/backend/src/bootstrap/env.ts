@@ -362,7 +362,13 @@ const REQUIREMENTS: readonly Requirement[] = [
     // `@chartwarden/shared/route-kit`, configured by `buildServer` via `cursorSigningKeyFrom`). Production
     // refuses to boot without it; dev/test sign with a process-local random key instead.
     key: "CURSOR_SIGNING_KEY",
-    rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
+    // The .env.production.example placeholder is itself 32+ characters, so length alone would boot on a public key.
+    rule: (v) =>
+      v.length < 32
+        ? "must be at least 32 characters"
+        : /REPLACE_WITH/i.test(v)
+          ? "is still the .env.production.example placeholder"
+          : null,
   },
   {
     // TASK-010/OPS-010 — the trusted-proxy CIDR allowlist (bootstrap/index.ts parseTrustedProxies).

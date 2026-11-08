@@ -114,11 +114,18 @@ function toView(r: {
   };
 }
 
-/** The signed keyset payload: the (lastName, firstName, id) of the last row of the previous page. */
-type PatientCursor = [string, string, string];
+/**
+ * The signed keyset payload: only the id of the last row of the previous page. Its sort key (legal name) is
+ * re-read in SQL, so no patient name travels in a URL (proxy logs, history, Referer).
+ */
+interface PatientCursor {
+  readonly id: string;
+}
 
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isPatientCursor = (value: unknown): value is PatientCursor =>
-  Array.isArray(value) && value.length === 3 && value.every((v) => typeof v === "string");
+  typeof (value as Partial<PatientCursor> | null)?.id === "string" &&
+  UUID_SHAPE.test((value as PatientCursor).id);
 
 /** Build the production PatientRouteService — reads + writes are real Drizzle over the patient tables. */
 const NOOP_OUTBOX: M5OutboxPort = { publish: async () => undefined };
@@ -163,9 +170,9 @@ export function createDbPatientRouteService(
             ilike(P.mrn, `%${query.q}%`),
           ) as SQL)
         : undefined,
-      // ascending (lastName, firstName, id) strictly after the cursor row
+      // ascending (lastName, firstName, id) strictly after the cursor row, its key read under the same RLS
       c
-        ? (sql`(${P.legalLastName}, ${P.legalFirstName}, ${P.id}) > (${c[0]}, ${c[1]}, ${c[2]}::uuid)` as SQL)
+        ? (sql`(${P.legalLastName}, ${P.legalFirstName}, ${P.id}) > (SELECT p2.legal_last_name, p2.legal_first_name, p2.id FROM ${P} p2 WHERE p2.id = ${c.id}::uuid)` as SQL)
         : undefined,
     );
     return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
@@ -179,7 +186,7 @@ export function createDbPatientRouteService(
       if (views.length > limit) {
         const page = views.slice(0, limit);
         const last = page[page.length - 1]!;
-        const anchor: PatientCursor = [last.lastName, last.firstName, last.id];
+        const anchor: PatientCursor = { id: last.id };
         return { items: page, nextCursor: encodeCursor(organizationId, anchor) };
       }
       return { items: views, nextCursor: null };

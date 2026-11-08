@@ -139,6 +139,12 @@ describe.skipIf(!DB_URL)("F-096 census caseload narrowing — LIVE Postgres", ()
     expect(second.nextCursor).toBeNull();
   });
 
+  it("the cursor carries the row id, never the patient's name", async () => {
+    const first = await service.list(ORG_A, { limit: 2 }, null);
+    const body = Buffer.from(first.nextCursor!.split(".")[0]!, "base64url").toString("utf8");
+    expect(JSON.parse(body)).toEqual({ id: first.items[1]!.id });
+  });
+
   it("the q-filter cannot widen the census past the scope", async () => {
     // Every other filter the route accepts is ANDed with the narrowing, never applied instead of it —
     // otherwise the search box is the bypass.

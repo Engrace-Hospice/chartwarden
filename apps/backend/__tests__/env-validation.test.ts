@@ -13,6 +13,7 @@ import {
   M34_PROVISION_GATEWAY_ENABLED_ENV,
   assertProductionEnv,
   collectEnvProblems,
+  cursorSigningKeyFrom,
   hostnamesIn,
   integrationEnabled,
   isReservedPlaceholderHost,
@@ -272,6 +273,24 @@ describe("collectEnvProblems", () => {
     expect(problems).toEqual([
       { key: "CURSOR_SIGNING_KEY", problem: "must be at least 32 characters" },
     ]);
+  });
+
+  it("flags the unedited example cursor signing key", () => {
+    const problems = collectEnvProblems({
+      ...GOOD,
+      CURSOR_SIGNING_KEY: "REPLACE_WITH_AT_LEAST_32_CHARACTERS",
+    });
+    expect(problems).toEqual([
+      { key: "CURSOR_SIGNING_KEY", problem: "is still the .env.production.example placeholder" },
+    ]);
+  });
+
+  it("requires the cursor signing key in production and only there", () => {
+    expect(() => cursorSigningKeyFrom({ NODE_ENV: "production" })).toThrow(
+      /CURSOR_SIGNING_KEY is required/,
+    );
+    expect(cursorSigningKeyFrom({ NODE_ENV: "test" })).toBeUndefined();
+    expect(cursorSigningKeyFrom({ NODE_ENV: "production", CURSOR_SIGNING_KEY: " k " })).toBe("k");
   });
 
   it("flags a too-short internal service token", () => {
