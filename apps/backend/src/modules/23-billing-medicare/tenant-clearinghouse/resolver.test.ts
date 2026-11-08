@@ -28,6 +28,8 @@ async function setup() {
   const counting = {
     encrypt: cipher.encrypt,
     fingerprint: cipher.fingerprint,
+    fingerprintKeyId: cipher.fingerprintKeyId,
+    fingerprints: cipher.fingerprints,
     decrypt: (...args: Parameters<typeof cipher.decrypt>) => {
       decrypts += 1;
       return cipher.decrypt(...args);

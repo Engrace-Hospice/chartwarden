@@ -15,6 +15,8 @@ export const tenantClearinghouseCredentialReservation = pgTable(
       .references(() => organizations.id, { onDelete: "restrict" }),
     vendor: text("vendor").notNull(),
     credentialFingerprint: text("credential_fingerprint").notNull(),
+    /** Public id of the fingerprint key (migration 1405); null = recorded before 1405 under the KEK current then. */
+    credentialFingerprintKeyId: text("credential_fingerprint_key_id"),
     reservedAt: timestamp("reserved_at", { withTimezone: true }).notNull().defaultNow(),
     releasedAt: timestamp("released_at", { withTimezone: true }),
     releasedByUserId: uuid("released_by_user_id"),

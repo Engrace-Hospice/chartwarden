@@ -24,6 +24,8 @@ export const tenantClearinghouseConfig = pgTable(
     // Migration 1403: a keyed HMAC of the vendor and the account key (write-only, never returned or audited), unique ACROSS
     // organizations so one vendor account belongs to one tenant. NULL with no credential.
     credentialFingerprint: text("credential_fingerprint"),
+    // Migration 1405: the public id of the key that fingerprint is under (null before 1405, or with no credential).
+    credentialFingerprintKeyId: text("credential_fingerprint_key_id"),
     verificationKind: text("verification_kind"),
     verificationEvidence: text("verification_evidence"),
     verifiedAt: timestamp("verified_at", { withTimezone: true }),

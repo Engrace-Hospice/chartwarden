@@ -1236,7 +1236,10 @@ import { buildClearinghouseAttemptResolutionService } from "./modules/23-billing
 import { buildExternalNoticeOnboardingPort } from "./modules/23-billing-medicare/services/external-notice-onboarding-port";
 import { resolveInpatientCapDifferential } from "./modules/23-billing-medicare/services/inpatient-cap-differential";
 import { platformFallbackFromEnv } from "./modules/23-billing-medicare/tenant-clearinghouse/choice";
-import { countHeldCredentials } from "./modules/23-billing-medicare/tenant-clearinghouse/config-store";
+import {
+  M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID,
+  countHeldCredentials,
+} from "./modules/23-billing-medicare/tenant-clearinghouse/config-store";
 import { buildTenantClearinghouseOnboardingPort } from "./modules/23-billing-medicare/tenant-clearinghouse/onboarding-port";
 import { registerM23TenantClearinghouseSeams } from "./modules/23-billing-medicare/tenant-clearinghouse/register";
 import { createTenantClearinghouseRuntime } from "./modules/23-billing-medicare/tenant-clearinghouse/resolver";
@@ -6816,8 +6819,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // Boot check (security review LOW-4): a platform key changed to one a tenant already sealed is a loud error, not a refusal to
           // boot. Shared-account responses are applied only on immutable ownership evidence (CW-AC-10), so nothing is misapplied
           // meanwhile, and failing the boot would take every tenant offline for an operator's env mistake. The fix is the env key.
+          if (clearinghouseSecretCipher) {
+            // the public id of the current fingerprint key, for the KEK re-encryption procedure (ops runbook §8.3)
+            app.log.info(
+              { code: "M23_FINGERPRINT_KEY", keyId: clearinghouseSecretCipher.fingerprintKeyId },
+              "m23.clearinghouse: credential fingerprint key",
+            );
+          }
           if (platformDbHandle && m23PlatformFingerprints.size > 0) {
-            void countHeldCredentials(platformDbHandle.db, [...m23PlatformFingerprints])
+            registerPlatformJob(M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID);
+            void countHeldCredentials(
+              { platformDb: platformDbHandle.db, auditBypass: m34PlatformBypassAuditor },
+              [...m23PlatformFingerprints],
+            )
               .then((held) => {
                 if (held > 0)
                   app.log.error(

@@ -235,6 +235,22 @@ const REQUIREMENTS: readonly Requirement[] = [
     },
   },
   {
+    // M23 (migration 1405) — optional: earlier M24_CREDENTIAL_ENCRYPTION_KEY values, read only to fingerprint clearinghouse
+    // credentials under the keys older reservations used. Set, every entry must be a 32-byte key and none the current KEK.
+    key: "M23_CLEARINGHOUSE_FINGERPRINT_RETIRED_KEKS",
+    when: (env) => Boolean(env.M23_CLEARINGHOUSE_FINGERPRINT_RETIRED_KEKS?.trim()),
+    rule: (value, env) => {
+      const current = env.M24_CREDENTIAL_ENCRYPTION_KEY?.trim();
+      for (const entry of value.split(",").map((e) => e.trim())) {
+        if (Buffer.from(entry, "base64").length !== 32)
+          return "must be comma-separated base64 keys of 32 bytes";
+        if (current && entry === current)
+          return "must not repeat the current M24_CREDENTIAL_ENCRYPTION_KEY";
+      }
+      return null;
+    },
+  },
+  {
     key: "TWO_FACTOR_ENCRYPTION_KEY",
     rule: (v) => {
       try {

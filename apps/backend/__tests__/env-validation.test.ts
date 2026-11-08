@@ -256,6 +256,23 @@ describe("collectEnvProblems", () => {
     ]);
   });
 
+  it("checks the retired clearinghouse fingerprint KEKs only when set (migration 1405)", () => {
+    const KEY = "M23_CLEARINGHOUSE_FINGERPRINT_RETIRED_KEKS";
+    const retired = Buffer.alloc(32, 7).toString("base64");
+    expect(
+      collectEnvProblems({
+        ...GOOD,
+        [KEY]: `${retired}, ${Buffer.alloc(32, 8).toString("base64")}`,
+      }),
+    ).toEqual([]);
+    expect(collectEnvProblems({ ...GOOD, [KEY]: `${retired},short` })).toEqual([
+      { key: KEY, problem: "must be comma-separated base64 keys of 32 bytes" },
+    ]);
+    expect(collectEnvProblems({ ...GOOD, [KEY]: GOOD.M24_CREDENTIAL_ENCRYPTION_KEY })).toEqual([
+      { key: KEY, problem: "must not repeat the current M24_CREDENTIAL_ENCRYPTION_KEY" },
+    ]);
+  });
+
   it("flags a too-short M13 witness signing key", () => {
     const problems = collectEnvProblems({ ...GOOD, M13_WITNESS_SIGNING_KEY: "short" });
     expect(problems).toEqual([

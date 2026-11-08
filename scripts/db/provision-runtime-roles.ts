@@ -96,8 +96,6 @@ const PLATFORM_READ_TABLES = [
   "onboarding_task",
   "onboarding_task_template",
   "tenant_go_live_attestation",
-  // M23 (migration 1404): the boot check that no tenant holds the platform's own vendor key (fingerprints only).
-  "tenant_clearinghouse_credential_reservation",
   "support_consent_grant",
   "support_session",
   "support_session_event",
@@ -445,6 +443,15 @@ async function main(): Promise<void> {
       );
       await run(
         'GRANT SELECT ("organization_id", "provider_entity_id", "usage", "control_number", "status") ON "clearinghouse_submission_attempt" TO chartwarden_platform;',
+      );
+      // M23 (migrations 1404/1405): the boot check that no tenant holds the platform's own vendor key reads the fingerprint, its
+      // key and whether it is held; never the organization or the release reason. REVOKE first so a re-provision takes back the
+      // table grant an older run gave.
+      await run(
+        'REVOKE SELECT ON "tenant_clearinghouse_credential_reservation" FROM chartwarden_platform;',
+      );
+      await run(
+        'GRANT SELECT ("id", "credential_fingerprint", "credential_fingerprint_key_id", "released_at") ON "tenant_clearinghouse_credential_reservation" TO chartwarden_platform;',
       );
       for (const t of PLATFORM_WRITE_TABLES) {
         await run(`GRANT SELECT, INSERT, UPDATE, DELETE ON "${t}" TO chartwarden_platform;`);

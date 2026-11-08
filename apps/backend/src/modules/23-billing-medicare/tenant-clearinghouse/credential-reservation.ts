@@ -9,9 +9,10 @@ import {
   type ConfigPatch,
   type ConfigRow,
   type ConfigStore,
+  type HeldFingerprint,
   isUniqueViolation,
 } from "./config-store";
-import type { ClearinghouseSecretCipher } from "./secret-cipher";
+import type { ClearinghouseSecretCipher, CredentialFingerprint } from "./secret-cipher";
 
 /** The indexes that keep one credential to one organization: the current-credential one (1403) and the reservation one (1404). */
 const FINGERPRINT_INDEXES: ReadonlySet<string> = new Set([
@@ -27,6 +28,18 @@ const FINGERPRINT_INDEXES: ReadonlySet<string> = new Set([
  */
 export const RELEASE_QUIET_DAYS = 90;
 const DAY_MS = 86_400_000;
+
+/**
+ * How many distinct credentials an organization may hold unreleased (security review LOW-4): every key it ever saved stays reserved
+ * until platform ops releases it, so an unbounded loop of saves would grow the table and its audit trail without end.
+ */
+export const MAX_HELD_CREDENTIALS = 20;
+
+/** The codes of a refused credential: each leaves a `denied` audit row on its own transaction. */
+export const CREDENTIAL_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  "CLEARINGHOUSE_ACCOUNT_IN_USE",
+  "CLEARINGHOUSE_CREDENTIAL_LIMIT",
+]);
 
 /**
  * One refusal for "another organization, or the platform, already holds this credential". Its body never says which. The timing
@@ -53,23 +66,51 @@ export const isFingerprintViolation = (err: unknown): boolean => {
 };
 
 /**
- * Reserve `fingerprint` to the organization, refusing the platform's own keys first. Idempotent for a credential the organization
- * already holds. Runs on the put's transaction, so a refusal rolls the whole change back.
+ * Reserve a credential to the organization under every fingerprint key it was computed under (current first, then each retired
+ * KEK's; migration 1405), refusing the platform's own keys first. Idempotent for a credential the organization already holds. Runs on
+ * the put's transaction, so a refusal rolls the whole change back.
+ *
+ * The cross-organization unique index is the enforcement point: each insert is `ON CONFLICT DO NOTHING` on it, so a fingerprint
+ * someone already holds inserts nothing. Two organizations saving the same key at once serialise on that index entry (the second
+ * waits for the first to commit, then inserts nothing); the keys are inserted in the same order everywhere, so they cannot deadlock.
+ * A conflict on this organization's own reservation is a concurrent save of the same credential (a version conflict, retried by the
+ * caller), never a refusal.
  */
 export async function reserveCredential(
   store: ConfigStore,
   organizationId: string,
   vendor: string,
-  fingerprint: string,
+  fingerprints: readonly HeldFingerprint[],
   platformFingerprints: ReadonlySet<string> | undefined,
 ): Promise<void> {
-  if (platformFingerprints?.has(fingerprint)) throw accountInUse();
-  if (await store.holdsCredential(organizationId, fingerprint)) return;
-  try {
-    await store.reserveCredential(organizationId, vendor, fingerprint);
-  } catch (err) {
-    if (isFingerprintViolation(err)) throw accountInUse();
-    throw err;
+  if (fingerprints.some((f) => platformFingerprints?.has(f.fingerprint))) throw accountInUse();
+  const missing: HeldFingerprint[] = [];
+  for (const f of fingerprints) {
+    if (!(await store.holdsCredential(organizationId, f.fingerprint))) missing.push(f);
+  }
+  if (missing.length === 0) return;
+  // ponytail: rows, not credentials (one row per key it was saved under); the cap scales with the configured keys. Concurrent saves
+  // by one org serialise on its config row lock, except the very first save (a race that can overshoot by one).
+  if (
+    missing.length === fingerprints.length &&
+    (await store.heldReservationCount(organizationId)) >= MAX_HELD_CREDENTIALS * fingerprints.length
+  ) {
+    throw new ChartWardenError(
+      "CLEARINGHOUSE_CREDENTIAL_LIMIT",
+      `this organization already holds ${MAX_HELD_CREDENTIALS} earlier clearinghouse credentials; ask platform support to release the ones it no longer uses`,
+      409,
+    );
+  }
+  for (const f of missing) {
+    if (await store.reserveCredential(organizationId, vendor, f)) continue;
+    if (await store.holdsCredential(organizationId, f.fingerprint)) {
+      throw new ChartWardenError(
+        "VERSION_CONFLICT",
+        "the clearinghouse credential was saved concurrently; read the config and try again",
+        412,
+      );
+    }
+    throw accountInUse();
   }
 }
 
@@ -90,9 +131,11 @@ export async function assertReleasable(
 }
 
 /**
- * A row sealed before migration 1403 has a credential and no fingerprint; migration 1404's CHECK refuses any write that keeps it
- * that way. The first write that does not replace the credential unseals it, fingerprints it and reserves it (the same refusals as
- * a fresh save: the platform's own key, or a key another organization holds).
+ * Keep the row's CURRENT credential reserved on every write that does not replace it.
+ *   - A row sealed before migration 1403 has a credential and no fingerprint; 1404's CHECK refuses any write that keeps it that way.
+ *     The write unseals it, fingerprints it under every configured key and reserves it (the same refusals as a fresh save).
+ *   - A row whose fingerprint has no held reservation (written by a pre-1404 build during the `contract` halt window; security
+ *     review LOW-1) has that fingerprint reserved again, under the key it was computed with.
  */
 export async function backfillFingerprint(
   store: ConfigStore,
@@ -102,8 +145,19 @@ export async function backfillFingerprint(
   platformFingerprints: ReadonlySet<string> | undefined,
 ): Promise<ConfigPatch> {
   if (patch.credentialFingerprint !== undefined || patch.secretCipher !== undefined) return patch;
-  if (row.secretCipher === null || row.credentialFingerprint !== null) return patch;
+  if (row.secretCipher === null) return patch;
   if (row.vendor !== "stedi" && row.vendor !== "claimmd") return patch;
+  if (row.credentialFingerprint !== null) {
+    await reserveCredential(
+      store,
+      row.organizationId,
+      row.vendor,
+      // null key id: recorded before 1405, under the KEK current then (no unseal needed to re-reserve it)
+      [{ keyId: row.credentialFingerprintKeyId, fingerprint: row.credentialFingerprint }],
+      platformFingerprints,
+    );
+    return patch;
+  }
   if (row.mode !== "test" && row.mode !== "production") return patch;
   const cipher = cipherOf();
   let secret: string;
@@ -120,13 +174,18 @@ export async function backfillFingerprint(
       409,
     );
   }
-  const credentialFingerprint = cipher.fingerprint(row.vendor, secret);
+  const fingerprints = cipher.fingerprints(row.vendor, secret);
   await reserveCredential(
     store,
     row.organizationId,
     row.vendor,
-    credentialFingerprint,
+    fingerprints,
     platformFingerprints,
   );
-  return { ...patch, credentialFingerprint };
+  const [current] = fingerprints as [CredentialFingerprint];
+  return {
+    ...patch,
+    credentialFingerprint: current.fingerprint,
+    credentialFingerprintKeyId: current.keyId,
+  };
 }

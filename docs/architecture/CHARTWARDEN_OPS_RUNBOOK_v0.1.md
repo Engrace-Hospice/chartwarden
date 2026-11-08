@@ -1268,10 +1268,22 @@ data is recoverable by re-entry (a user re-enrols 2FA; an operator re-enters a t
 secret) except for message bodies, which are not.
 
 `M24_CREDENTIAL_ENCRYPTION_KEY` also keys the M23 tenant clearinghouse credentials and their **fingerprints** (migrations
-1403/1404: an HMAC under a key derived from it, held unique across organizations so one credential belongs to one tenant). A
-re-encryption project for this key must recompute every fingerprint as it re-seals each credential (the service's credential save
-does both), and recompute the held reservations in `tenant_clearinghouse_credential_reservation` with them: a digest left under the
-old key no longer matches, and the uniqueness lapses silently for that credential.
+1403–1405: an HMAC under a key derived from it, held unique across organizations so one credential belongs to one tenant). Every
+fingerprint row records the public id of the key it was computed under (`credential_fingerprint_key_id`; NULL = before 1405). A
+re-encryption project for this key must:
+
+1. Put the old value in `M23_CLEARINGHOUSE_FINGERPRINT_RETIRED_KEKS` (comma-separated) when the new value goes live. From then on
+   every credential save reserves the key under the new **and** the retired fingerprint keys, so a reservation recorded under the old
+   key still collides. Nothing is decrypted with a retired value: each tenant's sealed credential must still be re-entered.
+2. Have each tenant re-enter its current credential (that save records it under the new key too).
+3. **Retired credentials** (rotated away, or freed by a switch to `outside`) can only be matched while the old value is still
+   configured: their plaintext is gone, so they can never be re-fingerprinted. Before removing the old value, list the unreleased
+   reservations not under the new key (the API logs its current key id at boot, `M23_FINGERPRINT_KEY`):
+   `SELECT organization_id, vendor, credential_fingerprint_key_id, reserved_at FROM tenant_clearinghouse_credential_reservation
+   WHERE released_at IS NULL AND credential_fingerprint_key_id IS DISTINCT FROM '<new key id>'`. Each row is either a credential
+   the tenant has since re-entered (it then also has a row under the new key) or a retired one; the rows cannot tell the two apart.
+   Have platform ops release the retired ones, or accept in writing that their protection lapses. Removing the old value ends the
+   protection of every reservation only it computed, silently.
 
 > **Update (M36 WP 2.13, ADR-0058 P1; code on branch `feat/m36-wp213-body-key-ring`, backfill not yet run anywhere):** message
 > bodies are moving off `MESSAGING_ENCRYPTION_KEY` onto the M34 wrapped-DEK ring (`tenant_key_ring`), which rotates (a new DEK
