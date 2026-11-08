@@ -141,13 +141,13 @@ function Body({
         </Button>
       </div>
       {/* always mounted, so a screen reader announces the text when it appears */}
-      <p className="wx-row-sub" role="status" aria-live="polite">
+      <output className="wx-row-sub" aria-live="polite" style={{ display: "block" }}>
         {released === null
           ? ""
           : released === 0
             ? "This tenant held no earlier credentials."
             : `Released ${released} earlier credential${released === 1 ? "" : "s"}.`}
-      </p>
+      </output>
     </>
   );
 }

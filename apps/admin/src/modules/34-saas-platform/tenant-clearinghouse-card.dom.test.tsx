@@ -388,7 +388,7 @@ describe("TenantClearinghouseCard", () => {
       await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
       answer(ok({ released: 1, config: CLAIMMD }));
       const status = await screen.findByText("Released 1 earlier credential.");
-      expect(status.getAttribute("role")).toBe("status");
+      expect(status.tagName).toBe("OUTPUT"); // an <output> is a status live region
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       // the report is not inside the actions row, and the next action clears it
       expect(status.closest(".wx-drawer-actions")).toBeNull();
