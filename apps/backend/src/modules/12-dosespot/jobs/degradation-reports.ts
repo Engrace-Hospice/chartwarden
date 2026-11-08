@@ -7,6 +7,8 @@
 //                        the reason (a deactivated registration, a fault, an outage): "queued ones wait" must not mean "forever".
 //   held_orders_aged     an order HELD for an unconfirmed outcome has waited {@link HELD_ORDER_REMINDER_AGE_MS} for an administrator to resolve
 //                        it (hold.ts): the one-off page at the hold is not enough for a decision that may sit in someone's inbox.
+//                        ONE reminder per episode (org-wide): the episode stays open while any order is held past the age, so a second order that
+//                        ages meanwhile raises no further reminder; each order was paged when it was held.
 // "Once per episode" is remembered in a store shared by every process (episode-store.ts), so a restart or a second replica does not alert
 // again and the process that sees the recovery announces it, after two consecutive clean ticks. Reporting is best effort and never fails a tick:
 // each announcement is a short-lived claim confirmed after its event commits, so an unreachable store, a failed publish or a crash delays the
