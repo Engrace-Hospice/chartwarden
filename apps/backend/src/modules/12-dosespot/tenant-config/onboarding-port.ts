@@ -54,6 +54,7 @@ interface RosterListRow {
   readonly confirmedMdmId: string | null;
   readonly confirmedNpi: string | null;
   readonly confirmedBy: string | null;
+  readonly linkedBy: string | null;
 }
 
 const actorFor = (scope: OnboardingWriteScope): ClinicActor => ({
@@ -95,6 +96,7 @@ export function buildDoseSpotClinicOnboardingPort(deps: {
           linkConfirmedMdmId: r.confirmedMdmId,
           linkConfirmedNpi: r.confirmedNpi,
           linkConfirmedByMembershipId: r.confirmedBy,
+          linkedByMembershipId: r.linkedBy,
         },
         { physicianMdmId: r.mdmId, npi },
       );
@@ -224,6 +226,7 @@ export function buildDoseSpotClinicOnboardingPort(deps: {
               confirmedMdmId: P.linkConfirmedMdmId,
               confirmedNpi: P.linkConfirmedNpi,
               confirmedBy: P.linkConfirmedByMembershipId,
+              linkedBy: P.linkedByMembershipId,
             })
             .from(P)
             .where(eq(P.organizationId, scope.organizationId))

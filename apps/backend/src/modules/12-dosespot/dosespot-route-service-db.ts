@@ -1590,6 +1590,7 @@ export function createDbDoseSpotBackend(
       membershipId,
       deaAuthorizedSchedules,
       externalPhysicianMdmId,
+      linkedByMembershipId,
     ) {
       if (externalPhysicianMdmId) {
         const holder = await withOrg(organizationId, (tx) =>
@@ -1608,7 +1609,11 @@ export function createDbDoseSpotBackend(
           // A re-link to another physician record must not carry the old vendor identity along: a row already linked to a DoseSpot
           // clinician is refused (the clinician was created under the OLD NPI), and any NPI left on an unlinked row is cleared.
           const [existing] = await tx
-            .select({ mdmId: DP.externalPhysicianMdmId, vendorId: DP.dosespotPrescriberId })
+            .select({
+              mdmId: DP.externalPhysicianMdmId,
+              vendorId: DP.dosespotPrescriberId,
+              revokedAt: DP.revokedAt,
+            })
             .from(DP)
             .where(and(eq(DP.organizationId, organizationId), eq(DP.membershipId, membershipId)))
             .for("update");
@@ -1617,6 +1622,12 @@ export function createDbDoseSpotBackend(
             Boolean(externalPhysicianMdmId) &&
             existing.mdmId !== externalPhysicianMdmId;
           if (relinking && existing?.vendorId != null) throw prescriberVendorLinked();
+          // WHO asserted the link (migration 1387): whoever sets or changes it, or reinstates a revoked row (the confirmation went with the
+          // revocation, so the reinstatement is a fresh assertion). The prescriber cannot confirm a link they made themself.
+          const linkAsserted =
+            (Boolean(externalPhysicianMdmId) && existing?.mdmId !== externalPhysicianMdmId) ||
+            (existing !== undefined && existing.revokedAt !== null);
+          const linker = { linkedByMembershipId: linkedByMembershipId ?? null };
           const row = firstOrThrow(
             await tx
               .insert(DP)
@@ -1625,6 +1636,7 @@ export function createDbDoseSpotBackend(
                 membershipId,
                 deaAuthorizedSchedules: deaAuthorizedSchedules as string[],
                 externalPhysicianMdmId: externalPhysicianMdmId ?? null,
+                ...(externalPhysicianMdmId ? linker : {}),
                 enrolledAt: at,
               })
               .onConflictDoUpdate({
@@ -1634,6 +1646,7 @@ export function createDbDoseSpotBackend(
                   ...(externalPhysicianMdmId ? { externalPhysicianMdmId } : {}),
                   // a re-link carries nothing of the previous one: no stale NPI, and the PRESCRIBER's confirmation was of the old link
                   ...(relinking ? { npi: null, ...NO_LINK_CONFIRMATION } : {}),
+                  ...(linkAsserted ? linker : {}),
                   enrolledAt: at,
                   revokedAt: null,
                   revocationReason: null,

@@ -43,9 +43,14 @@ export interface RosterRow {
   readonly linkConfirmedNpi: string | null;
   /** WHO confirmed it: counts only when it is the row's own membership (the CHECK and the trigger say so too; the gate re-checks). */
   readonly linkConfirmedByMembershipId: string | null;
+  /** WHO asserted the link (migration 1387; null = before that, or outside the roster route). It must not be the confirmer. */
+  readonly linkedByMembershipId: string | null;
 }
 
-/** Has the row's OWN member confirmed `physicianMdmId` and `npi`? The one test the claim, the view and the enrolment gate share. */
+/**
+ * Has the row's OWN member confirmed `physicianMdmId` and `npi`, and is that member NOT the one who made the link? The one test the claim,
+ * the view and the enrolment gate share: a link one person both made and confirmed is one person's word, which the confirmation exists to rule out.
+ */
 export function linkConfirmedBy(
   row: Pick<
     RosterRow,
@@ -54,6 +59,7 @@ export function linkConfirmedBy(
     | "linkConfirmedMdmId"
     | "linkConfirmedNpi"
     | "linkConfirmedByMembershipId"
+    | "linkedByMembershipId"
   >,
   expected: { readonly physicianMdmId: string | null; readonly npi: string },
 ): boolean {
@@ -62,7 +68,8 @@ export function linkConfirmedBy(
     row.externalPhysicianMdmId === expected.physicianMdmId &&
     row.linkConfirmedMdmId === expected.physicianMdmId &&
     row.linkConfirmedNpi === expected.npi &&
-    row.linkConfirmedByMembershipId === row.membershipId
+    row.linkConfirmedByMembershipId === row.membershipId &&
+    row.linkedByMembershipId !== row.linkConfirmedByMembershipId
   );
 }
 

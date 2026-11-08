@@ -28,6 +28,7 @@ const toRow = (r: typeof P.$inferSelect): RosterRow => ({
   linkConfirmedMdmId: r.linkConfirmedMdmId,
   linkConfirmedNpi: r.linkConfirmedNpi,
   linkConfirmedByMembershipId: r.linkConfirmedByMembershipId,
+  linkedByMembershipId: r.linkedByMembershipId,
 });
 
 export function createDrizzleRosterStore(tx: DbClient): RosterStore {
@@ -117,6 +118,8 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
             isNull(P.revokedAt),
             // pinned: only while the row still links the record the prescriber was shown
             eq(P.externalPhysicianMdmId, input.mdmId),
+            // and only while someone else made that link (a re-link by the member themself since the read stops it here)
+            sql`${P.linkedByMembershipId} IS DISTINCT FROM ${membershipId}::uuid`,
           ),
         )
         .returning();
@@ -159,6 +162,8 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
             eq(P.linkConfirmedMdmId, input.expectedPhysicianMdmId ?? sql`NULL`),
             eq(P.linkConfirmedNpi, input.npi),
             eq(P.linkConfirmedByMembershipId, P.membershipId),
+            // and the confirmer is not the one who made the link
+            sql`${P.linkedByMembershipId} IS DISTINCT FROM ${P.linkConfirmedByMembershipId}`,
           ),
         )
         .returning();

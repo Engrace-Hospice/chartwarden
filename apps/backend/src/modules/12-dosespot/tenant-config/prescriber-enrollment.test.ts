@@ -80,6 +80,7 @@ function build(
           linkConfirmedMdmId: MDM,
           linkConfirmedNpi: NPI,
           linkConfirmedByMembershipId: MEMBER,
+          linkedByMembershipId: null,
           ...opts.row,
         };
   const store: RosterStore = {
@@ -325,6 +326,7 @@ describe("prescriber vendor enrolment", () => {
       { linkConfirmedByMembershipId: null }, // no confirmer recorded
       { linkConfirmedMdmId: "66666666-6666-4666-8666-666666666666" }, // confirmed another record: the link was changed since
       { linkConfirmedNpi: "1000000004" }, // confirmed another NPI: the record's NPI is no longer the one they were shown
+      { linkedByMembershipId: MEMBER }, // the member made the link themself AND confirmed it: one person's word
     ];
     for (const row of cases) {
       const h = build({ row });

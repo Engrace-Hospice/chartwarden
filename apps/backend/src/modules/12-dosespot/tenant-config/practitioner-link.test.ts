@@ -40,6 +40,7 @@ function build(
           linkConfirmedMdmId: null,
           linkConfirmedNpi: null,
           linkConfirmedByMembershipId: null,
+          linkedByMembershipId: null,
           ...opts.row,
         };
   const audits: {
@@ -177,6 +178,28 @@ describe("what the prescriber is shown", () => {
 });
 
 describe("confirming", () => {
+  it("is refused (409 DOSESPOT_LINK_SELF_CONFIRM) when the member made the link themself; another linker's link is confirmable", async () => {
+    const self = build({ row: { linkedByMembershipId: ME } });
+    await expect(self.service.confirm(actor(), pinned)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "DOSESPOT_LINK_SELF_CONFIRM",
+    });
+    expect(self.confirmed).toEqual([]);
+    expect(self.audits).toEqual([]);
+    const byAnother = build({ row: { linkedByMembershipId: SOMEONE_ELSE } });
+    expect((await byAnother.service.confirm(actor(), pinned)).confirmed).toBe(true);
+    // and a link confirmed by its own maker (written around the service) is never shown as confirmed
+    const both = build({
+      row: {
+        linkedByMembershipId: ME,
+        linkConfirmedMdmId: MDM,
+        linkConfirmedNpi: NPI,
+        linkConfirmedByMembershipId: ME,
+      },
+    });
+    expect((await both.service.view(actor())).confirmed).toBe(false);
+  });
+
   it("records the confirmation for the member's OWN row, and audits ids only (no NPI, no name)", async () => {
     const h = build();
     const out = await h.service.confirm(actor(), pinned);

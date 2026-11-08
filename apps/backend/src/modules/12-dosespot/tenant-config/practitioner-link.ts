@@ -15,6 +15,9 @@
 //                      administrator's request or a worker cannot do it. It is not authentication: code that can set the GUC could
 //                      declare any user, so it relies on the application never declaring anyone but the session's user.
 //   the enrolment gate the confirmation must be by the row's own member, of the current link and NPI, at the claim and again at the record.
+//   linker != confirmer the member recorded as having MADE the link (`linked_by_membership_id`, migration 1387) cannot confirm it (409
+//                      DOSESPOT_LINK_SELF_CONFIRM, and the confirm write re-checks it), and the enrolment gate refuses a link whose linker is its
+//                      confirmer. Application code: the roster route records the acting administrator's membership.
 // Audited with ids only (the roster row, the physician record, the actor) in a row the write-audit trigger of this table also takes;
 // that row, like any column of the table, carries the NPI (public provider data), so "ids only" describes this service's own entry.
 import type { DbClient } from "@chartwarden/db";
@@ -89,6 +92,15 @@ const rosterChanged = (): ChartWardenError =>
     409,
   );
 
+// Separation of duties: the member who MADE the link cannot be the one who confirms it (an org administrator holds the roster key and may sign,
+// so without this one person could link their own membership to any physician record, confirm it and enrol under that NPI).
+const selfLinked = (): ChartWardenError =>
+  new ChartWardenError(
+    "DOSESPOT_LINK_SELF_CONFIRM",
+    "you made this link to a physician record yourself, so you cannot also confirm it; another roster administrator must link you",
+    409,
+  );
+
 const liveLink = (row: RosterRow | null): row is RosterRow & { externalPhysicianMdmId: string } =>
   row !== null && row.revokedAt === null && row.externalPhysicianMdmId !== null;
 
@@ -142,6 +154,7 @@ export function createPractitionerLinkService(deps: PractitionerLinkDeps): Pract
       store.rosterRow(organizationId, membershipId),
     );
     if (!liveLink(row)) throw notLinked();
+    if (row.linkedByMembershipId === membershipId) throw selfLinked();
     // pinned: what the prescriber was shown must still be what the roster says, and what the record carries
     if (row.externalPhysicianMdmId !== input.externalPhysicianMdmId) throw rosterChanged();
     // identity, not the production NPPES-listing rule (that is enforced at enrolment): any refusal enrolment would make for the

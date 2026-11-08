@@ -58,6 +58,7 @@ import {
 } from "../src/bootstrap/tenant-kek";
 import { m34PlatformBypassAuditor } from "../src/index";
 import { buildClinicAuditPort } from "../src/m12-dosespot-clinic-audit";
+import { createDbDoseSpotBackend } from "../src/modules/12-dosespot/dosespot-route-service-db";
 import {
   type DoseSpotWriteOutboxPort,
   M12_OUTBOX_EVENTS,
@@ -1876,6 +1877,111 @@ describe.skipIf(!DB_URL)(
             )
           )[0]?.dosespot_prescriber_id,
         ).toBeNull();
+      });
+
+      // Review of slice 4 (separation of duties): an org administrator holds the roster key AND may sign, so one person could link their own
+      // membership to any physician record, confirm it and enrol under that NPI. The roster link (the REAL roster service, as the route calls
+      // it) now records who made it, and the member who made it can neither confirm it nor be enrolled under a link they also confirmed.
+      describe("linker != confirmer", () => {
+        let linkSeq = 0;
+        /** A member of ORG_A NOT yet on the roster, and a fresh physician record for them. */
+        const newMember = async () => {
+          const n = ++linkSeq;
+          const suffix = n.toString(16).padStart(2, "0");
+          const userId = `99000000-0000-4000-8000-0000000006${suffix}`;
+          const membershipId = `99000000-0000-4000-8000-0000000007${suffix}`;
+          await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [
+            userId,
+            `sod${n}@ds.test`,
+          ]);
+          await admin.query(
+            "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,$2,$3,'active')",
+            [membershipId, userId, ORG_A],
+          );
+          return { membershipId, userId, physician: await seedPhysician() };
+        };
+        /** The roster link exactly as `POST /admin/dosespot-prescribers/:id/enroll` makes it, with `linker` as the acting membership. */
+        const link = (m: { membershipId: string; physician: SeededPhysician }, linker: string) =>
+          createDbDoseSpotBackend(tdb as unknown as DbClient, outbox).enrollPrescriber(
+            ORG_A,
+            m.membershipId,
+            [],
+            m.physician.id,
+            linker,
+          );
+        const linkerOf = async (membershipId: string) =>
+          (
+            await q("SELECT linked_by_membership_id AS by FROM dosespot_prescriber WHERE membership_id=$1", [
+              membershipId,
+            ])
+          )[0]?.by;
+        const pin = (m: { physician: SeededPhysician }) => ({
+          externalPhysicianMdmId: m.physician.id,
+          npi: m.physician.npi as string,
+        });
+
+        it("a member who linked THEMSELF cannot confirm it (409 DOSESPOT_LINK_SELF_CONFIRM), and a confirmation written around the service does not enrol", async () => {
+          const m = await newMember();
+          await link(m, m.membershipId);
+          expect(await linkerOf(m.membershipId)).toBe(m.membershipId);
+          expect(await errorCode(linkService.confirm(asMember(m), pin(m)))).toBe(
+            "DOSESPOT_LINK_SELF_CONFIRM",
+          );
+          expect((await confirmationOf(m.membershipId))?.mdm).toBeNull();
+          // even a confirmation the member writes directly (as themself, which the trigger allows): the gate refuses it, nothing is sent
+          await asDeclaredUser(
+            m.userId,
+            `UPDATE dosespot_prescriber SET link_confirmed_mdm_id=$2, link_confirmed_npi=$3, link_confirmed_at=now(),
+               link_confirmed_by_membership_id=membership_id WHERE membership_id=$1`,
+            [m.membershipId, m.physician.id, m.physician.npi],
+          );
+          expect((await linkService.view(asMember(m))).confirmed).toBe(false);
+          const calls = clinicianCalls();
+          expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), m.membershipId))).toBe(
+            "DOSESPOT_PRACTITIONER_UNCONFIRMED",
+          );
+          expect(clinicianCalls()).toBe(calls);
+        });
+
+        it("a link made by ANOTHER member (the tenant administrator) is confirmed by the prescriber and enrolled", async () => {
+          const m = await newMember();
+          await link(m, MEMBERSHIP);
+          expect(await linkerOf(m.membershipId)).toBe(MEMBERSHIP);
+          expect((await linkService.confirm(asMember(m), pin(m))).confirmed).toBe(true);
+          expect(await enrollment.enroll(tenantActor(ORG_A), m.membershipId)).toMatchObject({
+            enrolledWithDoseSpot: true,
+          });
+        });
+
+        it("a link recorded under a platform operator's membership counts as another linker: the prescriber's own confirmation is accepted", async () => {
+          const m = await newMember();
+          await link(m, OPS_MEMBERSHIP);
+          expect(await linkerOf(m.membershipId)).toBe(OPS_MEMBERSHIP);
+          expect((await linkService.confirm(asMember(m), pin(m))).confirmed).toBe(true);
+          expect((await linkService.view(asMember(m))).confirmed).toBe(true);
+        });
+
+        it("a member who re-links themself to another record after an administrator's link cannot confirm the new one", async () => {
+          const m = await newMember();
+          await link(m, MEMBERSHIP);
+          const other = await seedPhysician();
+          await createDbDoseSpotBackend(tdb as unknown as DbClient, outbox).enrollPrescriber(
+            ORG_A,
+            m.membershipId,
+            [],
+            other.id,
+            m.membershipId,
+          );
+          expect(await linkerOf(m.membershipId)).toBe(m.membershipId);
+          expect(
+            await errorCode(
+              linkService.confirm(asMember(m), {
+                externalPhysicianMdmId: other.id,
+                npi: other.npi as string,
+              }),
+            ),
+          ).toBe("DOSESPOT_LINK_SELF_CONFIRM");
+        });
       });
 
       it("a platform operator cannot confirm on a member's behalf: there is no operator route, and their own membership selects no one else's row", async () => {

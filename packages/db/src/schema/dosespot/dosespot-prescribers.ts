@@ -49,6 +49,9 @@ export const dosespotPrescribers = pgTable(
     linkConfirmedNpi: text("link_confirmed_npi"),
     linkConfirmedAt: timestamp("link_confirmed_at", { withTimezone: true }),
     linkConfirmedByMembershipId: uuid("link_confirmed_by_membership_id"),
+    // Migration 1387 — the membership that set (or last changed) `externalPhysicianMdmId`. A confirmation by that same member is refused (the
+    // confirm service) and so is the enrolment of such a link (the gate): one person cannot both link and confirm. NULL = a link that predates it.
+    linkedByMembershipId: uuid("linked_by_membership_id"),
     enrolledAt: timestamp("enrolled_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     revocationReason: text("revocation_reason"),

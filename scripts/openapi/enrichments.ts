@@ -5917,12 +5917,16 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12NamedPrescriberListResponseSchema,
   },
   "POST /api/v1/admin/dosespot-prescribers/:membershipId/enroll": {
-    summary: "Enroll a prescriber into DoseSpot",
+    summary:
+      "Put a member on the prescriber roster and link them to a physician record (externalPhysicianMdmId). The acting administrator is recorded as the link's asserter: the linked member cannot confirm a link they made themself (409 DOSESPOT_LINK_SELF_CONFIRM on the confirmation). prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused",
     body: M12EnrollPrescriberRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
   },
   "POST /api/v1/admin/dosespot-prescribers/:membershipId/revoke": {
-    summary: "Revoke a prescriber",
+    summary:
+      "Revoke a prescriber from the roster (their link confirmation goes with it). prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused",
     body: M12RevokePrescriberRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
   },
   "GET /api/v1/admin/refill-inbox-policy": {
     summary: "Refill-inbox SLA policy — warn/critical hours + platform floors (§4.1 / §2.7 D9)",
@@ -15563,7 +15567,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/me/dosespot-prescriber-link/confirm": {
     summary:
-      "The prescriber confirms, from their own account, that the physician record the roster linked them to is theirs. Pinned to the link and NPI they were shown (409 DOSESPOT_ROSTER_CHANGED if either moved); 409 DOSESPOT_PRACTITIONER_NOT_LINKED when they are not on the roster, _NOT_ACTIVE / _NPI_MISSING / DOSESPOT_NPPES_MISMATCH when the record cannot vouch. Never on behalf of another member and no platform route exists. The DoseSpot enrolment, on both lanes, is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED) until a confirmation matches the current link. prescribing.sign + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+      "The prescriber confirms, from their own account, that the physician record the roster linked them to is theirs. Pinned to the link and NPI they were shown (409 DOSESPOT_ROSTER_CHANGED if either moved); a link the member made themself cannot be confirmed by them (409 DOSESPOT_LINK_SELF_CONFIRM: another roster administrator must link them), and the enrolment refuses a link whose linker is its confirmer; 409 DOSESPOT_PRACTITIONER_NOT_LINKED when they are not on the roster, _NOT_ACTIVE / _NPI_MISSING / DOSESPOT_NPPES_MISMATCH when the record cannot vouch. Never on behalf of another member and no platform route exists. The DoseSpot enrolment, on both lanes, is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED) until a confirmation matches the current link. prescribing.sign + a fresh step-up; Idempotency-Key required; an AI actor is refused",
     body: M12ConfirmPractitionerLinkBodySchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     response: M12PractitionerLinkViewSchema,

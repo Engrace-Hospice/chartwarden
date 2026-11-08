@@ -49,8 +49,10 @@ async function main(): Promise<void> {
   const admin = await signIn("orgadmin@chartwarden.local");
   const membershipId = await prescriberMembershipId();
 
+  // the roster link is a step-up-gated, idempotent write (and orgadmin@ is recorded as the link's asserter, so Dr. Harris may confirm it)
+  await stepUpSession(admin.userId);
   const res = await admin.client.POST("/api/v1/admin/dosespot-prescribers/{membershipId}/enroll", {
-    params: { path: { membershipId } },
+    params: { path: { membershipId }, header: { "Idempotency-Key": crypto.randomUUID() } },
     body: { externalPhysicianMdmId: PRESCRIBER_MDM_ID },
   });
   if (!res.error) {

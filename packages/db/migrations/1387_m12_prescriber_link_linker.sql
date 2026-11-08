@@ -1,0 +1,14 @@
+-- compat: expand
+-- M12 - WHO linked a roster member to a physician record (review of slice 4, separation of duties on prescriber linking).
+--
+-- The prescriber's own confirmation (migration 1384) was meant to be a second person's word: an administrator links a member to a physician record,
+-- the member confirms it is them. But an org administrator holds the roster key, `prescribing.sign` and the clinic key, so ONE person could link
+-- their OWN membership to any physician record, confirm it, and enrol at DoseSpot under that NPI. `linked_by_membership_id` records the membership
+-- that set (or changed) the link, and the application refuses a confirmation by that same member (409 DOSESPOT_LINK_SELF_CONFIRM); the enrolment
+-- gate refuses a link whose linker is its confirmer. NULL = the link predates this column, or was written outside the roster route (a seed): it is
+-- not the confirmer, so it is not refused.
+--
+-- Expand-only: one nullable column with no default and no constraint; the previous release neither reads nor writes it. dosespot_prescriber
+-- already has RLS, table-level app grants and the M4 write-audit trigger (0039), so the column inherits all three. Enforced by the application
+-- (the confirm service and the enrolment gate), not by a CHECK: a CHECK would be a contracting change under the compat rule.
+ALTER TABLE "dosespot_prescriber" ADD COLUMN IF NOT EXISTS "linked_by_membership_id" uuid;

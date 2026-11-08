@@ -492,7 +492,7 @@ export async function denyRefill(
 
 // ── §6.1 admin ─────────────────────────────────────────────────────────────────────────────────────────
 
-/** Enrol a membership as a DoseSpot prescriber. */
+/** Enrol a membership as a DoseSpot prescriber (a fresh step-up + an Idempotency-Key, minted here per call). */
 export async function enrollPrescriber(
   client: ApiClient,
   membershipId: string,
@@ -501,7 +501,10 @@ export async function enrollPrescriber(
   const { data, error, response } = await client.POST(
     "/api/v1/admin/dosespot-prescribers/{membershipId}/enroll",
     {
-      params: { path: { membershipId } },
+      params: {
+        path: { membershipId },
+        header: { "Idempotency-Key": globalThis.crypto.randomUUID() },
+      },
       body: deaAuthorizedSchedules ? { deaAuthorizedSchedules: [...deaAuthorizedSchedules] } : {},
     },
   );
@@ -518,7 +521,13 @@ export async function revokePrescriber(
 ): Promise<WriteResult<unknown>> {
   const { data, error, response } = await client.POST(
     "/api/v1/admin/dosespot-prescribers/{membershipId}/revoke",
-    { params: { path: { membershipId } }, body: { reason } },
+    {
+      params: {
+        path: { membershipId },
+        header: { "Idempotency-Key": globalThis.crypto.randomUUID() },
+      },
+      body: { reason },
+    },
   );
   if (error || !data) return failure(response?.status, error);
   return ok(data);
