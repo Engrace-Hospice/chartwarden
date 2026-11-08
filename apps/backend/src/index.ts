@@ -1094,6 +1094,10 @@ import {
   bindPlatformClearinghouse,
   describeClearinghouseBinding,
 } from "./modules/23-billing-medicare/clearinghouse-binding";
+import {
+  buildClaim837iPersistencePort,
+  renderClaim837iPreview,
+} from "./modules/23-billing-medicare/services/claim-837i-loader";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
 // eraser (registerEraser INJECTED — M23 cannot import the M1 bootstrap registry), and the §4.8 BullMQ workers
@@ -3859,10 +3863,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const m16MailingEnqueue = buildM16MailingEnqueuePort(queueConnection);
   // GAP-070 — the `validation-run` / `eligibility.refresh` producer (queue connection only; no launch gateway).
   const m23WorkQueues = queueConnection ? buildM23WorkQueueEnqueuePort(queueConnection) : null;
-  // M24 (WX-PR-011) — the Oregon launch-gateway, gated the same way as M23's (unset in dev/test/CI so
-  // nothing calls out by accident). The adapter registry always constructs (WA/ID/CA/NV deny-stubs register
-  // regardless); only Oregon's wire I/O gets a real gateway when one resolves.
-  // GAP-146 — in production an unset M24_LAUNCH_GATEWAY_ENABLED means enabled (opt-out, like M23's switch).
+  // M24 (WX-PR-011) — the Oregon reference gateway binds only when explicitly opted into in any environment.
+  // The adapter registry always constructs (WA/ID/CA/NV deny-stubs register regardless); a bound gateway
+  // remains non-certified and cannot authorize claim submissions.
+  // M24's gateway remains explicitly opt-in in every environment; binding a configured gateway is
+  // not sufficient for claim submission because state/program certification is independently required.
   const m24LaunchConfig = m24LaunchGatewayConfigFromEnv(
     withM24LaunchGatewayDefault(process.env) as NodeJS.ProcessEnv,
   );
@@ -6852,7 +6857,100 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // instance here, rather than each module reading the schema directly.
           const { providerCcn: m23ProviderCcn, assemblyPorts: m23AssemblyPorts } =
             buildM23AssemblyPorts(dbHandle.db);
+          const m23PreviewSeams = buildM23BootAssemblySeams(dbHandle.db, {
+            outbox: m23OutboxPublisher,
+            providerCcn: m23ProviderCcn,
+            ...m23AssemblyPorts,
+          });
+          const m23PayerNameByX12Id = buildPayerNameByX12IdReader();
+          const m23ClaimPreviewParties = buildClaim837iPartiesPortFactory({
+            routeKey: clearinghouseBinding.vendor,
+            profile: buildDrizzleEdiProfileReader(),
+            provider: buildClaim837iProviderReader({
+              sealedFacts: (tx, organizationId, providerEntityId) =>
+                buildFoundationSiteReader().providerEntityBillingFacts(
+                  tx,
+                  organizationId,
+                  providerEntityId,
+                ),
+              decryptTaxId: (input) =>
+                createTaxIdCipher({
+                  dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+                  dekForOrgVersion: (orgId, version) =>
+                    getTenantKeyProvider().dekForOrgVersion(orgId, version),
+                }).decrypt(input),
+            }),
+            payerName: m23PayerNameByX12Id,
+          });
           mountM23Routes(app, {
+            previewIntegrityKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY,
+            renderClaimPreview: async ({ organizationId, actorUserId, claimId, providerEntityId, routeFingerprint }) => {
+              const context = await buildClearinghouseContextPort({
+                db: dbHandle.db,
+                env: process.env,
+                providerNpi: m25PayeeNpi,
+              }).contextFor(organizationId, providerEntityId);
+              return withOrgContext(
+                dbHandle.db,
+                { organizationId, userId: actorUserId },
+                async (tx) => {
+                  const rendered = await renderClaim837iPreview(
+                    {
+                      persistence: buildClaim837iPersistencePort(tx as never),
+                      admission: m23PreviewSeams.admission,
+                      mbiUnlock: () => getSeam("MbiUnlockReader"),
+                      patients: lazyPatientReader(),
+                      addresses: lazyPatientAddressReader(),
+                      parties: m23ClaimPreviewParties(tx as DbClient),
+                      previewIntegrityKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY,
+                      accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac",
+                    },
+                    {
+                      claimId,
+                      context,
+                      // Preview-only values. The actual attempt reserves its own identifiers at submission time.
+                      interchangeControlNumber: 1,
+                      createdAt: new Date(),
+                      actorUserId,
+                      ...(routeFingerprint ? { routeFingerprint } : {}),
+                    },
+                  );
+                  return rendered.ok
+                    ? { status: "rendered" as const, document: rendered.document, sourceFingerprint: rendered.sourceFingerprint,
+                        accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac", usage: context.usage }
+                    : {
+                        status: "blocked" as const,
+                        gaps: rendered.kind === "gaps"
+                          ? rendered.gaps
+                          : [{ field: "claim", reason: "missing" }],
+                      };
+                },
+              );
+            },
+            payerRouteStatus: async (organizationId, providerEntityId) => {
+              if (process.env.CLEARINGHOUSE_VENDOR?.trim() !== "claimmd") {
+                return { status: "not_applicable" };
+              }
+              try {
+                const context = await buildClearinghouseContextPort({
+                  db: dbHandle.db,
+                  env: process.env,
+                  providerNpi: m25PayeeNpi,
+                }).contextFor(organizationId, providerEntityId);
+                if (!context.claimMdRouteFingerprint) {
+                  return { status: "not_configured", reasonCode: "PAYER_ROUTE_NOT_VERIFIED" };
+                }
+                if (!(await m23PayerNameByX12Id(dbHandle.db, context.payerId))) {
+                  return { status: "not_configured", reasonCode: "CLAIMMD_PAYER_ROUTE_PAYER_NOT_ACTIVE" };
+                }
+                return { status: "verified", routeFingerprint: context.claimMdRouteFingerprint };
+              } catch (error) {
+                const code = error instanceof Error && error.message.startsWith("CLAIMMD_PAYER_ROUTE_")
+                  ? error.message
+                  : "PAYER_ROUTE_NOT_VERIFIED";
+                return { status: "not_configured", reasonCode: code };
+              }
+            },
             // F-210 — the tenant-entered hospice rate table (`/billing/rate-tables`); the SAME table the
             // assembly service's `referenceData.perDiemRateTable`/`chcHourlyRateCents` read (M23-owned, so
             // the boot assembly reads it over `dbHandle.db` directly — no injected port).
@@ -9879,6 +9977,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       // bound and fail the attempt on a gap). Seams resolve lazily per call, so registration order never matters. The
       // billing-provider EIN is opened with M2's tax-id cipher (the tenant's own DEK) and held in memory for one build.
       claim837i: {
+        previewIntegrityKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY,
+        accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac",
         admission: m23AssemblySeams.admission,
         mbiUnlock: () => getSeam("MbiUnlockReader"),
         patients: lazyPatientReader(),

@@ -20,7 +20,9 @@ name: ${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}
 
 services:
   postgres:
-    image: pgvector/pgvector:pg18-bookworm@sha256:c29f30688a9ad961691bdf0ec1650717cc132a5814619d80f80463d6e4c42e47
+    # Published by .github/workflows/postgres-image.yml (Wolfi, glibc 2.44). Switching from the Debian image is the
+    # README's "Postgres image" migration: cosign verify, then cw-refresh-collation before api/worker start.
+    image: ghcr.io/engrace-hospice/chartwarden-postgres:18-sha-2ea20d5c0bf340d3f93c1d6fcd715a3027354793@sha256:b325d5fd8f295ef1aaed77508f808fcbd573787ff0469de6126fdff4ae261636
     mem_limit: 4g
     cpus: 4
     mem_reservation: 2g

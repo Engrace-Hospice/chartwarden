@@ -87,8 +87,9 @@ export function MedicaidAssemblyWizard(): JSX.Element {
     [step],
   );
 
-  // Advisory routing preview: the patient's most recent eligibility check tells the biller whether the
-  // claim will route to an MCO or to fee-for-service MMIS. The server re-derives this at assembly.
+  // Advisory eligibility context only. A stored MCO assignment is not a verified payer route, and a
+  // missing MCO does not prove fee-for-service. The claim API reports unresolved routing until an
+  // authoritative state-program mapping is available.
   const loadRouting = useCallback(async () => {
     setEligibilityChecked(true);
     setEligibility(null);
@@ -338,7 +339,9 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                 <Field
                   label="Routes to"
                   value={
-                    eligibility.mcoId ? `MCO ${shortId(eligibility.mcoId)}` : "Fee-for-service MMIS"
+                    eligibility.mcoId
+                      ? `MCO ${shortId(eligibility.mcoId)} (unverified)`
+                      : "State program not determined"
                   }
                 />
                 <Field label="Checked" value={eligibility.checkedAt.slice(0, 10)} />
@@ -370,7 +373,9 @@ export function MedicaidAssemblyWizard(): JSX.Element {
             <Field
               label="Routing"
               value={
-                eligibility?.mcoId ? `MCO ${shortId(eligibility.mcoId)}` : "Fee-for-service MMIS"
+                eligibility?.mcoId
+                  ? `MCO ${shortId(eligibility.mcoId)} (unverified)`
+                  : "State program not determined"
               }
             />
             {cobAsserted && !step4Valid ? (

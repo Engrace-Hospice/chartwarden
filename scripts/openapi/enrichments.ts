@@ -988,6 +988,8 @@ import {
   ReadyResponseSchema as M41ReadyResponseSchema,
   ReconcileBodySchema as M41ReconcileBodySchema,
   RecordAuthorizationBodySchema as M41RecordAuthorizationBodySchema,
+  RejectedCorrectionBodySchema as M41RejectedCorrectionBodySchema,
+  RejectedCorrectionResponseSchema as M41RejectedCorrectionResponseSchema,
   SendGateViewSchema as M41SendGateViewSchema,
   SetAuthorizationStatusBodySchema as M41SetAuthorizationStatusBodySchema,
   SubmissionViewSchema as M41SubmissionViewSchema,
@@ -3573,7 +3575,12 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   },
   "POST /api/v1/billing/claims/:id/submit": {
     summary:
-      "READY → SUBMITTED — emits m23.claim.submit_requested (PE scope + step-up + If-Match; 202, §4.1 #7)",
+      "Submit an M23 claim only with the current short-lived reviewed-preview confirmation (PE scope + step-up + If-Match; 202, §4.1 #7)",
+    body: Type.Object({
+      ifVersion: Type.Integer({ minimum: 0 }),
+      acknowledgeAllOverrides: Type.Optional(Type.Boolean()),
+      previewConfirmationToken: Type.String({ minLength: 20, maxLength: 4096 }),
+    }),
     headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
     status: 202,
   },
@@ -13025,6 +13032,7 @@ const M23ClaimSubmissionOutcome = Type.Union([
   Type.Literal("submitted"),
   Type.Literal("failed_worker"),
   Type.Literal("failed_portal"),
+  Type.Literal("held_stale_source"),
 ]);
 const M23ClaimAcknowledgmentKind = Type.Union([
   Type.Literal("ack_999"),
@@ -13198,6 +13206,50 @@ const M23ClaimLineView = Type.Object({
   backingEncounterIds: Type.Array(Type.String()),
 });
 const M23ClaimLinesResponse = Type.Array(M23ClaimLineView);
+const M23ClaimPreparationResponse = Type.Object({
+  route: Type.Object({
+    status: Type.Union([
+      Type.Literal("verified"),
+      Type.Literal("not_configured"),
+      Type.Literal("not_applicable"),
+    ]),
+    reasonCode: Type.Optional(Type.String()),
+  }),
+  previewVersion: Type.Integer(),
+  previewGeneratedAt: Type.String({ format: "date-time" }),
+  previewExpiresAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  previewConfirmationToken: Type.Union([Type.String(), Type.Null()]),
+  rendererStatus: Type.Union([Type.Literal("rendered"), Type.Literal("blocked")]),
+  billingPreview: Type.Optional(
+    Type.Object({
+      tob: Type.String(),
+      serviceFrom: Type.String({ format: "date" }),
+      serviceTo: Type.String({ format: "date" }),
+      admissionDate: Type.String({ format: "date" }),
+      lines: Type.Array(
+        Type.Object({
+          lineNumber: Type.Integer(),
+          revenueCode: Type.String(),
+          hcpcs: Type.String(),
+          modifiers: Type.Array(Type.String()),
+          units: Type.Number(),
+          chargeCents: Type.Integer(),
+          serviceDateFrom: Type.String({ format: "date" }),
+          serviceDateTo: Type.String({ format: "date" }),
+        }),
+      ),
+      diagnosisCodes: Type.Array(Type.String()),
+      totalChargeCents: Type.Integer(),
+      nonCoveredChargeCents: Type.Integer(),
+    }),
+  ),
+  rendererGaps: Type.Optional(
+    Type.Array(Type.Object({ field: Type.String(), reason: Type.String() })),
+  ),
+  payloadDigest: Type.Null(),
+  payloadDigestStatus: Type.Literal("not_available_from_read_projection"),
+  submissionEligible: Type.Boolean(),
+});
 const M23ClaimStateHistoryView = Type.Object({
   historyId: Type.String(),
   claimId: Type.String(),
@@ -13228,6 +13280,13 @@ const M23ClaimSubmissionView = Type.Object({
   claimControlNumber: Type.String(),
   attemptIndex: Type.Integer(),
   outcome: M23ClaimSubmissionOutcome,
+  dispatchState: Type.Union([
+    Type.Literal("pending"),
+    Type.Literal("sending"),
+    Type.Literal("in_doubt"),
+    Type.Literal("finished"),
+  ]),
+  dispatchReasonCode: Type.Union([Type.String({ pattern: "^[A-Z0-9_]{1,64}$" }), Type.Null()]),
   outcomeReason: Type.Union([Type.String(), Type.Null()]),
   generatedFileUri: Type.Union([Type.String(), Type.Null()]),
   submittedAt: Type.Union([Type.String(), Type.Null()]),
@@ -13490,6 +13549,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Single-claim detail - lines + per-diem class + SIA + latest run + submissions + acks (§4.1 #3)",
     response: M23ClaimDetailResponse,
+  },
+  "GET /api/v1/billing/claims/:id/preparation": {
+    summary: "Read-only claim preparation and verified payer-route readiness projection",
+    response: M23ClaimPreparationResponse,
   },
   "GET /api/v1/billing/claims/:id/acknowledgments": {
     summary: "All 999 / 277CA / 835 acknowledgments for a claim (§4.1 #13)",
@@ -15264,6 +15327,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Assemble a hospice 837I claim for a COMMERCIAL primary payer from the shared claim facts, priced from the plan's contract rates (plan, route and rate periods intersected with the window); records COB when Medicare or Medicaid is secondary. 409 NON_COMMERCIAL_PRIMARY_PAYER when the primary payer is not a commercial plan (Medicare is Module 23, Medicaid Module 24); 422 COMMERCIAL_PLAN_NOT_FOUND",
     body: M41AssembleBodySchema,
     response: M41AssembleResponseSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/billing/commercial/claims/:id/corrections/clearinghouse-rejection": {
+    summary:
+      "Create a new original-frequency draft from current authoritative claim facts after a verified clearinghouse-stage rejection and before any payer response. The original claim and attempts remain unchanged. Payer-accepted replacements and payer-side voids remain blocked pending a verified plan contract.",
+    body: M41RejectedCorrectionBodySchema,
+    response: M41RejectedCorrectionResponseSchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     status: 201,
   },

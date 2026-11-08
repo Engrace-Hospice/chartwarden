@@ -75,47 +75,69 @@ export function CommercialClaimTimeline(): JSX.Element {
       }
     >
       {(timeline) => (
-        <Panel title="Timeline" icon="clock" flush>
-          {timeline.truncated ? (
-            <InlineAlert tone="warning">
-              Older events are not shown. Only the newest events are kept on this screen.
-            </InlineAlert>
+        <>
+          {timeline.claimLineage.length > 1 ? (
+            <Panel title="Original and corrections" icon="file-text">
+              <ul className="wx-checklist" aria-label="Claim correction chain">
+                {timeline.claimLineage.map((claim) => (
+                  <li key={claim.id}>
+                    <span className="wx-checklist-text">
+                      <Link to={COMMERCIAL_PATHS.claim(claim.id)}>
+                        {claim.relation === "original" ? "Original claim" : "Corrected draft"} ·{" "}
+                        {claim.claimControlNumber}
+                      </Link>{" "}
+                      <StatusPill
+                        label={statusLabel(claim.state)}
+                        tone={claimStateTone(claim.state)}
+                      />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Panel>
           ) : null}
-          {timeline.items.length === 0 ? (
-            <EmptyState title="No history yet" description="This claim has no recorded events." />
-          ) : (
-            <div className="wx-list-table-wrap">
-              <table className="wx-list-table wx-list-table-static">
-                <caption className="wx-sr-only">Claim history</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">When (UTC)</th>
-                    <th scope="col">Event</th>
-                    <th scope="col">What happened</th>
-                    <th scope="col">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {timeline.items.map((item, i) => {
-                    const d = describe(item);
-                    return (
-                      <tr key={`${item.kind}-${item.at}-${i}`}>
-                        <td className="wx-nums">{when(item.at)}</td>
-                        <td>{d.kind}</td>
-                        <td>{d.what}</td>
-                        <td>{d.status}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <p className="wx-row-sub" style={{ margin: "0.75rem 1rem" }}>
-            <Link to={COMMERCIAL_PATHS.claim(timeline.claimId)}>Back to the claim</Link> ·{" "}
-            <Link to={COMMERCIAL_PATHS.sendGate(timeline.claimId)}>Send gate</Link>
-          </p>
-        </Panel>
+          <Panel title="Timeline" icon="clock" flush>
+            {timeline.truncated ? (
+              <InlineAlert tone="warning">
+                Older events are not shown. Only the newest events are kept on this screen.
+              </InlineAlert>
+            ) : null}
+            {timeline.items.length === 0 ? (
+              <EmptyState title="No history yet" description="This claim has no recorded events." />
+            ) : (
+              <div className="wx-list-table-wrap">
+                <table className="wx-list-table wx-list-table-static">
+                  <caption className="wx-sr-only">Claim history</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">When (UTC)</th>
+                      <th scope="col">Event</th>
+                      <th scope="col">What happened</th>
+                      <th scope="col">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {timeline.items.map((item, i) => {
+                      const d = describe(item);
+                      return (
+                        <tr key={`${item.kind}-${item.at}-${i}`}>
+                          <td className="wx-nums">{when(item.at)}</td>
+                          <td>{d.kind}</td>
+                          <td>{d.what}</td>
+                          <td>{d.status}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="wx-row-sub" style={{ margin: "0.75rem 1rem" }}>
+              <Link to={COMMERCIAL_PATHS.claim(timeline.claimId)}>Back to the claim</Link> ·{" "}
+              <Link to={COMMERCIAL_PATHS.sendGate(timeline.claimId)}>Send gate</Link>
+            </p>
+          </Panel>
+        </>
       )}
     </ClaimSubpage>
   );

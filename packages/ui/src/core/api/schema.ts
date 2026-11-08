@@ -6154,6 +6154,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/claims/{id}/preparation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read-only claim preparation and verified payer-route readiness projection */
+        get: operations["getApiV1BillingClaimsByIdPreparation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/claims/{id}/replace": {
         parameters: {
             query?: never;
@@ -6214,7 +6231,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** READY → SUBMITTED — emits m23.claim.submit_requested (PE scope + step-up + If-Match; 202, §4.1 #7) */
+        /** Submit an M23 claim only with the current short-lived reviewed-preview confirmation (PE scope + step-up + If-Match; 202, §4.1 #7) */
         post: operations["postApiV1BillingClaimsByIdSubmit"];
         delete?: never;
         options?: never;
@@ -6421,6 +6438,23 @@ export interface paths {
         get: operations["getApiV1BillingCommercialClaimsById"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/claims/{id}/corrections/clearinghouse-rejection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a new original-frequency draft from current authoritative claim facts after a verified clearinghouse-stage rejection and before any payer response. The original claim and attempts remain unchanged. Payer-accepted replacements and payer-side voids remain blocked pending a verified plan contract. */
+        post: operations["postApiV1BillingCommercialClaimsByIdCorrectionsClearinghouserejection"];
         delete?: never;
         options?: never;
         head?: never;
@@ -19273,6 +19307,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ops/claimmd/eras/{inboxId}/recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1OpsClaimmdErasByInboxIdRecovery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ops/outbox": {
         parameters: {
             query?: never;
@@ -24587,6 +24637,38 @@ export interface paths {
         put?: never;
         /** Queue a remittance advice for re-parse/replay (§4.1) */
         post: operations["postApiV1RemittanceAdvicesByIdReplay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/claimmd-era": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1RemittanceClaimmdera"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/claimmd-era/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1RemittanceClaimmderaById"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -47636,6 +47718,73 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingClaimsByIdPreparation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        route: {
+                            status: "verified" | "not_configured" | "not_applicable";
+                            reasonCode?: string;
+                        };
+                        previewVersion: number;
+                        /** Format: date-time */
+                        previewGeneratedAt: string;
+                        previewExpiresAt: string | null;
+                        previewConfirmationToken: string | null;
+                        rendererStatus: "rendered" | "blocked";
+                        billingPreview?: {
+                            tob: string;
+                            /** Format: date */
+                            serviceFrom: string;
+                            /** Format: date */
+                            serviceTo: string;
+                            /** Format: date */
+                            admissionDate: string;
+                            lines: {
+                                lineNumber: number;
+                                revenueCode: string;
+                                hcpcs: string;
+                                modifiers: string[];
+                                units: number;
+                                chargeCents: number;
+                                /** Format: date */
+                                serviceDateFrom: string;
+                                /** Format: date */
+                                serviceDateTo: string;
+                            }[];
+                            diagnosisCodes: string[];
+                            totalChargeCents: number;
+                            nonCoveredChargeCents: number;
+                        };
+                        rendererGaps?: {
+                            field: string;
+                            reason: string;
+                        }[];
+                        payloadDigest: null;
+                        /** @constant */
+                        payloadDigestStatus: "not_available_from_read_projection";
+                        submissionEligible: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1BillingClaimsByIdReplace: {
         parameters: {
             query?: never;
@@ -47738,7 +47887,9 @@ export interface operations {
                         transferNoticeId: string | null;
                         claimControlNumber: string;
                         attemptIndex: number;
-                        outcome: "queued" | "generated" | "submitted" | "failed_worker" | "failed_portal";
+                        outcome: "queued" | "generated" | "submitted" | "failed_worker" | "failed_portal" | "held_stale_source";
+                        dispatchState: "pending" | "sending" | "in_doubt" | "finished";
+                        dispatchReasonCode: string | null;
                         outcomeReason: string | null;
                         generatedFileUri: string | null;
                         submittedAt: string | null;
@@ -47764,7 +47915,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    acknowledgeAllOverrides?: boolean;
+                    previewConfirmationToken: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             202: {
@@ -48308,6 +48467,21 @@ export interface operations {
                             expectedPaymentCents: number | null;
                             readyAt: string | null;
                         };
+                        correction: {
+                            correctionOfClaimId: string | null;
+                            correctionKind: string | null;
+                            correctionReasonCode: string | null;
+                            relatedClaims: {
+                                id: string;
+                                claimControlNumber: string;
+                                state: string;
+                                relation: "original" | "correction";
+                            }[];
+                            rejectedCorrection: {
+                                eligible: boolean;
+                                reasonCode: string;
+                            };
+                        };
                         lines: {
                             lineNumber: number;
                             levelOfCare: string;
@@ -48333,6 +48507,43 @@ export interface operations {
                                 message: string;
                             }[];
                         } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialClaimsByIdCorrectionsClearinghouserejection: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reasonCode: "claim_data_corrected" | "clearinghouse_edit_corrected" | "other_verified_correction";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        claimId: string;
+                        parentClaimId: string;
+                        replayed: boolean;
                     };
                 };
             };
@@ -48520,6 +48731,12 @@ export interface operations {
                         claimId: string;
                         patientId: string;
                         state: string;
+                        claimLineage: {
+                            id: string;
+                            claimControlNumber: string;
+                            state: string;
+                            relation: "original" | "correction";
+                        }[];
                         items: ({
                             /** @constant */
                             kind: "acknowledgment";
@@ -74382,6 +74599,27 @@ export interface operations {
                             validationRunIdLatest: string | null;
                             eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
                             electronicSubmissionRefusal: string | null;
+                            routeReadiness: {
+                                serviceState: string;
+                                programKind: "managed_care" | "unresolved";
+                                /** @constant */
+                                programAssignmentVerified: false;
+                                requestedChannel: "cco_clearinghouse" | null;
+                                /** @constant */
+                                localPreparationAvailable: true;
+                                transportConfigured: boolean;
+                                /** @constant */
+                                providerEnrollmentVerified: false;
+                                /** @constant */
+                                tradingPartnerCertificationVerified: false;
+                                /** @constant */
+                                outboundFormat: "unverified";
+                                /** @constant */
+                                submissionAvailable: false;
+                                status: "transport_unconfigured" | "certification_pending" | "unsupported_program_route" | "unsupported_state_program";
+                                reasonCode: string;
+                                message: string;
+                            };
                             /** Format: date-time */
                             createdAt: string;
                             /** Format: date-time */
@@ -74455,6 +74693,27 @@ export interface operations {
                         validationRunIdLatest: string | null;
                         eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
                         electronicSubmissionRefusal: string | null;
+                        routeReadiness: {
+                            serviceState: string;
+                            programKind: "managed_care" | "unresolved";
+                            /** @constant */
+                            programAssignmentVerified: false;
+                            requestedChannel: "cco_clearinghouse" | null;
+                            /** @constant */
+                            localPreparationAvailable: true;
+                            transportConfigured: boolean;
+                            /** @constant */
+                            providerEnrollmentVerified: false;
+                            /** @constant */
+                            tradingPartnerCertificationVerified: false;
+                            /** @constant */
+                            outboundFormat: "unverified";
+                            /** @constant */
+                            submissionAvailable: false;
+                            status: "transport_unconfigured" | "certification_pending" | "unsupported_program_route" | "unsupported_state_program";
+                            reasonCode: string;
+                            message: string;
+                        };
                         /** Format: date-time */
                         createdAt: string;
                         /** Format: date-time */
@@ -74508,6 +74767,27 @@ export interface operations {
                         validationRunIdLatest: string | null;
                         eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
                         electronicSubmissionRefusal: string | null;
+                        routeReadiness: {
+                            serviceState: string;
+                            programKind: "managed_care" | "unresolved";
+                            /** @constant */
+                            programAssignmentVerified: false;
+                            requestedChannel: "cco_clearinghouse" | null;
+                            /** @constant */
+                            localPreparationAvailable: true;
+                            transportConfigured: boolean;
+                            /** @constant */
+                            providerEnrollmentVerified: false;
+                            /** @constant */
+                            tradingPartnerCertificationVerified: false;
+                            /** @constant */
+                            outboundFormat: "unverified";
+                            /** @constant */
+                            submissionAvailable: false;
+                            status: "transport_unconfigured" | "certification_pending" | "unsupported_program_route" | "unsupported_state_program";
+                            reasonCode: string;
+                            message: string;
+                        };
                         /** Format: date-time */
                         createdAt: string;
                         /** Format: date-time */
@@ -74552,9 +74832,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    mcoId?: string | null;
-                };
+                "application/json": Record<string, never>;
             };
         };
         responses: {
@@ -74589,6 +74867,27 @@ export interface operations {
                         validationRunIdLatest: string | null;
                         eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
                         electronicSubmissionRefusal: string | null;
+                        routeReadiness: {
+                            serviceState: string;
+                            programKind: "managed_care" | "unresolved";
+                            /** @constant */
+                            programAssignmentVerified: false;
+                            requestedChannel: "cco_clearinghouse" | null;
+                            /** @constant */
+                            localPreparationAvailable: true;
+                            transportConfigured: boolean;
+                            /** @constant */
+                            providerEnrollmentVerified: false;
+                            /** @constant */
+                            tradingPartnerCertificationVerified: false;
+                            /** @constant */
+                            outboundFormat: "unverified";
+                            /** @constant */
+                            submissionAvailable: false;
+                            status: "transport_unconfigured" | "certification_pending" | "unsupported_program_route" | "unsupported_state_program";
+                            reasonCode: string;
+                            message: string;
+                        };
                         /** Format: date-time */
                         createdAt: string;
                         /** Format: date-time */
@@ -74642,6 +74941,27 @@ export interface operations {
                         validationRunIdLatest: string | null;
                         eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
                         electronicSubmissionRefusal: string | null;
+                        routeReadiness: {
+                            serviceState: string;
+                            programKind: "managed_care" | "unresolved";
+                            /** @constant */
+                            programAssignmentVerified: false;
+                            requestedChannel: "cco_clearinghouse" | null;
+                            /** @constant */
+                            localPreparationAvailable: true;
+                            transportConfigured: boolean;
+                            /** @constant */
+                            providerEnrollmentVerified: false;
+                            /** @constant */
+                            tradingPartnerCertificationVerified: false;
+                            /** @constant */
+                            outboundFormat: "unverified";
+                            /** @constant */
+                            submissionAvailable: false;
+                            status: "transport_unconfigured" | "certification_pending" | "unsupported_program_route" | "unsupported_state_program";
+                            reasonCode: string;
+                            message: string;
+                        };
                         /** Format: date-time */
                         createdAt: string;
                         /** Format: date-time */
@@ -74783,6 +75103,27 @@ export interface operations {
                         validationRunIdLatest: string | null;
                         eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
                         electronicSubmissionRefusal: string | null;
+                        routeReadiness: {
+                            serviceState: string;
+                            programKind: "managed_care" | "unresolved";
+                            /** @constant */
+                            programAssignmentVerified: false;
+                            requestedChannel: "cco_clearinghouse" | null;
+                            /** @constant */
+                            localPreparationAvailable: true;
+                            transportConfigured: boolean;
+                            /** @constant */
+                            providerEnrollmentVerified: false;
+                            /** @constant */
+                            tradingPartnerCertificationVerified: false;
+                            /** @constant */
+                            outboundFormat: "unverified";
+                            /** @constant */
+                            submissionAvailable: false;
+                            status: "transport_unconfigured" | "certification_pending" | "unsupported_program_route" | "unsupported_state_program";
+                            reasonCode: string;
+                            message: string;
+                        };
                         /** Format: date-time */
                         createdAt: string;
                         /** Format: date-time */
@@ -74883,6 +75224,27 @@ export interface operations {
                         validationRunIdLatest: string | null;
                         eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
                         electronicSubmissionRefusal: string | null;
+                        routeReadiness: {
+                            serviceState: string;
+                            programKind: "managed_care" | "unresolved";
+                            /** @constant */
+                            programAssignmentVerified: false;
+                            requestedChannel: "cco_clearinghouse" | null;
+                            /** @constant */
+                            localPreparationAvailable: true;
+                            transportConfigured: boolean;
+                            /** @constant */
+                            providerEnrollmentVerified: false;
+                            /** @constant */
+                            tradingPartnerCertificationVerified: false;
+                            /** @constant */
+                            outboundFormat: "unverified";
+                            /** @constant */
+                            submissionAvailable: false;
+                            status: "transport_unconfigured" | "certification_pending" | "unsupported_program_route" | "unsupported_state_program";
+                            reasonCode: string;
+                            message: string;
+                        };
                         /** Format: date-time */
                         createdAt: string;
                         /** Format: date-time */
@@ -75020,6 +75382,27 @@ export interface operations {
                         validationRunIdLatest: string | null;
                         eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
                         electronicSubmissionRefusal: string | null;
+                        routeReadiness: {
+                            serviceState: string;
+                            programKind: "managed_care" | "unresolved";
+                            /** @constant */
+                            programAssignmentVerified: false;
+                            requestedChannel: "cco_clearinghouse" | null;
+                            /** @constant */
+                            localPreparationAvailable: true;
+                            transportConfigured: boolean;
+                            /** @constant */
+                            providerEnrollmentVerified: false;
+                            /** @constant */
+                            tradingPartnerCertificationVerified: false;
+                            /** @constant */
+                            outboundFormat: "unverified";
+                            /** @constant */
+                            submissionAvailable: false;
+                            status: "transport_unconfigured" | "certification_pending" | "unsupported_program_route" | "unsupported_state_program";
+                            reasonCode: string;
+                            message: string;
+                        };
                         /** Format: date-time */
                         createdAt: string;
                         /** Format: date-time */
@@ -86837,6 +87220,28 @@ export interface operations {
                         externalActorId: string;
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OpsClaimmdErasByInboxIdRecovery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                inboxId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -101417,6 +101822,48 @@ export interface operations {
                         status: "queued";
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceClaimmdera: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceClaimmderaById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

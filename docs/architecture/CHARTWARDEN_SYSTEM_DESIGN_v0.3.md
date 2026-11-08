@@ -396,7 +396,7 @@ networks:
   chartwarden: { driver: bridge }
 services:
   postgres:
-    image: pgvector/pgvector:pg18
+    image: ghcr.io/engrace-hospice/chartwarden-postgres:18-sha-<commit>   # or build deploy/production/postgres
     ports: ["5432:5432"]
     volumes: [./data/pg:/var/lib/postgresql/data]
     networks: [chartwarden]

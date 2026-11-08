@@ -18,6 +18,11 @@
  *     `RUST_ROUTE_MODE`, ...) are set as literals in `api`'s `environment:` and nowhere else. `.env.production` is
  *     injected into seven containers, so none of them may find a RUST_* there, and a service that `extends` api must
  *     `!reset` what it inherits.
+ *  5. The backup image chain (`checkBackupImageChain`): production runs `chartwarden-backup:local`, built from
+ *     deploy/production/backup/Dockerfile on the Postgres image compose.yml pins. That Dockerfile's `POSTGRES_IMAGE`
+ *     default must equal compose.yml's postgres image, and its pgBackRest build stage must use the postgres
+ *     Dockerfile's wolfi-base digest and PG_VERSION (libpq and glibc must be the ones the cluster runs). Each is a
+ *     hand-copied pin, so a bump of one that forgets the other would ship a backup toolchain on a different base.
  *
  * Run:  bun run arch:compose-policy   (in `arch:fitness`)
  */
@@ -29,6 +34,8 @@ import yaml from "js-yaml";
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const COMPOSE_PATH = "deploy/production/compose.yml";
 const ENV_EXAMPLE_PATH = "deploy/production/.env.production.example";
+const BACKUP_DOCKERFILE_PATH = "deploy/production/backup/Dockerfile";
+const POSTGRES_DOCKERFILE_PATH = "deploy/production/postgres/Dockerfile";
 /** `repo[:port]/name:tag@sha256:<digest>` - a tag is required beside the digest so a human can read the version. */
 const PINNED_IMAGE = /^[^\s@]+:[^\s@/]+@sha256:[0-9a-f]{64}$/;
 /** Services that must reserve memory (capacity guaranteed against the other services on the host). */
@@ -295,6 +302,44 @@ export function checkRustEnvExample(text: string): string[] {
     );
 }
 
+/** The wolfi-base digest and PG_VERSION the postgres Dockerfile and the backup build stage each carry a copy of. */
+const BACKUP_BASE_PINS: readonly (readonly [string, RegExp])[] = [
+  ["wolfi-base digest", /^FROM\s+\S*wolfi-base@(sha256:[0-9a-f]{64})/m],
+  ["PG_VERSION", /^ARG PG_VERSION=(\S+)/m],
+];
+
+/** The backup image must be built on the Postgres production runs, with the Postgres Dockerfile's libpq and glibc. */
+export function checkBackupImageChain(
+  doc: ComposeDoc,
+  backupDockerfile: string,
+  postgresDockerfile: string,
+): string[] {
+  const failures: string[] = [];
+  const composeImage = doc.services?.postgres?.image;
+  const defaultImage = /^ARG POSTGRES_IMAGE=(\S+)/m.exec(backupDockerfile)?.[1];
+  if (defaultImage === undefined) {
+    failures.push(`${BACKUP_DOCKERFILE_PATH}: no "ARG POSTGRES_IMAGE=<default>" line`);
+  } else if (defaultImage !== composeImage) {
+    failures.push(
+      `${BACKUP_DOCKERFILE_PATH}: POSTGRES_IMAGE default "${defaultImage}" must equal compose.yml's postgres image "${String(composeImage)}"`,
+    );
+  }
+  for (const [label, re] of BACKUP_BASE_PINS) {
+    const backup = re.exec(backupDockerfile)?.[1];
+    const postgres = re.exec(postgresDockerfile)?.[1];
+    if (backup === undefined || postgres === undefined) {
+      failures.push(
+        `no ${label} found in ${backup === undefined ? BACKUP_DOCKERFILE_PATH : POSTGRES_DOCKERFILE_PATH}`,
+      );
+    } else if (backup !== postgres) {
+      failures.push(
+        `${BACKUP_DOCKERFILE_PATH}: ${label} "${backup}" must equal ${POSTGRES_DOCKERFILE_PATH}'s "${postgres}"`,
+      );
+    }
+  }
+  return failures;
+}
+
 export function loadCompose(path = join(REPO_ROOT, COMPOSE_PATH)): ComposeDoc {
   // `!reset` (compose-specific tag) is not in the default schema: treat it as a plain empty value.
   // `!reset` loads as the RESET marker so `extends` resolution (checkRustTopology) can honour it.
@@ -306,9 +351,12 @@ export function loadCompose(path = join(REPO_ROOT, COMPOSE_PATH)): ComposeDoc {
 }
 
 if (import.meta.main) {
+  const read = (path: string) => readFileSync(join(REPO_ROOT, path), "utf8");
+  const compose = loadCompose();
   const failures = [
-    ...checkCompose(loadCompose()),
-    ...checkRustEnvExample(readFileSync(join(REPO_ROOT, ENV_EXAMPLE_PATH), "utf8")),
+    ...checkCompose(compose),
+    ...checkRustEnvExample(read(ENV_EXAMPLE_PATH)),
+    ...checkBackupImageChain(compose, read(BACKUP_DOCKERFILE_PATH), read(POSTGRES_DOCKERFILE_PATH)),
   ];
   if (failures.length > 0) {
     console.error(`arch:compose-policy FAILED (${COMPOSE_PATH}):`);
@@ -316,6 +364,6 @@ if (import.meta.main) {
     process.exit(1);
   }
   console.log(
-    "arch:compose-policy OK: every literal image is digest-pinned, every service is resource-bounded, and the Rust topology holds.",
+    "arch:compose-policy OK: every literal image is digest-pinned, every service is resource-bounded, the Rust topology holds, and the backup image builds on the pinned Postgres.",
   );
 }

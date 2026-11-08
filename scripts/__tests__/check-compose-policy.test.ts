@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   RESET,
+  checkBackupImageChain,
   checkCompose,
   checkRustEnvExample,
   checkRustEnvScope,
@@ -264,5 +268,44 @@ describe("arch:compose-policy — RUST_* settings reach api only (P2 prerequisit
   it("flags an active RUST_* assignment in the env file example, not a comment", () => {
     expect(checkRustEnvExample("A=1\n# RUST_ROUTES=/x is set in compose.yml\n")).toEqual([]);
     expect(checkRustEnvExample("A=1\nRUST_ROUTES=/x\n").join("\n")).toContain("RUST_ROUTES");
+  });
+});
+
+describe("arch:compose-policy — the backup image is built on the Postgres production runs", () => {
+  const BASE = `sha256:${"b".repeat(64)}`;
+  const image = `ghcr.io/x/chartwarden-postgres:18-sha-1@${DIGEST}`;
+  const doc = { services: { postgres: { image, ...bounded } } };
+  const backup = (opts: { image?: string; base?: string; pg?: string } = {}) =>
+    [
+      `ARG POSTGRES_IMAGE=${opts.image ?? image}`,
+      `FROM cgr.dev/chainguard/wolfi-base@${opts.base ?? BASE} AS pgbackrest-build`,
+      `ARG PG_VERSION=${opts.pg ?? "18.6-r7"}`,
+    ].join("\n");
+  const postgres = `FROM cgr.dev/chainguard/wolfi-base@${BASE}\nARG PG_VERSION=18.6-r7\n`;
+
+  it("accepts equal pins", () => {
+    expect(checkBackupImageChain(doc, backup(), postgres)).toEqual([]);
+  });
+
+  it("rejects a Postgres image, base digest or PG_VERSION that drifted, and a missing pin", () => {
+    const drifted = checkBackupImageChain(
+      doc,
+      backup({ image: `${image}x`, base: `sha256:${"c".repeat(64)}`, pg: "18.7-r0" }),
+      postgres,
+    );
+    expect(drifted).toHaveLength(3);
+    expect(checkBackupImageChain(doc, "FROM scratch\n", postgres)).toHaveLength(3);
+  });
+
+  it("holds on the real Dockerfiles and compose file", () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+    const read = (p: string) => readFileSync(join(root, p), "utf8");
+    expect(
+      checkBackupImageChain(
+        loadCompose(),
+        read("deploy/production/backup/Dockerfile"),
+        read("deploy/production/postgres/Dockerfile"),
+      ),
+    ).toEqual([]);
   });
 });

@@ -1,0 +1,9 @@
+# Durable attempt and worker guard
+
+Migration 1378 adds nullable `claim_submission.reviewed_source_fingerprint`, a 64-hex check, and `held_stale_source` outcome. Existing queued-to-terminal trigger logic was extended so the fingerprint is immutable and only the new stable hold outcome is admitted. Historical rows remain null.
+
+The submit outbox payload and queued job carry the fingerprint; the worker also reads the authoritative original submission row and verifies job-to-row equality. Immediately after rendering and before calling the transport, the worker compares the current keyed source identity. Route/account/environment checks and final immutable X12 evidence remain at their existing boundaries.
+
+On mismatch or missing required snapshot, the original queued row becomes `held_stale_source` with safe reason `CLAIM_PREVIEW_STALE`; no failed event/retry is emitted. A retry copies the original fingerprint and is held before transport if current sources differ. Replaying an already terminalized held row cannot send it. Both configured clearinghouse and legacy MAC compositions use `renderClaimForTransport` when the authoritative loader and context ports are present; the legacy fallback remains available for historical jobs without a reviewed fingerprint and cannot send a new reviewed attempt if it cannot compute the current fingerprint.
+
+The database read and external send cannot be made atomic. This implementation revalidates immediately before transport; the rendered bytes are fixed before the send and changes after the read do not rewrite them. The existing worker framework still runs the processor inside `withOrgContext`, so its transaction scope spans the HTTP call. This predates BIL-2.1.2, but remains a transaction-duration/locking risk to evaluate and, if needed, refactor during cumulative validation before activation. No Claim.MD call was made.

@@ -80209,6 +80209,240 @@
         }
       }
     },
+    "/api/v1/billing/claims/{id}/preparation": {
+      "get": {
+        "operationId": "getApiV1BillingClaimsByIdPreparation",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Read-only claim preparation and verified payer-route readiness projection",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "route",
+                    "previewVersion",
+                    "previewGeneratedAt",
+                    "previewExpiresAt",
+                    "previewConfirmationToken",
+                    "rendererStatus",
+                    "payloadDigest",
+                    "payloadDigestStatus",
+                    "submissionEligible"
+                  ],
+                  "properties": {
+                    "route": {
+                      "type": "object",
+                      "required": [
+                        "status"
+                      ],
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "not_configured",
+                              "type": "string"
+                            },
+                            {
+                              "const": "not_applicable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "previewVersion": {
+                      "type": "integer"
+                    },
+                    "previewGeneratedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "previewExpiresAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "previewConfirmationToken": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rendererStatus": {
+                      "anyOf": [
+                        {
+                          "const": "rendered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "billingPreview": {
+                      "type": "object",
+                      "required": [
+                        "tob",
+                        "serviceFrom",
+                        "serviceTo",
+                        "admissionDate",
+                        "lines",
+                        "diagnosisCodes",
+                        "totalChargeCents",
+                        "nonCoveredChargeCents"
+                      ],
+                      "properties": {
+                        "tob": {
+                          "type": "string"
+                        },
+                        "serviceFrom": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "serviceTo": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "admissionDate": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "lines": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "lineNumber",
+                              "revenueCode",
+                              "hcpcs",
+                              "modifiers",
+                              "units",
+                              "chargeCents",
+                              "serviceDateFrom",
+                              "serviceDateTo"
+                            ],
+                            "properties": {
+                              "lineNumber": {
+                                "type": "integer"
+                              },
+                              "revenueCode": {
+                                "type": "string"
+                              },
+                              "hcpcs": {
+                                "type": "string"
+                              },
+                              "modifiers": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "units": {
+                                "type": "number"
+                              },
+                              "chargeCents": {
+                                "type": "integer"
+                              },
+                              "serviceDateFrom": {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              "serviceDateTo": {
+                                "format": "date",
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "diagnosisCodes": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "totalChargeCents": {
+                          "type": "integer"
+                        },
+                        "nonCoveredChargeCents": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "rendererGaps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "reason"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "payloadDigest": {
+                      "type": "null"
+                    },
+                    "payloadDigestStatus": {
+                      "const": "not_available_from_read_projection",
+                      "type": "string"
+                    },
+                    "submissionEligible": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/billing/claims/{id}/replace": {
       "post": {
         "operationId": "postApiV1BillingClaimsByIdReplace",
@@ -80589,6 +80823,8 @@
                       "claimControlNumber",
                       "attemptIndex",
                       "outcome",
+                      "dispatchState",
+                      "dispatchReasonCode",
                       "outcomeReason",
                       "generatedFileUri",
                       "submittedAt",
@@ -80688,6 +80924,41 @@
                           {
                             "const": "failed_portal",
                             "type": "string"
+                          },
+                          {
+                            "const": "held_stale_source",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "dispatchState": {
+                        "anyOf": [
+                          {
+                            "const": "pending",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sending",
+                            "type": "string"
+                          },
+                          {
+                            "const": "in_doubt",
+                            "type": "string"
+                          },
+                          {
+                            "const": "finished",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "dispatchReasonCode": {
+                        "anyOf": [
+                          {
+                            "pattern": "^[A-Z0-9_]{1,64}$",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
                           }
                         ]
                       },
@@ -80745,7 +81016,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "READY → SUBMITTED — emits m23.claim.submit_requested (PE scope + step-up + If-Match; 202, §4.1 #7)",
+        "summary": "Submit an M23 claim only with the current short-lived reviewed-preview confirmation (PE scope + step-up + If-Match; 202, §4.1 #7)",
         "parameters": [
           {
             "name": "id",
@@ -80783,6 +81054,34 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion",
+                  "previewConfirmationToken"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "acknowledgeAllOverrides": {
+                    "type": "boolean"
+                  },
+                  "previewConfirmationToken": {
+                    "minLength": 20,
+                    "maxLength": 4096,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -82194,6 +82493,7 @@
                     "plan",
                     "authorizations",
                     "claim",
+                    "correction",
                     "lines",
                     "validation"
                   ],
@@ -82360,6 +82660,98 @@
                         }
                       }
                     },
+                    "correction": {
+                      "type": "object",
+                      "required": [
+                        "correctionOfClaimId",
+                        "correctionKind",
+                        "correctionReasonCode",
+                        "relatedClaims",
+                        "rejectedCorrection"
+                      ],
+                      "properties": {
+                        "correctionOfClaimId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "correctionKind": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "correctionReasonCode": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "relatedClaims": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "claimControlNumber",
+                              "state",
+                              "relation"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "claimControlNumber": {
+                                "type": "string"
+                              },
+                              "state": {
+                                "type": "string"
+                              },
+                              "relation": {
+                                "anyOf": [
+                                  {
+                                    "const": "original",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "correction",
+                                    "type": "string"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "rejectedCorrection": {
+                          "type": "object",
+                          "required": [
+                            "eligible",
+                            "reasonCode"
+                          ],
+                          "properties": {
+                            "eligible": {
+                              "type": "boolean"
+                            },
+                            "reasonCode": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
                     "lines": {
                       "type": "array",
                       "items": {
@@ -82495,6 +82887,100 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/claims/{id}/corrections/clearinghouse-rejection": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialClaimsByIdCorrectionsClearinghouserejection",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Create a new original-frequency draft from current authoritative claim facts after a verified clearinghouse-stage rejection and before any payer response. The original claim and attempts remain unchanged. Payer-accepted replacements and payer-side voids remain blocked pending a verified plan contract.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "claimId",
+                    "parentClaimId",
+                    "replayed"
+                  ],
+                  "properties": {
+                    "claimId": {
+                      "type": "string"
+                    },
+                    "parentClaimId": {
+                      "type": "string"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reasonCode"
+                ],
+                "properties": {
+                  "reasonCode": {
+                    "anyOf": [
+                      {
+                        "const": "claim_data_corrected",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clearinghouse_edit_corrected",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other_verified_correction",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -82987,6 +83473,7 @@
                     "claimId",
                     "patientId",
                     "state",
+                    "claimLineage",
                     "items",
                     "truncated"
                   ],
@@ -82999,6 +83486,41 @@
                     },
                     "state": {
                       "type": "string"
+                    },
+                    "claimLineage": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "claimControlNumber",
+                          "state",
+                          "relation"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "claimControlNumber": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "relation": {
+                            "anyOf": [
+                              {
+                                "const": "original",
+                                "type": "string"
+                              },
+                              {
+                                "const": "correction",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
                     },
                     "items": {
                       "type": "array",
@@ -184198,6 +184720,7 @@
                           "validationRunIdLatest",
                           "eligibilityOutcomeSnapshot",
                           "electronicSubmissionRefusal",
+                          "routeReadiness",
                           "createdAt",
                           "updatedAt"
                         ],
@@ -184443,6 +184966,108 @@
                               }
                             ]
                           },
+                          "routeReadiness": {
+                            "type": "object",
+                            "required": [
+                              "serviceState",
+                              "programKind",
+                              "programAssignmentVerified",
+                              "requestedChannel",
+                              "localPreparationAvailable",
+                              "transportConfigured",
+                              "providerEnrollmentVerified",
+                              "tradingPartnerCertificationVerified",
+                              "outboundFormat",
+                              "submissionAvailable",
+                              "status",
+                              "reasonCode",
+                              "message"
+                            ],
+                            "properties": {
+                              "serviceState": {
+                                "minLength": 2,
+                                "maxLength": 2,
+                                "pattern": "^[A-Z]{2}$",
+                                "type": "string"
+                              },
+                              "programKind": {
+                                "anyOf": [
+                                  {
+                                    "const": "managed_care",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unresolved",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "programAssignmentVerified": {
+                                "const": false,
+                                "type": "boolean"
+                              },
+                              "requestedChannel": {
+                                "anyOf": [
+                                  {
+                                    "const": "cco_clearinghouse",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "localPreparationAvailable": {
+                                "const": true,
+                                "type": "boolean"
+                              },
+                              "transportConfigured": {
+                                "type": "boolean"
+                              },
+                              "providerEnrollmentVerified": {
+                                "const": false,
+                                "type": "boolean"
+                              },
+                              "tradingPartnerCertificationVerified": {
+                                "const": false,
+                                "type": "boolean"
+                              },
+                              "outboundFormat": {
+                                "const": "unverified",
+                                "type": "string"
+                              },
+                              "submissionAvailable": {
+                                "const": false,
+                                "type": "boolean"
+                              },
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "const": "transport_unconfigured",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "certification_pending",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unsupported_program_route",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unsupported_state_program",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "reasonCode": {
+                                "type": "string"
+                              },
+                              "message": {
+                                "type": "string"
+                              }
+                            }
+                          },
                           "createdAt": {
                             "format": "date-time",
                             "type": "string"
@@ -184510,6 +185135,7 @@
                     "validationRunIdLatest",
                     "eligibilityOutcomeSnapshot",
                     "electronicSubmissionRefusal",
+                    "routeReadiness",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -184754,6 +185380,108 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "routeReadiness": {
+                      "type": "object",
+                      "required": [
+                        "serviceState",
+                        "programKind",
+                        "programAssignmentVerified",
+                        "requestedChannel",
+                        "localPreparationAvailable",
+                        "transportConfigured",
+                        "providerEnrollmentVerified",
+                        "tradingPartnerCertificationVerified",
+                        "outboundFormat",
+                        "submissionAvailable",
+                        "status",
+                        "reasonCode",
+                        "message"
+                      ],
+                      "properties": {
+                        "serviceState": {
+                          "minLength": 2,
+                          "maxLength": 2,
+                          "pattern": "^[A-Z]{2}$",
+                          "type": "string"
+                        },
+                        "programKind": {
+                          "anyOf": [
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "programAssignmentVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "requestedChannel": {
+                          "anyOf": [
+                            {
+                              "const": "cco_clearinghouse",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "localPreparationAvailable": {
+                          "const": true,
+                          "type": "boolean"
+                        },
+                        "transportConfigured": {
+                          "type": "boolean"
+                        },
+                        "providerEnrollmentVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "tradingPartnerCertificationVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "outboundFormat": {
+                          "const": "unverified",
+                          "type": "string"
+                        },
+                        "submissionAvailable": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "transport_unconfigured",
+                              "type": "string"
+                            },
+                            {
+                              "const": "certification_pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported_program_route",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported_state_program",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
                     },
                     "createdAt": {
                       "format": "date-time",
@@ -184913,6 +185641,7 @@
                     "validationRunIdLatest",
                     "eligibilityOutcomeSnapshot",
                     "electronicSubmissionRefusal",
+                    "routeReadiness",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -185157,6 +185886,108 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "routeReadiness": {
+                      "type": "object",
+                      "required": [
+                        "serviceState",
+                        "programKind",
+                        "programAssignmentVerified",
+                        "requestedChannel",
+                        "localPreparationAvailable",
+                        "transportConfigured",
+                        "providerEnrollmentVerified",
+                        "tradingPartnerCertificationVerified",
+                        "outboundFormat",
+                        "submissionAvailable",
+                        "status",
+                        "reasonCode",
+                        "message"
+                      ],
+                      "properties": {
+                        "serviceState": {
+                          "minLength": 2,
+                          "maxLength": 2,
+                          "pattern": "^[A-Z]{2}$",
+                          "type": "string"
+                        },
+                        "programKind": {
+                          "anyOf": [
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "programAssignmentVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "requestedChannel": {
+                          "anyOf": [
+                            {
+                              "const": "cco_clearinghouse",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "localPreparationAvailable": {
+                          "const": true,
+                          "type": "boolean"
+                        },
+                        "transportConfigured": {
+                          "type": "boolean"
+                        },
+                        "providerEnrollmentVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "tradingPartnerCertificationVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "outboundFormat": {
+                          "const": "unverified",
+                          "type": "string"
+                        },
+                        "submissionAvailable": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "transport_unconfigured",
+                              "type": "string"
+                            },
+                            {
+                              "const": "certification_pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported_program_route",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported_state_program",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
                     },
                     "createdAt": {
                       "format": "date-time",
@@ -185221,6 +186052,7 @@
                     "validationRunIdLatest",
                     "eligibilityOutcomeSnapshot",
                     "electronicSubmissionRefusal",
+                    "routeReadiness",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -185466,6 +186298,108 @@
                         }
                       ]
                     },
+                    "routeReadiness": {
+                      "type": "object",
+                      "required": [
+                        "serviceState",
+                        "programKind",
+                        "programAssignmentVerified",
+                        "requestedChannel",
+                        "localPreparationAvailable",
+                        "transportConfigured",
+                        "providerEnrollmentVerified",
+                        "tradingPartnerCertificationVerified",
+                        "outboundFormat",
+                        "submissionAvailable",
+                        "status",
+                        "reasonCode",
+                        "message"
+                      ],
+                      "properties": {
+                        "serviceState": {
+                          "minLength": 2,
+                          "maxLength": 2,
+                          "pattern": "^[A-Z]{2}$",
+                          "type": "string"
+                        },
+                        "programKind": {
+                          "anyOf": [
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "programAssignmentVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "requestedChannel": {
+                          "anyOf": [
+                            {
+                              "const": "cco_clearinghouse",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "localPreparationAvailable": {
+                          "const": true,
+                          "type": "boolean"
+                        },
+                        "transportConfigured": {
+                          "type": "boolean"
+                        },
+                        "providerEnrollmentVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "tradingPartnerCertificationVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "outboundFormat": {
+                          "const": "unverified",
+                          "type": "string"
+                        },
+                        "submissionAvailable": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "transport_unconfigured",
+                              "type": "string"
+                            },
+                            {
+                              "const": "certification_pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported_program_route",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported_state_program",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    },
                     "createdAt": {
                       "format": "date-time",
                       "type": "string"
@@ -185493,19 +186427,7 @@
               "schema": {
                 "additionalProperties": false,
                 "type": "object",
-                "properties": {
-                  "mcoId": {
-                    "anyOf": [
-                      {
-                        "format": "uuid",
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                }
+                "properties": {}
               }
             }
           }
@@ -185555,6 +186477,7 @@
                     "validationRunIdLatest",
                     "eligibilityOutcomeSnapshot",
                     "electronicSubmissionRefusal",
+                    "routeReadiness",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -185799,6 +186722,108 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "routeReadiness": {
+                      "type": "object",
+                      "required": [
+                        "serviceState",
+                        "programKind",
+                        "programAssignmentVerified",
+                        "requestedChannel",
+                        "localPreparationAvailable",
+                        "transportConfigured",
+                        "providerEnrollmentVerified",
+                        "tradingPartnerCertificationVerified",
+                        "outboundFormat",
+                        "submissionAvailable",
+                        "status",
+                        "reasonCode",
+                        "message"
+                      ],
+                      "properties": {
+                        "serviceState": {
+                          "minLength": 2,
+                          "maxLength": 2,
+                          "pattern": "^[A-Z]{2}$",
+                          "type": "string"
+                        },
+                        "programKind": {
+                          "anyOf": [
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "programAssignmentVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "requestedChannel": {
+                          "anyOf": [
+                            {
+                              "const": "cco_clearinghouse",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "localPreparationAvailable": {
+                          "const": true,
+                          "type": "boolean"
+                        },
+                        "transportConfigured": {
+                          "type": "boolean"
+                        },
+                        "providerEnrollmentVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "tradingPartnerCertificationVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "outboundFormat": {
+                          "const": "unverified",
+                          "type": "string"
+                        },
+                        "submissionAvailable": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "transport_unconfigured",
+                              "type": "string"
+                            },
+                            {
+                              "const": "certification_pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported_program_route",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported_state_program",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
                     },
                     "createdAt": {
                       "format": "date-time",
@@ -186133,6 +187158,7 @@
                     "validationRunIdLatest",
                     "eligibilityOutcomeSnapshot",
                     "electronicSubmissionRefusal",
+                    "routeReadiness",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -186377,6 +187403,108 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "routeReadiness": {
+                      "type": "object",
+                      "required": [
+                        "serviceState",
+                        "programKind",
+                        "programAssignmentVerified",
+                        "requestedChannel",
+                        "localPreparationAvailable",
+                        "transportConfigured",
+                        "providerEnrollmentVerified",
+                        "tradingPartnerCertificationVerified",
+                        "outboundFormat",
+                        "submissionAvailable",
+                        "status",
+                        "reasonCode",
+                        "message"
+                      ],
+                      "properties": {
+                        "serviceState": {
+                          "minLength": 2,
+                          "maxLength": 2,
+                          "pattern": "^[A-Z]{2}$",
+                          "type": "string"
+                        },
+                        "programKind": {
+                          "anyOf": [
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "programAssignmentVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "requestedChannel": {
+                          "anyOf": [
+                            {
+                              "const": "cco_clearinghouse",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "localPreparationAvailable": {
+                          "const": true,
+                          "type": "boolean"
+                        },
+                        "transportConfigured": {
+                          "type": "boolean"
+                        },
+                        "providerEnrollmentVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "tradingPartnerCertificationVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "outboundFormat": {
+                          "const": "unverified",
+                          "type": "string"
+                        },
+                        "submissionAvailable": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "transport_unconfigured",
+                              "type": "string"
+                            },
+                            {
+                              "const": "certification_pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported_program_route",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported_state_program",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
                     },
                     "createdAt": {
                       "format": "date-time",
@@ -186638,6 +187766,7 @@
                     "validationRunIdLatest",
                     "eligibilityOutcomeSnapshot",
                     "electronicSubmissionRefusal",
+                    "routeReadiness",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -186882,6 +188011,108 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "routeReadiness": {
+                      "type": "object",
+                      "required": [
+                        "serviceState",
+                        "programKind",
+                        "programAssignmentVerified",
+                        "requestedChannel",
+                        "localPreparationAvailable",
+                        "transportConfigured",
+                        "providerEnrollmentVerified",
+                        "tradingPartnerCertificationVerified",
+                        "outboundFormat",
+                        "submissionAvailable",
+                        "status",
+                        "reasonCode",
+                        "message"
+                      ],
+                      "properties": {
+                        "serviceState": {
+                          "minLength": 2,
+                          "maxLength": 2,
+                          "pattern": "^[A-Z]{2}$",
+                          "type": "string"
+                        },
+                        "programKind": {
+                          "anyOf": [
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "programAssignmentVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "requestedChannel": {
+                          "anyOf": [
+                            {
+                              "const": "cco_clearinghouse",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "localPreparationAvailable": {
+                          "const": true,
+                          "type": "boolean"
+                        },
+                        "transportConfigured": {
+                          "type": "boolean"
+                        },
+                        "providerEnrollmentVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "tradingPartnerCertificationVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "outboundFormat": {
+                          "const": "unverified",
+                          "type": "string"
+                        },
+                        "submissionAvailable": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "transport_unconfigured",
+                              "type": "string"
+                            },
+                            {
+                              "const": "certification_pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported_program_route",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported_state_program",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
                     },
                     "createdAt": {
                       "format": "date-time",
@@ -187279,6 +188510,7 @@
                     "validationRunIdLatest",
                     "eligibilityOutcomeSnapshot",
                     "electronicSubmissionRefusal",
+                    "routeReadiness",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -187523,6 +188755,108 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "routeReadiness": {
+                      "type": "object",
+                      "required": [
+                        "serviceState",
+                        "programKind",
+                        "programAssignmentVerified",
+                        "requestedChannel",
+                        "localPreparationAvailable",
+                        "transportConfigured",
+                        "providerEnrollmentVerified",
+                        "tradingPartnerCertificationVerified",
+                        "outboundFormat",
+                        "submissionAvailable",
+                        "status",
+                        "reasonCode",
+                        "message"
+                      ],
+                      "properties": {
+                        "serviceState": {
+                          "minLength": 2,
+                          "maxLength": 2,
+                          "pattern": "^[A-Z]{2}$",
+                          "type": "string"
+                        },
+                        "programKind": {
+                          "anyOf": [
+                            {
+                              "const": "managed_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unresolved",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "programAssignmentVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "requestedChannel": {
+                          "anyOf": [
+                            {
+                              "const": "cco_clearinghouse",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "localPreparationAvailable": {
+                          "const": true,
+                          "type": "boolean"
+                        },
+                        "transportConfigured": {
+                          "type": "boolean"
+                        },
+                        "providerEnrollmentVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "tradingPartnerCertificationVerified": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "outboundFormat": {
+                          "const": "unverified",
+                          "type": "string"
+                        },
+                        "submissionAvailable": {
+                          "const": false,
+                          "type": "boolean"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "transport_unconfigured",
+                              "type": "string"
+                            },
+                            {
+                              "const": "certification_pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported_program_route",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unsupported_state_program",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reasonCode": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
                     },
                     "createdAt": {
                       "format": "date-time",
@@ -234674,6 +236008,35 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/ops/claimmd/eras/{inboxId}/recovery": {
+      "post": {
+        "operationId": "postApiV1OpsClaimmdErasByInboxIdRecovery",
+        "tags": [
+          "bootstrap"
+        ],
+        "parameters": [
+          {
+            "name": "inboxId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -288044,6 +289407,55 @@
                 }
               }
             }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/claimmd-era": {
+      "get": {
+        "operationId": "getApiV1RemittanceClaimmdera",
+        "tags": [
+          "25-remittance"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/claimmd-era/{id}": {
+      "get": {
+        "operationId": "getApiV1RemittanceClaimmderaById",
+        "tags": [
+          "25-remittance"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

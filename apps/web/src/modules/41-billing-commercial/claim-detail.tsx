@@ -43,6 +43,8 @@ import { ValidationPanel } from "./validation-panel";
 
 type ClaimView =
   paths["/api/v1/billing/commercial/claims/{id}"]["get"]["responses"][200]["content"]["application/json"];
+type SendGate =
+  paths["/api/v1/billing/commercial/claims/{id}/send-gate"]["get"]["responses"][200]["content"]["application/json"];
 
 type Load =
   | { readonly status: "loading" }
@@ -51,6 +53,20 @@ type Load =
   | { readonly status: "ready"; readonly view: ClaimView };
 
 type Action = "validate" | "ready" | "void";
+type CorrectionReason =
+  | "claim_data_corrected"
+  | "clearinghouse_edit_corrected"
+  | "other_verified_correction";
+function parseCorrectionReason(value: string): CorrectionReason {
+  switch (value) {
+    case "clearinghouse_edit_corrected":
+      return value;
+    case "other_verified_correction":
+      return value;
+    default:
+      return "claim_data_corrected";
+  }
+}
 const ACTION_PATH = {
   validate: "/api/v1/billing/commercial/claims/{id}/validate",
   ready: "/api/v1/billing/commercial/claims/{id}/ready",
@@ -79,6 +95,12 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmVoid, setConfirmVoid] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [correctionReason, setCorrectionReason] =
+    useState<CorrectionReason>("claim_data_corrected");
+  const [correctionBusy, setCorrectionBusy] = useState(false);
+  const [sendGate, setSendGate] = useState<SendGate | null>(null);
+  const [sendGateBusy, setSendGateBusy] = useState(false);
+  const [sendGateError, setSendGateError] = useState<string | null>(null);
   const voidControls = useRef<HTMLSpanElement>(null);
   const voidWasOpen = useRef(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -156,6 +178,95 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
       setActionError("That did not go through. Check your connection and try again.");
     } finally {
       setBusy(null);
+    }
+  };
+
+  const createRejectedCorrection = async (): Promise<void> => {
+    setCorrectionBusy(true);
+    setActionError(null);
+    try {
+      const { data, error, response } = await client.POST(
+        "/api/v1/billing/commercial/claims/{id}/corrections/clearinghouse-rejection",
+        {
+          params: { path: { id: claimId }, header: { "Idempotency-Key": crypto.randomUUID() } },
+          body: { reasonCode: correctionReason },
+        },
+      );
+      if (error || !data) {
+        const env = (error as { error?: { code?: string; message?: string } } | undefined)?.error;
+        const redirect = authFailureRedirect(response.status, env?.code, window.location.pathname);
+        if (redirect) return void navigate(redirect);
+        setActionError(
+          response.status === 409 && env?.message
+            ? env.message
+            : "The correction draft could not be created. Refresh the claim and review its latest response.",
+        );
+        return;
+      }
+      navigate(COMMERCIAL_PATHS.claim(data.claimId));
+    } catch {
+      setActionError(
+        "The correction draft could not be created. Check your connection before retrying.",
+      );
+    } finally {
+      setCorrectionBusy(false);
+    }
+  };
+
+  const reviewForSubmission = async (): Promise<void> => {
+    setSendGateBusy(true);
+    setSendGateError(null);
+    setSendGate(null);
+    try {
+      const { data, error, response } = await client.GET(
+        "/api/v1/billing/commercial/claims/{id}/send-gate",
+        { params: { path: { id: claimId } } },
+      );
+      if (error || !data) {
+        setSendGateError(
+          response.status === 403
+            ? "You do not have permission to review this claim for submission."
+            : "The current submission checks could not be loaded. Refresh the claim and try again.",
+        );
+        return;
+      }
+      setSendGate(data);
+    } catch {
+      setSendGateError("The current submission checks could not be loaded. Check your connection.");
+    } finally {
+      setSendGateBusy(false);
+    }
+  };
+
+  const submitCommercialClaim = async (): Promise<void> => {
+    if (!sendGate?.canSubmit) return;
+    setSendGateBusy(true);
+    setSendGateError(null);
+    try {
+      const { data, error, response } = await client.POST(
+        "/api/v1/billing/commercial/claims/{id}/submit",
+        { params: { path: { id: claimId }, header: { "Idempotency-Key": crypto.randomUUID() } } },
+      );
+      if (error || !data) {
+        const env = (error as { error?: { code?: string; message?: string } } | undefined)?.error;
+        const redirect = authFailureRedirect(response.status, env?.code, window.location.pathname);
+        if (redirect) return void navigate(redirect);
+        setSendGateError(
+          response.status === 409 && env?.message
+            ? env.message
+            : response.status === 403
+              ? "Submission requires the commercial submit permission and a fresh step-up."
+              : "The claim was not queued. Refresh the submission checks before retrying.",
+        );
+        return;
+      }
+      setSendGate(null);
+      setNotice("Submission queued. This confirms queueing only; clearinghouse receipt is still pending.");
+      reload();
+    } catch {
+      setSendGateError("The submission result is uncertain. Check claim history before trying again.");
+    } finally {
+      setSendGateBusy(false);
     }
   };
 
@@ -258,9 +369,126 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
         {notice ? <InlineAlert tone="success">{notice}</InlineAlert> : null}
         {claim.state === "ready" ? (
           <InlineAlert tone="success">
-            This claim is validated and ready. Sending arrives with the submission slice.
+            This claim is validated and ready. The server will recheck payer routing, enrollment and current claim facts before queueing.
           </InlineAlert>
         ) : null}
+        {claim.state === "ready" && permissions.includes("commercial_billing.submit") ? (
+          <Panel title="Submit claim" icon="send">
+            <p>Review the current server-side submission checks before requesting a send.</p>
+            {sendGateError ? <InlineAlert tone="error">{sendGateError}</InlineAlert> : null}
+            {!sendGate ? (
+              <Button disabled={sendGateBusy} onClick={() => void reviewForSubmission()}>
+                {sendGateBusy ? "Checking submission…" : "Review submission checks"}
+              </Button>
+            ) : (
+              <>
+                <StatusPill
+                  label={sendGate.canSubmit ? "Ready to queue" : "Submission blocked"}
+                  tone={sendGate.canSubmit ? "success" : "error"}
+                />
+                {sendGate.canSubmit ? (
+                  <div className="wx-form-actions">
+                    <Button disabled={sendGateBusy} onClick={() => void submitCommercialClaim()}>
+                      {sendGateBusy ? "Queueing…" : "Confirm and queue submission"}
+                    </Button>
+                    <Button tone="tertiary" disabled={sendGateBusy} onClick={() => void reviewForSubmission()}>
+                      Refresh checks
+                    </Button>
+                  </div>
+                ) : (
+                  <ul className="wx-checklist" aria-label="Submission blockers">
+                    {sendGate.reasons.map((reason) => (
+                      <li key={reason.code}><span className="wx-checklist-text"><strong>{reason.code}</strong> · {reason.message}</span></li>
+                    ))}
+                  </ul>
+                )}
+                {!sendGate.canSubmit && sendGate.reasons.length === 0 ? (
+                  <InlineAlert tone="warning">No blocker details were returned. Refresh the checks before continuing.</InlineAlert>
+                ) : null}
+              </>
+            )}
+            <p className="wx-row-sub">Submission requires the submit permission and a fresh step-up. Queueing does not mean the clearinghouse or payer accepted the claim.</p>
+          </Panel>
+        ) : null}
+
+        <Panel title="Correction and claim history" icon="rotate-ccw">
+          {view.correction.correctionOfClaimId ? (
+            <p>
+              This is a new draft correcting{" "}
+              <Link to={COMMERCIAL_PATHS.claim(view.correction.correctionOfClaimId)}>
+                the original claim
+              </Link>{" "}
+              after a clearinghouse rejection. The original submission remains in its history.
+            </p>
+          ) : null}
+          {view.correction.rejectedCorrection.eligible && canWrite ? (
+            <div className="wx-form-grid">
+              <p>
+                Correct the source billing records first. This action rebuilds a separate
+                original-frequency draft from current authoritative data; it does not modify or
+                resend the original attempt.
+              </p>
+              <label>
+                Correction reason
+                <select
+                  aria-label="Correction reason"
+                  value={correctionReason}
+                  onChange={(event) =>
+                    setCorrectionReason(parseCorrectionReason(event.currentTarget.value))
+                  }
+                >
+                  <option value="claim_data_corrected">Claim data corrected</option>
+                  <option value="clearinghouse_edit_corrected">Clearinghouse edit addressed</option>
+                  <option value="other_verified_correction">Other verified correction</option>
+                </select>
+              </label>
+              <Button disabled={correctionBusy} onClick={() => void createRejectedCorrection()}>
+                {correctionBusy ? "Creating draft…" : "Create corrected draft"}
+              </Button>
+            </div>
+          ) : view.correction.rejectedCorrection.reasonCode === "PAYER_REPLACEMENT_UNVERIFIED" ? (
+            <InlineAlert tone="warning">
+              A payer-stage correction or void is not configured for this plan. Confirm its
+              contract, replacement frequency and original payer control reference with the payer
+              before proceeding.
+            </InlineAlert>
+          ) : view.correction.rejectedCorrection.reasonCode === "PAYER_RESPONSE_EXISTS" ? (
+            <InlineAlert tone="warning">
+              A payer response is recorded. This workflow cannot classify it as a clearinghouse
+              rejection; use the payer’s documented correction, appeal or reconsideration process.
+            </InlineAlert>
+          ) : view.correction.rejectedCorrection.reasonCode === "CORRECTION_ALREADY_EXISTS" ? (
+            <InlineAlert tone="info">
+              A correction draft already exists for this claim. Review the linked claim history
+              before creating another action.
+            </InlineAlert>
+          ) : view.correction.rejectedCorrection.reasonCode ===
+            "CLEARINGHOUSE_REJECTION_NOT_VERIFIED" ? (
+            <InlineAlert tone="warning">
+              The clearinghouse rejection is not sufficiently verified for resubmission. Reconcile
+              the submission or request manual review.
+            </InlineAlert>
+          ) : (
+            <p className="wx-row-sub">
+              Draft claims are corrected in their existing draft workflow. Payer-accepted
+              replacements and payer-side voids are unavailable until this plan’s requirements are
+              verified.
+            </p>
+          )}
+          {view.correction.relatedClaims.length > 1 ? (
+            <ul className="wx-checklist" aria-label="Related claims">
+              {view.correction.relatedClaims.map((related) => (
+                <li key={related.id}>
+                  <Link to={COMMERCIAL_PATHS.claim(related.id)}>
+                    {related.relation === "original" ? "Original" : "Corrected draft"} ·{" "}
+                    {related.claimControlNumber}
+                  </Link>{" "}
+                  · {statusLabel(related.state)}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </Panel>
 
         <div className="wx-stat-grid" aria-label="Claim totals">
           <KpiCard
