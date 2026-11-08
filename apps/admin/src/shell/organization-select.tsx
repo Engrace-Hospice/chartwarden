@@ -102,7 +102,9 @@ export function OrganizationSelect(): JSX.Element {
           />
         ) : null}
         {state.kind === "ready" && state.memberships.length > 0 ? (
-          <ul className="wx-form-stack" aria-label="Your organizations">
+          // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none
+          // biome-ignore lint/a11y/useSemanticElements: the element already is a <ul>; the role only restores its semantics
+          <ul className="wx-form-stack" role="list" aria-label="Your organizations">
             {state.memberships.map((m) => (
               <li key={m.membershipId} className="wx-drawer-card">
                 <div className="wx-drawer-card-head">

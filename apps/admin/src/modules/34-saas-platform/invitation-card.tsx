@@ -110,7 +110,9 @@ export function InvitationCard({
       {rows === null && !loadError ? <LoadingSpinner label="Loading invitations…" /> : null}
       {rows?.length === 0 ? <p>No invitation on record.</p> : null}
       {rows && rows.length > 0 ? (
-        <ul className="wx-fact-list">
+        // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none
+        // biome-ignore lint/a11y/useSemanticElements: it already is a <ul>; the role only restores the semantics Safari drops
+        <ul role="list" className="wx-fact-list">
           {rows.map((i) => (
             <li key={i.id} className="wx-drawer-title-row">
               <span>{i.firstAdminEmail}</span>

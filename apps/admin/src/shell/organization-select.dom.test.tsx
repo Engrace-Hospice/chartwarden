@@ -86,6 +86,8 @@ describe("OrganizationSelect list", () => {
     const list = await screen.findByRole("list", { name: "Your organizations" });
     const rows = within(list).getAllByRole("listitem");
 
+    // Marker-less lists state their role: Safari/VoiceOver drops it from a bare <ul> with list-style: none.
+    expect(list.getAttribute("role")).toBe("list");
     expect(rows).toHaveLength(2);
     within(rows[0] as HTMLElement).getByText("Cedar Ridge Hospice");
     within(rows[0] as HTMLElement).getByText("Admin");

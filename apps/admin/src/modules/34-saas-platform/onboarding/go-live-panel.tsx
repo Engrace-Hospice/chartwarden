@@ -135,7 +135,9 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
           <>
             <p>Go-live opens once every earlier step is settled.</p>
             {open.length > 0 ? (
-              <ul>
+              // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none
+              // biome-ignore lint/a11y/useSemanticElements: it already is a <ul>; the role only restores the semantics Safari drops
+              <ul role="list">
                 {open.map((s) => (
                   <li key={s.key}>
                     <Link to={stepHref(orgSlug, s.key)}>{s.title}</Link>

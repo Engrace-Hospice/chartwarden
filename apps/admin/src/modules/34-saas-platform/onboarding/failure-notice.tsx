@@ -30,7 +30,9 @@ export function FailureNotice({
         {quoteReference ? ` Reference: ${failure.correlationId}.` : ""}
       </InlineAlert>
       {failure.kind === "conflict" && failure.details.length > 0 ? (
-        <ul>
+        // biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none
+        // biome-ignore lint/a11y/useSemanticElements: it already is a <ul>; the role only restores the semantics Safari drops
+        <ul role="list">
           {failure.details.map((d) => (
             <li key={`${d.field}:${d.message}`}>{d.message}</li>
           ))}

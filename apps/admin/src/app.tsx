@@ -49,7 +49,9 @@ function AdminHome({ sections }: { sections: readonly AdminNavSection[] }): JSX.
             aria-label={section.label ?? ""}
           >
             <h2>{section.label}</h2>
-            <ul>
+            {/* biome-ignore lint/a11y/noRedundantRoles: Safari/VoiceOver drops list semantics when list-style is none */}
+            {/* biome-ignore lint/a11y/useSemanticElements: it already is a <ul>; the role only restores the semantics Safari drops */}
+            <ul role="list">
               {section.entries.map((entry) => (
                 <li key={entry.key}>
                   <Link to={entry.to}>
