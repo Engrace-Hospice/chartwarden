@@ -193,7 +193,7 @@ export function MedicationDetail(): JSX.Element {
         }
         const order = data as MedicationOrderView;
         setRow(order);
-        // a transmitted order shows its status and retries; a QUEUED one may be HELD (DoseSpot accepted the call, the outcome is unconfirmed)
+        // a transmitted order shows its status and retries; a QUEUED one may be HELD (DoseSpot did not confirm the outcome)
         if (order.transmittedAt || order.status === "queued_for_transmission") {
           try {
             const { data: transmission, error: transmissionError } = await client.GET(
