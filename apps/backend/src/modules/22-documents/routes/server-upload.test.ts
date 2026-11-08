@@ -280,6 +280,89 @@ describe("createServerUploadService: the put and the commit while the caller hol
     expect(destroySignals[0]).toBeInstanceOf(AbortSignal);
   });
 
+  it("stops waiting for a put that IGNORES the abort signal (503 document-storage, no row), and cleans up best effort", async () => {
+    const { db, inserts } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const base = createInMemoryObjectStore();
+    const destroyed: string[] = [];
+    const store = {
+      ...base.store,
+      putObject: () => new Promise<never>(() => undefined), // never settles, signal or not
+      destroyAllVersions: async ({ objectKey }: { objectKey: string }) => {
+        destroyed.push(objectKey);
+      },
+    } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"];
+    const svc = createServerUploadService({
+      db: {} as DbClient,
+      objects: store,
+      heldTimeoutMs: 25,
+    });
+
+    await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
+      statusCode: 503,
+      message: expect.stringContaining("document-storage"),
+    });
+
+    expect(inserts).toHaveLength(0);
+    expect(destroyed).toHaveLength(1);
+  });
+
+  it("stops waiting for a clean-up delete that ignores the signal: the failure is still answered, the orphan is warned about", async () => {
+    const { db } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const base = createInMemoryObjectStore();
+    const warn = vi.fn();
+    const store = {
+      ...base.store,
+      putObject: async () => ({ sha256Hex: "f".repeat(64) }), // a digest that is not the verified one: the clean-up runs
+      destroyAllVersions: () => new Promise<never>(() => undefined), // never settles, signal or not
+    } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"];
+    const svc = createServerUploadService({
+      db: {} as DbClient,
+      objects: store,
+      heldTimeoutMs: 25,
+      logger: { warn },
+    });
+
+    await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
+      code: "UPLOAD_INTEGRITY_MISMATCH",
+    });
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[1]).toContain("orphan");
+  });
+
+  it("gives the scan and the put ONE deadline: a scan and a put that each fit it, but not together, are a 503", async () => {
+    const { db, inserts } = fakeDb();
+    const { tx } = db as unknown as { tx: DbClient };
+    const base = createInMemoryObjectStore();
+    const later = <T>(ms: number, value: T) =>
+      new Promise<T>((resolve) => setTimeout(() => resolve(value), ms));
+    const store = {
+      ...base.store,
+      putObject: async (input: Parameters<typeof base.store.putObject>[0]) => {
+        await later(60, undefined); // 60 ms, signal ignored
+        return base.store.putObject(input);
+      },
+    } as unknown as ReturnType<typeof createInMemoryObjectStore>["store"];
+    const scanner: DocumentContentScanner = {
+      scan: () => later(60, { verdict: "clean" as const }),
+    };
+    const svc = createServerUploadService({
+      db: {} as DbClient,
+      objects: store,
+      scanner,
+      heldTimeoutMs: 100, // 60 + 60 > 100, each alone < 100
+    });
+
+    await expect(svc.createDocumentOn(tx, ORG, ACTOR, ARGS)).rejects.toMatchObject({
+      statusCode: 503,
+      message: expect.stringContaining("document-storage"),
+    });
+
+    expect(inserts).toHaveLength(0);
+  });
+
   it("bounds the clean-up after an integrity mismatch and the discard() the same way, and a generic upload (no transaction held) stays unbounded", async () => {
     const signals: (AbortSignal | undefined)[] = [];
     const base = createInMemoryObjectStore();
