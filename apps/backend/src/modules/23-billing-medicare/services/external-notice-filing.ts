@@ -256,7 +256,13 @@ interface RecordableRow extends ExternalFilingRow {
 
 interface KindOps<R extends RecordableRow> {
   find(tx: BillingDb, id: string): Promise<R | null>;
-  listFiled(tx: BillingDb, organizationId: string, limit: number): Promise<readonly R[]>;
+  listFiled(
+    tx: BillingDb,
+    organizationId: string,
+    limit: number,
+  ): Promise<
+    readonly (repositories.ExternallyFiledNoeRecord | repositories.ExternallyFiledNotrRecord)[]
+  >;
   repo(tx: BillingDb): ExternalFilingRepo<R>;
   /** The earliest a filing can carry: the NOE election effective date / the NOTR effective end date (the DDE-acceptance rule). */
   earliestDate(row: R): string;
@@ -373,7 +379,7 @@ export interface ExternalFilingListItem {
 
 const toListItem = (
   kind: ExternalNoticeKind,
-  row: repositories.NoeRecord | repositories.NotrRecord,
+  row: repositories.ExternallyFiledNoeRecord | repositories.ExternallyFiledNotrRecord,
 ): ExternalFilingListItem => ({
   kind,
   noticeId: row.id,

@@ -89,6 +89,29 @@ const NOTR_TERMINAL_DB: schema.NotrRecord["state"][] = [
 ];
 
 /** Map a DB row to the domain-cased record (the single read-boundary case translation). */
+/** Only what the platform operator's withdraw list shows (and pins): `listExternallyFiled` selects these columns and nothing else. */
+const EXTERNALLY_FILED_COLUMNS = {
+  id: N.id,
+  state: N.state,
+  windowTargetAt: N.windowTargetAt,
+  windowBreachedAt: N.windowBreachedAt,
+  filedExternallyOn: N.filedExternallyOn,
+  filedExternallyRecordedAt: N.filedExternallyRecordedAt,
+  externalFilingSetBreach: N.externalFilingSetBreach,
+};
+
+/** A NOTR as the withdraw list reads it: the projected columns of `listExternallyFiled`. */
+export type ExternallyFiledNotrRecord = Pick<
+  NotrRecord,
+  | "id"
+  | "state"
+  | "windowTargetAt"
+  | "windowBreachedAt"
+  | "filedExternallyOn"
+  | "filedExternallyRecordedAt"
+  | "externalFilingSetBreach"
+>;
+
 function toNotrRecord(row: schema.NotrRecord): NotrRecord {
   return { ...row, state: noticeStateCodec.fromDb(row.state) };
 }
@@ -297,14 +320,17 @@ export class NotrRepository {
    * `(filed_externally_recorded_at DESC, id DESC)`. What the platform operator's withdraw list reads; a parked or unmarked notice
    * is not on it. Capped at `limit` (1..500); the caller over-fetches by one to learn whether it was cut.
    */
-  async listExternallyFiled(organizationId: string, limit = 200): Promise<readonly NotrRecord[]> {
+  async listExternallyFiled(
+    organizationId: string,
+    limit = 200,
+  ): Promise<readonly ExternallyFiledNotrRecord[]> {
     const rows = await this.db
-      .select()
+      .select(EXTERNALLY_FILED_COLUMNS)
       .from(N)
       .where(and(eq(N.organizationId, organizationId), eq(N.externalFilingStatus, "filed")))
       .orderBy(desc(N.filedExternallyRecordedAt), desc(N.id))
       .limit(Math.min(Math.max(limit, 1), 500));
-    return rows.map(toNotrRecord);
+    return rows.map((row) => ({ ...row, state: noticeStateCodec.fromDb(row.state) }));
   }
 
   /**

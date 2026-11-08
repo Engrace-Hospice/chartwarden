@@ -81,6 +81,7 @@ export {
 export {
   NoeRepository,
   type NoeListFilter,
+  type ExternallyFiledNoeRecord,
   type NoeRecord,
   type NoeTransitionPatch,
   type NewNoeInput,
@@ -88,6 +89,7 @@ export {
 export {
   NotrRepository,
   type NotrListFilter,
+  type ExternallyFiledNotrRecord,
   type NotrRecord,
   type NotrTransitionPatch,
   type NotrTriggerKind,
