@@ -60,7 +60,12 @@ export async function applyMemorialRsvp(
 
   const PLAN = schema.bereavementPlan;
   const [found] = await tx
-    .select({ inv: INV, portalAccountId: CONTACT.portalAccountId, planStatus: PLAN.status })
+    .select({
+      inv: INV,
+      portalAccountId: CONTACT.portalAccountId,
+      planStatus: PLAN.status,
+      contactStatus: CONTACT.status,
+    })
     .from(INV)
     .innerJoin(CONTACT, eq(CONTACT.id, INV.bereavedContactId))
     .innerJoin(PLAN, eq(PLAN.id, CONTACT.planId))

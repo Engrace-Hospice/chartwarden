@@ -96,3 +96,12 @@ export function assertNotOrgLibraryForEdit(aggregateType: string | null | undefi
     );
   }
 }
+
+/**
+ * ADR-0109 D10 (PR 3) — an intake batch may adopt (and later move onto a chart) only an ordinary document: never an internal-only one (render-only,
+ * read by role) and never a grief-library file (org-level, published to families). 422 so a caller learns why, not an oracle about its content.
+ */
+export function assertAdoptableByIntake(aggregateType: string | null | undefined): void {
+  assertNotInternalOnlyForWrite(aggregateType);
+  assertNotOrgLibraryForEdit(aggregateType);
+}

@@ -405,6 +405,32 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
         input: { ...libraryInput, mode: "new_version", targetDocumentId: done.documentId },
       }),
     ).rejects.toMatchObject({ code: "DOCUMENT_LIBRARY_IMMUTABLE" });
+
+    // the DB layer refuses every metadata write too (no route guard needed): a PATCH, a link onto a patient, a tag
+    for (const write of [
+      () => svc.patchDocument(ORG_A, ACTOR, done.documentId, { title: "Renamed" }),
+      () => svc.linkDocument(ORG_A, ACTOR, done.documentId, { patientId: PATIENT }),
+      () =>
+        svc.addTag(ORG_A, ACTOR, done.documentId, {
+          tagKind: "free",
+          tagKey: "k",
+          tagValue: "v",
+        } as never),
+    ]) {
+      await expect(write()).rejects.toMatchObject({ code: "DOCUMENT_LIBRARY_IMMUTABLE" });
+    }
+    expect(
+      (await admin.query("SELECT patient_id, title FROM document WHERE id=$1", [done.documentId]))
+        .rows[0],
+    ).toEqual({ patient_id: null, title: "Library video" });
+    // an intake batch never adopts a library (or an internal-only) document as its source
+    await expect(
+      svc.uploadBatch(ORG_A, ACTOR, {
+        patientId: PATIENT,
+        documentId: done.documentId,
+        sourceChannel: "fax",
+      }),
+    ).rejects.toMatchObject({ code: "DOCUMENT_LIBRARY_IMMUTABLE" });
   });
 
   it("verified upload accepts referral DOCX provenance and later links the same document to patient/admission", async () => {

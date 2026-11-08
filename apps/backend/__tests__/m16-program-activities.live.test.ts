@@ -491,10 +491,13 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
         "don",
         groupBody({ modality: "virtual", joinUrl: "https://meet.example.test/room-42" }),
       );
-      expect(created.json()).toMatchObject({
-        hasJoinUrl: true,
-        joinUrl: "https://meet.example.test/room-42",
-      });
+      // a WRITE response never carries the plaintext link (it is stored with the idempotency key): the detail read does
+      expect(created.json()).toMatchObject({ hasJoinUrl: true, joinUrl: null });
+      expect(
+        await count(
+          "SELECT count(*)::int n FROM idempotency_key WHERE response_body::text LIKE '%meet.example.test%'",
+        ),
+      ).toBe(0);
       const raw = await one<{ join_url_cipher: string }>(
         "SELECT join_url_cipher FROM bereavement_support_group WHERE id=$1",
         [created.json().groupId],
@@ -951,10 +954,13 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
         response: "yes",
         guests: 0,
       });
-      expect(yes).toMatchObject({
-        status: "rsvp_yes",
-        joinUrl: "https://meet.example.test/remember",
-      });
+      // the RSVP answer carries no link; the family's re-read of its list does
+      expect(yes).toMatchObject({ status: "rsvp_yes", joinUrl: null });
+      expect(
+        (await portal.memorialInvitationsForPortalAccount(portalArgs)).find(
+          (i) => i.invitationId === portalInv,
+        )?.joinUrl,
+      ).toBe("https://meet.example.test/remember");
       // a published service's capacity never drops below the people who said yes (2 + 1 here)
       const svc = (await call("GET", `${MEMORIALS}/${serviceId}`, "don")).json();
       expect(svc.joinUrl).toBe("https://meet.example.test/remember");
@@ -1260,6 +1266,27 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
         );
       expect(await mint("document")).toMatchObject({ url: "https://objects.example.test/library" });
       expect(await mint("transcript")).not.toBeNull();
+      // a published video keeps its transcript
+      const live = (await call("GET", LIBRARY, "don"))
+        .json()
+        .find((i: { itemId: string }) => i.itemId === itemId);
+      expect(
+        codeOf(
+          await call(
+            "PATCH",
+            `${LIBRARY}/${itemId}`,
+            "don",
+            {
+              title: live.title,
+              summary: live.summary,
+              category: live.category,
+              transcriptDocumentId: null,
+              sortOrder: live.sortOrder,
+            },
+            ifMatch(live.version),
+          ),
+        ),
+      ).toBe("LIBRARY_TRANSCRIPT_REQUIRED");
       expect(
         await one(
           "SELECT accessor_portal_account_id, portal_session_id, patient_id, access_kind FROM document_access_log WHERE document_id=$1 AND accessor_portal_account_id IS NOT NULL",

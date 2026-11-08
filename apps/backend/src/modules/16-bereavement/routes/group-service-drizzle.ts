@@ -174,7 +174,7 @@ export function buildDrizzleM16GroupService(db: DbClient, deps: M16GroupDeps): M
   }
 
   /** `reveal` false = the meeting link stays sealed (`hasJoinUrl` only). */
-  async function detail(tx: DbClient, row: GroupRow, reveal = true): Promise<GroupDetailView> {
+  async function detail(tx: DbClient, row: GroupRow, reveal: boolean): Promise<GroupDetailView> {
     const stats = (await statsFor(tx, [row.id])).get(row.id) ?? { enrolled: 0, next: null };
     let joinUrl: string | null = null;
     if (reveal && row.joinUrlCipher !== null && deps.cipher !== undefined) {
@@ -411,7 +411,8 @@ export function buildDrizzleM16GroupService(db: DbClient, deps: M16GroupDeps): M
           })
           .returning();
         if (!row) throw new Error("support group insert returned no row");
-        return detail(tx, row);
+        // a WRITE response never carries the plaintext link (it would sit in the idempotency store): re-read the detail for it
+        return detail(tx, row, false);
       });
     },
 
@@ -460,7 +461,8 @@ export function buildDrizzleM16GroupService(db: DbClient, deps: M16GroupDeps): M
           .where(and(eq(GROUP.id, group.id), eq(GROUP.version, group.version)))
           .returning();
         if (!row) throw stale("support group");
-        return detail(tx, row);
+        // a WRITE response never carries the plaintext link (it would sit in the idempotency store): re-read the detail for it
+        return detail(tx, row, false);
       });
     },
 
@@ -527,7 +529,8 @@ export function buildDrizzleM16GroupService(db: DbClient, deps: M16GroupDeps): M
             );
           }
         }
-        return detail(tx, row);
+        // a WRITE response never carries the plaintext link (it would sit in the idempotency store): re-read the detail for it
+        return detail(tx, row, false);
       });
     },
 
@@ -573,7 +576,8 @@ export function buildDrizzleM16GroupService(db: DbClient, deps: M16GroupDeps): M
               gt(SESSION.startsAt, at),
             ),
           );
-        return detail(tx, row);
+        // a WRITE response never carries the plaintext link (it would sit in the idempotency store): re-read the detail for it
+        return detail(tx, row, false);
       });
     },
 

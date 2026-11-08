@@ -137,7 +137,11 @@ export function buildDrizzleM16MemorialService(
   }
 
   /** `reveal` false = the meeting link stays sealed (`hasJoinUrl` only). */
-  async function detail(tx: DbClient, row: ServiceRow, reveal = true): Promise<MemorialDetailView> {
+  async function detail(
+    tx: DbClient,
+    row: ServiceRow,
+    reveal: boolean,
+  ): Promise<MemorialDetailView> {
     const counts = (await countsFor(tx, [row.id])).get(row.id) ?? ZERO;
     const joinUrl =
       reveal && row.joinUrlCipher !== null && deps.cipher !== undefined
@@ -288,7 +292,8 @@ export function buildDrizzleM16MemorialService(
           })
           .returning();
         if (!row) throw new Error("memorial service insert returned no row");
-        return detail(tx, row);
+        // a WRITE response never carries the plaintext link (it would sit in the idempotency store): re-read the detail for it
+        return detail(tx, row, false);
       });
     },
 
@@ -297,7 +302,7 @@ export function buildDrizzleM16MemorialService(
       const joinUrlCipher = await sealJoinUrl(actor.organizationId, input.joinUrl);
       return withOrgContext(db, scope(actor), async (scoped) => {
         const tx = asTx(scoped);
-        const svc = await serviceOr404(tx, serviceId);
+        const svc = await serviceOr404(tx, serviceId, true); // locked: the capacity floor and an RSVP decide one at a time
         checkVersion(input.expectedVersion, svc.version);
         if (svc.status !== "draft" && svc.status !== "published") {
           throw new BereavementStateError(
@@ -335,7 +340,8 @@ export function buildDrizzleM16MemorialService(
           .where(and(eq(SVC.id, svc.id), eq(SVC.version, svc.version)))
           .returning();
         if (!row) throw stale();
-        return detail(tx, row);
+        // a WRITE response never carries the plaintext link (it would sit in the idempotency store): re-read the detail for it
+        return detail(tx, row, false);
       });
     },
 
@@ -376,7 +382,8 @@ export function buildDrizzleM16MemorialService(
           .where(eq(SVC.id, claimed.id))
           .returning();
         if (!row) throw stale();
-        return detail(tx, row);
+        // a WRITE response never carries the plaintext link (it would sit in the idempotency store): re-read the detail for it
+        return detail(tx, row, false);
       });
     },
 
@@ -406,7 +413,8 @@ export function buildDrizzleM16MemorialService(
           .returning();
         if (!row) throw stale();
         if (input.status === "cancelled") await cancelUnmailedMemorialRun(tx, row.mailingRunId, at);
-        return detail(tx, row);
+        // a WRITE response never carries the plaintext link (it would sit in the idempotency store): re-read the detail for it
+        return detail(tx, row, false);
       });
     },
 

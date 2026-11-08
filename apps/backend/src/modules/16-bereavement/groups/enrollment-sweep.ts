@@ -40,7 +40,7 @@ export async function withdrawLapsedMemorialInvitations(tx: DbClient): Promise<n
            bereavement_memorial_service s
      WHERE c.id = i.bereaved_contact_id AND s.id = i.service_id
        AND i.status IN ('invited', 'rsvp_yes', 'rsvp_no', 'rsvp_maybe')
-       AND s.status IN ('draft', 'published')
+       AND s.status IN ('draft', 'published') AND s.starts_at > now()
        AND (p.status NOT IN ('active', 'paused') OR c.status IN ('deceased', 'ineligible_post_review'))
     RETURNING i.id`);
   return (rows as unknown as { rowCount: number | null }).rowCount ?? 0;

@@ -333,33 +333,43 @@ export async function runClose13MonthsCron(deps: M16WorkerDeps): Promise<{ close
   const now = (deps.now ?? (() => new Date()))();
   const cutoff = closeCutoffDate(now);
   let closed = 0;
+  // One org's failure (its closures or its program pass) must not starve the orgs after it: every org is attempted, then the tick fails with
+  // ONE AggregateError so BullMQ retries it (every pass is idempotent) — the M22 retention-rotation precedent.
+  const failures: unknown[] = [];
   for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
-    const planIds = await listInOrg(deps, organizationId, async (tx) =>
-      (
-        await tx
-          .select({ id: PLAN.id })
-          .from(PLAN)
-          .where(
-            and(
-              eq(PLAN.organizationId, organizationId),
-              inArray(PLAN.status, ["active", "paused"]),
-              isNull(PLAN.legalHoldId),
-              lte(PLAN.deathDate, cutoff),
-            ),
-          )
-          .orderBy(asc(PLAN.deathDate))
-          .limit(M16_CRON_BATCH_LIMIT)
-      ).map((r) => r.id),
-    );
-    for (const planId of planIds) {
-      const won = await inRowTx(deps, organizationId, "close-13mo", planId, (tx) =>
-        closeOnePlan(tx, deps, organizationId, planId, now),
+    try {
+      const planIds = await listInOrg(deps, organizationId, async (tx) =>
+        (
+          await tx
+            .select({ id: PLAN.id })
+            .from(PLAN)
+            .where(
+              and(
+                eq(PLAN.organizationId, organizationId),
+                inArray(PLAN.status, ["active", "paused"]),
+                isNull(PLAN.legalHoldId),
+                lte(PLAN.deathDate, cutoff),
+              ),
+            )
+            .orderBy(asc(PLAN.deathDate))
+            .limit(M16_CRON_BATCH_LIMIT)
+        ).map((r) => r.id),
       );
-      if (won) closed += 1;
+      for (const planId of planIds) {
+        const won = await inRowTx(deps, organizationId, "close-13mo", planId, (tx) =>
+          closeOnePlan(tx, deps, organizationId, planId, now),
+        );
+        if (won) closed += 1;
+      }
+    } catch (error) {
+      failures.push(error);
+      log("m16.close-13mo: closures failed for an org", {
+        organizationId,
+        error: error instanceof Error ? error.name : "unknown",
+      });
     }
-    // ADR-0109 D10 (PR 3) — the nightly support-group pass, after the closures it may depend on: a family that left the program (an opt-out, a
-    // closed plan) leaves its groups. Set-based and idempotent.
-    // Its own try/catch: a failing program pass must not stop the next org's closures.
+    // ADR-0109 D10 (PR 3) — the nightly program pass, after the closures it may depend on: a family that left the program leaves its groups, and
+    // an open invitation of a closed plan (or a deceased / ineligible contact) is withdrawn. Set-based and idempotent; isolated per org.
     try {
       await inRowTx(deps, organizationId, "program-withdraw", organizationId, async (tx) => {
         const n = await withdrawLapsedGroupEnrollments(tx, now);
@@ -373,11 +383,15 @@ export async function runClose13MonthsCron(deps: M16WorkerDeps): Promise<{ close
         }
       });
     } catch (error) {
+      failures.push(error);
       log("m16.close-13mo: the program withdraw pass failed for an org", {
         organizationId,
         error: error instanceof Error ? error.name : "unknown",
       });
     }
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(failures, `M16_CLOSE_13MO: ${failures.length} org failure(s)`);
   }
   return { closed };
 }

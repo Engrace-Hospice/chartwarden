@@ -326,6 +326,8 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     async (request) => {
       const { organizationId } = actorOf(request as FastifyRequest);
       const doc = await service.getDocument(organizationId, docIdOf(request as FastifyRequest));
+      // ADR-0109 D10 (PR 3) — FIRST, before the patientless early return below: a grief-library file is fixed for every actor and route.
+      assertNotOrgLibraryForEdit(doc.aggregateType);
       // #641 — remembered for the handler, which hands it to the service to re-check under the row lock.
       observedPatient.set(request as object, doc.patientId);
       if (

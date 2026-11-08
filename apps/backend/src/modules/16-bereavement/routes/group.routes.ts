@@ -84,7 +84,7 @@ export function registerBereavementGroupRoutes(app: FastifyInstance, deps: Group
     async (request) => {
       const { groupId } = parse(GroupParams, request.params);
       const group = await groupService.getGroup(actorOf(request), groupId);
-      if (!group) throw new NotFoundError("support group not found");
+      if (!group) throw new NotFoundError("support group");
       return group;
     },
   );
@@ -138,7 +138,7 @@ export function registerBereavementGroupRoutes(app: FastifyInstance, deps: Group
     async (request) => {
       const { groupId } = parse(GroupParams, request.params);
       const sessions = await groupService.listSessions(actorOf(request), groupId);
-      if (!sessions) throw new NotFoundError("support group not found");
+      if (!sessions) throw new NotFoundError("support group");
       return sessions;
     },
   );
@@ -180,7 +180,7 @@ export function registerBereavementGroupRoutes(app: FastifyInstance, deps: Group
     async (request) => {
       const { groupId } = parse(GroupParams, request.params);
       const roster = await groupService.roster(actorOf(request), groupId);
-      if (!roster) throw new NotFoundError("support group not found");
+      if (!roster) throw new NotFoundError("support group");
       return roster;
     },
   );
@@ -228,7 +228,7 @@ export function registerBereavementGroupRoutes(app: FastifyInstance, deps: Group
     async (request) => {
       const { contactId } = parse(ContactParams, request.params);
       const rows = await groupService.contactEnrollments(actorOf(request), contactId);
-      if (!rows) throw new NotFoundError("contact not found");
+      if (!rows) throw new NotFoundError("contact");
       return rows;
     },
   );

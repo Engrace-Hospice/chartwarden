@@ -30,6 +30,7 @@ import {
   NotFoundError,
 } from "@chartwarden/types";
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { assertAdoptableByIntake } from "../internal-documents";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import {
   type RecordsRequestConflictView,
@@ -950,7 +951,13 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           toPatientId: patientId,
           movedByMembershipId: actor.membershipId,
         });
-        // The filed source document follows its batch (M22 owns both rows).
+        // The filed source document follows its batch (M22 owns both rows) — never an internal or a grief-library document.
+        const [src] = await tx
+          .select({ aggregateType: DOC.aggregateType })
+          .from(DOC)
+          .where(eq(DOC.id, b.documentId))
+          .limit(1);
+        if (src) assertAdoptableByIntake(src.aggregateType);
         await tx.update(DOC).set({ patientId }).where(eq(DOC.id, b.documentId));
         await tx.insert(RELINK).values({
           organizationId,

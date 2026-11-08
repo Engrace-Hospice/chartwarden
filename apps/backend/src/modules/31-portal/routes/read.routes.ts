@@ -571,7 +571,7 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
       } catch (error) {
         throw contentUnavailable(error);
       }
-      if (minted === null) throw new NotFoundError("library item not found");
+      if (minted === null) throw new NotFoundError("library item");
       void reply.header("cache-control", "no-store");
       return minted;
     },

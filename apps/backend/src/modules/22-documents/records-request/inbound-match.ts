@@ -19,6 +19,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { findRecordsRequestCodes } from "@chartwarden/intake-extraction";
 import { and, eq, inArray, isNull } from "drizzle-orm";
+import { assertAdoptableByIntake } from "../internal-documents";
 import {
   RECORDS_REQUEST_AWAITING,
   RECORDS_REQUEST_FILEABLE,
@@ -144,7 +145,13 @@ export async function matchInboundRecordsRequest(
     .returning({ id: BATCH.id });
   if (linked.length === 0) return { outcome: "already_linked" };
   if (adoptPatient) {
-    // The source document follows the batch onto the chart (as a relink does) — only when it has none.
+    // The source document follows the batch onto the chart (as a relink does) — only when it has none, and never an internal or a library file.
+    const [src] = await tx
+      .select({ aggregateType: DOC.aggregateType })
+      .from(DOC)
+      .where(eq(DOC.id, b.documentId))
+      .limit(1);
+    if (src) assertAdoptableByIntake(src.aggregateType);
     await tx
       .update(DOC)
       .set({ patientId: adoptPatient })

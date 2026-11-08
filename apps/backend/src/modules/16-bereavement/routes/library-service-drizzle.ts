@@ -177,6 +177,17 @@ export function buildDrizzleM16LibraryService(
         const tx = scoped as DbClient;
         const item = await itemOr404(tx, itemId);
         checkVersion(input.expectedVersion, item.version);
+        // a PUBLISHED video keeps its transcript: removing it would leave families with a video they may not be able to follow
+        if (
+          item.status === "published" &&
+          item.kind === "video" &&
+          input.transcriptDocumentId === null
+        ) {
+          throw new BereavementStateError(
+            "LIBRARY_TRANSCRIPT_REQUIRED",
+            "a published video keeps its transcript; archive it first to remove the transcript",
+          );
+        }
         if (input.transcriptDocumentId === item.documentId) {
           throw new BereavementStateError(
             "LIBRARY_DOCUMENT_INVALID",

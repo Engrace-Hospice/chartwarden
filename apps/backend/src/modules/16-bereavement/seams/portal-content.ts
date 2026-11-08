@@ -16,7 +16,7 @@ import type {
   IsoInstant,
   OrgDocumentAccessProvider,
 } from "@chartwarden/types";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, notInArray } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import type { BereavementCipher } from "../bereavement-crypto";
 import { applyMemorialRsvp, rsvpWindowOpen } from "../memorials/rsvp-drizzle";
@@ -47,13 +47,18 @@ export function createBereavementPortalContentProvider(
   const ITEM = schema.bereavementLibraryItem;
   const orgDocuments = deps.orgDocuments ?? (() => getSeam("OrgDocumentAccessProvider"));
 
+  /** `reveal` false for a WRITE response: the plaintext link never enters the idempotency store (the family re-reads the list for it). */
   async function toPortal(
     inv: InvitationRow,
     svc: ServiceRow,
     at: Date,
+    reveal: boolean,
   ): Promise<BereavementPortalMemorialInvitation> {
     const revealLink =
-      inv.status === "rsvp_yes" && svc.joinUrlCipher !== null && deps.cipher !== undefined;
+      reveal &&
+      inv.status === "rsvp_yes" &&
+      svc.joinUrlCipher !== null &&
+      deps.cipher !== undefined;
     return {
       invitationId: inv.id,
       title: svc.title,
@@ -96,11 +101,12 @@ export function createBereavementPortalContentProvider(
               eq(CONTACT.portalAccountId, portalAccountId),
               eq(SVC.status, "published"),
               inArray(PLAN.status, ["active", "paused"]),
+              notInArray(CONTACT.status, ["deceased", "ineligible_post_review"]),
             ),
           )
           .orderBy(asc(SVC.startsAt), asc(INV.id))
           .limit(50);
-        return Promise.all(rows.map((r) => toPortal(r.inv, r.svc, at)));
+        return Promise.all(rows.map((r) => toPortal(r.inv, r.svc, at, true)));
       });
     },
 
@@ -125,7 +131,7 @@ export function createBereavementPortalContentProvider(
           at,
           outbox: deps.outbox,
         });
-        return toPortal(invitation, service, at);
+        return toPortal(invitation, service, at, false);
       });
     },
 

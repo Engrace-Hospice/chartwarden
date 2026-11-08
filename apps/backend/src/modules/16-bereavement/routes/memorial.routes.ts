@@ -75,7 +75,7 @@ export function registerBereavementMemorialRoutes(
     async (request) => {
       const { serviceId } = parse(MemorialParams, request.params);
       const svc = await memorialService.getMemorial(actorOf(request), serviceId);
-      if (!svc) throw new NotFoundError("memorial service not found");
+      if (!svc) throw new NotFoundError("memorial service");
       return svc;
     },
   );
@@ -132,7 +132,7 @@ export function registerBereavementMemorialRoutes(
     async (request) => {
       const { serviceId } = parse(MemorialParams, request.params);
       const rows = await memorialService.listInvitations(actorOf(request), serviceId);
-      if (!rows) throw new NotFoundError("memorial service not found");
+      if (!rows) throw new NotFoundError("memorial service");
       return rows;
     },
   );
@@ -169,7 +169,7 @@ export function registerBereavementMemorialRoutes(
     async (request) => {
       const { contactId } = parse(ContactParams, request.params);
       const rows = await memorialService.contactInvitations(actorOf(request), contactId);
-      if (!rows) throw new NotFoundError("contact not found");
+      if (!rows) throw new NotFoundError("contact");
       return rows;
     },
   );
