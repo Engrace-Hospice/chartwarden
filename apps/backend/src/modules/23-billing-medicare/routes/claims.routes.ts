@@ -537,7 +537,6 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
           503,
         );
       }
-      let expectedRouteFingerprint: string | undefined;
       const claim = await readService.getClaim(actor, id);
       const route = await payerRouteStatus(actor.organizationId, claim.providerEntityId);
       if (route.status === "not_configured") {
@@ -558,7 +557,8 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
           "refresh the claim preview before submitting",
           409,
         );
-      expectedRouteFingerprint = route.status === "verified" ? route.routeFingerprint : undefined;
+      const expectedRouteFingerprint =
+        route.status === "verified" ? route.routeFingerprint : undefined;
       const reviewed = verifyClaimPreviewToken(
         body.previewConfirmationToken,
         deps.previewIntegrityKey,

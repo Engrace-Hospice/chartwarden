@@ -483,7 +483,7 @@ export function ClaimEditor(): JSX.Element {
             Submission preparation
           </h2>
           {!routePreview ? (
-            <p role="status">Checking payer route and current claim readiness…</p>
+            <output>Checking payer route and current claim readiness…</output>
           ) : routePreview.stale ? (
             <p role="alert" aria-live="polite">
               Claim details changed while this preparation view was loading. Refresh before
@@ -497,11 +497,11 @@ export function ClaimEditor(): JSX.Element {
             </p>
           ) : (
             <div>
-              <p role="status">
+              <output>
                 {routePreview.status === "verified"
                   ? "Claim.MD payer route verified for this provider and environment."
                   : "Legacy MAC route applies; Claim.MD payer routing is not selected."}
-              </p>
+              </output>
               <p>
                 Preparation check is based on claim version {routePreview.previewVersion}; the final
                 X12 payload digest is recorded at send time.
@@ -519,9 +519,10 @@ export function ClaimEditor(): JSX.Element {
                   <ul aria-label="Rendered billing lines">
                     {routePreview.billingPreview.lines.map((line) => (
                       <li key={line.lineNumber}>
-                        Line {line.lineNumber}: {line.serviceDateFrom} to {line.serviceDateTo};
-                        revenue {line.revenueCode}, {line.hcpcs}
-                        {line.modifiers.length ? ` (${line.modifiers.join(", ")})` : ""};{" "}
+                        Line {line.lineNumber}: {line.serviceDateFrom} to {line.serviceDateTo}
+                        {"; "}revenue {line.revenueCode}, {line.hcpcs}
+                        {line.modifiers.length ? ` (${line.modifiers.join(", ")})` : ""}
+                        {"; "}
                         {line.units} units, {formatCents(line.chargeCents)}
                       </li>
                     ))}

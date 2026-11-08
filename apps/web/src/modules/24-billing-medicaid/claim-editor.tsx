@@ -303,9 +303,7 @@ export function MedicaidClaimEditor(): JSX.Element {
               <Field label="Provider enrollment" value="Not verified for this route" />
               <Field label="Trading-partner certification" value="Not verified" />
               <Field label="Electronic submission" value="Unavailable — not certified" />
-              <output role="status" style={mutedStyle}>
-                {claim.routeReadiness.message}
-              </output>
+              <output style={mutedStyle}>{claim.routeReadiness.message}</output>
             </div>
           </Card>
 

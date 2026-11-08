@@ -472,11 +472,10 @@ describe.skipIf(!DB_URL)("ADR-0109 D10 (PR 3) — M16 program activities, LIVE P
         "2026-11-03T23:00:00.000Z",
         "2026-11-10T23:00:00.000Z",
       ]);
-      // a stale If-Match is a 412; a second open is a 409
-      expect(
-        (await call("POST", `${GROUPS}/${g.groupId}/open`, "don", undefined, ifMatch(1)))
-          .statusCode,
-      ).toBe(412);
+      // a stale If-Match is a 409 STALE_VERSION
+      const stale = await call("POST", `${GROUPS}/${g.groupId}/open`, "don", undefined, ifMatch(1));
+      expect(stale.statusCode).toBe(409);
+      expect(stale.json().error.code).toBe("STALE_VERSION");
     });
 
     it("a staff facilitator must be bereavement-capable staff; the meeting link is sealed and read back", async () => {

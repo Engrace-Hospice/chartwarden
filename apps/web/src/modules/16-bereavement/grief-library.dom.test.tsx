@@ -416,7 +416,7 @@ describe("grief library — review fixes", () => {
     let reads = 0;
     mount((req) => {
       if (req.method === "PATCH")
-        return { status: 412, body: { error: { code: "PRECONDITION_FAILED", message: "moved" } } };
+        return { status: 409, body: { error: { code: "STALE_VERSION", message: "moved" } } };
       reads += 1;
       return ok([item()]);
     });
@@ -576,7 +576,7 @@ describe("grief library — round 3", () => {
     expect(calls.some((c) => c.path.endsWith("/complete"))).toBe(false);
   });
 
-  it.each([412, 409, 404])("a %i on a status change closes the confirm dialog", async (status) => {
+  it.each([409, 404])("a %i on a status change closes the confirm dialog", async (status) => {
     mount((req) =>
       req.method === "POST"
         ? { status, body: { error: { code: "STALE", message: "It moved." } } }
