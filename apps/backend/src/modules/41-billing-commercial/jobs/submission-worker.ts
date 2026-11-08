@@ -32,9 +32,11 @@ import {
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { claimsBillingAllowsWork } from "../../../bootstrap/claims-billing-gate";
-import type {
-  ClaimMdReceiptIdentifier,
-  ClaimMdSubmissionEvidencePort,
+import {
+  type ClaimMdReceiptIdentifier,
+  type ClaimMdSubmissionEvidencePort,
+  type TenantClaimMdEvidence,
+  claimMdEvidenceFor,
 } from "../../23-billing-medicare/claimmd-evidence/store";
 import type { CommercialContextPort } from "../eligibility/service";
 import { failureLabel, isPerOrgResolveFailure, withOrgBinding } from "../services/org-binding";
@@ -104,6 +106,8 @@ const safeCode = (code: string): string => (SAFE_CODE.test(code) ? code : FAILUR
 export interface SubmissionBinding {
   readonly vendor: string | null;
   readonly transport: Pick<ClearinghouseTransport, "submitClaim">;
+  /** `tenant` = built from the organization's own sealed credential: its Claim.MD evidence goes to its own store. */
+  readonly account?: "tenant";
   readonly forOrg?: (organizationId: string) => Promise<SubmissionBinding>;
 }
 
@@ -117,6 +121,8 @@ export interface SubmissionWorkerDeps {
   };
   /** Required for Claim.MD only; the repository commits evidence before the transport request. */
   readonly claimMdEvidence?: ClaimMdSubmissionEvidencePort;
+  /** The stores a tenant's OWN Claim.MD account (`account: "tenant"`) records under; absent, such a send fails closed. */
+  readonly tenantClaimMdEvidence?: TenantClaimMdEvidence;
   readonly outbox: CommercialOutboxPort;
   readonly activeOrgs: {
     listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
@@ -537,11 +543,13 @@ async function sendOne(deps: SubmissionWorkerDeps, sub: SubmissionRow): Promise<
   if ((await bindPayloadAndMarkCallStarted(deps, sub, payloadHash)) === "changed") {
     return endWithoutSend(deps, sub, FAILURE.PAYLOAD_CHANGED);
   }
+  // A tenant's own Claim.MD account records under its own store, the platform account under the platform's (never crossed).
+  const claimMdEvidence = claimMdEvidenceFor(deps, sub.organizationId, context.usage).submission;
   let evidenceId: string | null;
   try {
     evidenceId = await reserveM41ClaimMdEvidence({
       vendor: deps.binding.vendor,
-      evidence: deps.claimMdEvidence,
+      evidence: claimMdEvidence,
       organizationId: sub.organizationId,
       providerEntityId: sub.providerEntityId,
       locationId: sub.locationId,
@@ -586,7 +594,7 @@ async function sendOne(deps: SubmissionWorkerDeps, sub: SubmissionRow): Promise<
   }
   switch (outcome.kind) {
     case "accepted": {
-      if (evidenceId && deps.claimMdEvidence) {
+      if (evidenceId && claimMdEvidence) {
         const fieldNamespace: Record<string, "file" | "batch" | "claim" | "remote_claim" | "pcn"> =
           {
             fileid: "file",
@@ -616,10 +624,10 @@ async function sendOne(deps: SubmissionWorkerDeps, sub: SubmissionRow): Promise<
           },
         ];
         try {
-          await deps.claimMdEvidence.observe({
+          await claimMdEvidence.observe({
             evidenceId,
             organizationId: sub.organizationId,
-            accountReference: deps.claimMdEvidence.accountReference,
+            accountReference: claimMdEvidence.accountReference,
             usage: context.usage,
             identifiers,
             source: vendorIdentifiers

@@ -1093,7 +1093,10 @@ import {
 import { startClaimMdResponseCaptureWorker } from "./modules/23-billing-medicare/claimmd-capture/worker";
 import { createClaimMdEvidenceCipher } from "./modules/23-billing-medicare/claimmd-evidence/cipher";
 import { createClaimMdNoticeEvidenceStore } from "./modules/23-billing-medicare/claimmd-evidence/notice-store";
-import { createClaimMdSubmissionEvidenceStore } from "./modules/23-billing-medicare/claimmd-evidence/store";
+import {
+  createClaimMdSubmissionEvidenceStore,
+  createTenantClaimMdEvidence,
+} from "./modules/23-billing-medicare/claimmd-evidence/store";
 import { createClaimMdCandidateProvider } from "./modules/23-billing-medicare/claimmd-identity/candidate-provider";
 import {
   claimMdIdentityResolutionEnabled,
@@ -4178,6 +4181,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           db: dbHandle.db,
           accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE!.trim(),
           usage: process.env.CLAIMMD_ACCOUNT_USAGE as "test" | "production",
+          cipher: createClaimMdEvidenceCipher({
+            dekForOrg: (organizationId) => getTenantKeyProvider().dekForOrg(organizationId),
+            dekForOrgVersion: (organizationId, version) =>
+              getTenantKeyProvider().dekForOrgVersion(organizationId, version),
+          }),
+        })
+      : undefined;
+  // A tenant's OWN sealed Claim.MD account records the same evidence under its own org and account reference (owner decision
+  // 2026-11-08). Built whenever the tenant clearinghouse runtime is, whatever the platform's own vendor is.
+  const tenantClaimMdEvidence =
+    tenantClearinghouse && dbHandle
+      ? createTenantClaimMdEvidence({
+          db: dbHandle.db,
           cipher: createClaimMdEvidenceCipher({
             dekForOrg: (organizationId) => getTenantKeyProvider().dekForOrg(organizationId),
             dekForOrgVersion: (organizationId, version) =>
@@ -10548,6 +10564,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         attempts: createDrizzleAttemptStore(dbHandle.db),
         ...(claimMdSubmissionEvidence ? { claimMdEvidence: claimMdSubmissionEvidence } : {}),
         ...(claimMdNoticeEvidence ? { claimMdNoticeEvidence } : {}),
+        ...(tenantClaimMdEvidence ? { tenantClaimMdEvidence } : {}),
         claimMdNoticeUploadsEnabled,
         ackCursors: createDrizzleAckCursorStore(dbHandle.db),
         // #714 - a rejected clearinghouse credential raises one critical alert per scope and holds further calls.
@@ -11139,6 +11156,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         ...clearinghouseUsageFor,
       }),
       ...(claimMdSubmissionEvidence ? { claimMdEvidence: claimMdSubmissionEvidence } : {}),
+      ...(tenantClaimMdEvidence ? { tenantClaimMdEvidence } : {}),
       renderer: buildCommercial837iRenderer(
         dbHandle.db,
         buildCommercialRenderPorts({

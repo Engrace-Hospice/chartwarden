@@ -4,6 +4,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { X12ClaimEvidence } from "@chartwarden/x12-837-client";
 import { and, eq } from "drizzle-orm";
 import type { createClaimMdEvidenceCipher } from "./cipher";
+import { type ClaimMdNoticeEvidencePort, createClaimMdNoticeEvidenceStore } from "./notice-store";
 
 const E = schema.claimmdSubmissionEvidence;
 const R = schema.claimmdSubmissionReceiptObservations;
@@ -196,4 +197,66 @@ export function createClaimMdSubmissionEvidenceStore(input: {
       );
     },
   };
+}
+
+/**
+ * The account reference a tenant's OWN sealed Claim.MD account files its evidence under (owner decision 2026-11-08: per-tenant
+ * evidence). Never the platform account's CLAIMMD_ACCOUNT_REFERENCE, so the platform capture, identity resolver and ack
+ * dispatcher (all keyed on the platform reference) never match a tenant account's rows. ponytail: one reference per tenant, not
+ * per Claim.MD account; a tenant that moves to another Claim.MD account keeps it (its rows stay org-scoped either way).
+ */
+export const tenantClaimMdAccountReference = (organizationId: string): string =>
+  `tenant:${organizationId.toLowerCase()}`;
+
+/** Evidence stores for a tenant's own Claim.MD account, made per send for that organization and its account mode. */
+export interface TenantClaimMdEvidence {
+  submission(organizationId: string, usage: "test" | "production"): ClaimMdSubmissionEvidencePort;
+  notice(organizationId: string, usage: "test" | "production"): ClaimMdNoticeEvidencePort;
+}
+
+export function createTenantClaimMdEvidence(input: {
+  db: DbClient;
+  cipher: Cipher;
+}): TenantClaimMdEvidence {
+  const of = (organizationId: string, usage: "test" | "production") => ({
+    ...input,
+    accountReference: tenantClaimMdAccountReference(organizationId),
+    usage,
+  });
+  return {
+    submission: (organizationId, usage) =>
+      createClaimMdSubmissionEvidenceStore(of(organizationId, usage)),
+    notice: (organizationId, usage) => createClaimMdNoticeEvidenceStore(of(organizationId, usage)),
+  };
+}
+
+/**
+ * The evidence stores one send uses: a tenant's own Claim.MD account (`account: "tenant"`) gets ITS stores, or none (the send then
+ * fails closed); the platform account keeps the platform's stores, exactly as before. A tenant send never borrows the platform's.
+ */
+export function claimMdEvidenceFor(
+  deps: {
+    readonly binding: { readonly account?: "tenant" };
+    readonly claimMdEvidence?: ClaimMdSubmissionEvidencePort;
+    readonly claimMdNoticeEvidence?: ClaimMdNoticeEvidencePort;
+    readonly tenantClaimMdEvidence?: TenantClaimMdEvidence;
+  },
+  organizationId: string,
+  usage: "test" | "production",
+): {
+  readonly submission?: ClaimMdSubmissionEvidencePort;
+  readonly notice?: ClaimMdNoticeEvidencePort;
+} {
+  if (deps.binding.account !== "tenant")
+    return {
+      ...(deps.claimMdEvidence ? { submission: deps.claimMdEvidence } : {}),
+      ...(deps.claimMdNoticeEvidence ? { notice: deps.claimMdNoticeEvidence } : {}),
+    };
+  const tenant = deps.tenantClaimMdEvidence;
+  return tenant
+    ? {
+        submission: tenant.submission(organizationId, usage),
+        notice: tenant.notice(organizationId, usage),
+      }
+    : {};
 }
