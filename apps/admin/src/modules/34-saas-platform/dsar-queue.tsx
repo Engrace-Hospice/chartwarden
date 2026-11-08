@@ -26,9 +26,9 @@ import type { paths } from "@chartwarden/ui";
 // laid out as the redesign's list + right drawer (outbox is the reference).
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
-import { useSearchParams } from "react-router-dom";
 import { PatientFinder } from "./patient-finder";
 import { DSAR_TONE, cap } from "./saas-status";
+import { useSelectionParam } from "./use-selection-param";
 
 // The §164.524 DSAR job view (mirrors the backend DsarExportJobViewSchema).
 interface DsarExportJob {
@@ -86,8 +86,7 @@ export function DsarQueue(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   // The open job lives in the URL (`?job=<id>`), so Back closes the drawer and a link reopens it.
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("job");
+  const { selectedId, select, close } = useSelectionParam("job");
 
   // The filter the list was last fetched with: Enter/Apply/Refresh load the typed text at once, and the debounced value then
   // catches up to the same text — without this the effect would fetch the identical query a second time.
@@ -111,6 +110,7 @@ export function DsarQueue(): JSX.Element {
       if (!isCurrent()) return;
       if (err) {
         setError("Could not load the DSAR queue.");
+        setItems([]);
         setLoading(false);
         return;
       }
@@ -126,8 +126,8 @@ export function DsarQueue(): JSX.Element {
     void load();
   }, [load, status, debouncedPatientId]);
 
-  // While the list cannot be read no drawer is shown: the job it would show is the last read, not what the server holds now.
-  const selected = selectedId && !error ? items.find((j) => j.id === selectedId) : undefined;
+  // A failed load empties the list, so no drawer shows a job that was last read before the failure (and a retry cannot re-mount it from stale data).
+  const selected = selectedId ? items.find((j) => j.id === selectedId) : undefined;
   useStaleSelection({ param: "job", ready: loaded, found: selected !== undefined });
 
   return (
@@ -175,11 +175,11 @@ export function DsarQueue(): JSX.Element {
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={(j) => setParams({ job: j.id })}
+          onSelect={(j) => select(j.id)}
           onRetry={() => void load()}
         />
       </div>
-      {selected ? <DsarDrawer job={selected} onClose={() => setParams({})} /> : null}
+      {selected ? <DsarDrawer key={selected.id} job={selected} onClose={close} /> : null}
     </div>
   );
 }
@@ -212,7 +212,7 @@ function DsarTable({
 }): JSX.Element {
   if (error)
     return (
-      <div className="wx-list-state" role="alert">
+      <div className="wx-list-state">
         <InlineAlert tone="error">{error}</InlineAlert>
         <Button tone="secondary" onClick={onRetry}>
           Try again

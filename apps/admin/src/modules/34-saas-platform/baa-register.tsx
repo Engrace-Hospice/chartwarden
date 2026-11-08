@@ -23,8 +23,8 @@ import type { paths } from "@chartwarden/ui";
 // redesign's list + right drawer (outbox is the reference).
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
-import { useSearchParams } from "react-router-dom";
 import { PLATFORM_BAA_TONE, statusLabel } from "./saas-status";
+import { useSelectionParam } from "./use-selection-param";
 
 // §3.8 wire enum (platform-typebox `BAA_STATUS`) — the UI owns its copy.
 const BAA_STATUSES = ["executed", "pending", "terminated", "missing"] as const;
@@ -72,8 +72,7 @@ export function BaaRegister(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   // The open record lives in the URL (`?baa=<id>`), so Back closes the drawer and a link reopens it.
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("baa");
+  const { selectedId, select, close } = useSelectionParam("baa");
 
   // The filter the list was last fetched with: Enter/Apply/Refresh load the typed text at once, and the debounced value then
   // catches up to the same text — without this the effect would fetch the identical query a second time.
@@ -97,6 +96,7 @@ export function BaaRegister(): JSX.Element {
       if (!isCurrent()) return;
       if (err) {
         setError("Could not load the BAA register.");
+        setRecords([]);
         setLoading(false);
         return;
       }
@@ -113,8 +113,8 @@ export function BaaRegister(): JSX.Element {
     void load();
   }, [load, status, debouncedTenant]);
 
-  // While the list cannot be read no drawer is shown: the record it would show is the last read, not what the server holds now.
-  const selected = selectedId && !error ? records.find((r) => r.id === selectedId) : undefined;
+  // A failed load empties the list, so no drawer shows a record that was last read before the failure (and a retry cannot re-mount it from stale data).
+  const selected = selectedId ? records.find((r) => r.id === selectedId) : undefined;
   useStaleSelection({ param: "baa", ready: loaded, found: selected !== undefined });
 
   return (
@@ -155,11 +155,11 @@ export function BaaRegister(): JSX.Element {
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={(r) => setParams({ baa: r.id })}
+          onSelect={(r) => select(r.id)}
           onRetry={() => void load()}
         />
       </div>
-      {selected ? <RecordDrawer record={selected} onClose={() => setParams({})} /> : null}
+      {selected ? <RecordDrawer key={selected.id} record={selected} onClose={close} /> : null}
     </div>
   );
 }
@@ -193,7 +193,7 @@ function RegisterTable({
 }): JSX.Element {
   if (error)
     return (
-      <div className="wx-list-state" role="alert">
+      <div className="wx-list-state">
         <InlineAlert tone="error">{error}</InlineAlert>
         <Button tone="secondary" onClick={onRetry}>
           Try again

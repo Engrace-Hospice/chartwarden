@@ -27,8 +27,8 @@ import type { GlyphName, paths } from "@chartwarden/ui";
 // list table, and the selected flag in an `aside.wx-admission-drawer`.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
-import { useSearchParams } from "react-router-dom";
 import { FLAG_KIND_TONE, statusLabel } from "./saas-status";
+import { useSelectionParam } from "./use-selection-param";
 
 // §4.7 wire enums (platform-typebox `FLAG_KIND` / `FLAG_VALUE_TYPE`) — the UI owns its copy.
 const FLAG_KINDS = ["product", "rollout", "kill_switch", "migration"] as const;
@@ -80,8 +80,7 @@ export function FeatureFlags(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   // The open flag lives in the URL (`?flag=<id>`), so Back closes the drawer and a link reopens it.
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("flag");
+  const { selectedId, select, close } = useSelectionParam("flag");
   const [ceremony, setCeremony] = useState<FeatureFlagView | null>(null);
   const [committing, setCommitting] = useState(false);
 
@@ -107,6 +106,7 @@ export function FeatureFlags(): JSX.Element {
       if (!isCurrent()) return;
       if (err) {
         setError("Could not load feature flags.");
+        setFlags([]);
         setLoading(false);
         return;
       }
@@ -143,15 +143,15 @@ export function FeatureFlags(): JSX.Element {
       setCommitting(false);
       setCeremony(null);
       if (!err) {
-        setParams({});
+        close();
         void load();
       }
     },
-    [ceremony, client, load, setParams],
+    [ceremony, client, load, close],
   );
 
-  // While the list cannot be read no drawer is shown: the flag it would show is the last read, not what the server holds now.
-  const selected = selectedId && !error ? flags.find((f) => f.id === selectedId) : undefined;
+  // A failed load empties the list, so no drawer shows a flag that was last read before the failure (and a retry cannot re-mount it from stale data).
+  const selected = selectedId ? flags.find((f) => f.id === selectedId) : undefined;
   useStaleSelection({ param: "flag", ready: loaded, found: selected !== undefined });
 
   return (
@@ -194,14 +194,15 @@ export function FeatureFlags(): JSX.Element {
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={(f) => setParams({ flag: f.id })}
+          onSelect={(f) => select(f.id)}
           onRetry={() => void load()}
         />
       </div>
       {selected ? (
         <FlagDrawer
+          key={selected.id}
           flag={selected}
-          onClose={() => setParams({})}
+          onClose={close}
           onArmKillSwitch={() => setCeremony(selected)}
         />
       ) : null}
@@ -259,7 +260,7 @@ function FlagKpis({
   const killed = loadFailed ? null : flags.filter((f) => f.killSwitchActive).length;
   const perTenant = loadFailed ? null : flags.filter((f) => f.organizationId !== null).length;
   return (
-    <div className="wx-stat-grid" aria-label="Feature flag summary">
+    <fieldset className="wx-stat-grid" aria-label="Feature flag summary">
       <StatCard icon="layout-grid" label="Total flags" value={total} sub="loaded" />
       <StatCard icon="check-circle" label="Enabled" value={enabled} sub="boolean · on" />
       <StatCard
@@ -270,7 +271,7 @@ function FlagKpis({
         alert={Boolean(killed)}
       />
       <StatCard icon="building" label="Per-tenant" value={perTenant} sub="org-scoped" />
-    </div>
+    </fieldset>
   );
 }
 
@@ -320,7 +321,7 @@ function FlagsTable({
 }): JSX.Element {
   if (error)
     return (
-      <div className="wx-list-state" role="alert">
+      <div className="wx-list-state">
         <InlineAlert tone="error">{error}</InlineAlert>
         <Button tone="secondary" onClick={onRetry}>
           Try again

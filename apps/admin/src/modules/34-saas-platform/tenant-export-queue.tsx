@@ -21,8 +21,8 @@ import type { paths } from "@chartwarden/ui";
 // is the reference).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { useSearchParams } from "react-router-dom";
 import { TENANT_EXPORT_TONE, cap } from "./saas-status";
+import { useSelectionParam } from "./use-selection-param";
 
 // The tenant-export job view (mirrors the backend TenantExportJobViewSchema).
 interface TenantExportJob {
@@ -79,8 +79,7 @@ export function TenantExportQueue(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   // The open job lives in the URL (`?export=<id>`), so Back closes the drawer and a link reopens it.
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("export");
+  const { selectedId, select, close } = useSelectionParam("export");
 
   const load = useCallback(async () => {
     const isCurrent = guard();
@@ -97,6 +96,7 @@ export function TenantExportQueue(): JSX.Element {
     if (!isCurrent()) return;
     if (err) {
       setError("Could not load the tenant-export queue.");
+      setItems([]);
       setLoading(false);
       return;
     }
@@ -115,8 +115,8 @@ export function TenantExportQueue(): JSX.Element {
     [items, purpose],
   );
 
-  // Looked up in the loaded list (not the purpose-filtered one), and not while the list cannot be read.
-  const selected = selectedId && !error ? items.find((j) => j.id === selectedId) : undefined;
+  // Looked up in the loaded list (not the purpose-filtered one). A failed load empties it, so no drawer shows a job last read before the failure.
+  const selected = selectedId ? items.find((j) => j.id === selectedId) : undefined;
   useStaleSelection({ param: "export", ready: loaded, found: selected !== undefined });
 
   return (
@@ -154,11 +154,11 @@ export function TenantExportQueue(): JSX.Element {
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={(j) => setParams({ export: j.id })}
+          onSelect={(j) => select(j.id)}
           onRetry={() => void load()}
         />
       </div>
-      {selected ? <ExportDrawer job={selected} onClose={() => setParams({})} /> : null}
+      {selected ? <ExportDrawer key={selected.id} job={selected} onClose={close} /> : null}
     </div>
   );
 }
@@ -180,7 +180,7 @@ function ExportTable({
 }): JSX.Element {
   if (error)
     return (
-      <div className="wx-list-state" role="alert">
+      <div className="wx-list-state">
         <InlineAlert tone="error">{error}</InlineAlert>
         <Button tone="secondary" onClick={onRetry}>
           Try again
