@@ -25,7 +25,7 @@ export function buildClearinghouseAuditPort(): ClearinghouseAuditPort {
           eventType: entry.eventType,
           resourceKind: "tenant_clearinghouse_config",
           resourceId: entry.resourceId,
-          outcome: "success",
+          outcome: entry.outcome ?? "success",
           severity: "warn",
           retentionClass: "compliance",
           context: {

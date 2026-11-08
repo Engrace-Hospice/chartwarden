@@ -51,7 +51,7 @@ export function buildTenantClearinghouseOnboardingPort(deps: {
   const withId = async (
     tx: DbClient,
     scope: OnboardingWriteScope,
-    view: ClearinghouseConfigView,
+    view: ClearinghouseConfigView | object,
     extra: Omit<OnboardingClearinghouseResult, "resourceId" | "view"> = {},
   ): Promise<OnboardingClearinghouseResult> => ({
     resourceId: await resourceIdOf(tx, scope.organizationId),
@@ -142,6 +142,17 @@ export function buildTenantClearinghouseOnboardingPort(deps: {
             : {}),
         },
       });
+    },
+
+    async releaseCredentials(tx, scope, reason) {
+      await assertTxScopedToOrg(tx, scope.organizationId);
+      const { released, view } = await service.releaseCredentials(
+        createDrizzleConfigStore(tx),
+        actorFor(scope),
+        reason,
+      );
+      // The audit row says how many were released, never which (a fingerprint is never audited).
+      return withId(tx, scope, { released, config: view }, { detail: { released } });
     },
   };
 }

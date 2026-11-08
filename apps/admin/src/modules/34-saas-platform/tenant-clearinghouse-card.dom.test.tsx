@@ -244,6 +244,68 @@ describe("TenantClearinghouseCard", () => {
     });
   });
 
+  describe("releasing earlier credentials (migration 1404)", () => {
+    const RELEASE = "/api/v1/platform/tenants/{orgSlug}/clearinghouse/credentials/release";
+    const mountWith = (choice: unknown, release: () => unknown) => {
+      const client = stubClient({
+        GET: { [CH]: () => ok(choice), [SUBSCRIPTION]: () => ok({ contract: null }) },
+        POST: { [RELEASE]: release as never },
+      });
+      renderAt(
+        "/x",
+        [
+          {
+            path: "/x",
+            element: <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus="active" />,
+          },
+        ],
+        client,
+      );
+      return client;
+    };
+
+    it("releases with a reason and an Idempotency-Key, and says how many were freed", async () => {
+      const client = mountWith(OUTSIDE, () => ok({ released: 2, config: OUTSIDE }));
+      fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Release earlier credentials" }));
+      const dialog = within(screen.getByRole("dialog"));
+      fireEvent.change(screen.getByLabelText(/^Reason/), {
+        target: { value: "Account moved to the new organization, ticket OPS-77" },
+      });
+      fireEvent.click(dialog.getByRole("button", { name: "Release" }));
+      await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+      const [path, init] = client.POST.mock.calls[0] as [
+        string,
+        { params: { header: Record<string, string> }; body: unknown },
+      ];
+      expect(path).toBe(RELEASE);
+      expect(init.params.header["Idempotency-Key"]).toBeTruthy();
+      expect(init.body).toEqual({ reason: "Account moved to the new organization, ticket OPS-77" });
+      expect(await screen.findByText("Released 2 earlier credentials.")).toBeTruthy();
+    });
+
+    it("shows the server's refusal while vendor responses may still arrive, and frees nothing", async () => {
+      mountWith(CLAIMMD, () =>
+        refused(409, "CLEARINGHOUSE_RESPONSES_PENDING", "vendor responses may still arrive"),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Release earlier credentials" }));
+      fireEvent.change(screen.getByLabelText(/^Reason/), {
+        target: { value: "Retire the rotated key, ticket OPS-78" },
+      });
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Release" }));
+      expect(await screen.findByText(/vendor responses may still arrive/)).toBeTruthy();
+      expect(screen.queryByText(/^Released/)).toBeNull();
+    });
+
+    it("offers nothing for a tenant that never chose a clearinghouse", async () => {
+      mountWith(NOTHING, () => ok({ released: 0, config: NOTHING }));
+      fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+      expect(await screen.findByText(/No clearinghouse is chosen yet/)).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Release earlier credentials" })).toBeNull();
+    });
+  });
+
   it("opens the drawer of notices filed outside ChartWarden, and closes it", async () => {
     const client = mount(OUTSIDE);
     fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));

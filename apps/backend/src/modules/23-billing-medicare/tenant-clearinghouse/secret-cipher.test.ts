@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHmac, hkdfSync, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { buildClearinghouseSecretCipher, platformCredentialFingerprints } from "./secret-cipher";
 
@@ -69,6 +69,21 @@ describe("clearinghouse secret cipher", () => {
     expect(buildClearinghouseSecretCipher(randomBytes(32)).fingerprint("claimmd", KEY)).not.toBe(
       fp,
     );
+  });
+
+  // Known answer (security review LOW-8): the fingerprint key is HKDF(KEK) under its OWN label, not the DEK's or the AAD's, so a
+  // fingerprint is never an HMAC under a key that also seals a credential. Recomputed here with node:crypto from the spec.
+  it("derives the fingerprint key under its own label (known answer), distinct from the DEK and AAD derivations", () => {
+    const kek = Buffer.alloc(32, 7);
+    const hmacUnder = (info: string) =>
+      createHmac("sha256", Buffer.from(hkdfSync("sha256", kek, Buffer.alloc(0), info, 32)))
+        .update(`claimmd\n${KEY}`, "utf8")
+        .digest("hex");
+    const fp = buildClearinghouseSecretCipher(kek).fingerprint("claimmd", KEY);
+    expect(fp).toBe(hmacUnder("chartwarden-m23-clearinghouse-credential-fingerprint:v1"));
+    expect(fp).not.toBe(hmacUnder(`chartwarden-m23-clearinghouse-credential-dek:${ORG_A}`));
+    expect(fp).not.toBe(hmacUnder("chartwarden-m23-clearinghouse-credential:v1"));
+    expect(fp).not.toBe(createHmac("sha256", kek).update(`claimmd\n${KEY}`, "utf8").digest("hex"));
   });
 
   it("rejects a KEK that is not 32 bytes", () => {

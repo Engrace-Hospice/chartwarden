@@ -329,6 +329,15 @@ export const OnboardingClearinghouseVerifyResponseSchema = Type.Object({
   test: Nullable(Type.Object({ outcome: ClearinghouseOutcome })),
 });
 
+/** After the operator released a tenant's earlier clearinghouse credentials: how many (never which), and the config unchanged. */
+export const OnboardingClearinghouseReleaseResponseSchema = Type.Object({
+  released: Type.Integer({
+    minimum: 0,
+    description: "How many credentials the tenant held, other than its current one, were released.",
+  }),
+  config: OnboardingClearinghouseViewSchema,
+});
+
 /** The notice after an operator withdrew its external-filing record: ids, a state and dates only (no patient, no admission). */
 export const OnboardingNoticeWithdrawalViewSchema = Type.Object({
   noticeKind: Type.Union([Type.Literal("noe"), Type.Literal("notr")]),

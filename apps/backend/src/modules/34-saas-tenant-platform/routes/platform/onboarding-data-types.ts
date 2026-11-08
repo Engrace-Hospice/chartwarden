@@ -95,6 +95,15 @@ export interface OnboardingDataService {
     expected: { readonly recordedAt: string },
   ): Promise<unknown>;
   /**
+   * The operator releases every clearinghouse credential the tenant still holds except its current one, so another organization may
+   * seal it. NOT gated on the tenant's onboarding status; refused while the tenant's vendor responses may still arrive.
+   */
+  releaseClearinghouseCredentials(
+    op: OnboardingOperator,
+    orgSlug: string,
+    reason: string,
+  ): Promise<unknown>;
+  /**
    * The notices the tenant recorded as filed outside ChartWarden, NOEs and NOTRs, newest record first (what the withdraw drawer
    * reads; each carries the `recordedAt` pin a withdrawal needs). Ids, a state and dates only; an audited read on the tenant's own
    * RLS scope, NOT gated on the tenant's onboarding status.

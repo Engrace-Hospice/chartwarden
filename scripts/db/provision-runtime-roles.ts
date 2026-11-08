@@ -96,6 +96,8 @@ const PLATFORM_READ_TABLES = [
   "onboarding_task",
   "onboarding_task_template",
   "tenant_go_live_attestation",
+  // M23 (migration 1404): the boot check that no tenant holds the platform's own vendor key (fingerprints only).
+  "tenant_clearinghouse_credential_reservation",
   "support_consent_grant",
   "support_session",
   "support_session_event",

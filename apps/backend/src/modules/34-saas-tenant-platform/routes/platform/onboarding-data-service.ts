@@ -609,6 +609,30 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
         },
       ),
 
+    releaseClearinghouseCredentials: (op, orgSlug, reason) =>
+      write(
+        op,
+        orgSlug,
+        {
+          event: EVENTS.clearinghouseCredentialsReleased,
+          resourceKind: CLEARINGHOUSE_KIND,
+          reason,
+          anyTenantStatus: true,
+        },
+        async (tx, t) => {
+          const done = await clearinghousePort().releaseCredentials(
+            tx,
+            scopeOf(op, t.organizationId),
+            reason,
+          );
+          return {
+            value: done.view,
+            resourceId: done.resourceId,
+            ...(done.detail ? { detail: done.detail } : {}),
+          };
+        },
+      ),
+
     withdrawNoticeExternalFiling: (op, orgSlug, kind, noticeId, reason, expected) =>
       write(
         op,

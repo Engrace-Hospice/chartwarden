@@ -8,11 +8,27 @@ export interface InMemoryConfigStore extends ConfigStore {
   /** Test control: pretend the org has (or no longer has) a production submission in flight. */
   setProductionAttempts(organizationId: string, present: boolean): void;
   rows(): readonly ConfigRow[];
+  /** Test view: the fingerprints the org holds unreleased. */
+  heldFingerprints(organizationId: string): readonly string[];
 }
+
+interface Reservation {
+  readonly organizationId: string;
+  readonly fingerprint: string;
+  readonly released: boolean;
+}
+
+const uniqueViolation = (constraint?: string): Error =>
+  Object.assign(new Error("duplicate key value violates unique constraint"), {
+    code: "23505",
+    ...(constraint ? { constraint_name: constraint } : {}),
+  });
 
 export function createInMemoryConfigStore(now: () => Date = () => new Date()): InMemoryConfigStore {
   const byOrg = new Map<string, ConfigRow>();
   const withAttempts = new Set<string>();
+  /** Mirrors migration 1404: one unreleased reservation per fingerprint across ALL organizations. */
+  const reservations: Reservation[] = [];
   /** Mirrors migration 1403's partial unique index: one non-null fingerprint across ALL organizations. */
   const assertFingerprintFree = (
     organizationId: string,
@@ -21,10 +37,7 @@ export function createInMemoryConfigStore(now: () => Date = () => new Date()): I
     if (!fingerprint) return;
     for (const row of byOrg.values()) {
       if (row.organizationId !== organizationId && row.credentialFingerprint === fingerprint) {
-        throw Object.assign(new Error("duplicate key value violates unique constraint"), {
-          code: "23505",
-          constraint_name: "tenant_clearinghouse_config_fingerprint_uq",
-        });
+        throw uniqueViolation("tenant_clearinghouse_config_fingerprint_uq");
       }
     }
   };
@@ -36,11 +49,7 @@ export function createInMemoryConfigStore(now: () => Date = () => new Date()): I
       return byOrg.get(organizationId) ?? null;
     },
     async insert(row: NewConfigRow) {
-      if (byOrg.has(row.organizationId)) {
-        throw Object.assign(new Error("duplicate key value violates unique constraint"), {
-          code: "23505",
-        });
-      }
+      if (byOrg.has(row.organizationId)) throw uniqueViolation();
       assertFingerprintFree(row.organizationId, row.credentialFingerprint);
       const at = now();
       const created: ConfigRow = {
@@ -85,10 +94,37 @@ export function createInMemoryConfigStore(now: () => Date = () => new Date()): I
     async hasProductionAttempts(organizationId) {
       return withAttempts.has(organizationId);
     },
+    async hasRecentProductionAttempts(organizationId) {
+      return withAttempts.has(organizationId);
+    },
+    async holdsCredential(organizationId, fingerprint) {
+      return reservations.some(
+        (r) => r.organizationId === organizationId && r.fingerprint === fingerprint && !r.released,
+      );
+    },
+    async reserveCredential(organizationId, _vendor, fingerprint) {
+      if (reservations.some((r) => r.fingerprint === fingerprint && !r.released)) {
+        throw uniqueViolation("tenant_clearinghouse_credential_reservation_held_uq");
+      }
+      reservations.push({ organizationId, fingerprint, released: false });
+    },
+    async releaseCredentials(organizationId, keep) {
+      let released = 0;
+      reservations.forEach((r, i) => {
+        if (r.organizationId !== organizationId || r.released || r.fingerprint === keep) return;
+        reservations[i] = { ...r, released: true };
+        released += 1;
+      });
+      return released;
+    },
     setProductionAttempts(organizationId, present) {
       if (present) withAttempts.add(organizationId);
       else withAttempts.delete(organizationId);
     },
     rows: () => [...byOrg.values()],
+    heldFingerprints: (organizationId) =>
+      reservations
+        .filter((r) => r.organizationId === organizationId && !r.released)
+        .map((r) => r.fingerprint),
   };
 }

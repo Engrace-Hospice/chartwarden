@@ -312,6 +312,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_N, "onboarding"],
       [ORG_O, "onboarding"],
       [ORG_P, "onboarding"],
+      [ORG_Q, "active"], // the platform release of its earlier credentials (migration 1404) resolves its tenant account
     ] as const) {
       await admin.query(
         "INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,$3,'b@x.test','p@x.test')",
@@ -512,6 +513,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
                 "tenant_clearinghouse.read_platform",
                 "tenant_clearinghouse.write_platform",
                 "tenant_clearinghouse.verify_baa_platform",
+                "tenant_clearinghouse.release_credential_platform",
                 "tenant_notice_filing.withdraw_platform",
                 // naming a billing mode on the switch is also a pricing write
                 "subscription.onboard_platform",
@@ -618,6 +620,19 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     expect(
       await q("SELECT 1 FROM tenant_clearinghouse_config WHERE organization_id=$1", [ORG_Q]),
     ).toEqual([]);
+    // the refusal rolled its write back, so it is audited on its own transaction: denied, the code and vendor, never the key,
+    // its fingerprint or the holder (security review LOW-1)
+    const refused = await q<{ outcome: string; context: Record<string, unknown> }>(
+      "SELECT outcome, context FROM audit_event WHERE organization_id=$1 AND event_type='m23.tenant_clearinghouse.credential_refused'",
+      [ORG_Q],
+    );
+    expect(refused).toHaveLength(1);
+    expect(refused[0]).toMatchObject({
+      outcome: "denied",
+      context: { code: "CLEARINGHOUSE_ACCOUNT_IN_USE", vendor: "claimmd" },
+    });
+    expect(JSON.stringify(refused)).not.toContain(ORG_A);
+    expect(JSON.stringify(refused)).not.toContain(KEY_A);
 
     const [current] = await q<{ version: number; credential_fingerprint: string }>(
       "SELECT version, credential_fingerprint FROM tenant_clearinghouse_config WHERE organization_id=$1",
@@ -637,12 +652,96 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_A],
     );
     expect(after?.credential_fingerprint).toBe(current?.credential_fingerprint);
-    // the write-audit row scrubs the fingerprint like the sealed secret
-    const audits = await q<{ after: Record<string, unknown> }>(
-      "SELECT after FROM audit_event WHERE organization_id=$1 AND event_type LIKE 'tenant_clearinghouse_config.%' ORDER BY created_at DESC LIMIT 1",
+    // migration 1404: the credential is reserved to A (one held row), and the re-save did not add another
+    expect(
+      await q(
+        "SELECT organization_id FROM tenant_clearinghouse_credential_reservation WHERE credential_fingerprint=$1 AND released_at IS NULL",
+        [current?.credential_fingerprint],
+      ),
+    ).toEqual([{ organization_id: ORG_A }]);
+    // no audit row of any organization, before or after, carries the fingerprint (both tables' write-audit scrub it)
+    const audits = await q<{ before: unknown; after: unknown; context: unknown }>(
+      "SELECT before, after, context FROM audit_event WHERE resource_kind IN ('tenant_clearinghouse_config', 'tenant_clearinghouse_credential_reservation')",
+    );
+    expect(audits.length).toBeGreaterThan(0);
+    expect(JSON.stringify(audits)).not.toContain(String(current?.credential_fingerprint));
+  });
+
+  // Migration 1404 (owner decision 2026-11-08): a credential stays reserved to its tenant through a switch to `outside`; only the
+  // platform-ops release frees it, a released reservation is final, and a sealed credential always carries its fingerprint.
+  it("keeps a credential reserved after its tenant switches to outside until a platform operator releases it", async () => {
+    const KEY_Q = "fake-claimmd-key-Q#live-1";
+    const first = await tenantCall("PUT", ORG_Q, "", {
+      vendor: "claimmd",
+      mode: "test",
+      secret: KEY_Q,
+    });
+    expect(first.statusCode, first.body).toBe(201);
+    const out = await tenantCall("PUT", ORG_Q, "", { vendor: "outside" }, { "if-match": "1" });
+    expect(out.statusCode, out.body).toBe(200);
+    const [hRow] = await q<{ credential_fingerprint: string | null }>(
+      "SELECT credential_fingerprint FROM tenant_clearinghouse_config WHERE organization_id=$1",
+      [ORG_Q],
+    );
+    expect(hRow?.credential_fingerprint).toBeNull();
+    const held = await q<{ id: string; credential_fingerprint: string }>(
+      "SELECT id, credential_fingerprint FROM tenant_clearinghouse_credential_reservation WHERE organization_id=$1 AND released_at IS NULL",
+      [ORG_Q],
+    );
+    expect(held).toHaveLength(1);
+    // RLS: org A's tenant role cannot see H's reservation, yet the index refuses A sealing H's old key
+    expect(
+      await asTenant(
+        ORG_A,
+        "SELECT 1 FROM tenant_clearinghouse_credential_reservation WHERE organization_id <> current_setting('app.org_id')::uuid",
+      ),
+    ).toEqual([]);
+    const [a] = await q<{ version: number }>(
+      "SELECT version FROM tenant_clearinghouse_config WHERE organization_id=$1",
       [ORG_A],
     );
-    expect(JSON.stringify(audits)).not.toContain(String(current?.credential_fingerprint));
+    const steal = await tenantCall(
+      "PUT",
+      ORG_A,
+      "",
+      { vendor: "claimmd", mode: "test", secret: KEY_Q },
+      { "if-match": String(a?.version) },
+    );
+    expect(steal.statusCode, steal.body).toBe(409);
+    expect(errorCode(steal)).toBe("CLEARINGHOUSE_ACCOUNT_IN_USE");
+
+    // the tenant's own admin has no release route; the platform operator releases it, with a reason, audited
+    const release = await platformCall("POST", "ch-q", "/credentials/release", {
+      reason: "account moved to another organization, ticket OPS-77",
+    });
+    expect(release.statusCode, release.body).toBe(200);
+    expect(release.json()).toMatchObject({ released: 1, config: { vendor: "outside" } });
+    const [gone] = await q<{ released_at: Date | null; released_by_user_id: string }>(
+      "SELECT released_at, released_by_user_id FROM tenant_clearinghouse_credential_reservation WHERE id=$1",
+      [held[0]?.id],
+    );
+    expect(gone?.released_at).toBeTruthy();
+    expect(gone?.released_by_user_id).toBe(OPERATOR);
+    const audited = await q<{ context: Record<string, unknown> }>(
+      "SELECT context FROM audit_event WHERE organization_id=$1 AND event_type='m34.tenant_onboarding.clearinghouse_credentials_released'",
+      [ORG_Q],
+    );
+    expect(audited[0]?.context).toMatchObject({ released: 1 });
+    expect(JSON.stringify(audited)).not.toContain(String(held[0]?.credential_fingerprint));
+    // a released reservation is final
+    await expect(
+      q(
+        "UPDATE tenant_clearinghouse_credential_reservation SET released_at=NULL, released_by_user_id=NULL, release_reason=NULL WHERE id=$1",
+        [held[0]?.id],
+      ),
+    ).rejects.toThrow(/final/);
+    // a sealed credential without its fingerprint is refused by the CHECK (rows written from 1404 on)
+    await expect(
+      q(
+        "UPDATE tenant_clearinghouse_config SET credential_fingerprint=NULL WHERE organization_id=$1",
+        [ORG_A],
+      ),
+    ).rejects.toThrow(/tenant_clearinghouse_config_fingerprint_secret_ck/);
   });
 
   it("verifies with the connection test on the unsealed key; activation needs the vendor BAA recorded by the tenant and verified by an operator; the gate follows", async () => {
@@ -845,13 +944,14 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
 
   it("D2: the table refuses an ACTIVE transmitting config whose BAA is not verified, and a half-recorded BAA", async () => {
     const sealed = (await cipher.encrypt(ORG_D, KEY_G, { vendor: "stedi", mode: "test" })).cipher;
-    const columns = `(organization_id, vendor, mode, status, secret_cipher, secret_dek_version, verification_kind, verified_at,
+    // migration 1404: a sealed credential carries its fingerprint (a synthetic 64-hex value here)
+    const columns = `(credential_fingerprint, organization_id, vendor, mode, status, secret_cipher, secret_dek_version, verification_kind, verified_at,
        verified_by_membership_id, activated_at, activated_by_membership_id, set_by_membership_id`;
     // active with a verified connection but NO verified BAA
     await expect(
       q(
         `INSERT INTO tenant_clearinghouse_config ${columns})
-         VALUES ($1,'stedi','test','active',$2,1,'attested',now(),$3,now(),$3,$3)`,
+         VALUES (repeat('d', 64), $1,'stedi','test','active',$2,1,'attested',now(),$3,now(),$3,$3)`,
         [ORG_D, sealed, MEMBERSHIP],
       ),
     ).rejects.toThrow(/tenant_clearinghouse_config_active_baa_ck/);
@@ -860,7 +960,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       q(
         `INSERT INTO tenant_clearinghouse_config ${columns},
            baa_vendor, baa_effective_date, baa_document_ref, baa_recorded_at, baa_recorded_by_membership_id)
-         VALUES ($1,'stedi','test','active',$2,1,'attested',now(),$3,now(),$3,$3,'stedi','2026-01-01','BAA ref',now(),$3)`,
+         VALUES (repeat('d', 64), $1,'stedi','test','active',$2,1,'attested',now(),$3,now(),$3,$3,'stedi','2026-01-01','BAA ref',now(),$3)`,
         [ORG_D, sealed, MEMBERSHIP],
       ),
     ).rejects.toThrow(/tenant_clearinghouse_config_active_baa_ck/);
@@ -870,7 +970,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         `INSERT INTO tenant_clearinghouse_config ${columns},
            baa_vendor, baa_effective_date, baa_document_ref, baa_recorded_at, baa_recorded_by_membership_id,
            baa_verified_at, baa_verified_by_membership_id)
-         VALUES ($1,'stedi','test','active',$2,1,'attested',now(),$3,now(),$3,$3,'claimmd','2026-01-01','BAA ref',now(),$3,now(),$3)`,
+         VALUES (repeat('d', 64), $1,'stedi','test','active',$2,1,'attested',now(),$3,now(),$3,$3,'claimmd','2026-01-01','BAA ref',now(),$3,now(),$3)`,
         [ORG_D, sealed, MEMBERSHIP],
       ),
     ).rejects.toThrow(/tenant_clearinghouse_config_active_baa_ck/);
@@ -879,7 +979,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       `INSERT INTO tenant_clearinghouse_config ${columns},
          baa_vendor, baa_effective_date, baa_document_ref, baa_recorded_at, baa_recorded_by_membership_id,
          baa_verified_at, baa_verified_by_membership_id)
-       VALUES ($1,'stedi','test','active',$2,1,'attested',now(),$3,now(),$3,$3,'stedi','2026-01-01','BAA ref',now(),$3,now(),$3)`,
+       VALUES (repeat('d', 64), $1,'stedi','test','active',$2,1,'attested',now(),$3,now(),$3,$3,'stedi','2026-01-01','BAA ref',now(),$3,now(),$3)`,
       [ORG_D, sealed, MEMBERSHIP],
     );
     await q("DELETE FROM tenant_clearinghouse_config WHERE organization_id=$1", [ORG_D]);
@@ -919,12 +1019,13 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       `INSERT INTO tenant_clearinghouse_config (organization_id, vendor, mode, status, secret_cipher, secret_dek_version,
          verification_kind, verified_at, verified_by_membership_id, activated_at, activated_by_membership_id, set_by_membership_id,
          baa_vendor, baa_effective_date, baa_document_ref, baa_recorded_at, baa_recorded_by_membership_id, baa_verified_at,
-         baa_verified_by_membership_id)
-       VALUES ($1,'stedi','production','active',$2,1,'attested',now(),$3,now(),$3,$3,'stedi','2026-01-01','Stedi BAA ref',now(),$3,now(),$3)`,
+         baa_verified_by_membership_id, credential_fingerprint)
+       VALUES ($1,'stedi','production','active',$2,1,'attested',now(),$3,now(),$3,$3,'stedi','2026-01-01','Stedi BAA ref',now(),$3,now(),$3,$4)`,
       [
         ORG_G,
         (await cipher.encrypt(ORG_G, KEY_G, { vendor: "stedi", mode: "production" })).cipher,
         MEMBERSHIP,
+        cipher.fingerprint("stedi", KEY_G), // migration 1404: a sealed credential always carries its fingerprint
       ],
     );
     const platformBinding = {

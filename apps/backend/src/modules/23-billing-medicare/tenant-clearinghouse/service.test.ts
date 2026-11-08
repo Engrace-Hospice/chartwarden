@@ -166,6 +166,27 @@ describe("tenant clearinghouse service: choosing", () => {
   });
 
   describe("checkPut: every refusal put would make, without writing", () => {
+    it("refuses the platform's own key before anything is written (security review LOW-3)", async () => {
+      const store = createInMemoryConfigStore();
+      const cipher = buildClearinghouseSecretCipher(randomBytes(32));
+      const service = createTenantClearinghouseService({
+        cipher,
+        probes: {},
+        platformCredentialFingerprints: new Set([cipher.fingerprint("claimmd", FAKE_KEY)]),
+      });
+      expect(
+        await codeOf(
+          service.checkPut(
+            store,
+            OPERATOR,
+            { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+            undefined,
+          ),
+        ),
+      ).toBe("CLEARINGHOUSE_ACCOUNT_IN_USE");
+      expect(store.rows()).toEqual([]);
+    });
+
     it("answers 503 for a credential when no encryption key is bound, BEFORE the caller writes anything else (the operator's switch sets the billing mode first)", async () => {
       const store = createInMemoryConfigStore();
       const service = createTenantClearinghouseService({ probes: {} });
@@ -1055,8 +1076,9 @@ describe("tenant clearinghouse service: attesting a vendor with no safe probe", 
   });
 });
 
-// Owner decision 2026-11-08 (migration 1403): one vendor account belongs to ONE organization, and never to the platform's own binding.
-describe("tenant clearinghouse service: one vendor account per organization", () => {
+// Owner decisions 2026-11-08 (migrations 1403/1404): one credential belongs to ONE organization, and never to the platform's own
+// binding; it stays reserved through a rotation or a switch to outside until a platform operator releases it.
+describe("tenant clearinghouse service: one credential per organization", () => {
   const OTHER: ClearinghouseActor = { ...ACTOR, organizationId: OTHER_ORG };
 
   it("refuses a second organization saving the same account key (409, holder never named); the holder may re-save it", async () => {
@@ -1098,7 +1120,7 @@ describe("tenant clearinghouse service: one vendor account per organization", ()
     ).resolves.toMatchObject({ created: false });
   });
 
-  it("frees the account when its holder rotates to another key or switches to outside", async () => {
+  it("keeps the old credential reserved through a rotation and a switch to outside; only a platform release frees it", async () => {
     const { store, service } = setup();
     await service.put(
       store,
@@ -1113,23 +1135,95 @@ describe("tenant clearinghouse service: one vendor account per organization", ()
       { vendor: "claimmd", mode: "test", secret: "another-fake-key#2" },
       v,
     );
-    await expect(
-      service.put(store, OTHER, { vendor: "claimmd", mode: "test", secret: FAKE_KEY }, undefined),
-    ).resolves.toMatchObject({ created: true });
+    const otherPut = () =>
+      codeOf(
+        service.put(store, OTHER, { vendor: "claimmd", mode: "test", secret: FAKE_KEY }, undefined),
+      );
+    // the rotated-away key is still held by ORG
+    expect(await otherPut()).toBe("CLEARINGHOUSE_ACCOUNT_IN_USE");
 
     v = (await service.view(store, ORG)).version ?? 0;
     await service.put(store, ACTOR, { vendor: "outside" }, v);
     expect(store.rows().find((r) => r.organizationId === ORG)?.credentialFingerprint).toBeNull();
-    const otherV = (await service.view(store, OTHER_ORG)).version ?? 0;
-    await service.put(store, OTHER, { vendor: "outside" }, otherV);
+    expect(store.heldFingerprints(ORG)).toHaveLength(2); // outside clears the current one, not the reservations
+    expect(await otherPut()).toBe("CLEARINGHOUSE_ACCOUNT_IN_USE");
+
+    // the tenant's own lane may not release
+    expect(
+      await codeOf(service.releaseCredentials(store, ACTOR, "account moved to the new org")),
+    ).toBe("FORBIDDEN");
+    const { released } = await service.releaseCredentials(
+      store,
+      OPERATOR,
+      "account moved to the new org",
+    );
+    expect(released).toBe(2);
+    expect(store.heldFingerprints(ORG)).toEqual([]);
     await expect(
-      service.put(
-        store,
-        ACTOR,
-        { vendor: "claimmd", mode: "test", secret: "another-fake-key#2" },
-        (await service.view(store, ORG)).version ?? 0,
+      service.put(store, OTHER, { vendor: "claimmd", mode: "test", secret: FAKE_KEY }, undefined),
+    ).resolves.toMatchObject({ created: true });
+  });
+
+  it("never releases the current credential, and refuses while vendor responses may still arrive", async () => {
+    const { store, service } = setup();
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    const v = (await service.view(store, ORG)).version ?? 0;
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: "another-fake-key#2" },
+      v,
+    );
+
+    store.setProductionAttempts(ORG, true);
+    expect(
+      await codeOf(service.releaseCredentials(store, OPERATOR, "retire the rotated key")),
+    ).toBe("CLEARINGHOUSE_RESPONSES_PENDING");
+    expect(store.heldFingerprints(ORG)).toHaveLength(2);
+
+    store.setProductionAttempts(ORG, false);
+    const { released } = await service.releaseCredentials(
+      store,
+      OPERATOR,
+      "retire the rotated key",
+    );
+    expect(released).toBe(1); // the rotated-away key only
+    expect(store.heldFingerprints(ORG)).toEqual([
+      store.rows().find((r) => r.organizationId === ORG)?.credentialFingerprint,
+    ]);
+    expect(
+      await codeOf(
+        service.put(
+          store,
+          OTHER,
+          { vendor: "claimmd", mode: "test", secret: "another-fake-key#2" },
+          undefined,
+        ),
       ),
-    ).resolves.toMatchObject({ created: false });
+    ).toBe("CLEARINGHOUSE_ACCOUNT_IN_USE");
+  });
+
+  it("backfills a pre-1403 row's fingerprint (and its reservation) on its next write", async () => {
+    const { store, service } = setup();
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    const sealed = store.rows()[0];
+    // simulate a row sealed before migration 1403: a credential with no fingerprint and no reservation
+    const legacy = createInMemoryConfigStore();
+    await legacy.insert({ ...sealed, credentialFingerprint: null } as never);
+    expect(legacy.heldFingerprints(ORG)).toEqual([]);
+    await service.recordBaa(legacy, ACTOR, BAA);
+    expect(legacy.rows()[0]?.credentialFingerprint).toBe(sealed?.credentialFingerprint);
+    expect(legacy.heldFingerprints(ORG)).toEqual([sealed?.credentialFingerprint]);
   });
 
   it("refuses the platform's own account key, with the same refusal", async () => {

@@ -17,6 +17,7 @@ import { NoticeFilingsDrawer } from "./notice-filings-drawer";
 import { VerifyBaa } from "./onboarding/clearinghouse-baa-verify";
 import { MODE_LABEL, VENDOR_LABEL, isTransmitting } from "./onboarding/clearinghouse-model";
 import type { ClearinghouseView } from "./onboarding/clearinghouse-model";
+import { ReleaseCredentials } from "./onboarding/clearinghouse-release";
 import { SwitchToVendor } from "./onboarding/clearinghouse-switch";
 import { ContractModeBanner } from "./onboarding/contract-mode-banner";
 import { ModeUnconfirmedNotice } from "./onboarding/mode-unconfirmed-notice";
@@ -128,6 +129,7 @@ function Body({
             onVerified={() => load.reload(true)}
           />
         ) : null}
+        <ReleaseCredentials orgSlug={orgSlug} view={view} />
         <Button tone="secondary" size="sm" onClick={onOpenFilings}>
           Notices filed outside ChartWarden
         </Button>

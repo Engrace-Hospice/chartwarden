@@ -186,6 +186,16 @@ export interface TenantClearinghouseService {
     readonly test: { readonly outcome: ConnectionProbeOutcome } | null;
   }>;
   activate(store: ConfigStore, actor: ClearinghouseActor): Promise<ClearinghouseConfigView>;
+  /**
+   * Platform ops only: release every credential the organization still holds EXCEPT its current one, so another organization may
+   * seal it (an account moved to a new organization, a key retired after a rotation). Refused while the organization's vendor
+   * responses may still arrive (credential-reservation.ts).
+   */
+  releaseCredentials(
+    store: ConfigStore,
+    actor: ClearinghouseActor,
+    reason: string,
+  ): Promise<{ readonly released: number; readonly view: ClearinghouseConfigView }>;
 }
 
 /** Opens one transaction and hands the callback a store bound to it (each call is its own transaction). */
