@@ -459,8 +459,8 @@ describe.each(URL_DRAWER_CASES)("$name URL drawer across reloads", (c) => {
 
 /** The screen's list with a second row (the first one's id counted up), so a test can pick row A then row B. */
 function withSecondRow(c: ParamCase): { routes: Record<string, unknown>; secondId: string } {
-  const [[listPath, listed]] = Object.entries(c.routes) as [string, { items: { id: string }[] }][];
-  const [first] = listed.items;
+  const [listPath, listed] = Object.entries(c.routes)[0] as [string, { items: { id: string }[] }];
+  const first = listed.items[0] as { id: string };
   const secondId = c.id.replace(/1$/, "2");
   return { routes: { [listPath]: page([first, { ...first, id: secondId }]) }, secondId };
 }
