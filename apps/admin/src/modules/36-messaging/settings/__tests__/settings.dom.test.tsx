@@ -2,6 +2,7 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/
 // M36 settings screens: loading/error/empty/403 states and the optimistic-with-rollback alert-rule toggle,
 // preferences save, and endpoint add/verify/remove — all against a recording fake fetch.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { JSX } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
@@ -248,6 +249,58 @@ describe("DeliveryEndpoints", () => {
     await waitFor(() =>
       expect(screen.getByText(/No endpoints added in this session/)).toBeTruthy(),
     );
+  });
+
+  it("verifies on Enter in a row's code field, and only that row", async () => {
+    const OTHER = "99999999-9999-4999-8999-999999999999";
+    const calls = mount(<DeliveryEndpoints />, (c) => {
+      if (c.path.endsWith("/verify"))
+        return json({
+          endpointId: c.path.includes(OTHER) ? OTHER : ID,
+          channel: "email",
+          verificationStatus: "verified",
+        });
+      return json(
+        {
+          endpointId: c.body?.target === "b@b.b" ? OTHER : ID,
+          channel: "email",
+          verificationStatus: "pending",
+        },
+        201,
+      );
+    });
+    for (const address of ["a@a.a", "b@b.b"]) {
+      fireEvent.change(screen.getByLabelText(/Address or device token/), {
+        target: { value: address },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
+      await screen.findByLabelText(`Verification code for ${address}`);
+    }
+    const second = screen.getByLabelText("Verification code for b@b.b");
+    fireEvent.change(second, { target: { value: "654321" } });
+    await userEvent.type(second, "{Enter}");
+    await screen.findByText("b@b.b is verified.");
+    const verifies = calls.filter((c) => c.path.endsWith("/verify"));
+    expect(verifies).toHaveLength(1);
+    expect(verifies[0]?.path).toContain(OTHER);
+    expect(verifies[0]?.body).toEqual({ token: "654321" });
+    // The first row is untouched: still pending, its field still there.
+    expect(screen.getByLabelText("Verification code for a@a.a")).toBeTruthy();
+  });
+
+  it("Enter in an empty code field says what is missing and sends nothing", async () => {
+    const calls = mount(<DeliveryEndpoints />, () =>
+      json({ endpointId: ID, channel: "email", verificationStatus: "pending" }, 201),
+    );
+    fireEvent.change(screen.getByLabelText(/Address or device token/), {
+      target: { value: "a@a.a" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
+    const code = await screen.findByLabelText("Verification code for a@a.a");
+    await userEvent.type(code, "{Enter}");
+    expect(await screen.findByText("Enter the verification code that was sent.")).toBeTruthy();
+    expect(calls.filter((c) => c.path.endsWith("/verify"))).toHaveLength(0);
+    expect(document.activeElement).toBe(code);
   });
 
   it("shows no-access when registering is forbidden", async () => {

@@ -161,61 +161,77 @@ export function DeliveryEndpoints(): JSX.Element {
           <StateEmpty>No endpoints added in this session. Add one above.</StateEmpty>
         ) : (
           <ul className="wx-fact-list" aria-label="Endpoints added this session">
-            {endpoints.map((endpoint) => (
-              <li key={endpoint.endpointId} className="wx-drawer-card">
-                <div className="wx-drawer-card-head">
-                  <div>
-                    <span className="wx-row-title">{endpoint.target}</span>
-                    <span className="wx-row-sub">{humanize(endpoint.channel)}</span>
+            {endpoints.map((endpoint) => {
+              const verified = endpoint.verificationStatus === "verified";
+              const removeButton = (
+                <Button
+                  tone="tertiary"
+                  size="lg"
+                  disabled={busy !== null}
+                  aria-label={`Remove ${endpoint.target}`}
+                  onClick={() => void remove(endpoint)}
+                >
+                  Remove
+                </Button>
+              );
+              return (
+                <li key={endpoint.endpointId} className="wx-drawer-card">
+                  <div className="wx-drawer-card-head">
+                    <div>
+                      <span className="wx-row-title">{endpoint.target}</span>
+                      <span className="wx-row-sub">{humanize(endpoint.channel)}</span>
+                    </div>
+                    <StatusPill
+                      tone={STATUS_TONE[endpoint.verificationStatus]}
+                      label={humanize(endpoint.verificationStatus)}
+                    />
                   </div>
-                  <StatusPill
-                    tone={STATUS_TONE[endpoint.verificationStatus]}
-                    label={humanize(endpoint.verificationStatus)}
-                  />
-                </div>
-                {endpoint.verificationStatus === "verified" ? null : (
-                  <TextField
-                    label={`Verification code for ${endpoint.target}`}
-                    maxLength={64}
-                    value={tokens[endpoint.endpointId] ?? ""}
-                    disabled={busy !== null}
-                    error={
-                      verifyAttempted.has(endpoint.endpointId) &&
-                      (tokens[endpoint.endpointId] ?? "").trim() === ""
-                        ? "Enter the verification code that was sent."
-                        : undefined
-                    }
-                    onChange={(e) => {
-                      const token = e.target.value;
-                      setTokens((t) => ({ ...t, [endpoint.endpointId]: token }));
-                    }}
-                  />
-                )}
-                <div className="wx-drawer-actions">
-                  {endpoint.verificationStatus === "verified" ? null : (
-                    <Button
-                      tone="secondary"
-                      size="lg"
-                      loading={busy === endpoint.endpointId}
-                      disabled={busy !== null}
-                      aria-label={`Verify ${endpoint.target}`}
-                      onClick={(e) => void verify(endpoint, e.currentTarget.closest("li"))}
+                  {verified ? (
+                    <div className="wx-drawer-actions">{removeButton}</div>
+                  ) : (
+                    // A form per row, so Enter in the code field verifies that endpoint (Remove stays a plain button).
+                    <form
+                      noValidate
+                      className="wx-form-stack"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void verify(endpoint, e.currentTarget);
+                      }}
                     >
-                      Verify
-                    </Button>
+                      <TextField
+                        label={`Verification code for ${endpoint.target}`}
+                        maxLength={64}
+                        value={tokens[endpoint.endpointId] ?? ""}
+                        disabled={busy !== null}
+                        error={
+                          verifyAttempted.has(endpoint.endpointId) &&
+                          (tokens[endpoint.endpointId] ?? "").trim() === ""
+                            ? "Enter the verification code that was sent."
+                            : undefined
+                        }
+                        onChange={(e) => {
+                          const token = e.target.value;
+                          setTokens((t) => ({ ...t, [endpoint.endpointId]: token }));
+                        }}
+                      />
+                      <div className="wx-drawer-actions">
+                        <Button
+                          type="submit"
+                          tone="secondary"
+                          size="lg"
+                          loading={busy === endpoint.endpointId}
+                          disabled={busy !== null}
+                          aria-label={`Verify ${endpoint.target}`}
+                        >
+                          Verify
+                        </Button>
+                        {removeButton}
+                      </div>
+                    </form>
                   )}
-                  <Button
-                    tone="tertiary"
-                    size="lg"
-                    disabled={busy !== null}
-                    aria-label={`Remove ${endpoint.target}`}
-                    onClick={() => void remove(endpoint)}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
