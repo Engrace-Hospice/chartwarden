@@ -425,7 +425,24 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
     async newVersion(actor, planId, reasonRaw, expectedUpdatedAt) {
       const reason = normalizeReason(reasonRaw);
       return platformRunner(async (tx) => {
-        const [source] = await tx.select().from(PL).where(eq(PL.id, planId)).for("update").limit(1);
+        // Lock order (re-review LOW-7): the whole family, source included, in id order, in ONE statement. Locking the source first
+        // and the family after let two new versions of one family (from different versions) each hold a row the other waits on.
+        const [peek] = await tx
+          .select({ familySlug: PL.familySlug, tier: PL.tier })
+          .from(PL)
+          .where(eq(PL.id, planId))
+          .limit(1);
+        if (!peek || peek.tier !== "census_banded" || !peek.familySlug) {
+          throw new NotFoundError("plan not found");
+        }
+        const family = await tx
+          .select({ id: PL.id, version: PL.version, publishedAt: PL.publishedAt })
+          .from(PL)
+          .where(eq(PL.familySlug, peek.familySlug))
+          .orderBy(asc(PL.id))
+          .for("update");
+        // a family slug never changes, so the locked family holds the source; re-read it under that lock
+        const [source] = await tx.select().from(PL).where(eq(PL.id, planId)).limit(1);
         if (!source || source.tier !== "census_banded" || !source.familySlug) {
           throw new NotFoundError("plan not found");
         }
@@ -435,11 +452,6 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
           );
         }
         assertPinned(source, expectedUpdatedAt);
-        const family = await tx
-          .select({ id: PL.id, version: PL.version, publishedAt: PL.publishedAt })
-          .from(PL)
-          .where(eq(PL.familySlug, source.familySlug))
-          .for("update");
         if (family.some((f) => f.publishedAt === null)) {
           throw new ConflictError(
             "this plan family already has an unpublished draft version; finish or reuse it",

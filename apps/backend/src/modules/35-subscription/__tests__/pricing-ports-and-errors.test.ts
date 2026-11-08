@@ -140,9 +140,11 @@ describe("plan writes that return no row are a typed PERSIST_FAILED 500", () => 
     ));
   it("newVersion (the insert)", () =>
     expectPersistFailed(() =>
+      // newVersion reads the source's family, locks the family in id order, then re-reads the source under that lock
       service([
         [published],
         [{ id: "p1", version: 1, publishedAt: published.publishedAt }],
+        [published],
         [],
       ]).newVersion(actor, "p1", reason, pin),
     ));
@@ -152,7 +154,12 @@ describe("plan writes that return no row are a typed PERSIST_FAILED 500", () => 
     for (const call of [
       () => service([[draft]]).replaceDraft(actor, "p1", input, reason, "2026-10-01T00:00:00.000Z"),
       () => service([[draft]]).publish(actor, "p1", reason, "2026-10-01T00:00:00.000Z"),
-      () => service([[published]]).newVersion(actor, "p1", reason, "2026-10-01T00:00:00.000Z"),
+      () =>
+        service([
+          [published],
+          [{ id: "p1", version: 1, publishedAt: published.publishedAt }],
+          [published],
+        ]).newVersion(actor, "p1", reason, "2026-10-01T00:00:00.000Z"),
       () => service([[published]]).archive(actor, "p1", reason, "2026-10-01T00:00:00.000Z"),
     ]) {
       const error = await call().catch((e) => e);

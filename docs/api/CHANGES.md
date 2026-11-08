@@ -6,6 +6,19 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-08 — Price plan writes are pinned to the version read
+
+**Why.** Two operators editing one draft price plan could overwrite each other's prices, or publish prices the publisher never saw.
+
+- `PUT /api/admin/pricing/plans/{id}`, `POST /api/admin/pricing/plans/{id}/publish`, `POST /api/admin/pricing/plans/{id}/new-version` and
+  `POST /api/admin/pricing/plans/{id}/archive` now require `If-Match: "<updatedAt>"`, the plan's `updatedAt` as read (a UTC ISO
+  timestamp, quoted, weak-prefixed or bare). Without it the answer is `428 IF_MATCH_REQUIRED`; a value that is not a timestamp is `422`; a plan that changed since it was
+  read is `409 PRICING_PLAN_CHANGED`, with `details: [{ field: "currentUpdatedAt", message: <the current updatedAt> }]`. Re-read the plan,
+  show the operator what it now says, and send the fresh value; never retry the same body on the new pin without that re-read.
+- Nothing is written on any of these refusals.
+
+---
+
 ## 2026-11-07 — Skippable steps, the BAA register's governing record, and a proxy's 413
 
 **Why.** The console offered Skip from its own list and guessed which BAA record go-live judges; both now come from the server.
