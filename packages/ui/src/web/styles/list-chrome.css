@@ -188,6 +188,10 @@
     justify-content: flex-start;
     align-items: flex-start;
   }
+  /* A field beside a button: line the button up with the input, not the label. */
+  .wx-list-toolbar-fields.is-bottom {
+    align-items: flex-end;
+  }
   .wx-list-toolbar-fields > .wx-field {
     flex: 1 1 14rem;
     min-width: 0;
@@ -374,6 +378,64 @@
   }
   .wx-action-row.is-end {
     justify-content: flex-end;
+  }
+  /* An alert beside its link (vertically centred), and a lone centred action such as Load more. */
+  .wx-action-row.is-middle {
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .wx-action-row.is-center {
+    justify-content: center;
+  }
+  /* A page section heading above a bare table (no card around it). */
+  .wx-section-title {
+    margin: 0;
+    color: var(--color-on-surface);
+    font-size: 0.9375rem;
+    font-weight: 700;
+  }
+  /* Problem / failure lists inside a card or alert: keep the bullets preflight strips. */
+  .wx-bullet-list {
+    margin: 0;
+    padding-left: 1.25rem;
+    list-style: disc;
+  }
+  /* Tenant hub cards: 1 / 2 / 3 columns; a child with .wx-grid-span-all takes the whole row. */
+  .wx-card-grid {
+    display: grid;
+    gap: 1rem;
+  }
+  @media (min-width: 768px) {
+    .wx-card-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 1280px) {
+    .wx-card-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+  .wx-grid-span-all {
+    grid-column: 1 / -1;
+  }
+  /* Thin full-width progress bar in the primary colour. */
+  .wx-progress {
+    width: 100%;
+    height: 0.5rem;
+    overflow: hidden;
+    border: 0;
+    border-radius: 9999px;
+    appearance: none;
+    background: var(--color-surface-container);
+  }
+  .wx-progress::-webkit-progress-bar {
+    background: var(--color-surface-container);
+  }
+  .wx-progress::-webkit-progress-value {
+    background: var(--color-primary);
+  }
+  .wx-progress::-moz-progress-bar {
+    background: var(--color-primary);
   }
   .wx-action-body.is-flush {
     padding: 0;
@@ -999,6 +1061,9 @@
   .wx-text-error {
     color: var(--color-error);
   }
+  .wx-text-success {
+    color: var(--color-success);
+  }
   /* A short status with an optional leading glyph in a table cell (Armed / Inactive). */
   .wx-inline-flag {
     display: inline-flex;
@@ -1016,6 +1081,13 @@
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  min-height: 2.75rem; /* 44px touch target (WCAG 2.5.5) */
+}
+.wx-action-check > input[type="checkbox"],
+.wx-action-check > input[type="radio"] {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 /* Billing home "Most urgent" rows: fixed columns so patient / item / date / pills / action line up row to row. */

@@ -227,7 +227,7 @@ export function InvocationSearch({
         <>
           {table}
           {cursor ? (
-            <div className="wx-drawer-actions">
+            <div className="wx-action-row is-center">
               <Button
                 tone="secondary"
                 onClick={() => void load(cursor, true)}

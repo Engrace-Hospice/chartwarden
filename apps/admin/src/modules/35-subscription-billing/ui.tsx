@@ -47,7 +47,7 @@ export function OutcomeBanner({
   onReverify?: () => void;
 }): JSX.Element {
   return (
-    <div className="wx-action-row">
+    <div className="wx-action-row is-middle">
       <InlineAlert tone={ok ? "success" : "error"}>{message}</InlineAlert>
       {stepUp ? <ReverifyLink onNavigate={onReverify} /> : null}
     </div>
@@ -66,7 +66,7 @@ export function LoadMore({
 }: { hasMore: boolean; loading: boolean; onMore: () => void }): JSX.Element | null {
   if (!hasMore) return null;
   return (
-    <div className="flex justify-center">
+    <div className="wx-action-row is-center">
       <Button tone="secondary" loading={loading} onClick={onMore}>
         Load more
       </Button>

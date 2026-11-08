@@ -31,7 +31,7 @@ export function PageHead({
 
 /** A page section heading above a table (the redesign has no section card for a bare table). */
 export function SectionTitle({ children }: { children: ReactNode }): JSX.Element {
-  return <h2>{children}</h2>;
+  return <h2 className="wx-section-title">{children}</h2>;
 }
 
 /** Loading state in the list-state card. */
@@ -91,9 +91,9 @@ export function StandingNotice({
   // A plain role="note" is never announced. Urgent notices interrupt (alert); the rest are polite (status).
   // Deliberately a <div>, not an <output>, and it must not sit inside another live region.
   return (
-    <div role={urgent ? "alert" : "status"} className="wx-drawer-card flex items-center gap-3">
+    <div role={urgent ? "alert" : "status"} className="wx-drawer-card wx-action-row is-middle">
       <StatusPill label={tone === "success" ? "OK" : "Notice"} tone={tone} />
-      <span className="text-sm">{children}</span>
+      <span>{children}</span>
     </div>
   );
 }

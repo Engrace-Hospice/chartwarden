@@ -127,7 +127,7 @@ export function KeyRings(): JSX.Element {
           </div>
         </header>
 
-        <div className="wx-list-toolbar" ref={toolbarRef}>
+        <div className="wx-list-toolbar wx-list-toolbar-fields is-bottom" ref={toolbarRef}>
           <TextField
             label="Tenant org slug"
             placeholder="Tenant org slug"

@@ -143,7 +143,13 @@ export function WageIndexLoad(): JSX.Element {
           <div className="wx-stat-card">
             <div>
               <span className="wx-stat-label">Rows ready</span>
-              <span className="wx-stat-value wx-nums">
+              <span
+                className={
+                  parsed.rows.length > 0 && parsed.problems.length === 0
+                    ? "wx-stat-value wx-nums wx-text-success"
+                    : "wx-stat-value wx-nums"
+                }
+              >
                 {parsed.rows.length.toLocaleString("en-US")}
               </span>
               <span className="wx-row-sub">Up to 7,000 per load</span>
@@ -152,7 +158,13 @@ export function WageIndexLoad(): JSX.Element {
           <div className="wx-stat-card">
             <div>
               <span className="wx-stat-label">Problems</span>
-              <span className="wx-stat-value wx-nums">
+              <span
+                className={
+                  parsed.problems.length > 0
+                    ? "wx-stat-value wx-nums wx-text-error"
+                    : "wx-stat-value wx-nums"
+                }
+              >
                 {parsed.problems.length.toLocaleString("en-US")}
               </span>
               <span className="wx-row-sub">Fix every one before loading</span>
@@ -272,7 +284,7 @@ function PreviewPanel({ parsed }: { readonly parsed: Parsed }): JSX.Element {
       {parsed.problems.length > 0 ? (
         <InlineAlert tone="error">
           <strong>{plural(parsed.problems.length, "problem")} in the table</strong>
-          <ul>
+          <ul className="wx-bullet-list">
             {parsed.problems.slice(0, PROBLEMS_SHOWN).map((p) => (
               <li key={`${p.line}-${p.message}`}>
                 Line {p.line}: {p.message}
@@ -390,7 +402,7 @@ function ConfirmLoadModal({
             <strong>{failure.title}</strong>
             <p>{failure.message}</p>
             {failure.details.length > 0 ? (
-              <ul>
+              <ul className="wx-bullet-list">
                 {failure.details.map((d) => (
                   <li key={d}>{d}</li>
                 ))}

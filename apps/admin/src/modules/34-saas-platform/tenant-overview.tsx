@@ -236,7 +236,7 @@ export function TenantOverview(): JSX.Element {
           <ProvisioningCard key={orgSlug} orgSlug={orgSlug} onChanged={() => void load(true)} />
         ) : null}
 
-        <div className="wx-form-grid">
+        <div className="wx-card-grid">
           <LifecycleCard tenant={tenant} onTransition={() => setTransitionOpen(true)} />
           <OnboardingCard
             tenant={tenant}
@@ -462,7 +462,7 @@ function OnboardingCard({
           <span className="wx-nums">
             {done} of {total} steps done
           </span>
-          <progress value={pct} max={100} aria-label={`${pct}% complete`} />
+          <progress className="wx-progress" value={pct} max={100} aria-label={`${pct}% complete`} />
           {awaitingApproval ? (
             <InlineAlert tone="warning">
               Waiting for your approval: the compliance officer has attested go-live readiness.

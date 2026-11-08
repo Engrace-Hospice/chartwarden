@@ -168,7 +168,7 @@ export function TenantInventory(): JSX.Element {
           </div>
         </header>
 
-        <form className="wx-list-toolbar" onSubmit={onSearch}>
+        <form className="wx-list-toolbar wx-list-toolbar-fields is-bottom" onSubmit={onSearch}>
           <SelectField
             label={<span className="wx-sr-only">Lifecycle status</span>}
             value={status}
