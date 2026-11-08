@@ -499,7 +499,9 @@ export class ClaimMdTransport implements ClearinghouseTransport {
         type: "reconciled_from_upload_list",
         idempotencyKey: attempt.idempotencyKey,
       });
-      return this.complete(ctx, attempt, `file:${found.value}`, true, [{ field: found.field, value: found.value }]);
+      return this.complete(ctx, attempt, `file:${found.value}`, true, [
+        { field: found.field, value: found.value },
+      ]);
     }
     try {
       const won = await this.attempts.retake(
@@ -593,11 +595,17 @@ export class ClaimMdTransport implements ClearinghouseTransport {
         "Claim.MD's upload answer does not name the claim; it is reconciled before any resend",
       );
     }
-    const vendorIdentifiers = ["fileid", "batchid", "claimid", "claimmd_id", "remote_claimid", "pcn"]
-      .flatMap((field) => {
-        const value = str(mine?.[field]);
-        return value && value.length <= MAX_VENDOR_ID_LENGTH ? [{ field, value }] : [];
-      });
+    const vendorIdentifiers = [
+      "fileid",
+      "batchid",
+      "claimid",
+      "claimmd_id",
+      "remote_claimid",
+      "pcn",
+    ].flatMap((field) => {
+      const value = str(mine?.[field]);
+      return value && value.length <= MAX_VENDOR_ID_LENGTH ? [{ field, value }] : [];
+    });
     return this.complete(ctx, attempt, id, false, vendorIdentifiers);
   }
 

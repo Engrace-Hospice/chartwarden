@@ -224,7 +224,8 @@ const REQUIREMENTS: readonly Requirement[] = [
   },
   {
     key: "CLAIMMD_ACCOUNT_REFERENCE",
-    rule: (v) => (/^[A-Za-z0-9._:-]{1,128}$/.test(v) ? null : "must be a stable non-secret account reference"),
+    rule: (v) =>
+      /^[A-Za-z0-9._:-]{1,128}$/.test(v) ? null : "must be a stable non-secret account reference",
     when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
   },
   {

@@ -39,7 +39,10 @@ export interface ClaimMdStatusInterpretation {
   readonly meaning: "clearinghouse_receipt" | "informational" | "unknown";
   readonly proposedAction: "record_clearinghouse_receipt" | null;
   readonly authority: "documented_example" | "none";
-  readonly reasonCode: "DOCUMENTED_CLAIMMD_ACK" | "UNVERIFIED_SENDER_OR_STATUS" | "MALFORMED_MESSAGE";
+  readonly reasonCode:
+    | "DOCUMENTED_CLAIMMD_ACK"
+    | "UNVERIFIED_SENDER_OR_STATUS"
+    | "MALFORMED_MESSAGE";
 }
 
 /**
@@ -54,22 +57,39 @@ export function interpretClaimMdStatus(input: CapturedClaimMdMessage): ClaimMdSt
   const parentStatus = parent ? field(parent, "status") : null;
   const messageStatus = message ? field(message, "status") : null;
   const messageCode = message ? field(message, "mesgid") : null;
-  const validIdentity = message && input.responseId !== null && field(message, "responseid") === input.responseId;
-  const receipt = validIdentity && senderId === "CLMMD" && messageCode === "ACK" &&
-    parentStatus === "A" && messageStatus === "A";
+  const validIdentity =
+    message && input.responseId !== null && field(message, "responseid") === input.responseId;
+  const receipt =
+    validIdentity &&
+    senderId === "CLMMD" &&
+    messageCode === "ACK" &&
+    parentStatus === "A" &&
+    messageStatus === "A";
   return {
-    sourceRepresentation: "claimmd_normalized_api", version: CLAIMMD_STATUS_INTERPRETER_VERSION,
-    eventId: input.eventId, responseId: input.responseId, accountReference: input.accountReference,
-    usage: input.usage, capturedAt: input.capturedAt,
+    sourceRepresentation: "claimmd_normalized_api",
+    version: CLAIMMD_STATUS_INTERPRETER_VERSION,
+    eventId: input.eventId,
+    responseId: input.responseId,
+    accountReference: input.accountReference,
+    usage: input.usage,
+    capturedAt: input.capturedAt,
     vendorClaimId: parent ? field(parent, "claimid") : null,
     remoteClaimId: parent ? field(parent, "remote_claimid") : null,
     claimMdClaimId: parent ? field(parent, "claimmd_id") : null,
-    senderId, senderName: parent ? field(parent, "sender_name") : null,
-    messageCode, parentStatus, messageStatus, responseTime: parent ? field(parent, "response_time") : null,
+    senderId,
+    senderName: parent ? field(parent, "sender_name") : null,
+    messageCode,
+    parentStatus,
+    messageStatus,
+    responseTime: parent ? field(parent, "response_time") : null,
     stage: senderId === "CLMMD" ? "clearinghouse" : senderId ? "unverified_external" : "unknown",
     meaning: receipt ? "clearinghouse_receipt" : message ? "informational" : "unknown",
     proposedAction: receipt ? "record_clearinghouse_receipt" : null,
     authority: receipt ? "documented_example" : "none",
-    reasonCode: receipt ? "DOCUMENTED_CLAIMMD_ACK" : message ? "UNVERIFIED_SENDER_OR_STATUS" : "MALFORMED_MESSAGE",
+    reasonCode: receipt
+      ? "DOCUMENTED_CLAIMMD_ACK"
+      : message
+        ? "UNVERIFIED_SENDER_OR_STATUS"
+        : "MALFORMED_MESSAGE",
   };
 }

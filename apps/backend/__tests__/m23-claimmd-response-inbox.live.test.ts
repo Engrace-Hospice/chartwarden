@@ -1,14 +1,14 @@
+import { randomUUID } from "node:crypto";
 /**
  * Proves the unowned account-wide Claim.MD inbox is invisible to chartwarden_app and
  * serialized by PostgreSQL for competing capture workers. Run only on a private disposable PG:
  * CHARTWARDEN_TEST_DATABASE_URL=... bun run test:m23:claimmd-response-inbox:live
  */
 import { readFileSync, readdirSync } from "node:fs";
-import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { appRoleConnectionString, LIVE_DROP_ROLES } from "./_live-app-role";
+import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -28,7 +28,9 @@ describe.skipIf(!DB_URL)("M23 Claim.MD response inbox — LIVE Postgres", () => 
           `EXECUTE 'DROP OWNED BY ${role} CASCADE'; EXECUTE 'DROP ROLE ${role}'; END IF; END $$;`,
       );
     }
-    for (const file of readdirSync(MIGRATIONS_DIR).filter((name) => name.endsWith(".sql")).sort()) {
+    for (const file of readdirSync(MIGRATIONS_DIR)
+      .filter((name) => name.endsWith(".sql"))
+      .sort()) {
       await admin.query(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
     }
     app = new Client({ connectionString: await appRoleConnectionString(admin, DB_URL as string) });
@@ -61,7 +63,10 @@ describe.skipIf(!DB_URL)("M23 Claim.MD response inbox — LIVE Postgres", () => 
     );
     const streamId = inserted.rows[0]?.id;
     if (!streamId) throw new Error("live fixture stream missing");
-    const workers = await Promise.all([new Client({ connectionString: DB_URL }), new Client({ connectionString: DB_URL })]);
+    const workers = await Promise.all([
+      new Client({ connectionString: DB_URL }),
+      new Client({ connectionString: DB_URL }),
+    ]);
     try {
       await Promise.all(workers.map((worker) => worker.connect()));
       await Promise.all(workers.map((worker) => worker.query("SET ROLE claimmd_capture")));
@@ -108,25 +113,45 @@ describe.skipIf(!DB_URL)("M23 Claim.MD response inbox — LIVE Postgres", () => 
       );
     }
     await app.query("SELECT set_config('app.org_id',$1,false)", [orgA]);
-    const visible = await app.query<{ organization_id: string }>("SELECT organization_id FROM claimmd_submission_evidence");
+    const visible = await app.query<{ organization_id: string }>(
+      "SELECT organization_id FROM claimmd_submission_evidence",
+    );
     expect(visible.rows.map((row) => row.organization_id)).toEqual([orgA]);
-    await expect(app.query("UPDATE claimmd_submission_evidence SET billing_npi='0000000000' WHERE id=$1", [ids[0]])).rejects.toThrow();
-    await expect(admin.query("UPDATE claimmd_submission_evidence SET billing_npi='0000000000' WHERE id=$1", [ids[0]])).rejects.toThrow(/IMMUTABLE/);
+    await expect(
+      app.query("UPDATE claimmd_submission_evidence SET billing_npi='0000000000' WHERE id=$1", [
+        ids[0],
+      ]),
+    ).rejects.toThrow();
+    await expect(
+      admin.query("UPDATE claimmd_submission_evidence SET billing_npi='0000000000' WHERE id=$1", [
+        ids[0],
+      ]),
+    ).rejects.toThrow(/IMMUTABLE/);
 
     const receipt = {
-      evidence_id: ids[0], organization_id: orgA, account_reference: "acct-synthetic", usage: "test", vendor: "claimmd",
-      source_field: "fileid", identifier_namespace: "file", external_value: "file-synthetic",
-      observation_source: "upload_response", observed_at: new Date(), source_reference: "attempt-synthetic",
+      evidence_id: ids[0],
+      organization_id: orgA,
+      account_reference: "acct-synthetic",
+      usage: "test",
+      vendor: "claimmd",
+      source_field: "fileid",
+      identifier_namespace: "file",
+      external_value: "file-synthetic",
+      observation_source: "upload_response",
+      observed_at: new Date(),
+      source_reference: "attempt-synthetic",
     };
     await admin.query(
       `INSERT INTO claimmd_submission_receipt_observation
        (evidence_id,organization_id,account_reference,usage,vendor,source_field,identifier_namespace,external_value,observation_source,observed_at,source_reference)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING`, Object.values(receipt),
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING`,
+      Object.values(receipt),
     );
     const repeated = await admin.query(
       `INSERT INTO claimmd_submission_receipt_observation
        (evidence_id,organization_id,account_reference,usage,vendor,source_field,identifier_namespace,external_value,observation_source,observed_at,source_reference)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING`, Object.values(receipt),
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING`,
+      Object.values(receipt),
     );
     expect(repeated.rowCount).toBe(0);
   });

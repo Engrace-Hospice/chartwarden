@@ -59,10 +59,10 @@ import {
   scopeKey,
 } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import { shouldRunLegacyClaimMdAckPoll } from "../claimmd-capture/config";
 import { type Claim837iSubmitDeps, renderClaimForTransport } from "../services/claim-837i-submit";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
 import { CLEARINGHOUSE_PAYER_ID_ENV } from "./clearinghouse-context";
-import { shouldRunLegacyClaimMdAckPoll } from "../claimmd-capture/config";
 import {
   type M23TransportDeps,
   type TransportAck,
@@ -1307,8 +1307,13 @@ export async function runNoeSubmit(
   const noe = await noes.findById(job.noeId);
   if (!noe) throw new Error(`noe_record ${job.noeId} not found`);
   const attempt = await submissions.findById(job.submissionId);
-  if (!attempt || attempt.organizationId !== job.organizationId || attempt.providerEntityId !== noe.providerEntityId ||
-      attempt.noeId !== noe.id || attempt.kind !== "noe")
+  if (
+    !attempt ||
+    attempt.organizationId !== job.organizationId ||
+    attempt.providerEntityId !== noe.providerEntityId ||
+    attempt.noeId !== noe.id ||
+    attempt.kind !== "noe"
+  )
     throw new Error("NOE submission attempt does not match the notice");
 
   const generated = await x12Of(deps).generateNoe({
@@ -1375,8 +1380,13 @@ export async function runNotrSubmit(
   const notr = await notrs.findById(job.notrId);
   if (!notr) throw new Error(`notr_record ${job.notrId} not found`);
   const attempt = await submissions.findById(job.submissionId);
-  if (!attempt || attempt.organizationId !== job.organizationId || attempt.providerEntityId !== notr.providerEntityId ||
-      attempt.notrId !== notr.id || attempt.kind !== "notr")
+  if (
+    !attempt ||
+    attempt.organizationId !== job.organizationId ||
+    attempt.providerEntityId !== notr.providerEntityId ||
+    attempt.notrId !== notr.id ||
+    attempt.kind !== "notr"
+  )
     throw new Error("NOTR submission attempt does not match the notice");
 
   const generated = await x12Of(deps).generateNotr({
@@ -2047,9 +2057,14 @@ async function runTransportAckPull(
 /** `ack.pull-999` (§4.8 cron). Exported for the transfer-notice and NOE/NOTR live suites. */
 export async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
   const transport = activeTransport(deps);
-  if (!shouldRunLegacyClaimMdAckPoll({ captureActive: deps.claimMdResponseCaptureActive === true,
-    dispatcherActive: deps.claimMdAckDispatcherActive === true,
-    vendor: transport?.binding.vendor })) return;
+  if (
+    !shouldRunLegacyClaimMdAckPoll({
+      captureActive: deps.claimMdResponseCaptureActive === true,
+      dispatcherActive: deps.claimMdAckDispatcherActive === true,
+      vendor: transport?.binding.vendor,
+    })
+  )
+    return;
   if (transport) return runTransportAckPull(deps, transport, "ack_999");
   const portal = macPortalOf(deps);
   const x12 = x12Of(deps);
@@ -2085,9 +2100,14 @@ export async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
 /** `ack.pull-277ca` (§4.8 cron): the 277CA twin of {@link runAckPull999} (accepted/rejected/partial outcomes). */
 export async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
   const transport = activeTransport(deps);
-  if (!shouldRunLegacyClaimMdAckPoll({ captureActive: deps.claimMdResponseCaptureActive === true,
-    dispatcherActive: deps.claimMdAckDispatcherActive === true,
-    vendor: transport?.binding.vendor })) return;
+  if (
+    !shouldRunLegacyClaimMdAckPoll({
+      captureActive: deps.claimMdResponseCaptureActive === true,
+      dispatcherActive: deps.claimMdAckDispatcherActive === true,
+      vendor: transport?.binding.vendor,
+    })
+  )
+    return;
   if (transport) return runTransportAckPull(deps, transport, "ack_277ca");
   const portal = macPortalOf(deps);
   const x12 = x12Of(deps);

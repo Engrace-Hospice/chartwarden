@@ -20,12 +20,26 @@ export function startClaimMdResponseCaptureWorker(input: {
     try {
       input.log(await input.capture.runOnce(input.accountReference, input.usage));
     } catch {
-      input.log({ pages: 0, events: 0, duplicates: 0, needsReview: 0, cursor: null, code: "CAPTURE_FAILED" });
+      input.log({
+        pages: 0,
+        events: 0,
+        duplicates: 0,
+        needsReview: 0,
+        cursor: null,
+        code: "CAPTURE_FAILED",
+      });
     } finally {
       running = false;
-      if (!stopped) timer = setTimeout(() => void tick(), input.intervalMs ?? CLAIMMD_RESPONSE_CAPTURE_INTERVAL_MS);
+      if (!stopped)
+        timer = setTimeout(
+          () => void tick(),
+          input.intervalMs ?? CLAIMMD_RESPONSE_CAPTURE_INTERVAL_MS,
+        );
     }
   };
   void tick();
-  return () => { stopped = true; if (timer) clearTimeout(timer); };
+  return () => {
+    stopped = true;
+    if (timer) clearTimeout(timer);
+  };
 }
