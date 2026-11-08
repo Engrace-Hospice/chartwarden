@@ -10,7 +10,8 @@
 //      `transmission_started_at` in its own committed transaction (the call is about to be made), then call
 //      `DoseSpotClient.transmitNewRx` with the D8 idempotency key held on the transmission row. The stamp is what tells a stale claim
 //      apart: one WITHOUT it never reached the vendor and is released for a re-send; one WITH it may have, and the drain HOLDS it.
-//   3. SETTLE (tx), every UPDATE matches the order by ID and asserts the row count (the partition-key timestamp
+//   3. SETTLE (tx; `transmit-settle.ts`, with what a worker owns and the checks that stop a worker that lost the order in `transmit-ownership.ts`),
+//      every UPDATE matches the order by ID and asserts the row count (the partition-key timestamp
 //      round-trips lossily, so matching `created_at` never hits):
 //        success    -> `transmitted` / send_state `transmitted`, prescription id recorded, `m12.medication_order.transmitted`.
 //        breaker open -> back to `queued`, NO retry consumed (an outage must not exhaust the budget: that is what
@@ -24,25 +25,21 @@
 //                       published in the same transaction and M36 tells the tenant's administrators, who check the prescriber's DoseSpot
 //                       account and either find it sent or discontinue the order and sign a new one.
 // Nothing here ever marks an order transmitted without a real `DoseSpotNewRxResponse`.
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import {
   type DoseSpotNewRxPayload,
-  RX_TRANSMISSION_MAX_RETRIES,
   isConfigUnavailableError,
   isDegradedError,
   isNotEnabledError,
   isUnconfirmedOutcomeError,
-  planTransmissionFailure,
-  planTransmissionSuccess,
-  transitionMedicationOrder,
 } from "@chartwarden/dosespot";
 import { and, asc, eq, inArray, isNull, lt, notExists, or, sql } from "drizzle-orm";
-import { isPrescriptionIdTaken, lockPrescriptionId } from "../prescription-id";
 import { type M12CronDeps, errorClassOf, inOrg, isCircuitOpenError, nowOf } from "./cron-common";
 import { reportDegradation, reportRecovery } from "./degradation-reports";
 import { UNCONFIRMED_OUTCOME_CLASS } from "./hold";
-import { DosespotSyncQueueRepository } from "./repository";
+import { type Claimed, rememberCreated, requireOwnership } from "./transmit-ownership";
+import { type Attempt, type Outcome, settle } from "./transmit-settle";
 
 const MO = schema.medicationOrders;
 const MOT = schema.medicationOrderTransmissions;
@@ -53,8 +50,6 @@ export const TRANSMIT_BATCH_SIZE = 25;
 export const RECOVERY_BATCH_SIZE = 100;
 /** An `in_flight` claim older than this is a crashed worker's; the recovery drain re-queues it. */
 export const IN_FLIGHT_STALE_MS = 10 * 60_000;
-const DUPLICATE_ID_DETAIL =
-  "DoseSpot returned a prescription id already recorded on another order, so this order was not marked sent. The prescription may exist at DoseSpot.";
 const STALE_CALL_DETAIL =
   "A worker stopped after the call to DoseSpot was made, before the answer was recorded. The prescription may already exist at DoseSpot.";
 const MAX_BACKOFF_MINUTES = 60;
@@ -83,13 +78,6 @@ export const backoffMinutes = (retryCount: number): number =>
 function dueForAttempt(t: TransmissionRow | undefined, now: Date): boolean {
   if (!t || t.retryCount === 0 || !t.transmissionFailedAt) return true;
   return t.transmissionFailedAt.getTime() + backoffMinutes(t.retryCount) * 60_000 <= now.getTime();
-}
-
-interface Claimed {
-  readonly order: OrderRow;
-  readonly transmission: TransmissionRow;
-  /** The `updated_at` this claim wrote: the fence compares against it, so a claim that was drained and taken over no longer matches. */
-  readonly claimedAt: Date;
 }
 
 async function claim(
@@ -234,79 +222,6 @@ async function markCallStarted(
   });
 }
 
-/** What the adapter's hooks throw when the worker no longer owns the order: the adapter then does not send. Carries no id and no content. */
-const LOST_ORDER = "this worker no longer owns the order, so the prescription is not sent";
-
-/**
- * Persist the id of a prescription that was CREATED at DoseSpot but not yet sent, on the transmission row, before the send. The order itself
- * carries an id only once it is really sent (webhooks bind by it). A failure here propagates: the send is not attempted, the order is retried.
- *
- * It answers only while the worker still owns the call (see {@link Ownership}): it throws otherwise, so the id of a prescription the worker had no
- * right to create for this order is not recorded, and the adapter stops before the send. The prescription stays at DoseSpot as an unsent draft, which
- * the administrator's own check of the prescriber's account shows. Locks the order, then the transmission row, like every other writer.
- */
-async function rememberCreated(
-  deps: M12CronDeps,
-  organizationId: string,
-  c: Claimed,
-  token: string,
-  prescriptionId: string,
-): Promise<void> {
-  await inOrg(deps.db, organizationId, async (tx) => {
-    if (!(await lockOwnership(tx, c, { stage: "call", token }))) throw new Error(LOST_ORDER);
-    await tx
-      .update(MOT)
-      .set({ dosespotPrescriptionId: prescriptionId })
-      .where(eq(MOT.id, c.transmission.id));
-  });
-}
-
-/**
- * The adapter's `beforeSend`: just before it SENDS, on every path, the worker re-checks that it still owns the call and throws if not. `onCreated`
- * covers only a prescription this call created; a retry that is handed a persisted created id skips the create and goes straight to the send, so
- * without this a worker whose order an administrator resolved NOT SENT meanwhile would still send it. What it cannot cover: a send already in flight.
- */
-async function requireOwnership(
-  deps: M12CronDeps,
-  organizationId: string,
-  c: Claimed,
-  token: string,
-): Promise<void> {
-  await inOrg(deps.db, organizationId, async (tx) => {
-    if (!(await lockOwnership(tx, c, { stage: "call", token }))) throw new Error(LOST_ORDER);
-  });
-}
-
-type Outcome =
-  | { kind: "success"; prescriptionId: string; transmittedAt: Date }
-  | { kind: "outage" }
-  | { kind: "superseded" }
-  | { kind: "unconfirmed"; detail: string }
-  | {
-      kind: "failure";
-      errorClass: string;
-      detail: string;
-      permanent: boolean;
-      syncPatient: boolean;
-    };
-
-/**
- * What a worker owns when it comes to write. BEFORE the fence it owns the CLAIM: the order's `updated_at` that the claim wrote. AFTER the fence it
- * owns the CALL: the `call_token` nonce the fence wrote on the transmission row. `updated_at` cannot stay the token after the fence: it
- * is shared with writes that have nothing to do with the claim (a coverage determination is allowed in every status, a correction bumps the
- * original order's version), and one of them during the call would turn the legitimate owner into a "skipped" one, orphaning a prescription
- * DoseSpot had accepted and leaving a stamp the drain then holds.
- */
-type Ownership =
-  | { readonly stage: "claim"; readonly claimedAt: Date }
-  | { readonly stage: "call"; readonly token: string };
-
-/** What a worker found, and what it owns when it comes to write it. */
-interface Attempt {
-  readonly outcome: Outcome;
-  readonly owns: Ownership;
-}
-
 async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed): Promise<Attempt> {
   const beforeFence = (outcome: Outcome): Attempt => ({
     outcome,
@@ -382,258 +297,6 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
       syncPatient: false,
     });
   }
-}
-
-/**
- * A worker that no longer owns what it found writes nothing. It says so, with ids only and the KIND of what it discarded (never the content of it: a
- * success carries a prescription id), so a lost claim is visible whatever the worker found. A success is the case that matters most: DoseSpot
- * accepted a prescription for an order this worker could not record it on (an administrator resolved the order while the call ran, say).
- */
-function discarded(
-  deps: M12CronDeps,
-  organizationId: string,
-  orderId: string,
-  found: Outcome["kind"],
-): "skipped" {
-  deps.warn?.(
-    { organizationId, orderId, found },
-    found === "success"
-      ? "M12 transmit: DoseSpot accepted a prescription for an order this worker no longer owns; nothing was recorded here"
-      : "M12 transmit: this worker no longer owns the order; what it found was discarded",
-  );
-  return "skipped";
-}
-
-/** The order row only while it is still in flight under the status it was claimed in and, before the fence, with the `updated_at` the claim wrote. */
-function orderStillTheWorkers(orderId: string, owns: Ownership) {
-  return and(
-    eq(MO.id, orderId),
-    eq(MO.status, "queued_for_transmission"),
-    eq(MO.dosespotSendState, "in_flight"),
-    owns.stage === "claim" ? eq(MO.updatedAt, owns.claimedAt) : undefined,
-  );
-}
-
-/**
- * Lock what the worker owns and say whether it still owns it: the ORDER row, then (after the fence) the TRANSMISSION row carrying the token this
- * worker wrote. That is the order the administrator's resolution and the drain lock them in, so none of them can deadlock; the locks last to the end of the
- * transaction, so what is checked here still holds for every write after it.
- */
-async function lockOwnership(tx: DbClient, c: Claimed, owns: Ownership): Promise<boolean> {
-  const [order] = await tx
-    .select({ id: MO.id })
-    .from(MO)
-    .where(orderStillTheWorkers(c.order.id, owns))
-    .limit(1)
-    .for("update");
-  if (!order) return false;
-  if (owns.stage === "claim") return true;
-  const [stamp] = await tx
-    .select({ id: MOT.id })
-    .from(MOT)
-    .where(and(eq(MOT.id, c.transmission.id), eq(MOT.callToken, owns.token)))
-    .limit(1)
-    .for("update");
-  return stamp !== undefined;
-}
-
-/**
- * SETTLE: write what the attempt found. Every write to the order is conditional on the claim still being THIS worker's (see {@link Ownership}), so
- * a worker whose claim was drained and taken over (a slow batch, a payload build that failed after a takeover), or whose order an administrator
- * resolved meanwhile, can neither requeue, exhaust, hold nor record over the new owner: it writes nothing and answers "skipped". Lock order is
- * the advisory lock for a prescription id (success only), then the ORDER row, then the transmission row.
- */
-async function settle(
-  deps: M12CronDeps,
-  organizationId: string,
-  c: Claimed,
-  attempt: Attempt,
-): Promise<"transmitted" | "requeued" | "failed" | "deferred" | "held" | "skipped"> {
-  const { outcome, owns } = attempt;
-  // a superseded claim belongs to another worker now: nothing of this worker's is written
-  if (outcome.kind === "superseded")
-    return discarded(deps, organizationId, c.order.id, outcome.kind);
-  const now = nowOf(deps);
-  return inOrg(deps.db, organizationId, async (tx) => {
-    const orderId = c.order.id;
-    const emit = (eventName: string, payload: Record<string, unknown>) =>
-      deps.outbox.publish(tx, {
-        eventName,
-        payload,
-        organizationId,
-        aggregateKind: "medication_order",
-        aggregateId: orderId,
-      });
-    /** Every MO write below repeats the predicate. */
-    const stillMine = orderStillTheWorkers(orderId, owns);
-
-    if (outcome.kind === "success")
-      await lockPrescriptionId(tx, organizationId, outcome.prescriptionId);
-    const lost = () => discarded(deps, organizationId, orderId, outcome.kind);
-    if (!(await lockOwnership(tx, c, owns))) return lost();
-
-    if (outcome.kind === "outage") {
-      const back = await tx
-        .update(MO)
-        .set({ dosespotSendState: "queued", updatedAt: now })
-        .where(stillMine)
-        .returning({ id: MO.id });
-      if (back.length !== 1) return lost();
-      // nothing reached the vendor (an open circuit, a registration not live, a config fault, or the stamp itself failed): no call began, so the
-      // stamp goes, and so does a hold the drain set while this worker was still in its call (the order is queued again, not "held")
-      await tx
-        .update(MOT)
-        .set({
-          transmissionStartedAt: null,
-          callToken: null,
-          lastErrorClass: sql`CASE WHEN ${MOT.lastErrorClass} = ${UNCONFIRMED_OUTCOME_CLASS} THEN NULL ELSE ${MOT.lastErrorClass} END`,
-          lastErrorDetail: sql`CASE WHEN ${MOT.lastErrorClass} = ${UNCONFIRMED_OUTCOME_CLASS} THEN NULL ELSE ${MOT.lastErrorDetail} END`,
-        })
-        .where(eq(MOT.id, c.transmission.id));
-      return "deferred";
-    }
-
-    // The order stays `in_flight` (nothing re-claims it: the claim takes only `queued`, and the drain skips a held one); only the row that
-    // says why, and the event that tells a person, are written. No retry is spent and no failure timestamp is set.
-    const hold = async (detail: string): Promise<"held"> => {
-      const held = await tx
-        .update(MOT)
-        .set({ lastErrorClass: UNCONFIRMED_OUTCOME_CLASS, lastErrorDetail: detail })
-        .where(
-          and(
-            eq(MOT.id, c.transmission.id),
-            sql`${MOT.lastErrorClass} IS DISTINCT FROM ${UNCONFIRMED_OUTCOME_CLASS}`,
-          ),
-        )
-        .returning({ id: MOT.id });
-      // already held (the drain held this claim while the call was still running): announced once, not again. The drain knew only that a worker
-      // stopped; this worker knows WHY (a duplicate id, an unreadable answer), which is what the administrator reads, so the detail is replaced.
-      if (held.length === 0) {
-        await tx.update(MOT).set({ lastErrorDetail: detail }).where(eq(MOT.id, c.transmission.id));
-        return "held";
-      }
-      await emit("m12.medication_order.transmission_unconfirmed", {
-        orderId,
-        lastErrorClass: UNCONFIRMED_OUTCOME_CLASS,
-      });
-      return "held";
-    };
-
-    if (outcome.kind === "unconfirmed") return hold(outcome.detail);
-
-    if (outcome.kind === "success") {
-      // webhooks bind an order by its prescription id and take the first match: an id another order already carries must not be recorded
-      // twice (the same guard the administrator's "sent" resolution uses). Held for a person, like any outcome that cannot be trusted.
-      if (await isPrescriptionIdTaken(tx, organizationId, outcome.prescriptionId, orderId)) {
-        return hold(DUPLICATE_ID_DETAIL);
-      }
-      transitionMedicationOrder("queued_for_transmission", {
-        type: "transmissionSucceeded",
-        isSystemActor: true,
-      });
-      const plan = planTransmissionSuccess({
-        dosespotPrescriptionId: outcome.prescriptionId,
-        dosespotResponseDigest: createHash("sha256")
-          .update(`${outcome.prescriptionId}|${outcome.transmittedAt.toISOString()}`)
-          .digest("hex"),
-        nowInstant: outcome.transmittedAt.toISOString(),
-      });
-      const o = await tx
-        .update(MO)
-        .set({
-          status: plan.status,
-          dosespotSendState: plan.sendState,
-          dosespotPrescriptionId: outcome.prescriptionId,
-          transmittedAt: outcome.transmittedAt,
-          version: sql`${MO.version} + 1`,
-          updatedAt: now,
-        })
-        .where(stillMine)
-        .returning({ id: MO.id });
-      if (o.length !== 1) return lost();
-      await tx
-        .update(MOT)
-        .set({
-          transmissionSucceededAt: outcome.transmittedAt,
-          dosespotPrescriptionId: outcome.prescriptionId,
-          dosespotResponseDigest: plan.transmissionUpdate.dosespotResponseDigest,
-          // a hold the drain set while this call was still running is stale now that the call answered: clear it (any other class stays as history)
-          lastErrorClass: sql`CASE WHEN ${MOT.lastErrorClass} = ${UNCONFIRMED_OUTCOME_CLASS} THEN NULL ELSE ${MOT.lastErrorClass} END`,
-          lastErrorDetail: sql`CASE WHEN ${MOT.lastErrorClass} = ${UNCONFIRMED_OUTCOME_CLASS} THEN NULL ELSE ${MOT.lastErrorDetail} END`,
-        })
-        .where(eq(MOT.id, c.transmission.id));
-      await emit(plan.event, {
-        orderId,
-        dosespotPrescriptionId: outcome.prescriptionId,
-        transmittedAt: outcome.transmittedAt.toISOString(),
-        dispensingPharmacyMdmId: c.order.dispensingPharmacyMdmId ?? null,
-      });
-      return "transmitted";
-    }
-
-    // failure: permanent rejections exhaust the budget at once.
-    const plan = planTransmissionFailure({
-      medicationOrderId: orderId,
-      currentRetryCount: outcome.permanent
-        ? RX_TRANSMISSION_MAX_RETRIES - 1
-        : c.transmission.retryCount,
-      lastErrorClass: outcome.errorClass,
-      nowInstant: now.toISOString(),
-    });
-    // the ORDER first (it is the ownership test), the transmission row only if the order matched
-    const recordFailure = () =>
-      tx
-        .update(MOT)
-        .set({
-          transmissionFailedAt: now,
-          // the attempt is over: a claim of the requeued order that later dies before its vendor call must not look like one that called
-          ...(plan.exhausted ? {} : { transmissionStartedAt: null, callToken: null }),
-          retryCount: plan.transmissionUpdate.retryCount,
-          lastErrorClass: outcome.errorClass,
-          lastErrorDetail: outcome.detail,
-        })
-        .where(eq(MOT.id, c.transmission.id));
-    if (!plan.exhausted) {
-      const back = await tx
-        .update(MO)
-        .set({ dosespotSendState: "queued", updatedAt: now })
-        .where(stillMine)
-        .returning({ id: MO.id });
-      if (back.length !== 1) return lost();
-      await recordFailure();
-      if (outcome.syncPatient) {
-        await new DosespotSyncQueueRepository(tx).enqueue({
-          organizationId,
-          kind: "patient_sync",
-          reason: "created",
-          patientId: c.order.patientId,
-        });
-      }
-      return "requeued";
-    }
-    transitionMedicationOrder("queued_for_transmission", {
-      type: "transmissionExhausted",
-      isSystemActor: true,
-    });
-    const o = await tx
-      .update(MO)
-      .set({
-        status: plan.status,
-        dosespotSendState: plan.sendState,
-        version: sql`${MO.version} + 1`,
-        updatedAt: now,
-      })
-      .where(stillMine)
-      .returning({ id: MO.id });
-    if (o.length !== 1) return lost();
-    await recordFailure();
-    await emit(plan.event, {
-      orderId,
-      lastErrorClass: outcome.errorClass,
-      retryCount: plan.transmissionUpdate.retryCount,
-    });
-    return "failed";
-  });
 }
 
 /** The fault from resolving the org's config, or null when it resolves (or is not live: that is not a fault, the pass handles it). */

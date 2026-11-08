@@ -1,0 +1,133 @@
+// apps/backend/src/modules/12-dosespot/jobs/transmit-ownership.ts — what a transmit worker owns, and the checks that stop it writing or sending when it
+// no longer does (split out of transmit-newrx.ts).
+//
+// A worker owns its CLAIM from the claim to the fence (the order's `updated_at` the claim wrote) and its CALL from the fence on (the `call_token` nonce
+// the fence wrote on the transmission row). Everything a worker does after its claim is conditional on that: the fence, recording a created
+// prescription id (`rememberCreated`), the check just before the send (`requireOwnership`), and the settle (transmit-settle.ts). A worker that lost
+// the order (drained and taken over, or resolved by an administrator) writes nothing and, before the send, is stopped.
+//
+// LOCK ORDER everywhere: the order row, then the transmission row (the order the administrator's resolution and the drain take them in).
+import { type DbClient, schema } from "@chartwarden/db";
+import { and, eq } from "drizzle-orm";
+import { type M12CronDeps, inOrg } from "./cron-common";
+
+const MO = schema.medicationOrders;
+const MOT = schema.medicationOrderTransmissions;
+
+type OrderRow = typeof MO.$inferSelect;
+type TransmissionRow = typeof MOT.$inferSelect;
+
+/** One order a worker claimed: what it read, and the `updated_at` its claim wrote. */
+export interface Claimed {
+  readonly order: OrderRow;
+  readonly transmission: TransmissionRow;
+  /** The `updated_at` this claim wrote: the fence compares against it, so a claim that was drained and taken over no longer matches. */
+  readonly claimedAt: Date;
+}
+
+/**
+ * What a worker owns when it comes to write. BEFORE the fence it owns the CLAIM: the order's `updated_at` that the claim wrote. AFTER the fence it
+ * owns the CALL: the `call_token` nonce the fence wrote on the transmission row. `updated_at` cannot stay the token after the fence: it
+ * is shared with writes that have nothing to do with the claim (a coverage determination is allowed in every status, a correction bumps the
+ * original order's version), and one of them during the call would turn the legitimate owner into a "skipped" one, orphaning a prescription
+ * DoseSpot had accepted and leaving a stamp the drain then holds.
+ */
+export type Ownership =
+  | { readonly stage: "claim"; readonly claimedAt: Date }
+  | { readonly stage: "call"; readonly token: string };
+
+/**
+ * A worker that no longer owns what it found writes nothing. It says so, with ids only and the KIND of what it discarded (never the content of it: a
+ * success carries a prescription id), so a lost claim is visible whatever the worker found. A success is the case that matters most: DoseSpot
+ * accepted a prescription for an order this worker could not record it on (an administrator resolved the order while the call ran, say).
+ */
+export function discarded(
+  deps: M12CronDeps,
+  organizationId: string,
+  orderId: string,
+  found: string,
+): "skipped" {
+  deps.warn?.(
+    { organizationId, orderId, found },
+    found === "success"
+      ? "M12 transmit: DoseSpot accepted a prescription for an order this worker no longer owns; nothing was recorded here"
+      : "M12 transmit: this worker no longer owns the order; what it found was discarded",
+  );
+  return "skipped";
+}
+
+/** The order row only while it is still in flight under the status it was claimed in and, before the fence, with the `updated_at` the claim wrote. */
+export function orderStillTheWorkers(orderId: string, owns: Ownership) {
+  return and(
+    eq(MO.id, orderId),
+    eq(MO.status, "queued_for_transmission"),
+    eq(MO.dosespotSendState, "in_flight"),
+    owns.stage === "claim" ? eq(MO.updatedAt, owns.claimedAt) : undefined,
+  );
+}
+
+/**
+ * Lock what the worker owns and say whether it still owns it: the ORDER row, then (after the fence) the TRANSMISSION row carrying the token this
+ * worker wrote. That is the order the administrator's resolution and the drain lock them in, so none of them can deadlock; the locks last to the end of the
+ * transaction, so what is checked here still holds for every write after it.
+ */
+export async function lockOwnership(tx: DbClient, c: Claimed, owns: Ownership): Promise<boolean> {
+  const [order] = await tx
+    .select({ id: MO.id })
+    .from(MO)
+    .where(orderStillTheWorkers(c.order.id, owns))
+    .limit(1)
+    .for("update");
+  if (!order) return false;
+  if (owns.stage === "claim") return true;
+  const [stamp] = await tx
+    .select({ id: MOT.id })
+    .from(MOT)
+    .where(and(eq(MOT.id, c.transmission.id), eq(MOT.callToken, owns.token)))
+    .limit(1)
+    .for("update");
+  return stamp !== undefined;
+}
+
+/** What the adapter's hooks throw when the worker no longer owns the order: the adapter then does not send. Carries no id and no content. */
+const LOST_ORDER = "this worker no longer owns the order, so the prescription is not sent";
+
+/**
+ * Persist the id of a prescription that was CREATED at DoseSpot but not yet sent, on the transmission row, before the send. The order itself
+ * carries an id only once it is really sent (webhooks bind by it). A failure here propagates: the send is not attempted, the order is retried.
+ *
+ * It answers only while the worker still owns the call (see {@link Ownership}): it throws otherwise, so the id of a prescription the worker had no
+ * right to create for this order is not recorded, and the adapter stops before the send. The prescription stays at DoseSpot as an unsent draft, which
+ * the administrator's own check of the prescriber's account shows. Locks the order, then the transmission row, like every other writer.
+ */
+export async function rememberCreated(
+  deps: M12CronDeps,
+  organizationId: string,
+  c: Claimed,
+  token: string,
+  prescriptionId: string,
+): Promise<void> {
+  await inOrg(deps.db, organizationId, async (tx) => {
+    if (!(await lockOwnership(tx, c, { stage: "call", token }))) throw new Error(LOST_ORDER);
+    await tx
+      .update(MOT)
+      .set({ dosespotPrescriptionId: prescriptionId })
+      .where(eq(MOT.id, c.transmission.id));
+  });
+}
+
+/**
+ * The adapter's `beforeSend`: just before it SENDS, on every path, the worker re-checks that it still owns the call and throws if not. `onCreated`
+ * covers only a prescription this call created; a retry that is handed a persisted created id skips the create and goes straight to the send, so
+ * without this a worker whose order an administrator resolved NOT SENT meanwhile would still send it. What it cannot cover: a send already in flight.
+ */
+export async function requireOwnership(
+  deps: M12CronDeps,
+  organizationId: string,
+  c: Claimed,
+  token: string,
+): Promise<void> {
+  await inOrg(deps.db, organizationId, async (tx) => {
+    if (!(await lockOwnership(tx, c, { stage: "call", token }))) throw new Error(LOST_ORDER);
+  });
+}
