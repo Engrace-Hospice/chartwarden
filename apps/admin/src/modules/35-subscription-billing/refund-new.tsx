@@ -1,6 +1,5 @@
 import {
   Button,
-  Panel,
   SelectField,
   TextAreaField,
   TextField,
@@ -49,7 +48,7 @@ export function RefundNew(): JSX.Element {
       },
   );
   const [attempted, setAttempted] = useState(false);
-  const formRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
@@ -106,81 +105,84 @@ export function RefundNew(): JSX.Element {
             <p>A request only — a different operator approves it (four-eyes).</p>
           </div>
         </header>
-        <div className="max-w-2xl">
-          <Panel title="Refund request" icon="rotate-ccw">
-            <div className="grid gap-4" ref={formRef}>
+        <form
+          className="wx-drawer-card"
+          ref={formRef}
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit();
+          }}
+        >
+          <div className="wx-drawer-card-head">
+            <h3>Refund request</h3>
+          </div>
+          <div className="wx-form-stack">
+            <TextField
+              id="invoice-id"
+              label="Invoice id"
+              required
+              error={errors.invoiceId}
+              value={form.invoiceId}
+              onChange={(e) => setForm({ ...form, invoiceId: e.target.value })}
+              placeholder="Invoice UUID"
+            />
+            <div className="wx-form-grid">
               <TextField
-                id="invoice-id"
-                label="Invoice id"
+                id="amount"
+                label="Amount (USD)"
                 required
-                error={errors.invoiceId}
-                value={form.invoiceId}
-                onChange={(e) => setForm({ ...form, invoiceId: e.target.value })}
-                placeholder="Invoice UUID"
+                error={errors.amount}
+                value={form.amount}
+                inputMode="decimal"
+                onChange={(e) => setForm({ ...form, amount: e.target.value })}
               />
-              <div className="grid grid-cols-2 gap-3">
-                <TextField
-                  id="amount"
-                  label="Amount (USD)"
-                  required
-                  error={errors.amount}
-                  value={form.amount}
-                  inputMode="decimal"
-                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                />
-                <SelectField
-                  id="kind"
-                  label="Kind"
-                  value={form.kind}
-                  options={KIND_OPTIONS}
-                  onChange={(e) => setForm({ ...form, kind: e.target.value })}
-                />
-              </div>
               <SelectField
-                id="reason-code"
-                label="Reason code"
-                value={form.reasonCode}
-                options={REASON_OPTIONS}
-                onChange={(e) => setForm({ ...form, reasonCode: e.target.value })}
+                id="kind"
+                label="Kind"
+                value={form.kind}
+                options={KIND_OPTIONS}
+                onChange={(e) => setForm({ ...form, kind: e.target.value })}
               />
-              <div className="grid gap-1">
-                <TextAreaField
-                  id="detail"
-                  label="Reason detail"
-                  hint="Do not include patient information."
-                  required
-                  error={errors.detail}
-                  value={form.detail}
-                  onChange={(e) => setForm({ ...form, detail: e.target.value })}
-                  rows={4}
-                />
-                <span
-                  className={`wx-nums text-xs ${
-                    detailShort
-                      ? "text-[var(--color-error)]"
-                      : "text-[var(--color-on-surface-variant)]"
-                  }`}
-                >
-                  {form.detail.trim().length}/{MIN_REFUND_REASON} characters
-                </span>
-              </div>
-              {outcome ? (
-                <OutcomeBanner
-                  {...outcome}
-                  onReverify={() => stashStepUpMemoryDraft(REFUND_DRAFT_KEY, form)}
-                />
-              ) : null}
-              <div className="wx-action-row is-end">
-                <Button tone="tertiary" onClick={() => navigate("/admin/refunds")}>
-                  Cancel
-                </Button>
-                <Button loading={busy} onClick={() => void submit()}>
-                  Submit request
-                </Button>
-              </div>
             </div>
-          </Panel>
-        </div>
+            <SelectField
+              id="reason-code"
+              label="Reason code"
+              value={form.reasonCode}
+              options={REASON_OPTIONS}
+              onChange={(e) => setForm({ ...form, reasonCode: e.target.value })}
+            />
+            <div className="wx-form-field">
+              <TextAreaField
+                id="detail"
+                label="Reason detail"
+                hint="Do not include patient information."
+                required
+                error={errors.detail}
+                value={form.detail}
+                onChange={(e) => setForm({ ...form, detail: e.target.value })}
+                rows={4}
+              />
+              <span className={`wx-nums ${detailShort ? "wx-form-error" : "wx-form-hint"}`}>
+                {form.detail.trim().length}/{MIN_REFUND_REASON} characters
+              </span>
+            </div>
+            {outcome ? (
+              <OutcomeBanner
+                {...outcome}
+                onReverify={() => stashStepUpMemoryDraft(REFUND_DRAFT_KEY, form)}
+              />
+            ) : null}
+          </div>
+          <div className="wx-drawer-actions">
+            <Button type="submit" loading={busy}>
+              Submit request
+            </Button>
+            <Button tone="tertiary" onClick={() => navigate("/admin/refunds")}>
+              Cancel
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   );
