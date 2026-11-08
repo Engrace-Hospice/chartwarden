@@ -46,7 +46,7 @@ interface Recorded {
 type Responder = (
   req: Recorded,
   n: number,
-) => { status: number; body?: unknown; text?: string } | "network" | "timeout" | "refused";
+) => { status: number; body?: unknown; text?: string } | "network" | "timeout" | "refused" | "refused-bun";
 
 function fakeTransport(routes: Record<string, Responder>) {
   const calls: Recorded[] = [];
@@ -70,6 +70,9 @@ function fakeTransport(routes: Record<string, Responder>) {
     if (out === "timeout") throw Object.assign(new Error("aborted"), { name: "AbortError" });
     if (out === "refused")
       throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } });
+    // Bun's shape: the code is on the error itself, no `cause`
+    if (out === "refused-bun")
+      throw Object.assign(new TypeError("ECONNREFUSED: Unable to connect"), { code: "ECONNREFUSED" });
     return {
       status: out.status,
       text: async () => out.text ?? (out.body === undefined ? "" : JSON.stringify(out.body)),
@@ -513,7 +516,8 @@ describe("transmitNewRx", () => {
   it("a send refused before anything was accepted (a 5xx, a connection never made) stays retryable, with no in-call retry", async () => {
     for (const [name, answer] of [
       ["a 503", { status: 503 }],
-      ["a refused connection", "refused"],
+      ["a refused connection (undici shape)", "refused"],
+      ["a refused connection (Bun shape)", "refused-bun"],
     ] as const) {
       const r = routes([{ Id: 9001 }]);
       r["POST /api/patients/501/prescriptions/send"] = () => answer;

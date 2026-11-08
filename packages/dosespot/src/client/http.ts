@@ -121,7 +121,7 @@ const NO_IN_CALL_RETRY: ReadonlySet<keyof typeof DOSESPOT_ENDPOINTS> = new Set([
 const AMBIGUOUS_ON_LOST_ANSWER: ReadonlySet<keyof typeof DOSESPOT_ENDPOINTS> = new Set([
   "sendPrescriptions",
 ]);
-/** Socket errors that mean the connection was never made, so nothing reached DoseSpot. */
+/** Socket errors that mean the connection was never made, so nothing reached DoseSpot (a connect TIMEOUT is an abort, not one of these: it is held). */
 const NOT_CONNECTED_CODES: ReadonlySet<string> = new Set([
   "ECONNREFUSED",
   "ENOTFOUND",
@@ -221,7 +221,9 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
       return { status: res.status, text: await res.text() };
     } catch (err) {
       const aborted = err instanceof Error && err.name === "AbortError";
-      const code = (err as { cause?: { code?: unknown } } | null)?.cause?.code;
+      // Bun puts the socket code on the error itself (a TypeError with `code: "ECONNREFUSED"`); undici puts it on `cause`
+      const shaped = err as { code?: unknown; cause?: { code?: unknown } } | null;
+      const code = shaped?.code ?? shaped?.cause?.code;
       const notConnected = typeof code === "string" && NOT_CONNECTED_CODES.has(code);
       throw new RetryableError(
         "network_timeout",
