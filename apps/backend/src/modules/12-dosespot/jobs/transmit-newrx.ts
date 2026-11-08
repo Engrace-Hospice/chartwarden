@@ -662,9 +662,15 @@ async function holdStaleCallsInProgress(
     const held = await tx
       .update(MOT)
       .set({ lastErrorClass: UNCONFIRMED_OUTCOME_CLASS, lastErrorDetail: STALE_CALL_DETAIL })
-      .where(eq(MOT.id, t.id))
+      .where(
+        and(
+          eq(MOT.id, t.id),
+          sql`${MOT.lastErrorClass} IS DISTINCT FROM ${UNCONFIRMED_OUTCOME_CLASS}`,
+        ),
+      )
       .returning({ id: MOT.id });
-    if (held.length !== 1) throw new Error("transmission row vanished while holding a stale call");
+    // a worker set (or is setting) the marker itself: it announced it, so neither re-apply nor publish a second event
+    if (held.length === 0) continue;
     await deps.outbox.publish(tx, {
       eventName: "m12.medication_order.transmission_unconfirmed",
       payload: { orderId: t.orderId, lastErrorClass: UNCONFIRMED_OUTCOME_CLASS },

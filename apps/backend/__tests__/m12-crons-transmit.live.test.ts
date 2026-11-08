@@ -1448,6 +1448,31 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       }
     });
 
+    // LOW: the drain's hold re-applied a marker a worker had already set but not yet committed, and published the event twice.
+    it("the drain's hold does not re-apply or re-announce a marker a worker is setting at the same moment", async () => {
+      const { orderId, transmissionId } = await queued();
+      await h.admin.query(
+        "UPDATE medication_order SET dosespot_send_state='in_flight', updated_at = now() - interval '3 hours' WHERE id=$1",
+        [orderId],
+      );
+      await h.admin.query(
+        "UPDATE medication_order_transmission SET transmission_started_at = now() - interval '3 hours' WHERE id=$1",
+        [transmissionId],
+      );
+      // another worker's hold, set but not yet committed (its own event, if any, belongs to that transaction)
+      await h.admin.query("BEGIN");
+      await h.admin.query(
+        "UPDATE medication_order_transmission SET last_error_class='unconfirmed_outcome', last_error_detail='worker hold' WHERE id=$1",
+        [transmissionId],
+      );
+      const drain = runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A); // reads the old row, then waits on the lock
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await h.admin.query("COMMIT");
+      await drain;
+      expect(await eventsFor("m12.medication_order.transmission_unconfirmed", orderId)).toEqual([]);
+      expect((await txRow(transmissionId as string)).last_error_detail).toBe("worker hold");
+    });
+
     it("an ambiguous outcome among clean ones holds only its own order", async () => {
       const first = await queued();
       const second = await queued();
