@@ -3440,4 +3440,27 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       });
     });
   });
+
+  describe("the onboarding-template catalog cannot overwrite a canonical template", () => {
+    it("a POST naming a canonical key is 409 ONBOARDING_TEMPLATE_CANONICAL on the real platform carrier and the row is unchanged", async () => {
+      const row = async () =>
+        (
+          await admin.query(
+            "SELECT display_label, canonical_order, is_canonical FROM onboarding_task_template WHERE key='baa_executed'",
+          )
+        ).rows[0];
+      const before = await row();
+      expect(before.is_canonical).toBe(true);
+      await expect(
+        backend().service.upsertOnboardingTemplate(OPS_USER, {
+          key: "baa_executed",
+          title: "Hijacked",
+          description: null,
+          canonicalOrder: 99,
+          isCanonical: false,
+        }),
+      ).rejects.toMatchObject({ code: "ONBOARDING_TEMPLATE_CANONICAL", statusCode: 409 });
+      expect(await row()).toEqual(before);
+    });
+  });
 });

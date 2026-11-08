@@ -85,6 +85,7 @@ import {
 import { partitionEffects } from "./effect-ledger";
 import { evaluateDestructionGuards, retentionEndsAtFrom } from "./offboarding-guards";
 import { readOnboardingProgress } from "./onboarding-progress-drizzle";
+import { canonicalTemplateConflict } from "./service";
 import type {
   BaaRecordView,
   BaaRegisterListItem,
@@ -1036,6 +1037,13 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     async upsertOnboardingTemplate(actorUserId, args): Promise<OnboardingTemplateView> {
       return inPlatformCtx("platform-ops upsert onboarding template", async (tx) => {
         const T = schema.onboardingTaskTemplate;
+        // Refused before any write (a typed 409, whatever the carrier's grants); `setWhere` below holds the same rule under a race.
+        const [existing] = await tx
+          .select({ isCanonical: T.isCanonical })
+          .from(T)
+          .where(eq(T.key, args.key))
+          .limit(1);
+        if (existing?.isCanonical) throw canonicalTemplateConflict(args.key);
         const [row] = await tx
           .insert(T)
           .values({
@@ -1057,9 +1065,11 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
               canonicalOrder: args.canonicalOrder,
               isCanonical: args.isCanonical,
             },
+            // A canonical template is migration-owned: the route never overwrites it (nor flips it non-canonical).
+            setWhere: eq(T.isCanonical, false),
           })
           .returning();
-        if (!row) throw new Error("onboarding_task_template upsert returned no row");
+        if (!row) throw canonicalTemplateConflict(args.key);
         void actorUserId;
         return {
           id: row.key,

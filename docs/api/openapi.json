@@ -256596,7 +256596,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Add/edit a NON-canonical onboarding template (step-up; canonical is migration-only)",
+        "summary": "Add/edit a NON-canonical onboarding template (step-up; canonical is migration-only): a key that names a canonical template is 409 ONBOARDING_TEMPLATE_CANONICAL and changes nothing",
         "parameters": [],
         "responses": {
           "200": {

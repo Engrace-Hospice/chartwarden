@@ -184,6 +184,15 @@ export interface BaaRecordView {
   readonly documentId: string | null;
   readonly attestedAt: string | null;
 }
+/** 409 for a POST naming a canonical template's key: canonical templates are migration-owned and never edited through the route. */
+export function canonicalTemplateConflict(key: string): ChartWardenError {
+  return new ChartWardenError(
+    "ONBOARDING_TEMPLATE_CANONICAL",
+    `the template '${key}' is canonical: canonical templates change only by migration`,
+    409,
+  );
+}
+
 /** A register list row: the record plus what go-live judges of it (`governingBaaIds` / `withGoverningFacts`). */
 export interface BaaRegisterListItem extends BaaRecordView {
   /** This is the record go-live and step 3 judge for its tenant (`pickGoverningBaa`). */
@@ -921,6 +930,7 @@ export function createInMemoryTenantPlatformBackend(
     },
     async upsertOnboardingTemplate(_actorUserId, args) {
       const existing = templates.get(args.key);
+      if (existing?.isCanonical) throw canonicalTemplateConflict(args.key);
       const view: OnboardingTemplateView = {
         id: existing?.id ?? subId(),
         key: args.key,

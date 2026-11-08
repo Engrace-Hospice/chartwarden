@@ -10470,7 +10470,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34OnboardingTemplateListResponseSchema,
   },
   "POST /api/v1/platform/onboarding-templates": {
-    summary: "Add/edit a NON-canonical onboarding template (step-up; canonical is migration-only)",
+    summary:
+      "Add/edit a NON-canonical onboarding template (step-up; canonical is migration-only): a key that names a canonical template is 409 ONBOARDING_TEMPLATE_CANONICAL and changes nothing",
     body: M34UpsertOnboardingTemplateRequest,
     response: M34OnboardingTemplateViewSchema,
   },

@@ -20885,7 +20885,7 @@ export interface paths {
         /** Platform onboarding-template catalog (cursor-paginated) */
         get: operations["getApiV1PlatformOnboardingtemplates"];
         put?: never;
-        /** Add/edit a NON-canonical onboarding template (step-up; canonical is migration-only) */
+        /** Add/edit a NON-canonical onboarding template (step-up; canonical is migration-only): a key that names a canonical template is 409 ONBOARDING_TEMPLATE_CANONICAL and changes nothing */
         post: operations["postApiV1PlatformOnboardingtemplates"];
         delete?: never;
         options?: never;

@@ -215,6 +215,10 @@ function makeServer(
   } = {},
 ) {
   const platformSeed: TenantPlatformRouteSeed = {
+    // One migration-owned canonical template: the catalog route must refuse to overwrite it.
+    templates: [
+      { key: "baa_executed", title: "BAA executed", canonicalOrder: 3, isCanonical: true },
+    ],
     // GAP-098 — one HELD bundle and one already-released job, so the `?held=true` filter has something
     // to include AND something to exclude (a filter proven only against an all-held set proves nothing).
     tenantExportJobs: [
@@ -938,6 +942,38 @@ describe("M34-saas-tenant-platform-inject — onboarding-template catalog", () =
     expect(write.statusCode).toBe(201);
     expect(write.json().key).toBe("custom_step");
 
+    // a non-canonical template can be edited again
+    const edit = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { key: "custom_step", title: "Custom step, renamed", canonicalOrder: 6 },
+    });
+    expect(edit.statusCode).toBe(201);
+    expect(edit.json()).toMatchObject({ title: "Custom step, renamed", isCanonical: false });
+
+    await app.close();
+  });
+
+  it("refuses a POST naming a canonical template's key (409 ONBOARDING_TEMPLATE_CANONICAL) and leaves it canonical", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: PLATFORM_OPS_STEPUP,
+      payload: { key: "baa_executed", title: "Hijacked", canonicalOrder: 99 },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("ONBOARDING_TEMPLATE_CANONICAL");
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: PLATFORM_OPS,
+    });
+    const canonical = (
+      list.json().items as { key: string; title: string; isCanonical: boolean }[]
+    ).find((t) => t.key === "baa_executed");
+    expect(canonical).toMatchObject({ title: "BAA executed", isCanonical: true });
     await app.close();
   });
 });
