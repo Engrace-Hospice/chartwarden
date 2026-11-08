@@ -29,11 +29,18 @@ built and `uv pip check`ed by the image build in `pr-image-gate`.
 cd services/docling-worker
 uv lock --upgrade            # or --upgrade-package <name> for a targeted security bump
 git diff uv.lock             # review the changed versions
-docker build -t dw-test .    # runs uv pip check
-docker run --rm -u root -v "$PWD/tests:/srv/tests:ro" -v "$PWD/pyproject.toml:/srv/pyproject.toml:ro" \
-  -v "$PWD/uv.lock:/srv/uv.lock:ro" dw-test sh -c \
+docker build --target build -t dw-test .    # runs uv pip check; the build stage keeps uv
+docker run --rm -v "$PWD/app:/srv/app:ro" -v "$PWD/tests:/srv/tests:ro" \
+  -v "$PWD/pyproject.toml:/srv/pyproject.toml:ro" -v "$PWD/uv.lock:/srv/uv.lock:ro" dw-test sh -c \
   'uv sync --frozen --no-install-project --extra docling --extra test && python -m pytest -q'
 ```
 
-Commit `pyproject.toml` and `uv.lock` together. Refresh the base-image digest (`docker pull python:3.12-slim`) in the
-same pass.
+Commit `pyproject.toml` and `uv.lock` together. Refresh the Wolfi base digest in the same pass
+(`docker pull cgr.dev/chainguard/wolfi-base:latest`, then copy the digest into `WOLFI_BASE` in the `Dockerfile`).
+
+## Base image
+
+Wolfi (`cgr.dev/chainguard/wolfi-base`), Chainguard's minimal glibc distro, not Debian: torch, easyocr and opencv
+ship glibc-only (manylinux) wheels, so musl/Alpine and distroless-without-Python are out. The runtime stage adds only
+`python-3.12` and `tesseract` (+ `eng` and `osd` data); the build stage carries uv. No libGL/glib: the lock has
+`opencv-python-headless` only.

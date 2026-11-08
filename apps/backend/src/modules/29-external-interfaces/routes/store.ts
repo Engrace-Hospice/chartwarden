@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { decodeCursor, encodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/29-external-interfaces/routes/store.ts — M29-T08 route-facing repo PORT + DTOs
 // + in-memory impl.
 //
@@ -1002,7 +1002,7 @@ export function createInMemoryM29Store(
     },
 
     async listObservations(orgId, filter) {
-      const cursor = decodeCursor(orgId, filter.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(orgId, filter.cursor, "instant");
       const limit = filter.limit ?? 50;
       const rows = [...observations.values()]
         .filter((o) => o.organizationId === orgId)

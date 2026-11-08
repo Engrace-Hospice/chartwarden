@@ -84,9 +84,66 @@ export interface KeysetCursor {
   readonly id: string;
 }
 
-export function isKeysetCursor(value: unknown): value is KeysetCursor {
+function isKeysetCursor(value: unknown): value is KeysetCursor {
   const v = value as Partial<KeysetCursor> | null;
   return typeof v?.a === "string" && typeof v.id === "string";
+}
+
+/**
+ * What a list's SQL does with the cursor's sort value: `instant` is cast `::timestamptz`, `date` is a `date`
+ * column, `integer` an int4 column, `text` a real text sort key (compared, never cast).
+ */
+export type KeysetAnchorKind = "instant" | "date" | "integer" | "text";
+
+export interface KeysetCursorOptions {
+  /** The tie-breaker id's shape. Default `uuid`; `text` only for a list whose tie-breaker is not a uuid. */
+  readonly id?: "uuid" | "text";
+}
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PG_INT4_MAX = 2147483647;
+const DATE_SHAPE = /^(\d{4})-(\d{2})-(\d{2})$/;
+// ISO 8601 (`toISOString()`) or Postgres `timestamptz::text` (`2026-01-01 10:00:00.123456+00`).
+const INSTANT_SHAPE =
+  /^(\d{4}-\d{2}-\d{2})[T ]([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d{1,9})?)?(Z|[+-]\d{2}(:?\d{2})?)?$/;
+
+/** A real calendar date: `Date` rolls `2026-02-31` over to March, Postgres rejects it. */
+function isCalendarDate(a: string): boolean {
+  const m = DATE_SHAPE.exec(a);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const t = new Date(Date.UTC(y, mo - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d;
+}
+
+const ANCHOR_SHAPE: Record<KeysetAnchorKind, (a: string) => boolean> = {
+  instant: (a) => {
+    const m = INSTANT_SHAPE.exec(a);
+    return m !== null && isCalendarDate(m[1] as string);
+  },
+  date: isCalendarDate,
+  // a Postgres int4: 10 digits can still overflow it
+  integer: (a) => /^\d{1,10}$/.test(a) && Number(a) <= PG_INT4_MAX,
+  text: (a) => a.length <= CURSOR_MAX_LENGTH,
+};
+
+/**
+ * Verify + decode a `{a, id}` keyset cursor AND check the anchor and id have the shape this list's SQL casts
+ * them to. The signature binds a cursor to the org, not to the list: a cursor the same org minted for another
+ * list verifies, and without this check reaches a `::timestamptz` / `::uuid` cast as a 500. A bad shape is
+ * 422 INVALID_CURSOR, the same as a bad signature.
+ */
+export function decodeKeysetCursor(
+  orgId: string,
+  raw: string | null | undefined,
+  anchor: KeysetAnchorKind,
+  options: KeysetCursorOptions = {},
+): KeysetCursor | null {
+  const cursor = decodeCursor(orgId, raw, isKeysetCursor);
+  if (cursor === null) return null;
+  const idOk = options.id === "text" ? cursor.id.length > 0 : UUID_SHAPE.test(cursor.id);
+  if (!ANCHOR_SHAPE[anchor](cursor.a) || !idOk) throw new InvalidCursorError();
+  return cursor;
 }
 
 export interface PageOptions {

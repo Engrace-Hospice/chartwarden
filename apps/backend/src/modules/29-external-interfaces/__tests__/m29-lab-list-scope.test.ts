@@ -1,7 +1,7 @@
 // GAP-085 — the clinician lab observation list is caseload-scoped, filters + keyset cursor run before LIMIT.
 import { describe, expect, it, vi } from "vitest";
 
-import { decodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
+import { decodeKeysetCursor } from "@chartwarden/shared/route-kit";
 import { resolveLabListScope } from "../routes/lab-list-scope";
 import { createInMemoryM29Store } from "../routes/store";
 
@@ -89,7 +89,7 @@ describe("listObservations scoping, filters and cursor (GAP-085)", () => {
     const first = await store.listObservations(ORG, { abnormalFlag: "HH", limit: 1 });
     expect(first.items.map((i) => i.id)).toEqual([O3]);
     expect(first.nextCursor).toBeDefined();
-    expect(decodeCursor(ORG, first.nextCursor, isKeysetCursor)).toMatchObject({ id: O3 });
+    expect(decodeKeysetCursor(ORG, first.nextCursor, "instant")).toMatchObject({ id: O3 });
     const second = await store.listObservations(ORG, {
       abnormalFlag: "HH",
       limit: 1,

@@ -3,7 +3,12 @@
 // Every M34 list pages by an opaque `(createdAt DESC, id)` keyset cursor signed by the route kit. Tenant
 // lists sign with the caller's org id; the platform-ops lists span tenants and sign with
 // {@link PLATFORM_CURSOR_SCOPE} (never a uuid, so a tenant cursor never verifies on a platform list or back).
-import { decodeCursor, encodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
+import {
+  type KeysetAnchorKind,
+  type KeysetCursorOptions,
+  decodeKeysetCursor,
+  encodeCursor,
+} from "@chartwarden/shared/route-kit";
 
 /** The cursor-signing scope of the cross-tenant platform-ops lists. */
 export const PLATFORM_CURSOR_SCOPE = "platform";
@@ -36,9 +41,17 @@ export function encodeKeyset(scope: string, keyset: CursorKeyset): string {
   return encodeCursor(scope, { a: keyset.createdAt, id: keyset.id });
 }
 
-/** Verify + decode a cursor for `scope`; absent → null, bad → 422 INVALID_CURSOR. */
-export function decodeKeyset(scope: string, cursor: string | undefined): CursorKeyset | null {
-  const key = decodeCursor(scope, cursor, isKeysetCursor);
+/**
+ * Verify + decode a cursor for `scope`; absent → null, bad signature or a shape other than `anchor` + uuid id
+ * → 422 INVALID_CURSOR. The SQL-paged lists cast `createdAt::timestamptz` and `id::uuid`, hence the default.
+ */
+export function decodeKeyset(
+  scope: string,
+  cursor: string | undefined,
+  anchor: KeysetAnchorKind = "instant",
+  options: KeysetCursorOptions = {},
+): CursorKeyset | null {
+  const key = decodeKeysetCursor(scope, cursor, anchor, options);
   return key ? { createdAt: key.a, id: key.id } : null;
 }
 
@@ -50,7 +63,8 @@ export function paginate<T extends CursorKeyset>(
   limit: number | undefined,
 ): CursorPage<T> {
   const size = pageSizeOf(limit);
-  const key = decodeKeyset(scope, cursor);
+  // In-memory string compare, never cast: the anchors and ids of these lists are not all instants/uuids.
+  const key = decodeKeyset(scope, cursor, "text", { id: "text" });
   let start = 0;
   if (key) {
     start = rows.findIndex(

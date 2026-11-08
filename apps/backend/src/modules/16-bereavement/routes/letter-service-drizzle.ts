@@ -14,8 +14,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import {
   type KeysetCursor,
   clampLimit,
-  decodeCursor,
-  isKeysetCursor,
+  decodeKeysetCursor,
   toCursorPage,
 } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -92,10 +91,10 @@ export function buildDrizzleM16LetterService(db: DbClient, deps: M16LetterDeps):
   return {
     async listLetters(actor, input) {
       const limit = clampLimit(input.limit, M16_PAGE_SIZES.plans);
-      const after: KeysetCursor | null = decodeCursor(
+      const after: KeysetCursor | null = decodeKeysetCursor(
         actor.organizationId,
         input.cursor,
-        isKeysetCursor,
+        "instant",
       );
       return withOrgContext(db, scope(actor), async (scoped) => {
         const tx = scoped as unknown as DbClient;

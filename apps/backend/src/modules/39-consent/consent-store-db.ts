@@ -63,7 +63,7 @@ import {
 // competing terminal transitions, encrypts optional notes before persistence, and writes its M1
 // outbox event atomically. Signed rows are never edited; corrections mint supersession/renewal rows.
 import { type DbClient, schema } from "@chartwarden/db";
-import { decodeCursor, encodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
 import { type SQL, and, desc, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
@@ -1847,7 +1847,7 @@ export function createDbConsentRouteService(
           gt(CR.expiresAt, new Date(nowMs)),
           lte(CR.expiresAt, horizon),
         ];
-        const c = decodeCursor(organizationId, page.cursor, isKeysetCursor);
+        const c = decodeKeysetCursor(organizationId, page.cursor, "instant");
         // Keyset (expires_at, id) ASC — strictly after the cursor (§4.12, never an offset).
         if (c) where.push(sql`(${CR.expiresAt}, ${CR.id}) > (${c.a}, ${c.id})`);
         const rows = await tx
@@ -1960,7 +1960,7 @@ export function createDbConsentRouteService(
         const where: (SQL | undefined)[] = [eq(CEA.organizationId, organizationId)];
         if (filter.consentId) where.push(eq(CEA.consentRecordId, filter.consentId));
         if (filter.patientId) where.push(eq(CEA.patientId, filter.patientId));
-        const c = decodeCursor(organizationId, page.cursor, isKeysetCursor);
+        const c = decodeKeysetCursor(organizationId, page.cursor, "instant");
         // Keyset (evaluated_at, id) DESC — strictly after the cursor (§4.12, never an offset).
         if (c) where.push(sql`(${CEA.evaluatedAt}, ${CEA.id}) < (${c.a}, ${c.id})`);
         const rows = await tx

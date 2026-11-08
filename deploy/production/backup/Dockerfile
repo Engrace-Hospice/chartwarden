@@ -10,7 +10,7 @@
 # because the minio/mc Docker Hub repository is no longer published. Mirror that digest into a registry you control
 # (a vanished upstream digest breaks the next rebuild). pgBackRest is pinned to 2.60.x: PGDG keeps only current
 # versions, so a rebuild after 2.60 leaves the repo fails loudly; bump the pin deliberately and re-run the drill.
-FROM pgvector/pgvector:pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+FROM pgvector/pgvector:pg18-bookworm@sha256:c29f30688a9ad961691bdf0ec1650717cc132a5814619d80f80463d6e4c42e47
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends "pgbackrest=2.60*" jq curl ca-certificates \

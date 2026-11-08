@@ -4,8 +4,7 @@ import {
   type PageSizePolicy,
   type RouteActor,
   clampLimit,
-  decodeCursor,
-  isKeysetCursor,
+  decodeKeysetCursor,
   toCursorPage,
 } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/21-supplies/routes/read-service-drizzle.ts — the Drizzle-backed M21 READ service
@@ -315,7 +314,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
     // ── §4.1 rows 2 / 3 — supply requests ──────────────────────────────────────────────────────────
     async listSupplyRequests(actor, filters) {
       const limit = pageOf(filters.limit, M21_PAGE_SIZES.requests);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, filters.cursor, "instant");
       return scoped(actor, async (tx) => {
         const rows = await tx
           .select()
@@ -616,7 +615,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
     // ── §4.1 rows 21 / 22 — comfort-kit dispatches ────────────────────────────────────────────────
     async listDispatches(actor, filters) {
       const limit = pageOf(filters.limit, M21_PAGE_SIZES.dispatches);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, filters.cursor, "instant");
       return scoped(actor, async (tx) => {
         const rows = await tx
           .select()
@@ -682,7 +681,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
     // ── §4.1 rows 25 / 26 — comfort-kit returns ───────────────────────────────────────────────────
     async listReturns(actor, filters) {
       const limit = pageOf(filters.limit, M21_PAGE_SIZES.returns);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, filters.cursor, "instant");
       const asOf = now();
       return scoped(actor, async (tx) => {
         const rows = await tx

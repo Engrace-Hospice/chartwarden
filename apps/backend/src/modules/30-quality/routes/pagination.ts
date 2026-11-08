@@ -4,7 +4,7 @@
 // kit's signed `(sort value, id)` codec (a tampered or foreign cursor is 422 INVALID_CURSOR); offset
 // pagination is forbidden on PHI lists (§4.1.2; SD-052). The §4.1.2 PHI lists (R-50 incidents, R-70
 // mortality, R-90 infection events) page in SQL instead (./phi-list-queries.ts).
-import { decodeCursor, encodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 
 /** A row the in-memory helper can page: its anchor timestamp (`created_at` or a partition key) + id. */
 export interface CursorKeyset {
@@ -40,7 +40,8 @@ export function paginate<T extends CursorKeyset>(
   limit: number | undefined,
 ): CursorPage<T> {
   const size = pageSizeOf(limit);
-  const key = decodeCursor(organizationId, cursor, isKeysetCursor);
+  // In-memory string compare, never cast: the anchors and ids of these lists are not all instants/uuids.
+  const key = decodeKeysetCursor(organizationId, cursor, "text", { id: "text" });
   let start = 0;
   if (key) {
     start = rows.findIndex((r) => r.createdAt < key.a || (r.createdAt === key.a && r.id < key.id));

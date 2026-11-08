@@ -28,8 +28,7 @@ import {
   type CursorPage,
   type PageSizePolicy,
   clampLimit,
-  decodeCursor,
-  isKeysetCursor,
+  decodeKeysetCursor,
   toCursorPage,
 } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -289,7 +288,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
     // ── 1 — plan worklist (keyset on `updated_at DESC, id DESC`) ─────────────────────────────────────
     async listPlans(actor, query: PlanListQuery) {
       const limit = pageLimit(query.limit, M16_PAGE_SIZES.plans);
-      const cursor = decodeCursor(actor.organizationId, query.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, query.cursor, "instant");
       const asOf = now();
       // §4.1 — "counselor caseload by default". A caller WITHOUT oversight sees only the plans they hold,
       // and the narrowing is a SQL predicate rather than a post-filter, so the page size is honest.
@@ -543,7 +542,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
       const plan = await loadReachablePlan(actor, planId);
       if (plan === null) return null;
       const limit = pageLimit(query.limit, M16_PAGE_SIZES.outreach);
-      const cursor = decodeCursor(actor.organizationId, query.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, query.cursor, "instant");
       const rows = await withOrgContext(db, scope(actor), async (tx) => {
         const filters = [
           eq(OUTREACH.planId, planId),
@@ -581,7 +580,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
       if (plan === null) return null;
       const gate = await resolveBereavementDisclosure(actor, plan.patientId, disclosurePort);
       const limit = pageLimit(query.limit, M16_PAGE_SIZES.riskScores);
-      const cursor = decodeCursor(actor.organizationId, query.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, query.cursor, "instant");
       const rows = await withOrgContext(db, scope(actor), async (tx) => {
         const filters = [
           eq(SCORE.planId, planId),

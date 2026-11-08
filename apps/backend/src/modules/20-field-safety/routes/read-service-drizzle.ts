@@ -30,8 +30,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import {
   type CursorPage,
   clampLimit,
-  decodeCursor,
-  isKeysetCursor,
+  decodeKeysetCursor,
   toCursorPage,
 } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -391,7 +390,7 @@ export function buildDrizzleM20ReadService(db: DbClient, deps: M20ReadDeps = {})
 
     async getLocationStream(actor, sosAlertId, filters) {
       const limit = clampLimit(filters.limit, M20_PAGE_SIZES.locationStream);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, filters.cursor, "instant");
       return withOrgContext(db, ctx(actor), async (tx): Promise<SosLocationStreamPage> => {
         const [alert] = await tx
           .select({
@@ -572,7 +571,7 @@ export function buildDrizzleM20ReadService(db: DbClient, deps: M20ReadDeps = {})
 
     async listIncidents(actor, filters) {
       const limit = clampLimit(filters.limit, M20_PAGE_SIZES.incidents);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, filters.cursor, "instant");
       const supervisor = decideSafetySupervisorOrAbove(actor.roles);
       return withOrgContext(db, ctx(actor), async (tx): Promise<CursorPage<SafetyIncidentView>> => {
         const rows = await tx
@@ -618,7 +617,7 @@ export function buildDrizzleM20ReadService(db: DbClient, deps: M20ReadDeps = {})
 
     async listSubscriptions(actor, filters) {
       const limit = clampLimit(filters.limit, M20_PAGE_SIZES.subscriptions);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, filters.cursor, "instant");
       return withOrgContext(
         db,
         ctx(actor),
@@ -666,7 +665,7 @@ export function buildDrizzleM20ReadService(db: DbClient, deps: M20ReadDeps = {})
 
     async listHighRiskAreas(actor, filters) {
       const limit = clampLimit(filters.limit, M20_PAGE_SIZES.highRiskAreas);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor, isKeysetCursor);
+      const cursor = decodeKeysetCursor(actor.organizationId, filters.cursor, "instant");
       const at = now();
       return withOrgContext(
         db,

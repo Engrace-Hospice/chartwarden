@@ -7,7 +7,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 // Paging is keyset on (deadline_at, tie) where `tie` is the SHA-256 of the request id: unique in practice, stable, and the cursor never
 // carries a request id (a restricted row's id must not leave the server, not even inside an opaque cursor). The counts are computed
 // without the page limit and without the cursor, so the page can always be checked against them.
-import { decodeCursor, encodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ACK_QUEUE_STATUSES,
@@ -171,7 +171,7 @@ export function queueFilters(
 
 export function createDbUnacknowledgedReader(db: DbClient): UnacknowledgedReader {
   return async (orgId, userId, q) => {
-    const cursor = decodeCursor(orgId, q.cursor, isKeysetCursor);
+    const cursor = decodeKeysetCursor(orgId, q.cursor, "instant", { id: "text" });
     const keyset = cursor && { deadlineAt: cursor.a, tie: cursor.id };
     const nowIso = q.now.toISOString();
     const filters = queueFilters(orgId, q);

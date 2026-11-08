@@ -22,9 +22,8 @@ import type { AbacContext } from "@chartwarden/auth";
 import {
   InvalidCursorError,
   clampLimit,
-  decodeCursor,
+  decodeKeysetCursor,
   encodeCursor,
-  isKeysetCursor,
   toCursorPage,
 } from "@chartwarden/shared/route-kit";
 import type { IsoInstant } from "@chartwarden/types";
@@ -383,7 +382,10 @@ describe("M15-T06 §4.6.1 cursor pagination", () => {
     );
     expect(page.data).toEqual(["a", "b"]);
     expect(page.has_more).toBe(true);
-    expect(decodeCursor(ORG, page.next_cursor, isKeysetCursor)).toEqual({ a: "b", id: "b" });
+    expect(decodeKeysetCursor(ORG, page.next_cursor, "text", { id: "text" })).toEqual({
+      a: "b",
+      id: "b",
+    });
   });
 
   it("closes the page when the row set fits", () => {
@@ -398,8 +400,12 @@ describe("M15-T06 §4.6.1 cursor pagination", () => {
   });
 
   it("refuses a malformed or unsigned cursor with 422 INVALID_CURSOR", () => {
-    expect(() => decodeCursor(ORG, "not-a-cursor", isKeysetCursor)).toThrow(InvalidCursorError);
-    expect(decodeCursor(ORG, encodeCursor(ORG, { a: "x", id: "y" }), isKeysetCursor)).toEqual({
+    expect(() => decodeKeysetCursor(ORG, "not-a-cursor", "text", { id: "text" })).toThrow(
+      InvalidCursorError,
+    );
+    expect(
+      decodeKeysetCursor(ORG, encodeCursor(ORG, { a: "x", id: "y" }), "text", { id: "text" }),
+    ).toEqual({
       a: "x",
       id: "y",
     });

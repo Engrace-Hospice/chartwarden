@@ -9,13 +9,18 @@
 // (a mailing, a session), but NOT the outcome of a touchpoint: what happened on a call (a crisis referral, a request for no further contact) is clinical
 // content. Redaction is shape, not status: the field is ABSENT and `clinical_risk` is named in `redactedCategories`. The sealed note column is never read.
 import { type DbClient, schema } from "@chartwarden/db";
-import { type KeysetCursor, clampLimit, toCursorPage } from "@chartwarden/shared/route-kit";
+import {
+  type KeysetCursor,
+  clampLimit,
+  decodeKeysetCursor,
+  toCursorPage,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { BereavementActivityKind, IsoInstant } from "@chartwarden/types";
 import { and, desc, eq, lt, or } from "drizzle-orm";
 import type { M16ReadActor } from "./actor";
 import type { BereavementDisclosureDecision } from "./disclosure";
-import { M16_PAGE_SIZES, decodeCheckedCursor } from "./pagination";
+import { M16_PAGE_SIZES } from "./pagination";
 import type { ContactTimelineEntry, ContactTimelinePage } from "./read-service";
 
 type PlanRow = typeof schema.bereavementPlan.$inferSelect;
@@ -40,7 +45,7 @@ export async function listContactTimeline(
   const LOG = schema.bereavementContactLog;
   const scope = { organizationId: actor.organizationId, userId: actor.userId };
   const limit = clampLimit(query.limit, M16_PAGE_SIZES.dashboard);
-  const after: KeysetCursor | null = decodeCheckedCursor(
+  const after: KeysetCursor | null = decodeKeysetCursor(
     actor.organizationId,
     query.cursor,
     "instant",

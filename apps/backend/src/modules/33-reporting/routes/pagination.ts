@@ -4,7 +4,7 @@
 // registry / drilldown audit / definitions / views / schedules). The cursor encodes `(createdAt DESC, id)`
 // through the route kit's org-bound signed codec; offset pagination is forbidden. A malformed, tampered or
 // other-org cursor is 422 INVALID_CURSOR (never page-from-start).
-import { decodeCursor, encodeCursor, isKeysetCursor } from "@chartwarden/shared/route-kit";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 
 /** The default + maximum page size for the M33 list routes (default 50, max 200). */
 export const DEFAULT_PAGE_SIZE = 50;
@@ -34,7 +34,8 @@ export function paginate<T extends { readonly createdAt: string; readonly id: st
   limit: number | undefined,
 ): CursorPage<T> {
   const size = pageSizeOf(limit);
-  const key = decodeCursor(organizationId, cursor, isKeysetCursor);
+  // In-memory string compare, never cast: the anchors and ids of these lists are not all instants/uuids.
+  const key = decodeKeysetCursor(organizationId, cursor, "text", { id: "text" });
   let start = 0;
   if (key) {
     start = rows.findIndex((r) => r.createdAt < key.a || (r.createdAt === key.a && r.id < key.id));

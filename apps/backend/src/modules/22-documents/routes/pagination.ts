@@ -5,9 +5,8 @@
 import {
   type PageSizePolicy,
   clampLimit,
-  decodeCursor,
+  decodeKeysetCursor,
   encodeCursor,
-  isKeysetCursor,
 } from "@chartwarden/shared/route-kit";
 
 /** §4.1 page sizes for PHI list routes: default 50, max 200. */
@@ -28,7 +27,8 @@ export function paginate<T extends { readonly createdAt: string; readonly id: st
   limit: number | undefined,
 ): CursorPage<T> {
   const size = clampLimit(limit, M22_PAGE_SIZE);
-  const key = decodeCursor(organizationId, cursor, isKeysetCursor);
+  // In-memory string compare, never cast: the anchors and ids of these lists are not all instants/uuids.
+  const key = decodeKeysetCursor(organizationId, cursor, "text", { id: "text" });
   // strict keyset: skip everything at-or-after the cursor row in DESC `(createdAt, id)` order.
   const found = key
     ? rows.findIndex((r) => r.createdAt < key.a || (r.createdAt === key.a && r.id < key.id))

@@ -23,9 +23,8 @@ import { type DbClient, schema } from "@chartwarden/db";
 import {
   type PreHandler,
   actorOf,
-  decodeCursor,
+  decodeKeysetCursor,
   encodeCursor,
-  isKeysetCursor,
 } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
@@ -167,11 +166,12 @@ export function registerLegalHoldsRoutes(app: FastifyInstance, deps: LegalHoldsR
   app.get("/api/v1/legal-holds", { preHandler: [legalHoldRead] }, async (request) => {
     const { organizationId, userId } = actorOf(request);
     const q = parse(LegalHoldListQuerySchema, request.query) as LegalHoldListQuery;
+    // Before any read: a cursor this org minted for another list is 422, never a cast 500.
+    const cur = decodeKeysetCursor(organizationId, q.cursor, "instant");
     return withOrgContext(deps.db, { organizationId, userId }, async (tx) => {
       const limit = resolveLimit(q.limit);
       const where = [eq(HOLD.organizationId, organizationId)];
       if (q.status) where.push(eq(HOLD.status, q.status));
-      const cur = decodeCursor(organizationId, q.cursor, isKeysetCursor);
       if (cur) {
         where.push(sql`(${HOLD.appliedAt}, ${HOLD.id}) < (${cur.a}::timestamptz, ${cur.id})`);
       }
