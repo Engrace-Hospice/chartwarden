@@ -223,7 +223,20 @@ function isDefinitive(err: unknown): boolean {
   return isDegradedError(err) && !err.retryable;
 }
 
-/** A vendor failure as a typed error: retryable => 503, accepted-but-unconfirmed => 502, a refusal => 422. No vendor text beyond the PHI-free message. */
+/**
+ * The response text for each kind of vendor failure: FIXED strings, chosen by the error's class. The adapter's `customerMessage` is never passed
+ * through: it has carried the vendor's own free text (a `ResultDescription` can echo a name or an NPI), and this body is also kept for 24 hours by
+ * the idempotency store.
+ */
+const VENDOR_FAILURE_TEXT = {
+  notEnabled:
+    "DoseSpot e-prescribing is not set up for this organization; register and test the connection first",
+  unavailable: "DoseSpot is temporarily unavailable; try the enrollment again in a few minutes",
+  rejected:
+    "DoseSpot refused the enrollment; check the DoseSpot registration and the prescriber's physician record, then try again",
+} as const;
+
+/** A vendor failure as a typed error: retryable => 503, accepted-but-unconfirmed => 502, a refusal => 422, each with a fixed sentence only. */
 function vendorError(err: unknown): never {
   if (isUnconfirmedOutcomeError(err)) {
     throw new ChartWardenError(
@@ -232,10 +245,13 @@ function vendorError(err: unknown): never {
       502,
     );
   }
+  if (isNotEnabledError(err)) {
+    throw new ChartWardenError("DOSESPOT_ENROLLMENT_REJECTED", VENDOR_FAILURE_TEXT.notEnabled, 422);
+  }
   if (isDegradedError(err)) {
     throw err.retryable
-      ? new ChartWardenError("DOSESPOT_UNAVAILABLE", err.customerMessage, 503)
-      : new ChartWardenError("DOSESPOT_ENROLLMENT_REJECTED", err.customerMessage, 422);
+      ? new ChartWardenError("DOSESPOT_UNAVAILABLE", VENDOR_FAILURE_TEXT.unavailable, 503)
+      : new ChartWardenError("DOSESPOT_ENROLLMENT_REJECTED", VENDOR_FAILURE_TEXT.rejected, 422);
   }
   throw err;
 }

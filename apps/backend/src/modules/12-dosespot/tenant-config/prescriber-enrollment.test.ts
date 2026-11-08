@@ -486,6 +486,25 @@ describe("prescriber vendor enrolment", () => {
     expect(h.voids).toEqual([]);
   });
 
+  it("never puts the adapter's message (which can carry the vendor's free text) in the response: a fixed sentence per class", async () => {
+    for (const retryable of [false, true]) {
+      const h = build({
+        vendor: async () => {
+          throw new DegradedError(
+            "dosespot",
+            "enrollPrescriber",
+            retryable,
+            "DoseSpot reported an error: NPI 1234567893 belongs to Jane Synthetic",
+            "c9",
+          );
+        },
+      });
+      const err = (await h.service.enroll(ACTOR, MEMBER).catch((e: unknown) => e)) as Error;
+      expect(err.message, String(retryable)).not.toMatch(/Jane|1234567893|reported an error/);
+      expect(err.message, String(retryable)).toMatch(/DoseSpot/);
+    }
+  });
+
   it("a transient (ambiguous) vendor failure is a retryable 503 that KEEPS the claim: the clinician may have been created", async () => {
     const h = build({
       vendor: async (n) => {
