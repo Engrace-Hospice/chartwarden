@@ -285,26 +285,24 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       return { alertId: `a-${alertCalls.length}`, resolvedRecipientCount: 0 };
     },
   };
+  /** The facts as the composition root wires them: step 3 also needs the governing BAA's document to verify (M22's check). */
   const facts = () => ({
     orgSeed: buildOrgSeedFactsReader(app.db),
     orgAdminCount: buildOrgAdminCountReader(app.db),
     macFeedConfigured: buildMacFeedConfiguredReader(buildDrizzleOrgMacJurisdictionReader(app.db)),
+    baaDocumentFiled: isTenantBaaDocumentFiled,
   });
-  const advancer = () => createOnboardingAdvancer({ db: app.db, outbox, alerts, facts: facts() });
-  /** The advance pass as the composition root wires it: step 3 also needs the governing BAA's document to verify (M22's check). */
-  const documentCheckingAdvancer = () =>
-    createOnboardingAdvancer({
-      db: app.db,
-      outbox,
-      alerts,
-      facts: { ...facts(), baaDocumentFiled: isTenantBaaDocumentFiled },
-    });
+  const advancer = (
+    readers:
+      | ReturnType<typeof facts>
+      | Omit<ReturnType<typeof facts>, "baaDocumentFiled"> = facts(),
+  ) => createOnboardingAdvancer({ db: app.db, outbox, alerts, facts: readers });
   const backend = (
-    opts: Pick<DrizzleTenantPlatformDeps, "advanceOnboarding" | "warn" | "baaDocuments"> = {},
+    opts: Partial<Pick<DrizzleTenantPlatformDeps, "advanceOnboarding" | "warn">> = {},
   ) =>
     createDrizzleTenantPlatformBackend({
-      baaDocuments: { isFiled: isTenantBaaDocumentFiled },
       ...opts,
+      baaDocuments: { isFiled: isTenantBaaDocumentFiled },
       platformDb: platform.db,
       enqueue: { enqueue: async (q, k) => ({ jobId: `${q}-${k}` }) },
       legalHoldClear: async () => true,
@@ -345,6 +343,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         platformJobId: JOB_ID,
         activation: backend().activateApprovedTenant,
         orgProfileFor: (tx) => buildDrizzleOrgProfilePort(tx),
+        baaDocumentFiled: isTenantBaaDocumentFiled,
       }),
       orgProfile: buildDrizzleOrgProfilePort(app.db),
       ...(withAdvance
@@ -1953,20 +1952,8 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         });
       });
 
-      it("answers 503 when no document adapter is bound and a link is being written", async () => {
-        const unbound = backend({ baaDocuments: undefined });
-        const refused = await refusal(
-          unbound.service.createBaaRecord(OPS_USER, {
-            ...record(await fileDocument(ORG_S4)),
-            addendumVersion: "v-unbound",
-          }),
-        );
-        expect(refused.code).toBe("BAA_DOCUMENTS_UNBOUND");
-        expect(refused.statusCode).toBe(503);
-      });
-
       it("go-live judges the governing BAA's document too: the wizard store says whether the link verifies, with the real adapter", async () => {
-        const governing = async (checked: boolean) =>
+        const governing = async () =>
           createDrizzleWizardRunner({
             db: app.db,
             platformDb: platform.db,
@@ -1974,7 +1961,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
             platformJobId: JOB_ID,
             activation: backend().activateApprovedTenant,
             orgProfileFor: (tx) => buildDrizzleOrgProfilePort(tx),
-            ...(checked ? { baaDocumentFiled: isTenantBaaDocumentFiled } : {}),
+            baaDocumentFiled: isTenantBaaDocumentFiled,
           }).inPlatform("review: the governing BAA of a tenant", (store) => store.latestBaa(T_S6));
         const insert = async (documentId: string | null) =>
           admin.query(
@@ -1984,25 +1971,23 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
           );
         // executed, but linked to ANOTHER tenant's document: the status rests on nothing
         await insert(await fileDocument(ORG_S2));
-        expect(await governing(true)).toMatchObject({
+        expect(await governing()).toMatchObject({
           baaStatus: "executed",
           documentFiled: false,
         });
         const guards = evaluateGoLiveGuards({
           templates: [],
           tasks: [],
-          latestBaa: (await governing(true)) ?? undefined,
+          latestBaa: (await governing()) ?? undefined,
           today: new Date(),
         });
         expect(guards.baaExecuted).toBe(false);
-        // no adapter bound: not judged (the status alone decides, as before)
-        expect((await governing(false))?.documentFiled).toBeUndefined();
 
         await admin.query(
           "UPDATE platform_tenant_baa_record SET document_id=$2 WHERE tenant_account_id=$1",
           [T_S6, await fileDocument(ORG_S6)],
         );
-        expect(await governing(true)).toMatchObject({ documentFiled: true });
+        expect(await governing()).toMatchObject({ documentFiled: true });
       });
 
       it("settles step 3 only when the governing BAA's document verifies", async () => {
@@ -2016,14 +2001,18 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
             [ORG_S5, T_S5, documentId],
           );
         await insert(await fileDocument(ORG_S2));
-        await documentCheckingAdvancer()({ tenantAccountId: T_S5, orgId: ORG_S5 });
+        await advancer()({ tenantAccountId: T_S5, orgId: ORG_S5 });
         expect(await statusOf(T_S5, "baa_executed")).toBe("blocked");
 
         await admin.query(
           "UPDATE platform_tenant_baa_record SET document_id=$2 WHERE tenant_account_id=$1",
           [T_S5, await fileDocument(ORG_S5)],
         );
-        await documentCheckingAdvancer()({ tenantAccountId: T_S5, orgId: ORG_S5 });
+        // A pass built WITHOUT the reader never settles step 3 on the status alone, even over a link that would verify.
+        const { baaDocumentFiled: _unwired, ...unwired } = facts();
+        await advancer(unwired)({ tenantAccountId: T_S5, orgId: ORG_S5 });
+        expect(await statusOf(T_S5, "baa_executed")).toBe("blocked");
+        await advancer()({ tenantAccountId: T_S5, orgId: ORG_S5 });
         expect(await statusOf(T_S5, "baa_executed")).toBe("done");
       });
     });

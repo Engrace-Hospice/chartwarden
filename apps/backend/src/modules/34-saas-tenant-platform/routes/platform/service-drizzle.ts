@@ -69,6 +69,7 @@ import {
   type BaaDocumentCheck,
   assertBaaDocumentFiled,
   assertExecutedBaaHasDocument,
+  governingBaaDocumentFiled,
 } from "./baa-guards";
 import {
   type CursorPage,
@@ -195,10 +196,10 @@ export interface DrizzleTenantPlatformDeps {
   }) => Promise<void>;
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
   /**
-   * M22's BAA document adapter: a BAA record may link only a signed BAA filed for its own tenant (judged in the write's transaction).
-   * Unbound with a document id on the write: 503 `BAA_DOCUMENTS_UNBOUND`.
+   * M22's BAA document adapter: a BAA record may link only a signed BAA filed for its own tenant (judged in the write's transaction),
+   * and go-live rests on the governing BAA's document. REQUIRED: a backend built without it would judge go-live on the status alone.
    */
-  readonly baaDocuments?: Pick<OnboardingBaaDocumentPort, "isFiled">;
+  readonly baaDocuments: Pick<OnboardingBaaDocumentPort, "isFiled">;
 }
 
 const A = schema.tenantAccount;
@@ -290,12 +291,11 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
    */
   activateApprovedTenant: WizardActivation;
 } {
-  /** M22's BAA-document check bound to ONE transaction (the write's own), or undefined when no adapter is bound. */
-  const boundTo = (tx: PlatformTx): BaaDocumentCheck | undefined =>
-    deps.baaDocuments
-      ? (ref) =>
-          (deps.baaDocuments as NonNullable<typeof deps.baaDocuments>).isFiled(tx as never, ref)
-      : undefined;
+  /** M22's BAA-document check bound to ONE transaction (the write's own). */
+  const boundTo =
+    (tx: PlatformTx): BaaDocumentCheck =>
+    (ref) =>
+      deps.baaDocuments.isFiled(tx as never, ref);
 
   /**
    * Run `fn` in one audited platform-context tx (the only place cross-tenant rows are read/written). `crossTenant` (default
@@ -395,22 +395,17 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     ]);
     const governing = pickGoverningBaa(baaRows);
     // The guard rests on the governing BAA's document too: executed with a link that does not verify (another tenant's document, another
-    // kind, none) is not an executed BAA. Judged where an adapter is bound; unbound, the status alone decides (a test).
-    const documentFiled =
-      governing && deps.baaDocuments
-        ? governing.documentId !== null &&
-          (await deps.baaDocuments.isFiled(tx as never, {
-            organizationId: governing.organizationId,
-            documentId: governing.documentId,
-          }))
-        : undefined;
+    // kind, none) is not an executed BAA.
     const guards = evaluateActivationGuards({
       canonicalTemplateKeys: templates
         .filter((t) => t.isCanonical && !t.isOptional)
         .map((t) => t.key),
       tasks,
       latestBaa: governing
-        ? { ...governing, ...(documentFiled === undefined ? {} : { documentFiled }) }
+        ? {
+            ...governing,
+            documentFiled: await governingBaaDocumentFiled(governing, boundTo(tx)),
+          }
         : undefined,
       today: new Date(),
     });

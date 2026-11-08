@@ -34,6 +34,19 @@ export type BaaDocumentCheck = (ref: {
 }) => Promise<boolean>;
 
 /**
+ * Whether a governing BAA's document verifies: a document id that `isFiled` accepts for the BAA's own organization (a `tenant_baa` row in
+ * it). The ONE statement of the rule go-live rests on, shared by the status route's activation event, the wizard's go-live guard and the
+ * onboarding advance (step 3): an `executed` status over a link that does not verify, or over no link, is not an executed BAA.
+ */
+export async function governingBaaDocumentFiled(
+  governing: { readonly organizationId: string; readonly documentId: string | null },
+  isFiled: BaaDocumentCheck,
+): Promise<boolean> {
+  if (governing.documentId === null) return false;
+  return isFiled({ organizationId: governing.organizationId, documentId: governing.documentId });
+}
+
+/**
  * The document a BAA record links must be a signed BAA filed FOR THIS TENANT: a `tenant_baa` document row in the record's own
  * organization, judged on the same transaction that writes the record (`isFiled` is bound to it). Any other id (another tenant's document, a
  * document of another kind, an id that is no document) is a 422 BAA_DOCUMENT_INVALID, so an `executed` status can never rest on a link

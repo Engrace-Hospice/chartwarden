@@ -33,6 +33,7 @@ import {
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, desc, eq, inArray, isNull, lte } from "drizzle-orm";
 import { pickGoverningBaa } from "../routes/platform/activation-guards";
+import { governingBaaDocumentFiled } from "../routes/platform/baa-guards";
 import { M34_JOB_SCHEDULES, M34_QUEUES } from "./index";
 
 /**
@@ -161,8 +162,9 @@ export interface OnboardingFactReaders {
   readonly clearinghouseSettled?: (orgId: string) => Promise<boolean>;
   /**
    * M22 (BAA documents): the governing BAA's `documentId` is a signed BAA filed for THIS organization (a `tenant_baa` document row in
-   * it), judged on the pass's own org-scoped transaction. Bound: an executed BAA whose link does not verify (another tenant's document,
-   * another kind, no document) leaves step 3 unsettled. Unbound (a test): the status alone decides, as before.
+   * it), judged on the pass's own org-scoped transaction: an executed BAA whose link does not verify (another tenant's document,
+   * another kind, no document) leaves step 3 unsettled. Absent means the link does not hold, like every other reader here (the step stays
+   * blocked, honestly): an unwired reader can never settle step 3 on the status alone.
    */
   readonly baaDocumentFiled?: (
     tx: DbClient,
@@ -201,11 +203,11 @@ export async function gatherOnboardingContext(
     tasks.filter((t) => t.status === "done" || t.status === "skipped").map((t) => t.templateKey),
   );
   const read = (fn?: (o: string) => Promise<boolean>) => (fn ? fn(orgId) : Promise.resolve(false));
-  const baaDocumentId = latestBaa?.documentId ?? null;
-  const baaLinkHolds = readers.baaDocumentFiled
-    ? baaDocumentId !== null &&
-      (await readers.baaDocumentFiled(tx, { organizationId: orgId, documentId: baaDocumentId }))
-    : true;
+  const filedCheck = readers.baaDocumentFiled;
+  const baaLinkHolds =
+    latestBaa !== undefined &&
+    filedCheck !== undefined &&
+    (await governingBaaDocumentFiled(latestBaa, (ref) => filedCheck(tx, ref)));
   return {
     providerEntityCount: seed.providerEntities.length,
     locationCount: seed.locationCount,

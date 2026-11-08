@@ -20,6 +20,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { m34PlatformBypassAuditor } from "../src/index";
+import { isTenantBaaDocumentFiled } from "../src/modules/22-documents/onboarding-baa-document-port";
 import { M34_OUTBOX_EVENTS } from "../src/modules/34-saas-tenant-platform/events-by-m34";
 import {
   type OnboardingOperator,
@@ -340,6 +341,7 @@ describe.skipIf(!DB_URL)("M34 tenant hub reads, LIVE Postgres on the real roles"
       throw new Error("not used by this suite");
     };
     return createDrizzleTenantPlatformBackend({
+      baaDocuments: { isFiled: isTenantBaaDocumentFiled },
       platformDb: platformPool.db,
       enqueue: { enqueue: async (queue, jobKey) => ({ jobId: `${queue}-${jobKey}` }) },
       legalHoldClear: async () => true,

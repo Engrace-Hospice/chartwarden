@@ -27,6 +27,7 @@ import {
   createInMemoryObjectStore,
   registerDocumentSeams,
 } from "../src/modules/22-documents/index";
+import { isTenantBaaDocumentFiled } from "../src/modules/22-documents/onboarding-baa-document-port";
 import {
   buildDrizzlePlatformService,
   buildDrizzleTenantService,
@@ -168,6 +169,7 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
     const jobId = await seedHeldJob();
 
     const { service: platformService } = buildDrizzlePlatformService({
+      baaDocuments: { isFiled: isTenantBaaDocumentFiled },
       platformDb: platformHandle.db,
       enqueue: {
         async enqueue() {
@@ -237,6 +239,7 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
     ).rows[0].id as string;
 
     const { service: platformService } = buildDrizzlePlatformService({
+      baaDocuments: { isFiled: isTenantBaaDocumentFiled },
       platformDb: platformHandle.db,
       enqueue: {
         async enqueue() {
@@ -274,6 +277,7 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
     const jobId = await seedHeldJob();
 
     const { service: platformService } = buildDrizzlePlatformService({
+      baaDocuments: { isFiled: isTenantBaaDocumentFiled },
       platformDb: platformHandle.db,
       enqueue: {
         async enqueue() {

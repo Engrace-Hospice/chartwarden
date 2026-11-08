@@ -30,6 +30,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import { m34PlatformBypassAuditor } from "../src/index";
+import { isTenantBaaDocumentFiled } from "../src/modules/22-documents/onboarding-baa-document-port";
 import {
   buildDrizzlePlatformService,
   buildM34WorkerPorts,
@@ -139,6 +140,7 @@ describe.skipIf(!DB_URL)("GAP-098 — M34 oversized-hold discovery, LIVE Postgre
 
   const platformService = () =>
     buildDrizzlePlatformService({
+      baaDocuments: { isFiled: isTenantBaaDocumentFiled },
       platformDb: platformHandle.db,
       enqueue: {
         async enqueue() {

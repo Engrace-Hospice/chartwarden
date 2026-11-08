@@ -17,6 +17,7 @@ import {
 } from "@chartwarden/tenancy";
 import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { pickGoverningBaa } from "../routes/platform/activation-guards";
+import { governingBaaDocumentFiled } from "../routes/platform/baa-guards";
 import {
   lockTenantOnboardingExclusive,
   lockTenantOnboardingShared,
@@ -124,9 +125,10 @@ export type BaaDocumentFiledCheck = (
 
 export function createDrizzleWizardStore(
   tx: DbClient,
+  /** Required: go-live rests on the governing BAA's document, and a store without the check would judge the status alone. */
+  baaDocumentFiled: BaaDocumentFiledCheck,
   activation?: WizardActivation,
   orgProfileFor?: OrgProfilePortFor,
-  baaDocumentFiled?: BaaDocumentFiledCheck,
 ): WizardStore {
   const repo = new OnboardingRepository(tx);
   return {
@@ -234,20 +236,12 @@ export function createDrizzleWizardStore(
       const rows = await new BaaRegisterRepository(tx).listByTenantAccountId(tenantAccountId);
       const baa = pickGoverningBaa(rows);
       // Go-live judges the governing BAA's document too: an executed status over a link that does not verify is not an executed BAA.
-      const documentFiled =
-        baa && baaDocumentFiled
-          ? baa.documentId !== null &&
-            (await baaDocumentFiled(tx, {
-              organizationId: baa.organizationId,
-              documentId: baa.documentId,
-            }))
-          : undefined;
       return baa
         ? {
             baaStatus: baa.baaStatus,
             expiresOn: dateOnly(baa.expiresOn),
             documentId: baa.documentId,
-            ...(documentFiled === undefined ? {} : { documentFiled }),
+            documentFiled: await governingBaaDocumentFiled(baa, (ref) => baaDocumentFiled(tx, ref)),
             recordedByUserId: baa.recordedByUserId,
             updatedByUserId: baa.updatedByUserId,
           }
@@ -352,8 +346,8 @@ export interface DrizzleWizardRunnerDeps {
   readonly activation: WizardActivation;
   /** The org-profile write, bound to the wizard's own transaction so the status check, the write and the void share it. */
   readonly orgProfileFor: OrgProfilePortFor;
-  /** M22's check of the governing BAA's document, on the wizard's own transaction (the go-live guard rests on it). Unbound: not judged. */
-  readonly baaDocumentFiled?: BaaDocumentFiledCheck;
+  /** M22's check of the governing BAA's document, on the wizard's own transaction (the go-live guard rests on it). REQUIRED. */
+  readonly baaDocumentFiled: BaaDocumentFiledCheck;
 }
 
 export function createDrizzleWizardRunner(deps: DrizzleWizardRunnerDeps): WizardRunner {
@@ -363,9 +357,9 @@ export function createDrizzleWizardRunner(deps: DrizzleWizardRunnerDeps): Wizard
         fn(
           createDrizzleWizardStore(
             tx as unknown as DbClient,
+            deps.baaDocumentFiled,
             undefined,
             deps.orgProfileFor,
-            deps.baaDocumentFiled,
           ),
         ),
       ),
@@ -379,9 +373,7 @@ export function createDrizzleWizardRunner(deps: DrizzleWizardRunnerDeps): Wizard
           // actor_user_id, so the operator who made them would be nameless in the trail.
           if (actorUserId)
             await tx.execute(sql`SELECT set_config('app.user_id', ${actorUserId}, true)`);
-          return fn(
-            createDrizzleWizardStore(tx, deps.activation, undefined, deps.baaDocumentFiled),
-          );
+          return fn(createDrizzleWizardStore(tx, deps.baaDocumentFiled, deps.activation));
         },
       ),
   };
