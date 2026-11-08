@@ -150,16 +150,43 @@ describe("a held transmission on the medication-order detail", () => {
     expect(calls).not.toContain(`GET /api/v1/medication-orders/${ORDER}/transmission`);
   });
 
-  it("resolves as NOT sent: the request carries the outcome and the reason and no prescription id, then the detail reloads", async () => {
+  it("has no default choice: nothing can be submitted until the administrator says what they found", async () => {
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Resolve held transmission" }));
     const dialog = await screen.findByRole("dialog", { name: "Resolve held transmission" });
-    const resolve = within(dialog).getByRole("button", { name: "Resolve" }) as HTMLButtonElement;
-    expect(resolve.disabled).toBe(true); // no reason yet
-    expect(within(dialog).queryByLabelText("DoseSpot prescription id")).toBeNull();
+    const outcome = within(dialog).getByLabelText("What you found") as HTMLSelectElement;
+    expect(outcome.value).toBe("");
     fireEvent.change(within(dialog).getByLabelText(/What you checked/), {
       target: { value: REASON },
     });
+    expect(
+      (within(dialog).getByRole("button", { name: "Resolve" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(within(dialog).queryByLabelText("DoseSpot prescription id")).toBeNull();
+    expect(within(dialog).queryByRole("checkbox")).toBeNull();
+    expect(
+      within(dialog).getByRole("option", { name: "It WAS sent to the pharmacy (not a draft)" }),
+    ).toBeTruthy();
+  });
+
+  it("resolves as NOT sent only after the duplicate-risk confirmation: the request carries the outcome and the reason and no prescription id, then the detail reloads", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Resolve held transmission" }));
+    const dialog = await screen.findByRole("dialog", { name: "Resolve held transmission" });
+    fireEvent.change(within(dialog).getByLabelText("What you found"), {
+      target: { value: "not_sent" },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/What you checked/), {
+      target: { value: REASON },
+    });
+    const resolve = within(dialog).getByRole("button", { name: "Resolve" }) as HTMLButtonElement;
+    expect(within(dialog).queryByLabelText("DoseSpot prescription id")).toBeNull();
+    expect(resolve.disabled).toBe(true); // the confirmation is required
+    const confirm = within(dialog).getByRole("checkbox", {
+      name: /Only if no prescription of any status, including drafts, exists for this drug in DoseSpot; otherwise retransmitting duplicates it\./,
+    });
+    fireEvent.click(confirm);
+    expect(resolve.disabled).toBe(false);
     fireEvent.click(resolve);
     await waitFor(() =>
       expect(writes()).toEqual([
@@ -170,6 +197,19 @@ describe("a held transmission on the medication-order detail", () => {
     await waitFor(() =>
       expect(calls.filter((c) => c === `GET /api/v1/medication-orders/${ORDER}`).length).toBe(2),
     );
+  });
+
+  it("changing the choice clears the confirmation (switching to NOT sent again needs it again)", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Resolve held transmission" }));
+    const dialog = await screen.findByRole("dialog", { name: "Resolve held transmission" });
+    const choose = (value: string) =>
+      fireEvent.change(within(dialog).getByLabelText("What you found"), { target: { value } });
+    choose("not_sent");
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    choose("sent");
+    choose("not_sent");
+    expect((within(dialog).getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
   });
 
   it("resolves as SENT: the prescription id is required and is sent with the request", async () => {
@@ -205,6 +245,10 @@ describe("a held transmission on the medication-order detail", () => {
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Resolve held transmission" }));
     const dialog = await screen.findByRole("dialog", { name: "Resolve held transmission" });
+    fireEvent.change(within(dialog).getByLabelText("What you found"), {
+      target: { value: "not_sent" },
+    });
+    fireEvent.click(within(dialog).getByRole("checkbox"));
     fireEvent.change(within(dialog).getByLabelText(/What you checked/), {
       target: { value: REASON },
     });

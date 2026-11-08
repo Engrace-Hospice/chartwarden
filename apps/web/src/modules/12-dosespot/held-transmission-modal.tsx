@@ -27,10 +27,14 @@ const ERROR_COPY: Readonly<Record<string, string>> = {
   DOSESPOT_PRESCRIPTION_ID_UNEXPECTED: "A prescription id belongs to an order that was sent.",
 };
 
+// No outcome is preselected: either one is a clinical claim about the prescriber's DoseSpot account, so the administrator must choose it.
 const OUTCOMES = [
-  ["not_sent", "It was NOT sent: the prescription is not in DoseSpot"],
-  ["sent", "It WAS sent: the prescription is in DoseSpot"],
+  ["", "Choose what you found…"],
+  ["sent", "It WAS sent to the pharmacy (not a draft)"],
+  ["not_sent", "It was NOT sent"],
 ] as const;
+
+type Outcome = "" | "sent" | "not_sent";
 
 export interface HeldTransmissionModalProps {
   readonly orderId: string;
@@ -46,16 +50,23 @@ export function HeldTransmissionModal({
   const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const [outcome, setOutcome] = useState<"sent" | "not_sent">("not_sent");
+  const [outcome, setOutcome] = useState<Outcome>("");
+  const [confirmNone, setConfirmNone] = useState(false);
   const [prescriptionId, setPrescriptionId] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const sent = outcome === "sent";
-  const blocked = reason.trim().length < MIN_REASON || (sent && prescriptionId.trim() === "");
+  const notSent = outcome === "not_sent";
+  const blocked =
+    outcome === "" ||
+    reason.trim().length < MIN_REASON ||
+    (sent && prescriptionId.trim() === "") ||
+    (notSent && !confirmNone);
 
   async function submit(): Promise<void> {
+    if (outcome === "") return;
     setBusy(true);
     setError(null);
     const res = await resolveHeldTransmission(client, orderId, {
@@ -92,7 +103,10 @@ export function HeldTransmissionModal({
         <SelectField
           label="What you found"
           value={outcome}
-          onChange={(e) => setOutcome(e.target.value as "sent" | "not_sent")}
+          onChange={(e) => {
+            setOutcome(e.target.value as Outcome);
+            setConfirmNone(false);
+          }}
           options={OUTCOMES.map(([value, label]) => ({ value, label }))}
         />
         {sent ? (
@@ -101,12 +115,26 @@ export function HeldTransmissionModal({
             value={prescriptionId}
             onChange={(e) => setPrescriptionId(e.target.value)}
           />
-        ) : (
-          <p className="wx-source-line">
-            The order becomes a failed transmission; the prescriber then retransmits it (a
-            replacement order they sign). It is not put back on the queue.
-          </p>
-        )}
+        ) : null}
+        {notSent ? (
+          <>
+            <p className="wx-source-line">
+              The order becomes a failed transmission; the prescriber then retransmits it (a
+              replacement order they sign). It is not put back on the queue.
+            </p>
+            <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+              <input
+                type="checkbox"
+                checked={confirmNone}
+                onChange={(e) => setConfirmNone(e.target.checked)}
+              />
+              <span>
+                Only if no prescription of any status, including drafts, exists for this drug in
+                DoseSpot; otherwise retransmitting duplicates it.
+              </span>
+            </label>
+          </>
+        ) : null}
         <TextAreaField
           label="What you checked (at least 10 characters; do not enter patient details)"
           value={reason}
