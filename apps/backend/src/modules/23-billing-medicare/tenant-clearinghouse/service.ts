@@ -50,7 +50,7 @@ import {
   reserveCredential,
 } from "./credential-reservation";
 import { invalid, screenedText } from "./screening";
-import type { ClearinghouseSecretCipher } from "./secret-cipher";
+import type { ClearinghouseSecretCipher, CredentialFingerprint } from "./secret-cipher";
 
 export type { BaaPin, RecordBaaInput } from "./baa";
 export { accountInUse } from "./credential-reservation";
@@ -389,15 +389,21 @@ export function createTenantClearinghouseService(
     }
   }
 
-  /** The patch that puts a row on `input`: a draft for a transmitting vendor, active for `outside`. */
+  /**
+   * The patch that puts a row on `input`: a draft for a transmitting vendor, active for `outside`. With a new credential, also its
+   * fingerprints under every configured key (the patch carries the current one; `reserveFor` reserves them all).
+   */
   async function patchFor(
     actor: ClearinghouseActor,
     existing: ConfigRow | null,
     input: PutClearinghouseInput,
-  ): Promise<ConfigPatch> {
+  ): Promise<{
+    readonly patch: ConfigPatch;
+    readonly credential: readonly CredentialFingerprint[];
+  }> {
     const base = { vendor: input.vendor, setByMembershipId: actor.membershipId, updatedAt: now() };
     if (input.vendor === "outside") {
-      return {
+      const patch: ConfigPatch = {
         ...base,
         ...BACK_TO_DRAFT,
         ...BAA_CLEARED,
@@ -407,21 +413,23 @@ export function createTenantClearinghouseService(
         secretDekVersion: null,
         // no current credential; the reservation of the old one stays held until a platform operator releases it
         credentialFingerprint: null,
+        credentialFingerprintKeyId: null,
       };
+      return { patch, credential: [] };
     }
     const mode = input.mode as TenantClearinghouseMode;
-    const fingerprint = input.secret
-      ? requireCipher().fingerprint(input.vendor, input.secret)
-      : null;
+    const credential = input.secret ? requireCipher().fingerprints(input.vendor, input.secret) : [];
     // a pure check before anything is sealed or written (the reservation in `reserveFor` checks it again)
-    if (fingerprint && deps.platformCredentialFingerprints?.has(fingerprint)) throw accountInUse();
+    if (credential.some((f) => deps.platformCredentialFingerprints?.has(f.fingerprint)))
+      throw accountInUse();
     const sealed = input.secret
       ? await requireCipher().encrypt(actor.organizationId, input.secret, {
           vendor: input.vendor,
           mode,
         })
       : null;
-    return {
+    const current = credential[0];
+    const patch: ConfigPatch = {
       ...base,
       ...BACK_TO_DRAFT,
       // the vendor BAA survives anything but a change of vendor
@@ -429,22 +437,25 @@ export function createTenantClearinghouseService(
       mode,
       secretCipher: sealed?.cipher ?? null,
       secretDekVersion: sealed?.dekVersion ?? null,
-      credentialFingerprint: fingerprint,
+      credentialFingerprint: current?.fingerprint ?? null,
+      credentialFingerprintKeyId: current?.keyId ?? null,
     };
+    return { patch, credential };
   }
 
-  /** Reserve the patch's new credential to the org (the cross-organization index refuses one another org holds). */
+  /** Reserve the new credential to the org under every key (the cross-organization index refuses one another org holds). */
   async function reserveFor(
     store: ConfigStore,
     organizationId: string,
     patch: ConfigPatch,
+    credential: readonly CredentialFingerprint[],
   ): Promise<void> {
-    if (!patch.credentialFingerprint || !patch.vendor) return;
+    if (credential.length === 0 || !patch.vendor) return;
     await reserveCredential(
       store,
       organizationId,
       patch.vendor,
-      patch.credentialFingerprint,
+      credential,
       deps.platformCredentialFingerprints,
     );
   }
@@ -467,6 +478,35 @@ export function createTenantClearinghouseService(
     if (!updated)
       throw versionConflict("the clearinghouse config changed while it was being updated");
     return updated;
+  }
+
+  /**
+   * The fingerprints a release never frees: the current credential's, under every configured key. Unsealing it finds the
+   * fingerprints under the other keys; when it cannot be opened (no cipher, or a KEK it was not sealed under), the stored current
+   * fingerprint alone stays held, which still blocks it for as long as that fingerprint's key is configured.
+   */
+  async function keepOf(row: ConfigRow): Promise<string[]> {
+    if (row.credentialFingerprint === null) return [];
+    const keep = new Set([row.credentialFingerprint]);
+    const { vendor, mode, secretCipher } = row;
+    if (
+      deps.cipher &&
+      secretCipher &&
+      isTransmitting(vendor) &&
+      (mode === "test" || mode === "production")
+    ) {
+      try {
+        const secret = await deps.cipher.decrypt(
+          row.organizationId,
+          { vendor, mode },
+          secretCipher,
+        );
+        for (const f of deps.cipher.fingerprints(vendor, secret)) keep.add(f.fingerprint);
+      } catch {
+        // unopenable: the stored fingerprint alone stays held (above)
+      }
+    }
+    return [...keep];
   }
 
   async function lockedRow(store: ConfigStore, organizationId: string): Promise<ConfigRow> {
@@ -510,8 +550,8 @@ export function createTenantClearinghouseService(
         "the vendor credential is required with a first choice",
       );
     }
-    const patch = await patchFor(actor, null, input);
-    await reserveFor(store, organizationId, patch);
+    const { patch, credential } = await patchFor(actor, null, input);
+    await reserveFor(store, organizationId, patch, credential);
     try {
       const row = await store.insert({
         organizationId,
@@ -599,8 +639,8 @@ export function createTenantClearinghouseService(
         "a new vendor or mode needs its own credential",
       );
     }
-    const patch = await patchFor(actor, existing, input);
-    await reserveFor(store, organizationId, patch);
+    const { patch, credential } = await patchFor(actor, existing, input);
+    await reserveFor(store, organizationId, patch, credential);
     const row = await save(store, existing, patch);
     return {
       created: false,
@@ -803,7 +843,7 @@ export function createTenantClearinghouseService(
       const { organizationId } = actor;
       const row = await lockedRow(store, organizationId);
       await assertReleasable(store, organizationId, now());
-      const released = await store.releaseCredentials(organizationId, row.credentialFingerprint, {
+      const released = await store.releaseCredentials(organizationId, await keepOf(row), {
         userId: actor.userId,
         reason,
         at: now(),

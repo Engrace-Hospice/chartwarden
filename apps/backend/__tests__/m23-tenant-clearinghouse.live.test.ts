@@ -110,6 +110,8 @@ const ORG_E = "e5000000-0000-4000-8000-0000000000e5"; // named in the env fallba
 const ORG_F = "f6000000-0000-4000-8000-0000000000f6"; // onboarding: chooses outside through the platform route
 const ORG_G = "a7000000-0000-4000-8000-0000000000a7"; // stedi, active
 const ORG_H = "a8000000-0000-4000-8000-0000000000a8"; // tries to seal org A's Claim.MD account (migration 1403)
+const ORG_I = "a9000000-0000-4000-8000-0000000000a9"; // races ORG_J to seal one new key (migration 1404's index serialises them)
+const ORG_J = "aa000000-0000-4000-8000-0000000000aa";
 const OPERATOR = "c9000000-0000-4000-8000-0000000000c9";
 const MEMBERSHIP = "e9000000-0000-4000-8000-0000000000e9";
 const TENANT_ADMIN = "7a000000-0000-4000-8000-0000000000a7";
@@ -237,6 +239,8 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_F, "ch-f"],
       [ORG_G, "ch-g"],
       [ORG_H, "ch-h"],
+      [ORG_I, "ch-i"],
+      [ORG_J, "ch-j"],
     ] as const) {
       await admin.query(
         "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -405,7 +409,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
             },
           ],
         },
-        ...[ORG_A, ORG_B, ORG_G, ORG_H].map((orgId) => ({
+        ...[ORG_A, ORG_B, ORG_G, ORG_H, ORG_I, ORG_J].map((orgId) => ({
           orgId,
           userId: TENANT_ADMIN,
           grants: [
@@ -612,6 +616,13 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     );
     expect(audited[0]?.context).toMatchObject({ released: 1 });
     expect(JSON.stringify(audited)).not.toContain(String(held[0]?.credential_fingerprint));
+    // the reservation's own write-audit (tenant-visible) scrubs the release reason too (migration 1405)
+    const trail = await q<{ before: unknown; after: unknown }>(
+      "SELECT before, after FROM audit_event WHERE resource_kind='tenant_clearinghouse_credential_reservation' AND resource_id=$1",
+      [held[0]?.id],
+    );
+    expect(trail.length).toBeGreaterThan(0);
+    expect(JSON.stringify(trail)).not.toContain("ticket OPS-77");
     // a released reservation is final
     await expect(
       q(
@@ -626,6 +637,37 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         [ORG_A],
       ),
     ).rejects.toThrow(/tenant_clearinghouse_config_fingerprint_secret_ck/);
+  });
+
+  // Two organizations saving the same new key at the same moment serialise on 1404's index entry: exactly one holds it, the other
+  // gets the refusal (audited), and nothing of the loser is written. Every reservation names its fingerprint key (migration 1405).
+  it("two organizations racing to seal the same key: one wins, the other is refused, one reservation is held", async () => {
+    const KEY_RACE = "fake-claimmd-key-race#live-1";
+    const [i, j] = await Promise.all(
+      [ORG_I, ORG_J].map((org) =>
+        tenantCall("PUT", org, "", { vendor: "claimmd", mode: "test", secret: KEY_RACE }),
+      ),
+    );
+    const codes = [i, j].map((r) => r?.statusCode).sort();
+    expect(codes, `${i?.body} | ${j?.body}`).toEqual([201, 409]);
+    const loser = i?.statusCode === 409 ? i : j;
+    expect(errorCode(loser as NonNullable<typeof loser>)).toBe("CLEARINGHOUSE_ACCOUNT_IN_USE");
+    const held = await q<{ organization_id: string; credential_fingerprint_key_id: string | null }>(
+      "SELECT r.organization_id, r.credential_fingerprint_key_id FROM tenant_clearinghouse_credential_reservation r WHERE r.released_at IS NULL AND r.organization_id IN ($1,$2)",
+      [ORG_I, ORG_J],
+    );
+    expect(held).toHaveLength(1);
+    expect(held[0]?.credential_fingerprint_key_id).toMatch(/^[0-9a-f]{16}$/);
+    const loserOrg = held[0]?.organization_id === ORG_I ? ORG_J : ORG_I;
+    expect(
+      await q("SELECT 1 FROM tenant_clearinghouse_config WHERE organization_id=$1", [loserOrg]),
+    ).toEqual([]);
+    expect(
+      await q(
+        "SELECT 1 FROM audit_event WHERE organization_id=$1 AND event_type='m23.tenant_clearinghouse.credential_refused' AND outcome='denied'",
+        [loserOrg],
+      ),
+    ).toHaveLength(1);
   });
 
   it("verifies with the connection test on the unsealed key; activation needs the vendor BAA recorded by the tenant and verified by an operator; the gate follows", async () => {

@@ -1,6 +1,10 @@
 import { createHmac, hkdfSync, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { buildClearinghouseSecretCipher, platformCredentialFingerprints } from "./secret-cipher";
+import {
+  buildClearinghouseSecretCipher,
+  platformCredentialFingerprints,
+  retiredFingerprintKeks,
+} from "./secret-cipher";
 
 describe("the platform's own account fingerprints", () => {
   it("covers each platform vendor key that is set, and nothing else", () => {
@@ -84,6 +88,37 @@ describe("clearinghouse secret cipher", () => {
     expect(fp).not.toBe(hmacUnder(`chartwarden-m23-clearinghouse-credential-dek:${ORG_A}`));
     expect(fp).not.toBe(hmacUnder("chartwarden-m23-clearinghouse-credential:v1"));
     expect(fp).not.toBe(createHmac("sha256", kek).update(`claimmd\n${KEY}`, "utf8").digest("hex"));
+  });
+
+  // Migration 1405 (security review MEDIUM-1): a retired KEK only fingerprints. A credential is fingerprinted under the current key
+  // first, then each retired one, each with its key's public id; the old cipher's fingerprint is among them, so a reservation it
+  // recorded still collides on the unique index.
+  it("fingerprints under the current key and each retired KEK, with a stable public key id", () => {
+    const oldKek = randomBytes(32);
+    const newKek = randomBytes(32);
+    const before = buildClearinghouseSecretCipher(oldKek);
+    const after = buildClearinghouseSecretCipher(newKek, [oldKek, newKek]);
+    const all = after.fingerprints("claimmd", KEY);
+    expect(all).toEqual([
+      { keyId: after.fingerprintKeyId, fingerprint: after.fingerprint("claimmd", KEY) },
+      { keyId: before.fingerprintKeyId, fingerprint: before.fingerprint("claimmd", KEY) },
+    ]); // a retired entry equal to the current KEK is dropped
+    expect(after.fingerprintKeyId).toMatch(/^[0-9a-f]{16}$/);
+    expect(after.fingerprintKeyId).not.toBe(before.fingerprintKeyId);
+    expect(buildClearinghouseSecretCipher(newKek).fingerprintKeyId).toBe(after.fingerprintKeyId);
+    expect(platformCredentialFingerprints(after, { CLAIMMD_ACCOUNT_KEY: KEY }).size).toBe(2);
+  });
+
+  it("reads the retired KEKs fail-closed", () => {
+    const a = Buffer.alloc(32, 1).toString("base64");
+    const b = Buffer.alloc(32, 2).toString("base64");
+    const env = (v: string) => ({ M23_CLEARINGHOUSE_FINGERPRINT_RETIRED_KEKS: v });
+    expect(retiredFingerprintKeks({})).toEqual([]);
+    expect(retiredFingerprintKeks(env(` ${a} , ${b}`)).map((k) => k.toString("base64"))).toEqual([
+      a,
+      b,
+    ]);
+    expect(() => retiredFingerprintKeks(env(`${a},short`))).toThrow(/32 bytes/);
   });
 
   it("rejects a KEK that is not 32 bytes", () => {

@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { createInMemoryConfigStore } from "./config-store-memory";
+import { MAX_HELD_CREDENTIALS } from "./credential-reservation";
 import { buildClearinghouseSecretCipher } from "./secret-cipher";
 import {
   type ClearinghouseActor,
@@ -1105,6 +1106,138 @@ describe("tenant clearinghouse service: one credential per organization", () => 
       ),
     ).toBe("CLEARINGHOUSE_ACCOUNT_IN_USE");
     expect(store.rows()).toEqual([]); // nothing was written
+  });
+
+  // Migration 1405 (security review MEDIUM-1): after a KEK change with the old KEK kept as retired, a reservation recorded under the
+  // old key still blocks; the holder's re-entry records it under the new key too; dropping the old KEK ends only what it computed.
+  it("keeps a reservation recorded under a retired KEK blocking while that KEK is configured", async () => {
+    const store = createInMemoryConfigStore();
+    const oldKek = randomBytes(32);
+    const newKek = randomBytes(32);
+    const make = (cipher: ReturnType<typeof buildClearinghouseSecretCipher>) =>
+      createTenantClearinghouseService({ cipher, probes: { claimmd: async () => "ok" } });
+    await make(buildClearinghouseSecretCipher(oldKek)).put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    await make(buildClearinghouseSecretCipher(oldKek)).put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: "another-fake-key#2" },
+      (await make(buildClearinghouseSecretCipher(oldKek)).view(store, ORG)).version ?? 0,
+    ); // FAKE_KEY is now a retired credential: only its old-key fingerprint exists
+    const rotated = make(buildClearinghouseSecretCipher(newKek, [oldKek]));
+    const otherPut = (service: ReturnType<typeof make>) =>
+      codeOf(
+        service.put(
+          store,
+          { ...ACTOR, organizationId: OTHER_ORG },
+          { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+          undefined,
+        ),
+      );
+    expect(await otherPut(rotated)).toBe("CLEARINGHOUSE_ACCOUNT_IN_USE");
+    expect(store.rows().filter((r) => r.organizationId === OTHER_ORG)).toEqual([]);
+    // without the retired KEK the old reservation no longer matches: the documented lapse (ops runbook §8.3)
+    expect(await otherPut(make(buildClearinghouseSecretCipher(newKek)))).toBe("no error");
+  });
+
+  it("re-reserves a current fingerprint that has no held reservation on the row's next write (review LOW-1)", async () => {
+    const { store, service } = setup();
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    const row = store.rows()[0];
+    const bare = createInMemoryConfigStore();
+    await bare.insert({ ...row } as never); // a row written without its reservation (a pre-1404 build)
+    expect(bare.heldFingerprints(ORG)).toEqual([]);
+    await service.recordBaa(bare, ACTOR, BAA);
+    expect(bare.heldFingerprints(ORG)).toEqual([row?.credentialFingerprint]);
+  });
+
+  it("caps the credentials one organization holds unreleased (review LOW-4)", async () => {
+    const { store, service } = setup();
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: "fake-key-00#" },
+      undefined,
+    );
+    for (let i = 1; i < MAX_HELD_CREDENTIALS; i++) {
+      const v = (await service.view(store, ORG)).version ?? 0;
+      await service.put(
+        store,
+        ACTOR,
+        { vendor: "claimmd", mode: "test", secret: `fake-key-${i}#` },
+        v,
+      );
+    }
+    expect(store.heldFingerprints(ORG)).toHaveLength(MAX_HELD_CREDENTIALS);
+    const v = (await service.view(store, ORG)).version ?? 0;
+    expect(
+      await codeOf(
+        service.put(store, ACTOR, { vendor: "claimmd", mode: "test", secret: "fake-key-new#" }, v),
+      ),
+    ).toBe("CLEARINGHOUSE_CREDENTIAL_LIMIT");
+    // re-saving a key it already holds is not a new credential
+    await expect(
+      service.put(store, ACTOR, { vendor: "claimmd", mode: "test", secret: "fake-key-3#" }, v),
+    ).resolves.toMatchObject({ created: false });
+  });
+
+  it("answers a concurrent save of the org's own credential with a version conflict, not a refusal (review LOW-5)", async () => {
+    const { store, service } = setup();
+    let first = true;
+    const racing = {
+      ...store,
+      // the competing save commits between this save's check and its insert
+      async holdsCredential(org: string, fp: string) {
+        if (first) {
+          first = false;
+          await store.reserveCredential(org, "claimmd", { keyId: null, fingerprint: fp });
+          return false;
+        }
+        return store.holdsCredential(org, fp);
+      },
+    };
+    expect(
+      await codeOf(
+        service.put(
+          racing,
+          ACTOR,
+          { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+          undefined,
+        ),
+      ),
+    ).toBe("VERSION_CONFLICT");
+  });
+
+  it("never releases any key's fingerprint of the current credential", async () => {
+    const oldKek = randomBytes(32);
+    const store = createInMemoryConfigStore();
+    const service = createTenantClearinghouseService({
+      cipher: buildClearinghouseSecretCipher(randomBytes(32), [oldKek]),
+      probes: { claimmd: async () => "ok" },
+    });
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    expect(store.heldFingerprints(ORG)).toHaveLength(2); // current key + retired key
+    const { released } = await service.releaseCredentials(
+      store,
+      OPERATOR,
+      "ticket OPS-1234 cleanup",
+    );
+    expect(released).toBe(0);
+    expect(store.heldFingerprints(ORG)).toHaveLength(2);
   });
 
   it("stores only the keyed fingerprint, never the key", async () => {
