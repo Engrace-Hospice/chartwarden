@@ -5,7 +5,7 @@ import type { JSX } from "react";
 // ("ChartWarden Platform Ops"); the two visible lines are hidden from them so it is not read in pieces.
 export function BrandLockup(): JSX.Element {
   return (
-    <div className="inline-flex items-center gap-2.5 text-left">
+    <div className="wx-brand-lockup">
       <span className="wx-brand-logo" aria-hidden>
         <img src="/chartwarden-mark.svg" width="28" height="28" alt="" />
       </span>
