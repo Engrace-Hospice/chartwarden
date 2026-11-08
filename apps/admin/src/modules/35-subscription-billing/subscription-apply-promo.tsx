@@ -16,6 +16,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { idempotencyKey } from "./status";
 import { type Outcome, OutcomeBanner, StateError, StateLoading, failureOutcome } from "./ui";
 import { useSubscriptionGate } from "./use-subscription-gate";
+import { useSuccessRedirect } from "./use-success-redirect";
 
 export function SubscriptionApplyPromo(): JSX.Element {
   const client = useApiClient();
@@ -27,11 +28,13 @@ export function SubscriptionApplyPromo(): JSX.Element {
   const restored = useStepUpMemoryDraft<string>(draftKey);
   const [code, setCode] = useState(restored ?? "");
   const [busy, setBusy] = useState(false);
+  const { done, finish } = useSuccessRedirect();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [attempted, setAttempted] = useState(false);
   const panelRef = useRef<HTMLFormElement>(null);
 
   const submit = useCallback(async () => {
+    if (busy || done) return;
     const promoCode = code.trim();
     setAttempted(true);
     if (!promoCode) {
@@ -56,8 +59,8 @@ export function SubscriptionApplyPromo(): JSX.Element {
     setOutcome({ ok: true, message: `Promo "${promoCode}" applied.` });
     setCode("");
     setBusy(false);
-    setTimeout(() => navigate(`/admin/subscriptions/${id}`), 800);
-  }, [client, id, code, navigate]);
+    finish(`/admin/subscriptions/${id}`, 800);
+  }, [busy, done, client, id, code, finish]);
 
   return (
     <div className="wx-list-drawer">
@@ -88,7 +91,7 @@ export function SubscriptionApplyPromo(): JSX.Element {
             }}
           >
             <div className="wx-drawer-card-head">
-              <h3>Promo</h3>
+              <h2>Promo</h2>
             </div>
             <div className="wx-form-stack">
               <TextField
@@ -107,7 +110,7 @@ export function SubscriptionApplyPromo(): JSX.Element {
               ) : null}
             </div>
             <div className="wx-drawer-actions">
-              <Button type="submit" loading={busy}>
+              <Button type="submit" loading={busy || done}>
                 Apply promo
               </Button>
               <Button tone="tertiary" onClick={() => navigate(`/admin/subscriptions/${id}`)}>

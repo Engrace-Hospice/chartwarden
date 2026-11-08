@@ -24,6 +24,7 @@ import {
 } from "./form-rules";
 import { idempotencyKey } from "./status";
 import { type Outcome, OutcomeBanner, failureOutcome } from "./ui";
+import { useSuccessRedirect } from "./use-success-redirect";
 
 const REASONS = ["duplicate", "fraudulent", "requested_by_customer", "other"] as const;
 const KINDS = ["full", "partial", "credit_only"] as const;
@@ -50,12 +51,14 @@ export function RefundNew(): JSX.Element {
   const [attempted, setAttempted] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const [busy, setBusy] = useState(false);
+  const { done, finish } = useSuccessRedirect();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const detailShort = useMemo(() => form.detail.trim().length < MIN_REFUND_REASON, [form.detail]);
   const errors = attempted ? refundFormErrors(form) : {};
 
   const submit = useCallback(async () => {
+    if (busy || done) return;
     const { errors: problems, amountCents } = checkRefundForm(form);
     if (!isValid(problems) || amountCents === null) {
       setAttempted(true);
@@ -93,8 +96,8 @@ export function RefundNew(): JSX.Element {
       message: "Refund request created — awaiting a distinct approver (four-eyes).",
     });
     setBusy(false);
-    setTimeout(() => navigate("/admin/refunds"), 1000);
-  }, [client, form, navigate]);
+    finish("/admin/refunds", 1000);
+  }, [busy, done, client, form, finish]);
 
   return (
     <div className="wx-list-drawer">
@@ -115,7 +118,7 @@ export function RefundNew(): JSX.Element {
           }}
         >
           <div className="wx-drawer-card-head">
-            <h3>Refund request</h3>
+            <h2>Refund request</h2>
           </div>
           <div className="wx-form-stack">
             <TextField
@@ -175,7 +178,7 @@ export function RefundNew(): JSX.Element {
             ) : null}
           </div>
           <div className="wx-drawer-actions">
-            <Button type="submit" loading={busy}>
+            <Button type="submit" loading={busy || done}>
               Submit request
             </Button>
             <Button tone="tertiary" onClick={() => navigate("/admin/refunds")}>

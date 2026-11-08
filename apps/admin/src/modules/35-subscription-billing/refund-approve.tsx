@@ -7,7 +7,7 @@ import {
   useApiClient,
   useRequestGuard,
 } from "@chartwarden/ui";
-import type { operations } from "@chartwarden/ui";
+import type { GlyphName, operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Refund approval (`/admin/refunds/:id/approve`,
 // refund.approve). THE sensitive path: approval carries a step-up AND the §4.8 four-eyes rule (the approver
 // MUST differ from the requester). The server enforces both; this screen surfaces each denial as a
@@ -16,7 +16,7 @@ import type { operations } from "@chartwarden/ui";
 // Redesign frame: the decision in the main column, the refund summary in the right drawer.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { cap, formatCents, formatDate, orgLabel, refundTone } from "./status";
 import {
   DrawerHead,
@@ -28,8 +28,17 @@ import {
   failureOutcome,
   isNotFound,
 } from "./ui";
+import { useSuccessRedirect } from "./use-success-redirect";
 
 type Refund = operations["getApiAdminRefundsById"]["responses"][200]["content"]["application/json"];
+
+/** The icon for a refund that is already past `requested`: a denial or failure must not read as a success tick. */
+const DECIDED_ICON: Record<string, GlyphName> = {
+  approved: "check-circle",
+  executed_success: "check-circle",
+  denied: "x-circle",
+  executed_failed: "alert-circle",
+};
 
 /** The parsed error body is the standard envelope `{ error: { code } }` (a flat `{ code }` is tolerated). */
 function errorCode(error: unknown): string | undefined {
@@ -50,7 +59,7 @@ function denial(error: unknown, fallback: string): Outcome {
 
 export function RefundApprove(): JSX.Element {
   const client = useApiClient();
-  const navigate = useNavigate();
+  const { done, finish } = useSuccessRedirect();
   const { id } = useParams<{ id: string }>();
   const [refund, setRefund] = useState<Refund | null>(null);
   const [loading, setLoading] = useState(true);
@@ -91,7 +100,7 @@ export function RefundApprove(): JSX.Element {
   }, [load]);
 
   const approve = useCallback(async () => {
-    if (!id) return;
+    if (!id || busy || done) return;
     setBusy(true);
     setOutcome(null);
     const res = await client.POST("/api/admin/refunds/{id}/approve", {
@@ -105,11 +114,11 @@ export function RefundApprove(): JSX.Element {
     }
     setOutcome({ ok: true, message: "Refund approved — queued for execution." });
     setBusy(false);
-    setTimeout(() => navigate("/admin/refunds"), 1000);
-  }, [client, id, navigate]);
+    finish("/admin/refunds", 1000);
+  }, [busy, done, client, id, finish]);
 
   const deny = useCallback(async () => {
-    if (!id) return;
+    if (!id || busy || done) return;
     setDenyAttempted(true);
     if (denyReason.trim().length === 0) {
       focusFirstInvalid(decisionRef.current);
@@ -129,8 +138,8 @@ export function RefundApprove(): JSX.Element {
     }
     setOutcome({ ok: true, message: "Refund denied." });
     setBusy(false);
-    setTimeout(() => navigate("/admin/refunds"), 1000);
-  }, [client, id, denyReason, navigate]);
+    finish("/admin/refunds", 1000);
+  }, [busy, done, client, id, denyReason, finish]);
 
   const pageHead = (
     <header className="wx-page-head">
@@ -170,17 +179,17 @@ export function RefundApprove(): JSX.Element {
         </InlineAlert>
         {outcome ? <OutcomeBanner {...outcome} /> : null}
         {decided ? (
-          <StateEmpty>
+          <StateEmpty icon={DECIDED_ICON[refund.status]}>
             This refund is already {cap(refund.status)} — no action available.
           </StateEmpty>
         ) : (
           <section className="wx-drawer-card">
             <div className="wx-drawer-card-head">
-              <h3>Decision</h3>
+              <h2>Decision</h2>
             </div>
             <div className="wx-form-stack" ref={decisionRef}>
               <div className="wx-drawer-actions">
-                <Button loading={busy} onClick={() => void approve()}>
+                <Button loading={busy || done} onClick={() => void approve()}>
                   Approve refund
                 </Button>
               </div>
@@ -198,7 +207,7 @@ export function RefundApprove(): JSX.Element {
                 placeholder="Why is this refund being denied?"
               />
               <div className="wx-drawer-actions">
-                <Button tone="secondary" onClick={() => void deny()} disabled={busy}>
+                <Button tone="secondary" onClick={() => void deny()} disabled={busy || done}>
                   Deny refund
                 </Button>
               </div>

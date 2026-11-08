@@ -15,6 +15,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { idempotencyKey } from "./status";
 import { type Outcome, OutcomeBanner, StateError, StateLoading, failureOutcome } from "./ui";
 import { useSubscriptionGate } from "./use-subscription-gate";
+import { useSuccessRedirect } from "./use-success-redirect";
 
 export function SubscriptionPause(): JSX.Element {
   const client = useApiClient();
@@ -27,10 +28,11 @@ export function SubscriptionPause(): JSX.Element {
   const [until, setUntil] = useState(restored?.until ?? "");
   const [reason, setReason] = useState(restored?.reason ?? "");
   const [busy, setBusy] = useState(false);
+  const { done, finish } = useSuccessRedirect();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const submit = useCallback(async () => {
-    if (!id) return;
+    if (!id || busy || done) return;
     setBusy(true);
     setOutcome(null);
     const body = until ? { pausedUntil: new Date(until).toISOString() } : {};
@@ -46,8 +48,8 @@ export function SubscriptionPause(): JSX.Element {
     }
     setOutcome({ ok: true, message: "Subscription paused." });
     setBusy(false);
-    setTimeout(() => navigate(`/admin/subscriptions/${id}`), 800);
-  }, [client, id, until, navigate]);
+    finish(`/admin/subscriptions/${id}`, 800);
+  }, [busy, done, client, id, until, finish]);
 
   return (
     <div className="wx-list-drawer">
@@ -77,7 +79,7 @@ export function SubscriptionPause(): JSX.Element {
             }}
           >
             <div className="wx-drawer-card-head">
-              <h3>Pause</h3>
+              <h2>Pause</h2>
             </div>
             <div className="wx-form-stack">
               <TextField
@@ -104,7 +106,7 @@ export function SubscriptionPause(): JSX.Element {
               ) : null}
             </div>
             <div className="wx-drawer-actions">
-              <Button type="submit" loading={busy}>
+              <Button type="submit" loading={busy || done}>
                 Pause subscription
               </Button>
               <Button tone="tertiary" onClick={() => navigate(`/admin/subscriptions/${id}`)}>
