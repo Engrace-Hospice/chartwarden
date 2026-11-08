@@ -44,8 +44,10 @@ ALTER TABLE "dosespot_prescriber"
        AND "link_confirmed_by_membership_id" = "membership_id")
   );--> statement-breakpoint
 
+-- SECURITY INVOKER with a pinned search_path (the 1234 guards' shape): the membership read below runs under the caller's own org RLS, and
+-- no object in a caller-controlled schema can shadow `membership` or a built-in the function names.
 CREATE OR REPLACE FUNCTION dosespot_prescriber_link_confirmation_guard() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE
   changed boolean;
   actor uuid;

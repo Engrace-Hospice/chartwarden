@@ -1774,6 +1774,14 @@ describe.skipIf(!DB_URL)(
         expect((await confirmationOf(m.membershipId))?.mdm).toBeNull();
       });
 
+      it("the guard function is SECURITY INVOKER with a pinned search_path (it cannot be shadowed from a caller-controlled schema)", async () => {
+        const [fn] = await q<{ secdef: boolean; config: string[] | null }>(
+          `SELECT prosecdef AS secdef, proconfig AS config FROM pg_proc WHERE proname = 'dosespot_prescriber_link_confirmation_guard'`,
+        );
+        expect(fn?.secdef).toBe(false);
+        expect(fn?.config).toContain("search_path=pg_catalog, public, pg_temp");
+      });
+
       it("the CHECK refuses, even with the trigger off, a confirmer who is not the row's member and a NULL confirmer, NPI or timestamp", async () => {
         const a = await unconfirmedMember();
         const b = await unconfirmedMember();
