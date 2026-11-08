@@ -473,7 +473,7 @@ function KillSwitchDrawer({
                 {killSwitch.organizationId ? (
                   <>
                     <dt>Organization</dt>
-                    <dd className="wx-data-md break-all">{killSwitch.organizationId}</dd>
+                    <dd className="wx-data-md">{killSwitch.organizationId}</dd>
                   </>
                 ) : null}
                 <dt>Activated</dt>

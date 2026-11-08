@@ -31,7 +31,7 @@ export function PageHead({
 
 /** A page section heading above a table (the redesign has no section card for a bare table). */
 export function SectionTitle({ children }: { children: ReactNode }): JSX.Element {
-  return <h2 className="m-0 text-base font-semibold">{children}</h2>;
+  return <h2>{children}</h2>;
 }
 
 /** Loading state in the list-state card. */
@@ -67,8 +67,8 @@ export function EmptyListState({
   return (
     <div className="wx-list-state">
       <Glyph name={glyph} size={24} />
-      <span className="font-semibold">{title}</span>
-      {description ? <span className="text-sm">{description}</span> : null}
+      <strong>{title}</strong>
+      {description ? <span className="wx-row-sub">{description}</span> : null}
     </div>
   );
 }

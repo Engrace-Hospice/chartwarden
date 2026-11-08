@@ -162,7 +162,7 @@ function CapabilityDetailBody({ capabilityId }: { capabilityId: string }): JSX.E
 
         <div className="wx-list-toolbar">
           <div
-            className="flex flex-wrap gap-1"
+            className="wx-drawer-actions"
             role="tablist"
             aria-label="Capability sections"
             onKeyDown={(event) => {
@@ -191,7 +191,12 @@ function CapabilityDetailBody({ capabilityId }: { capabilityId: string }): JSX.E
           </div>
         </div>
 
-        <div id={TAB_PANEL_ID} role="tabpanel" aria-labelledby={tabId(tab)} className="grid gap-4">
+        <div
+          id={TAB_PANEL_ID}
+          role="tabpanel"
+          aria-labelledby={tabId(tab)}
+          className="wx-form-stack"
+        >
           {tab === "Overview" ? <OverviewTab detail={detail} /> : null}
           {tab === "Lifecycle" ? <LifecycleTab detail={detail} /> : null}
           {tab === "Calibration" ? <CalibrationTab detail={detail} /> : null}
@@ -259,7 +264,7 @@ function LifecycleTab({ detail }: { detail: Detail }): JSX.Element {
     a.transitionedAt < b.transitionedAt ? 1 : -1,
   );
   return (
-    <section className="grid gap-3">
+    <section className="wx-form-stack">
       <p className="wx-source-line">
         Permitted next states:{" "}
         {detail.permittedNextStates.length === 0
@@ -299,7 +304,7 @@ function LifecycleTab({ detail }: { detail: Detail }): JSX.Element {
                   </td>
                   <td>{cap(e.approvalKind)}</td>
                   <td>{cap(e.actorRole)}</td>
-                  <td className="max-w-96">{e.rationaleText}</td>
+                  <td>{e.rationaleText}</td>
                   <td className="wx-data-md">{e.linkedEvaluationRunId ?? "—"}</td>
                 </tr>
               ))}
@@ -315,7 +320,7 @@ function CalibrationTab({ detail }: { detail: Detail }): JSX.Element {
   const current = detail.calibrations.find((c) => c.isCurrent) ?? null;
   const history = [...detail.calibrations].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   return (
-    <section className="grid gap-4">
+    <section className="wx-form-stack">
       {current === null ? (
         // Worth stating rather than showing an empty card: an APPROVED capability with no calibration is
         // a governance gap (§2.5), not a cosmetic one.
@@ -410,7 +415,7 @@ function PromptsTab({ capabilityKey }: { capabilityKey: string }): JSX.Element {
     );
 
   return (
-    <section className="grid gap-4">
+    <section className="wx-form-stack">
       <section className="wx-drawer-card">
         <h3>Active prompt template</h3>
         <dl className="wx-kv">
@@ -419,17 +424,17 @@ function PromptsTab({ capabilityKey }: { capabilityKey: string }): JSX.Element {
           <dt>Version</dt>
           <dd className="wx-nums">v{prompt.version}</dd>
           <dt>Content hash</dt>
-          <dd className="wx-data-md break-all">{prompt.contentHash}</dd>
+          <dd className="wx-data-md">{prompt.contentHash}</dd>
           <dt>Approved</dt>
           <dd className="wx-nums">{formatDate(prompt.approvedAt)}</dd>
           <dt>Git artifact</dt>
-          <dd className="wx-data-md break-all">{prompt.gitArtifactPath}</dd>
+          <dd className="wx-data-md">{prompt.gitArtifactPath}</dd>
           <dt>Compatible backends</dt>
           <dd className="wx-data-md">{prompt.compatibleBackendKeys.join(", ")}</dd>
           <dt>Input schema</dt>
-          <dd className="wx-data-md break-all">{prompt.inputSchemaRef}</dd>
+          <dd className="wx-data-md">{prompt.inputSchemaRef}</dd>
           <dt>Output schema</dt>
-          <dd className="wx-data-md break-all">{prompt.outputSchemaRef}</dd>
+          <dd className="wx-data-md">{prompt.outputSchemaRef}</dd>
           <dt>Clinical reviewer attestation</dt>
           <dd>{prompt.clinicalReviewerAttestation ?? "None recorded"}</dd>
         </dl>
