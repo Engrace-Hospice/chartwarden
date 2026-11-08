@@ -45,7 +45,10 @@ import type {
   OnboardingNoticePort,
   OnboardingNoticeView,
 } from "../../../../bootstrap/onboarding-notice-port";
-import { isDefiniteDatabaseRefusal } from "../../../../bootstrap/redact-database-error";
+import {
+  isDefiniteDatabaseRefusal,
+  sqlStatesInChain,
+} from "../../../../bootstrap/redact-database-error";
 import { createDrizzleSiteAdminRepository } from "../../../../bootstrap/site-admin-repository";
 import {
   type SiteWriteDeps,
@@ -659,7 +662,8 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
    * mode is confirmed); unreadable -> the mode is LEFT as set and the answer is the typed 503 that says the outcome is unknown (logged).
    * RESIDUAL (narrow, not closable from here): a commit the client gave up on can still land AFTER the read-back saw `outside` (the
    * server was still processing it), leaving a vendor with the mode put back to none; the operator reads the tenant's clearinghouse and
-   * contract after any failed switch (the 503 says so) and sets the mode.
+   * contract after any failed switch and sets the mode (CHANGES.md and the OpenAPI summary say so for every failed switch; the 503's own
+   * message says to read them only on the unreadable path above).
    */
   async function vendorLandedAfterAmbiguousCommit(
     op: OnboardingOperator,
@@ -682,7 +686,19 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
         503,
       );
     }
-    if (current.source === "tenant" && current.vendor === "outside") return null;
+    if (current.source === "tenant" && current.vendor === "outside") {
+      // Not landed as far as this read can tell, and the mode goes back to none: leave the ids that let ops correlate it if the commit
+      // the client gave up on lands anyway (the residual above). Ids only: the organization and the error's class, never the error.
+      deps.warn?.(
+        "m34.onboarding data: the clearinghouse switch's COMMIT failed without a definite answer and the vendor still reads as outside; the billing mode goes back to none (a commit the client gave up on could still land)",
+        {
+          organizationId: target.organizationId,
+          sqlstate: sqlStatesInChain(commitError)[0] ?? null,
+          errorType: commitError instanceof Error ? commitError.name : typeof commitError,
+        },
+      );
+      return null;
+    }
     deps.warn?.(
       "m34.onboarding data: the clearinghouse switch's COMMIT failed without a definite answer but the vendor row is there; the switch stands and the billing mode was kept",
       { organizationId: target.organizationId, err: commitError },

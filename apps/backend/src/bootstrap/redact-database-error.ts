@@ -120,7 +120,8 @@ export function isDefiniteDatabaseRefusal(err: unknown): boolean {
   return codes.length > 0 && !codes.some((code) => OUTCOME_UNKNOWN_SQLSTATE.test(code));
 }
 
-function sqlStatesInChain(err: unknown, depth = 0): readonly string[] {
+/** Every SQLSTATE of a `pg` DatabaseError on `err`'s cause chain, outermost first: an id, never a value (a code names an error class). */
+export function sqlStatesInChain(err: unknown, depth = 0): readonly string[] {
   if (depth > 5 || !(err instanceof Error)) return [];
   const below = sqlStatesInChain(asDict(err).cause, depth + 1);
   return isPgDatabaseError(err) ? [asDict(err).code as string, ...below] : below;

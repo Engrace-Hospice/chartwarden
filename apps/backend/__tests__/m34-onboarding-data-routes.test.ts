@@ -1518,6 +1518,7 @@ describe("service: an operator's switch out of outside (order, any status, the m
     let putRan = false;
     let commitFailed = false;
     const warned: string[] = [];
+    const warnedContexts: Record<string, unknown>[] = [];
     const port: OnboardingClearinghousePort = {
       get: async () => {
         if (commitFailed) {
@@ -1571,9 +1572,12 @@ describe("service: an operator's switch out of outside (order, any status, the m
       resolveTenant,
       clearinghouse: port,
       billingMode,
-      warn: (message) => warned.push(message),
+      warn: (message, context) => {
+        warned.push(message);
+        warnedContexts.push(context);
+      },
     });
-    return { service, log, inserts, warned };
+    return { service, log, inserts, warned, warnedContexts };
   }
   const put = (service: OnboardingDataService, fields: Record<string, unknown> = SWITCH) =>
     service.putClearinghouse(OPERATOR, "tenant-b", fields, REASON, 4);
@@ -1698,6 +1702,24 @@ describe("service: an operator's switch out of outside (order, any status, the m
         (i) => i.values.eventType === ONBOARDING_DATA_AUDIT_EVENTS.writeFailed,
       );
       expect(failedRow?.values.context).toMatchObject({ commitOutcomeUnknown: true });
+    });
+
+    it("warns, with ids only, when the read-back saw outside and the mode goes back to none (so ops can correlate a commit that lands late)", async () => {
+      const unknownOutcome = pgError("57P01");
+      const { service, warned, warnedContexts } = harness({ commitFails: unknownOutcome });
+      await expect(put(service)).rejects.toBe(unknownOutcome);
+      expect(warned).toHaveLength(1);
+      expect(warned[0]).toContain("still reads as outside");
+      expect(warnedContexts[0]).toEqual({
+        organizationId: TARGET_ORG,
+        sqlstate: "57P01",
+        errorType: "Error",
+      });
+      // no SQLSTATE at all (a lost connection): the class is still named, the error itself never is
+      const lost = harness({ commitFails: lostConnection });
+      await expect(put(lost.service)).rejects.toBe(lostConnection);
+      expect(lost.warnedContexts[0]).toMatchObject({ organizationId: TARGET_ORG, sqlstate: null });
+      expect(lost.warnedContexts[0]).not.toHaveProperty("err");
     });
 
     it("keeps the mode, and answers as a success with the row as it is, when the vendor DID land (nothing is undone blindly)", async () => {
