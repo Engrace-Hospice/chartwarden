@@ -228,6 +228,19 @@ describe("TenantOnboardingWizard: marking a step done with evidence", () => {
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
   });
 
+  it("a second submit while the write is in flight sends nothing more", async () => {
+    const { client } = setup();
+    client.POST.mockImplementationOnce(() => new Promise(() => {}));
+    await openAttest(client);
+    fill("Confirmed enrolment letter", "", "Customer asked us to settle this");
+    const form = screen.getByRole("form", { name: "Mark this step done" });
+    fireEvent.submit(form);
+    await screen.findByRole("button", { name: "Saving…" });
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(writes(client)).toHaveLength(1);
+  });
+
   it("leaves the reference out when it is blank", async () => {
     const { client } = setup();
     await openAttest(client);

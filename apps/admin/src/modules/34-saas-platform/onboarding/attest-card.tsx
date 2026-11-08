@@ -92,6 +92,8 @@ export function AttestCard({
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
+        // a second Enter while the write is in flight must not send it twice
+        if (write.busy) return;
         void submit();
       }}
     >
