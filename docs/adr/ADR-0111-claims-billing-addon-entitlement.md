@@ -6,7 +6,7 @@
 
 - **Status:** **Proposed** (2026-11-05)
 - **Date:** 2026-11-05
-- **Numbering:** first drafted under number 0108; renumbered to 0111 when `main` took 0108 for group tags and 0109 for the M16 bereavement program. Migrations 1320, 1321, 1325, 1350 and 1381 still cite it by the old number in their comments: they are applied files and the runner checksums them.
+- **Numbering:** first drafted under number 0108; renumbered to 0111 when `main` took 0108 for group tags and 0109 for the M16 bereavement program. Migrations 1320, 1321 and 1325 still cite it by the old number in their comments: they are applied files and the runner checksums them. (1350 and 1362 became 1386 and 1381 in the stack's merge with main: new files under new ordinals, so their comments follow the current number.)
 - **Related:** Module 35 (subscription billing; amends its D21), Module 5 (patient), Modules 23 / 24 / 25 / 41 (Medicare, Medicaid, remittance, commercial billing), ADR-0025 (M34↔M35 seams), ADR-0053 (clearinghouse transport), ADR-0100 (M41).
 
 ## Context
