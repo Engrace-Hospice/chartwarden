@@ -1356,7 +1356,7 @@ export const MODULES: ModuleDef[] = [
     dependsOn: [1],
     /* ADR-0025: M34<->M35 seam-based both ways (no edge); minimal edge set finalized in M35's ADR-0005 D5 pass */ ownedTables:
       [
-        "addon", // ADR-0111 claims-billing add-on catalog (platform-shared)
+        "addon", // ADR-0110 claims-billing add-on catalog (platform-shared)
         "dunning_state",
         "invoice",
         "invoice_line",
@@ -1376,7 +1376,7 @@ export const MODULES: ModuleDef[] = [
         "stripe_api_call_audit",
         "stripe_webhook_event",
         "subscription",
-        "subscription_addon", // ADR-0111 (tenant read-only; platform-runner writes)
+        "subscription_addon", // ADR-0110 (tenant read-only; platform-runner writes)
         "subscription_contract", // slice 2 tenant pricing: the signed terms (tenant read-only; platform-runner writes)
         "subscription_contract_mode", // slice 2 tenant pricing: the billing service mode history (tenant read-only; append-only)
         "subscription_state_history",

@@ -1,4 +1,4 @@
-// ADR-0111 D4/D6 — the claims-billing gate's mode semantics: off ignores, shadow logs and allows, enforce refuses with
+// ADR-0110 D4/D6 — the claims-billing gate's mode semantics: off ignores, shadow logs and allows, enforce refuses with
 // 402 + the reason, and a failed entitlement read fails CLOSED (503) in enforce only. Boot refuses a non-off mode on
 // the deny-stub.
 import type { ClaimsBillingEntitlement } from "@chartwarden/types";

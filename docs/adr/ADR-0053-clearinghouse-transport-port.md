@@ -330,7 +330,7 @@ once we send our control number there (or Claim.MD confirms it echoes CLM01); un
 
 **The Billing add-on.** After resolution the sweep asks a `BillingEntitlementPort`; an org without the add-on keeps its
 receipt encrypted as `awaiting_entitlement`, re-checked hourly and published once the add-on is granted, and becomes
-`expired_not_entitled` 90 days after receipt. The port is bound to ADR-0111's `isClaimsBillingEntitled`, so it follows
+`expired_not_entitled` 90 days after receipt. The port is bound to ADR-0110's `isClaimsBillingEntitled`, so it follows
 `CLAIMS_BILLING_ENFORCEMENT`: `off`/`shadow` publish for every resolved org; `enforce` reads M35, and a failed read retries
 without spending an attempt.
 
@@ -412,7 +412,7 @@ through the advance pass (migration 1387, `contract`: the previous release's eva
 reason "bills outside ChartWarden", through the wizard service's own skip path (so the audit and the strict sequence hold: a skip an earlier open step still locks waits for the next wizard change); switching back to a vendor reopens exactly the steps the
 system skipped, through the wizard's reopen path (a pending go-live attestation blocks a reopen, which is logged).
 
-**The gate (owner decision D1).** ADR-0111 is repurposed: new claims work follows this choice, not an add-on (see its 2026-11-06 amendment), and a suspended, paused or canceled ChartWarden subscription still blocks NEW claims and eligibility work regardless of the clearinghouse.
+**The gate (owner decision D1).** ADR-0110 is repurposed: new claims work follows this choice, not an add-on (see its 2026-11-06 amendment), and a suspended, paused or canceled ChartWarden subscription still blocks NEW claims and eligibility work regardless of the clearinghouse.
 M35's pricing reads the same choice through the `TenantClearinghouseReader` seam (owner M23) to apply "`outside` means no billing percentage"; this ADR implements no pricing.
 
 **`outside` and the notices (owner decision D4, supersedes the earlier "not decided here").** A tenant that bills outside ChartWarden files its NOE and NOTR itself. ChartWarden still tracks the 5-day deadline, shows "file with your biller", and lets the tenant record the date it was filed;

@@ -327,7 +327,7 @@ export const REQUIRED_SEAMS = [
     phi: true,
     denyStub: patientPrivacyFlagReaderDenyStub,
   },
-  // ADR-0111 — M5's active-patient census page for the M35 claims-billing add-on. Raw patient ids cross → phi:true
+  // ADR-0110 — M5's active-patient census page for the M35 claims-billing add-on. Raw patient ids cross → phi:true
   // (M35 pseudonymizes them in memory and stores only the HMAC).
   {
     key: "PatientCensusReader",
@@ -749,7 +749,7 @@ export const REQUIRED_SEAMS = [
     phi: false,
     denyStub: patientCounterProviderDenyStub,
   },
-  // ADR-0111, repurposed (ADR-0053 amendment 2026-11-06): may this org start NEW claims-billing work. Owner M23: it is
+  // ADR-0110, repurposed (ADR-0053 amendment 2026-11-06): may this org start NEW claims-billing work. Owner M23: it is
   // decided from the org's clearinghouse choice, with no add-on and no fee. Aggregate org metadata → phi:false.
   {
     key: "ClaimsBillingEntitlementReader",

@@ -78,7 +78,7 @@ export function ReopeningPanel({
   onChanged,
 }: ReopeningPanelProps): JSX.Element {
   const client = useApiClient();
-  // ADR-0111 — filing (submitting) a reopening is new claims-billing work: paused without the add-on (when enforced).
+  // ADR-0110 — filing (submitting) a reopening is new claims-billing work: paused without the add-on (when enforced).
   const claimsBilling = useClaimsBilling();
   const navigate = useNavigate();
   const location = useLocation();

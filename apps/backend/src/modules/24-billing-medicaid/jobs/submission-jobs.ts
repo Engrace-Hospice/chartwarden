@@ -595,7 +595,7 @@ async function writeAck(
   return inserted[0]!.id;
 }
 
-/** ADR-0111 D7 — the M24 queues that start new claims-billing work (the poll queue finishes in-flight work). */
+/** ADR-0110 D7 — the M24 queues that start new claims-billing work (the poll queue finishes in-flight work). */
 export const M24_CLAIMS_BILLING_GATED_QUEUES: ReadonlySet<string> = new Set([
   M24_QUEUES.submit,
   M24_QUEUES.submitRetry,
@@ -614,7 +614,7 @@ export function registerM24LaunchWorkers(deps: M24SubmissionWorkerDeps): Worker[
       async (job, token) => {
         const data = job.data as D;
         if (!data.organizationId) throw new Error(`M24 ${queue}: job.data.organizationId missing`);
-        // ADR-0111 D7 — a claim submit for an org without the claims-billing add-on is held, not failed (poll runs);
+        // ADR-0110 D7 — a claim submit for an org without the claims-billing add-on is held, not failed (poll runs);
         // a VOID claim (read from the stored row under the job's org) still goes out.
         if (M24_CLAIMS_BILLING_GATED_QUEUES.has(queue)) {
           const { organizationId } = data;

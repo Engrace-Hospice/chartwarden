@@ -335,7 +335,7 @@ const NON_ORG_SCOPED = new Set<string>([
   "stripe_webhook_event",
   "platform_retained_invoice",
   "platform_retained_invoice_line",
-  // ADR-0111 — `addon`, the platform-owned add-on catalog (the `plan` shape, D11: platform pricing, no tenant
+  // ADR-0110 — `addon`, the platform-owned add-on catalog (the `plan` shape, D11: platform pricing, no tenant
   // overlay). Read-all `USING (true)` TO chartwarden_app, writes only via chartwarden_admin (migration 1321). Its
   // tenant half, `subscription_addon`, carries organization_id with app.org_id RLS and is NOT listed here.
   "addon",

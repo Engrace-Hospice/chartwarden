@@ -1,4 +1,4 @@
-// apps/backend/src/modules/35-subscription/billing-runtime/census.ts — ADR-0111 D8, the claims-billing add-on census.
+// apps/backend/src/modules/35-subscription/billing-runtime/census.ts — ADR-0110 D8, the claims-billing add-on census.
 //
 // The `m35.patient-census` sweep (every 6 hours, through the M35 org fan-out) PULLS M5's active-patient ids for each
 // org that holds the add-on now, or whose add-on ended within the last sweep interval (one final pass), pseudonymizes every id with the billing
@@ -198,7 +198,7 @@ export function createDrizzlePatientCounterProvider(db: DbClient): PatientCounte
   };
 }
 
-// ── ADR-0111 the monthly add-on aggregate ───────────────────────────────────────────────────────────────
+// ── ADR-0110 the monthly add-on aggregate ───────────────────────────────────────────────────────────────
 
 const AGG = schema.usagePeriodAggregate;
 export const ADDON_METER_EVENT_TYPE = "billing_addon_patient" as const;

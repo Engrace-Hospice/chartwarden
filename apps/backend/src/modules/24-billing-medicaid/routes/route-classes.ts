@@ -1,4 +1,4 @@
-// apps/backend/src/modules/24-billing-medicaid/routes/route-classes.ts — ADR-0111 D5: the M24 routes that start NEW
+// apps/backend/src/modules/24-billing-medicaid/routes/route-classes.ts — ADR-0110 D5: the M24 routes that start NEW
 // claims-billing work (claim create, submit, replace, eligibility) versus the open rest (drafts, validation, void,
 // abandon, R&B, credentials, config, platform admin). Ordered, first match wins.
 import { type RouteClassRule, exemptByRouteId } from "../../../bootstrap/claims-billing-gate";
