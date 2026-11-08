@@ -24,6 +24,8 @@ export const medicationOrderTransmissions = pgTable(
 
     queuedAt: timestamp("queued_at", { withTimezone: true }).notNull().defaultNow(),
     transmissionStartedAt: timestamp("transmission_started_at", { withTimezone: true }),
+    // Migration 1386: the nonce the fence writes with the stamp. The worker owns its vendor call only while this is still its own; cleared with the stamp.
+    callToken: uuid("call_token"),
     transmissionSucceededAt: timestamp("transmission_succeeded_at", { withTimezone: true }),
     transmissionFailedAt: timestamp("transmission_failed_at", { withTimezone: true }),
 

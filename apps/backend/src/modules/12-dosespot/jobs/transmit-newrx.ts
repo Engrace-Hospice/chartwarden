@@ -24,7 +24,7 @@
 //                       published in the same transaction and M36 tells the tenant's administrators, who check the prescriber's DoseSpot
 //                       account and either find it sent or discontinue the order and sign a new one.
 // Nothing here ever marks an order transmitted without a real `DoseSpotNewRxResponse`.
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import {
   type DoseSpotNewRxPayload,
@@ -198,7 +198,8 @@ async function buildPayload(
  * `transmission_started_at`. Zero rows at (1) means the claim was drained and taken over (or the order changed) while this worker was busy with
  * an earlier order of its batch: it returns false and the caller makes NO call, so the order cannot be sent twice with one key. Moving
  * `updated_at` also restarts the stale-claim clock at the call (it used to run from the claim, which a slow batch could outlast).
- * It returns the fence time: from here on the stamp is what the worker owns (see {@link Ownership}), the order's `updated_at` only keeps the stale clock.
+ * It returns the nonce it wrote with the stamp (`call_token`): from here on that token is what the worker owns (see {@link Ownership}), the order's
+ * `updated_at` only keeps the stale clock. A random uuid, not the stamp's time: two cycles that stamp the same instant must still be told apart.
  * A worker that dies after this and before its settle leaves a stale claim carrying the stamp, which the drain HOLDS instead of re-sending. A
  * failure here throws and the order is not called: it stays a claim without the stamp, which the drain releases.
  */
@@ -206,8 +207,9 @@ async function markCallStarted(
   deps: M12CronDeps,
   organizationId: string,
   c: Claimed,
-): Promise<Date | null> {
+): Promise<string | null> {
   const now = nowOf(deps);
+  const token = randomUUID();
   return inOrg(deps.db, organizationId, async (tx) => {
     const fenced = await tx
       .update(MO)
@@ -224,11 +226,11 @@ async function markCallStarted(
     if (fenced.length !== 1) return null;
     const stamped = await tx
       .update(MOT)
-      .set({ transmissionStartedAt: now })
+      .set({ transmissionStartedAt: now, callToken: token })
       .where(eq(MOT.id, c.transmission.id))
       .returning({ id: MOT.id });
     if (stamped.length !== 1) throw new Error("transmission row vanished before the vendor call");
-    return now;
+    return token;
   });
 }
 
@@ -245,11 +247,11 @@ async function rememberCreated(
   deps: M12CronDeps,
   organizationId: string,
   c: Claimed,
-  startedAt: Date,
+  token: string,
   prescriptionId: string,
 ): Promise<void> {
   await inOrg(deps.db, organizationId, async (tx) => {
-    if (!(await lockOwnership(tx, c, { stage: "call", startedAt }))) {
+    if (!(await lockOwnership(tx, c, { stage: "call", token }))) {
       throw new Error(
         "this worker no longer owns the order, so the created prescription is not sent",
       );
@@ -276,14 +278,14 @@ type Outcome =
 
 /**
  * What a worker owns when it comes to write. BEFORE the fence it owns the CLAIM: the order's `updated_at` that the claim wrote. AFTER the fence it
- * owns the CALL: the `transmission_started_at` the fence stamped on the transmission row. `updated_at` cannot stay the token after the fence: it
+ * owns the CALL: the `call_token` nonce the fence wrote on the transmission row. `updated_at` cannot stay the token after the fence: it
  * is shared with writes that have nothing to do with the claim (a coverage determination is allowed in every status, a correction bumps the
  * original order's version), and one of them during the call would turn the legitimate owner into a "skipped" one, orphaning a prescription
  * DoseSpot had accepted and leaving a stamp the drain then holds.
  */
 type Ownership =
   | { readonly stage: "claim"; readonly claimedAt: Date }
-  | { readonly stage: "call"; readonly startedAt: Date };
+  | { readonly stage: "call"; readonly token: string };
 
 /** What a worker found, and what it owns when it comes to write it. */
 interface Attempt {
@@ -315,17 +317,17 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
       syncPatient: false,
     });
   }
-  let startedAt: Date;
+  let token: string;
   try {
     // the fence: null = this worker no longer owns the claim (it was drained and taken over): make no call and touch nothing
-    const fencedAt = await markCallStarted(deps, organizationId, c);
-    if (fencedAt === null) return beforeFence({ kind: "superseded" });
-    startedAt = fencedAt;
+    const fenced = await markCallStarted(deps, organizationId, c);
+    if (fenced === null) return beforeFence({ kind: "superseded" });
+    token = fenced;
   } catch {
     // the stamp could not be committed, so the vendor was NOT called: the order waits (no retry spent) and the drain releases the claim
     return beforeFence({ kind: "outage" });
   }
-  const owned = (outcome: Outcome): Attempt => ({ outcome, owns: { stage: "call", startedAt } });
+  const owned = (outcome: Outcome): Attempt => ({ outcome, owns: { stage: "call", token } });
   try {
     const res = await deps.client.transmitNewRx(
       organizationId,
@@ -336,7 +338,7 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
         ...(c.transmission.dosespotPrescriptionId
           ? { createdPrescriptionId: c.transmission.dosespotPrescriptionId }
           : {}),
-        onCreated: (id) => rememberCreated(deps, organizationId, c, startedAt, id),
+        onCreated: (id) => rememberCreated(deps, organizationId, c, token, id),
       },
     );
     return owned({
@@ -398,7 +400,7 @@ function orderStillTheWorkers(orderId: string, owns: Ownership) {
 }
 
 /**
- * Lock what the worker owns and say whether it still owns it: the ORDER row, then (after the fence) the TRANSMISSION row carrying the stamp this
+ * Lock what the worker owns and say whether it still owns it: the ORDER row, then (after the fence) the TRANSMISSION row carrying the token this
  * worker wrote. That is the order the administrator's resolution and the drain lock them in, so none of them can deadlock; the locks last to the end of the
  * transaction, so what is checked here still holds for every write after it.
  */
@@ -414,7 +416,7 @@ async function lockOwnership(tx: DbClient, c: Claimed, owns: Ownership): Promise
   const [stamp] = await tx
     .select({ id: MOT.id })
     .from(MOT)
-    .where(and(eq(MOT.id, c.transmission.id), eq(MOT.transmissionStartedAt, owns.startedAt)))
+    .where(and(eq(MOT.id, c.transmission.id), eq(MOT.callToken, owns.token)))
     .limit(1)
     .for("update");
   return stamp !== undefined;
@@ -468,6 +470,7 @@ async function settle(
         .update(MOT)
         .set({
           transmissionStartedAt: null,
+          callToken: null,
           lastErrorClass: sql`CASE WHEN ${MOT.lastErrorClass} = ${UNCONFIRMED_OUTCOME_CLASS} THEN NULL ELSE ${MOT.lastErrorClass} END`,
           lastErrorDetail: sql`CASE WHEN ${MOT.lastErrorClass} = ${UNCONFIRMED_OUTCOME_CLASS} THEN NULL ELSE ${MOT.lastErrorDetail} END`,
         })
@@ -569,7 +572,7 @@ async function settle(
         .set({
           transmissionFailedAt: now,
           // the attempt is over: a claim of the requeued order that later dies before its vendor call must not look like one that called
-          ...(plan.exhausted ? {} : { transmissionStartedAt: null }),
+          ...(plan.exhausted ? {} : { transmissionStartedAt: null, callToken: null }),
           retryCount: plan.transmissionUpdate.retryCount,
           lastErrorClass: outcome.errorClass,
           lastErrorDetail: outcome.detail,

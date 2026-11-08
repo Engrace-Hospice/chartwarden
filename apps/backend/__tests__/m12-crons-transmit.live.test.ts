@@ -487,6 +487,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         const t = await txRow(transmissionId as string);
         expect(t.retry_count).toBe(0);
         expect(t.transmission_started_at).toBeNull();
+        expect(t.call_token).toBeNull();
         expect(vendorRequests).toEqual([]);
         // ONE alert for the episode, through the real catalog-validating publisher, naming the class
         const breaker = `dosespot-config_unavailable:${ORG_A}`;
@@ -629,6 +630,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
     expect(t.retry_count).toBe(0);
     expect(t.transmission_failed_at).toBeNull();
     expect(t.transmission_started_at).toBeNull(); // the stamp the call left was cleared: the vendor never saw this attempt
+    expect(t.call_token).toBeNull(); // and so was its ownership token
     // once the vendor is back the SAME order goes out on the next tick
     const ok = new FakeDoseSpotVendor({
       transmit: async () => ({
@@ -992,6 +994,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       });
       await runTransmitNewRxForOrg(deps(vendor), ORG_A);
       expect(seenAtCall?.transmission_started_at).not.toBeNull(); // written and committed before the vendor was asked
+      expect(seenAtCall?.call_token).not.toBeNull(); // with the nonce the worker owns the call by
       expect((await orderRow(orderId)).status).toBe("transmitted");
     });
 
@@ -1139,6 +1142,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       expect((await runTransmitNewRxForOrg(deps(vendor), ORG_A)).requeued).toBe(1);
       expect((await orderRow(orderId)).s).toBe("queued");
       expect((await txRow(transmissionId as string)).transmission_started_at).toBeNull();
+      expect((await txRow(transmissionId as string)).call_token).toBeNull();
     });
 
     // H3: the stale window measures from the CLAIM and a stamp was not a fence. A slow sequential batch could be drained and re-claimed by another
@@ -1303,6 +1307,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       const t = await txRow(transmissionId as string);
       expect(t.last_error_class).toBeNull();
       expect(t.transmission_started_at).toBeNull();
+      expect(t.call_token).toBeNull();
       expect((await backend.getTransmission(ORG_A, orderId)).status).toBe("queued");
     });
 
@@ -1514,8 +1519,18 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       expect((await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A)).released).toBe(0);
     });
 
-    it("OWNERSHIP after the fence: a worker whose call was overtaken (the order released and a NEW claim fenced and calling) writes nothing over the new owner, whatever it found", async () => {
-      for (const found of ["failure", "outage", "unconfirmed"] as const) {
+    // LOW (review of d333d1d9d..HEAD): the token after the fence is a per-call NONCE (a uuid the fence writes), not the app-clock stamp, so two cycles
+    // that stamp the same instant are still told apart. The "identical clocks" runs fail with the stamp as the token: A would write over B's claim.
+    it("OWNERSHIP after the fence: a worker whose call was overtaken (the order released and a NEW claim fenced and calling) writes nothing over the new owner, whatever it found and even on an identical clock", async () => {
+      for (const [clocks, found] of [
+        ["different clocks", "failure"],
+        ["different clocks", "outage"],
+        ["different clocks", "unconfirmed"],
+        ["identical clocks", "failure"],
+        ["identical clocks", "outage"],
+        ["identical clocks", "unconfirmed"],
+      ] as const) {
+        const label = `${clocks}, ${found}`;
         await h.admin.query("DELETE FROM medication_order_transmission");
         await h.admin.query("DELETE FROM medication_order");
         const { orderId, transmissionId } = await queued();
@@ -1545,10 +1560,13 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
               [orderId],
             );
             await h.admin.query(
-              "UPDATE medication_order_transmission SET transmission_started_at = NULL WHERE id=$1",
+              "UPDATE medication_order_transmission SET transmission_started_at = NULL, call_token = NULL WHERE id=$1",
               [transmissionId],
             );
-            takeover = runTransmitNewRxForOrg(deps(vendorB, minutes(30)), ORG_A); // NOT awaited: B is mid-call
+            takeover = runTransmitNewRxForOrg(
+              deps(vendorB, clocks === "identical clocks" ? T0 : minutes(30)),
+              ORG_A,
+            ); // NOT awaited: B is mid-call
             await bIsCalling;
             if (found === "failure") throw retryable();
             if (found === "outage") throw circuitOpen();
@@ -1557,21 +1575,21 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         });
         try {
           const pass = await runTransmitNewRxForOrg(deps(vendorA), ORG_A);
-          expect(pass, found).toMatchObject({ claimed: 1, skipped: 1, requeued: 0, held: 0 });
-          expect(pass.deferredByOutage, found).toBe(0);
+          expect(pass, label).toMatchObject({ claimed: 1, skipped: 1, requeued: 0, held: 0 });
+          expect(pass.deferredByOutage, label).toBe(0);
           // B's claim is intact: still in flight, its stamp not cleared, no marker and no failure written over it
-          expect(await orderRow(orderId), found).toMatchObject({ s: "in_flight" });
+          expect(await orderRow(orderId), label).toMatchObject({ s: "in_flight" });
           const t = await txRow(transmissionId as string);
-          expect(t.transmission_started_at, found).not.toBeNull();
-          expect(t.last_error_class, found).toBeNull();
-          expect(t.retry_count, found).toBe(0);
+          expect(t.transmission_started_at, label).not.toBeNull();
+          expect(t.last_error_class, label).toBeNull();
+          expect(t.retry_count, label).toBe(0);
           releaseB();
           await takeover;
-          expect(await orderRow(orderId), found).toMatchObject({
+          expect(await orderRow(orderId), label).toMatchObject({
             status: "transmitted",
             rx: "rx-by-b",
           });
-          expect(sendsB, found).toEqual([orderId]);
+          expect(sendsB, label).toEqual([orderId]);
         } finally {
           releaseB();
           await takeover?.catch(() => undefined);
