@@ -1,6 +1,5 @@
 import {
   Button,
-  Panel,
   SelectField,
   StatusPill,
   TextAreaField,
@@ -17,7 +16,7 @@ import type { operations } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { cap, formatCents, formatDate, idempotencyKey } from "./status";
-import { type Outcome, OutcomeBanner, failureOutcome } from "./ui";
+import { type Outcome, OutcomeBanner, StateEmpty, StateLoading, failureOutcome } from "./ui";
 
 type SubscriptionAddon =
   operations["getApiAdminSubscriptionsByIdAddons"]["responses"][200]["content"]["application/json"][number];
@@ -119,69 +118,79 @@ export function AddonsPanel({
   );
 
   return (
-    <Panel title="Add-ons" icon="receipt">
-      <div className="grid gap-4">
-        {rows === null ? (
-          <p className="m-0 text-sm">Loading add-ons…</p>
-        ) : rows.length === 0 ? (
-          <p className="m-0 text-sm">No add-ons on this subscription.</p>
-        ) : (
-          <div className="wx-list-table-wrap">
-            <table className="wx-list-table wx-list-table-static">
-              <caption className="wx-sr-only">Add-ons</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Add-on</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Started</th>
-                  <th scope="col">Trial ends</th>
-                  <th scope="col">Ended</th>
-                  <th scope="col">
-                    <span className="wx-sr-only">Actions</span>
-                  </th>
+    <section className="wx-drawer-card">
+      <div className="wx-drawer-card-head">
+        <h3>Add-ons</h3>
+      </div>
+      {rows === null ? (
+        <StateLoading label="Loading add-ons…" />
+      ) : rows.length === 0 ? (
+        <StateEmpty icon="receipt">No add-ons on this subscription.</StateEmpty>
+      ) : (
+        <div className="wx-list-table-wrap">
+          <table className="wx-list-table wx-list-table-static">
+            <caption className="wx-sr-only">Add-ons</caption>
+            <thead>
+              <tr>
+                <th scope="col">Add-on</th>
+                <th scope="col">Status</th>
+                <th scope="col">Started</th>
+                <th scope="col">Trial ends</th>
+                <th scope="col">Ended</th>
+                <th scope="col">
+                  <span className="wx-sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  <td>
+                    <span className="wx-row-title">{r.addonName}</span>
+                  </td>
+                  <td>
+                    <StatusPill label={r.live ? cap(r.status) : "Ended"} tone={addonTone(r)} />
+                  </td>
+                  <td className="wx-nums">{formatDate(r.startedAt)}</td>
+                  <td className="wx-nums">{formatDate(r.trialEndsAt)}</td>
+                  <td className="wx-nums">{formatDate(r.endsAt)}</td>
+                  <td>
+                    {r.live ? (
+                      <Button
+                        tone="secondary"
+                        size="sm"
+                        loading={busy}
+                        onClick={() => void cancel(r.addonId)}
+                      >
+                        Cancel add-on
+                      </Button>
+                    ) : null}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id}>
-                    <td>
-                      <span className="wx-row-title">{r.addonName}</span>
-                    </td>
-                    <td>
-                      <StatusPill label={r.live ? cap(r.status) : "Ended"} tone={addonTone(r)} />
-                    </td>
-                    <td className="wx-nums">{formatDate(r.startedAt)}</td>
-                    <td className="wx-nums">{formatDate(r.trialEndsAt)}</td>
-                    <td className="wx-nums">{formatDate(r.endsAt)}</td>
-                    <td>
-                      {r.live ? (
-                        <Button
-                          tone="secondary"
-                          size="sm"
-                          loading={busy}
-                          onClick={() => void cancel(r.addonId)}
-                        >
-                          Cancel add-on
-                        </Button>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {usage ? (
-          <p className="wx-source-line wx-nums">
-            Active patients this period: {usage.activePatientCount.toLocaleString()} ·{" "}
-            {usage.unitPriceCents === null
-              ? "price not set"
-              : `${formatCents(usage.unitPriceCents)} per active patient per month`}{" "}
-            · not billed yet
-          </p>
-        ) : null}
-        {live ? null : (
-          <div className="grid gap-3">
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {usage ? (
+        <p className="wx-source-line wx-nums">
+          Active patients this period: {usage.activePatientCount.toLocaleString()} ·{" "}
+          {usage.unitPriceCents === null
+            ? "price not set"
+            : `${formatCents(usage.unitPriceCents)} per active patient per month`}{" "}
+          · not billed yet
+        </p>
+      ) : null}
+      {live ? null : (
+        <form
+          className="wx-form-stack"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void grant();
+          }}
+        >
+          <div className="wx-form-grid">
             <SelectField
               label="Claims billing"
               value={mode}
@@ -200,28 +209,28 @@ export function AddonsPanel({
                 error={trialError}
               />
             ) : null}
-            <TextAreaField
-              label="Reason (for the audit record)"
-              hint="Do not include patient information."
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              error={reasonError}
-              rows={2}
-            />
-            <div className="wx-action-row is-end">
-              <Button loading={busy} onClick={() => void grant()}>
-                {mode === "trial" ? "Start trial" : "Grant add-on"}
-              </Button>
-            </div>
           </div>
-        )}
-        {outcome ? (
-          <OutcomeBanner
-            {...outcome}
-            onReverify={() => stashStepUpMemoryDraft(draftKey, { mode, trialEndsAt, reason })}
+          <TextAreaField
+            label="Reason (for the audit record)"
+            hint="Do not include patient information."
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            error={reasonError}
+            rows={2}
           />
-        ) : null}
-      </div>
-    </Panel>
+          <div className="wx-drawer-actions">
+            <Button type="submit" loading={busy}>
+              {mode === "trial" ? "Start trial" : "Grant add-on"}
+            </Button>
+          </div>
+        </form>
+      )}
+      {outcome ? (
+        <OutcomeBanner
+          {...outcome}
+          onReverify={() => stashStepUpMemoryDraft(draftKey, { mode, trialEndsAt, reason })}
+        />
+      ) : null}
+    </section>
   );
 }
