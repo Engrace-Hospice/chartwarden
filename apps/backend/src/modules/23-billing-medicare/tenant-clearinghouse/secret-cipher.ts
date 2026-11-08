@@ -25,7 +25,23 @@ const LABELS = {
   dekInfoPrefix: "chartwarden-m23-clearinghouse-credential-dek:",
   aadPrefix: "chartwarden-m23-clearinghouse-credential:v",
   fingerprintInfo: "chartwarden-m23-clearinghouse-credential-fingerprint:v1",
+  fingerprintKeyIdInfo: "chartwarden-m23-clearinghouse-credential-fingerprint-key-id:v1",
 } as const;
+/** Hex characters of a fingerprint key's public id (migration 1405's CHECK). */
+const KEY_ID_HEX = 16;
+
+/**
+ * Previous values of the credential KEK, comma-separated base64 (32 bytes each). Read ONLY to fingerprint a credential under the
+ * keys an older reservation may have used (migration 1405); nothing is ever sealed or opened with them, so a sealed credential
+ * still needs re-entry after a KEK change (ops runbook §8.3).
+ */
+export const FINGERPRINT_RETIRED_KEKS_ENV = "M23_CLEARINGHOUSE_FINGERPRINT_RETIRED_KEKS";
+
+/** A credential's fingerprint under one fingerprint key, with that key's public id. */
+export interface CredentialFingerprint {
+  readonly keyId: string;
+  readonly fingerprint: string;
+}
 
 /** What a sealed secret is bound to besides the tenant. */
 export interface ClearinghouseSecretContext {
@@ -50,6 +66,16 @@ export interface ClearinghouseSecretCipher {
    * second tenant sealing it is refused), never a plain hash (it cannot be checked against a guessed key without the KEK).
    */
   fingerprint(vendor: TransmittingClearinghouseVendor, accountKey: string): string;
+  /** The public id of the current fingerprint key (one-way from the key; names it in a row, never reveals it). */
+  readonly fingerprintKeyId: string;
+  /**
+   * The credential's fingerprint under every configured fingerprint key: the current one first, then each retired KEK's (migration
+   * 1405). A save reserves all of them, so a reservation recorded under a retired key still collides while that key is configured.
+   */
+  fingerprints(
+    vendor: TransmittingClearinghouseVendor,
+    accountKey: string,
+  ): readonly CredentialFingerprint[];
 }
 
 const deriveDek = (kek: Buffer, organizationId: string): Buffer =>
@@ -74,18 +100,48 @@ const aadFor = (organizationId: string, context: ClearinghouseSecretContext): Bu
     "utf8",
   );
 
-/** Build the cipher over a validated KEK (copied, so the caller may zero its own buffer). */
-export function buildClearinghouseSecretCipher(kek: Buffer): ClearinghouseSecretCipher {
-  if (kek.length !== KEY_LEN) throw new Error(`clearinghouse secret KEK must be ${KEY_LEN} bytes`);
-  const root = Buffer.from(kek);
-  const fingerprintKey = Buffer.from(
-    hkdfSync("sha256", root, Buffer.alloc(0), LABELS.fingerprintInfo, KEY_LEN),
+interface FingerprintKey {
+  readonly keyId: string;
+  readonly mac: (vendor: TransmittingClearinghouseVendor, accountKey: string) => string;
+}
+
+const fingerprintKeyOf = (kek: Buffer): FingerprintKey => {
+  const key = Buffer.from(
+    hkdfSync("sha256", kek, Buffer.alloc(0), LABELS.fingerprintInfo, KEY_LEN),
   );
   return {
-    fingerprint(vendor, accountKey) {
-      return createHmac("sha256", fingerprintKey)
-        .update(`${vendor}\n${accountKey.trim()}`, "utf8")
-        .digest("hex");
+    keyId: createHmac("sha256", key)
+      .update(LABELS.fingerprintKeyIdInfo, "utf8")
+      .digest("hex")
+      .slice(0, KEY_ID_HEX),
+    mac: (vendor, accountKey) =>
+      createHmac("sha256", key).update(`${vendor}\n${accountKey.trim()}`, "utf8").digest("hex"),
+  };
+};
+
+/**
+ * Build the cipher over a validated KEK (copied, so the caller may zero its own buffer). `retiredKeks` only fingerprint (see
+ * `FINGERPRINT_RETIRED_KEKS_ENV`); one equal to the current KEK is dropped.
+ */
+export function buildClearinghouseSecretCipher(
+  kek: Buffer,
+  retiredKeks: readonly Buffer[] = [],
+): ClearinghouseSecretCipher {
+  if (kek.length !== KEY_LEN) throw new Error(`clearinghouse secret KEK must be ${KEY_LEN} bytes`);
+  const root = Buffer.from(kek);
+  const current = fingerprintKeyOf(root);
+  const keys: FingerprintKey[] = [current];
+  for (const retired of retiredKeks) {
+    if (retired.length !== KEY_LEN)
+      throw new Error(`${FINGERPRINT_RETIRED_KEKS_ENV} entries must be ${KEY_LEN} bytes`);
+    const k = fingerprintKeyOf(Buffer.from(retired));
+    if (!keys.some((x) => x.keyId === k.keyId)) keys.push(k);
+  }
+  return {
+    fingerprintKeyId: current.keyId,
+    fingerprint: current.mac,
+    fingerprints(vendor, accountKey) {
+      return keys.map((k) => ({ keyId: k.keyId, fingerprint: k.mac(vendor, accountKey) }));
     },
     async encrypt(organizationId, plaintext, context) {
       const nonce = randomBytes(NONCE_LEN);
@@ -133,7 +189,26 @@ export function buildClearinghouseSecretCipherFromEnv(
   env: Readonly<Record<string, string | undefined>>,
 ): ClearinghouseSecretCipher | undefined {
   if (!env[MAC_SECRET_KEK_ENV]?.trim()) return undefined;
-  return buildClearinghouseSecretCipher(loadMacSecretKek(env[MAC_SECRET_KEK_ENV]));
+  return buildClearinghouseSecretCipher(
+    loadMacSecretKek(env[MAC_SECRET_KEK_ENV]),
+    retiredFingerprintKeks(env),
+  );
+}
+
+/** The retired KEKs, fail-closed: a malformed entry throws at boot rather than silently dropping a key's protection. */
+export function retiredFingerprintKeks(
+  env: Readonly<Record<string, string | undefined>>,
+): Buffer[] {
+  const raw = env[FINGERPRINT_RETIRED_KEKS_ENV]?.trim();
+  if (!raw) return [];
+  return raw.split(",").map((entry) => {
+    const key = Buffer.from(entry.trim(), "base64");
+    if (key.length !== KEY_LEN)
+      throw new Error(
+        `${FINGERPRINT_RETIRED_KEKS_ENV} must be comma-separated base64 keys of ${KEY_LEN} bytes`,
+      );
+    return key;
+  });
 }
 
 /** The platform env binding's own account keys, by vendor (the names its transports read). */
@@ -143,15 +218,18 @@ const PLATFORM_ACCOUNT_KEY_ENV: ReadonlyArray<readonly [TransmittingClearinghous
     ["stedi", "STEDI_API_KEY"],
   ];
 
-/** Fingerprints of the platform's own vendor account keys that are set: a tenant may never seal one of them. */
+/**
+ * Fingerprints of the platform's own vendor account keys that are set, under every configured fingerprint key: a tenant may never
+ * seal one of them.
+ */
 export function platformCredentialFingerprints(
-  cipher: Pick<ClearinghouseSecretCipher, "fingerprint">,
+  cipher: Pick<ClearinghouseSecretCipher, "fingerprints">,
   env: Readonly<Record<string, string | undefined>>,
 ): ReadonlySet<string> {
   const out = new Set<string>();
   for (const [vendor, key] of PLATFORM_ACCOUNT_KEY_ENV) {
     const value = env[key]?.trim();
-    if (value) out.add(cipher.fingerprint(vendor, value));
+    if (value) for (const f of cipher.fingerprints(vendor, value)) out.add(f.fingerprint);
   }
   return out;
 }

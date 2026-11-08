@@ -102,16 +102,20 @@ export function createInMemoryConfigStore(now: () => Date = () => new Date()): I
         (r) => r.organizationId === organizationId && r.fingerprint === fingerprint && !r.released,
       );
     },
-    async reserveCredential(organizationId, _vendor, fingerprint) {
-      if (reservations.some((r) => r.fingerprint === fingerprint && !r.released)) {
-        throw uniqueViolation("tenant_clearinghouse_credential_reservation_held_uq");
-      }
+    async heldReservationCount(organizationId) {
+      return reservations.filter((r) => r.organizationId === organizationId && !r.released).length;
+    },
+    async reserveCredential(organizationId, _vendor, { fingerprint }) {
+      // ON CONFLICT DO NOTHING on the cross-organization index
+      if (reservations.some((r) => r.fingerprint === fingerprint && !r.released)) return false;
       reservations.push({ organizationId, fingerprint, released: false });
+      return true;
     },
     async releaseCredentials(organizationId, keep) {
       let released = 0;
       reservations.forEach((r, i) => {
-        if (r.organizationId !== organizationId || r.released || r.fingerprint === keep) return;
+        if (r.organizationId !== organizationId || r.released || keep.includes(r.fingerprint))
+          return;
         reservations[i] = { ...r, released: true };
         released += 1;
       });

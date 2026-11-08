@@ -2,7 +2,9 @@
 // open org-scoped transaction (the caller's `withOrgContext`; RLS scopes every statement to that tenant). The service
 // takes a `ConfigStore` so its rules are tested without a database; this is the Drizzle implementation.
 import { type DbClient, schema } from "@chartwarden/db";
-import { and, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
+import { and, eq, gte, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
+import type { HeldFingerprint } from "./credential-reservation";
 
 const C = schema.tenantClearinghouseConfig;
 const A = schema.clearinghouseSubmissionAttempts;
@@ -39,12 +41,22 @@ export interface ConfigStore {
   hasRecentProductionAttempts(organizationId: string, since: Date): Promise<boolean>;
   /** True when THIS org already holds an unreleased reservation of the fingerprint (migration 1404). */
   holdsCredential(organizationId: string, fingerprint: string): Promise<boolean>;
-  /** Reserve the fingerprint to the org; a unique violation when another org (or this one) already holds it. */
-  reserveCredential(organizationId: string, vendor: string, fingerprint: string): Promise<void>;
-  /** Release every reservation the org holds EXCEPT `keep` (its current credential); how many were released. */
+  /** How many unreleased reservations the org holds (each credential has one per fingerprint key it was saved under). */
+  heldReservationCount(organizationId: string): Promise<number>;
+  /**
+   * Reserve the fingerprint to the org. False when an unreleased reservation of it already exists (another org's, which RLS hides,
+   * or this org's from a concurrent save): `ON CONFLICT DO NOTHING` on the cross-organization index, so the transaction stays
+   * usable for the caller to tell the two apart.
+   */
+  reserveCredential(
+    organizationId: string,
+    vendor: string,
+    fingerprint: HeldFingerprint,
+  ): Promise<boolean>;
+  /** Release every reservation the org holds EXCEPT the `keep` fingerprints (its current credential's); how many were released. */
   releaseCredentials(
     organizationId: string,
-    keep: string | null,
+    keep: readonly string[],
     release: { readonly userId: string; readonly reason: string; readonly at: Date },
   ): Promise<number>;
 }
@@ -54,20 +66,38 @@ export const isUniqueViolation = (err: unknown): boolean => {
   return e?.code === "23505" || e?.cause?.code === "23505";
 };
 
+/** The audited platform-context job the boot check runs as (registered at boot beside the other platform jobs). */
+export const M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID = "m23.clearinghouse.platform-credential-check";
+
 /**
  * How many unreleased reservations hold one of `fingerprints`, across every organization. Boot only, on the platform carrier
- * (BYPASSRLS): it detects a platform vendor key that was changed to one a tenant had already sealed.
+ * through the gated, audited `withPlatformContext` (migration 1405's column grant: id, fingerprint, key id, released_at): it
+ * detects a platform vendor key that was changed to one a tenant had already sealed.
  */
 export async function countHeldCredentials(
-  platformDb: DbClient,
+  deps: {
+    readonly platformDb: DbClient;
+    readonly auditBypass: PlatformBypassAuditor<DbClient>;
+  },
   fingerprints: readonly string[],
 ): Promise<number> {
   if (fingerprints.length === 0) return 0;
-  const rows = await platformDb
-    .select({ id: R.id })
-    .from(R)
-    .where(and(inArray(R.credentialFingerprint, [...fingerprints]), isNull(R.releasedAt)));
-  return rows.length;
+  return withPlatformContext<DbClient, number>(
+    deps.platformDb,
+    {
+      jobId: M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID,
+      reason: "M23 boot check: no tenant holds the platform's own clearinghouse key",
+      crossTenant: true,
+    },
+    deps.auditBypass,
+    async (tx) => {
+      const rows = await tx
+        .select({ id: R.id })
+        .from(R)
+        .where(and(inArray(R.credentialFingerprint, [...fingerprints]), isNull(R.releasedAt)));
+      return rows.length;
+    },
+  );
 }
 
 /** The Drizzle store over a transaction already scoped to the org (the tenant's own, or a platform operator's on its behalf). */
@@ -141,8 +171,25 @@ export function createDrizzleConfigStore(tx: DbClient): ConfigStore {
         .limit(1);
       return hit !== undefined;
     },
+    async heldReservationCount(organizationId) {
+      const [row] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(R)
+        .where(and(eq(R.organizationId, organizationId), isNull(R.releasedAt)));
+      return Number(row?.n ?? 0);
+    },
     async reserveCredential(organizationId, vendor, fingerprint) {
-      await tx.insert(R).values({ organizationId, vendor, credentialFingerprint: fingerprint });
+      const inserted = await tx
+        .insert(R)
+        .values({
+          organizationId,
+          vendor,
+          credentialFingerprint: fingerprint.fingerprint,
+          credentialFingerprintKeyId: fingerprint.keyId,
+        })
+        .onConflictDoNothing({ target: R.credentialFingerprint, where: sql`released_at IS NULL` })
+        .returning({ id: R.id });
+      return inserted.length > 0;
     },
     async releaseCredentials(organizationId, keep, release) {
       const rows = await tx
@@ -157,7 +204,7 @@ export function createDrizzleConfigStore(tx: DbClient): ConfigStore {
           and(
             eq(R.organizationId, organizationId),
             isNull(R.releasedAt),
-            keep === null ? sql`true` : ne(R.credentialFingerprint, keep),
+            keep.length === 0 ? sql`true` : notInArray(R.credentialFingerprint, [...keep]),
           ),
         )
         .returning({ id: R.id });

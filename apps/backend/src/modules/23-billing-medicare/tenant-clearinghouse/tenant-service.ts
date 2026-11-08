@@ -19,6 +19,7 @@ import {
   type ClearinghouseAuditPort,
 } from "./audit-port";
 import { createDrizzleConfigStore } from "./config-store";
+import { CREDENTIAL_REFUSAL_CODES } from "./credential-reservation";
 import type {
   ClearinghouseConfigView,
   PutClearinghouseInput,
@@ -47,7 +48,6 @@ export interface TenantClearinghouseRouteService {
 }
 
 /** The refusal that is audited even though its write rolled back (credential-reservation.ts). */
-const CREDENTIAL_REFUSED_CODE = "CLEARINGHOUSE_ACCOUNT_IN_USE";
 
 export function buildDrizzleTenantClearinghouseRouteService(deps: {
   readonly db: DbClient;
@@ -111,7 +111,11 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
    * (the org id, the vendor, the code; never the fingerprint or which organization holds it). A failure to write it is logged and
    * never replaces the refusal the caller gets.
    */
-  async function recordRefusal(actor: M23WriteActor, vendor: string, code: string): Promise<void> {
+  async function recordRefusal(
+    actor: M23WriteActor,
+    vendor: string | undefined,
+    code: string,
+  ): Promise<void> {
     try {
       await inOrg(actor, async (tx) => {
         const row = await createDrizzleConfigStore(tx).find(actor.organizationId);
@@ -124,13 +128,21 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
           // no row yet on a refused first choice: the organization is the resource
           resourceId: row?.id ?? actor.organizationId,
           changedFields: [],
-          detail: { code, vendor },
+          detail: { code, vendor: vendor ?? row?.vendor ?? "none" },
           ...(actor.request ? { request: actor.request } : {}),
         });
       });
     } catch (cause) {
       deps.logError?.(cause, { organizationId: actor.organizationId });
     }
+  }
+
+  /** A credential refusal (on any write: a pre-1403 row is fingerprinted on its next one) is audited, then rethrown. */
+  async function refused(actor: M23WriteActor, err: unknown, vendor?: string): Promise<unknown> {
+    if (err instanceof ChartWardenError && CREDENTIAL_REFUSAL_CODES.has(err.code)) {
+      await recordRefusal(actor, vendor, err.code);
+    }
+    return err;
   }
 
   return {
@@ -148,10 +160,7 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
         }
         return { created: done.created, view: done.view };
       }).catch(async (err: unknown) => {
-        if (err instanceof ChartWardenError && err.code === CREDENTIAL_REFUSED_CODE) {
-          await recordRefusal(actor, body.vendor, err.code);
-        }
-        throw err;
+        throw await refused(actor, err, body.vendor);
       });
       return then(actor.organizationId, result);
     },
@@ -165,6 +174,8 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
           });
         }
         return done.view;
+      }).catch(async (err: unknown) => {
+        throw await refused(actor, err);
       });
       return then(actor.organizationId, result);
     },
@@ -187,6 +198,8 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
           ...(done.test ? { outcome: done.test.outcome } : {}),
         });
         return done;
+      }).catch(async (err: unknown) => {
+        throw await refused(actor, err);
       });
       return then(actor.organizationId, result);
     },
@@ -198,6 +211,8 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
           status: done.status ?? "none",
         });
         return done;
+      }).catch(async (err: unknown) => {
+        throw await refused(actor, err);
       });
       return then(actor.organizationId, view);
     },
