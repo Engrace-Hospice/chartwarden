@@ -15614,7 +15614,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34OnboardingClearinghouseViewSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/credentials/release": {
-    summary: `Release every clearinghouse credential the tenant still holds except its current one, so another organization may seal it (an account moved to a new organization, a key retired by a rotation). A credential stays reserved to the tenant through a switch to outside and a rotation until this runs; refused with 409 CLEARINGHOUSE_RESPONSES_PENDING while the tenant has a production submission in flight or sent one in the last 90 days, and 409 CLEARINGHOUSE_NOT_CONFIGURED when it never chose. The reason goes to the audit trail: give a ticket reference, never the name of the organization an account moved to. ${M34_CLEARINGHOUSE_RELEASE_NOTE}`,
+    summary: `Release every clearinghouse credential the tenant still holds except its current one, so another organization may seal it (an account moved to a new organization, a key retired by a rotation). A credential stays reserved to the tenant through a switch to outside and a rotation until this runs; refused with 409 CLEARINGHOUSE_RESPONSES_PENDING while the tenant has a production submission in flight or sent one in the last 90 days, and 409 CLEARINGHOUSE_NOT_CONFIGURED when it never chose. The reason is recorded as given on the tenant's own audit trail, which the tenant can read: give a ticket reference only, never the name of the organization an account moved to. ${M34_CLEARINGHOUSE_RELEASE_NOTE}`,
     body: M34OnboardingReasonSchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     response: M34OnboardingClearinghouseReleaseResponseSchema,

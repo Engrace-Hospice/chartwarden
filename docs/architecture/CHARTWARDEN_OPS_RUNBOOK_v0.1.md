@@ -1280,10 +1280,15 @@ re-encryption project for this key must:
    configured: their plaintext is gone, so they can never be re-fingerprinted. Before removing the old value, list the unreleased
    reservations not under the new key (the API logs its current key id at boot, `M23_FINGERPRINT_KEY`):
    `SELECT organization_id, vendor, credential_fingerprint_key_id, reserved_at FROM tenant_clearinghouse_credential_reservation
-   WHERE released_at IS NULL AND credential_fingerprint_key_id IS DISTINCT FROM '<new key id>'`. Each row is either a credential
-   the tenant has since re-entered (it then also has a row under the new key) or a retired one; the rows cannot tell the two apart.
-   Have platform ops release the retired ones, or accept in writing that their protection lapses. Removing the old value ends the
-   protection of every reservation only it computed, silently.
+   WHERE released_at IS NULL AND credential_fingerprint_key_id IS DISTINCT FROM '<new key id>'`. Each row is one of three things,
+   and the rows cannot tell them apart:
+   - a credential the tenant has since re-entered (it then also has a row under the new key): nothing to do;
+   - a **current credential not yet re-entered** (the tenant's config still holds it under the old key): do NOT release it (the
+     release route keeps it anyway); have the tenant re-enter it before the old value goes, or its protection lapses too;
+   - a retired one: have platform ops release it, or accept in writing that its protection lapses.
+   Removing the old value ends the protection of every reservation only it computed. The API says so at boot: it logs
+   `M23_FINGERPRINT_KEY_UNCONFIGURED` (an error, naming only key ids) for held reservations under a key that is neither current nor
+   retired, and `M23_FINGERPRINT_KEY` lists the current and retired key ids it loaded.
 
 > **Update (M36 WP 2.13, ADR-0058 P1; code on branch `feat/m36-wp213-body-key-ring`, backfill not yet run anywhere):** message
 > bodies are moving off `MESSAGING_ENCRYPTION_KEY` onto the M34 wrapped-DEK ring (`tenant_key_ring`), which rotates (a new DEK

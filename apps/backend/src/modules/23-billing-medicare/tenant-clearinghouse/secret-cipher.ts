@@ -68,6 +68,8 @@ export interface ClearinghouseSecretCipher {
   fingerprint(vendor: TransmittingClearinghouseVendor, accountKey: string): string;
   /** The public id of the current fingerprint key (one-way from the key; names it in a row, never reveals it). */
   readonly fingerprintKeyId: string;
+  /** The public ids of every configured fingerprint key, current first, then each retired KEK's (boot logs them for ops). */
+  readonly fingerprintKeyIds: readonly string[];
   /**
    * The credential's fingerprint under every configured fingerprint key: the current one first, then each retired KEK's (migration
    * 1405). A save reserves all of them, so a reservation recorded under a retired key still collides while that key is configured.
@@ -139,6 +141,7 @@ export function buildClearinghouseSecretCipher(
   }
   return {
     fingerprintKeyId: current.keyId,
+    fingerprintKeyIds: keys.map((k) => k.keyId),
     fingerprint: current.mac,
     fingerprints(vendor, accountKey) {
       return keys.map((k) => ({ keyId: k.keyId, fingerprint: k.mac(vendor, accountKey) }));
@@ -195,6 +198,12 @@ export function buildClearinghouseSecretCipherFromEnv(
   );
 }
 
+/**
+ * Exactly a 32-byte key in standard base64 (44 characters, one pad). `Buffer.from(x, "base64")` skips characters it does not know, so
+ * a typo'd entry could still decode to 32 bytes and protect nothing; this refuses it. bootstrap/env.ts keeps the same rule.
+ */
+export const STRICT_KEY_BASE64 = /^[A-Za-z0-9+/]{43}=$/;
+
 /** The retired KEKs, fail-closed: a malformed entry throws at boot rather than silently dropping a key's protection. */
 export function retiredFingerprintKeks(
   env: Readonly<Record<string, string | undefined>>,
@@ -203,7 +212,7 @@ export function retiredFingerprintKeks(
   if (!raw) return [];
   return raw.split(",").map((entry) => {
     const key = Buffer.from(entry.trim(), "base64");
-    if (key.length !== KEY_LEN)
+    if (!STRICT_KEY_BASE64.test(entry.trim()) || key.length !== KEY_LEN)
       throw new Error(
         `${FINGERPRINT_RETIRED_KEKS_ENV} must be comma-separated base64 keys of ${KEY_LEN} bytes`,
       );

@@ -64,7 +64,12 @@ import {
 } from "../src/modules/23-billing-medicare/jobs/mac-jurisdictions";
 import { buildExternalNoticeOnboardingPort } from "../src/modules/23-billing-medicare/services/external-notice-onboarding-port";
 import { priorElectionClosureForOrg } from "../src/modules/23-billing-medicare/services/prior-election-closure";
-import { createDrizzleConfigStore } from "../src/modules/23-billing-medicare/tenant-clearinghouse/config-store";
+import {
+  M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID,
+  checkHeldCredentials,
+  createDrizzleConfigStore,
+  unknownFingerprintKeyIds,
+} from "../src/modules/23-billing-medicare/tenant-clearinghouse/config-store";
 import { buildTenantClearinghouseOnboardingPort } from "../src/modules/23-billing-medicare/tenant-clearinghouse/onboarding-port";
 import { registerM23TenantClearinghouseSeams } from "../src/modules/23-billing-medicare/tenant-clearinghouse/register";
 import { createTenantClearinghouseRuntime } from "../src/modules/23-billing-medicare/tenant-clearinghouse/resolver";
@@ -614,7 +619,11 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       "SELECT context FROM audit_event WHERE organization_id=$1 AND event_type='m34.tenant_onboarding.clearinghouse_credentials_released'",
       [ORG_H],
     );
-    expect(audited[0]?.context).toMatchObject({ released: 1 });
+    // the reason is NOT hidden from the tenant: its own trail records it as given (so the console asks for a ticket reference only)
+    expect(audited[0]?.context).toMatchObject({
+      released: 1,
+      reason: "account moved to another organization, ticket OPS-77",
+    });
     expect(JSON.stringify(audited)).not.toContain(String(held[0]?.credential_fingerprint));
     // the reservation's own write-audit (tenant-visible) scrubs the release reason too (migration 1405)
     const trail = await q<{ before: unknown; after: unknown }>(
@@ -668,6 +677,61 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         [loserOrg],
       ),
     ).toHaveLength(1);
+  });
+
+  // Security review MEDIUM-1/2: the boot check runs on the real platform carrier (migration 1405's column grant) through the audited
+  // withPlatformContext: it counts a platform key a tenant holds, and names the key ids held reservations were computed under, so a
+  // KEK change made without listing the old KEK as retired is caught.
+  it("the boot check reads only what the carrier is granted, audited at severity critical, and flags an unconfigured key id", async () => {
+    registerPlatformJob(M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID);
+    const { held, keyIds } = await checkHeldCredentials(
+      { platformDb: platformPool.db, auditBypass: m34PlatformBypassAuditor },
+      [cipher.fingerprint("claimmd", KEY_A)],
+    );
+    expect(held).toBe(1); // org A's current key
+    expect(keyIds).toContain(cipher.fingerprintKeyId);
+    expect(unknownFingerprintKeyIds(keyIds, cipher.fingerprintKeyIds)).toEqual([]);
+    // after a KEK change that forgot the retired setting, the old key id is neither current nor retired
+    const forgot = buildClearinghouseSecretCipher(Buffer.alloc(32, 12));
+    expect(unknownFingerprintKeyIds(keyIds, forgot.fingerprintKeyIds)).toEqual([
+      cipher.fingerprintKeyId,
+    ]);
+    const audited = await q<{ severity: string }>(
+      "SELECT severity FROM audit_event WHERE event_type='platform.bypass_invoked' AND context->>'jobId'=$1",
+      [M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID],
+    );
+    expect(audited.map((r) => r.severity)).toContain("critical");
+  });
+
+  // Security review LOW-3: with a retired key configured, a save inserts one reservation per key; when a LATER key conflicts, the
+  // refusal rolls the earlier key's row back with it, so no stray reservation blocks the true holder's re-entry.
+  it("a two-key save refused on its retired key leaves no reservation behind", async () => {
+    const twoKey = createTenantClearinghouseService({
+      cipher: buildClearinghouseSecretCipher(Buffer.alloc(32, 12), [Buffer.alloc(32, 11)]),
+      probes: {},
+    });
+    const actor = { organizationId: ORG_D, userId: TENANT_ADMIN, membershipId: MEMBERSHIP };
+    const err = await withOrgContext(
+      tenantPool.db,
+      { organizationId: ORG_D, userId: TENANT_ADMIN },
+      (tx) =>
+        twoKey.put(
+          createDrizzleConfigStore(tx as never),
+          actor,
+          { vendor: "claimmd", mode: "test", secret: KEY_A }, // org A holds it under the (now retired) key
+          undefined,
+        ),
+    ).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: "CLEARINGHOUSE_ACCOUNT_IN_USE", statusCode: 409 });
+    expect(
+      await q(
+        "SELECT 1 FROM tenant_clearinghouse_credential_reservation WHERE organization_id=$1",
+        [ORG_D],
+      ),
+    ).toEqual([]);
+    expect(
+      await q("SELECT 1 FROM tenant_clearinghouse_config WHERE organization_id=$1", [ORG_D]),
+    ).toEqual([]);
   });
 
   it("verifies with the connection test on the unsealed key; activation needs the vendor BAA recorded by the tenant and verified by an operator; the gate follows", async () => {

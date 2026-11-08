@@ -10,8 +10,9 @@
 -- current AND each retired key, so a reservation recorded under the retired key still collides on 1404's unique index; dropping
 -- the retired KEK ends the protection of reservations only it computed (ops runbook §8.3).
 --
--- Also (same review): the reservation write-audit scrubs the release reason too (an operator's reason may name the organization
--- an account moved to, and the trail is tenant-visible; the platform-ops audit row keeps it), and the platform carrier reads only
+-- Also (same review): the reservation write-audit scrubs the release reason too, so the reservation rows' audit carries none. The
+-- reason is NOT hidden from the tenant: the platform-ops onboarding audit row on the tenant's own trail records it as given, so the
+-- route and console ask for a ticket reference, never another organization's name. And the platform carrier reads only
 -- the columns its boot check needs. Declared `contract` by the repo's rule (CHECKs and a REVOKE), though the previous release still
 -- works over it: the new columns are nullable, and its boot check reads only id, fingerprint and released_at.
 ALTER TABLE "tenant_clearinghouse_credential_reservation" ADD COLUMN IF NOT EXISTS "credential_fingerprint_key_id" text;--> statement-breakpoint
