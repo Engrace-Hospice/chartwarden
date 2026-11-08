@@ -17,7 +17,25 @@
 //
 // At-least-once, not exactly-once: a process that dies AFTER its publish committed but BEFORE the confirm leaves the claim to expire and
 // the event is published again (a second alert, or a second recovery notice). That is the price of never dropping one.
-import type { EpisodeTracker } from "./cron-common";
+
+/**
+ * Remembers which faults are already reported, so one is alerted ONCE per episode (and its clearing once) instead of on every tick, and
+ * so neither the alert nor the recovery is dropped by a crash. Each announcement is a CLAIM that is confirmed after the event commits:
+ *   `raise`         true = the caller owns announcing the alert: publish it, then `confirmRaised` (or `abortRaise` if the publish failed).
+ *                   false = the episode is open (this report only keeps it so) or another process is announcing it right now.
+ *   `clear`         true = the episode is open, has been clean for enough consecutive ticks, and the caller owns announcing the recovery:
+ *                   publish it, then `confirmCleared` (or `abortClear`). false otherwise (not open, not clean long enough, or claimed).
+ * Every method rejects when the memory cannot be reached: the caller must not read that as "no episode". Production uses the
+ * Valkey-backed tracker (`episode-store.ts`), shared by every process; the in-memory one is for one process (tests, a boot without Valkey).
+ */
+export interface EpisodeTracker {
+  raise(key: string): Promise<boolean>;
+  confirmRaised(key: string): Promise<void>;
+  abortRaise(key: string): Promise<void>;
+  clear(key: string): Promise<boolean>;
+  confirmCleared(key: string): Promise<void>;
+  abortClear(key: string): Promise<void>;
+}
 
 /** The subset of an ioredis client the tracker needs (so a test can stand in for it). */
 export interface EpisodeStoreClient {
