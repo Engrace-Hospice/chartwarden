@@ -3,7 +3,7 @@
 // upload goes through the reason prompt (a fresh step-up, a reason, an Idempotency-Key) to the platform route, which files it with the
 // tenant's documents under its one BAA kind. The panel then records the BAA with the document id that came back.
 // A chosen file cannot survive a Re-verify (the page is left): the typed form is stashed, the file is chosen again.
-import { Button, InlineAlert, TextField, useApiClient } from "@chartwarden/ui";
+import { Button, InlineAlert, TextField, useApiClient, useRequestGuard } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { RecordSaveDialog } from "./record-save-dialog";
@@ -37,6 +37,8 @@ interface Picked {
   readonly mimeType: AgreementMime;
   readonly size: number;
   readonly contentBase64: string;
+  /** SHA-256 of the content (hex): the upload's idempotency fingerprint, so two different files never share a key. */
+  readonly digest: string;
 }
 
 /** The type the server will see: the browser's, else the extension's. Null when it is not one the pipeline accepts. */
@@ -65,6 +67,12 @@ function readBase64(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error ?? new Error("unreadable file"));
     reader.readAsDataURL(file);
   });
+}
+
+/** SHA-256 (hex) of the file's content, as the base64 text the request carries (one-to-one with the bytes). */
+async function contentDigest(contentBase64: string): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(contentBase64));
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 const sizeLabel = (bytes: number): string =>
@@ -96,8 +104,11 @@ export function BaaDocumentField({
   const [fileError, setFileError] = useState<string | null>(null);
   const [inputKey, setInputKey] = useState(0);
   const [asking, setAsking] = useState(false);
+  // A read is slow (up to 10 MB): only the newest pick may land, so a stale read can never replace a file chosen after it.
+  const guard = useRequestGuard();
 
   async function choose(file: File | null): Promise<void> {
+    const isCurrent = guard();
     setPicked(null);
     setFileError(null);
     if (!file) return;
@@ -108,21 +119,19 @@ export function BaaDocumentField({
       return;
     }
     try {
-      setPicked({
-        name: file.name,
-        mimeType,
-        size: file.size,
-        contentBase64: await readBase64(file),
-      });
+      const contentBase64 = await readBase64(file);
+      const digest = await contentDigest(contentBase64);
+      if (!isCurrent()) return;
+      setPicked({ name: file.name, mimeType, size: file.size, contentBase64, digest });
     } catch {
-      setFileError("The file could not be read. Choose it again.");
+      if (isCurrent()) setFileError("The file could not be read. Choose it again.");
     }
   }
 
   async function upload(reason: string): Promise<void> {
     if (!picked) return;
     const body = { contentBase64: picked.contentBase64, mimeType: picked.mimeType, reason };
-    const outcome = await write.run(`${picked.name}:${picked.size}:${reason}`, (key) =>
+    const outcome = await write.run(`${picked.digest}:${picked.mimeType}:${reason}`, (key) =>
       client.POST("/api/v1/platform/tenants/{orgSlug}/baa-document", {
         params: { path: { orgSlug }, header: { "Idempotency-Key": key } },
         body,
