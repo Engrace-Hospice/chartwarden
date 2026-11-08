@@ -174,6 +174,11 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   BEFORE the vendor call (and clears it when the order goes back to the queue), so a worker that dies, or whose settle fails, after the call began
   leaves a stale claim the recovery drain HOLDS (same marker, same event) instead of re-queueing; a stale claim without the stamp never reached
   the vendor and is released and re-sent as before. The hold is therefore committed either by the settle or, at the latest, by the next drain.
+  That stamp is also the FENCE (H3 of the following review): one conditional update moves the order's `updated_at` from the claim's value to the
+  call's, only while the order is still that worker's claim, so a worker whose claim was drained and taken over while it was busy with an
+  earlier order of its batch makes no call (it used to stamp and send with the same key: a double send), and the stale-claim clock runs from the
+  call, not the claim. A hold the drain set while the original call was still running is cleared by that call's late success, and a late
+  unconfirmed outcome does not announce a held order a second time.
 - A tenant with an outage longer than ~31 minutes of real failed attempts sees orders land in `transmission_failed`; the existing
   `retransmit` route mints the corrected order. Breaker-open ticks do not count.
 - Live proof: `test:m12:crons-transmit:live` and `test:m12:crons-housekeeping:live` (CI job "M12 DoseSpot crons"), run against a

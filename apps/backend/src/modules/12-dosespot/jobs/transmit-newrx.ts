@@ -86,6 +86,8 @@ function dueForAttempt(t: TransmissionRow | undefined, now: Date): boolean {
 interface Claimed {
   readonly order: OrderRow;
   readonly transmission: TransmissionRow;
+  /** The `updated_at` this claim wrote: the fence compares against it, so a claim that was drained and taken over no longer matches. */
+  readonly claimedAt: Date;
 }
 
 async function claim(
@@ -123,7 +125,7 @@ async function claim(
         .where(and(eq(MO.id, order.id), eq(MO.dosespotSendState, "queued")))
         .returning({ id: MO.id });
       if (moved.length !== 1) continue;
-      claimed.push({ order, transmission });
+      claimed.push({ order, transmission, claimedAt: now });
     }
     return claimed;
   });
@@ -189,29 +191,48 @@ async function buildPayload(
 }
 
 /**
- * Commit "the vendor call is about to be made" on the transmission row BEFORE making it. A worker that dies after this and before its
- * settle leaves a stale claim the drain cannot safely re-send (the vendor may have accepted it), so it holds it instead. A failure here
- * throws and the order is not called: it stays a claim without the stamp, which the drain releases.
+ * The FENCE before a vendor call. In one committed transaction it (1) moves the order's `updated_at` from the claim's value to the call's, but
+ * only while the order is still THIS worker's claim (`in_flight` with the `updated_at` this claim wrote), and (2) stamps the transmission row's
+ * `transmission_started_at`. Zero rows at (1) means the claim was drained and taken over (or the order changed) while this worker was busy with
+ * an earlier order of its batch: it returns false and the caller makes NO call, so the order cannot be sent twice with one key. Moving
+ * `updated_at` also restarts the stale-claim clock at the call (it used to run from the claim, which a slow batch could outlast).
+ * A worker that dies after this and before its settle leaves a stale claim carrying the stamp, which the drain HOLDS instead of re-sending.
+ * A failure here throws and the order is not called: it stays a claim without the stamp, which the drain releases.
  */
 async function markCallStarted(
   deps: M12CronDeps,
   organizationId: string,
   c: Claimed,
-): Promise<void> {
+): Promise<boolean> {
   const now = nowOf(deps);
-  await inOrg(deps.db, organizationId, async (tx) => {
+  return inOrg(deps.db, organizationId, async (tx) => {
+    const fenced = await tx
+      .update(MO)
+      .set({ updatedAt: now })
+      .where(
+        and(
+          eq(MO.id, c.order.id),
+          eq(MO.status, "queued_for_transmission"),
+          eq(MO.dosespotSendState, "in_flight"),
+          eq(MO.updatedAt, c.claimedAt),
+        ),
+      )
+      .returning({ id: MO.id });
+    if (fenced.length !== 1) return false;
     const stamped = await tx
       .update(MOT)
       .set({ transmissionStartedAt: now })
       .where(eq(MOT.id, c.transmission.id))
       .returning({ id: MOT.id });
     if (stamped.length !== 1) throw new Error("transmission row vanished before the vendor call");
+    return true;
   });
 }
 
 type Outcome =
   | { kind: "success"; prescriptionId: string; transmittedAt: Date }
   | { kind: "outage" }
+  | { kind: "superseded" }
   | { kind: "unconfirmed"; detail: string }
   | {
       kind: "failure";
@@ -242,7 +263,8 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
     };
   }
   try {
-    await markCallStarted(deps, organizationId, c);
+    // the fence: false = this worker no longer owns the claim (it was drained and taken over): make no call and touch nothing
+    if (!(await markCallStarted(deps, organizationId, c))) return { kind: "superseded" };
   } catch {
     // the stamp could not be committed, so the vendor was NOT called: the order waits (no retry spent) and the drain releases the claim
     return { kind: "outage" };
@@ -286,7 +308,9 @@ async function settle(
   organizationId: string,
   c: Claimed,
   outcome: Outcome,
-): Promise<"transmitted" | "requeued" | "failed" | "deferred" | "held"> {
+): Promise<"transmitted" | "requeued" | "failed" | "deferred" | "held" | "skipped"> {
+  // a superseded claim belongs to another worker now: nothing of this worker's is written
+  if (outcome.kind === "superseded") return "skipped";
   const now = nowOf(deps);
   return inOrg(deps.db, organizationId, async (tx) => {
     const orderId = c.order.id;
@@ -320,9 +344,15 @@ async function settle(
       const held = await tx
         .update(MOT)
         .set({ lastErrorClass: UNCONFIRMED_OUTCOME_CLASS, lastErrorDetail: detail })
-        .where(eq(MOT.id, c.transmission.id))
+        .where(
+          and(
+            eq(MOT.id, c.transmission.id),
+            sql`${MOT.lastErrorClass} IS DISTINCT FROM ${UNCONFIRMED_OUTCOME_CLASS}`,
+          ),
+        )
         .returning({ id: MOT.id });
-      if (held.length !== 1) throw new Error("transmission row not updated at unconfirmed hold");
+      // already held (the drain held this claim while the call was still running): announced once, not again
+      if (held.length === 0) return "held";
       await emit("m12.medication_order.transmission_unconfirmed", {
         orderId,
         lastErrorClass: UNCONFIRMED_OUTCOME_CLASS,
@@ -370,6 +400,9 @@ async function settle(
           transmissionSucceededAt: outcome.transmittedAt,
           dosespotPrescriptionId: outcome.prescriptionId,
           dosespotResponseDigest: plan.transmissionUpdate.dosespotResponseDigest,
+          // a hold the drain set while this call was still running is stale now that the call answered: clear it (any other class stays as history)
+          lastErrorClass: sql`CASE WHEN ${MOT.lastErrorClass} = ${UNCONFIRMED_OUTCOME_CLASS} THEN NULL ELSE ${MOT.lastErrorClass} END`,
+          lastErrorDetail: sql`CASE WHEN ${MOT.lastErrorClass} = ${UNCONFIRMED_OUTCOME_CLASS} THEN NULL ELSE ${MOT.lastErrorDetail} END`,
         })
         .where(eq(MOT.id, c.transmission.id))
         .returning({ id: MOT.id });

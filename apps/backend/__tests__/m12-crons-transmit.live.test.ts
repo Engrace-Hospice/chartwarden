@@ -898,6 +898,15 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       );
     const sendsOf = (vendor: FakeDoseSpotVendor) =>
       vendor.calls.filter((c) => c.method === "transmitNewRx").length;
+    const never = new FakeDoseSpotVendor({
+      transmit: async () => {
+        throw new Error("this worker must not call the vendor");
+      },
+    });
+    const eventsFor = async (type: string, orderId: string) =>
+      (await h.eventsOf(type, ORG_A)).filter(
+        (e) => (e.payload as { orderId?: string }).orderId === orderId,
+      );
     const heldOrder = async () => {
       await h.admin.query(
         "DELETE FROM outbox_event WHERE event_type='m12.medication_order.transmission_unconfirmed'",
@@ -1031,6 +1040,157 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       expect((await runTransmitNewRxForOrg(deps(vendor), ORG_A)).requeued).toBe(1);
       expect((await orderRow(orderId)).s).toBe("queued");
       expect((await txRow(transmissionId as string)).transmission_started_at).toBeNull();
+    });
+
+    // H3: the stale window measures from the CLAIM and a stamp was not a fence. A slow sequential batch could be drained and re-claimed by another
+    // worker while the first worker, still in the batch, then stamped and sent the SAME order with the SAME key: a double send. The stamp is now the
+    // fence (a conditional update of the order's claim that also restarts the stale clock at the call): a worker that no longer owns the claim makes no call.
+    it("FENCE, interleaving forced: a batch worker whose claim was drained and taken over while it was busy with an earlier order makes NO call for it", async () => {
+      const first = await queued();
+      const second = await queued();
+      const sendsB: string[] = [];
+      const vendorB = new FakeDoseSpotVendor({
+        transmit: async (_org, payload) => {
+          sendsB.push(payload.medicationOrderId);
+          return { dosespotPrescriptionId: "rx-by-b", transmittedAt: new Date().toISOString() };
+        },
+      });
+      const sendsA: string[] = [];
+      const vendorA = new FakeDoseSpotVendor({
+        transmit: async (_org, payload) => {
+          sendsA.push(payload.medicationOrderId);
+          if (payload.medicationOrderId === first.orderId) {
+            // while A is on its first order, its claim on the second goes stale and ANOTHER worker's drain takes it over and sends it
+            await h.admin.query(
+              "UPDATE medication_order SET updated_at = now() - interval '3 hours' WHERE id=$1",
+              [second.orderId],
+            );
+            await runRecoveryDrainForOrg(deps(vendorB, minutes(30)), ORG_A);
+          }
+          return { dosespotPrescriptionId: "rx-by-a", transmittedAt: new Date().toISOString() };
+        },
+      });
+      await runTransmitNewRxForOrg(deps(vendorA), ORG_A);
+      expect(sendsB).toEqual([second.orderId]); // the takeover sent it
+      expect(sendsA).toEqual([first.orderId]); // the original worker never called for it
+      expect((await orderRow(second.orderId)).rx).toBe("rx-by-b");
+      expect((await orderRow(first.orderId)).rx).toBe("rx-by-a");
+    });
+
+    it("FENCE, takeover still IN FLIGHT: the new owner's claim is a different claim, so the original worker is fenced out by the claim itself, not only by the state", async () => {
+      const first = await queued();
+      const second = await queued();
+      let bEntered!: () => void;
+      const bIsCalling = new Promise<void>((resolve) => {
+        bEntered = resolve;
+      });
+      let releaseB!: () => void;
+      const bMayFinish = new Promise<void>((resolve) => {
+        releaseB = resolve;
+      });
+      const sendsB: string[] = [];
+      const vendorB = new FakeDoseSpotVendor({
+        transmit: async (_org, payload) => {
+          sendsB.push(payload.medicationOrderId);
+          bEntered();
+          await bMayFinish; // B's call is still running while A reaches the order
+          return { dosespotPrescriptionId: "rx-by-b", transmittedAt: new Date().toISOString() };
+        },
+      });
+      let takeover: Promise<unknown> | undefined;
+      const sendsA: string[] = [];
+      const vendorA = new FakeDoseSpotVendor({
+        transmit: async (_org, payload) => {
+          sendsA.push(payload.medicationOrderId);
+          if (payload.medicationOrderId === first.orderId) {
+            await h.admin.query(
+              "UPDATE medication_order SET updated_at = now() - interval '3 hours' WHERE id=$1",
+              [second.orderId],
+            );
+            takeover = runRecoveryDrainForOrg(deps(vendorB, minutes(30)), ORG_A); // NOT awaited: B is mid-call
+            await bIsCalling;
+          }
+          return { dosespotPrescriptionId: "rx-by-a", transmittedAt: new Date().toISOString() };
+        },
+      });
+      await runTransmitNewRxForOrg(deps(vendorA), ORG_A);
+      expect(sendsA).toEqual([first.orderId]); // the order is in flight again (B's claim) but A is fenced out
+      expect(sendsB).toEqual([second.orderId]);
+      releaseB();
+      await takeover;
+      expect((await orderRow(second.orderId)).rx).toBe("rx-by-b");
+    });
+
+    it("the stamp restarts the stale clock AT THE CALL: an order that waited in a slow batch is not drained as stale while its own call is running", async () => {
+      const first = await queued();
+      const second = await queued();
+      const clock = { minute: 0 };
+      const at = (minute: number) => new Date(T0.getTime() + minute * 60_000);
+      let secondWasFreshDuringItsCall = false;
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async (_org, payload) => {
+          if (payload.medicationOrderId === first.orderId) {
+            clock.minute = 15; // the first call is slow: the second order has now waited 15 minutes since its CLAIM
+            return { dosespotPrescriptionId: "rx-1", transmittedAt: at(15).toISOString() };
+          }
+          // the second order's call begins at minute 15; a drain at minute 16 must find its claim 1 minute old, not 16
+          const drain = await runRecoveryDrainForOrg({ ...deps(never), now: () => at(16) }, ORG_A);
+          secondWasFreshDuringItsCall =
+            drain.released === 0 &&
+            (await orderRow(second.orderId)).s === "in_flight" &&
+            (await txRow(second.transmissionId as string)).last_error_class === null;
+          return { dosespotPrescriptionId: "rx-2", transmittedAt: at(16).toISOString() };
+        },
+      });
+      await runTransmitNewRxForOrg({ ...deps(vendor), now: () => at(clock.minute) }, ORG_A);
+      expect(secondWasFreshDuringItsCall).toBe(true);
+      expect((await orderRow(second.orderId)).rx).toBe("rx-2");
+    });
+
+    it("a hold set by the drain while the original call was still running is cleared by that call's late success (no stale marker, read says transmitted)", async () => {
+      const backend = createDbDoseSpotBackend(h.handle.db, h.outbox);
+      const { orderId, transmissionId } = await queued();
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async () => {
+          // the call is slower than the stale window: the drain (another worker) holds the stamped claim meanwhile
+          await h.admin.query(
+            "UPDATE medication_order SET updated_at = now() - interval '3 hours' WHERE id=$1",
+            [orderId],
+          );
+          await runRecoveryDrainForOrg(deps(never, minutes(30)), ORG_A);
+          expect((await txRow(transmissionId as string)).last_error_class).toBe(
+            "unconfirmed_outcome",
+          );
+          return { dosespotPrescriptionId: "rx-slow", transmittedAt: new Date().toISOString() };
+        },
+      });
+      expect((await runTransmitNewRxForOrg(deps(vendor), ORG_A)).transmitted).toBe(1);
+      expect(await orderRow(orderId)).toMatchObject({ status: "transmitted", rx: "rx-slow" });
+      const t = await txRow(transmissionId as string);
+      expect(t.last_error_class).toBeNull(); // the stale marker is gone
+      expect((await backend.getTransmission(ORG_A, orderId)).status).toBe("transmitted");
+    });
+
+    it("a late UNCONFIRMED outcome after the drain already held the order does not announce it a second time", async () => {
+      await h.admin.query(
+        "DELETE FROM outbox_event WHERE event_type='m12.medication_order.transmission_unconfirmed'",
+      );
+      const { orderId } = await queued();
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async () => {
+          await h.admin.query(
+            "UPDATE medication_order SET updated_at = now() - interval '3 hours' WHERE id=$1",
+            [orderId],
+          );
+          await runRecoveryDrainForOrg(deps(never, minutes(30)), ORG_A);
+          throw new UnconfirmedOutcomeError("dosespot", "transmitNewRx", "unreadable", "c-late");
+        },
+      });
+      await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+      expect(
+        await eventsFor("m12.medication_order.transmission_unconfirmed", orderId),
+      ).toHaveLength(1);
+      expect((await orderRow(orderId)).s).toBe("in_flight");
     });
 
     it("an ambiguous outcome among clean ones holds only its own order", async () => {
