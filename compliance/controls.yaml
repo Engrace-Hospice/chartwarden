@@ -371,11 +371,11 @@ controls:
       # table's write-audit row carries the confirmed NPI) and "the CHECK refuses, even with the trigger off, a confirmer who is not the
       # row's own member"
       - file: apps/backend/src/modules/12-dosespot/tenant-config/practitioner-link.ts
-      - file: packages/db/migrations/1384_m12_prescriber_link_confirmation.sql
+      - file: packages/db/migrations/1399_m12_prescriber_link_confirmation.sql
       # linker != confirmer: the live describe "linker != confirmer" (a self-made link is refused at the confirmation and at the enrolment, another
       # member's or an operator's link is confirmable, a self re-link is refused, another administrator re-saving a self-made link becomes its
       # maker, and the store's own confirmLink / recordVendorId guards refuse with no service pre-check in front) and the roster route's guards
-      - file: packages/db/migrations/1387_m12_prescriber_link_linker.sql
+      - file: packages/db/migrations/1402_m12_prescriber_link_linker.sql
       - file: apps/backend/src/modules/12-dosespot/routes/dosespot-routes.ts
       # the roster link and revoke routes refuse a stale step-up, an AI actor and a missing Idempotency-Key, and pass the session's
       # MEMBERSHIP id (not the user id) as the link's maker
@@ -383,7 +383,7 @@ controls:
       - script: arch:tenancy
       - script: arch:migration-compat
       - ci: "M12 tenant DoseSpot"
-      - file: packages/db/migrations/1380_m12_dosespot_clinic_registration.sql
+      - file: packages/db/migrations/1395_m12_dosespot_clinic_registration.sql
       - file: apps/backend/src/modules/12-dosespot/tenant-config/secret-cipher.ts
       - file: apps/backend/src/modules/12-dosespot/tenant-config/service.ts
       - file: apps/backend/src/modules/12-dosespot/tenant-config/source.ts
@@ -473,7 +473,7 @@ controls:
       # a failed probe re-opens a stored open snapshot even after its failure window emptied
       - file: packages/dosespot/src/client/circuit-breaker.ts
       - file: packages/dosespot/__tests__/dosespot-adapter.test.ts
-      - file: packages/db/migrations/1386_m12_transmission_call_token.sql
+      - file: packages/db/migrations/1401_m12_transmission_call_token.sql
       - file: apps/backend/src/modules/12-dosespot/jobs/episode-store.ts
       - file: apps/backend/src/modules/12-dosespot/prescription-id.ts
       - file: packages/dosespot/src/lifecycle/medication-order-machine.ts
