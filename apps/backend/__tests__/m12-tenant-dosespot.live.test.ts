@@ -1955,6 +1955,61 @@ describe.skipIf(!DB_URL)(
           expect(clinicianCalls()).toBe(calls);
         });
 
+        // The two statement-level guards, straight at the store (no service pre-check in front of them).
+        it("the store's confirmLink writes nothing on a row the confirming member linked themself", async () => {
+          const m = await newMember();
+          await link(m, m.membershipId);
+          expect(
+            await withOrgContext(tdb, { organizationId: ORG_A, userId: m.userId }, (tx) =>
+              createDrizzleRosterStore(tx as unknown as DbClient).confirmLink(
+                ORG_A,
+                m.membershipId,
+                {
+                  mdmId: m.physician.id,
+                  npi: m.physician.npi as string,
+                  at: new Date(),
+                },
+              ),
+            ),
+          ).toBeNull();
+          expect((await confirmationOf(m.membershipId))?.mdm).toBeNull();
+        });
+
+        it("the store's recordVendorId refuses a row whose linker is its confirmer, and records no vendor id", async () => {
+          const m = await newMember();
+          await link(m, m.membershipId);
+          // a confirmation written around the service, as the member (the trigger allows it): linker = confirmer
+          await asDeclaredUser(
+            m.userId,
+            `UPDATE dosespot_prescriber SET link_confirmed_mdm_id=$2, link_confirmed_npi=$3, link_confirmed_at=now(),
+               link_confirmed_by_membership_id=membership_id WHERE membership_id=$1`,
+            [m.membershipId, m.physician.id, m.physician.npi],
+          );
+          const code = await errorCode(
+            withOrgContext(tdb, { organizationId: ORG_A, userId: TENANT_ADMIN }, (tx) =>
+              createDrizzleRosterStore(tx as unknown as DbClient).recordVendorId(
+                ORG_A,
+                m.membershipId,
+                {
+                  dosespotPrescriberId: "880001",
+                  npi: m.physician.npi as string,
+                  at: new Date(),
+                  expectedPhysicianMdmId: m.physician.id,
+                },
+              ),
+            ),
+          );
+          expect(code).toBe("DOSESPOT_ROSTER_CHANGED");
+          expect(
+            (
+              await q(
+                "SELECT dosespot_prescriber_id FROM dosespot_prescriber WHERE membership_id=$1",
+                [m.membershipId],
+              )
+            )[0]?.dosespot_prescriber_id,
+          ).toBeNull();
+        });
+
         it("a link made by ANOTHER member (the tenant administrator) is confirmed by the prescriber and enrolled", async () => {
           const m = await newMember();
           await link(m, MEMBERSHIP);
