@@ -1498,26 +1498,28 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       }
     });
 
+    /** An organization administrator resolves the held order NOT SENT (the service, as the route calls it). */
+    const resolveNotSent = async (orderId: string) => {
+      const membershipId = (
+        await h.q("SELECT id FROM membership WHERE organization_id=$1 LIMIT 1", [ORG_A])
+      )[0]?.id as string;
+      await createTransmissionResolveService({
+        db: h.handle.db,
+        outbox: h.outbox,
+        audit: buildClinicAuditPort(),
+      }).resolve({ organizationId: ORG_A, userId: USER, membershipId }, orderId, {
+        outcome: "not_sent",
+        reason: "Checked the prescriber's DoseSpot account: nothing there.",
+      });
+    };
+    const outboxCount = async () =>
+      (await h.q("SELECT count(*)::int AS n FROM outbox_event"))[0]?.n as number;
+
     // LOW (review of 436fd3c1c..): a worker that lost its claim after the call began (an administrator resolved the held order while the slow call
     // was still running) wrote nothing, and said so only for a success. Every result it discards is now said, with ids only, and counted.
     describe("a call that answers after an administrator resolved the held order", () => {
       type Warning = { fields: Record<string, unknown>; message: string };
       const LATE_ID = "rx-late-9a8b7c";
-      const resolveNotSent = async (orderId: string) => {
-        const membershipId = (
-          await h.q("SELECT id FROM membership WHERE organization_id=$1 LIMIT 1", [ORG_A])
-        )[0]?.id as string;
-        await createTransmissionResolveService({
-          db: h.handle.db,
-          outbox: h.outbox,
-          audit: buildClinicAuditPort(),
-        }).resolve({ organizationId: ORG_A, userId: USER, membershipId }, orderId, {
-          outcome: "not_sent",
-          reason: "Checked the prescriber's DoseSpot account: nothing there.",
-        });
-      };
-      const outboxCount = async () =>
-        (await h.q("SELECT count(*)::int AS n FROM outbox_event"))[0]?.n as number;
       /** A slow call: the drain holds it, the administrator resolves it NOT SENT, and only then does the call answer. */
       const scenario = async (
         answer: () => Promise<never | { dosespotPrescriptionId: string; transmittedAt: string }>,
@@ -1613,52 +1615,80 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       });
     });
 
-    // LOW (lock order): the worker's settle now takes the ORDER row before the transmission row, the order the administrator's resolution takes, so a
-    // late failure racing a resolution cannot deadlock (40P01): one of them wins, the other is refused or skipped, and the state is coherent.
-    it("a late failure racing an administrator's resolution of the same hold never deadlocks and leaves a coherent order", async () => {
-      for (let attempt = 0; attempt < 3; attempt += 1) {
+    // LOW (lock order): the worker's settle takes the ORDER row before the transmission row, the order the administrator's resolution takes, so a late
+    // answer racing a resolution cannot deadlock (40P01). The interleaving is FORCED, not left to timing: an administrator's connection holds the order
+    // row's lock, the first of the two is started and seen blocked (pg_stat_activity), the second is started and seen blocked, and only then is the lock
+    // released. With the old order (the settle writing the transmission row, then the order) the resolution wins the order row while the settle holds the
+    // transmission row, and Postgres kills one of them with a deadlock.
+    for (const first of ["resolution", "late failure"] as const) {
+      it(`LOCK ORDER, forced: a late failure and an administrator's resolution both waiting on the order row, the ${first} first, never deadlock and leave a coherent order`, async () => {
         const { orderId } = await queued();
-        const resolution: { current?: Promise<unknown> } = {};
+        // pg_locks, not pg_stat_activity: the latter is a per-transaction snapshot, and the admin connection polling here is inside one
+        const blocked = async () =>
+          Number(
+            (
+              await h.q(
+                "SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted AND pid <> pg_backend_pid()",
+              )
+            )[0]?.n,
+          );
+        const untilBlocked = async (n: number) => {
+          for (let i = 0; i < 200; i += 1) {
+            if ((await blocked()) >= n) return;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          const who = await h.q(
+            "SELECT pid, locktype, granted FROM pg_locks WHERE locktype IN ('transactionid', 'tuple')",
+          );
+          throw new Error(`fewer than ${n} backends ever waited on a lock: ${JSON.stringify(who)}`);
+        };
+        const resolution: { current?: Promise<PromiseSettledResult<unknown>[]> } = {};
+        const startResolution = () => {
+          resolution.current = Promise.allSettled([resolveNotSent(orderId)]);
+        };
         const vendor = new FakeDoseSpotVendor({
           transmit: async () => {
             await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A); // the drain holds the slow claim
-            resolution.current = Promise.allSettled([
-              createTransmissionResolveService({
-                db: h.handle.db,
-                outbox: h.outbox,
-                audit: buildClinicAuditPort(),
-              }).resolve(
-                {
-                  organizationId: ORG_A,
-                  userId: USER,
-                  membershipId: (
-                    await h.q("SELECT id FROM membership WHERE organization_id=$1 LIMIT 1", [ORG_A])
-                  )[0]?.id as string,
-                },
-                orderId,
-                {
-                  outcome: "not_sent",
-                  reason: "Checked the prescriber's DoseSpot account: nothing there.",
-                },
-              ),
-            ]);
-            throw retryable(); // ... and the call's own late, retryable failure arrives at the same moment
+            await h.admin.query("BEGIN");
+            await h.admin.query("SELECT 1 FROM medication_order WHERE id=$1 FOR UPDATE", [orderId]);
+            if (first === "resolution") {
+              startResolution();
+              await untilBlocked(1);
+            }
+            throw retryable(); // the call's own late, retryable failure
           },
         });
-        const pass = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
-        const [settled] = (await resolution.current) as PromiseSettledResult<unknown>[];
-        const status = (await orderRow(orderId)).status as string;
-        if (settled?.status === "fulfilled") {
-          expect(status, `attempt ${attempt}`).toBe("transmission_failed"); // the resolution won; the late failure was skipped
-          expect(pass.skipped + pass.requeued).toBe(1);
-        } else {
-          expect((settled as PromiseRejectedResult).reason, `attempt ${attempt}`).toMatchObject({
-            code: "DOSESPOT_TRANSMISSION_NOT_HELD", // the failure won (it replaced the marker): never a deadlock error
-          });
-          expect(status).toBe("queued_for_transmission");
+        let released = false;
+        try {
+          const pass = runTransmitNewRxForOrg(deps(vendor), ORG_A);
+          if (first === "late failure") {
+            await untilBlocked(1);
+            startResolution();
+          }
+          await untilBlocked(2);
+          released = true;
+          await h.admin.query("COMMIT");
+          const result = await pass; // a deadlock would reject here (or fail the resolution below)
+          const [settled] = (await resolution.current) as PromiseSettledResult<unknown>[];
+          if (first === "resolution") {
+            expect(settled?.status).toBe("fulfilled");
+            expect((await orderRow(orderId)).status).toBe("transmission_failed");
+            expect(result).toMatchObject({ skipped: 1, requeued: 0 }); // the late failure found the order resolved
+          } else {
+            expect((settled as PromiseRejectedResult).reason).toMatchObject({
+              code: "DOSESPOT_TRANSMISSION_NOT_HELD", // the failure replaced the marker first: the resolution is refused, cleanly
+            });
+            expect(await orderRow(orderId)).toMatchObject({
+              status: "queued_for_transmission",
+              s: "queued",
+            });
+            expect(result).toMatchObject({ requeued: 1, skipped: 0 });
+          }
+        } finally {
+          if (!released) await h.admin.query("ROLLBACK").catch(() => undefined);
         }
-      }
-    });
+      });
+    }
 
     // LOW: the drain's hold re-applied a marker a worker had already set but not yet committed, and published the event twice.
     it("the drain's hold does not re-apply or re-announce a marker a worker is setting at the same moment", async () => {
