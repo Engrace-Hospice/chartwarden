@@ -20,6 +20,7 @@ import {
 import type { ClearinghouseView } from "./clearinghouse-model";
 import { ONBOARDING_KEYS, useCan } from "./permissions";
 import { RecordSaveDialog } from "./record-save-dialog";
+import { RoleCannot } from "./role-cannot";
 import { useEditorFocus } from "./use-editor-focus";
 import { useOpsWrite } from "./use-ops-write";
 
@@ -71,7 +72,8 @@ export function SwitchToVendor({
   const [secret, setSecret] = useState("");
   const [errors, setErrors] = useState<ChoiceErrors>({});
   const heading = useEditorFocus(open, "clearinghouse-switch");
-  if (!canSwitchToVendor(view, tenantStatus) || !mayWrite) return null;
+  if (!canSwitchToVendor(view, tenantStatus)) return null;
+  if (!mayWrite) return <RoleCannot what="switch this tenant to a clearinghouse vendor" />;
   const context = { tenantStatus, hasContract: view.hasContract };
 
   function begin(): void {

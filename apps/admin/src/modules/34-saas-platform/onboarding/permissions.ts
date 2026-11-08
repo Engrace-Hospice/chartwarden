@@ -13,8 +13,11 @@ export function usePermissions(): ReadonlySet<string> {
   return useMemo(() => new Set(permissions ?? []), [permissions]);
 }
 
-/** Whether the operator holds every one of `keys`. */
+/** Whether the operator holds every one of `keys` (naming none answers false: a gate with no key is a bug, not an open door). */
 export function useCan(...keys: readonly string[]): boolean {
   const held = usePermissions();
-  return keys.every((k) => held.has(k));
+  return keys.length > 0 && keys.every((k) => held.has(k));
 }
+
+/** The memory draft a release Re-verify keeps the typed reason under (screened free text: never in sessionStorage). */
+export const releaseDraftKey = (orgSlug: string): string => `clearinghouse-release:${orgSlug}`;

@@ -24,6 +24,7 @@ export function RecordSaveDialog({
   write,
   orgSlug,
   initialReason,
+  onReasonChange,
   onReverify,
   onConfirm,
   onCancel,
@@ -42,6 +43,8 @@ export function RecordSaveDialog({
   orgSlug: string;
   /** What the reason box starts with when the dialog opens (a reason kept across a Re-verify or a refusal). */
   initialReason?: string;
+  /** Every change to the typed reason (see ReasonDialog). */
+  onReasonChange?: (reason: string) => void;
   /** Called just before leaving for Re-verify: stash what was typed (never a secret). */
   onReverify?: () => void;
   onConfirm: (reason: string) => void;
@@ -65,6 +68,7 @@ export function RecordSaveDialog({
       {...(record ? { record } : {})}
       stale={stale}
       {...(initialReason ? { initialReason } : {})}
+      {...(onReasonChange ? { onReasonChange } : {})}
       {...(shownFailure
         ? {
             error: (

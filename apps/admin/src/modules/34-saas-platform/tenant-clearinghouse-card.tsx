@@ -8,20 +8,22 @@ import {
   LoadingSpinner,
   StatusPill,
   type StatusTone,
+  isStepUpReturn,
   peekStepUpMemoryDraft,
   useApiClient,
 } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { NoticeFilingsDrawer } from "./notice-filings-drawer";
 import { VerifyBaa } from "./onboarding/clearinghouse-baa-verify";
 import { MODE_LABEL, VENDOR_LABEL, isTransmitting } from "./onboarding/clearinghouse-model";
 import type { ClearinghouseView } from "./onboarding/clearinghouse-model";
-import { ReleaseCredentials, releaseDraftKey } from "./onboarding/clearinghouse-release";
+import { ReleaseCredentials } from "./onboarding/clearinghouse-release";
 import { SwitchToVendor } from "./onboarding/clearinghouse-switch";
 import { ContractModeBanner } from "./onboarding/contract-mode-banner";
 import { ModeUnconfirmedNotice } from "./onboarding/mode-unconfirmed-notice";
+import { releaseDraftKey } from "./onboarding/permissions";
 import { useLoad } from "./onboarding/use-load";
 import { isOnboardingOpen } from "./onboarding/wizard-model";
 import { cap } from "./saas-status";
@@ -36,7 +38,13 @@ function Body({
   orgSlug,
   tenantStatus,
   onOpenFilings,
-}: { orgSlug: string; tenantStatus: string; onOpenFilings: () => void }): JSX.Element {
+  returnedFromStepUp,
+}: {
+  orgSlug: string;
+  tenantStatus: string;
+  onOpenFilings: () => void;
+  returnedFromStepUp: boolean;
+}): JSX.Element {
   const client = useApiClient();
   const [modeUnconfirmed, setModeUnconfirmed] = useState(false);
   // What the last release freed, reported outside the actions row; any next action on the card clears it.
@@ -135,7 +143,12 @@ function Body({
             onVerified={() => load.reload(true)}
           />
         ) : null}
-        <ReleaseCredentials orgSlug={orgSlug} view={view} onReleased={setReleased} />
+        <ReleaseCredentials
+          orgSlug={orgSlug}
+          view={view}
+          onReleased={setReleased}
+          returnedFromStepUp={returnedFromStepUp}
+        />
         <Button tone="secondary" size="sm" onClick={onOpenFilings}>
           Notices filed outside ChartWarden
         </Button>
@@ -156,9 +169,11 @@ export function TenantClearinghouseCard({
   orgSlug,
   tenantStatus,
 }: { orgSlug: string; tenantStatus: string }): JSX.Element {
-  // A Re-verify from the release dialog comes back to the card open (the dialog reopens with the typed reason).
+  // A Re-verify from the release dialog comes back to the card open (the dialog reopens with the typed reason). Only on that return:
+  // a later visit with the draft still in memory opens nothing, so the audited clearinghouse read never happens without a click.
+  const returnedFromStepUp = isStepUpReturn(useLocation().state);
   const [shown, setShown] = useState(
-    () => peekStepUpMemoryDraft(releaseDraftKey(orgSlug)) !== undefined,
+    () => returnedFromStepUp && peekStepUpMemoryDraft(releaseDraftKey(orgSlug)) !== undefined,
   );
   const [filingsOpen, setFilingsOpen] = useState(false);
   return (
@@ -177,6 +192,7 @@ export function TenantClearinghouseCard({
             orgSlug={orgSlug}
             tenantStatus={tenantStatus}
             onOpenFilings={() => setFilingsOpen(true)}
+            returnedFromStepUp={returnedFromStepUp}
           />
         ) : (
           <span className="wx-row-sub">

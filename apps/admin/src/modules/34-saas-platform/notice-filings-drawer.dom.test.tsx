@@ -5,7 +5,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { NoticeFilingsDrawer } from "./notice-filings-drawer";
-import { ok, refused, renderAt, stubClient } from "./onboarding/test-support";
+import { ONBOARDING_OPERATOR, ok, refused, renderAt, stubClient } from "./onboarding/test-support";
 
 const LIST = "/api/v1/platform/tenants/{orgSlug}/notice-filings";
 const NOE_WITHDRAW = "/api/v1/platform/tenants/{orgSlug}/noe-records/{id}/withdraw-external-filing";
@@ -44,12 +44,14 @@ function mount(
   list: () => ReturnType<typeof ok>,
   extra: Parameters<typeof stubClient>[0] = {},
   onClose = vi.fn(),
+  session: Parameters<typeof renderAt>[3] = ONBOARDING_OPERATOR,
 ) {
   const client = stubClient({ GET: { [LIST]: list }, ...extra });
   renderAt(
     "/x",
     [{ path: "/x", element: <NoticeFilingsDrawer orgSlug="cedar-ridge" onClose={onClose} /> }],
     client,
+    session,
   );
   return { client, onClose };
 }
@@ -94,6 +96,19 @@ describe("NoticeFilingsDrawer: the list", () => {
     expect(
       screen.getByRole("button", { name: "Withdraw the NOE record 33333333, filed on 2026-11-04" }),
     ).toBeTruthy();
+  });
+
+  it("without the withdraw key, lists the records but offers no Withdraw, and says why once", async () => {
+    mount(() => body([notr(), noe()]), {}, vi.fn(), {
+      ...ONBOARDING_OPERATOR,
+      permissions:
+        ONBOARDING_OPERATOR.permissions?.filter(
+          (k) => k !== "tenant_notice_filing.withdraw_platform",
+        ) ?? [],
+    });
+    expect(await screen.findByText("NOTR")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Withdraw the/ })).toBeNull();
+    expect(screen.getAllByText(/Your role cannot withdraw a record/)).toHaveLength(1);
   });
 
   it("says when the tenant recorded nothing", async () => {

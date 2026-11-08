@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { ClearinghouseView } from "./clearinghouse-model";
 import { ClearinghousePanel } from "./clearinghouse-panel";
 import {
+  ONBOARDING_OPERATOR,
   ORG_SLUG,
   ok,
   panelCtx,
@@ -76,6 +77,7 @@ function mount(
   extra: Parameters<typeof stubClient>[0] = {},
   v = view(),
   contractMode: string | null = null,
+  session: Parameters<typeof renderAt>[3] = ONBOARDING_OPERATOR,
 ) {
   const client = stubClient({
     GET: {
@@ -89,8 +91,8 @@ function mount(
     },
     ...extra,
   });
-  const ctx = panelCtx(v, "clearinghouse_selected");
-  renderAt("/x", [{ path: "/x", element: <ClearinghousePanel ctx={ctx} /> }], client);
+  const ctx = panelCtx(v, "clearinghouse_selected", undefined, session);
+  renderAt("/x", [{ path: "/x", element: <ClearinghousePanel ctx={ctx} /> }], client, session);
   return { client, ctx };
 }
 beforeEach(() => window.sessionStorage.clear());
@@ -316,6 +318,24 @@ describe("ClearinghousePanel: leaving outside for a vendor (a contracted tenant'
       billingServiceMode: "managed_billing",
       reason: "The customer moves to Claim.MD, ticket CHG-9101",
     });
+  });
+
+  it("without the pricing key, leaving outside (which sets the billing mode) is refused before anything is sent", async () => {
+    const { client } = mount(OUTSIDE_TENANT, {}, view(), null, {
+      ...ONBOARDING_OPERATOR,
+      permissions:
+        ONBOARDING_OPERATOR.permissions?.filter((k) => k !== "subscription.onboard_platform") ?? [],
+    });
+    await open();
+    fireEvent.change(screen.getByLabelText(/^Billing service mode/), {
+      target: { value: "managed_billing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(
+      screen.getByText(/your role cannot \(that needs the subscription.onboard_platform/),
+    ).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(client.PUT).not.toHaveBeenCalled();
   });
 
   it("says so when the vendor committed but the billing mode could not be confirmed, and not otherwise", async () => {

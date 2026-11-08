@@ -134,20 +134,54 @@ describe("railItemsOf", () => {
 });
 
 describe("stepActionsOf", () => {
-  it("fails closed on the operator's keys: no manage key, no attest; no data key, the step is read-only for them", () => {
+  it("fails closed on the operator's keys: no manage key, no attest; no data key, the step's data is read-only for them", () => {
     const v = view(STEPS());
-    const open = v.steps[1] as WizardStep;
+    const open = v.steps[1] as WizardStep; // plan_contract
     const noManage = new Set([...ALL].filter((k) => k !== ONBOARDING_KEYS.manageSteps));
     expect(stepActionsOf(open, v, noManage).canAttest).toBe(false);
     expect(stepActionsOf(open, v, new Set()).readOnlyReason).toMatch(
-      /Your role cannot change this step/,
+      /your role cannot edit its details \(that needs the subscription.onboard_platform permission\)/,
     );
     const data = { ...open, key: "locations_seeded" } as WizardStep;
     const noData = new Set([...ALL].filter((k) => k !== ONBOARDING_KEYS.onboardingData));
-    expect(stepActionsOf(data, v, noData).readOnlyReason).toMatch(
-      /Your role cannot change this step/,
-    );
+    expect(stepActionsOf(data, v, noData).readOnlyReason).toMatch(/tenant_onboarding_data/);
     expect(stepActionsOf(data, v, ALL).readOnlyReason).toBeNull();
+  });
+
+  // The frame's own actions need only their own keys, as on the server (React review L8): a missing data key never hides them.
+  it("attest, skip and re-open each need only their own key, whatever the step's data key", () => {
+    const v = view(STEPS());
+    const open = { ...(v.steps[1] as WizardStep), skippable: true };
+    const noData = new Set([...ALL].filter((k) => k !== ONBOARDING_KEYS.pricingWrite));
+    expect(stepActionsOf(open, v, noData)).toMatchObject({ canAttest: true, canSkip: true });
+    const noSkip = new Set([...ALL].filter((k) => k !== ONBOARDING_KEYS.skipStep));
+    expect(stepActionsOf(open, v, noSkip)).toMatchObject({ canAttest: true, canSkip: false });
+    const done = { ...open, status: "done" } as WizardStep;
+    expect(stepActionsOf(done, v, noData).canReopen).toBe(true);
+    const noManage = new Set([...ALL].filter((k) => k !== ONBOARDING_KEYS.manageSteps));
+    expect(stepActionsOf(done, v, noManage).canReopen).toBe(false);
+  });
+
+  it("the BAA step's data needs the register write key, not the upload key (React review M1)", () => {
+    const v = view(STEPS());
+    const baa = { ...(v.steps[2] as WizardStep), locked: false };
+    const noRegister = new Set([...ALL].filter((k) => k !== ONBOARDING_KEYS.baaRegisterWrite));
+    expect(stepActionsOf(baa, v, noRegister).readOnlyReason).toMatch(
+      /platform_tenant_baa.write_platform/,
+    );
+    const noUpload = new Set([...ALL].filter((k) => k !== ONBOARDING_KEYS.baaDocumentUpload));
+    expect(stepActionsOf(baa, v, noUpload).readOnlyReason).toBeNull();
+  });
+
+  it("the go-live step carries no role notice of its own (its panel says who may approve), and offers no frame action", () => {
+    const v = view(STEPS());
+    const goLive = { ...(v.steps[5] as WizardStep), locked: false };
+    expect(stepActionsOf(goLive, v, new Set())).toMatchObject({
+      canAttest: false,
+      canSkip: false,
+      canReopen: false,
+      readOnlyReason: null,
+    });
   });
 
   it("offers evidence-attest on an open attestation step the operator may act on", () => {

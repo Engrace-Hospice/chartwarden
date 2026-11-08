@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { ONBOARDING_KEYS, useCan } from "./onboarding/permissions";
 import { RecordSaveDialog } from "./onboarding/record-save-dialog";
+import { RoleCannot } from "./onboarding/role-cannot";
 import { StaleNotice } from "./onboarding/stale-notice";
 import { useLoad } from "./onboarding/use-load";
 import { useOpsWrite } from "./onboarding/use-ops-write";
@@ -161,6 +162,9 @@ export function NoticeFilingsDrawer({
             Showing the most recent {EXTERNAL_NOTICE_FILING_LIST_CAP} records. Older ones are not
             listed here.
           </InlineAlert>
+        ) : null}
+        {items.length > 0 && !mayWithdraw ? (
+          <RoleCannot what="withdraw a record filed outside ChartWarden" />
         ) : null}
         {items.length > 0 ? (
           <table className="wx-list-table wx-list-table-static">

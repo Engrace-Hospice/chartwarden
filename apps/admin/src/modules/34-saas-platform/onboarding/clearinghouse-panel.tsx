@@ -40,6 +40,7 @@ import { FailureNotice } from "./failure-notice";
 import { ModeUnconfirmedNotice } from "./mode-unconfirmed-notice";
 import type { PanelContext } from "./panel-types";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
+import { ONBOARDING_KEYS, useCan } from "./permissions";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { StaleNotice } from "./stale-notice";
 import { StepFrame } from "./step-frame";
@@ -128,6 +129,8 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
   const client = useApiClient();
   const { orgSlug, view: wizard, actions } = ctx;
   const canWrite = actions.readOnlyReason === null;
+  // Leaving outside with a contract also sets the billing mode, which the server guards with the pricing key.
+  const mayChooseMode = useCan(ONBOARDING_KEYS.pricingWrite);
   const load = useLoad<ClearinghouseView>(`clearinghouse:${orgSlug}`, () =>
     client.GET(PATH, { params: { path: { orgSlug } } }),
   );
@@ -191,7 +194,15 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
   function continueChoice(): void {
     if (!current) return;
     write.clear(); // an earlier refusal of an input has been read; this attempt starts clean
-    const found = validateChoice(current, form, secret, choiceContext);
+    const found = {
+      ...validateChoice(current, form, secret, choiceContext),
+      ...(isLeavingOutside(current, form, choiceContext) && !mayChooseMode
+        ? {
+            billingServiceMode:
+              "Leaving outside also sets the billing mode, and your role cannot (that needs the subscription.onboard_platform permission).",
+          }
+        : {}),
+    };
     setErrors(found);
     if (Object.keys(found).length === 0) setDialog("choose");
   }

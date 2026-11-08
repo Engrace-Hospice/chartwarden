@@ -1,3 +1,4 @@
+import { STEP_UP_RETURN_STATE } from "@chartwarden/ui";
 // @vitest-environment jsdom
 // The tenant hub's clearinghouse card: which clearinghouse the tenant uses and how far it got, and the way into the notices the tenant
 // recorded as filed outside ChartWarden. Read on request, like the contract: each read of a tenant's billing setup is audited.
@@ -273,13 +274,17 @@ describe("TenantClearinghouseCard", () => {
 
   describe("releasing earlier credentials (migration 1404)", () => {
     const RELEASE = "/api/v1/platform/tenants/{orgSlug}/clearinghouse/credentials/release";
-    const mountWith = (choice: unknown, release: () => unknown) => {
+    const mountWith = (
+      choice: unknown,
+      release: () => unknown,
+      url: string | { pathname: string; state?: unknown } = "/x",
+    ) => {
       const client = stubClient({
         GET: { [CH]: () => ok(choice), [SUBSCRIPTION]: () => ok({ contract: null }) },
         POST: { [RELEASE]: release as never },
       });
       renderAt(
-        "/x",
+        url,
         [
           {
             path: "/x",
@@ -340,16 +345,38 @@ describe("TenantClearinghouseCard", () => {
       mountWith(CLAIMMD, () => refused(403, "STEP_UP_REQUIRED", "step up"));
       await openRelease("Ticket OPS-79 retire the old key");
       confirm();
+      // an edit typed after the refusal is what the return brings back, not the submitted text
+      fireEvent.change(within(screen.getByRole("dialog")).getByLabelText(/^Reason/), {
+        target: { value: "Ticket OPS-79 retire the old Claim.MD key" },
+      });
       fireEvent.click(
         await within(screen.getByRole("dialog")).findByRole("link", { name: "Re-verify" }),
       );
       expect(await screen.findByText("step-up page")).toBeTruthy();
       cleanup();
-      mountWith(CLAIMMD, () => ok({ released: 1, config: CLAIMMD }));
+      mountWith(CLAIMMD, () => ok({ released: 1, config: CLAIMMD }), {
+        pathname: "/x",
+        state: STEP_UP_RETURN_STATE,
+      });
       const back = within(await screen.findByRole("dialog"));
       expect((back.getByLabelText(/^Reason/) as HTMLTextAreaElement).value).toBe(
-        "Ticket OPS-79 retire the old key",
+        "Ticket OPS-79 retire the old Claim.MD key",
       );
+    });
+
+    it("a later visit (not the step-up return) opens nothing, so the audited read waits for a click", async () => {
+      mountWith(CLAIMMD, () => refused(403, "STEP_UP_REQUIRED", "step up"));
+      await openRelease("Ticket OPS-80 retire the old key");
+      confirm();
+      fireEvent.click(
+        await within(screen.getByRole("dialog")).findByRole("link", { name: "Re-verify" }),
+      );
+      await screen.findByText("step-up page");
+      cleanup();
+      const client = mountWith(CLAIMMD, () => ok({ released: 1, config: CLAIMMD }));
+      expect(screen.getByRole("button", { name: "Show clearinghouse" })).toBeTruthy();
+      expect(reads(client, CH)).toBe(0);
+      expect(screen.queryByRole("dialog")).toBeNull();
     });
 
     it("a dropped connection says so and leaves the dialog usable", async () => {
@@ -663,4 +690,67 @@ describe("TenantClearinghouseCard: switching a live outside tenant to a vendor",
     expect(stashed?.value.pinnedVersion).toBe(4);
     expect(JSON.stringify(window.sessionStorage)).not.toContain("vendor-credential-for-test-only");
   });
+});
+
+// React review L4: each control hides on exactly its own key; its siblings stay, and the hidden one is explained.
+describe("TenantClearinghouseCard: each control is gated on its own key", () => {
+  const UNVERIFIED = {
+    ...CLAIMMD,
+    status: "active",
+    baa: { ...CLAIMMD.baa, verified: null },
+  };
+  const SWITCHABLE = { ...OUTSIDE, version: 4, hasContract: true };
+  const without = (key: string) => ({
+    ...ONBOARDING_OPERATOR,
+    permissions: ONBOARDING_OPERATOR.permissions?.filter((k) => k !== key) ?? [],
+  });
+  const CASES = [
+    {
+      key: "tenant_clearinghouse.verify_baa_platform",
+      choice: UNVERIFIED,
+      hidden: "Verify the vendor BAA",
+      note: /Your role cannot verify the vendor BAA/,
+      stays: "Release earlier credentials",
+    },
+    {
+      key: "tenant_clearinghouse.release_credential_platform",
+      choice: UNVERIFIED,
+      hidden: "Release earlier credentials",
+      note: /Your role cannot release earlier credentials/,
+      stays: "Verify the vendor BAA",
+    },
+    {
+      key: "tenant_clearinghouse.write_platform",
+      choice: SWITCHABLE,
+      hidden: "Switch to a vendor",
+      note: /Your role cannot switch this tenant to a clearinghouse vendor/,
+      stays: "Release earlier credentials",
+    },
+    {
+      key: "subscription.onboard_platform",
+      choice: SWITCHABLE,
+      hidden: "Switch to a vendor",
+      note: /Your role cannot switch this tenant to a clearinghouse vendor/,
+      stays: "Release earlier credentials",
+    },
+  ] as const;
+
+  for (const c of CASES) {
+    it(`without ${c.key}: "${c.hidden}" is hidden and explained, "${c.stays}" stays`, async () => {
+      const client = stubClient({
+        GET: { [CH]: () => ok(c.choice), [SUBSCRIPTION]: () => ok({ contract: null }) },
+      });
+      const element = <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus="active" />;
+      renderAt("/x", [{ path: "/x", element }], client, without(c.key));
+      fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+      expect(await screen.findByRole("button", { name: c.stays })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: c.hidden })).toBeNull();
+      expect(screen.getByText(c.note)).toBeTruthy();
+      cleanup();
+      renderAt("/x", [{ path: "/x", element }], client); // every key: both offered
+      fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+      expect(await screen.findByRole("button", { name: c.hidden })).toBeTruthy();
+      expect(screen.getByRole("button", { name: c.stays })).toBeTruthy();
+    });
+  }
 });

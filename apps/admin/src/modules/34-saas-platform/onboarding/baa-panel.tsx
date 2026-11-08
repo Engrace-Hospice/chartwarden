@@ -23,6 +23,8 @@ import { BaaDocumentField } from "./baa-document-field";
 import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
+import { ONBOARDING_KEYS, useCan } from "./permissions";
+import { RoleCannot } from "./role-cannot";
 import { StepFrame } from "./step-frame";
 import { useEditorFocus } from "./use-editor-focus";
 import { useLoad } from "./use-load";
@@ -146,6 +148,7 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   const { orgSlug, view, actions } = ctx;
   const tenantAccountId = view.tenantAccountId;
   const canWrite = actions.readOnlyReason === null;
+  const mayUpload = useCan(ONBOARDING_KEYS.baaDocumentUpload);
   const list = useLoad<{ items: BaaRecord[] }>(
     `baa:${tenantAccountId}`,
     () =>
@@ -343,20 +346,24 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
               onChange={set("expiresOn")}
             />
           </div>
-          <BaaDocumentField
-            orgSlug={orgSlug}
-            linked={form.documentId.trim() !== ""}
-            uploadedName={uploadedName}
-            error={fieldError("documentId")}
-            onUploaded={(documentId, fileName) => {
-              setForm((f) => ({ ...f, documentId }));
-              setErrors((e) => ({ ...e, documentId: undefined }));
-              setUploadedName(fileName);
-            }}
-            onReverify={() =>
-              stashStepUpDraft(draftKey(orgSlug), { form, id: editing?.id ?? null })
-            }
-          />
+          {mayUpload ? (
+            <BaaDocumentField
+              orgSlug={orgSlug}
+              linked={form.documentId.trim() !== ""}
+              uploadedName={uploadedName}
+              error={fieldError("documentId")}
+              onUploaded={(documentId, fileName) => {
+                setForm((f) => ({ ...f, documentId }));
+                setErrors((e) => ({ ...e, documentId: undefined }));
+                setUploadedName(fileName);
+              }}
+              onReverify={() =>
+                stashStepUpDraft(draftKey(orgSlug), { form, id: editing?.id ?? null })
+              }
+            />
+          ) : (
+            <RoleCannot what="upload the signed agreement (that needs the tenant_baa_document.upload_platform permission); a record can still link one already filed" />
+          )}
           {write.failure ? (
             <FailureNotice
               failure={write.failure}

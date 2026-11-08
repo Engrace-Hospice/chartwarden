@@ -7,6 +7,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/re
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BaaPanel, baaFacts } from "./baa-panel";
 import {
+  ONBOARDING_OPERATOR,
   ok,
   panelCtx,
   refused,
@@ -38,13 +39,18 @@ const record = (over: Partial<BaaRow> = {}): BaaRow & Record<string, unknown> =>
 });
 const view = (over = {}) =>
   wizardView([wizardStep("baa_executed", 1, { title: "BAA", completionMode: "auto" })], over);
-function mount(items: unknown[], extra: Parameters<typeof stubClient>[0] = {}, v = view()) {
+function mount(
+  items: unknown[],
+  extra: Parameters<typeof stubClient>[0] = {},
+  v = view(),
+  session: Parameters<typeof renderAt>[3] = ONBOARDING_OPERATOR,
+) {
   const client = stubClient({
     GET: { [REGISTER]: () => ok({ items, nextCursor: null, hasMore: false }) },
     ...extra,
   });
-  const ctx = panelCtx(v, "baa_executed");
-  renderAt("/x", [{ path: "/x", element: <BaaPanel ctx={ctx} /> }], client);
+  const ctx = panelCtx(v, "baa_executed", undefined, session);
+  renderAt("/x", [{ path: "/x", element: <BaaPanel ctx={ctx} /> }], client, session);
   return { client, ctx };
 }
 beforeEach(() => window.sessionStorage.clear());
@@ -121,6 +127,22 @@ describe("baaFacts", () => {
 });
 
 describe("BaaPanel", () => {
+  it("with the register key but not the upload key, records a BAA but offers no upload, and says why (React review M1)", async () => {
+    const without = (key: string) => ({
+      ...ONBOARDING_OPERATOR,
+      permissions: ONBOARDING_OPERATOR.permissions?.filter((k) => k !== key) ?? [],
+    });
+    mount([], {}, view(), without("tenant_baa_document.upload_platform"));
+    fireEvent.click(await screen.findByRole("button", { name: "Record BAA" }));
+    expect(screen.queryByRole("button", { name: "Upload agreement" })).toBeNull();
+    expect(screen.getByText(/Your role cannot upload the signed agreement/)).toBeTruthy();
+    cleanup();
+    // without the register key the step's data is read-only: no Record BAA at all, upload key or not
+    mount([], {}, view(), without("platform_tenant_baa.write_platform"));
+    await screen.findByText(/platform_tenant_baa.write_platform/);
+    expect(screen.queryByRole("button", { name: "Record BAA" })).toBeNull();
+  });
+
   it("lists the records and the facts, and says the recorder cannot approve go-live", async () => {
     mount([
       record({

@@ -2,9 +2,10 @@ import { peekStepUpMemoryDraft, stashStepUpMemoryDraft } from "@chartwarden/ui";
 // @vitest-environment jsdom
 // The onboarding wizard screen: one ordered list of steps, the current one open, every write behind a reason and (when it is refused)
 // an explanation the operator can act on. The server owns the rules; this proves what the operator sees and what is sent.
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  ONBOARDING_OPERATOR,
   ORG_SLUG,
   OVERVIEW,
   type StubClient,
@@ -74,6 +75,26 @@ const writes = (c: StubClient, m: "POST" | "PUT" | "PATCH" = "POST") => c[m].moc
 
 beforeEach(() => {
   window.sessionStorage.clear();
+});
+
+// The screen hands the session's keys to the model (React review L4): a narrower operator sees fewer actions on the same step.
+describe("TenantOnboardingWizard: the operator's keys", () => {
+  it("offers Mark done only with the manage key, and nothing at all with no session", async () => {
+    renderAt(`${URL_BASE}/payer_enrollment`, ROUTES, setup().client);
+    expect(await screen.findByRole("button", { name: "Mark done with evidence" })).toBeTruthy();
+    cleanup();
+    renderAt(`${URL_BASE}/payer_enrollment`, ROUTES, setup().client, {
+      ...ONBOARDING_OPERATOR,
+      permissions:
+        ONBOARDING_OPERATOR.permissions?.filter((k) => k !== "onboarding.manage_platform") ?? [],
+    });
+    await screen.findAllByText("Billing: payer enrollment");
+    expect(screen.queryByRole("button", { name: "Mark done with evidence" })).toBeNull();
+    cleanup();
+    renderAt(`${URL_BASE}/payer_enrollment`, ROUTES, setup().client, null);
+    await screen.findAllByText("Billing: payer enrollment");
+    expect(screen.queryByRole("button", { name: "Mark done with evidence" })).toBeNull();
+  });
 });
 
 describe("TenantOnboardingWizard: reading", () => {

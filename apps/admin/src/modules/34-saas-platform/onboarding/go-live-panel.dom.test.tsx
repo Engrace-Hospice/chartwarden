@@ -8,6 +8,7 @@ import { type JSX, useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { GoLivePanel } from "./go-live-panel";
 import {
+  ONBOARDING_OPERATOR,
   ORG_SLUG,
   ok,
   panelCtx,
@@ -71,10 +72,14 @@ const wizard = (
       ...over,
     },
   );
-function mount(view: WizardView, extra: Parameters<typeof stubClient>[0] = {}) {
+function mount(
+  view: WizardView,
+  extra: Parameters<typeof stubClient>[0] = {},
+  session: Parameters<typeof renderAt>[3] = ONBOARDING_OPERATOR,
+) {
   const client = stubClient(extra);
   const ctx = panelCtx(view, "go_live_checklist_complete");
-  renderAt("/x", [{ path: "/x", element: <GoLivePanel ctx={ctx} /> }], client);
+  renderAt("/x", [{ path: "/x", element: <GoLivePanel ctx={ctx} /> }], client, session);
   return { client, ctx };
 }
 beforeEach(() => window.sessionStorage.clear());
@@ -114,6 +119,21 @@ describe("GoLivePanel: awaiting approval", () => {
     expect(screen.getByText(/All records reviewed with the administrator/)).toBeTruthy();
     expect(screen.getByText(/days left to approve/i)).toBeTruthy();
     expect(screen.getByText(/different operator approves/i)).toBeTruthy();
+  });
+
+  it("without the approval key, offers neither approve nor revoke and says so once", () => {
+    mount(
+      ready(),
+      {},
+      {
+        ...ONBOARDING_OPERATOR,
+        permissions:
+          ONBOARDING_OPERATOR.permissions?.filter((k) => k !== "go_live.approve_platform") ?? [],
+      },
+    );
+    expect(screen.queryByRole("button", { name: "Approve go-live" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Revoke attestation" })).toBeNull();
+    expect(screen.getAllByText(/Your role cannot/)).toHaveLength(1);
   });
 
   it("approves behind a reason and reloads the wizard", async () => {

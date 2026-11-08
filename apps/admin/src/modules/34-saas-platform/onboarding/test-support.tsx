@@ -138,7 +138,6 @@ function Where(): ReactElement {
   return <output data-testid="where">{pathname + search}</output>;
 }
 
-/** Renders `element` at `routes` (a list of route patterns), starting at `url`, with the stub client and a location probe. */
 /** Every onboarding write key: the default operator of a panel test may do everything (a test narrows it to prove a gate). */
 export const ALL_ONBOARDING_KEYS: ReadonlySet<string> = new Set(Object.values(ONBOARDING_KEYS));
 
@@ -151,8 +150,10 @@ export const ONBOARDING_OPERATOR: Session = {
   permissions: [...ALL_ONBOARDING_KEYS],
 };
 
+/** Renders `element` at `routes` (a list of route patterns), starting at `url`, with the stub client and a location probe. */
 export function renderAt(
-  url: string,
+  /** A path, or a path with history state (a step-up return carries `STEP_UP_RETURN_STATE`). */
+  url: string | { pathname: string; state?: unknown },
   routes: { path: string; element: ReactElement }[],
   client: StubClient,
   /**
@@ -185,18 +186,19 @@ export function renderAt(
 import type { PanelContext } from "./panel-types";
 import { stepActionsOf } from "./wizard-model";
 
-/** A panel context for `stepKey` in `view`, with `refresh` recorded. */
+/** A panel context for `stepKey` in `view`, with `refresh` recorded; its actions are what `session`'s keys allow (none for null). */
 export function panelCtx(
   view: WizardView,
   stepKey: string,
   refresh = vi.fn(async () => undefined),
+  session: Session | null = ONBOARDING_OPERATOR,
 ): PanelContext {
   const step = view.steps.find((s) => s.key === stepKey) as WizardStep;
   return {
     orgSlug: ORG_SLUG,
     view,
     step,
-    actions: stepActionsOf(step, view, ALL_ONBOARDING_KEYS),
+    actions: stepActionsOf(step, view, new Set(session?.permissions ?? [])),
     refresh,
   };
 }

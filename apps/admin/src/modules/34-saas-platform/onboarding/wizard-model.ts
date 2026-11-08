@@ -19,6 +19,7 @@ export const ONBOARDING_KEYS = {
   clearinghouseRelease: "tenant_clearinghouse.release_credential_platform",
   noticeWithdraw: "tenant_notice_filing.withdraw_platform",
   baaDocumentUpload: "tenant_baa_document.upload_platform",
+  baaRegisterWrite: "platform_tenant_baa.write_platform",
   pricingWrite: "subscription.onboard_platform",
   goLiveApprove: "go_live.approve_platform",
 } as const;
@@ -106,21 +107,23 @@ function readOnlyReasonOf(step: WizardStep, view: WizardView): string | null {
 }
 
 /**
- * The key a step's own data writes need (its panel's save), where the step has a panel that writes. A step whose key the operator does
- * not hold is read-only for them; the frame's attest / re-open need `onboarding.manage_platform`, skip `onboarding.skip`.
+ * The key a step's own data writes need (its panel's save), where the step has a panel that writes. Without it the step's data is
+ * read-only for the operator; the frame's own actions need only their own keys (attest / re-open `onboarding.manage_platform`, skip
+ * `onboarding.skip`), as on the server. The go-live step is not here: its panel gates approve / revoke itself and says so.
  */
 const STEP_WRITE_KEY: Readonly<Record<string, string>> = {
   account_created: ONBOARDING_KEYS.manageSteps,
   compliance_officer_assigned: ONBOARDING_KEYS.manageSteps,
   plan_contract: ONBOARDING_KEYS.pricingWrite,
   clearinghouse_selected: ONBOARDING_KEYS.clearinghouseWrite,
-  baa_executed: ONBOARDING_KEYS.baaDocumentUpload,
+  // The BAA panel's save is the register write; the agreement upload inside it has its own key (gated on the field).
+  baa_executed: ONBOARDING_KEYS.baaRegisterWrite,
   ccn_registered: ONBOARDING_KEYS.onboardingData,
   locations_seeded: ONBOARDING_KEYS.onboardingData,
   mac_configured: ONBOARDING_KEYS.onboardingData,
-  [GO_LIVE_STEP_KEY]: ONBOARDING_KEYS.goLiveApprove,
 };
-const NO_ROLE = "Your role cannot change this step. A ChartWarden operator who holds it can.";
+const noRole = (key: string): string =>
+  `You can view this step, but your role cannot edit its details (that needs the ${key} permission).`;
 
 /** What the operator may do on a step: the step's state, then the keys `held` (the session's; fail closed when it has none). */
 export function stepActionsOf(
@@ -129,12 +132,10 @@ export function stepActionsOf(
   held: ReadonlySet<string>,
 ): StepActions {
   const stateReason = readOnlyReasonOf(step, view);
+  if (stateReason !== null) return { ...NONE, reopenBlockedBy: null, readOnlyReason: stateReason };
   const dataKey = STEP_WRITE_KEY[step.key];
-  const readOnlyReason =
-    stateReason ?? (dataKey !== undefined && !held.has(dataKey) ? NO_ROLE : null);
-  if (readOnlyReason !== null) return { ...NONE, reopenBlockedBy: null, readOnlyReason };
-  if (step.key === GO_LIVE_STEP_KEY)
-    return { ...NONE, reopenBlockedBy: null, readOnlyReason: null };
+  const readOnlyReason = dataKey !== undefined && !held.has(dataKey) ? noRole(dataKey) : null;
+  if (step.key === GO_LIVE_STEP_KEY) return { ...NONE, reopenBlockedBy: null, readOnlyReason };
   const manage = held.has(ONBOARDING_KEYS.manageSteps);
   if (isSettled(step)) {
     const pending = view.goLive.state === "awaiting_approval";
@@ -142,7 +143,7 @@ export function stepActionsOf(
       ...NONE,
       canReopen: manage && !pending,
       reopenBlockedBy: pending ? "go_live_pending" : null,
-      readOnlyReason: null,
+      readOnlyReason,
     };
   }
   return {
@@ -151,7 +152,7 @@ export function stepActionsOf(
     canSkip: step.skippable && held.has(ONBOARDING_KEYS.skipStep),
     canReopen: false,
     reopenBlockedBy: null,
-    readOnlyReason: null,
+    readOnlyReason,
   };
 }
 

@@ -12,6 +12,7 @@ import { VENDOR_LABEL, clearinghouseActions } from "./clearinghouse-model";
 import type { ClearinghouseView } from "./clearinghouse-model";
 import { ONBOARDING_KEYS, useCan } from "./permissions";
 import { RecordSaveDialog } from "./record-save-dialog";
+import { RoleCannot } from "./role-cannot";
 import { useOpsWrite } from "./use-ops-write";
 
 export function VerifyBaa({
@@ -64,7 +65,8 @@ export function VerifyBaa({
     }
   }
 
-  if (!clearinghouseActions(view).canVerifyBaa || !mayVerify) return null;
+  if (!clearinghouseActions(view).canVerifyBaa) return null;
+  if (!mayVerify) return <RoleCannot what="verify the vendor BAA" />;
   return (
     <>
       <Button

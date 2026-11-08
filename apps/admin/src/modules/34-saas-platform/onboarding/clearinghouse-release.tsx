@@ -10,25 +10,26 @@ import {
   useApiClient,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { JSX } from "react";
 import type { ClearinghouseView } from "./clearinghouse-model";
-import { ONBOARDING_KEYS, useCan } from "./permissions";
+import { ONBOARDING_KEYS, releaseDraftKey, useCan } from "./permissions";
 import { RecordSaveDialog } from "./record-save-dialog";
+import { RoleCannot } from "./role-cannot";
 import { useOpsWrite } from "./use-ops-write";
 
-/** The memory draft a Re-verify keeps the typed reason under (screened free text: never in sessionStorage). */
-export const releaseDraftKey = (orgSlug: string): string => `clearinghouse-release:${orgSlug}`;
-
-const DESCRIPTION = `Frees every clearinghouse key this tenant used before; the key in use now stays with it. Release only keys the tenant has stopped using at the vendor: once another organization connects one, this tenant cannot use it again, and the vendor's responses on that account go to that organization. Refused while the tenant has a production claim in flight or sent one in the last ${CLEARINGHOUSE_RELEASE_QUIET_DAYS} days. The reason is kept in the audit trail: give a ticket reference, never the name of the organization an account moved to.`;
+const DESCRIPTION = `Frees every clearinghouse key this tenant used before; the key in use now stays with it. Release only keys the tenant has stopped using at the vendor: once another organization connects one, this tenant cannot use it again, and the vendor's responses on that account go to that organization. Refused while the tenant has a production claim in flight or sent one in the last ${CLEARINGHOUSE_RELEASE_QUIET_DAYS} days. The reason goes into the tenant's own audit trail, which the tenant can read: give a ticket reference only, never the name of the organization an account moved to.`;
 
 export function ReleaseCredentials({
   orgSlug,
   view,
   onReleased,
+  returnedFromStepUp,
 }: {
   orgSlug: string;
   view: ClearinghouseView;
+  /** The card was opened by a step-up return: only then does a stashed reason reopen the dialog. */
+  returnedFromStepUp: boolean;
   /** How many were released, for the card to report (null clears the report). */
   onReleased: (released: number | null) => void;
 }): JSX.Element | null {
@@ -36,9 +37,12 @@ export function ReleaseCredentials({
   const write = useOpsWrite();
   const mayRelease = useCan(ONBOARDING_KEYS.clearinghouseRelease);
   // A step-up refusal sends the operator to /step-up and back; the dialog reopens with the typed reason.
-  const restored = useStepUpMemoryDraft<{ reason: string }>(releaseDraftKey(orgSlug));
+  const stashed = useStepUpMemoryDraft<{ reason: string }>(releaseDraftKey(orgSlug));
+  const restored = returnedFromStepUp ? stashed : undefined;
   const [open, setOpen] = useState(restored !== undefined);
   const [reason, setReason] = useState(restored?.reason ?? "");
+  // What is in the box right now (a Re-verify must keep an edit typed after a refusal, not the last submitted text).
+  const typedRef = useRef(reason);
 
   async function release(typed: string): Promise<void> {
     setReason(typed);
@@ -54,7 +58,8 @@ export function ReleaseCredentials({
     onReleased(outcome.data.released);
   }
 
-  if (view.source !== "tenant" || !mayRelease) return null; // a tenant that never chose holds no credential
+  if (view.source !== "tenant") return null; // a tenant that never chose holds no credential
+  if (!mayRelease) return <RoleCannot what="release earlier credentials" />;
   return (
     <>
       <Button
@@ -77,7 +82,12 @@ export function ReleaseCredentials({
         write={write}
         orgSlug={orgSlug}
         initialReason={reason}
-        onReverify={() => stashStepUpMemoryDraft(releaseDraftKey(orgSlug), { reason })}
+        onReasonChange={(typed) => {
+          typedRef.current = typed;
+        }}
+        onReverify={() =>
+          stashStepUpMemoryDraft(releaseDraftKey(orgSlug), { reason: typedRef.current })
+        }
         onConfirm={(typed) => void release(typed)}
         onCancel={() => {
           write.clear();
