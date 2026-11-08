@@ -48,6 +48,8 @@ const CLEARINGHOUSE_READ_KEY = "tenant_clearinghouse.read_platform";
 const CLEARINGHOUSE_WRITE_KEY = "tenant_clearinghouse.write_platform";
 /** Owner decision D2: verifying the BAA a tenant recorded for its own vendor account is its own key (a separable duty). */
 const CLEARINGHOUSE_VERIFY_BAA_KEY = "tenant_clearinghouse.verify_baa_platform";
+/** Owner decision 2026-11-08: releasing the clearinghouse credentials a tenant still holds is its own key (a separable duty). */
+const CLEARINGHOUSE_RELEASE_KEY = "tenant_clearinghouse.release_credential_platform";
 /** An operator withdrawing a tenant's "filed outside ChartWarden" NOE / NOTR record is its own key (a separable duty). */
 const NOTICE_WITHDRAW_KEY = "tenant_notice_filing.withdraw_platform";
 const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
@@ -93,6 +95,14 @@ const CLEARINGHOUSE_VERIFY_BAA: readonly PreHandler[] = [
   P(CLEARINGHOUSE_VERIFY_BAA_KEY),
   OPS(CLEARINGHOUSE_VERIFY_BAA_KEY),
   requireStepUp(CLEARINGHOUSE_VERIFY_BAA_KEY) as PreHandler,
+  rejectAiActor(),
+  requireIdempotencyKey,
+];
+
+const CLEARINGHOUSE_RELEASE: readonly PreHandler[] = [
+  P(CLEARINGHOUSE_RELEASE_KEY),
+  OPS(CLEARINGHOUSE_RELEASE_KEY),
+  requireStepUp(CLEARINGHOUSE_RELEASE_KEY) as PreHandler,
   rejectAiActor(),
   requireIdempotencyKey,
 ];
@@ -420,6 +430,21 @@ export function registerOnboardingDataRoutes(
         reason,
         requiredRecordedAtPin(request, "BAA record"),
       );
+    },
+  );
+
+  // POST credentials/release — the operator releases every clearinghouse credential the tenant still holds EXCEPT its current one, so
+  // another organization may seal it (an account moved to a new organization; a key retired by a rotation). A credential stays reserved
+  // through a switch to `outside` and a rotation until this runs. Not gated on the tenant's onboarding status; refused (409
+  // CLEARINGHOUSE_RESPONSES_PENDING) while the tenant's vendor responses may still arrive. The audit row names the operator, the tenant,
+  // the reason and how many were released, never which.
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/clearinghouse/credentials/release",
+    { preHandler: [...CLEARINGHOUSE_RELEASE] },
+    async (request) => {
+      const op = operatorOf(request);
+      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+      return service.releaseClearinghouseCredentials(op, slugOf(request), reason);
     },
   );
 

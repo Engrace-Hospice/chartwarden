@@ -130,6 +130,14 @@ function recordingService(calls: Call[]): OnboardingDataService {
       calls.push({ method: "verifyClearinghouseBaa", op, orgSlug, reason, expected });
       return { status: "verified", baa: { verified: { at: "2026-11-06T00:00:00.000Z" } } };
     },
+    releaseClearinghouseCredentials: async (
+      op: OnboardingOperator,
+      orgSlug: string,
+      reason: string,
+    ) => {
+      calls.push({ method: "releaseClearinghouseCredentials", op, orgSlug, reason });
+      return { released: 1, config: { vendor: "outside" } };
+    },
     withdrawNoticeExternalFiling: async (
       op: OnboardingOperator,
       orgSlug: string,
@@ -166,6 +174,7 @@ const GRANTS = {
         "tenant_clearinghouse.read_platform",
         "tenant_clearinghouse.write_platform",
         "tenant_clearinghouse.verify_baa_platform",
+        "tenant_clearinghouse.release_credential_platform",
         "tenant_notice_filing.withdraw_platform",
       ],
     },
@@ -316,6 +325,11 @@ describe("write guards (every write route)", () => {
     {
       method: "POST",
       url: `${URL_BASE}/clearinghouse/baa/verify`,
+      payload: { reason: "ticket CHG-1" },
+    },
+    {
+      method: "POST",
+      url: `${URL_BASE}/clearinghouse/credentials/release`,
       payload: { reason: "ticket CHG-1" },
     },
     {
@@ -1023,6 +1037,28 @@ describe("service: the clearinghouse choice", () => {
   const CONFIG_ID = "50000000-0000-4000-8000-000000000001";
   const SECRET = "fake-key-not-a-secret#1";
 
+  it("credentials/release is its own key: an operator who may write the clearinghouse may not release; the operator and reason are carried", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const post = (headers: Record<string, string>, payload: object = { reason: "ticket CHG-2" }) =>
+      app.inject({
+        method: "POST",
+        url: `${URL_BASE}/clearinghouse/credentials/release`,
+        headers,
+        payload,
+      });
+    expect((await post({ ...fresh(), "x-test-user": "writer-only-user" })).statusCode).toBe(403);
+    expect(calls).toEqual([]);
+    expect((await post(fresh(), {})).statusCode).toBe(422); // the reason is required
+    const ok = await post(fresh());
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toEqual({ released: 1, config: { vendor: "outside" } });
+    expect(calls.map((c) => c.method)).toEqual(["releaseClearinghouseCredentials"]);
+    expect(calls[0]).toMatchObject({ orgSlug: "tenant-b", reason: "ticket CHG-2" });
+    expect(calls[0]?.op.userId).toBe(OPERATOR_USER);
+    await app.close();
+  });
+
   function fakePort(over: Partial<OnboardingClearinghousePort> = {}, trace: string[] = []) {
     const seen: {
       method: string;
@@ -1068,6 +1104,14 @@ describe("service: the clearinghouse choice", () => {
       verifyBaa: async (_tx: unknown, _scope: unknown, expected: unknown) => {
         seen.push({ method: "verifyBaa", expected });
         return { resourceId: CONFIG_ID, view: { status: "verified", baa: { verified: {} } } };
+      },
+      releaseCredentials: async (_tx, _scope, reason) => {
+        seen.push({ method: "releaseCredentials", body: reason });
+        return {
+          resourceId: CONFIG_ID,
+          view: { released: 2, config: { vendor: "outside" } },
+          detail: { released: 2 },
+        };
       },
       ...over,
     };
@@ -1297,6 +1341,27 @@ describe("service: the clearinghouse choice", () => {
           targetOrganizationId: TARGET_ORG,
           operatorMembershipId: MEMBERSHIP,
         }),
+      });
+    }
+  });
+
+  it("the credential release is audited with operator, org, reason and the count, and is NOT refused for a live tenant", async () => {
+    for (const status of ["onboarding", "active"]) {
+      const { db, inserts } = stubDb(status);
+      const { port, seen } = fakePort();
+      const service = buildDrizzleOnboardingDataService({ db, resolveTenant, clearinghouse: port });
+      await expect(
+        service.releaseClearinghouseCredentials(OPERATOR, "tenant-b", "ticket CHG-8"),
+      ).resolves.toEqual({ released: 2, config: { vendor: "outside" } });
+      expect(seen, status).toEqual([{ method: "releaseCredentials", body: "ticket CHG-8" }]);
+      expect(inserts, status).toHaveLength(1);
+      expect(inserts[0]?.values, status).toMatchObject({
+        eventType: ONBOARDING_DATA_AUDIT_EVENTS.clearinghouseCredentialsReleased,
+        resourceId: CONFIG_ID,
+        outcome: "success",
+        organizationId: TARGET_ORG,
+        actorUserId: OPERATOR.userId,
+        context: expect.objectContaining({ reason: "ticket CHG-8", released: 2 }),
       });
     }
   });

@@ -42,10 +42,18 @@ import {
 } from "./baa";
 import type { ConfigPatch, ConfigRow, ConfigStore } from "./config-store";
 import { isUniqueViolation } from "./config-store";
+import {
+  accountInUse,
+  assertReleasable,
+  backfillFingerprint,
+  isFingerprintViolation,
+  reserveCredential,
+} from "./credential-reservation";
 import { invalid, screenedText } from "./screening";
 import type { ClearinghouseSecretCipher } from "./secret-cipher";
 
 export type { BaaPin, RecordBaaInput } from "./baa";
+export { accountInUse } from "./credential-reservation";
 
 export const EVIDENCE_MIN = 8;
 export const EVIDENCE_MAX = 500;
@@ -203,6 +211,16 @@ export interface TenantClearinghouseService {
     readonly test: { readonly outcome: ConnectionProbeOutcome } | null;
   }>;
   activate(store: ConfigStore, actor: ClearinghouseActor): Promise<ClearinghouseConfigView>;
+  /**
+   * Platform ops only: release every credential the organization still holds EXCEPT its current one, so another organization may
+   * seal it (an account moved to a new organization, a key retired after a rotation). Refused while the organization's vendor
+   * responses may still arrive (credential-reservation.ts).
+   */
+  releaseCredentials(
+    store: ConfigStore,
+    actor: ClearinghouseActor,
+    reason: string,
+  ): Promise<{ readonly released: number; readonly view: ClearinghouseConfigView }>;
 }
 
 /** Opens one transaction and hands the callback a store bound to it (each call is its own transaction). */
@@ -230,28 +248,6 @@ const conflict = (code: string, message: string): ChartWardenError =>
   new ChartWardenError(code, message, 409);
 const versionConflict = (message: string): ChartWardenError =>
   new ChartWardenError("VERSION_CONFLICT", message, 412);
-
-/** The index that keeps one vendor account to one organization (migration 1403). */
-const FINGERPRINT_INDEX = "tenant_clearinghouse_config_fingerprint_uq";
-
-/** One refusal for "another organization, or the platform, already uses this account": it never says which. */
-export const accountInUse = (): ChartWardenError =>
-  conflict(
-    "CLEARINGHOUSE_ACCOUNT_IN_USE",
-    "this vendor account is already connected elsewhere; each organization needs its own account",
-  );
-
-/** True when `err` is a unique violation of the fingerprint index (the constraint name is on the error or its cause). */
-const isFingerprintViolation = (err: unknown): boolean => {
-  if (!isUniqueViolation(err)) return false;
-  const e = err as {
-    constraint_name?: string;
-    constraint?: string;
-    cause?: { constraint_name?: string; constraint?: string };
-  };
-  const name = e.constraint_name ?? e.constraint ?? e.cause?.constraint_name ?? e.cause?.constraint;
-  return name === FINGERPRINT_INDEX;
-};
 
 const isTransmitting = (vendor: string): vendor is TransmittingClearinghouseVendor =>
   vendor === "stedi" || vendor === "claimmd";
@@ -409,13 +405,15 @@ export function createTenantClearinghouseService(
         status: "active",
         secretCipher: null,
         secretDekVersion: null,
-        credentialFingerprint: null, // no account any more: the slot frees up
+        // no current credential; the reservation of the old one stays held until a platform operator releases it
+        credentialFingerprint: null,
       };
     }
     const mode = input.mode as TenantClearinghouseMode;
     const fingerprint = input.secret
       ? requireCipher().fingerprint(input.vendor, input.secret)
       : null;
+    // a pure check before anything is sealed or written (the reservation in `reserveFor` checks it again)
     if (fingerprint && deps.platformCredentialFingerprints?.has(fingerprint)) throw accountInUse();
     const sealed = input.secret
       ? await requireCipher().encrypt(actor.organizationId, input.secret, {
@@ -435,10 +433,33 @@ export function createTenantClearinghouseService(
     };
   }
 
+  /** Reserve the patch's new credential to the org (the cross-organization index refuses one another org holds). */
+  async function reserveFor(
+    store: ConfigStore,
+    organizationId: string,
+    patch: ConfigPatch,
+  ): Promise<void> {
+    if (!patch.credentialFingerprint || !patch.vendor) return;
+    await reserveCredential(
+      store,
+      organizationId,
+      patch.vendor,
+      patch.credentialFingerprint,
+      deps.platformCredentialFingerprints,
+    );
+  }
+
   async function save(store: ConfigStore, row: ConfigRow, patch: ConfigPatch): Promise<ConfigRow> {
+    const full = await backfillFingerprint(
+      store,
+      row,
+      patch,
+      requireCipher,
+      deps.platformCredentialFingerprints,
+    );
     let updated: ConfigRow | null;
     try {
-      updated = await store.update(row.organizationId, row.version, { ...patch, updatedAt: now() });
+      updated = await store.update(row.organizationId, row.version, { ...full, updatedAt: now() });
     } catch (err) {
       if (isFingerprintViolation(err)) throw accountInUse();
       throw err;
@@ -490,6 +511,7 @@ export function createTenantClearinghouseService(
       );
     }
     const patch = await patchFor(actor, null, input);
+    await reserveFor(store, organizationId, patch);
     try {
       const row = await store.insert({
         organizationId,
@@ -577,7 +599,9 @@ export function createTenantClearinghouseService(
         "a new vendor or mode needs its own credential",
       );
     }
-    const row = await save(store, existing, await patchFor(actor, existing, input));
+    const patch = await patchFor(actor, existing, input);
+    await reserveFor(store, organizationId, patch);
+    const row = await save(store, existing, patch);
     return {
       created: false,
       view: viewOf(row, organizationId),
@@ -766,6 +790,25 @@ export function createTenantClearinghouseService(
         activatedByMembershipId: actor.membershipId,
       });
       return viewOf(saved, organizationId);
+    },
+
+    async releaseCredentials(store, actor, reason) {
+      if (actor.lane !== "platform") {
+        throw new ChartWardenError(
+          "FORBIDDEN",
+          "only a platform operator may release a clearinghouse credential",
+          403,
+        );
+      }
+      const { organizationId } = actor;
+      const row = await lockedRow(store, organizationId);
+      await assertReleasable(store, organizationId, now());
+      const released = await store.releaseCredentials(organizationId, row.credentialFingerprint, {
+        userId: actor.userId,
+        reason,
+        at: now(),
+      });
+      return { released, view: viewOf(row, organizationId) };
     },
   };
 }

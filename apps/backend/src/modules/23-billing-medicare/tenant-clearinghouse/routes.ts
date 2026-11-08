@@ -25,6 +25,8 @@ export interface TenantClearinghouseRouteDeps {
   readonly tenantClearinghouseService: TenantClearinghouseRouteService;
   /** Per-user cap on `verify` (a vendor call per request); fail-open like the other route limits. Absent = unlimited. */
   readonly verifyRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+  /** Per-user cap on `PUT` (its 409 says a credential is held elsewhere); fail-open. Absent = unlimited. */
+  readonly putRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 }
 
 const READ = P("billing.clearinghouse.read");
@@ -48,6 +50,7 @@ export function registerTenantClearinghouseRoutes(
   const { tenantClearinghouseService: service } = deps;
   // The limiter runs AFTER the permission and step-up guards, so a caller who may not verify never spends the tenant's budget.
   const VERIFY = deps.verifyRateLimit ? [...WRITE, deps.verifyRateLimit] : WRITE;
+  const PUT = deps.putRateLimit ? [...WRITE, deps.putRateLimit] : WRITE;
 
   // GET — what the organization chose (masked: `hasSecret`, never the credential).
   app.get(
@@ -64,7 +67,7 @@ export function registerTenantClearinghouseRoutes(
   );
 
   // PUT — choose stedi | claimmd | outside, with its mode and credential. 201 on the first choice, 200 on a change.
-  app.put("/api/v1/tenant/clearinghouse", { preHandler: WRITE }, async (request, reply) => {
+  app.put("/api/v1/tenant/clearinghouse", { preHandler: PUT }, async (request, reply) => {
     const actor = writeActorOf(request);
     const body = parse(PutClearinghouseBodySchema, request.body);
     const { created, view } = await service.put(actor, body, optionalIfMatch(request));

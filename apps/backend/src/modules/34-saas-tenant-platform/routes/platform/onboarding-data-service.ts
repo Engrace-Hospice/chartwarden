@@ -127,6 +127,15 @@ export interface OnboardingDataService {
     expected: { readonly recordedAt: string },
   ): Promise<unknown>;
   /**
+   * The operator releases every clearinghouse credential the tenant still holds except its current one, so another organization may
+   * seal it. NOT gated on the tenant's onboarding status; refused while the tenant's vendor responses may still arrive.
+   */
+  releaseClearinghouseCredentials(
+    op: OnboardingOperator,
+    orgSlug: string,
+    reason: string,
+  ): Promise<unknown>;
+  /**
    * The operator withdraws the tenant's "filed outside ChartWarden" record of one NOE / NOTR: the notice returns to its pre-record
    * state (a watchdog's breach stamp stays; the one a withdrawn LATE record wrote itself is cleared with it). NOT gated on the
    * tenant's onboarding status. `expected` is the `externalFiling.recordedAt` the operator read (null: the request named none): a
@@ -687,6 +696,30 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             tx,
             scopeOf(op, t.organizationId),
             expected,
+          );
+          return {
+            value: done.view,
+            resourceId: done.resourceId,
+            ...(done.detail ? { detail: done.detail } : {}),
+          };
+        },
+      ),
+
+    releaseClearinghouseCredentials: (op, orgSlug, reason) =>
+      write(
+        op,
+        orgSlug,
+        {
+          event: EVENTS.clearinghouseCredentialsReleased,
+          resourceKind: CLEARINGHOUSE_KIND,
+          reason,
+          anyTenantStatus: true,
+        },
+        async (tx, t) => {
+          const done = await clearinghousePort().releaseCredentials(
+            tx,
+            scopeOf(op, t.organizationId),
+            reason,
           );
           return {
             value: done.view,

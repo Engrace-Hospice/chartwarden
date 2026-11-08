@@ -64,6 +64,18 @@ export const CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "open",
 };
 
+/**
+ * M23 `PUT /tenant/clearinghouse`: 10/min/user and 30/min/org. Its 409 CLEARINGHOUSE_ACCOUNT_IN_USE tells a caller that a key is held
+ * elsewhere, so the cap bounds that as an oracle (security review of migration 1403, LOW-2). Fail-open: keys are high-entropy, so
+ * the cap is a brake, not the control.
+ */
+export const CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 10,
+  perOrg: 30,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
 /** M36 WP 6.8 (ADR-0097): the acknowledge-required broadcast routes, 20/min/user and 200/min/org. Fail-open: an availability control. */
 export const ACK_BROADCAST_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 20,

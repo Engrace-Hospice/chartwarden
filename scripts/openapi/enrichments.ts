@@ -15512,6 +15512,7 @@ import {
 } from "../../apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/typebox";
 import {
   OnboardingClearinghousePutRequest as M34OnboardingClearinghousePutRequest,
+  OnboardingClearinghouseReleaseResponseSchema as M34OnboardingClearinghouseReleaseResponseSchema,
   OnboardingClearinghouseVerifyRequest as M34OnboardingClearinghouseVerifyRequest,
   OnboardingClearinghouseVerifyResponseSchema as M34OnboardingClearinghouseVerifyResponseSchema,
   OnboardingClearinghouseViewSchema as M34OnboardingClearinghouseViewSchema,
@@ -15531,6 +15532,8 @@ const M34_CLEARINGHOUSE_WRITE_NOTE =
   "tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused";
 const M34_CLEARINGHOUSE_BAA_NOTE =
   "tenant_clearinghouse.verify_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. NOT limited to an onboarding tenant (a live tenant that changed vendor needs it too); an AI actor is refused";
+const M34_CLEARINGHOUSE_RELEASE_NOTE =
+  "tenant_clearinghouse.release_credential_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and how many were released) are required. NOT limited to an onboarding tenant; an AI actor is refused";
 const M34_NOTICE_WITHDRAW_NOTE =
   "tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp the watchdog set is kept, the stamp a withdrawn LATE record wrote itself is cleared with it, and a NOTR's prior-election closure goes with the record";
 const M34_NOTICE_WITHDRAW_HEADERS = {
@@ -15549,7 +15552,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M23ClearinghouseConfigViewSchema,
   },
   "PUT /api/v1/tenant/clearinghouse": {
-    summary: `Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) once a production submission exists, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a vendor account another organization, or the platform itself, already uses is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named); test mode is refused on a production deployment (422) — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
+    summary: `Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) once a production submission exists, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a credential another organization holds (it stays held through that organization's switch to outside or a rotation, until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the tenant route allows 10 saves a minute per user); test mode is refused on a production deployment (422) — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
     body: M23PutClearinghouseBodySchema,
     headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
     status: 201,
@@ -15581,7 +15584,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34OnboardingClearinghouseViewSchema,
   },
   "PUT /api/v1/platform/tenants/:orgSlug/clearinghouse": {
-    summary: `Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key, and a vendor account another organization, or the platform itself, already uses is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named) — ${CLEARINGHOUSE_CHOICE_NOTE}. ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
+    summary: `Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key, and a credential another organization holds (until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named) — ${CLEARINGHOUSE_CHOICE_NOTE}. ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
     body: M34OnboardingClearinghousePutRequest,
     headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
     status: 201,
@@ -15605,6 +15608,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
       },
     },
     response: M34OnboardingClearinghouseViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/credentials/release": {
+    summary: `Release every clearinghouse credential the tenant still holds except its current one, so another organization may seal it (an account moved to a new organization, a key retired by a rotation). A credential stays reserved to the tenant through a switch to outside and a rotation until this runs; refused with 409 CLEARINGHOUSE_RESPONSES_PENDING while the tenant has a production submission in flight or sent one in the last 90 days, and 409 CLEARINGHOUSE_NOT_CONFIGURED when it never chose. ${M34_CLEARINGHOUSE_RELEASE_NOTE}`,
+    body: M34OnboardingReasonSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingClearinghouseReleaseResponseSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/noe-records/:id/withdraw-external-filing": {
     summary: `Withdraw the "filed outside ChartWarden" record of a tenant's NOE (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match, 428 IF_MATCH_REQUIRED for none; the last two carry the record's current recordedAt in the error details as {field: "currentRecordedAt", message: <timestamp>}, the value to retry with). ${M34_NOTICE_WITHDRAW_NOTE}`,

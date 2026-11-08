@@ -46,7 +46,7 @@ export interface ClearinghouseSecretCipher {
   ): Promise<string>;
   /**
    * The account's fingerprint (migration 1403): HMAC-SHA256, under a key derived from the KEK with this purpose's own label, of the
-   * vendor and the trimmed account key, as 64 hex characters. The same for every organization (it names the vendor ACCOUNT, so a
+   * vendor and the trimmed account key, as 64 hex characters. The same for every organization (it names the CREDENTIAL, so a
    * second tenant sealing it is refused), never a plain hash (it cannot be checked against a guessed key without the KEK).
    */
   fingerprint(vendor: TransmittingClearinghouseVendor, accountKey: string): string;

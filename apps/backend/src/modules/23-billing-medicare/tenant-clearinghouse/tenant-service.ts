@@ -46,6 +46,9 @@ export interface TenantClearinghouseRouteService {
   activate(actor: M23WriteActor): Promise<ClearinghouseConfigView>;
 }
 
+/** The refusal that is audited even though its write rolled back (credential-reservation.ts). */
+const CREDENTIAL_REFUSED_CODE = "CLEARINGHOUSE_ACCOUNT_IN_USE";
+
 export function buildDrizzleTenantClearinghouseRouteService(deps: {
   readonly db: DbClient;
   readonly service: TenantClearinghouseService;
@@ -103,6 +106,33 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
     });
   }
 
+  /**
+   * A refused credential leaves a trail: the refusal rolled its own transaction back, so the `denied` row is written on a new one
+   * (the org id, the vendor, the code; never the fingerprint or which organization holds it). A failure to write it is logged and
+   * never replaces the refusal the caller gets.
+   */
+  async function recordRefusal(actor: M23WriteActor, vendor: string, code: string): Promise<void> {
+    try {
+      await inOrg(actor, async (tx) => {
+        const row = await createDrizzleConfigStore(tx).find(actor.organizationId);
+        await audit.record(tx, {
+          organizationId: actor.organizationId,
+          actorUserId: actor.userId,
+          actorMembershipId: actor.membershipId,
+          eventType: CLEARINGHOUSE_AUDIT_EVENTS.credentialRefused,
+          outcome: "denied",
+          // no row yet on a refused first choice: the organization is the resource
+          resourceId: row?.id ?? actor.organizationId,
+          changedFields: [],
+          detail: { code, vendor },
+          ...(actor.request ? { request: actor.request } : {}),
+        });
+      });
+    } catch (cause) {
+      deps.logError?.(cause, { organizationId: actor.organizationId });
+    }
+  }
+
   return {
     get: (actor) =>
       inOrg(actor, (tx) => service.view(createDrizzleConfigStore(tx), actor.organizationId)),
@@ -117,6 +147,11 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
           });
         }
         return { created: done.created, view: done.view };
+      }).catch(async (err: unknown) => {
+        if (err instanceof ChartWardenError && err.code === CREDENTIAL_REFUSED_CODE) {
+          await recordRefusal(actor, body.vendor, err.code);
+        }
+        throw err;
       });
       return then(actor.organizationId, result);
     },

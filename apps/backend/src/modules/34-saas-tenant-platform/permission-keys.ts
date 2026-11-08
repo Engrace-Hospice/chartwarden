@@ -388,6 +388,15 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // Owner decision 2026-11-08 (migration 1404): a credential a tenant sealed stays reserved to it, through a switch to `outside` and a
+  // rotation, until a platform operator releases it (an account moved to another organization). Its own key, bound to platform_ops;
+  // the route also needs a fresh step-up, a human actor and a recorded reason. Not limited to an onboarding tenant.
+  "tenant_clearinghouse.release_credential_platform": {
+    resource: "tenant_clearinghouse",
+    action: "release_credential_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
   // A platform operator withdraws a tenant's "filed outside ChartWarden" NOE / NOTR record (a mistaken or false one: the tenant
   // itself cannot, and a cancel refuses). Its own key (a separable duty, like the BAA verification); the route also needs the
   // platform_ops role, a fresh step-up, a recorded reason and the record's recordedAt as If-Match. Not limited to an onboarding
