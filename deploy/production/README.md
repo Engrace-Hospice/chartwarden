@@ -106,15 +106,16 @@ Auth load the added origin. The vhost proxies the same-origin `/api/` and `/webh
 - **`clamav`** (M36 message attachments) — clamd over TCP on the compose network only (no published port), config from
   `deploy/clamav/clamd.conf` (shipped to `<deploy dir>/clamav/` by `deploy.yml`): alerts on encrypted archives/documents
   and over-limit files, `StreamMaxLength` 26M (>= the 25 MB upload cap), signature DB in the `clamav-data` volume,
-  refreshed in-container by freshclam. api/worker run `MESSAGING_ATTACHMENT_SCANNER=clamd` against `clamav:3310` and do not
-  `depends_on` it: a down scanner leaves attachments `pending` (nothing is delivered). Alert on `pending` attachments
-  older than a few minutes or repeated `deferred` scans; check the scanner with `docker compose exec clamav clamdcheck.sh`.
-  `deploy.sh` brings it up without recreating it. clamd's protocol is unauthenticated, so the sidecar sits on a dedicated
-  `scan` network that only `clamav`, `api` and `worker` join (postgres, seaweedfs, docling and the rest cannot reach it), and
-  it is capped (`mem_limit: 4g`, `cpus: 2`) so a scan flood or a bad signature reload cannot starve the host. Follow-ups
-  (not done here, they need network access to resolve): pin `clamav/clamav-debian:1.4` by digest
-  (`image: clamav/clamav-debian@sha256:...`) when you promote it, and alert on a stale signature database (for example
-  `docker compose exec clamav clamscan --version` reporting a database older than 2 days, or freshclam errors in the log).
+  refreshed in-container by freshclam. api/worker run `MESSAGING_ATTACHMENT_SCANNER=clamd` against `clamav:3310` and do
+  not `depends_on` it: a down scanner leaves attachments `pending` (nothing is delivered). Alert on `pending`
+  attachments older than a few minutes or repeated `deferred` scans; check the scanner with `docker compose exec clamav
+  sh -c 'echo PING | nc 127.0.0.1 3310'` (expects `PONG`). `deploy.sh` brings it up without recreating it (compose
+  recreates it only when its image or service config changes). clamd's protocol is unauthenticated, so the sidecar sits
+  on a dedicated `scan` network that only `clamav`, `api` and `worker` join (postgres, seaweedfs, docling and the rest
+  cannot reach it), and it is capped (`mem_limit: 4g`, `cpus: 2`) so a scan flood or a bad signature reload cannot
+  starve the host. The image is upstream's Alpine `clamav/clamav:1.4`, pinned by digest (amd64 only; dev compose keeps
+  the multi-arch `clamav-debian` for Apple Silicon). Follow-up: alert on a stale signature database (for example `docker
+  compose exec clamav clamscan --version` reporting a database older than 2 days, or freshclam errors in the log).
 - **Attachment upload size (defence in depth).** The presigned PUT signs `content-length` for exactly the declared
   `byteSize`, so the store refuses any other length and the quota (which counts `byteSize`) is real; `complete` also compares
   the stored size and destroys a mismatching object at once. The independent backstop is on the storage origin:
@@ -399,6 +400,39 @@ failing step, the exit code and the applied migration filenames. Delivery is bes
 timeout; a failure is logged and never changes the deploy's exit status); the URL is never printed. Unset means no
 alert, and the failed `deploy` workflow run is then the only signal.
 
+## Postgres image (`postgres/`)
+
+`postgres/Dockerfile` is ChartWarden's Postgres: PostgreSQL 18 + pgvector on Wolfi, with the base digest and every
+directly installed package pinned (the glibc locale packages follow the base's glibc) (0 HIGH/CRITICAL at pin time, against 4 CRITICAL / 77 HIGH for `pgvector/pgvector:pg18-bookworm`).
+Dev compose, every CI live-DB job and the restore drills build it from this folder. Production will run the copy that
+`.github/workflows/postgres-image.yml` (manual, `main` only) builds, scans, signs and publishes as
+`ghcr.io/engrace-hospice/chartwarden-postgres`, once `compose.yml` pins it (until then it runs the Debian image in
+the table below). It opens a volume the Debian image created as is: postgres is uid/gid
+999, PGDATA is `/var/lib/postgresql/18/docker`, and the server also listens on `/var/run/postgresql`.
+
+**Collation.** glibc orders every text index. The Dockerfile asserts `GLIBC_VERSION`, so a bump that moves glibc fails
+the build. When glibc does change (the first start on a Debian-created volume: 2.36 → 2.44), Postgres logs
+`collation version mismatch` on every connection until the indexes are rebuilt. Stop `api` and `worker`, then:
+
+```bash
+docker compose exec -u postgres postgres cw-refresh-collation   # REINDEX + REFRESH COLLATION VERSION, every database
+```
+
+Range partitions need nothing more: every range partition key is a date or timestamp.
+
+**Bumping it.** Refresh the base digest and the package pins in the Dockerfile (its header says how), open a PR (the
+`Postgres image smoke and CVE scan` job in `pr-image-gate.yml` builds, starts and scans it), merge, run
+`gh workflow run postgres-image.yml`, and pin the digest the run prints in `compose.yml`. `backup/Dockerfile` cannot just take it as a base (it installs
+pgBackRest with apt and execs Debian's entrypoint): it needs its own Wolfi port, proven by `backup:restore-drill`, first.
+Apply with a fresh pgBackRest backup first, then `docker compose ... up -d --wait postgres` (`deploy.sh` never recreates
+postgres), then `cw-refresh-collation` if `GLIBC_VERSION` changed. Rollback is the previous digest, plus a
+refresh again when glibc differs. An image without the script (the Debian one) takes it by copy, from this folder:
+
+```bash
+docker compose cp postgres/cw-refresh-collation.sh postgres:/tmp/cw-refresh-collation.sh
+docker compose exec -u postgres postgres sh /tmp/cw-refresh-collation.sh
+```
+
 ## Infrastructure images: digest pins (#855)
 
 Every third-party image in `compose.yml` is `repo:tag@sha256:<digest>` (the tag is the human label; the digest is
@@ -407,12 +441,12 @@ arch:compose-policy` (part of `arch:fitness`) fails on any literal image without
 
 | Service | Image | Version at pin time (2026-10-27) |
 |---|---|---|
-| postgres | `pgvector/pgvector:pg18` | PostgreSQL 18 (same digest as `backup/Dockerfile`) |
+| postgres | `pgvector/pgvector:pg18-bookworm` | PostgreSQL 18.6, Debian 12 / glibc 2.36 (same digest as `backup/Dockerfile`) |
 | valkey | `valkey/valkey:8-alpine` | Valkey 8.x |
 | seaweedfs | `chrislusf/seaweedfs:4.52` | SeaweedFS 4.52 (pinned 2026-11-05) |
 | fluent-bit | `fluent/fluent-bit:5.1.5` | Fluent Bit 5.1.5 (pinned 2026-11-05) |
 | minio (legacy profile, cutover only) | `cgr.dev/chainguard/minio:latest` | MinIO `RELEASE.2026-10-23T20-06-51Z` |
-| clamav | `clamav/clamav-debian:1.4` | ClamAV 1.4.x |
+| clamav | `clamav/clamav:1.4` (Alpine) | ClamAV 1.4.x |
 
 SeaweedFS: `test:object-store:conformance:live` and `test:object-store:resilience:live` (CI job
 `object-store-conformance-live`) run against the same image and the same `object-store/` files; re-run them on a bump.
@@ -428,7 +462,9 @@ registry you control (e.g. GHCR) before relying on it for disaster recovery.
 **Updating an image**
 1. Resolve the new digest: `docker buildx imagetools inspect <repo:tag>` (the top-level `Digest:` is the index digest).
 2. Edit `compose.yml` (tag and digest together) and the version table above; if it is postgres, update
-   `backup/Dockerfile` to the same digest.
+   `backup/Dockerfile` to the same digest. Keep the `-bookworm` suffix: a different Debian release changes glibc,
+   whose collation orders every text index, so it is a REINDEX migration, not a digest bump. `deploy.sh` never
+   recreates postgres; apply a new digest with `docker compose --env-file .env.production -f compose.yml up -d --wait postgres`.
 3. Restore-test: run the restore drill (`docs/runbooks/m36-restore-drill.md`; for postgres/minio also restore the
    previous backup onto the new image) and `smoke.sh` against a staging stack.
 4. `bun run arch:compose-policy`, then ship through the normal PR/deploy path. Rollback is the previous digest.

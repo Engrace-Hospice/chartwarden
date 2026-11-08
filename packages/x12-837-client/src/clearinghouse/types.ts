@@ -160,6 +160,8 @@ export interface SubmissionReceipt {
   readonly receivedAt: string;
   /** True when this response is a replay of an earlier identical submission (no second send happened). */
   readonly replayed: boolean;
+  /** Exact Claim.MD response fields retained with their vendor names; absent on legacy attempt replays. */
+  readonly vendorIdentifiers?: readonly { readonly field: string; readonly value: string }[];
 }
 
 /** One finding from a dry-run. PHI-free: codes and X12 positions, never values. */

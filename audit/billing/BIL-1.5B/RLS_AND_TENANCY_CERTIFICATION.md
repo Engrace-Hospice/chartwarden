@@ -1,0 +1,7 @@
+# RLS and tenancy certification
+
+Private PostgreSQL live suites used the real `chartwarden_app` role with `NOBYPASSRLS`, not a superuser session for tenant assertions. `test:rls:live:m25` passed 16/16; `test:rls:live:m23` passed 13/13; `test:m23:claimmd-response-inbox:live` passed 3/3. The response suite verifies FORCE RLS, denies app-role access to account-wide response streams, isolates immutable evidence by organization, and rejects evidence mutation. M23 RLS verifies cross-tenant read/write denial and the claim chain. M25 RLS verifies remittance scope. Source: `apps/backend/__tests__/m23-claimmd-response-inbox.live.test.ts`, `packages/db/migrations/__tests__/m23-rls-isolation.live.test.ts`.
+
+The recovery HTTP route now composes `platform_billing_scope` and checks a trusted platform-owned role before constructing `platform_operator` (`apps/backend/src/bootstrap/routes/ops-claimmd-era-recovery.ts`). A focused regression denies an `org_admin` holding the billing permission and fresh step-up. This route-level check is tested with an injected request context; a full authenticated HTTP/database flow remains pending. Tenant billing permission alone cannot authorize platform recovery.
+
+**Pending:** complete two-tenant/four-provider synthetic matrix against the integrated new resolver and ERA pipeline, real principal grants for all account-wide tables, and a full authenticated platform recovery HTTP test against PostgreSQL. No tenant data or identifiers were sent externally.

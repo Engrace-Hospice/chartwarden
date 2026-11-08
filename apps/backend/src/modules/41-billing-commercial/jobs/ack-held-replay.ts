@@ -302,6 +302,7 @@ export async function replayHeldEvents(
   deps: AckApplyDeps,
   scope: Scope,
 ): Promise<{ readonly applied: number; readonly abandoned: number }> {
+  if (deps.binding.vendor === "claimmd") return { applied: 0, abandoned: 0 };
   const Q = schema.commercialAckQuarantine;
   const vendor = deps.binding.vendor;
   const cutoff = nowOf(deps).getTime() - ACK_POLL_MAX_AGE_DAYS * DAY_MS;

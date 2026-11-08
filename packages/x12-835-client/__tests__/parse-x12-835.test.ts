@@ -38,6 +38,11 @@ describe("parseX12835 clean multi-claim 835", () => {
       productionDate: "2026-06-15T00:00:00Z",
     });
     expect(r.value.claims).toHaveLength(3);
+    expect(r.value.functionalGroupControlNumber).toBe("77");
+    expect(r.value.providerAdjustments).toEqual([
+      { reason: "WO", reference: "REF1", amount: 25 },
+      { reason: "L6", reference: "REF2", amount: -75 },
+    ]);
   });
 
   it("parses claim 1 with service lines, CAS, RARC, dates and member id", () => {
@@ -65,6 +70,7 @@ describe("parseX12835 clean multi-claim 835", () => {
           paidAmount: 500,
           paidUnits: 1,
           submittedUnits: 1,
+          references: [{ qualifier: "6R", value: "L1" }],
           adjustments: [{ groupCode: "CO", reasonCode: "45", amount: 100, quantity: 1 }],
           remarks: [{ kind: "LQ", code: "N30" }],
         },
@@ -110,6 +116,26 @@ describe("parseX12835 clean multi-claim 835", () => {
 });
 
 describe("parseX12835 other valid shapes", () => {
+  it("preserves unknown segments and identity references without treating them as posting instructions", () => {
+    const at = CLEAN_BODY.findIndex((segment) => segment.startsWith("SVC*"));
+    const body = [
+      ...CLEAN_BODY.slice(0, at + 1),
+      "ZZZ*VENDOR-REF*SAFE-SYNTHETIC",
+      ...CLEAN_BODY.slice(at + 1),
+    ];
+    const result = parse(wrap835(body));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.unknownSegments).toContainEqual({
+      segmentId: "ZZZ",
+      elements: ["VENDOR-REF", "SAFE-SYNTHETIC"],
+    });
+    expect(result.value.claims[0]?.serviceLines[0]?.references).toContainEqual({
+      qualifier: "6R",
+      value: "L1",
+    });
+  });
+
   it("parses a stand-alone denial with a non-payment BPR", () => {
     const r = parse(wrap835(DENIAL_BODY));
     expect(r.ok).toBe(true);

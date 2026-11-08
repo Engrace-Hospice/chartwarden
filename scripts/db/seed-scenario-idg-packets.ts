@@ -392,9 +392,13 @@ async function requestBuild(a: WxSession, id: string): Promise<void> {
 function runPacketBuild(): boolean {
   let url = process.env.IDG_APP_DATABASE_URL;
   if (!url) {
-    const p = spawnSync("docker", ["compose", "exec", "-T", "worker", "printenv", "DATABASE_URL"], {
-      encoding: "utf8",
-    });
+    const p = spawnSync(
+      "docker",
+      ["compose", "exec", "-T", "worker", "bun", "-e", "console.log(process.env.DATABASE_URL)"],
+      {
+        encoding: "utf8",
+      },
+    );
     const out = (p.stdout ?? "").trim();
     if (p.status === 0 && out) url = out.replace("@postgres:", "@localhost:");
   }

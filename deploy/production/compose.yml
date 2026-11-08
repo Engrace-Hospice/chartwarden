@@ -20,7 +20,7 @@ name: ${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}
 
 services:
   postgres:
-    image: pgvector/pgvector:pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+    image: pgvector/pgvector:pg18-bookworm@sha256:c29f30688a9ad961691bdf0ec1650717cc132a5814619d80f80463d6e4c42e47
     mem_limit: 4g
     cpus: 4
     mem_reservation: 2g
@@ -329,8 +329,10 @@ services:
   # freshclam refreshes it in-container (CLAMAV_NO_FRESHCLAMD unset). api/worker do NOT `depends_on` it: a down or
   # still-updating scanner leaves attachments `pending` (nothing is delivered), it must never block the EHR.
   # Alert on a stuck scanner: old `pending` rows / `deferred` scans (docs/architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md).
+  # Upstream's Alpine image (amd64 only, like this host), not clamav-debian: the Debian base carried ~60 HIGH CVEs.
+  # Same /init entrypoint; it chowns /var/lib/clamav to its own clamav uid (100, Debian's was 1000) on every start.
   clamav:
-    image: clamav/clamav-debian:1.4@sha256:03a2f641117f0a8c908bac65a63c5e1e4695badc52a340c9d30397d7cebb9154
+    image: clamav/clamav:1.4@sha256:8ad6197396974726c35d017e50aaaaf4b91745726a04faec8480c203edd98052
     restart: unless-stopped
     # clamd loads the whole signature set (a reload briefly doubles it): bound it so a scan flood or a bad update
     # cannot starve postgres/seaweedfs/api on the same host.
@@ -342,7 +344,9 @@ services:
       - clamav-data:/var/lib/clamav
       - ./clamav/clamd.conf:/etc/clamav/clamd.conf:ro
     healthcheck:
-      test: ["CMD-SHELL", "clamdcheck.sh"]
+      # Not upstream's clamdcheck.sh: it pings `localhost`, which resolves to ::1 on Alpine while clamd binds
+      # 0.0.0.0 (IPv4) only, so it never reports healthy.
+      test: ["CMD-SHELL", "echo PING | nc 127.0.0.1 3310 | grep -q PONG"]
       interval: 30s
       timeout: 5s
       retries: 10
@@ -598,7 +602,7 @@ services:
     cpus: 1
     env_file: .env.production
     network_mode: "service:seed-api"
-    command: ["bun", "run", "db:seed:all"]
+    command: ["bun", "run", "scripts/db/seed-all.ts"] # db:seed:all, shell-free (distroless image)
     environment:
       BETTER_AUTH_URL: http://localhost:3000
       DATABASE_ADMIN_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
@@ -628,7 +632,7 @@ networks:
 # under the renamed `chartwarden` project until Window 2 copies them (volumes-copy.sh) and drops the pin.
 volumes:
   # CW-RUST-M02 P1 — tmpfs, so the socket never persists, with fixed ownership and mode whichever container mounts it
-  # first: owner cw-rust (65532), group 1000 (the `bun` user `api` runs as), 0750.
+  # first: owner cw-rust (65532), group 1000 (the uid/gid `api` runs as), 0750.
   rust-sock:
     driver: local
     driver_opts:
