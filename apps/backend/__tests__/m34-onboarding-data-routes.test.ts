@@ -1690,9 +1690,14 @@ describe("service: an operator's switch out of outside (order, any status, the m
       Object.assign(new Error(`database said ${code}`), { code, severity: "FATAL", routine: "r" });
 
     it("looks at the vendor row and, when it did NOT land, puts the mode back to none and rethrows the failure", async () => {
-      const { service, log } = harness({ commitFails: lostConnection });
+      const { service, log, inserts } = harness({ commitFails: lostConnection });
       await expect(put(service)).rejects.toBe(lostConnection);
       expect(log.slice(-3)).toEqual(["put", "reread", "restoreNone"]);
+      // the write_failed row says the commit's outcome was unknown (it may sit beside a success row), not that it rolled back
+      const failedRow = inserts.find(
+        (i) => i.values.eventType === ONBOARDING_DATA_AUDIT_EVENTS.writeFailed,
+      );
+      expect(failedRow?.values.context).toMatchObject({ commitOutcomeUnknown: true });
     });
 
     it("keeps the mode, and answers as a success with the row as it is, when the vendor DID land (nothing is undone blindly)", async () => {
@@ -1738,10 +1743,18 @@ describe("service: an operator's switch out of outside (order, any status, the m
       "treats SQLSTATE %s as a certain rollback: no second read, the mode goes back to none",
       async (code) => {
         const refused = pgError(code);
-        const { service, log } = harness({ commitFails: refused, afterCommitFailure: "landed" });
+        const { service, log, inserts } = harness({
+          commitFails: refused,
+          afterCommitFailure: "landed",
+        });
         await expect(put(service)).rejects.toBe(refused);
         expect(log).not.toContain("reread");
         expect(log.at(-1)).toBe("restoreNone");
+        // a definite refusal is a rollback: the row does not claim the outcome is unknown
+        const failedRow = inserts.find(
+          (i) => i.values.eventType === ONBOARDING_DATA_AUDIT_EVENTS.writeFailed,
+        );
+        expect(failedRow?.values.context).not.toHaveProperty("commitOutcomeUnknown");
       },
     );
   });

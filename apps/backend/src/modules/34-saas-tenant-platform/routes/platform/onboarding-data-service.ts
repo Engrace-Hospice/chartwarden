@@ -336,6 +336,8 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
   /**
    * The audit row of an attempt whose transaction rolled back. A follow-up transaction on the same tenant scope; it
    * carries the operator, the tenant, the reason, the route and the error code, never a body value or an error message.
+   * `commitOutcomeUnknown`: the COMMIT failed with no definite answer from the database, so the write may have landed after all and
+   * this row may sit beside a success row; the row says so (`detail.commitOutcomeUnknown`) instead of reading as a rollback.
    * Best effort: a failure here is logged and must never replace the error the caller is about to receive.
    */
   async function recordFailedWrite(
@@ -343,6 +345,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     target: OnboardingAuditTarget,
     spec: WriteSpec,
     err: unknown,
+    commitOutcomeUnknown = false,
   ): Promise<void> {
     try {
       await withOrgContext<DbClient, void>(
@@ -354,7 +357,11 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             resourceKind: spec.resourceKind,
             outcome: "denied",
             reason: spec.reason,
-            detail: { attemptedEvent: spec.event, errorCode: errorCodeOf(err) },
+            detail: {
+              attemptedEvent: spec.event,
+              errorCode: errorCodeOf(err),
+              ...(commitOutcomeUnknown ? { commitOutcomeUnknown: true } : {}),
+            },
           }),
       );
     } catch (auditError) {
@@ -426,8 +433,9 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     } catch (err) {
       // The COMMIT may have landed when the callback finished and the failure is not a refusal the database answered with a definite
       // error class (it rolled back); a socket or connection loss, or a connection-class or server-error SQLSTATE, leaves it unknown.
-      await spec.onFailure?.({ commitReached: bodyFinished && !isDefiniteDatabaseRefusal(err) });
-      await recordFailedWrite(op, target, spec, err);
+      const commitOutcomeUnknown = bodyFinished && !isDefiniteDatabaseRefusal(err);
+      await spec.onFailure?.({ commitReached: commitOutcomeUnknown });
+      await recordFailedWrite(op, target, spec, err, commitOutcomeUnknown);
       throw err;
     }
     if ("refusedStatus" in outcome) throw statusRefusal(spec, outcome.refusedStatus);
@@ -649,6 +657,9 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
    * blindly could leave a vendor without its mode. The vendor is read again: still outside -> null (it did not land: the caller restores
    * none); no longer outside -> the switch stands and its result is the row as it is now (the caller goes on as for a success, so the
    * mode is confirmed); unreadable -> the mode is LEFT as set and the answer is the typed 503 that says the outcome is unknown (logged).
+   * RESIDUAL (narrow, not closable from here): a commit the client gave up on can still land AFTER the read-back saw `outside` (the
+   * server was still processing it), leaving a vendor with the mode put back to none; the operator reads the tenant's clearinghouse and
+   * contract after any failed switch (the 503 says so) and sets the mode.
    */
   async function vendorLandedAfterAmbiguousCommit(
     op: OnboardingOperator,
