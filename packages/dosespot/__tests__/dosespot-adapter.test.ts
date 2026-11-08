@@ -5,7 +5,7 @@
 // D8 NewRx idempotency-key determinism (cosmetic-sig folding; correction distinctness), the
 // `medication_order_transmission` enqueue/success/failure planners (retry-exhaustion → M36 alert), and the §2.6
 // D4 patient-sync planner. No live infra — the HTTP transport is deferred; this proves the contract M12 depends on.
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   DOSESPOT_CIRCUIT_BREAKER_CONFIG,
@@ -321,6 +321,26 @@ describe("D8 NewRx idempotency key", () => {
       medicationOrderId: "mo-2",
     });
     expect(k1).not.toBe(k4);
+  });
+
+  // The separator is a NUL byte (no field can contain it). It is written as an escape in the source (a raw NUL made git treat the file as binary); this
+  // pins the runtime value, since both hashes are stored on rows and a different separator would silently change every key.
+  it("both hashes join their fields with a NUL byte (known answers, computed independently)", () => {
+    const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
+    const rxKey = computeRxBusinessKey({
+      rxnormRxcui: "1191",
+      strength: "81 mg",
+      sigFreeText: "1 tab PO QD",
+    });
+    expect(rxKey).toBe(sha(["1191", "81 mg", "1 tab po qd"].join("\u0000")));
+    expect(
+      computeNewRxIdempotencyKey({
+        prescriberMembershipId: "pm-1",
+        patientId: "p-1",
+        rxBusinessKey: rxKey,
+        medicationOrderId: "mo-1",
+      }),
+    ).toBe(sha(["pm-1", "p-1", rxKey, "mo-1"].join("\u0000")));
   });
 
   it("correction-of-record (changed sig) produces a distinct idempotency key", () => {
