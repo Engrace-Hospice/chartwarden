@@ -215,7 +215,9 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
   ): Promise<T> {
     const target = resolved ?? (await targetOf(orgSlug));
     let outcome: WriteOutcome<T>;
-    let tenantAccountId: string | undefined;
+    // Set only for a tenant still onboarding: a live/suspended tenant's write (a BAA renewal) has no onboarding to settle, and the
+    // advance pass would otherwise emit onboarding events (m34.tenant.onboarding_overdue) for a tenant that is no longer onboarding.
+    let settleTenantAccountId: string | undefined;
     let bodyFinished = false;
     try {
       outcome = await withOrgContext<DbClient, WriteOutcome<T>>(
@@ -229,7 +231,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
             .where(eq(ACCOUNT.organizationId, target.organizationId))
             .limit(1);
           if (!account) throw new NotFoundError("tenant");
-          tenantAccountId = account.id;
+          if (ONBOARDING_WRITABLE_STATUSES.has(account.status)) settleTenantAccountId = account.id;
           const accepted = spec.allowedStatuses ?? ONBOARDING_WRITABLE_STATUSES;
           if (!spec.anyTenantStatus && !accepted.has(account.status)) {
             await recordOnboardingAudit(tx, op, target, {
@@ -271,7 +273,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       throw err;
     }
     if ("refusedStatus" in outcome) throw statusRefusal(spec, outcome.refusedStatus);
-    await settleAfterWrite(target.organizationId, tenantAccountId);
+    await settleAfterWrite(target.organizationId, settleTenantAccountId);
     return outcome.value;
   }
 

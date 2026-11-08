@@ -41,6 +41,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { m34PlatformBypassAuditor } from "../src/index";
 import { buildDocumentAbacPredicates } from "../src/modules/22-documents/abac-predicates";
 import { createDbDocumentBackend } from "../src/modules/22-documents/documents-route-service-db";
@@ -49,11 +50,13 @@ import { buildTenantBaaDocumentOnboardingPort } from "../src/modules/22-document
 import { registerDocumentRoutes } from "../src/modules/22-documents/routes/documents-routes";
 import { createServerUploadService } from "../src/modules/22-documents/routes/server-upload";
 import { createInMemoryObjectStore } from "../src/modules/22-documents/seams/store";
+import { M34_OUTBOX_EVENTS } from "../src/modules/34-saas-tenant-platform/events-by-m34";
 import {
   buildDrizzleOnboardingDataService,
   buildPlatformTenantResolver,
   mountTenantPlatformRoutes,
 } from "../src/modules/34-saas-tenant-platform/index";
+import { createOnboardingAdvancer } from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
 import {
   appRoleConnectionString,
   appRoleUrl,
@@ -116,6 +119,8 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
   let objects: ReturnType<typeof createInMemoryObjectStore>;
   let seq = 0;
   let uploadedDocumentId = "";
+  let advance: ReturnType<typeof createOnboardingAdvancer>;
+  const alertCalls: string[] = [];
 
   const q = async <T = Record<string, unknown>>(text: string, params: unknown[] = []) =>
     (await admin.query(text, params)).rows as T[];
@@ -219,6 +224,14 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
         [org, status, `Tenant ${status}`],
       );
     }
+    // The live tenant still carries every onboarding task, each past due: an advance pass over it WOULD emit the overdue signal.
+    await admin.query(
+      `INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key, due_at)
+       SELECT $1, ta.id, t.key, now() - interval '30 days'
+         FROM onboarding_task_template t, tenant_account ta
+        WHERE t.retired_at IS NULL AND ta.organization_id = $1`,
+      [ORG_X],
+    );
     // A fresh database has no platform-owned role rows (`db:platform-role grant` creates them), so migration 1368 bound nothing.
     // Create them and re-apply it, as a deploy does once they exist.
     for (const key of ["platform_ops", "platform_admin"]) {
@@ -285,8 +298,25 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
       logger: { warn: () => undefined },
     });
     registerPlatformJob(JOB_ID);
+    // The real advance pass, as the composition root wires it, over the real catalog-validating publisher.
+    const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M34_OUTBOX_EVENTS]));
+    advance = createOnboardingAdvancer({
+      db: tenantPool.db,
+      outbox: {
+        publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m34" } as never),
+      },
+      alerts: {
+        async emit(_orgId, input) {
+          alertCalls.push(input.eventType);
+          return { alertId: `a-${alertCalls.length}`, resolvedRecipientCount: 0 };
+        },
+      },
+    });
     const service = buildDrizzleOnboardingDataService({
       db: tenantPool.db,
+      advance: async ({ tenantAccountId, organizationId }) => {
+        await advance({ tenantAccountId, orgId: organizationId });
+      },
       resolveTenant: buildPlatformTenantResolver({
         platformDb: platformPool.db,
         auditBypass: m34PlatformBypassAuditor,
@@ -448,6 +478,36 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
       expect(res.statusCode, res.body).toBe(201);
       expect((await documentsOf(ORG_X)).map((d) => d.aggregate_type)).toEqual(["tenant_baa"]);
       expect(await auditRows(ORG_X, "m34.tenant_onboarding.write_refused")).toEqual([]);
+    });
+
+    it("runs no onboarding pass for the live tenant: its tasks are untouched and no onboarding_overdue is emitted", async () => {
+      const tasks = async () =>
+        (
+          await admin.query(
+            "SELECT * FROM onboarding_task WHERE organization_id=$1 ORDER BY template_key",
+            [ORG_X],
+          )
+        ).rows;
+      const overdue = async () =>
+        (
+          await admin.query(
+            "SELECT 1 FROM outbox_event WHERE event_type='m34.tenant.onboarding_overdue' AND organization_id=$1",
+            [ORG_X],
+          )
+        ).rowCount;
+      const before = await tasks();
+      expect(before.length).toBeGreaterThan(0);
+      const res = await upload("baa-x");
+      expect(res.statusCode, res.body).toBe(201);
+      expect(await tasks()).toEqual(before);
+      expect(await overdue()).toBe(0);
+      expect(alertCalls).toEqual([]);
+      // Control: the same pass run directly does flag these tasks, so the silence above is the write's status gate.
+      const [account] = (
+        await admin.query("SELECT id FROM tenant_account WHERE organization_id=$1", [ORG_X])
+      ).rows;
+      await advance({ tenantAccountId: account.id, orgId: ORG_X });
+      expect(await overdue()).toBeGreaterThan(0);
     });
 
     it("also files for a provisioning tenant", async () => {
