@@ -193,7 +193,11 @@ describe("portal memorial services", () => {
       }
       gets += 1;
       // the first GET loads the page; the second is the post-yes re-read, which we hold until after a newer "no"
-      if (gets === 2) return new Promise<Response>((resolve) => (releaseReread = resolve));
+      if (gets === 2) {
+        return new Promise<Response>((resolve) => {
+          releaseReread = resolve;
+        });
+      }
       return json({ items: [stored] });
     });
     await screen.findByRole("heading", { name: "Winter Candle Lighting" });

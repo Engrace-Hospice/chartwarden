@@ -396,13 +396,21 @@ describe("internal documents are render-only: every hand write path is refused",
   it("a grief-library file refuses PATCH, tags, links and versions with 422 even for an org-wide actor", async () => {
     const app = makeServer();
     const writes = [
-      { method: "PATCH" as const, url: `/api/v1/documents/${DOC_LIBRARY}`, payload: { title: "Renamed" } },
+      {
+        method: "PATCH" as const,
+        url: `/api/v1/documents/${DOC_LIBRARY}`,
+        payload: { title: "Renamed" },
+      },
       {
         method: "POST" as const,
         url: `/api/v1/documents/${DOC_LIBRARY}/tags`,
         payload: { tagKind: "free", tagKey: "note", tagValue: "x" },
       },
-      { method: "POST" as const, url: `/api/v1/documents/${DOC_LIBRARY}/links`, payload: { patientId: PATIENT } },
+      {
+        method: "POST" as const,
+        url: `/api/v1/documents/${DOC_LIBRARY}/links`,
+        payload: { patientId: PATIENT },
+      },
       {
         method: "POST" as const,
         url: `/api/v1/documents/${DOC_LIBRARY}/versions`,

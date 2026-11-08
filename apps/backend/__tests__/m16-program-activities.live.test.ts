@@ -39,8 +39,8 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer, registerSeam } from "../src/bootstrap/index";
-import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
 import { registerBereavementAbacPredicates } from "../src/modules/16-bereavement/abac-predicates";
 import { buildDrizzleBereavementAbacResolver } from "../src/modules/16-bereavement/abac-resolver-drizzle";
 import {
@@ -63,15 +63,15 @@ import { registerBereavementMemorialRoutes } from "../src/modules/16-bereavement
 import { createDrizzleBereavementSeamStore } from "../src/modules/16-bereavement/seams/drizzle-store";
 import { registerBereavementSeams } from "../src/modules/16-bereavement/seams/index";
 import { createBereavementPortalContentProvider } from "../src/modules/16-bereavement/seams/portal-content";
-import { buildPortalAbacPredicates } from "../src/modules/31-portal/abac-predicates";
-import { registerPortalReadRoutes } from "../src/modules/31-portal/routes/read.routes";
-import { registerPortalWriteRoutes } from "../src/modules/31-portal/routes/write.routes";
 import {
   createDrizzleOrgDocumentAccessPort,
   createDrizzlePortalAccessLog,
   createDrizzleStaffMintAccessLog,
   createOrgDocumentAccessProvider,
 } from "../src/modules/22-documents/seams/index";
+import { buildPortalAbacPredicates } from "../src/modules/31-portal/abac-predicates";
+import { registerPortalReadRoutes } from "../src/modules/31-portal/routes/read.routes";
+import { registerPortalWriteRoutes } from "../src/modules/31-portal/routes/write.routes";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;

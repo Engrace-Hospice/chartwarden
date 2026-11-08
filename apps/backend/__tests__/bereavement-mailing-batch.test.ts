@@ -347,7 +347,9 @@ describe("OrgDocumentAccessProvider", () => {
 
   it("the portal door serves a library item only, writing the family's ledger row (account + session, no patient) first", async () => {
     const { provider, portalLogged } = build(LIBRARY);
-    expect(await portalMint(provider)).toMatchObject({ url: "https://objects.example.test/signed" });
+    expect(await portalMint(provider)).toMatchObject({
+      url: "https://objects.example.test/signed",
+    });
     expect(portalLogged).toEqual([
       expect.objectContaining({
         documentId: DOC_ID,
