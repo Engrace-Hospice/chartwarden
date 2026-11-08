@@ -257,7 +257,7 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     eventName: "m12.medication_order.transmission_failed",
     moduleOwner: "m12",
     description:
-      "A signed prescription did not reach DoseSpot: the `transmit-newrx` worker exhausted its retry budget, or an administrator resolved a held order as never sent (`lastErrorClass` resolved_not_sent). It has NOT reached the pharmacy and the prescriber must retransmit it. Consumed by M36's `dosespot-alerts`, which alerts the tenant's administrators (critical).",
+      "A signed prescription failed to transmit: the `transmit-newrx` worker exhausted its retry budget, an administrator resolved a held order as never sent (`lastErrorClass` resolved_not_sent), or the transmission sweep found a SENT order the pharmacy has not confirmed receiving within 24 hours (`lastErrorClass` no_pharmacy_ack_24h). The first two never reached the pharmacy; the sweep's may have, so check DoseSpot before the prescriber retransmits. Consumed by M36's `dosespot-alerts`, which alerts the tenant's administrators (critical).",
     payloadSchema: Type.Object({
       orderId: id,
       lastErrorClass: Type.String(),
