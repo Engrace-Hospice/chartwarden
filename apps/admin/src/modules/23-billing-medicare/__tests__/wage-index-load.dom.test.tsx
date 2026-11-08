@@ -254,6 +254,41 @@ describe("Platform wage-index load (M23 §4.1 #42)", () => {
     expect(await within(dialog).findByText("Line 3: factor out of range")).toBeTruthy();
   });
 
+  it("announces the 422 summary and its row list through one alert", async () => {
+    reply = {
+      status: 422,
+      body: {
+        error: {
+          code: "VALIDATION_FAILED",
+          message: "1 problem(s) in the wage-index file; nothing was loaded",
+          details: [{ field: "rows[1]", code: "INVALID", message: "factor out of range" }],
+          correlationId: "c",
+        },
+      },
+    };
+    mount();
+    fill();
+    const dialog = await confirmLoad();
+    const alert = await within(dialog).findByRole("alert");
+    expect(within(dialog).getAllByRole("alert")).toHaveLength(1);
+    expect(within(alert).getByRole("list")).toBeTruthy();
+    expect(within(alert).getByText("Line 3: factor out of range")).toBeTruthy();
+    // The list is not nested in the summary paragraph, which would be invalid markup.
+    expect(alert.querySelector("p ul")).toBeNull();
+  });
+
+  it("announces the preview's problem summary and its line list through one alert", async () => {
+    mount();
+    fill("381588,1.0\n38158,1.1");
+    const line = await screen.findByText(/Line 2:/);
+    const alert = line.closest('[role="alert"]') as HTMLElement;
+    expect(alert).not.toBeNull();
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(within(alert).getByText(/1 problem in the table/)).toBeTruthy();
+    expect(within(alert).getByRole("list")).toBeTruthy();
+    expect(alert.querySelector("p ul")).toBeNull();
+  });
+
   it("keeps the same Idempotency-Key when the operator retries the same confirmation", async () => {
     reply = {
       status: 500,

@@ -282,8 +282,10 @@ function PreviewPanel({ parsed }: { readonly parsed: Parsed }): JSX.Element {
         </p>
       ) : null}
       {parsed.problems.length > 0 ? (
-        <>
-          <InlineAlert tone="error">
+        // One live region holds the summary and the list, so the problems are announced with it (the alert text is a <p>,
+        // which cannot hold the list; `live={false}` keeps the summary from announcing a second time).
+        <div role="alert">
+          <InlineAlert tone="error" live={false}>
             <strong>{plural(parsed.problems.length, "problem")} in the table</strong>
           </InlineAlert>
           <ul className="wx-bullet-list">
@@ -293,7 +295,7 @@ function PreviewPanel({ parsed }: { readonly parsed: Parsed }): JSX.Element {
               </li>
             ))}
           </ul>
-        </>
+        </div>
       ) : null}
       {shown.length === 0 ? (
         <div className="wx-list-state">
@@ -400,9 +402,9 @@ function ConfirmLoadModal({
         </p>
         <p>Source: {sourceReference}</p>
         {failure ? (
-          <>
-            {/* The alert is a <p>: only phrasing content fits in it, so the detail list follows it. */}
-            <InlineAlert tone="error">
+          // The alert text is a <p>, which cannot hold the detail list: one live region wraps both so the details are announced.
+          <div role="alert">
+            <InlineAlert tone="error" live={false}>
               <strong>{failure.title}</strong> {failure.message}
             </InlineAlert>
             {failure.details.length > 0 ? (
@@ -412,7 +414,7 @@ function ConfirmLoadModal({
                 ))}
               </ul>
             ) : null}
-          </>
+          </div>
         ) : null}
         {failure?.stepUp ? (
           <div className="wx-drawer-actions">
