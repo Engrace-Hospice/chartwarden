@@ -9,6 +9,7 @@ import {
   type ConfigPatch,
   type ConfigRow,
   type ConfigStore,
+  type HeldFingerprint,
   isUniqueViolation,
 } from "./config-store";
 import type { ClearinghouseSecretCipher, CredentialFingerprint } from "./secret-cipher";
@@ -33,12 +34,6 @@ const DAY_MS = 86_400_000;
  * until platform ops releases it, so an unbounded loop of saves would grow the table and its audit trail without end.
  */
 export const MAX_HELD_CREDENTIALS = 20;
-
-/** A fingerprint to reserve, with the public id of its key (null: recorded before migration 1405). */
-export interface HeldFingerprint {
-  readonly keyId: string | null;
-  readonly fingerprint: string;
-}
 
 /** The codes of a refused credential: each leaves a `denied` audit row on its own transaction. */
 export const CREDENTIAL_REFUSAL_CODES: ReadonlySet<string> = new Set([

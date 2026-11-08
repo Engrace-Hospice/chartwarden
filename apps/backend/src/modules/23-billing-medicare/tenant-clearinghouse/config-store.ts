@@ -4,13 +4,18 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import { and, eq, gte, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
-import type { HeldFingerprint } from "./credential-reservation";
 
 const C = schema.tenantClearinghouseConfig;
 const A = schema.clearinghouseSubmissionAttempts;
 const R = schema.tenantClearinghouseCredentialReservation;
 
 export type ConfigRow = schema.TenantClearinghouseConfigRow;
+
+/** A fingerprint to reserve, with the public id of its key (null: recorded before migration 1405). */
+export interface HeldFingerprint {
+  readonly keyId: string | null;
+  readonly fingerprint: string;
+}
 export type NewConfigRow = Omit<schema.NewTenantClearinghouseConfigRow, "id" | "createdAt">;
 /** Every column an update may touch (the migration's column-level UPDATE grant). */
 export type ConfigPatch = Partial<Omit<ConfigRow, "id" | "organizationId" | "createdAt">>;
