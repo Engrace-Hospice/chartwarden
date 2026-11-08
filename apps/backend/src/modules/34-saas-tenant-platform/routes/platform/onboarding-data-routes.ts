@@ -6,7 +6,9 @@
 // `tenant_lifecycle_platform_ops` predicate (the exact `platform_ops` role), a FRESH step-up, the AI-actor block (a
 // person acts for a tenant, never an AI principal) and `Idempotency-Key`; the body carries a required `reason`
 // (8-500 characters after normalising: whitespace collapsed, control characters removed) that lands on the audit row beside the operator and the tenant. The service then
-// accepts the write only while the tenant is provisioning or onboarding (409 `TENANT_NOT_ONBOARDING` otherwise).
+// accepts the write only while the tenant is provisioning or onboarding (409 `TENANT_NOT_ONBOARDING` otherwise), with three named
+// exceptions: the clearinghouse switch out of `outside` that names a billing mode (an explicit allowlist of statuses: provisioning,
+// onboarding, active, at_risk, suspended), and the vendor-BAA verification and the notice withdrawal (any status, still locked and audited).
 // READS (masked: no EIN, no secret exists in any view) need the read permission + the same predicate, and are audited.
 //
 // Org and operator are server-side: the tenant is the PATH slug, the operator is the session, never the body.

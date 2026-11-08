@@ -965,7 +965,14 @@ interface InsertedRow {
 const resolveTenant = async (slug: string) =>
   slug === "tenant-b" ? { organizationId: TARGET_ORG } : null;
 
-function stubDb(tenantStatus: string | null, options: { failInserts?: boolean } = {}) {
+function stubDb(
+  tenantStatus: string | null,
+  options: {
+    failInserts?: boolean;
+    /** Asked after a transaction's callback finished: an error to throw as the failure of its COMMIT (once per truthy answer). */
+    failCommit?: () => Error | undefined;
+  } = {},
+) {
   const inserts: InsertedRow[] = [];
   /** Every statement the service issues, in order: `exec:<sql text>` / `select:tenant_account`. */
   const trace: string[] = [];
@@ -1002,7 +1009,15 @@ function stubDb(tenantStatus: string | null, options: { failInserts?: boolean } 
       return undefined;
     },
   };
-  const db = { select, transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx) };
+  const db = {
+    select,
+    transaction: async (fn: (t: typeof tx) => Promise<unknown>) => {
+      const out = await fn(tx);
+      const commitError = options.failCommit?.();
+      if (commitError) throw commitError;
+      return out;
+    },
+  };
   return { db: db as unknown as DbClient, inserts, trace };
 }
 
@@ -1491,13 +1506,28 @@ describe("service: an operator's switch out of outside (order, any status, the m
       /** How many of the confirmations AFTER the vendor committed fail (the write before it always succeeds). */
       reassertFails?: number;
       modeWriteFails?: boolean;
+      /** The vendor's COMMIT fails (once, after the put ran) with this error. */
+      commitFails?: Error;
+      /** What the vendor row looks like when it is read again after that failed COMMIT. Default: still outside. */
+      afterCommitFailure?: "landed" | "outside" | "unreadable";
+      failInserts?: boolean;
     } = {},
   ) {
     const log: string[] = [];
     let modeCalls = 0;
+    let putRan = false;
+    let commitFailed = false;
     const warned: string[] = [];
     const port: OnboardingClearinghousePort = {
-      get: async () => ({ vendor: "outside", source: "tenant", version: 4 }),
+      get: async () => {
+        if (commitFailed) {
+          log.push("reread");
+          if (options.afterCommitFailure === "unreadable") throw new Error("connection refused");
+          if (options.afterCommitFailure === "landed")
+            return { vendor: "claimmd", source: "tenant", version: 5 };
+        }
+        return { vendor: "outside", source: "tenant", version: 4 };
+      },
       validatePut: async () => {
         log.push("validatePut");
         if (options.validateFails) throw options.validateFails;
@@ -1505,6 +1535,7 @@ describe("service: an operator's switch out of outside (order, any status, the m
       put: async () => {
         log.push("put");
         if (options.putFails) throw options.putFails;
+        putRan = true;
         return { resourceId: CONFIG_ID, created: false, view: { vendor: "claimmd" } };
       },
     } as unknown as OnboardingClearinghousePort;
@@ -1527,7 +1558,14 @@ describe("service: an operator's switch out of outside (order, any status, the m
         log.push("restoreNone");
       },
     };
-    const { db, inserts } = stubDb(options.status ?? "active");
+    const { db, inserts } = stubDb(options.status ?? "active", {
+      ...(options.failInserts ? { failInserts: true } : {}),
+      failCommit: () => {
+        if (!options.commitFails || !putRan || commitFailed) return undefined;
+        commitFailed = true;
+        return options.commitFails;
+      },
+    });
     const service = buildDrizzleOnboardingDataService({
       db,
       resolveTenant,
@@ -1635,6 +1673,77 @@ describe("service: an operator's switch out of outside (order, any status, the m
       "put",
       "restoreNone",
     ]);
+  });
+
+  it("answers 503 ONBOARDING_AUDIT_UNAVAILABLE, writing nothing, when the status refusal itself cannot be audited (it fails closed, never a 409 with no trail)", async () => {
+    const { service, log } = harness({ status: "retained", failInserts: true });
+    await expect(put(service)).rejects.toMatchObject({
+      statusCode: 503,
+      code: "ONBOARDING_AUDIT_UNAVAILABLE",
+    });
+    expect(log.some((l) => l.startsWith("setMode") || l === "put")).toBe(false);
+  });
+
+  describe("a COMMIT of the vendor that fails with no definite answer from the database", () => {
+    const lostConnection = new Error("Connection terminated unexpectedly");
+    const pgError = (code: string) =>
+      Object.assign(new Error(`database said ${code}`), { code, severity: "FATAL", routine: "r" });
+
+    it("looks at the vendor row and, when it did NOT land, puts the mode back to none and rethrows the failure", async () => {
+      const { service, log } = harness({ commitFails: lostConnection });
+      await expect(put(service)).rejects.toBe(lostConnection);
+      expect(log.slice(-3)).toEqual(["put", "reread", "restoreNone"]);
+    });
+
+    it("keeps the mode, and answers as a success with the row as it is, when the vendor DID land (nothing is undone blindly)", async () => {
+      const { service, log, warned } = harness({
+        commitFails: lostConnection,
+        afterCommitFailure: "landed",
+      });
+      const out = await put(service);
+      expect(out).toMatchObject({ created: false, view: { vendor: "claimmd", version: 5 } });
+      expect(log).not.toContain("restoreNone");
+      // the mode is confirmed after the vendor, as for any success
+      expect(log.slice(-2)).toEqual(["reread", "setMode:managed_billing"]);
+      expect(warned.some((w) => w.includes("the switch stands"))).toBe(true);
+    });
+
+    it("leaves the mode alone and answers the typed 503 (outcome unknown, logged) when the vendor cannot be read again", async () => {
+      const { service, log, warned } = harness({
+        commitFails: lostConnection,
+        afterCommitFailure: "unreadable",
+      });
+      await expect(put(service)).rejects.toMatchObject({
+        statusCode: 503,
+        code: "CLEARINGHOUSE_SWITCH_OUTCOME_UNKNOWN",
+      });
+      expect(log).not.toContain("restoreNone");
+      expect(warned).toHaveLength(1);
+    });
+
+    it.each(["08P01", "57P01", "40003", "XX000"])(
+      "treats SQLSTATE %s as unknown too: it reads the row again instead of restoring none",
+      async (code) => {
+        const { service, log } = harness({
+          commitFails: pgError(code),
+          afterCommitFailure: "landed",
+        });
+        await expect(put(service)).resolves.toMatchObject({ created: false });
+        expect(log).toContain("reread");
+        expect(log).not.toContain("restoreNone");
+      },
+    );
+
+    it.each(["40001", "40P01", "23514"])(
+      "treats SQLSTATE %s as a certain rollback: no second read, the mode goes back to none",
+      async (code) => {
+        const refused = pgError(code);
+        const { service, log } = harness({ commitFails: refused, afterCommitFailure: "landed" });
+        await expect(put(service)).rejects.toBe(refused);
+        expect(log).not.toContain("reread");
+        expect(log.at(-1)).toBe("restoreNone");
+      },
+    );
   });
 
   it("answers the typed 503 when the contract cannot be read (never 'no contract'), logging the cause", async () => {

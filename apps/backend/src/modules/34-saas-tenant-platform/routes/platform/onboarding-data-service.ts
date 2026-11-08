@@ -471,7 +471,11 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     );
   }
 
-  /** The audit row a refusal for the tenant's status leaves (the same row `write()` leaves), on its own short transaction. */
+  /**
+   * The audit row a refusal for the tenant's status leaves (the same `write_refused` row `write()` leaves, there in the write's own
+   * transaction), here on its own short transaction because nothing else is open yet. FAIL CLOSED: a refusal that cannot be audited is
+   * answered 503 (the cause is logged), never a 409 with no trail. Nothing was changed either way.
+   */
   async function recordStatusRefusal(
     op: OnboardingOperator,
     target: OnboardingAuditTarget,
@@ -493,6 +497,11 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       );
     } catch (auditError) {
       deps.logAuditError?.(auditError, { organizationId: target.organizationId });
+      throw new ChartWardenError(
+        "ONBOARDING_AUDIT_UNAVAILABLE",
+        "the refusal could not be recorded in the audit trail, so it was not answered; nothing was changed, try again",
+        503,
+      );
     }
   }
 
@@ -633,6 +642,42 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
         503,
       );
     }
+  }
+
+  /**
+   * The vendor's COMMIT failed with no definite answer from the database, so the row may have landed and putting the mode back to none
+   * blindly could leave a vendor without its mode. The vendor is read again: still outside -> null (it did not land: the caller restores
+   * none); no longer outside -> the switch stands and its result is the row as it is now (the caller goes on as for a success, so the
+   * mode is confirmed); unreadable -> the mode is LEFT as set and the answer is the typed 503 that says the outcome is unknown (logged).
+   */
+  async function vendorLandedAfterAmbiguousCommit(
+    op: OnboardingOperator,
+    target: OnboardingAuditTarget,
+    commitError: unknown,
+  ): Promise<{ created: boolean; view: unknown } | null> {
+    let current: { vendor?: string | null; source?: string };
+    try {
+      current = (await clearinghousePort().get(
+        scopeOf(op, target.organizationId),
+      )) as typeof current;
+    } catch (readError) {
+      deps.warn?.(
+        "m34.onboarding data: the clearinghouse switch's COMMIT failed without a definite answer and the vendor could not be read again; the billing mode was left as set",
+        { organizationId: target.organizationId, err: readError, commitError },
+      );
+      throw new ChartWardenError(
+        "CLEARINGHOUSE_SWITCH_OUTCOME_UNKNOWN",
+        "the clearinghouse change may or may not have been saved, and the billing mode was left as set; read the tenant's clearinghouse and contract before changing anything",
+        503,
+      );
+    }
+    if (current.source === "tenant" && current.vendor === "outside") return null;
+    deps.warn?.(
+      "m34.onboarding data: the clearinghouse switch's COMMIT failed without a definite answer but the vendor row is there; the switch stands and the billing mode was kept",
+      { organizationId: target.organizationId, err: commitError },
+    );
+    // A switch always changes an existing row (the tenant was outside), so it is an update, never a creation.
+    return { created: false, view: current };
   }
 
   /** The vendor change failed after the mode was set: the tenant, still outside, goes back to none (best effort, loudly warned). */
@@ -847,13 +892,22 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
         }
       }
       let result: { created: boolean; view: unknown };
+      // Set by `write()` when the vendor's COMMIT failed without a definite answer from the database: the vendor row may have landed.
+      let commitMayHaveLanded = false;
       try {
         result = await write(
           op,
           orgSlug,
-          // The contracted tenant's switch is the operator's for ANY tenant status: a live tenant that bills outside has no other way
-          // to leave outside (its own lane is blocked while a contract exists). Every other clearinghouse write stays onboarding-only.
-          { ...spec, ...(mode !== null ? { allowedStatuses: CLEARINGHOUSE_SWITCH_STATUSES } : {}) },
+          // The contracted tenant's switch is the operator's for a live tenant too (an explicit allowlist of statuses): a tenant that
+          // bills outside has no other way to leave outside (its own lane is blocked while a contract exists). Every other clearinghouse
+          // write stays onboarding-only.
+          {
+            ...spec,
+            ...(mode !== null ? { allowedStatuses: CLEARINGHOUSE_SWITCH_STATUSES } : {}),
+            onFailure: async ({ commitReached }) => {
+              commitMayHaveLanded = commitReached;
+            },
+          },
           async (tx, t) => {
             const done = await clearinghousePort().put(
               tx,
@@ -870,8 +924,17 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
           target,
         );
       } catch (err) {
-        await restoreNoneAfterFailedSwitch(mode, target.organizationId);
-        throw err;
+        // A failure the database refused (or one before the commit) is a certain rollback: the tenant is still outside, so the mode goes
+        // back to none. A COMMIT that failed with no definite answer may have landed: look at the vendor row before undoing anything.
+        const landed =
+          commitMayHaveLanded && mode !== null
+            ? await vendorLandedAfterAmbiguousCommit(op, target, err)
+            : null;
+        if (landed === null) {
+          await restoreNoneAfterFailedSwitch(mode, target.organizationId);
+          throw err;
+        }
+        result = landed;
       }
       // The vendor is committed and the tenant no longer bills outside, so nothing the system does reverts the mode now. But a sync or
       // sweep may have set none in the window between the mode write and this commit (the tenant was still outside): ask for the
