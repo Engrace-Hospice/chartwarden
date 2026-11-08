@@ -11976,12 +11976,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // GAP-037 — the seven §4.8 crons (transmit_newrx, transmit_queued_on_recovery, rx_benefit_prewarm, refill_sla,
     // ial2_expiry_warn, transmission_timeout_sweep, epcs_attempt_expiry_sweep). The vendor-facing four run only for
     // tenants with a bound adapter; the three DB-only ones run for every org.
-    // The alert-once-per-episode memory is shared by every replica and survives a restart (Valkey): its own short-timeout connection, so
-    // a tick never waits on it (an unreachable store delays an alert to the next tick, see degradation-reports.ts).
+    // The alert-once-per-episode memory is shared by every replica and survives a restart (Valkey): its own fail-fast connection (below), so
+    // an unreachable store makes a tick skip the alert for that tick (see degradation-reports.ts), not hang.
     const m12EpisodeRedis = new Redis({
       ...(queueConnection as RedisOptions),
+      // no offline queue: a command issued while disconnected is refused at once instead of waiting for a reconnect; and a connect or a
+      // command that does not answer gives up after 2 s. Together these are what let a tick treat an unreachable store as a skipped tick.
+      enableOfflineQueue: false,
       maxRetriesPerRequest: 1,
       connectTimeout: 2_000,
+      commandTimeout: 2_000,
       retryStrategy: (times) => Math.min(times * 200, 2_000),
     });
     m12EpisodeRedis.on("error", () => {});

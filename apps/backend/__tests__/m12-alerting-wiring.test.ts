@@ -22,12 +22,14 @@ describe("M12 degradation alerting is wired in the composition root", () => {
     expect(call).not.toMatch(/createEpisodeTracker\(/);
   });
 
-  it("builds that connection fail-fast, so a tick never waits on an unreachable store", () => {
+  it("builds that connection to refuse commands while it is disconnected (no offline queue) and to give up on a connect or a command after a bounded time", () => {
     const start = COMPOSITION_ROOT.indexOf("const m12EpisodeRedis = new Redis(");
     expect(start).toBeGreaterThan(0);
-    const construction = COMPOSITION_ROOT.slice(start, start + 400);
+    const construction = COMPOSITION_ROOT.slice(start, start + 900);
+    expect(construction).toMatch(/enableOfflineQueue:\s*false/);
     expect(construction).toMatch(/maxRetriesPerRequest:\s*1\b/);
-    expect(construction).toMatch(/connectTimeout:/);
+    expect(construction).toMatch(/connectTimeout:\s*2_000/);
+    expect(construction).toMatch(/commandTimeout:\s*2_000/);
   });
 
   it("the catalog declares M36 as the consumer of exactly the events the consumer handles", () => {
