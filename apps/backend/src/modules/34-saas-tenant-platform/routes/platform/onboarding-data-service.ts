@@ -29,11 +29,6 @@ import {
 } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
-import type {
-  OnboardingBaaDocument,
-  OnboardingBaaDocumentPort,
-} from "../../../../bootstrap/onboarding-baa-document-port";
-import type { OnboardingBillingModePort } from "../../../../bootstrap/onboarding-billing-mode-port";
 import type { OnboardingClearinghousePort } from "../../../../bootstrap/onboarding-clearinghouse-port";
 import type {
   OnboardingCredentialPort,
@@ -41,18 +36,12 @@ import type {
 } from "../../../../bootstrap/onboarding-credential-port";
 import type {
   OnboardingNoticeFilingList,
-  OnboardingNoticeKind,
   OnboardingNoticePort,
-  OnboardingNoticeView,
 } from "../../../../bootstrap/onboarding-notice-port";
-import {
-  isDefiniteDatabaseRefusal,
-  sqlStatesInChain,
-} from "../../../../bootstrap/redact-database-error";
+import { isDefiniteDatabaseRefusal } from "../../../../bootstrap/redact-database-error";
 import { createDrizzleSiteAdminRepository } from "../../../../bootstrap/site-admin-repository";
 import {
   type SiteWriteDeps,
-  type TaxIdCipherPort,
   createLocationForOrg,
   createProviderEntityForOrg,
   updateLocationForOrg,
@@ -60,10 +49,7 @@ import {
 } from "../../../02-identity/org-admin-site-service";
 import { voidPendingGoLiveForDataChange } from "../../onboarding/go-live-void";
 import { uploadTenantBaaDocument } from "./onboarding-baa-document";
-import {
-  type ClearinghouseSwitchPlan,
-  planClearinghouseSwitch,
-} from "./onboarding-clearinghouse-switch";
+import { CLEARINGHOUSE_KIND, createClearinghousePut } from "./onboarding-clearinghouse-put";
 import {
   ONBOARDING_DATA_AUDIT_EVENTS as EVENTS,
   type OnboardingAuditEvent,
@@ -71,180 +57,23 @@ import {
   type OnboardingOperator,
   recordOnboardingAudit,
 } from "./onboarding-data-audit";
-import { type TenantMemberView, listActiveMembers } from "./onboarding-members";
+import type {
+  OnboardingDataDeps,
+  OnboardingDataService,
+  OnboardingFields,
+  OnboardingTenantResolver,
+} from "./onboarding-data-types";
+import { listActiveMembers } from "./onboarding-members";
 import type { WriteResult, WriteSpec } from "./onboarding-write-types";
-import {
-  CLEARINGHOUSE_SWITCH_STATUSES,
-  ONBOARDING_WRITABLE_STATUSES,
-  lockTenantOnboardingShared,
-} from "./tenant-onboarding-lock";
+import { ONBOARDING_WRITABLE_STATUSES, lockTenantOnboardingShared } from "./tenant-onboarding-lock";
 
 export type { OnboardingOperator } from "./onboarding-data-audit";
-
-/** A body field set with the platform `reason` already removed, ready for the tenant's own validators. */
-export type OnboardingFields = Readonly<Record<string, unknown>>;
-
-export interface OnboardingDataService {
-  listProviderEntities(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
-  createProviderEntity(
-    op: OnboardingOperator,
-    orgSlug: string,
-    fields: OnboardingFields,
-    reason: string,
-  ): Promise<unknown>;
-  updateProviderEntity(
-    op: OnboardingOperator,
-    orgSlug: string,
-    id: string,
-    fields: OnboardingFields,
-    reason: string,
-  ): Promise<unknown>;
-  listLocations(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
-  createLocation(
-    op: OnboardingOperator,
-    orgSlug: string,
-    fields: OnboardingFields,
-    reason: string,
-  ): Promise<unknown>;
-  updateLocation(
-    op: OnboardingOperator,
-    orgSlug: string,
-    id: string,
-    fields: OnboardingFields,
-    reason: string,
-  ): Promise<unknown>;
-  listMacCredentials(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
-  upsertMacCredential(
-    op: OnboardingOperator,
-    orgSlug: string,
-    fields: OnboardingFields & { providerEntityId: string },
-    reason: string,
-    expectedVersion: number | undefined,
-  ): Promise<unknown>;
-  /** The tenant's clearinghouse choice, masked (`hasSecret`, never the credential). One audited read. */
-  getClearinghouse(op: OnboardingOperator, orgSlug: string): Promise<unknown>;
-  putClearinghouse(
-    op: OnboardingOperator,
-    orgSlug: string,
-    fields: OnboardingFields,
-    reason: string,
-    expectedVersion: number | undefined,
-  ): Promise<{
-    readonly created: boolean;
-    readonly view: unknown;
-    /**
-     * `false` only when the vendor committed but the billing mode the operator chose could not be confirmed afterwards (even after one
-     * retry): the tenant has the vendor, and its contract may not hold that mode. Absent otherwise.
-     */
-    readonly billingModeConfirmed?: false;
-  }>;
-  verifyClearinghouse(
-    op: OnboardingOperator,
-    orgSlug: string,
-    fields: OnboardingFields,
-    reason: string,
-  ): Promise<{ readonly config: unknown; readonly test: unknown }>;
-  activateClearinghouse(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
-  /**
-   * The operator verifies the vendor BAA the tenant recorded. NOT gated on the tenant's onboarding status: a live tenant that
-   * changed vendor or re-recorded its BAA needs this too.
-   */
-  /** `expected` is the `baa.recordedAt` the operator read: a record that changed since is a 409, not a verification. */
-  verifyClearinghouseBaa(
-    op: OnboardingOperator,
-    orgSlug: string,
-    reason: string,
-    expected: { readonly recordedAt: string },
-  ): Promise<unknown>;
-  /**
-   * The notices the tenant recorded as filed outside ChartWarden, NOEs and NOTRs, newest record first (what the withdraw drawer
-   * reads; each carries the `recordedAt` pin a withdrawal needs). Ids, a state and dates only; an audited read on the tenant's own
-   * RLS scope, NOT gated on the tenant's onboarding status.
-   */
-  listNoticeFilings(op: OnboardingOperator, orgSlug: string): Promise<OnboardingNoticeFilingList>;
-  /**
-   * The operator withdraws the tenant's "filed outside ChartWarden" record of one NOE / NOTR: the notice returns to its pre-record
-   * state (a watchdog's breach stamp stays; the one a withdrawn LATE record wrote itself is cleared with it). NOT gated on the
-   * tenant's onboarding status. `expected` is the `externalFiling.recordedAt` the operator read (null: the request named none): a
-   * record that changed since is a 409 and none named is a 428, both carrying the current `recordedAt` in the error details.
-   */
-  withdrawNoticeExternalFiling(
-    op: OnboardingOperator,
-    orgSlug: string,
-    kind: OnboardingNoticeKind,
-    noticeId: string,
-    reason: string,
-    expected: { readonly recordedAt: string | null },
-  ): Promise<OnboardingNoticeView>;
-  /**
-   * The operator uploads the signed BAA for the tenant (onboarding step 3): M22's own upload pipeline files one document kind
-   * (`tenant_baa`) on the tenant's RLS scope, and the BAA register row then links the returned id. Only while the tenant is provisioning or
-   * onboarding; a successful upload voids a pending go-live attestation like any other onboarding data write.
-   */
-  uploadBaaDocument(
-    op: OnboardingOperator,
-    orgSlug: string,
-    input: { readonly contentBase64: string; readonly mimeType: string },
-    reason: string,
-  ): Promise<OnboardingBaaDocument>;
-  listMedicaidCredentials(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
-  /** The tenant's active staff, for assigning its compliance officer (minimum necessary; an audited read). */
-  listMembers(
-    op: OnboardingOperator,
-    orgSlug: string,
-  ): Promise<{ items: TenantMemberView[]; truncated: boolean }>;
-  upsertMedicaidCredential(
-    op: OnboardingOperator,
-    orgSlug: string,
-    fields: OnboardingFields & { providerEntityId: string },
-    reason: string,
-  ): Promise<unknown>;
-}
-
-/** The organization behind a tenant slug, or null. A slug lookup spans tenants, so it needs the platform credential. */
-export type OnboardingTenantResolver = (
-  orgSlug: string,
-) => Promise<{ organizationId: string } | null>;
-
-export interface OnboardingDataDeps {
-  /** The TENANT pool (NOBYPASSRLS): the write must be bound by the target org's RLS, never bypass it. */
-  readonly db: DbClient;
-  /** Slug -> organization on the audited platform credential; absent => every call answers 503 (never a tenant-pool guess). */
-  readonly resolveTenant?: OnboardingTenantResolver;
-  /** Unbound -> creating a provider entity answers 503 TAX_ID_CIPHER_UNBOUND (an EIN is never stored in the clear). */
-  readonly taxIdCipher?: TaxIdCipherPort;
-  /** M23's MAC credential adapter; unbound -> the MAC credential routes answer 503. */
-  readonly macCredentials?: OnboardingCredentialPort;
-  /** M24's state Medicaid trading-partner credential adapter; unbound -> those routes answer 503. */
-  readonly medicaidCredentials?: OnboardingCredentialPort;
-  /**
-   * Runs the advance sweep for the tenant after a write COMMITS (best effort: a failure is warned and never fails the write), so
-   * the step the data satisfies settles at once (the MAC credential, a location) instead of waiting for the daily pass.
-   */
-  readonly advance?: (tenant: { tenantAccountId: string; organizationId: string }) => Promise<void>;
-  /** `err` carries the raw error for the redacting logger (a database error holds bound values). */
-  readonly warn?: (message: string, context: Record<string, unknown>) => void;
-  /** M23's clearinghouse adapter (ADR-0053 amendment 2026-11-06); unbound -> the clearinghouse routes answer 503. */
-  readonly clearinghouse?: OnboardingClearinghousePort;
-  /** M23's notice adapter (an operator withdraws a tenant's external-filing record); unbound -> that route answers 503. */
-  readonly notices?: OnboardingNoticePort;
-  /** M22's BAA document adapter (an operator uploads the tenant's signed BAA); unbound -> that route answers 503. */
-  readonly baaDocuments?: OnboardingBaaDocumentPort;
-  /**
-   * M35's billing mode adapter. A contracted tenant that bills outside ChartWarden is on mode none, so the operator's switch to a vendor
-   * names the mode (set before the vendor, put back if the vendor change fails). Unbound (a deployment without pricing) -> no tenant has a
-   * contract, and a billing mode in the body is refused.
-   */
-  readonly billingMode?: OnboardingBillingModePort;
-  /**
-   * Runs the onboarding advance pass for the tenant after a clearinghouse change COMMITS, so wizard step 7
-   * (`clearinghouse_selected`) settles at once. Best effort: a failure is the caller's to log and never fails the write.
-   */
-  readonly settleOnboarding?: (organizationId: string) => Promise<void>;
-  readonly logError?: (cause: unknown, context: { organizationId: string }) => void;
-  /** Cause logging for a failed-attempt audit row that could not be written (the original error still reaches the caller). */
-  readonly logAuditError?: (cause: unknown, context: { organizationId: string }) => void;
-}
+export type {
+  OnboardingDataDeps,
+  OnboardingDataService,
+  OnboardingFields,
+  OnboardingTenantResolver,
+} from "./onboarding-data-types";
 
 const ORG = schema.organizations;
 const ACCOUNT = schema.tenantAccount;
@@ -462,60 +291,6 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     );
   }
 
-  /** The tenant's status on a short org-scoped read (no lock): the early look the switch takes BEFORE it writes the billing mode. */
-  async function tenantStatusOf(
-    op: OnboardingOperator,
-    target: OnboardingAuditTarget,
-  ): Promise<string> {
-    return withOrgContext<DbClient, string>(
-      db,
-      { organizationId: target.organizationId, userId: op.userId },
-      async (tx) => {
-        const [account] = await tx
-          .select({ status: ACCOUNT.status })
-          .from(ACCOUNT)
-          .where(eq(ACCOUNT.organizationId, target.organizationId))
-          .limit(1);
-        if (!account) throw new NotFoundError("tenant");
-        return account.status;
-      },
-    );
-  }
-
-  /**
-   * The audit row a refusal for the tenant's status leaves (the same `write_refused` row `write()` leaves, there in the write's own
-   * transaction), here on its own short transaction because nothing else is open yet. FAIL CLOSED: a refusal that cannot be audited is
-   * answered 503 (the cause is logged), never a 409 with no trail. Nothing was changed either way.
-   */
-  async function recordStatusRefusal(
-    op: OnboardingOperator,
-    target: OnboardingAuditTarget,
-    spec: WriteSpec,
-    status: string,
-  ): Promise<void> {
-    try {
-      await withOrgContext<DbClient, void>(
-        db,
-        { organizationId: target.organizationId, userId: op.userId },
-        (tx) =>
-          recordOnboardingAudit(tx, op, target, {
-            eventType: EVENTS.writeRefused,
-            resourceKind: spec.resourceKind,
-            outcome: "denied",
-            reason: spec.reason,
-            detail: { attemptedEvent: spec.event, tenantStatus: status },
-          }),
-      );
-    } catch (auditError) {
-      deps.logAuditError?.(auditError, { organizationId: target.organizationId });
-      throw new ChartWardenError(
-        "ONBOARDING_AUDIT_UNAVAILABLE",
-        "the refusal could not be recorded in the audit trail, so it was not answered; nothing was changed, try again",
-        503,
-      );
-    }
-  }
-
   /** Post-commit, best effort: let the advance sweep settle whatever step this write satisfied. */
   async function settleAfterWrite(
     organizationId: string,
@@ -611,29 +386,6 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       },
     );
 
-  /**
-   * What an operator's clearinghouse write needs beyond the vendor: only a vendor write (or a write that names a billing mode) reads the
-   * tenant's current choice, and only the switch OUT of outside for a contracted tenant carries a mode.
-   */
-  async function planSwitch(
-    op: OnboardingOperator,
-    target: OnboardingAuditTarget,
-    fields: OnboardingFields,
-  ): Promise<ClearinghouseSwitchPlan> {
-    if (fields.vendor === "outside" && fields.billingServiceMode === undefined) {
-      return { body: fields, billingServiceMode: null };
-    }
-    return planClearinghouseSwitch(
-      {
-        clearinghouse: clearinghousePort(),
-        ...(deps.billingMode ? { billingMode: deps.billingMode } : {}),
-        ...(deps.warn ? { warn: deps.warn } : {}),
-      },
-      scopeOf(op, target.organizationId),
-      fields,
-    );
-  }
-
   /** Whether the tenant holds a contract that is not canceled; an unreadable one is the typed 503, never "none". No pricing bound: none. */
   async function tenantHasContract(organizationId: string): Promise<boolean> {
     if (!deps.billingMode) return false;
@@ -653,101 +405,6 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
         503,
       );
     }
-  }
-
-  /**
-   * The vendor's COMMIT failed with no definite answer from the database, so the row may have landed and putting the mode back to none
-   * blindly could leave a vendor without its mode. The vendor is read again: still outside -> null (it did not land: the caller restores
-   * none); no longer outside -> the switch stands and its result is the row as it is now (the caller goes on as for a success, so the
-   * mode is confirmed); unreadable -> the mode is LEFT as set and the answer is the typed 503 that says the outcome is unknown (logged).
-   * RESIDUAL (narrow, not closable from here): a commit the client gave up on can still land AFTER the read-back saw `outside` (the
-   * server was still processing it), leaving a vendor with the mode put back to none; the operator reads the tenant's clearinghouse and
-   * contract after any failed switch and sets the mode (CHANGES.md and the OpenAPI summary say so for every failed switch; the 503's own
-   * message says to read them only on the unreadable path above).
-   */
-  async function vendorLandedAfterAmbiguousCommit(
-    op: OnboardingOperator,
-    target: OnboardingAuditTarget,
-    commitError: unknown,
-  ): Promise<{ created: boolean; view: unknown } | null> {
-    let current: { vendor?: string | null; source?: string };
-    try {
-      current = (await clearinghousePort().get(
-        scopeOf(op, target.organizationId),
-      )) as typeof current;
-    } catch (readError) {
-      deps.warn?.(
-        "m34.onboarding data: the clearinghouse switch's COMMIT failed without a definite answer and the vendor could not be read again; the billing mode was left as set",
-        { organizationId: target.organizationId, err: readError, commitError },
-      );
-      throw new ChartWardenError(
-        "CLEARINGHOUSE_SWITCH_OUTCOME_UNKNOWN",
-        "the clearinghouse change may or may not have been saved, and the billing mode was left as set; read the tenant's clearinghouse and contract before changing anything",
-        503,
-      );
-    }
-    if (current.source === "tenant" && current.vendor === "outside") {
-      // Not landed as far as this read can tell, and the mode goes back to none: leave the ids that let ops correlate it if the commit
-      // the client gave up on lands anyway (the residual above). Ids only: the organization and the error's class, never the error.
-      deps.warn?.(
-        "m34.onboarding data: the clearinghouse switch's COMMIT failed without a definite answer and the vendor still reads as outside; the billing mode goes back to none (a commit the client gave up on could still land)",
-        {
-          organizationId: target.organizationId,
-          sqlstate: sqlStatesInChain(commitError)[0] ?? null,
-          errorType: commitError instanceof Error ? commitError.name : typeof commitError,
-        },
-      );
-      return null;
-    }
-    deps.warn?.(
-      "m34.onboarding data: the clearinghouse switch's COMMIT failed without a definite answer but the vendor row is there; the switch stands and the billing mode was kept",
-      { organizationId: target.organizationId, err: commitError },
-    );
-    // A switch always changes an existing row (the tenant was outside), so it is an update, never a creation.
-    return { created: false, view: current };
-  }
-
-  /** The vendor change failed after the mode was set: the tenant, still outside, goes back to none (best effort, loudly warned). */
-  async function restoreNoneAfterFailedSwitch(
-    mode: ClearinghouseSwitchPlan["billingServiceMode"],
-    organizationId: string,
-  ): Promise<void> {
-    if (mode === null || mode === "none" || !deps.billingMode) return;
-    try {
-      await deps.billingMode.restoreNone(organizationId);
-    } catch (cause) {
-      deps.warn?.(
-        "m34.onboarding data: putting the billing mode back to none after a failed switch also failed; the hourly pricing sweep corrects it",
-        { organizationId, err: cause },
-      );
-    }
-  }
-
-  /**
-   * After the vendor committed: the operator's mode is asked for once more (idempotent), and once more if that fails. Returns whether it
-   * was confirmed; when it was not, the cause is warned about and the CALLER tells the operator (the vendor change stands).
-   */
-  async function reassertModeAfterSwitch(
-    op: OnboardingOperator,
-    orgSlug: string,
-    mode: NonNullable<ClearinghouseSwitchPlan["billingServiceMode"]>,
-    reason: string,
-    organizationId: string,
-  ): Promise<boolean> {
-    let lastCause: unknown;
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
-      try {
-        await deps.billingMode?.setModeLeavingOutside(op, orgSlug, mode, reason);
-        return true;
-      } catch (cause) {
-        lastCause = cause;
-      }
-    }
-    deps.warn?.(
-      "m34.onboarding data: the vendor switch committed but the billing mode could not be confirmed afterwards (after a retry); read the tenant's contract and set it if it is not the one chosen",
-      { organizationId, err: lastCause },
-    );
-    return false;
   }
 
   /** The bound clearinghouse adapter, or a typed 503 (the credential lanes' posture). */
@@ -773,6 +430,17 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     return deps.notices;
   }
 
+  const putClearinghouse = createClearinghousePut({
+    deps,
+    clearinghousePort,
+    targetOf,
+    scopeOf,
+    write,
+    recordFailedWrite,
+    statusRefusal,
+    settleStepAfter,
+  });
+
   /** Post-commit, best effort: the advance pass that settles wizard step 7. A failure is warned (like `settleAfterWrite`) and never thrown. */
   async function settleStepAfter<T>(organizationId: string, result: T): Promise<T> {
     if (!deps.settleOnboarding) return result;
@@ -786,8 +454,6 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     }
     return result;
   }
-
-  const CLEARINGHOUSE_KIND = "tenant_clearinghouse_config";
 
   return {
     listProviderEntities: (op, orgSlug) =>
@@ -872,108 +538,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       return items[0];
     },
 
-    putClearinghouse: async (op, orgSlug, fields, reason, expectedVersion) => {
-      const target = await targetOf(orgSlug);
-      const spec = { event: EVENTS.clearinghouseSet, resourceKind: CLEARINGHOUSE_KIND, reason };
-      // Everything that can be refused BEFORE anything is written is judged first: the plan (a mode named or missing, 422) and, for the
-      // switch out of outside, the put's own refusals (the body's rules, the If-Match, the locks, the credential). So a plain input error
-      // writes nothing, not even the billing mode. A refusal here is audited like any other failed attempt.
-      let plan: ClearinghouseSwitchPlan;
-      try {
-        plan = await planSwitch(op, target, fields);
-        if (plan.billingServiceMode !== null) {
-          // The status is looked at BEFORE the mode is written: a tenant that is offboarding, retained or being destroyed is refused
-          // here, with the refusal audited, instead of getting a mode set and put back. `write()` judges it again under the lock.
-          const status = await tenantStatusOf(op, target);
-          if (!CLEARINGHOUSE_SWITCH_STATUSES.has(status)) {
-            const refusal = statusRefusal(
-              { allowedStatuses: CLEARINGHOUSE_SWITCH_STATUSES },
-              status,
-            );
-            await recordStatusRefusal(op, target, spec, status);
-            throw refusal;
-          }
-          await clearinghousePort().validatePut(
-            scopeOf(op, target.organizationId),
-            plan.body,
-            expectedVersion,
-          );
-        }
-      } catch (err) {
-        // A status refusal already left its own row (write_refused); every other early refusal is a failed attempt.
-        if (!(err instanceof ChartWardenError && err.code === "TENANT_NOT_ONBOARDING")) {
-          await recordFailedWrite(op, target, spec, err);
-        }
-        throw err;
-      }
-      const mode = plan.billingServiceMode;
-      // Leaving `outside` for a vendor while the tenant has a contract also sets the billing mode: BEFORE the vendor, so a failure never
-      // leaves a vendor without its mode, and put back to none if the vendor change then fails.
-      if (mode !== null && deps.billingMode) {
-        try {
-          await deps.billingMode.setModeLeavingOutside(op, orgSlug, mode, reason);
-        } catch (err) {
-          // The mode is written before the vendor: a refusal there ends the attempt, and it is audited like any other failed attempt.
-          await recordFailedWrite(op, target, spec, err);
-          throw err;
-        }
-      }
-      let result: { created: boolean; view: unknown };
-      // Set by `write()` when the vendor's COMMIT failed without a definite answer from the database: the vendor row may have landed.
-      let commitMayHaveLanded = false;
-      try {
-        result = await write(
-          op,
-          orgSlug,
-          // The contracted tenant's switch is the operator's for a live tenant too (an explicit allowlist of statuses): a tenant that
-          // bills outside has no other way to leave outside (its own lane is blocked while a contract exists). Every other clearinghouse
-          // write stays onboarding-only.
-          {
-            ...spec,
-            ...(mode !== null ? { allowedStatuses: CLEARINGHOUSE_SWITCH_STATUSES } : {}),
-            onFailure: async ({ commitReached }) => {
-              commitMayHaveLanded = commitReached;
-            },
-          },
-          async (tx, t) => {
-            const done = await clearinghousePort().put(
-              tx,
-              scopeOf(op, t.organizationId),
-              plan.body,
-              expectedVersion,
-            );
-            return {
-              value: { created: done.created === true, view: done.view },
-              resourceId: done.resourceId,
-              ...(done.changedFields ? { changedFields: done.changedFields } : {}),
-            };
-          },
-          target,
-        );
-      } catch (err) {
-        // A failure the database refused (or one before the commit) is a certain rollback: the tenant is still outside, so the mode goes
-        // back to none. A COMMIT that failed with no definite answer may have landed: look at the vendor row before undoing anything.
-        const landed =
-          commitMayHaveLanded && mode !== null
-            ? await vendorLandedAfterAmbiguousCommit(op, target, err)
-            : null;
-        if (landed === null) {
-          await restoreNoneAfterFailedSwitch(mode, target.organizationId);
-          throw err;
-        }
-        result = landed;
-      }
-      // The vendor is committed and the tenant no longer bills outside, so nothing the system does reverts the mode now. But a sync or
-      // sweep may have set none in the window between the mode write and this commit (the tenant was still outside): ask for the
-      // operator's mode again. Idempotent (a no-op when it is already in force or pending), dated like any mode change.
-      const confirmed =
-        mode !== null && deps.billingMode
-          ? await reassertModeAfterSwitch(op, orgSlug, mode, reason, target.organizationId)
-          : true;
-      const settled = await settleStepAfter(target.organizationId, result);
-      // An unconfirmed mode is never a silent 200: the flag travels with the result, and the screen says so.
-      return confirmed ? settled : { ...settled, billingModeConfirmed: false as const };
-    },
+    putClearinghouse,
 
     verifyClearinghouse: async (op, orgSlug, fields, reason) => {
       // The vendor probe is a network call: it runs with NO transaction open (and no row lock held). Step 1 reads and unseals
