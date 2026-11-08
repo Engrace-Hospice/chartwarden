@@ -48,7 +48,7 @@ const TEMPLATES: StepTemplate[] = [
   tpl("billing", 2, { owner: "either" }),
   tpl("locations", 3, { owner: "org_admin", completionMode: "either" }),
   tpl("baa_auto", 4, { completionMode: "auto" }),
-  tpl("sample", 5, { optional: true }),
+  tpl("sample_data_loaded", 5, { optional: true }),
   tpl("go_live_checklist_complete", 6, { owner: "compliance_officer" }),
 ];
 
@@ -144,7 +144,9 @@ describe("strict sequence", () => {
       "ONBOARDING_STEP_OUT_OF_ORDER",
     );
     expect(
-      await code(wizard().skipPlatform("acme", taskId("billing"), OPS, "not needed here")),
+      await code(
+        wizard().skipPlatform("acme", taskId("sample_data_loaded"), OPS, "not needed here"),
+      ),
     ).toBe("ONBOARDING_STEP_OUT_OF_ORDER");
     expect(statusOf("billing")).toBe("pending");
   });
@@ -269,10 +271,11 @@ describe("attestation", () => {
 });
 
 describe("skip", () => {
-  it("skips with a recorded rationale and counts as settled for the next step", async () => {
+  it("skips a listed step with a recorded rationale, and it counts as settled for the next step", async () => {
+    settle("organisation", "billing", "locations", "baa_auto");
     const step = await wizard().skipPlatform(
       "acme",
-      taskId("organisation"),
+      taskId("sample_data_loaded"),
       OPS,
       "customer migrating from another system",
     );
@@ -280,9 +283,19 @@ describe("skip", () => {
       status: "skipped",
       skipRationale: "customer migrating from another system",
     });
-    expect((await wizard().attestPlatform("acme", taskId("billing"), OPS, evidence)).status).toBe(
-      "done",
-    );
+    const view = await wizard().getPlatform("acme");
+    expect(view.currentStepKey).toBe("go_live_checklist_complete");
+    expect(view.steps.find((s) => s.key === "sample_data_loaded")?.skippable).toBe(true);
+  });
+
+  it("refuses to skip a step outside the skippable list (the plan, the provider entity, the organisation...)", async () => {
+    expect(
+      await code(
+        wizard().skipPlatform("acme", taskId("organisation"), OPS, "customer migrating"),
+      ),
+    ).toBe("ONBOARDING_STEP_NOT_SKIPPABLE");
+    expect(statusOf("organisation")).not.toBe("skipped");
+    expect((await wizard().getPlatform("acme")).steps[0]?.skippable).toBe(false);
   });
 
   it("refuses to skip go-live", async () => {

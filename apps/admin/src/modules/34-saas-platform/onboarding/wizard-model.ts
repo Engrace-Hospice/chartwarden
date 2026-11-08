@@ -12,18 +12,6 @@ export type WizardOwner = WizardStep["owner"];
 /** The step the platform settles through the two-party approval: never attested, skipped or re-opened by hand. */
 export const GO_LIVE_STEP_KEY = "go_live_checklist_complete";
 
-/**
- * The steps an operator may skip from the console: the ones where "does not apply" is a real answer. The server would let a skip
- * through on any step but go-live, so the UI is where this is held (the owner's decision: MAC-type steps are attested with evidence,
- * skipped only where the step does not apply; the Organisation, plan, BAA and the rest are never skipped by hand).
- */
-export const SKIPPABLE_STEP_KEYS: ReadonlySet<string> = new Set([
-  "mac_configured",
-  "payer_enrollment",
-  "dosespot_kickoff_initiated",
-  "sample_data_loaded",
-]);
-
 /** The rationale the system records when a tenant that bills outside ChartWarden has its billing steps skipped for it. */
 export const OUTSIDE_SKIP_RATIONALE = "bills outside ChartWarden";
 
@@ -117,7 +105,8 @@ export function stepActionsOf(step: WizardStep, view: WizardView): StepActions {
   }
   return {
     canAttest: step.completionMode !== "auto",
-    canSkip: SKIPPABLE_STEP_KEYS.has(step.key),
+    // The server owns the skippable list and refuses any other skip; the view carries it per step.
+    canSkip: step.skippable,
     canReopen: false,
     reopenBlockedBy: null,
     readOnlyReason: null,

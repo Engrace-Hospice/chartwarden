@@ -93540,6 +93540,8 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                            skippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -93633,6 +93635,8 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                            skippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -94239,6 +94243,8 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                            skippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -94302,6 +94308,8 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                            skippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -94371,6 +94379,8 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -94437,6 +94447,8 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -94503,6 +94515,8 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -111914,6 +111928,8 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                            skippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -112002,6 +112018,8 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                            skippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -112064,6 +112082,8 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                            skippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -112133,6 +112153,8 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -112198,6 +112220,8 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -112267,6 +112291,8 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -112332,6 +112358,8 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -112395,6 +112423,8 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;

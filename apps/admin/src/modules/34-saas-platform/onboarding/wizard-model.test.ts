@@ -32,6 +32,7 @@ const step = (key: string, sequence: number, over: Partial<WizardStep> = {}): Wi
   blockerReason: null,
   skipRationale: null,
   systemSkipped: false,
+  skippable: false,
   createdAt: "2026-11-01T00:00:00.000Z",
   templateKey: key,
   isCanonical: true,
@@ -156,7 +157,7 @@ describe("stepActionsOf", () => {
     expect(stepActionsOf(v.steps[2] as WizardStep, v).canAttest).toBe(false);
   });
 
-  it("offers skip only on the steps where the owner chose it: MAC, payer enrollment, DoseSpot and sample data", () => {
+  it("offers skip only where the server marks the step skippable (it refuses any other skip)", () => {
     const keys = [
       "mac_configured",
       "payer_enrollment",
@@ -171,7 +172,10 @@ describe("stepActionsOf", () => {
       "compliance_officer_assigned",
       "clearinghouse_selected",
     ];
-    const steps = keys.map((k, i) => step(k, i + 1, { completionMode: "either" }));
+    const serverSkippable = new Set(keys.slice(0, 4));
+    const steps = keys.map((k, i) =>
+      step(k, i + 1, { completionMode: "either", skippable: serverSkippable.has(k) }),
+    );
     const v = view(steps);
     const skippable = steps
       .filter((s) => stepActionsOf(s, v).canSkip)

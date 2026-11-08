@@ -6,6 +6,13 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { vi } from "vitest";
 import type { WizardStep, WizardView } from "./wizard-model";
 
+const SERVER_SKIPPABLE: ReadonlySet<string> = new Set([
+  "mac_configured",
+  "payer_enrollment",
+  "dosespot_kickoff_initiated",
+  "sample_data_loaded",
+]);
+
 export const ORG_SLUG = "cedar-ridge";
 export const TASK = (key: string): string => `task-${key}`;
 
@@ -35,6 +42,8 @@ export function wizardStep(
     blockerReason: null,
     skipRationale: null,
     systemSkipped: false,
+    // the server's skippable list (SKIPPABLE_STEP_KEYS), so a fixture step offers Skip exactly where the real view would
+    skippable: SERVER_SKIPPABLE.has(key),
     createdAt: "2026-11-01T00:00:00.000Z",
     templateKey: key,
     isCanonical: true,

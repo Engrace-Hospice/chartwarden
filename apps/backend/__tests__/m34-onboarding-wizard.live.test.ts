@@ -656,13 +656,36 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     expect(await statusOf(T_A, "mac_configured")).toBe("done");
   });
 
-  it("settles the first-admin and compliance-officer steps from the org's members; the officer must be an active member", async () => {
-    await attestPlatform(
-      T_A,
+  it("review fix (skip allowlist): the server refuses to skip the plan or the provider entity, and lets a listed step be skipped", async () => {
+    const planBefore = await statusOf(T_A, "plan_contract");
+    const ccnBefore = await statusOf(T_A, "ccn_registered");
+    for (const key of ["plan_contract", "ccn_registered"]) {
+      expect(
+        await refusal(
+          wizard().skipPlatform("wiz-a", await taskId(T_A, key), OPS, "does not apply here"),
+        ),
+      ).toMatchObject({ code: "ONBOARDING_STEP_NOT_SKIPPABLE", statusCode: 409 });
+    }
+    expect(await statusOf(T_A, "plan_contract")).toBe(planBefore);
+    expect(await statusOf(T_A, "ccn_registered")).toBe(ccnBefore);
+    const skipped = await wizard().skipPlatform(
       "wiz-a",
-      "payer_enrollment",
-      "enrolled with the MAC and two commercial payers",
+      await taskId(T_A, "payer_enrollment"),
+      OPS,
+      "enrollment handled by the tenant's billing company",
     );
+    expect(skipped.status).toBe("skipped");
+    const view = await wizard(false).getPlatform("wiz-a");
+    const flags = Object.fromEntries(view.steps.map((st) => [st.key, st.skippable]));
+    expect(flags).toMatchObject({
+      plan_contract: false,
+      ccn_registered: false,
+      payer_enrollment: true,
+      mac_configured: true,
+    });
+  });
+
+  it("settles the first-admin and compliance-officer steps from the org's members; the officer must be an active member", async () => {
     await attestPlatform(
       T_A,
       "wiz-a",

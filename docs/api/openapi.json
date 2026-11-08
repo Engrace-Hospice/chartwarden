@@ -261694,6 +261694,7 @@
                           "blockerReason",
                           "skipRationale",
                           "systemSkipped",
+                          "skippable",
                           "createdAt",
                           "templateKey",
                           "isCanonical",
@@ -261946,6 +261947,10 @@
                           },
                           "systemSkipped": {
                             "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+                            "type": "boolean"
+                          },
+                          "skippable": {
+                            "description": "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -262290,6 +262295,7 @@
                           "blockerReason",
                           "skipRationale",
                           "systemSkipped",
+                          "skippable",
                           "createdAt",
                           "templateKey",
                           "isCanonical",
@@ -262542,6 +262548,10 @@
                           },
                           "systemSkipped": {
                             "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+                            "type": "boolean"
+                          },
+                          "skippable": {
+                            "description": "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -264497,6 +264507,7 @@
                           "blockerReason",
                           "skipRationale",
                           "systemSkipped",
+                          "skippable",
                           "createdAt",
                           "templateKey",
                           "isCanonical",
@@ -264749,6 +264760,10 @@
                           },
                           "systemSkipped": {
                             "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+                            "type": "boolean"
+                          },
+                          "skippable": {
+                            "description": "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -265039,6 +265054,7 @@
                           "blockerReason",
                           "skipRationale",
                           "systemSkipped",
+                          "skippable",
                           "createdAt",
                           "templateKey",
                           "isCanonical",
@@ -265293,6 +265309,10 @@
                             "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                             "type": "boolean"
                           },
+                          "skippable": {
+                            "description": "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                            "type": "boolean"
+                          },
                           "createdAt": {
                             "anyOf": [
                               {
@@ -265383,6 +265403,7 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -265635,6 +265656,10 @@
                     },
                     "systemSkipped": {
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+                      "type": "boolean"
+                    },
+                    "skippable": {
+                      "description": "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -265754,6 +265779,7 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -266006,6 +266032,10 @@
                     },
                     "systemSkipped": {
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+                      "type": "boolean"
+                    },
+                    "skippable": {
+                      "description": "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -266115,6 +266145,7 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -266367,6 +266398,10 @@
                     },
                     "systemSkipped": {
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+                      "type": "boolean"
+                    },
+                    "skippable": {
+                      "description": "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -336304,6 +336339,7 @@
                           "blockerReason",
                           "skipRationale",
                           "systemSkipped",
+                          "skippable",
                           "createdAt",
                           "templateKey",
                           "isCanonical",
@@ -336556,6 +336592,10 @@
                           },
                           "systemSkipped": {
                             "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+                            "type": "boolean"
+                          },
+                          "skippable": {
+                            "description": "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -336918,6 +336958,7 @@
                           "blockerReason",
                           "skipRationale",
                           "systemSkipped",
+                          "skippable",
                           "createdAt",
                           "templateKey",
                           "isCanonical",
@@ -337170,6 +337211,10 @@
                           },
                           "systemSkipped": {
                             "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+                            "type": "boolean"
+                          },
+                          "skippable": {
+                            "description": "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -337450,6 +337495,7 @@
                           "blockerReason",
                           "skipRationale",
                           "systemSkipped",
+                          "skippable",
                           "createdAt",
                           "templateKey",
                           "isCanonical",
@@ -337704,6 +337750,10 @@
                             "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                             "type": "boolean"
                           },
+                          "skippable": {
+                            "description": "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                            "type": "boolean"
+                          },
                           "createdAt": {
                             "anyOf": [
                               {
@@ -337799,6 +337849,7 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -338051,6 +338102,10 @@
                     },
                     "systemSkipped": {
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+                      "type": "boolean"
+                    },
+                    "skippable": {
+                      "description": "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -338156,6 +338211,7 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -338408,6 +338464,10 @@
                     },
                     "systemSkipped": {
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+                      "type": "boolean"
+                    },
+                    "skippable": {
+                      "description": "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -338509,6 +338569,7 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -338761,6 +338822,10 @@
                     },
                     "systemSkipped": {
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+                      "type": "boolean"
+                    },
+                    "skippable": {
+                      "description": "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -338868,6 +338933,7 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -339120,6 +339186,10 @@
                     },
                     "systemSkipped": {
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+                      "type": "boolean"
+                    },
+                    "skippable": {
+                      "description": "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -339221,6 +339291,7 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -339473,6 +339544,10 @@
                     },
                     "systemSkipped": {
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+                      "type": "boolean"
+                    },
+                    "skippable": {
+                      "description": "True when a skip may settle this step; a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
