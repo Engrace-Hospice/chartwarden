@@ -34,6 +34,8 @@ const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
+/** The roster administrator recorded as each link's maker (never the linked member, so the member may confirm it). */
+const ROSTER_ADMIN = "5a5a5a5a-5a5a-4a5a-8a5a-5a5a5a5a5a5a";
 const USER = "33333333-3333-3333-3333-333333333333";
 const USER2 = "3b3b3b3b-3b3b-4b3b-8b3b-3b3b3b3b3b3b";
 const PATIENT = "44444444-4444-4444-4444-444444444444";
@@ -481,7 +483,7 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
 
     it("the named physician who will sign may not cosign the same order", async () => {
       const pending = await rnDraftedPending();
-      await svc.enrollPrescriber(ORG_A, member2Of[ORG_A], [], PHYSICIAN_MDM);
+      await svc.enrollPrescriber(ORG_A, member2Of[ORG_A], [], PHYSICIAN_MDM, ROSTER_ADMIN);
       await expect(
         cosignAs(
           member2Of[ORG_A],
@@ -512,7 +514,7 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     await svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);
     // The named prescriber must be enrolled BEFORE the record step (NAMED_PRESCRIBER_NOT_ENROLLED).
-    await svc.enrollPrescriber(ORG_A, memberOf[ORG_A], [], PHYSICIAN_MDM);
+    await svc.enrollPrescriber(ORG_A, memberOf[ORG_A], [], PHYSICIAN_MDM, ROSTER_ADMIN);
     await runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
       svc.recordVerbal(ORG_A, memberOf[ORG_A], draft.id, {
         recorderDiscipline: "rn_case_manager",
@@ -523,7 +525,13 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
       }),
     );
     // USER2 is a physician, but their roster row maps to a DIFFERENT physician.
-    await svc.enrollPrescriber(ORG_A, member2Of[ORG_A], [], "77777777-7777-4777-8777-777777777777");
+    await svc.enrollPrescriber(
+      ORG_A,
+      member2Of[ORG_A],
+      [],
+      "77777777-7777-4777-8777-777777777777",
+      ROSTER_ADMIN,
+    );
     await expect(
       svc.signOrder(ORG_A, member2Of[ORG_A], draft.id, {
         signerDisciplines: ["hospice_physician"],
@@ -536,7 +544,7 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
   it("recordVerbal → verbal_pending; the named prescriber then signs → signed (viaVerbal)", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     await svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);
-    await svc.enrollPrescriber(ORG_A, memberOf[ORG_A], [], PHYSICIAN_MDM);
+    await svc.enrollPrescriber(ORG_A, memberOf[ORG_A], [], PHYSICIAN_MDM, ROSTER_ADMIN);
     // The route runs inside the request's ambient context; the M11 seam it writes through
     // (`withOrgContextFromRequest`) reads it, exactly as in production.
     const verbal = await runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
@@ -649,7 +657,7 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
   });
 
   it("GAP-035 follow-up: listNamedPrescribers returns only active rows that carry an MDM id", async () => {
-    await svc.enrollPrescriber(ORG_A, memberOf[ORG_A], [], PHYSICIAN_MDM);
+    await svc.enrollPrescriber(ORG_A, memberOf[ORG_A], [], PHYSICIAN_MDM, ROSTER_ADMIN);
     const { prescribers } = await svc.listNamedPrescribers(ORG_A);
     expect(prescribers).toContainEqual({
       membershipId: memberOf[ORG_A],
@@ -714,7 +722,7 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     // Another physician whose roster row does not map to the named MDM id — the write refuses them too.
     expect((await asViewer(member2Of[ORG_A], physician)).viewerMayRetransmit).toBe(false);
     // Once their ACTIVE roster row maps to the named physician, the read and the write agree: allowed.
-    await svc.enrollPrescriber(ORG_A, member2Of[ORG_A], [], namedMdm);
+    await svc.enrollPrescriber(ORG_A, member2Of[ORG_A], [], namedMdm, ROSTER_ADMIN);
     expect((await asViewer(member2Of[ORG_A], physician)).viewerMayRetransmit).toBe(true);
     // A revoked roster row no longer counts.
     await svc.revokePrescriber(ORG_A, member2Of[ORG_A], "test cleanup");
@@ -725,7 +733,13 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
   });
 
   it("enrollPrescriber then revokePrescriber round-trips the roster + emits", async () => {
-    const enrolled = await svc.enrollPrescriber(ORG_A, member2Of[ORG_A], ["III", "IV"]);
+    const enrolled = await svc.enrollPrescriber(
+      ORG_A,
+      member2Of[ORG_A],
+      ["III", "IV"],
+      undefined,
+      ROSTER_ADMIN,
+    );
     expect(enrolled.enrolled).toBe(true);
     expect(await eventsFor(member2Of[ORG_A])).toContain("m12.prescriber_enrolled");
     const revoked = await svc.revokePrescriber(ORG_A, member2Of[ORG_A], "left the practice");
@@ -737,14 +751,18 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
 
   it("MDM uniqueness: a second ACTIVE roster row on the same MDM id is refused 409 MDM_ID_ALREADY_ENROLLED", async () => {
     const mdm = "88888888-8888-4888-8888-888888888888";
-    await svc.enrollPrescriber(ORG_A, memberOf[ORG_A], [], mdm);
-    await expect(svc.enrollPrescriber(ORG_A, member2Of[ORG_A], [], mdm)).rejects.toMatchObject({
+    await svc.enrollPrescriber(ORG_A, memberOf[ORG_A], [], mdm, ROSTER_ADMIN);
+    await expect(
+      svc.enrollPrescriber(ORG_A, member2Of[ORG_A], [], mdm, ROSTER_ADMIN),
+    ).rejects.toMatchObject({
       code: "MDM_ID_ALREADY_ENROLLED",
       statusCode: 409,
     });
     // revoking the holder frees the MDM id (the partial index only covers revoked_at IS NULL rows).
     await svc.revokePrescriber(ORG_A, memberOf[ORG_A], "left the practice");
-    await expect(svc.enrollPrescriber(ORG_A, member2Of[ORG_A], [], mdm)).resolves.toMatchObject({
+    await expect(
+      svc.enrollPrescriber(ORG_A, member2Of[ORG_A], [], mdm, ROSTER_ADMIN),
+    ).resolves.toMatchObject({
       externalPhysicianMdmId: mdm,
     });
   });
@@ -760,28 +778,30 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
           [member],
         )
       ).rows[0];
-    await svc.enrollPrescriber(ORG_A, member, [], mdmA);
+    await svc.enrollPrescriber(ORG_A, member, [], mdmA, ROSTER_ADMIN);
     // the vendor enrolment ran under physician A's NPI (synthetic)
     await admin.query(
       "UPDATE dosespot_prescriber SET dosespot_prescriber_id='901', npi='1234567893' WHERE membership_id=$1",
       [member],
     );
     // pointing the row at physician B would keep clinician 901 and A's NPI for B: refused, and nothing moves
-    await expect(svc.enrollPrescriber(ORG_A, member, [], mdmB)).rejects.toMatchObject({
-      code: "DOSESPOT_PRESCRIBER_VENDOR_LINKED",
-      statusCode: 409,
-    });
+    await expect(svc.enrollPrescriber(ORG_A, member, [], mdmB, ROSTER_ADMIN)).rejects.toMatchObject(
+      {
+        code: "DOSESPOT_PRESCRIBER_VENDOR_LINKED",
+        statusCode: 409,
+      },
+    );
     expect(await rowOf()).toEqual({ mdm: mdmA, vendor: "901", npi: "1234567893" });
     // the SAME physician (a re-enrol after a revoke) is the same person: the vendor link legitimately stays
     await svc.revokePrescriber(ORG_A, member, "on leave");
-    await svc.enrollPrescriber(ORG_A, member, [], mdmA);
+    await svc.enrollPrescriber(ORG_A, member, [], mdmA, ROSTER_ADMIN);
     expect(await rowOf()).toEqual({ mdm: mdmA, vendor: "901", npi: "1234567893" });
     // a row with NO vendor link but a stale NPI loses that NPI when it is re-linked to another physician
     await admin.query(
       "UPDATE dosespot_prescriber SET dosespot_prescriber_id=NULL WHERE membership_id=$1",
       [member],
     );
-    await svc.enrollPrescriber(ORG_A, member, [], mdmB);
+    await svc.enrollPrescriber(ORG_A, member, [], mdmB, ROSTER_ADMIN);
     expect(await rowOf()).toEqual({ mdm: mdmB, vendor: null, npi: null });
   });
 
@@ -814,27 +834,27 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
           [member],
         )
       ).rows[0];
-    await svc.enrollPrescriber(ORG_A, member, [], mdmC);
+    await svc.enrollPrescriber(ORG_A, member, [], mdmC, ROSTER_ADMIN);
     await confirm(mdmC);
     expect((await confirmed())?.mdm).toBe(mdmC);
     // enrolling the SAME record again keeps what the prescriber confirmed about it
-    await svc.enrollPrescriber(ORG_A, member, [], mdmC);
+    await svc.enrollPrescriber(ORG_A, member, [], mdmC, ROSTER_ADMIN);
     expect((await confirmed())?.mdm).toBe(mdmC);
     // pointing the row at another record clears all four columns
-    await svc.enrollPrescriber(ORG_A, member, [], mdmD);
+    await svc.enrollPrescriber(ORG_A, member, [], mdmD, ROSTER_ADMIN);
     expect(await confirmed()).toEqual({ mdm: null, npi: null, at: null, by: null });
     // a revoke clears it too: a reinstated prescriber confirms again
     await confirm(mdmD);
     await svc.revokePrescriber(ORG_A, member, "on leave");
     expect(await confirmed()).toEqual({ mdm: null, npi: null, at: null, by: null });
-    await svc.enrollPrescriber(ORG_A, member, [], mdmD);
+    await svc.enrollPrescriber(ORG_A, member, [], mdmD, ROSTER_ADMIN);
     expect((await confirmed())?.mdm).toBeNull();
   });
 
   it("verbal: an LPN recorder is refused VERBAL_RECORDER_NOT_ELIGIBLE and a claimed discipline the actor lacks is 422", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     await svc.requestSignature(ORG_A, draft.id, "hospice_physician", ["hospice_physician"]);
-    await svc.enrollPrescriber(ORG_A, memberOf[ORG_A], [], PHYSICIAN_MDM);
+    await svc.enrollPrescriber(ORG_A, memberOf[ORG_A], [], PHYSICIAN_MDM, ROSTER_ADMIN);
     const args = {
       verbalAttestation: ATTESTATION,
       receivedAt: new Date().toISOString(),

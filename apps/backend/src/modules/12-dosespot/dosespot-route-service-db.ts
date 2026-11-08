@@ -1627,7 +1627,7 @@ export function createDbDoseSpotBackend(
           const linkAsserted =
             (Boolean(externalPhysicianMdmId) && existing?.mdmId !== externalPhysicianMdmId) ||
             (existing !== undefined && existing.revokedAt !== null);
-          const linker = { linkedByMembershipId: linkedByMembershipId ?? null };
+          const linker = { linkedByMembershipId };
           const row = firstOrThrow(
             await tx
               .insert(DP)

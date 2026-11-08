@@ -52,6 +52,8 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
+/** The roster administrator recorded as each link's maker (never the linked member, so the member may confirm it). */
+const ROSTER_ADMIN = "5a5a5a5a-5a5a-4a5a-8a5a-5a5a5a5a5a5a";
 const USER = "33333333-3333-3333-3333-333333333333";
 const PHYSICIAN_MDM = "99999999-9999-4999-8999-999999999999";
 /** GAP-017 -- the services bound a NEW verbal order's `receivedAt` to <= 24h before server time, so the
@@ -223,7 +225,13 @@ describe.skipIf(!DB_URL)("M11 verbal-order-expiry timer (F-verbal-timer), LIVE P
     // GAP-035 follow-up — recordVerbal refuses a named prescriber with no active roster row
     // (NAMED_PRESCRIBER_NOT_ENROLLED), so each org enrolls one prescriber for PHYSICIAN_MDM.
     for (const org of [ORG_A, ORG_B])
-      await medService.enrollPrescriber(org, memberOf[org] as string, [], PHYSICIAN_MDM);
+      await medService.enrollPrescriber(
+        org,
+        memberOf[org] as string,
+        [],
+        PHYSICIAN_MDM,
+        ROSTER_ADMIN,
+      );
 
     const orgs: ActiveOrgEnumerator = {
       listActiveOrgs: async () => [{ organizationId: ORG_A }, { organizationId: ORG_B }],
