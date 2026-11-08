@@ -34,7 +34,10 @@ import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, desc, eq, inArray, isNull, lte } from "drizzle-orm";
 import { pickGoverningBaa } from "../routes/platform/activation-guards";
 import { governingBaaDocumentFiled } from "../routes/platform/baa-guards";
-import { ONBOARDING_WRITABLE_STATUSES } from "../routes/platform/tenant-onboarding-lock";
+import {
+  ONBOARDING_WRITABLE_STATUSES,
+  lockTenantOnboardingShared,
+} from "../routes/platform/tenant-onboarding-lock";
 import { M34_JOB_SCHEDULES, M34_QUEUES } from "./index";
 
 /**
@@ -461,7 +464,8 @@ export interface OnboardingAdvanceDeps {
  * One advance pass for a tenant, inside its own org transaction: settle `auto`/`either` steps whose fact now holds,
  * block an unmet `auto` step, raise overdue alerts. It never activates a tenant.
  *
- * Only for a tenant still provisioning or onboarding (`ONBOARDING_WRITABLE_STATUSES`, read in the same transaction): every caller (the
+ * Only for a tenant still provisioning or onboarding (`ONBOARDING_WRITABLE_STATUSES`, read in the same transaction under the shared
+ * onboarding lock, so a go-live approval cannot commit between the read and the pass's writes): every caller (the
  * sweep, the wizard, the onboarding-data writes, the BAA register) routes through here, so a live tenant's write (a BAA renewal) settles
  * no step and emits no onboarding event (m34.tenant.onboarding_overdue) whoever triggers the pass.
  */
@@ -475,6 +479,9 @@ export function createOnboardingAdvancer(
       { organizationId: input.orgId, userId: SYSTEM_USER_ID },
       async (rawTx) => {
         const tx = rawTx as unknown as DbClient;
+        // The status read holds for the whole pass: a go-live approval (the EXCLUSIVE lock) waits for this pass to commit, and a pass
+        // that starts after it sees `active`. Taken before any read or row lock (every caller runs the pass after its own commit).
+        await lockTenantOnboardingShared(tx, input.orgId);
         const [account] = await tx
           .select({ status: schema.tenantAccount.status })
           .from(schema.tenantAccount)
