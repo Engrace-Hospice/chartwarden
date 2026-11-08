@@ -84,7 +84,6 @@ const NOE_TERMINAL_DB: schema.NoeRecord["state"][] = ["ACK_ACCEPTED", "CANCELLED
 /** The NOE states that never establish an election on the CWF (a withdrawn or MAC-rejected filing). */
 const NOE_NOT_EFFECTIVE_DB: schema.NoeRecord["state"][] = ["CANCELLED", "ACK_REJECTED"];
 
-/** Map a DB row to the domain-cased record (the single read-boundary case translation). */
 /** Only what the platform operator's withdraw list shows (and pins): `listExternallyFiled` selects these columns and nothing else. */
 const EXTERNALLY_FILED_COLUMNS = {
   id: N.id,
@@ -108,6 +107,7 @@ export type ExternallyFiledNoeRecord = Pick<
   | "externalFilingSetBreach"
 >;
 
+/** Map a DB row to the domain-cased record (the single read-boundary case translation). */
 function toNoeRecord(row: schema.NoeRecord): NoeRecord {
   return { ...row, state: noticeStateCodec.fromDb(row.state) };
 }

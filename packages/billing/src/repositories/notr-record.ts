@@ -88,7 +88,6 @@ const NOTR_TERMINAL_DB: schema.NotrRecord["state"][] = [
   "ACK_REJECTED",
 ];
 
-/** Map a DB row to the domain-cased record (the single read-boundary case translation). */
 /** Only what the platform operator's withdraw list shows (and pins): `listExternallyFiled` selects these columns and nothing else. */
 const EXTERNALLY_FILED_COLUMNS = {
   id: N.id,
@@ -112,6 +111,7 @@ export type ExternallyFiledNotrRecord = Pick<
   | "externalFilingSetBreach"
 >;
 
+/** Map a DB row to the domain-cased record (the single read-boundary case translation). */
 function toNotrRecord(row: schema.NotrRecord): NotrRecord {
   return { ...row, state: noticeStateCodec.fromDb(row.state) };
 }
