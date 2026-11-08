@@ -41,6 +41,7 @@ import {
   PlanListQuerySchema,
   ReconcileBodySchema,
   RecordAuthorizationBodySchema,
+  RejectedCorrectionBodySchema,
   SetAuthorizationStatusBodySchema,
   SubmissionParamsSchema,
 } from "./commercial-typebox";
@@ -127,6 +128,25 @@ export function registerCommercialBillingRoutes(
       const body = parse(AssembleCommercialClaimBodySchema, request.body);
       const out = await assembly.assemble(writeActor(request), body);
       return reply.code(201).send({ ...out, validation: toRunApiView(out.validation) });
+    },
+  );
+
+  // A new original-frequency draft is allowed only after the latest recorded clearinghouse rejection, before any payer response.
+  // The server reloads the original claim and current authoritative facts; callers cannot submit payer ids or payer control numbers.
+  app.post(
+    "/api/v1/billing/commercial/claims/:id/corrections/clearinghouse-rejection",
+    { preHandler: [WRITE, CASELOAD("commercial_billing.write"), NO_AI, IDEMPOTENT] },
+    async (request, reply) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      const body = parse(RejectedCorrectionBodySchema, request.body);
+      const out = await assembly.createRejectedCorrection(
+        writeActor(request),
+        id,
+        idempotencyKeyOf(request),
+        body.reasonCode,
+      );
+      // Replays return the same created-resource status as the original idempotent operation.
+      return reply.code(201).send(out);
     },
   );
 

@@ -88,6 +88,8 @@ export interface CommercialClaimSeams {
 
 export interface AssembleCommercialClaimInput {
   readonly providerEntityId: string;
+  /** Internal-only historical location preserved when rebuilding a correction; public assembly does not accept this field. */
+  readonly locationId?: string | null;
   readonly patientId: string;
   readonly serviceFrom: string;
   readonly serviceTo: string;
@@ -95,4 +97,14 @@ export interface AssembleCommercialClaimInput {
   readonly planId?: string;
   /** The platform clearinghouse binding's key (ADR-0053), when known; narrows the plan's payer routes. */
   readonly clearinghouseKey?: string;
+  /** Internal-only marker populated by the server after verifying a clearinghouse-stage rejection. Never accepted by the assemble route. */
+  readonly correction?: {
+    readonly parentClaimId: string;
+    readonly rootClaimId: string;
+    readonly requestKey: string;
+    readonly reasonCode:
+      | "claim_data_corrected"
+      | "clearinghouse_edit_corrected"
+      | "other_verified_correction";
+  };
 }

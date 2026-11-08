@@ -230,6 +230,8 @@ function mapSubmission(row: schema.ClaimSubmission): ClaimSubmissionView {
     claimControlNumber: row.claimControlNumber,
     attemptIndex: row.attemptIndex,
     outcome: row.outcome,
+    dispatchState: row.dispatchState as ClaimSubmissionView["dispatchState"],
+    dispatchReasonCode: row.dispatchReasonCode ?? null,
     outcomeReason: row.outcomeReason ?? null,
     generatedFileUri: row.generatedFileUri ?? null,
     submittedAt: iso(row.submittedAt),

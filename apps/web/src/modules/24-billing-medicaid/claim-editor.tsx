@@ -25,7 +25,6 @@ import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import {
   CLAIM_STATE_TONE,
   VALIDATION_OUTCOME_TONE,
-  channelLabel,
   humanize,
   kindLabel,
   money,
@@ -75,6 +74,25 @@ interface ClaimDetail {
   validationRunIdLatest: string | null;
   eligibilityOutcomeSnapshot: string | null;
   electronicSubmissionRefusal: string | null;
+  routeReadiness: {
+    serviceState: string;
+    programKind: "managed_care" | "unresolved";
+    programAssignmentVerified: false;
+    requestedChannel: "cco_clearinghouse" | null;
+    localPreparationAvailable: true;
+    transportConfigured: boolean;
+    providerEnrollmentVerified: false;
+    tradingPartnerCertificationVerified: false;
+    outboundFormat: "unverified";
+    submissionAvailable: false;
+    status:
+      | "transport_unconfigured"
+      | "certification_pending"
+      | "unsupported_program_route"
+      | "unsupported_state_program";
+    reasonCode: string;
+    message: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -187,7 +205,7 @@ export function MedicaidClaimEditor(): JSX.Element {
       setBusy(false);
       if (err) {
         const env = (err as { error?: { code?: string; message?: string } }).error;
-        // S11: the server message names the manual/paper alternative; show it verbatim.
+        // Preserve the server's stable state/program readiness reason without guessing a manual route.
         setActionError(
           env?.code === NO_GATEWAY_CODE && env.message
             ? env.message
@@ -205,7 +223,10 @@ export function MedicaidClaimEditor(): JSX.Element {
   if (loading) return <LoadingSpinner />;
   if (error || !claim) return <EmptyState title="Unavailable" description={error ?? "No claim."} />;
 
-  const canSubmit = SUBMITTABLE.has(claim.state) && !claim.electronicSubmissionRefusal;
+  const canSubmit =
+    SUBMITTABLE.has(claim.state) &&
+    claim.routeReadiness.submissionAvailable &&
+    !claim.electronicSubmissionRefusal;
   const canReplaceVoid = REPLACEABLE.has(claim.state);
   const totalCharges = lines.reduce((acc, l) => acc + l.chargesCents, 0);
   const rbLines = lines.filter((l) => l.isRb);
@@ -259,11 +280,34 @@ export function MedicaidClaimEditor(): JSX.Element {
       }
       aside={
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          {claim.electronicSubmissionRefusal ? (
-            <Card title="Submission">
-              <output style={mutedStyle}>{claim.electronicSubmissionRefusal}</output>
-            </Card>
-          ) : null}
+          <Card title="Submission readiness">
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+              <StatusPill
+                label={
+                  claim.routeReadiness.programKind === "managed_care"
+                    ? "Managed-care assignment — unverified"
+                    : "State program unresolved"
+                }
+                tone="warning"
+              />
+              <Field label="State route" value={claim.routeReadiness.serviceState} />
+              <Field label="Claim preparation" value="Available in WardenX" />
+              <Field
+                label="Transport configuration"
+                value={
+                  claim.routeReadiness.transportConfigured
+                    ? "Present; not certified"
+                    : "Not configured"
+                }
+              />
+              <Field label="Provider enrollment" value="Not verified for this route" />
+              <Field label="Trading-partner certification" value="Not verified" />
+              <Field label="Electronic submission" value="Unavailable — not certified" />
+              <output role="status" style={mutedStyle}>
+                {claim.routeReadiness.message}
+              </output>
+            </div>
+          </Card>
 
           {/* R&B context (§5.1) — present only for combined / rb_only claims. */}
           <Card title="Room &amp; Board">
@@ -351,8 +395,9 @@ export function MedicaidClaimEditor(): JSX.Element {
           />
           <Field
             label="MCO"
-            value={claim.mcoId ? shortId(claim.mcoId) : "Fee-for-service"}
-            mono={Boolean(claim.mcoId)}
+            value={
+              claim.mcoId ? "Managed-care assignment (unverified)" : "State program not resolved"
+            }
           />
           <Field label="Total charges" value={money(totalCharges)} />
           <Field
@@ -440,7 +485,11 @@ export function MedicaidClaimEditor(): JSX.Element {
             <Field label="Service state" value={claim.serviceState} />
             <Field
               label="Routing"
-              value={claim.mcoId ? `MCO ${shortId(claim.mcoId)}` : channelLabel("direct_mmis")}
+              value={
+                claim.mcoId
+                  ? `MCO assignment ${shortId(claim.mcoId)} (unverified)`
+                  : "State program unresolved"
+              }
             />
             <Field label="Total charges" value={money(totalCharges)} />
             {actionError ? (

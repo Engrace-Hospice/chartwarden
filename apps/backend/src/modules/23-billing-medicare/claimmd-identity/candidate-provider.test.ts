@@ -195,7 +195,7 @@ describe("database-backed candidate composition", () => {
           return this;
         },
         limit: async () => result,
-        // biome-ignore lint/suspicious/noThenProperty: a thenable stands in for an awaited Drizzle query builder
+        // biome-ignore lint/suspicious/noThenProperty: a thenable stands in for an awaited Drizzle query
         then: (resolve: (value: readonly unknown[]) => unknown) =>
           Promise.resolve(result).then(resolve),
       };

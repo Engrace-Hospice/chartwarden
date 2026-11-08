@@ -1330,6 +1330,7 @@ jobs:
           - { name: "M16 encounter-signed", scripts: "test:m16:encounter-signed:live" }
           - { name: "M16 document-rendered", scripts: "test:m16:document-rendered:live" }
           - { name: "M16 mailings", scripts: "test:m16:mailings:live" }
+          - { name: "M16 program activities", scripts: "test:m16:program-activities:live" }
           # Readmission workflow — re-election into the next benefit period, the period-3 F2F gate, and the
           # readmission NOE held until the prior election's NOTR / final claim is filed.
           - { name: "M6 readmission", scripts: "test:m6:readmission:live" }
@@ -1871,6 +1872,7 @@ jobs:
           docker run -d --name chartwarden-ci-rustfs-e2e \
             -e RUSTFS_ACCESS_KEY=chartwarden -e RUSTFS_SECRET_KEY=chartwarden-object-store-ci-secret \
             -e RUSTFS_VOLUMES=/data -e RUSTFS_CONSOLE_ENABLE=false \
+            -e RUSTFS_CORS_ALLOWED_ORIGINS=http://localhost:5173 \
             -p 9000:9000 rustfs/rustfs:1.0.4
           for i in $(seq 1 60); do
             curl -sf http://localhost:9000/health/ready > /dev/null && exit 0

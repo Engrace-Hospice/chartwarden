@@ -118,7 +118,6 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       return reply.send(
         await writeService.updateDraftClaim(m24ActorOf(request), pParam(request, "id"), {
           expectedVersion: optionalIfMatch(request),
-          mcoId: body.mcoId,
         }),
       );
     },

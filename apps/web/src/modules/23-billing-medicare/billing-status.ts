@@ -62,6 +62,7 @@ export const SUBMISSION_STATUS_TONE: Record<string, StatusTone> = {
   accepted: "success",
   rejected: "error",
   failed: "error",
+  held_stale_source: "warning",
 };
 
 // ── validation severity (error / warn / info) ─────────────────────────────────────────────────────────
@@ -178,6 +179,13 @@ export function ackOutcomeTone(outcome: string): StatusTone {
 /** Resolve a submission status to its tone, defaulting to neutral. */
 export function submissionStatusTone(status: string): StatusTone {
   return SUBMISSION_STATUS_TONE[status] ?? "neutral";
+}
+
+/** A source-stale attempt needs a fresh review; it was not transmitted. */
+export function submissionStatusLabel(status: string, dispatchState?: string): string {
+  if (dispatchState === "sending") return "Sending — reconciliation protected";
+  if (dispatchState === "in_doubt") return "Outcome uncertain — review required";
+  return status === "held_stale_source" ? "Review required — not sent" : statusLabel(status);
 }
 
 /** Resolve a validation finding severity to its tone, defaulting to neutral. */

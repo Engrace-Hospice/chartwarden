@@ -194,6 +194,8 @@ export function registerDocumentSeams(deps: DocumentSeamDeps = {}): void {
           throw new Error("OrgDocumentAccessProvider: no access ledger is bound");
         },
       },
+      // ADR-0109 D10 (PR 3) — the grief library's portal mint writes the same portal ledger the patient-document mint does.
+      ...(deps.portalAccessLog ? { portalAccessLog: deps.portalAccessLog } : {}),
     }),
   );
 }

@@ -10,7 +10,35 @@ import type { CursorPage } from "@chartwarden/shared/route-kit";
 // tsc still type-checks this file (it is inside the module's compilation), so the pins are enforced.
 import type { Static } from "@sinclair/typebox";
 import type { PreDeathDraftView as SvcPreDeathDraftView } from "./draft-service";
+import type {
+  AttendanceResultView as SvcAttendanceResultView,
+  GroupDetailView as SvcGroupDetailView,
+  GroupEnrollmentView as SvcGroupEnrollmentView,
+  GroupRosterView as SvcGroupRosterView,
+  GroupSessionView as SvcGroupSessionView,
+  GroupView as SvcGroupView,
+} from "./group-service";
+import type {
+  AttendanceResultResponseSchema,
+  GroupDetailResponseSchema,
+  GroupEnrollmentListResponseSchema,
+  GroupEnrollmentResponseSchema,
+  GroupPageResponseSchema,
+  GroupRosterResponseSchema,
+  GroupSessionListResponseSchema,
+  GroupSessionResponseSchema,
+  GroupViewResponseSchema,
+} from "./group-typebox";
 import type { PhysicianLetterView as SvcPhysicianLetterView } from "./letter-service";
+import type {
+  LibraryItemUrlView as SvcLibraryItemUrlView,
+  LibraryItemView as SvcLibraryItemView,
+} from "./library-service";
+import type {
+  LibraryItemListResponseSchema,
+  LibraryItemResponseSchema,
+  LibraryItemUrlResponseSchema,
+} from "./library-typebox";
 import type {
   BereavedContactRowViewResponseSchema,
   BereavementAssessmentTaskListResponseSchema,
@@ -47,6 +75,20 @@ import type {
   MailingRunPageResponseSchema,
   MailingRunViewResponseSchema,
 } from "./mailing-typebox";
+import type {
+  ContactMemorialInvitationView as SvcContactMemorialInvitationView,
+  MemorialDetailView as SvcMemorialDetailView,
+  MemorialInvitationView as SvcMemorialInvitationView,
+  MemorialView as SvcMemorialView,
+} from "./memorial-service";
+import type {
+  ContactMemorialInvitationListResponseSchema,
+  ContactMemorialInvitationResponseSchema,
+  MemorialDetailResponseSchema,
+  MemorialInvitationListResponseSchema,
+  MemorialPageResponseSchema,
+  MemorialViewResponseSchema,
+} from "./memorial-typebox";
 import type {
   BereavedContactRowView as SvcBereavedContactRowView,
   BereavementAssessmentTaskList as SvcBereavementAssessmentTaskList,
@@ -167,3 +209,48 @@ type _ContactTimeline = Conforms<
   Static<typeof ContactTimelinePageResponseSchema>,
   SvcContactTimelinePage
 >;
+
+// ADR-0109 D10 (PR 3) — support groups (routes 53-66).
+type _Group = Conforms<Static<typeof GroupViewResponseSchema>, SvcGroupView>;
+type _GroupDetail = Conforms<Static<typeof GroupDetailResponseSchema>, SvcGroupDetailView>;
+type _GroupPage = Conforms<Static<typeof GroupPageResponseSchema>, CursorPage<SvcGroupView>>;
+type _GroupSession = Conforms<Static<typeof GroupSessionResponseSchema>, SvcGroupSessionView>;
+type _GroupSessions = Conforms<
+  Static<typeof GroupSessionListResponseSchema>,
+  SvcGroupSessionView[]
+>;
+type _GroupRoster = Conforms<Static<typeof GroupRosterResponseSchema>, SvcGroupRosterView>;
+type _GroupEnrollment = Conforms<
+  Static<typeof GroupEnrollmentResponseSchema>,
+  SvcGroupEnrollmentView
+>;
+type _GroupEnrollments = Conforms<
+  Static<typeof GroupEnrollmentListResponseSchema>,
+  SvcGroupEnrollmentView[]
+>;
+type _Attendance = Conforms<Static<typeof AttendanceResultResponseSchema>, SvcAttendanceResultView>;
+
+// ADR-0109 D10 (PR 3) — memorial services (routes 67-76).
+type _Memorial = Conforms<Static<typeof MemorialViewResponseSchema>, SvcMemorialView>;
+type _MemorialDetail = Conforms<Static<typeof MemorialDetailResponseSchema>, SvcMemorialDetailView>;
+type _MemorialPage = Conforms<
+  Static<typeof MemorialPageResponseSchema>,
+  CursorPage<SvcMemorialView>
+>;
+type _MemorialInvitations = Conforms<
+  Static<typeof MemorialInvitationListResponseSchema>,
+  SvcMemorialInvitationView[]
+>;
+type _ContactInvitation = Conforms<
+  Static<typeof ContactMemorialInvitationResponseSchema>,
+  SvcContactMemorialInvitationView
+>;
+type _ContactInvitations = Conforms<
+  Static<typeof ContactMemorialInvitationListResponseSchema>,
+  SvcContactMemorialInvitationView[]
+>;
+
+// ADR-0109 D10 (PR 3) — the grief library (routes 77-81).
+type _LibraryItem = Conforms<Static<typeof LibraryItemResponseSchema>, SvcLibraryItemView>;
+type _LibraryItems = Conforms<Static<typeof LibraryItemListResponseSchema>, SvcLibraryItemView[]>;
+type _LibraryUrl = Conforms<Static<typeof LibraryItemUrlResponseSchema>, SvcLibraryItemUrlView>;

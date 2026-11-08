@@ -28,9 +28,10 @@ import {
   type CommercialSecondaryPayerKind,
   ConflictError,
   type CoverageForRange,
+  NotFoundError,
   type PatientCoverage,
 } from "@chartwarden/types";
-import { and, eq, gte, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lte, ne, or, sql } from "drizzle-orm";
 import {
   type LevelOfCarePeriodFact,
   expectedPaymentCents,
@@ -41,6 +42,7 @@ import {
   assertPatientBoundToProvider,
   assertPatientReachable,
   assertProviderInScope,
+  assertRowReachable,
 } from "./scope-guard";
 import type {
   AssembleCommercialClaimInput,
@@ -59,6 +61,12 @@ export interface AssembledCommercialClaim {
   readonly lineCount: number;
   readonly secondaryPayerKind: CommercialSecondaryPayerKind | null;
   readonly validation: ValidationRunView;
+}
+
+export interface RejectedCorrectionResult {
+  readonly claimId: string;
+  readonly parentClaimId: string;
+  readonly replayed: boolean;
 }
 
 /** M23's level-of-care spelling to M41's (the contract tables use the shorter inpatient names). */
@@ -136,6 +144,65 @@ export interface CommercialClaimAssemblyService {
     actor: CommercialActor,
     input: AssembleCommercialClaimInput,
   ): Promise<AssembledCommercialClaim>;
+  /** Rebuild current source facts as a new original-frequency draft after a verified clearinghouse rejection. */
+  createRejectedCorrection(
+    actor: CommercialActor,
+    parentClaimId: string,
+    idempotencyKey: string,
+    reasonCode:
+      | "claim_data_corrected"
+      | "clearinghouse_edit_corrected"
+      | "other_verified_correction",
+  ): Promise<RejectedCorrectionResult>;
+}
+
+class ExistingRejectedCorrection extends Error {
+  constructor(readonly claimId: string) {
+    super("correction already exists");
+  }
+}
+
+async function assertVerifiedClearinghouseRejection(
+  tx: Parameters<Parameters<CommercialDb["transaction"]>[0]>[0],
+  parent: typeof schema.commercialClaims.$inferSelect,
+): Promise<void> {
+  if (parent.state !== "rejected" || !parent.clearinghouseKey || !parent.clearinghousePayerId) {
+    throw new ConflictError("This claim is not eligible for a clearinghouse-rejection correction.");
+  }
+  const [submission] = await tx
+    .select()
+    .from(schema.commercialSubmissions)
+    .where(eq(schema.commercialSubmissions.claimId, parent.id))
+    .orderBy(desc(schema.commercialSubmissions.requestedAt))
+    .limit(1)
+    .for("update");
+  if (!submission || submission.status !== "sent" || submission.clearinghouseAcceptedAt !== null) {
+    throw new ConflictError(
+      "The clearinghouse rejection is not verified as a pre-payer rejection.",
+    );
+  }
+  const acknowledgments = await tx
+    .select({
+      stage: schema.commercialAcknowledgments.stage,
+      disposition: schema.commercialAcknowledgments.disposition,
+    })
+    .from(schema.commercialAcknowledgments)
+    .where(
+      and(
+        eq(schema.commercialAcknowledgments.claimId, parent.id),
+        eq(schema.commercialAcknowledgments.submissionId, submission.id),
+      ),
+    );
+  if (
+    !acknowledgments.some(
+      (ack) => ack.stage === "clearinghouse" && ack.disposition === "rejected",
+    ) ||
+    acknowledgments.some((ack) => ack.stage === "payer")
+  ) {
+    throw new ConflictError(
+      "Only a recorded clearinghouse rejection with no payer response can be corrected here.",
+    );
+  }
 }
 
 export function buildCommercialClaimAssemblyService(
@@ -144,6 +211,75 @@ export function buildCommercialClaimAssemblyService(
 ): CommercialClaimAssemblyService {
   const now = seams.now ?? (() => new Date());
   return {
+    async createRejectedCorrection(actor, parentClaimId, idempotencyKey, reasonCode) {
+      if (actor.actorKind.startsWith("ai_")) {
+        throw new ChartWardenError("AI_ACTOR_FORBIDDEN", "AI actors may not assemble claims", 403);
+      }
+      if (!/^[A-Za-z0-9._:-]{1,128}$/.test(idempotencyKey)) {
+        throw new ChartWardenError("VALIDATION_FAILED", "a valid idempotency key is required", 422);
+      }
+      const parent = await withOrgContext(
+        db,
+        { organizationId: actor.organizationId, userId: actor.userId },
+        async (tx) => {
+          const [row] = await tx
+            .select()
+            .from(schema.commercialClaims)
+            .where(
+              and(
+                eq(schema.commercialClaims.id, parentClaimId),
+                eq(schema.commercialClaims.organizationId, actor.organizationId),
+              ),
+            )
+            .for("update");
+          if (!row) throw new NotFoundError("commercial claim");
+          await assertRowReachable(actor, seams.caseload, row);
+          await assertVerifiedClearinghouseRejection(tx, row);
+          const [child] = await tx
+            .select({
+              id: schema.commercialClaims.id,
+              requestKey: schema.commercialClaims.correctionRequestKey,
+            })
+            .from(schema.commercialClaims)
+            .where(
+              and(
+                eq(schema.commercialClaims.organizationId, row.organizationId),
+                eq(schema.commercialClaims.correctionOfClaimId, row.id),
+              ),
+            );
+          if (child) {
+            if (child.requestKey === idempotencyKey) return { row, childId: child.id };
+            throw new ConflictError("A correction draft already exists for this claim.");
+          }
+          return { row, childId: null };
+        },
+      );
+      if (parent.childId) return { claimId: parent.childId, parentClaimId, replayed: true };
+      const row = parent.row;
+      const rootClaimId = row.correctionRootClaimId ?? row.id;
+      try {
+        const assembled = await this.assemble(actor, {
+          providerEntityId: row.providerEntityId,
+          locationId: row.locationId,
+          patientId: row.patientId,
+          serviceFrom: row.serviceFrom,
+          serviceTo: row.serviceTo,
+          planId: row.planId,
+          clearinghouseKey: row.clearinghouseKey ?? undefined,
+          correction: {
+            parentClaimId: row.id,
+            rootClaimId,
+            requestKey: idempotencyKey,
+            reasonCode,
+          },
+        });
+        return { claimId: assembled.claimId, parentClaimId, replayed: false };
+      } catch (error) {
+        if (!(error instanceof ExistingRejectedCorrection)) throw error;
+        return { claimId: error.claimId, parentClaimId, replayed: true };
+      }
+    },
+
     async assemble(actor, input) {
       if (actor.actorKind.startsWith("ai_")) {
         throw new ChartWardenError("AI_ACTOR_FORBIDDEN", "AI actors may not assemble claims", 403);
@@ -227,6 +363,57 @@ export function buildCommercialClaimAssemblyService(
       const admissionCodes = claimAdmissionCodes(admission);
 
       return withOrgContext(db, { organizationId: orgId, userId: actor.userId }, async (tx) => {
+        let correctionParent: typeof schema.commercialClaims.$inferSelect | null = null;
+        if (input.correction) {
+          const [parent] = await tx
+            .select()
+            .from(schema.commercialClaims)
+            .where(
+              and(
+                eq(schema.commercialClaims.id, input.correction.parentClaimId),
+                eq(schema.commercialClaims.organizationId, orgId),
+              ),
+            )
+            .for("update");
+          if (!parent) throw new NotFoundError("commercial claim");
+          await assertRowReachable(actor, seams.caseload, parent);
+          await assertVerifiedClearinghouseRejection(tx, parent);
+          if ((parent.correctionRootClaimId ?? parent.id) !== input.correction.rootClaimId) {
+            throw new ConflictError(
+              "The original claim lineage changed. Reload the claim and try again.",
+            );
+          }
+          const [existing] = await tx
+            .select({
+              id: schema.commercialClaims.id,
+              requestKey: schema.commercialClaims.correctionRequestKey,
+            })
+            .from(schema.commercialClaims)
+            .where(
+              and(
+                eq(schema.commercialClaims.organizationId, orgId),
+                eq(schema.commercialClaims.correctionOfClaimId, parent.id),
+              ),
+            );
+          if (existing) {
+            if (existing.requestKey === input.correction.requestKey)
+              throw new ExistingRejectedCorrection(existing.id);
+            throw new ConflictError("A correction draft already exists for this claim.");
+          }
+          if (
+            parent.providerEntityId !== providerEntityId ||
+            parent.locationId !== (input.locationId ?? null) ||
+            parent.patientId !== patientId ||
+            parent.serviceFrom !== serviceFrom ||
+            parent.serviceTo !== serviceTo ||
+            parent.planId !== input.planId
+          ) {
+            throw new ConflictError(
+              "The correction must preserve the original claim scope, payer plan and service period.",
+            );
+          }
+          correctionParent = parent;
+        }
         // 3. The plan: the primary payer's plan whose period intersects the window (never trusting the DB to bound it).
         const plans = await tx
           .select()
@@ -289,14 +476,23 @@ export function buildCommercialClaimAssemblyService(
               ),
             ),
           );
-        if (earlier.some((c) => c.serviceFrom <= serviceTo && c.serviceTo >= serviceFrom)) {
+        const unrelatedEarlier = input.correction
+          ? earlier.filter(
+              (c) =>
+                c.id !== input.correction?.rootClaimId &&
+                c.correctionRootClaimId !== input.correction?.rootClaimId,
+            )
+          : earlier;
+        if (
+          unrelatedEarlier.some((c) => c.serviceFrom <= serviceTo && c.serviceTo >= serviceFrom)
+        ) {
           throw new ConflictError(
             "a non-void commercial claim already covers part of this service window",
           );
         }
         // a bill continues the stay only when an earlier-window claim of this admission exists (a re-assembled March claim is not
         // "continuing" because an April claim exists)
-        const hasPrior = earlier.some(
+        const hasPrior = unrelatedEarlier.some(
           (c) => c.admissionId === admission.admissionId && c.serviceTo < serviceFrom,
         );
         const tob = deriveTypeOfBill({
@@ -355,6 +551,15 @@ export function buildCommercialClaimAssemblyService(
             (r.effectiveTo === null || r.effectiveTo >= serviceTo),
         );
         const route = routeNow.length === 1 ? routeNow[0] : undefined;
+        if (
+          correctionParent &&
+          (route?.clearinghousePayerId !== correctionParent.clearinghousePayerId ||
+            route?.clearinghouseKey !== correctionParent.clearinghouseKey)
+        ) {
+          throw new ConflictError(
+            "The original clearinghouse payer route is no longer available; manual review is required.",
+          );
+        }
 
         // 7. Persist: claim, lines, history, first validation run, outbox event - one transaction.
         const claimId = randomUUID();
@@ -369,6 +574,7 @@ export function buildCommercialClaimAssemblyService(
                 id: claimId,
                 organizationId: orgId,
                 providerEntityId,
+                locationId: input.locationId ?? null,
                 patientId,
                 admissionId: admission.admissionId,
                 planId: plan.id,
@@ -387,6 +593,15 @@ export function buildCommercialClaimAssemblyService(
                 admissionSourceCode: admissionCodes.admissionSourceCode,
                 patientStatusCode,
                 claimControlNumber: `${yymmdd}-${claimId.replaceAll("-", "").slice(0, 12)}`,
+                ...(input.correction
+                  ? {
+                      correctionOfClaimId: input.correction.parentClaimId,
+                      correctionRootClaimId: input.correction.rootClaimId,
+                      correctionKind: "clearinghouse_rejection_resubmission",
+                      correctionReasonCode: input.correction.reasonCode,
+                      correctionRequestKey: input.correction.requestKey,
+                    }
+                  : {}),
                 diagnoses: snapshot.diagnosisSnapshot,
                 attendingNpi: npis.attendingPhysicianNpi,
                 attendingFirstName: snapshot.attendingPhysicianFirstName,

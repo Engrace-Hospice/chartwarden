@@ -36,6 +36,23 @@ export const AssembleCommercialClaimBodySchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const RejectedCorrectionBodySchema = Type.Object(
+  {
+    reasonCode: Type.Union([
+      Type.Literal("claim_data_corrected"),
+      Type.Literal("clearinghouse_edit_corrected"),
+      Type.Literal("other_verified_correction"),
+    ]),
+  },
+  { additionalProperties: false },
+);
+
+export const RejectedCorrectionResponseSchema = Type.Object({
+  claimId: Type.String(),
+  parentClaimId: Type.String(),
+  replayed: Type.Boolean(),
+});
+
 export const OverrideBodySchema = Type.Object(
   { reason: Type.String({ minLength: COMMERCIAL_OVERRIDE_REASON_MIN_LENGTH, maxLength: 2000 }) },
   { additionalProperties: false },
@@ -210,6 +227,20 @@ export const CommercialClaimViewSchema = Type.Object({
     expectedPaymentCents: Type.Union([Type.Integer(), Type.Null()]),
     readyAt: Type.Union([Type.String(), Type.Null()]),
   }),
+  correction: Type.Object({
+    correctionOfClaimId: nullableString(),
+    correctionKind: nullableString(),
+    correctionReasonCode: nullableString(),
+    relatedClaims: Type.Array(
+      Type.Object({
+        id: Type.String(),
+        claimControlNumber: Type.String(),
+        state: Type.String(),
+        relation: Type.Union([Type.Literal("original"), Type.Literal("correction")]),
+      }),
+    ),
+    rejectedCorrection: Type.Object({ eligible: Type.Boolean(), reasonCode: Type.String() }),
+  }),
   lines: Type.Array(CommercialClaimLineViewSchema),
   validation: Type.Union([ValidationRunViewSchema, Type.Null()]),
 });
@@ -331,6 +362,14 @@ export const TimelineViewSchema = Type.Object({
   claimId: Type.String(),
   patientId: Type.String(),
   state: Type.String(),
+  claimLineage: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      claimControlNumber: Type.String(),
+      state: Type.String(),
+      relation: Type.Union([Type.Literal("original"), Type.Literal("correction")]),
+    }),
+  ),
   items: Type.Array(TimelineItemSchema),
   /** True when the oldest rows were cut by the bound. */
   truncated: Type.Boolean(),

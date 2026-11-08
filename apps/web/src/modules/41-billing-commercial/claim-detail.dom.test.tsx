@@ -83,6 +83,13 @@ const view = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
       }),
     ],
   },
+  correction: {
+    correctionOfClaimId: null,
+    correctionKind: null,
+    correctionReasonCode: null,
+    relatedClaims: [],
+    rejectedCorrection: { eligible: false, reasonCode: "CLAIM_NOT_REJECTED" },
+  },
   ...over,
 });
 
@@ -226,6 +233,73 @@ describe("CommercialClaimDetail", () => {
     expect(alert.textContent).toContain("Blocked: record an authorization first.");
   });
 
+  it("reviews the server send gate and queues only after explicit confirmation", async () => {
+    const calls: Call[] = [];
+    const permissions = ["commercial_billing.read", "commercial_billing.submit"];
+    mount(
+      () => ({ body: view({ claim: { ...(view().claim as object), state: "ready" } }) }),
+      {
+        [`GET ${BASE}/send-gate`]: () => ({
+          body: {
+            claimId: CLAIM_ID,
+            state: "ready",
+            patientId: PATIENT_ID,
+            canSubmit: true,
+            clearinghouseKey: "synthetic-ch",
+            reasons: [],
+          },
+        }),
+        [`POST ${BASE}/submit`]: () => ({
+          status: 202,
+          body: {
+            submissionId: "submission-1",
+            claimId: CLAIM_ID,
+            status: "queued",
+            controlNumber: "CCN-0001",
+            clearinghouseKey: "synthetic-ch",
+            attemptCount: 0,
+            requestedAt: "2026-11-08T00:00:00.000Z",
+            replayed: false,
+          },
+        }),
+      },
+      permissions,
+      calls,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Review submission checks" }));
+    expect(await screen.findByText("Ready to queue")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and queue submission" }));
+    await screen.findByText(/Submission queued\. This confirms queueing only/);
+
+    const submit = calls.find((call) => call.method === "POST" && call.path.endsWith("/submit"));
+    expect(submit?.body).toBeUndefined();
+    expect(submit?.headers.get("Idempotency-Key")).toBeTruthy();
+    expect(screen.getByText(/clearinghouse receipt is still pending/)).toBeTruthy();
+  });
+
+  it("does not offer confirmation when the server submission gate blocks the claim", async () => {
+    mount(
+      () => ({ body: view({ claim: { ...(view().claim as object), state: "ready" } }) }),
+      {
+        [`GET ${BASE}/send-gate`]: () => ({
+          body: {
+            claimId: CLAIM_ID,
+            state: "ready",
+            patientId: PATIENT_ID,
+            canSubmit: false,
+            clearinghouseKey: null,
+            reasons: [{ code: "CH_NOT_WIRED", message: "No clearinghouse is connected." }],
+          },
+        }),
+      },
+      ["commercial_billing.read", "commercial_billing.submit"],
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Review submission checks" }));
+    expect(await screen.findByText(/No clearinghouse is connected/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Confirm and queue submission" })).toBeNull();
+  });
+
   it("announces a successful action politely and moves focus into the void confirmation", async () => {
     mount(() => ({ body: view() }), {
       [`POST ${BASE}/validate`]: () => ({
@@ -256,6 +330,68 @@ describe("CommercialClaimDetail", () => {
     expect(calls.some((c) => c.method === "POST")).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Confirm void" }));
     await waitFor(() => expect(calls.some((c) => c.path.endsWith("/void"))).toBe(true));
+  });
+
+  it("creates a separate corrected draft only for a verified clearinghouse rejection", async () => {
+    const calls: Call[] = [];
+    mount(
+      () => ({
+        body: view({
+          claim: { ...(view().claim as object), state: "rejected" },
+          correction: {
+            correctionOfClaimId: null,
+            correctionKind: null,
+            correctionReasonCode: null,
+            relatedClaims: [],
+            rejectedCorrection: { eligible: true, reasonCode: "VERIFIED_CLEARINGHOUSE_REJECTION" },
+          },
+        }),
+      }),
+      {
+        [`POST ${BASE}/corrections/clearinghouse-rejection`]: () => ({
+          status: 201,
+          body: { claimId: "corrected-id", parentClaimId: CLAIM_ID, replayed: false },
+        }),
+      },
+      undefined,
+      calls,
+    );
+    fireEvent.change(await screen.findByRole("combobox", { name: "Correction reason" }), {
+      target: { value: "clearinghouse_edit_corrected" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create corrected draft" }));
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (call) =>
+            call.method === "POST" && call.path.endsWith("/corrections/clearinghouse-rejection"),
+        ),
+      ).toBe(true),
+    );
+    expect(calls.find((call) => call.method === "POST")?.body).toEqual({
+      reasonCode: "clearinghouse_edit_corrected",
+    });
+  });
+
+  it("keeps payer-side replacements blocked when the plan rules are not verified", async () => {
+    mount(() => ({
+      body: view({
+        claim: { ...(view().claim as object), state: "accepted" },
+        correction: {
+          correctionOfClaimId: null,
+          correctionKind: null,
+          correctionReasonCode: null,
+          relatedClaims: [],
+          rejectedCorrection: { eligible: false, reasonCode: "PAYER_REPLACEMENT_UNVERIFIED" },
+        },
+      }),
+    }));
+    expect(
+      await screen.findByText(
+        /replacement frequency and original payer control reference with the payer/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Create corrected draft" })).toBeNull();
   });
 
   it("says the claim was not found on a 404, and offers the way back", async () => {

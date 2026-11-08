@@ -101,6 +101,8 @@ export interface ClearinghouseContext {
   readonly billingNpi?: string;
   /** MAC jurisdiction is payer metadata only; it never selects the transport. */
   readonly jurisdiction?: MacJurisdiction;
+  /** Hash of the platform-owned Claim.MD route selected when a submit request was authorized; internal only. */
+  readonly claimMdRouteFingerprint?: string;
 }
 
 /**

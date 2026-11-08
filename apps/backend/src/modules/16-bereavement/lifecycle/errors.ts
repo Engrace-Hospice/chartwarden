@@ -117,6 +117,46 @@ export const M16_ERROR_STATUS = {
   MAILING_KEY_NOT_AVAILABLE: 422,
   /** No M22 org-document seam is bound, so a batch cannot be handed out. */
   MAILING_DOWNLOAD_UNAVAILABLE: 503,
+  // ADR-0109 D10 (PR 3) — support groups
+  GROUP_NOT_FOUND: 404,
+  /** A completed or cancelled group (or a session of one) is history: it is not edited, opened or closed again. */
+  GROUP_NOT_EDITABLE: 409,
+  /** Enrolling into, or recording a session of, a group that is not open. */
+  GROUP_NOT_OPEN: 409,
+  /** The group is at capacity. */
+  GROUP_FULL: 409,
+  /** The named facilitator is not bereavement-capable staff, or (a volunteer facilitator) does not pass the 418.78 gates right now. */
+  GROUP_FACILITATOR_INELIGIBLE: 422,
+  /** A recurring group's schedule is malformed (bad date / time / timezone, or out-of-range count / interval / duration). */
+  GROUP_RECURRENCE_INVALID: 422,
+  SESSION_NOT_FOUND: 404,
+  /** Attendance is recorded once a session has started, and never for a cancelled one. */
+  SESSION_NOT_RECORDABLE: 409,
+  /** The contact is not an active program family member (closed plan, opted out, not confirmed): groups and memorials are for program families only. */
+  CONTACT_NOT_ENROLLABLE: 409,
+  /** Attendance for a contact with no live enrollment in a group that requires one. */
+  CONTACT_NOT_ENROLLED: 409,
+  // ADR-0109 D10 (PR 3) — memorial services
+  MEMORIAL_NOT_FOUND: 404,
+  MEMORIAL_INVITATION_NOT_FOUND: 404,
+  /** A held or cancelled service is history; a published one keeps its invitation window. */
+  MEMORIAL_NOT_EDITABLE: 409,
+  /** An RSVP or attendance for a service that is not published (or, for attendance, not yet started). */
+  MEMORIAL_NOT_OPEN: 409,
+  /** The family's portal RSVP after the RSVP-by date, or any RSVP once the service started (staff may still take a late phone answer before it starts). */
+  MEMORIAL_RSVP_CLOSED: 409,
+  /** Accepting would put the yes answers (with their guests) over the service's capacity. */
+  MEMORIAL_FULL: 409,
+  // ADR-0109 D10 (PR 3) — the grief library
+  LIBRARY_ITEM_NOT_FOUND: 404,
+  /** The named M22 document is not an active, org-level grief-library document (or a transcript is not a PDF). */
+  LIBRARY_DOCUMENT_INVALID: 422,
+  /** That document is already a library item. */
+  LIBRARY_DOCUMENT_TAKEN: 409,
+  /** A video is published only with a PDF transcript. */
+  LIBRARY_TRANSCRIPT_REQUIRED: 422,
+  /** No M22 org-document seam is bound: nothing can be checked or handed out. */
+  LIBRARY_UNAVAILABLE: 503,
   // Optimistic concurrency (§2.5)
   STALE_VERSION: 409,
   // Structural — an event dispatched from a state that does not accept it (§2.2–§2.4 graphs).

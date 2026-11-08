@@ -672,19 +672,26 @@ describe.skipIf(!DB_URL)(
         ).rejects.toMatchObject({ code: "INVALID_TRANSITION", statusCode: 409 });
       });
 
-      it("a READY Oregon claim with a bound gateway still submits (SUBMITTED, submission row, outbox event)", async () => {
-        const { svc, actor, claim, published, version } = await readyClaim("OR", "READY");
-        await svc.submitClaim(actor, claim.id, { expectedVersion: version });
+      it("a READY Oregon claim remains blocked even with a gateway bound until certification is verified", async () => {
+        const { svc, actor, claim, published, version } = await readyClaim(
+          "OR",
+          "READY",
+          () => true,
+        );
+        await expect(
+          svc.submitClaim(actor, claim.id, { expectedVersion: version }),
+        ).rejects.toMatchObject({
+          code: "MEDICAID_STATE_NO_ELECTRONIC_GATEWAY",
+          statusCode: 422,
+        });
         const after = await admin.query("SELECT state FROM medicaid_claim WHERE id=$1", [claim.id]);
-        expect(after.rows[0].state).toBe("SUBMITTED");
+        expect(after.rows[0].state).toBe("READY");
         const subs = await admin.query(
           "SELECT 1 FROM medicaid_submission WHERE medicaid_claim_id=$1",
           [claim.id],
         );
-        expect(subs.rowCount).toBe(1);
-        expect((published as { eventName: string }[]).map((e) => e.eventName)).toContain(
-          "m24.medicaid_claim.submit_requested",
-        );
+        expect(subs.rowCount).toBe(0);
+        expect(published).toHaveLength(0);
       });
 
       it("a READY Oregon claim is refused with the same code when the gateway is unbound", async () => {
@@ -752,7 +759,9 @@ describe.skipIf(!DB_URL)(
           ).rejects.toMatchObject({
             code: "MEDICAID_STATE_NO_ELECTRONIC_GATEWAY",
             statusCode: 422,
-            message: expect.stringMatching(/manually.*paper/),
+            message: expect.stringMatching(
+              /cannot verify whether this .* coverage is fee-for-service or a managed-care plan/,
+            ),
           });
           const subs = await admin.query(
             "SELECT 1 FROM medicaid_submission WHERE medicaid_claim_id=$1",

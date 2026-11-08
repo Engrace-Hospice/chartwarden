@@ -118,6 +118,27 @@ const RB_DAY_OVERRIDE_STATUS = ["pending", "billable", "excluded", "voided"] as 
 /** A two-letter USPS state code — the M24 service state (Phase 1 ships the Oregon adapter). */
 const StateCode = Type.String({ minLength: 2, maxLength: 2, pattern: "^[A-Z]{2}$" });
 
+const RouteReadinessDto = Type.Object({
+  serviceState: StateCode,
+  programKind: lit(["managed_care", "unresolved"] as const),
+  programAssignmentVerified: Type.Literal(false),
+  requestedChannel: Type.Union([lit(["cco_clearinghouse"] as const), Type.Null()]),
+  localPreparationAvailable: Type.Literal(true),
+  transportConfigured: Type.Boolean(),
+  providerEnrollmentVerified: Type.Literal(false),
+  tradingPartnerCertificationVerified: Type.Literal(false),
+  outboundFormat: Type.Literal("unverified"),
+  submissionAvailable: Type.Literal(false),
+  status: lit([
+    "transport_unconfigured",
+    "certification_pending",
+    "unsupported_program_route",
+    "unsupported_state_program",
+  ] as const),
+  reasonCode: Type.String(),
+  message: Type.String(),
+});
+
 // ── request bodies (§4.2) ───────────────────────────────────────────────────────────────────────────────
 
 /** POST /api/v1/medicaid-claims — assemble a draft over a patient + service range (§2.1). */
@@ -135,11 +156,8 @@ export const AssembleClaimBody = Type.Object(
   { additionalProperties: false },
 );
 
-/** PATCH /api/v1/medicaid-claims/:id — the only editable draft field is the MCO routing target. */
-export const UpdateDraftClaimBody = Type.Object(
-  { mcoId: Type.Optional(Type.Union([uuid(), Type.Null()])) },
-  { additionalProperties: false },
-);
+/** PATCH /api/v1/medicaid-claims/:id — no tenant-supplied payer/MCO routing mutation is supported. */
+export const UpdateDraftClaimBody = Type.Object({}, { additionalProperties: false });
 
 /** POST …/:id/submit — the channel hint is advisory; the adapter resolves the real channel (§4.4). */
 export const SubmitClaimBody = Type.Object(
@@ -358,6 +376,7 @@ export const ClaimDto = Type.Object({
   validationRunIdLatest: Type.Union([uuid(), Type.Null()]),
   eligibilityOutcomeSnapshot: Type.Union([lit(ELIGIBILITY_OUTCOME), Type.Null()]),
   electronicSubmissionRefusal: nullableStr(),
+  routeReadiness: RouteReadinessDto,
   createdAt: isoInstant(),
   updatedAt: isoInstant(),
 });

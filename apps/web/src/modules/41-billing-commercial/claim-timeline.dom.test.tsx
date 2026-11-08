@@ -10,6 +10,9 @@ const timeline = (over: Record<string, unknown> = {}): Record<string, unknown> =
   claimId: CLAIM_ID,
   patientId: PATIENT_ID,
   state: "ready",
+  claimLineage: [
+    { id: CLAIM_ID, claimControlNumber: "CCN-0001", state: "ready", relation: "original" },
+  ],
   truncated: false,
   items: [
     {

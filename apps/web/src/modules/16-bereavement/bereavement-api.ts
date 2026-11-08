@@ -195,7 +195,7 @@ export const NO_RESPONSE = 0;
  * `{ error: LOST_RESPONSE, status: NO_RESPONSE }`, so a screen can never be left on "busy" forever and can retry
  * with the SAME idempotency key.
  */
-async function send<T>(
+export async function send<T>(
   call: () => Promise<{ data?: T; error?: unknown; response: Response }>,
 ): Promise<{ data: T | null; error: unknown; status: number }> {
   try {
@@ -246,8 +246,7 @@ export function errorMessage(error: unknown, fallback: string): string {
     return "This record changed while you were working on it. Reload and re-apply your edit.";
   if (body?.status === 428)
     return "This edit is missing its version. Reload the record and try again.";
-  if (body?.status === 403)
-    return "You do not have access to this action for this bereavement plan.";
+  if (body?.status === 403) return "You don't have access to do this.";
   return fallback;
 }
 

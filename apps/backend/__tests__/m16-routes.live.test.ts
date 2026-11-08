@@ -57,8 +57,11 @@ import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/events-by-m16";
 import { M16_PERMISSION_KEY_LIST } from "../src/modules/16-bereavement/permission-keys";
 import {
   buildDrizzleM16DraftService,
+  buildDrizzleM16GroupService,
   buildDrizzleM16LetterService,
+  buildDrizzleM16LibraryService,
   buildDrizzleM16MailingService,
+  buildDrizzleM16MemorialService,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
 } from "../src/modules/16-bereavement/routes/index";
@@ -335,6 +338,19 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
         enqueue: { enqueue: async () => undefined },
         log: () => undefined,
       }),
+      // ADR-0109 D10 (PR 3) — groups, memorials and the library are proven end to end in m16-program-activities.live.test.ts; mounted here so the
+      // full route inventory is.
+      groupService: buildDrizzleM16GroupService(handle.db, {
+        outbox: outbox as never,
+        cipher,
+        disciplineOf: async () => null,
+        volunteerGatesSatisfied: async () => false,
+      }),
+      memorialService: buildDrizzleM16MemorialService(handle.db, {
+        outbox: outbox as never,
+        cipher,
+      }),
+      libraryService: buildDrizzleM16LibraryService(handle.db),
       writeService: buildDrizzleM16WriteService(handle.db, readService, {
         outbox: outbox as never,
         cipher,

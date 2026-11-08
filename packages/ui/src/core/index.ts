@@ -21,6 +21,22 @@ export type {
   operations,
   paths,
 } from "./api";
+// The M22 verified-upload ceremony (hash, reserve, PUT, commit, abort), shared by every module that files a document.
+export {
+  abortUpload,
+  completeUpload,
+  initiateUpload,
+  putUploadBytes,
+  sha256Hex,
+  writeFailure,
+} from "./api";
+export type {
+  CompleteUploadResult,
+  InitiateUploadBody,
+  InitiateUploadResult,
+  UploadMimeType,
+  WriteResult,
+} from "./api";
 
 // Providers (transport-agnostic React context — no DOM)
 export { FeatureFlagProvider, useFeatureFlagContext } from "./providers/feature-flag-provider";
@@ -62,6 +78,9 @@ export {
 
 // API error envelope -> the server's own message (#596)
 export { envelopeErrorMessage } from "./error-message";
+
+// Short-lived minted links (signed download/stream URLs): https only, dropped when they expire.
+export { LINK_FLOOR_MS, linkLifetimeMs, safeMintedUrl } from "./minted-link";
 
 // Display-only fallback for internal enum/event identifiers when no product label is available.
 export { humanizeIdentifier } from "./humanize-identifier";

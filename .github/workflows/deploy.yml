@@ -482,11 +482,14 @@ jobs:
           scp -P "$port" deploy/production/compose.object-copy.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
           # #857 — the opt-in backup overlay and its image context ride along so the host copy matches the release;
           # nothing runs until an operator enables it (deploy/production/README.md, "Backups and restore").
-          ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p $DEPLOY_DIR/backup/offsite-policies"
+          # Every non --from COPY source in backup/Dockerfile must be shipped here (check-compose-policy.test.ts).
+          ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p $DEPLOY_DIR/backup/offsite-policies $DEPLOY_DIR/backup/mc"
           scp -P "$port" deploy/production/compose.backup.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
           scp -P "$port" deploy/production/backup/Dockerfile deploy/production/backup/cw-backup.sh \
             deploy/production/backup/restore.sh deploy/production/backup/schema-fingerprint.sql \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/backup/"
+          scp -P "$port" deploy/production/backup/mc/go.mod deploy/production/backup/mc/go.sum \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/backup/mc/"
           scp -P "$port" deploy/production/backup/offsite-policies/*.json \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/backup/offsite-policies/"
           ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" \

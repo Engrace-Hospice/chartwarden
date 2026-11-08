@@ -120,6 +120,8 @@ interface ConsentEvaluatorPort {
     organizationId: string;
     patientId: string;
     consentType: string;
+    /** Pin the evaluation to ONE record (this contact's own consent); otherwise M39 picks the patient's governing one. */
+    consentRecordId?: string;
     sessionContext: { sessionClass: string };
     callerModule: string;
   }): Promise<{
@@ -184,6 +186,9 @@ export function buildM31BereavementContactActiveConsumer(
             organizationId,
             patientId: resolvedPatientId,
             consentType: BEREAVEMENT_OUTREACH_CONSENT_TYPE_KEY,
+            // THIS contact's own record: unpinned, M39 picks ONE governing record per (patient, type), so on a plan with several confirmed
+            // contacts only the contact whose record happened to govern was ever flipped.
+            consentRecordId: candidate.consentRecordId,
             sessionContext: { sessionClass: "staff" },
             callerModule: "m31",
           });

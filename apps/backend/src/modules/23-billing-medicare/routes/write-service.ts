@@ -363,7 +363,15 @@ export interface M23WriteRouteService {
   ): Promise<ClaimDetailView>;
   deleteDraftClaim(actor: M23WriteActor, claimId: string): Promise<void>;
   validateClaim(actor: M23WriteActor, claimId: string): Promise<ValidationJobAcceptedView>;
-  submitClaim(actor: M23WriteActor, claimId: string): Promise<ClaimSubmissionAcceptedView>;
+  submitClaim(
+    actor: M23WriteActor,
+    claimId: string,
+    route: {
+      readonly expectedVersion: number;
+      readonly expectedRouteFingerprint?: string;
+      readonly reviewedSourceFingerprint: string;
+    },
+  ): Promise<ClaimSubmissionAcceptedView>;
   replaceClaim(
     actor: M23WriteActor,
     claimId: string,

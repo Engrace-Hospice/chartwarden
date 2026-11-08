@@ -7,6 +7,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import {
   DEFAULT_MEDICAID_RULES,
   electronicSubmissionRefusal,
+  medicaidClaimRouteReadiness,
 } from "@chartwarden/medicaid-adapters";
 import {
   type KeysetCursor,
@@ -100,7 +101,13 @@ export function buildDrizzleM24ReadService(
     validationRunIdLatest: r.validationRunIdLatest ?? null,
     eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
     electronicSubmissionRefusal:
-      electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState))?.message ?? null,
+      electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState), r.mcoId ?? null)
+        ?.message ?? null,
+    routeReadiness: medicaidClaimRouteReadiness(
+      r.serviceState,
+      r.mcoId ?? null,
+      isGatewayBound(r.serviceState),
+    ),
     createdAt: iso(r.createdAt),
     updatedAt: iso(r.updatedAt),
   });

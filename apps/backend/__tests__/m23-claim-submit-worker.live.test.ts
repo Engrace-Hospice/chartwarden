@@ -27,7 +27,6 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { deriveControlNumber, type repositories } from "@chartwarden/billing";
 import { type DbClient, createDbClient } from "@chartwarden/db";
-import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -144,19 +143,12 @@ describe.skipIf(!DB_URL)(
 
     async function submissionRow(
       submissionId: string,
-    ): Promise<{ outcome: string; outcome_reason: string | null }> {
+    ): Promise<{ outcome: string; outcome_reason: string | null; dispatch_state: string }> {
       const { rows } = await admin.query(
-        "SELECT outcome, outcome_reason FROM claim_submission WHERE id = $1",
+        "SELECT outcome, outcome_reason, dispatch_state FROM claim_submission WHERE id = $1",
         [submissionId],
       );
       return rows[0];
-    }
-
-    /** Run the worker function inside the same `withOrgContext` envelope the composition root uses. */
-    function runInOrg<T>(fn: (tx: repositories.BillingDb) => Promise<T>): Promise<T> {
-      return withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) =>
-        fn(tx as unknown as repositories.BillingDb),
-      );
     }
 
     beforeAll(async () => {
@@ -229,7 +221,7 @@ describe.skipIf(!DB_URL)(
         attemptIndex: 0,
       };
 
-      await runInOrg((tx) => runClaimSubmit(tx, deps, job));
+      await runClaimSubmit(handle.db as unknown as repositories.BillingDb, deps, job);
 
       expect(uploaded).toBe(true);
       const claim = await claimRow(claimId);
@@ -283,14 +275,14 @@ describe.skipIf(!DB_URL)(
         attemptIndex: 0,
       };
 
-      await runInOrg((tx) => runClaimSubmit(tx, deps, job));
+      await runClaimSubmit(handle.db as unknown as repositories.BillingDb, deps, job);
 
       expect(uploaded).toBe(false);
       const claim = await claimRow(claimId);
       expect(claim.state).toBe("READY");
       const sub = await submissionRow(submissionId);
       expect(sub.outcome).toBe("failed_worker");
-      expect(sub.outcome_reason).toMatch(/no longer submit-eligible/);
+      expect(sub.outcome_reason).toBe("CLAIM_NO_LONGER_ELIGIBLE");
     });
 
     it("claim.submit.retry: a clean retry also drives READY -> SUBMITTED", async () => {
@@ -325,10 +317,109 @@ describe.skipIf(!DB_URL)(
         attemptIndex: 0,
       };
 
-      await runInOrg((tx) => runClaimSubmitRetry(tx, deps, job));
+      await runClaimSubmitRetry(handle.db as unknown as repositories.BillingDb, deps, job);
 
       const claim = await claimRow(claimId);
       expect(claim.state).toBe("SUBMITTED");
+    });
+
+    it("commits the send reservation before transport and never re-sends an uncertain outcome", async () => {
+      const { claimId, submissionId, ccn } = await seedReadyClaim({
+        patient: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+        attemptIndex: 0,
+        withBlockingFailure: false,
+      });
+      let uploads = 0;
+      let publishedFailure = false;
+      const deps: M23WorkerDeps = {
+        connection: {} as never,
+        db: handle.db as unknown as repositories.BillingDb,
+        outbox: {
+          publish: async (_tx, event) => {
+            if (event.eventName === "m23.claim.submission_failed") publishedFailure = true;
+          },
+        },
+        x12: {
+          generate837i: async () => ({ x12: "ISA*00*...", correlationId: "corr-uncertain" }),
+          generateNoe: async () => ({ x12: "", correlationId: "" }),
+          generateNotr: async () => ({ x12: "", correlationId: "" }),
+          parse999: async () => [],
+          parse277ca: async () => [],
+        },
+        macPortal: {
+          upload: async () => {
+            uploads += 1;
+            const { rows } = await admin.query(`SELECT count(*)::int AS n FROM pg_stat_activity
+              WHERE datname = current_database() AND state = 'idle in transaction' AND pid <> pg_backend_pid()`);
+            expect(rows[0].n).toBe(0);
+            throw new Error("connection closed after remote receipt may have been accepted");
+          },
+          pullPending999: async () => [],
+          pullPending277ca: async () => [],
+          probeHealth: async () => true,
+        },
+      };
+      const job: ClaimSubmitJob = {
+        organizationId: ORG,
+        claimId,
+        submissionId,
+        claimControlNumber: ccn,
+        attemptIndex: 0,
+      };
+      await runClaimSubmit(handle.db as unknown as repositories.BillingDb, deps, job);
+      expect(await submissionRow(submissionId)).toMatchObject({
+        outcome: "queued",
+        dispatch_state: "in_doubt",
+      });
+      await runClaimSubmit(handle.db as unknown as repositories.BillingDb, deps, job);
+      expect(uploads).toBe(1);
+      expect(publishedFailure).toBe(false);
+    });
+
+    it("allows only one concurrent worker delivery to acquire the durable send reservation", async () => {
+      const { claimId, submissionId, ccn } = await seedReadyClaim({
+        patient: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+        attemptIndex: 0,
+        withBlockingFailure: false,
+      });
+      let uploads = 0;
+      const deps: M23WorkerDeps = {
+        connection: {} as never,
+        db: handle.db as unknown as repositories.BillingDb,
+        outbox: { publish: async () => {} },
+        x12: {
+          generate837i: async () => ({ x12: "ISA*00*...", correlationId: "corr-concurrent" }),
+          generateNoe: async () => ({ x12: "", correlationId: "" }),
+          generateNotr: async () => ({ x12: "", correlationId: "" }),
+          parse999: async () => [],
+          parse277ca: async () => [],
+        },
+        macPortal: {
+          upload: async () => {
+            uploads += 1;
+            return { accepted: true, generatedFileUri: "s3://claims/concurrent.837" };
+          },
+          pullPending999: async () => [],
+          pullPending277ca: async () => [],
+          probeHealth: async () => true,
+        },
+      };
+      const job: ClaimSubmitJob = {
+        organizationId: ORG,
+        claimId,
+        submissionId,
+        claimControlNumber: ccn,
+        attemptIndex: 0,
+      };
+      await Promise.all([
+        runClaimSubmit(handle.db as unknown as repositories.BillingDb, deps, job),
+        runClaimSubmit(handle.db as unknown as repositories.BillingDb, deps, job),
+      ]);
+      expect(uploads).toBe(1);
+      expect(await submissionRow(submissionId)).toMatchObject({
+        outcome: "submitted",
+        dispatch_state: "finished",
+      });
     });
   },
 );

@@ -14,6 +14,7 @@ import {
   type Claim837iPartiesPort,
   loadAndRender837i,
   loadClaim837iInput,
+  renderClaim837iPreview,
 } from "../services/claim-837i-loader";
 
 const GOLDEN_837I_SEGMENTS: readonly string[] = [
@@ -504,6 +505,28 @@ describe("loadClaim837iInput gaps", () => {
         disclosure: { purpose: "claim_837i_submission", subjectId: CLAIM_ID, actorUserId },
       }),
     );
+  });
+
+  it("renders preview through the 837I mapper with a distinct audited purpose and returns no X12 or MBI", async () => {
+    const d = deps();
+    const result = await renderClaim837iPreview(d.value, {
+      ...args,
+      interchangeControlNumber: 7,
+      createdAt: new Date("2026-01-31T12:00:00.000Z"),
+      actorUserId: "00000000-0000-4000-8000-0000000000bb",
+    });
+    expect(result.ok).toBe(true);
+    expect(d.unlock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        disclosure: {
+          purpose: "claim_837i_preview",
+          subjectId: CLAIM_ID,
+          actorUserId: "00000000-0000-4000-8000-0000000000bb",
+        },
+      }),
+    );
+    expect(JSON.stringify(result)).not.toContain(MBI);
+    expect(JSON.stringify(result)).not.toContain("ISA*");
   });
 
   it("reports an MBI that belongs to a different coverage than the one the claim bills", async () => {

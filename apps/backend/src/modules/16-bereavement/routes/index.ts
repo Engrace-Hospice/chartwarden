@@ -35,6 +35,44 @@ export type {
 } from "./draft-service";
 export { type M16LetterDeps, buildDrizzleM16LetterService } from "./letter-service-drizzle";
 export { type M16MailingDeps, buildDrizzleM16MailingService } from "./mailing-service-drizzle";
+export {
+  type M16GroupDeps,
+  buildDrizzleM16GroupService,
+  withdrawLapsedGroupEnrollments,
+} from "./group-service-drizzle";
+export { type M16MemorialDeps, buildDrizzleM16MemorialService } from "./memorial-service-drizzle";
+export {
+  type M16LibraryDeps,
+  buildDrizzleM16LibraryService,
+  libraryKindOf,
+} from "./library-service-drizzle";
+export type {
+  LibraryItemFieldsInput,
+  LibraryItemUrlView,
+  LibraryItemView,
+  M16LibraryService,
+} from "./library-service";
+export type {
+  ContactMemorialInvitationView,
+  M16MemorialService,
+  MemorialDetailView,
+  MemorialFieldsInput,
+  MemorialInvitationView,
+  MemorialRsvpCounts,
+  MemorialView,
+} from "./memorial-service";
+export type {
+  AttendanceResultView,
+  CreateGroupInput,
+  GroupDetailView,
+  GroupEnrollmentView,
+  GroupRosterEntry,
+  GroupRosterView,
+  GroupSessionView,
+  GroupView,
+  M16GroupService,
+  UpdateGroupInput,
+} from "./group-service";
 export type {
   ListMailingItemsInput,
   ListMailingRunsInput,
@@ -81,8 +119,11 @@ export {
 } from "./effects-runner";
 
 import type { M16DraftService } from "./draft-service";
+import type { M16GroupService } from "./group-service";
 import type { M16LetterService } from "./letter-service";
+import type { M16LibraryService } from "./library-service";
 import type { M16MailingService } from "./mailing-service";
+import type { M16MemorialService } from "./memorial-service";
 import type { M16ReadService } from "./read-service";
 import type { M16WriteService } from "./write-service";
 
@@ -96,4 +137,10 @@ export interface M16RouteServices {
   readonly letterService: M16LetterService;
   /** ADR-0109 D10 — the mailing program: configs, runs, the batch download and confirm-mailed (bereavement oversight only). */
   readonly mailingService: M16MailingService;
+  /** ADR-0109 D10 (PR 3) — support groups: groups, sessions, enrollment, roster and attendance. */
+  readonly groupService: M16GroupService;
+  /** ADR-0109 D10 (PR 3) — memorial services: publish (invitations + the invitation mailing run), RSVP and attendance. */
+  readonly memorialService: M16MemorialService;
+  /** ADR-0109 D10 (PR 3) — the grief library: oversight registers uploaded M22 documents and publishes them to the portal. */
+  readonly libraryService: M16LibraryService;
 }

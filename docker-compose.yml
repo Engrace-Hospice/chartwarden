@@ -69,6 +69,8 @@ services:
       RUSTFS_SECRET_KEY: chartwarden-object-store-dev-secret
       RUSTFS_VOLUMES: /data
       RUSTFS_CONSOLE_ENABLE: "true"
+      # The browser PUTs uploads straight to a presigned URL; unlike MinIO, RustFS sends no CORS headers unless told.
+      RUSTFS_CORS_ALLOWED_ORIGINS: http://localhost:5173,http://localhost:5174,http://localhost:5175
     ports:
       - "9000:9000"
       - "9001:9001"

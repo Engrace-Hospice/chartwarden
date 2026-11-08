@@ -38,6 +38,10 @@ services:
   postgres:
     image: chartwarden-backup:local
     build: ./backup
+    # An init process as PID 1, not the postmaster: pgBackRest's async archive worker is orphaned onto PID 1, and
+    # the postmaster treats an untracked child that exits with anything but 0 or 1 (no stanza yet, off-site outage)
+    # as a crash: it kills every connection and runs crash recovery, once per archiver retry (60 s).
+    init: true
     environment:
       <<: *backup-common
       BACKUP_OFFSITE_S3_ACCESS_KEY: ${BACKUP_OFFSITE_WAL_ACCESS_KEY:?set in .env.production (the WAL-only key id)}

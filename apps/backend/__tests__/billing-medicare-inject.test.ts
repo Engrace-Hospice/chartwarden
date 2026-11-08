@@ -45,9 +45,10 @@ import {
   resetRbacEngine,
 } from "@chartwarden/auth";
 import type { ClaimAssembleRequest, ClaimAssembleResponse } from "@chartwarden/billing";
+import type { ClaimDocument837iDetail } from "@chartwarden/billing";
 import { NotFoundError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
   type ReadingM23AbacResolver,
@@ -194,6 +195,8 @@ function createM23TestBackend(): {
       claimControlNumber: "CCN0000001",
       attemptIndex: 1,
       outcome: "queued",
+      dispatchState: "pending",
+      dispatchReasonCode: null,
       outcomeReason: null,
       generatedFileUri: null,
       submittedAt: null,
@@ -909,7 +912,15 @@ const SUPER_HEADERS = {
 const SYSTEM_HEADERS = { ...SUPER_HEADERS, "x-test-actor-kind": "system" };
 const NONE_HEADERS = { "x-test-user": "none_1", "x-test-org": ORG, "x-test-roles": "" };
 
-function makeServer() {
+function makeServer(
+  payerRouteStatus: NonNullable<
+    Parameters<typeof mountM23Routes>[1]
+  >["payerRouteStatus"] = async () => ({
+    status: "not_applicable",
+  }),
+  renderClaimPreview?: NonNullable<Parameters<typeof mountM23Routes>[1]>["renderClaimPreview"],
+  options: { readonly previewIntegrityKey?: string; readonly readyClaim?: boolean } = {},
+) {
   const backend = createM23TestBackend();
 
   const grantStore = createInMemoryEffectivePermissionStore([
@@ -948,10 +959,43 @@ function makeServer() {
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+  const readService = options.readyClaim
+    ? {
+        ...backend.readService,
+        async getClaim(
+          actor: Parameters<M23ReadRouteService["getClaim"]>[0],
+          id: string,
+        ): Promise<ClaimDetailView> {
+          const current = await backend.readService.getClaim(actor, id);
+          return {
+            ...current,
+            state: "ready",
+            latestValidation: {
+              validationRunId: VALIDATION_RUN,
+              claimId: id,
+              trigger: "pre_submission" as const,
+              outcome: "all_pass" as const,
+              rulesExecuted: 1,
+              rulesPassed: 1,
+              rulesFailed: 0,
+              rulesWarn: 0,
+              rulesInfo: 0,
+              startedAt: NOW,
+              completedAt: NOW,
+              durationMs: 0,
+              initiatedByMembershipId: null,
+            },
+          };
+        },
+      }
+    : backend.readService;
   mountM23Routes(app, {
-    readService: backend.readService,
+    readService,
     writeService: backend.writeService,
     assemblyService: backend.assemblyService,
+    payerRouteStatus,
+    ...(options.previewIntegrityKey ? { previewIntegrityKey: options.previewIntegrityKey } : {}),
+    ...(renderClaimPreview ? { renderClaimPreview } : {}),
     internalSeam: backend.internalSeam,
     sequestrationService: backend.sequestrationService,
   });
@@ -989,6 +1033,112 @@ describe("M23 route smoke — the M1 boundary", () => {
     await app.close();
   });
 
+  it("serves the read-only preparation projection to an authorized billing reader without payload bytes", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/billing/claims/${CLAIM}/preparation`,
+      headers: SUPER_HEADERS,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      route: { status: "not_applicable" },
+      previewVersion: 1,
+      payloadDigest: null,
+      payloadDigestStatus: "not_available_from_read_projection",
+    });
+    expect(res.body).not.toContain("rawX12");
+    expect(res.body).not.toContain("mbi");
+    await app.close();
+  });
+
+  it("denies preparation projection to a caller without billing claim permissions", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/billing/claims/${CLAIM}/preparation`,
+      headers: NONE_HEADERS,
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("runs the authorized preview renderer and returns only safe renderer gaps", async () => {
+    const renderer = vi.fn(async () => ({
+      status: "blocked" as const,
+      gaps: [{ field: "subscriber.mbi", reason: "missing" as const }],
+    }));
+    const { app } = makeServer(undefined, renderer);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/billing/claims/${CLAIM}/preparation`,
+      headers: SUPER_HEADERS,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(renderer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: ORG,
+        actorUserId: "super_1",
+        claimId: CLAIM,
+        providerEntityId: PROVIDER_ENTITY,
+      }),
+    );
+    expect(res.json()).toMatchObject({
+      rendererStatus: "blocked",
+      rendererGaps: [{ field: "subscriber.mbi", reason: "missing" }],
+      submissionEligible: false,
+    });
+    expect(res.body).not.toContain("rawX12");
+    await app.close();
+  });
+
+  it("requires a fresh actor-bound renderer confirmation before reserving a submission", async () => {
+    const key = "m23-test-preview-integrity-key-32chars";
+    const renderer = vi.fn(async () => ({
+      status: "rendered" as const,
+      document: {
+        claimId: CLAIM,
+        claimControlNumber: "CCN-1",
+        tob: "811",
+        frequency: "1",
+        serviceFrom: "2026-01-01",
+        serviceTo: "2026-01-10",
+        admissionDate: "2025-12-20",
+        dischargeCodes: { patientStatus: "30", conditionCodes: [], occurrenceCodes: [] },
+        occurrenceSpans: [],
+        lines: [],
+        diagnoses: [],
+        totalChargeCents: 100000,
+        nonCoveredChargeCents: 0,
+        attendingPhysician: { npi: "1234567893", firstName: "Ada", lastName: "Vance" },
+        certifyingPhysician: null,
+        payerClaimControlNumber: null,
+      } satisfies ClaimDocument837iDetail,
+      sourceFingerprint: "a".repeat(64),
+      accountReference: "legacy-mac",
+      usage: "test" as const,
+    }));
+    const { app } = makeServer(undefined, renderer, { previewIntegrityKey: key, readyClaim: true });
+    const preview = await app.inject({
+      method: "GET",
+      url: `/api/v1/billing/claims/${CLAIM}/preparation`,
+      headers: SUPER_HEADERS,
+    });
+    expect(preview.statusCode).toBe(200);
+    const token = preview.json().previewConfirmationToken as string;
+    expect(token).toBeTruthy();
+    expect(token).not.toContain("actor");
+    const submitted = await app.inject({
+      method: "POST",
+      url: `/api/v1/billing/claims/${CLAIM}/submit`,
+      headers: { ...SUPER_HEADERS, ...IDEMP("preview-submit"), ...IFM },
+      payload: { ifVersion: 1, acknowledgeAllOverrides: false, previewConfirmationToken: token },
+    });
+    expect(submitted.statusCode).toBe(202);
+    expect(renderer).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+
   it("422s a malformed body from an otherwise-authorized caller (TypeBox validation, M1 envelope)", async () => {
     const { app } = makeServer();
     // PATCH /claims/:id on the seeded, in-scope claim so the §4.7 CLAIM_CASELOAD gate passes (org_admin
@@ -1001,6 +1151,23 @@ describe("M23 route smoke — the M1 boundary", () => {
       payload: {},
     });
     expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("holds claim submission when the authorized provider lacks a verified clearinghouse payer route", async () => {
+    const { app, backend } = makeServer(async () => ({
+      status: "not_configured",
+      reasonCode: "CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE",
+    }));
+    const submit = vi.spyOn(backend.writeService, "submitClaim");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/billing/claims/${CLAIM}/submit`,
+      headers: { ...SUPER_HEADERS, "idempotency-key": "route-not-configured", "if-match": "1" },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(422);
+    expect(submit).not.toHaveBeenCalled();
     await app.close();
   });
 });
@@ -1084,8 +1251,12 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/billing/claims/${CLAIM}/submit`,
     headers: { ...SUPER_HEADERS, ...IDEMP("r07"), ...IFM },
-    payload: {},
-    expectStatus: 202,
+    payload: {
+      ifVersion: 1,
+      acknowledgeAllOverrides: false,
+      previewConfirmationToken: "x".repeat(32),
+    },
+    expectStatus: 503,
   },
   {
     label: "8 POST /billing/claims/:id/replace",

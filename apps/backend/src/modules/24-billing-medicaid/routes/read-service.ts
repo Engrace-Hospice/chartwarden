@@ -2,6 +2,7 @@
 // §4.1 GET surface). The Drizzle implementation lives in read-service-drizzle.ts; a route test may bind an
 // in-memory stand-in. Money crosses as integer cents; the seam read-views (seam-impls.ts) convert to
 // cents-as-string. No Recipient ID is ever returned (only the masked last-4 fact; D12 / §3.6).
+import type { MedicaidClaimRouteReadiness } from "@chartwarden/medicaid-adapters";
 import type { M24Actor } from "./actor";
 
 /** A §F09 cursor page: the items plus the opaque signed cursor of the next page. */
@@ -28,8 +29,10 @@ export interface ClaimView {
   version: number;
   validationRunIdLatest: string | null;
   eligibilityOutcomeSnapshot: string | null;
-  /** S11: non-null when the claim's state has no electronic gateway; the manual/paper instruction. */
+  /** Safe blocking explanation for the server-derived state/program route. */
   electronicSubmissionRefusal: string | null;
+  /** Server-derived state + FFS/MCO capability. Never inferred from a client-provided route hint. */
+  routeReadiness: MedicaidClaimRouteReadiness;
   createdAt: string;
   updatedAt: string;
 }

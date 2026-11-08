@@ -61,10 +61,8 @@ interface Requirement {
 export const M23_LAUNCH_GATEWAY_ENABLED_ENV = "M23_LAUNCH_GATEWAY_ENABLED";
 export const M34_PROVISION_GATEWAY_ENABLED_ENV = "M34_PROVISION_GATEWAY_ENABLED";
 export const FHIR_TOKEN_ENDPOINT_ENABLED_ENV = "FHIR_TOKEN_ENDPOINT_ENABLED";
-/** GAP-146 — the M24 Oregon launch-gateway capability gate. Opt-OUT in production like the M23 switch (it was
- *  opt-in, so a production deploy that never set it silently built no Medicaid submit/poll workers). It is a
- *  capability gate only: every real endpoint comes from a provider entity's own trading-partner credential, so
- *  an enabled gate with no credential calls nothing. dev/test keep the unset-means-off default. */
+/** M24 Oregon gateway gate. Explicit opt-in in every environment; an unset value must never bind a state
+ * transport or start its workers. Configuration alone is not state certification. */
 export const M24_LAUNCH_GATEWAY_ENABLED_ENV = "M24_LAUNCH_GATEWAY_ENABLED";
 
 const INTEGRATION_SWITCHES = [
@@ -74,7 +72,7 @@ const INTEGRATION_SWITCHES = [
   M24_LAUNCH_GATEWAY_ENABLED_ENV,
 ] as const;
 
-/** Whether an opt-out production integration capability should be bound (defaults to true). */
+/** Whether a legacy opt-out production integration capability should be bound (defaults to true). */
 export function integrationEnabled(
   env: EnvLike,
   key: (typeof INTEGRATION_SWITCHES)[number],
@@ -82,14 +80,9 @@ export function integrationEnabled(
   return env[key]?.trim().toLowerCase() !== "false";
 }
 
-/**
- * GAP-146 — the env the M24 launch-gateway gate reads: in production an UNSET switch means enabled (an explicit
- * `false` still disables); outside production the value is passed through untouched, so dev/test/CI keep
- * "unset = nothing calls out by accident".
- */
+/** M24 is deliberately opt-in: preserve the environment as provided in all runtimes. */
 export function withM24LaunchGatewayDefault(env: EnvLike): EnvLike {
-  if (env.NODE_ENV !== "production" || env[M24_LAUNCH_GATEWAY_ENABLED_ENV]?.trim()) return env;
-  return { ...env, [M24_LAUNCH_GATEWAY_ENABLED_ENV]: "true" };
+  return env;
 }
 
 /**
@@ -226,6 +219,24 @@ const REQUIREMENTS: readonly Requirement[] = [
     key: "CLAIMMD_ACCOUNT_REFERENCE",
     rule: (v) =>
       /^[A-Za-z0-9._:-]{1,128}$/.test(v) ? null : "must be a stable non-secret account reference",
+    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
+  },
+  {
+    key: "CLAIM_PREVIEW_INTEGRITY_KEY",
+    rule: (v) => (v.length < 32 ? "must contain at least 32 characters" : null),
+    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
+  },
+  {
+    key: "CLAIMMD_M23_PAYER_ROUTES",
+    rule: (v) => {
+      try {
+        return Array.isArray(JSON.parse(v)) && JSON.parse(v).length > 0
+          ? null
+          : "must be a non-empty JSON array of scoped effective-dated payer routes";
+      } catch {
+        return "must be valid JSON containing scoped effective-dated payer routes";
+      }
+    },
     when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
   },
   {

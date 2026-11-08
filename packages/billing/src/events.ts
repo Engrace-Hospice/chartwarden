@@ -74,6 +74,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       submissionId: id,
       claimControlNumber: id,
       attemptIndex: Type.Integer(),
+      reviewedSourceFingerprint: Type.String({ pattern: "^[a-f0-9]{64}$" }),
+      expectedRouteFingerprint: Type.Optional(Type.String({ pattern: "^[a-f0-9]{64}$" })),
     }),
     declaredConsumers: [],
     isOutboxOnly: true,

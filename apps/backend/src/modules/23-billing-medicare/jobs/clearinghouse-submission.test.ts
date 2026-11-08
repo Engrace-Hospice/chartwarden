@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { transportUpload } from "./clearinghouse-submission";
+import { ClearinghouseTransportError, transportUpload } from "./clearinghouse-submission";
 
 const x12 = readFileSync(
   new URL(
@@ -26,11 +26,13 @@ const context = {
   correlationId: "correlation-synthetic",
   usage: "test" as const,
   billingNpi: "1234567893",
+  claimMdRouteFingerprint: "a".repeat(64),
 };
 
 function makeTransport(
   order: string[],
   reserve: (input: unknown) => Promise<string> = async () => "evidence-synthetic",
+  ctx = context,
 ) {
   return {
     binding: {
@@ -52,7 +54,7 @@ function makeTransport(
         submitNotice: vi.fn(),
       },
     },
-    contexts: { contextFor: async () => context, providerEntitiesFor: async () => [] },
+    contexts: { contextFor: async () => ctx, providerEntitiesFor: async () => [] },
     claimMdEvidence: {
       accountReference: "acct-synthetic",
       usage: "test" as const,
@@ -77,6 +79,7 @@ describe("M23 Claim.MD evidence boundary", () => {
     claimId: "00000000-0000-4000-8000-000000000003",
     submissionId: "00000000-0000-4000-8000-000000000004",
     attemptIndex: 0,
+    expectedRouteFingerprint: context.claimMdRouteFingerprint,
   };
 
   it("commits evidence before upload and appends the receipt afterward", async () => {
@@ -95,6 +98,49 @@ describe("M23 Claim.MD evidence boundary", () => {
     );
     await expect(upload(request)).rejects.toThrow(/Claim\.MD|claim/i);
     expect(order).toEqual(["reserve"]);
+  });
+
+  it("holds an already queued attempt when the configured payer route changes", async () => {
+    const order: string[] = [];
+    const transport = makeTransport(order, undefined, {
+      ...context,
+      claimMdRouteFingerprint: "b".repeat(64),
+    });
+    await expect(transportUpload(transport)(request)).rejects.toThrow(
+      /route changed after submission was authorized/,
+    );
+    expect(order).toEqual([]);
+  });
+
+  it("preserves known pre-send refusal versus ambiguous transport outcome without vendor text", async () => {
+    const known = makeTransport([]) as {
+      binding: { transport: { submitClaim: () => Promise<unknown> } };
+    };
+    known.binding.transport.submitClaim = async () => ({
+      ok: false,
+      degraded: { code: "CH_UNAVAILABLE", reason: "synthetic refused" },
+    });
+    await expect(transportUpload(known as never)(request)).rejects.toMatchObject({
+      name: "ClearinghouseTransportError",
+      code: "CH_UNAVAILABLE",
+      ambiguous: false,
+    });
+
+    const uncertain = makeTransport([]) as {
+      binding: { transport: { submitClaim: () => Promise<unknown> } };
+    };
+    uncertain.binding.transport.submitClaim = async () => ({
+      ok: false,
+      degraded: { code: "CH_UNAVAILABLE", reason: "synthetic timeout", ambiguous: true },
+    });
+    await expect(transportUpload(uncertain as never)(request)).rejects.toMatchObject({
+      name: "ClearinghouseTransportError",
+      code: "CH_UNAVAILABLE",
+      ambiguous: true,
+    });
+    expect(new ClearinghouseTransportError("claim", "CH_UNAVAILABLE").message).not.toContain(
+      "SYNTHETIC",
+    );
   });
 
   it("keeps notice uploads off by default and commits typed evidence before any notice transport call", async () => {

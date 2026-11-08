@@ -80,12 +80,16 @@ async function waitFor(what: string, probe: () => Promise<boolean>): Promise<voi
   throw new Error(`${what} did not become ready within ${WAIT_MS / 1000}s`);
 }
 
+/** Build POSTGRES_IMAGE from the working tree once per process (a no-op when WX_DRILL_POSTGRES_IMAGE names one). */
+export function ensurePostgresImage(): void {
+  if (postgresImageBuilt) return;
+  docker(["build", "-q", "-t", POSTGRES_IMAGE, POSTGRES_DIR]);
+  postgresImageBuilt = true;
+}
+
 export async function startPostgres(runId: string, role: string): Promise<Pg> {
   const name = `wx-m36-drill-${runId}-${role}-pg`;
-  if (!postgresImageBuilt) {
-    docker(["build", "-q", "-t", POSTGRES_IMAGE, POSTGRES_DIR]);
-    postgresImageBuilt = true;
-  }
+  ensurePostgresImage();
   const port = await freePort();
   docker([
     "run",

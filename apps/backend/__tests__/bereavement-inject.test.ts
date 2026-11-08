@@ -53,6 +53,7 @@ import type {
   M16DraftService,
   PreDeathDraftView,
 } from "../src/modules/16-bereavement/routes/draft-service";
+import type { M16GroupService } from "../src/modules/16-bereavement/routes/group-service";
 import type {
   BereavedContactRowView,
   BereavementAssessmentTaskView,
@@ -71,10 +72,12 @@ import type {
   M16LetterService,
   PhysicianLetterView,
 } from "../src/modules/16-bereavement/routes/letter-service";
+import type { M16LibraryService } from "../src/modules/16-bereavement/routes/library-service";
 import type {
   M16MailingService,
   MailingRunView,
 } from "../src/modules/16-bereavement/routes/mailing-service";
+import type { M16MemorialService } from "../src/modules/16-bereavement/routes/memorial-service";
 import type { RecomputeRiskInput } from "../src/modules/16-bereavement/routes/write-service";
 
 // ── the M2 header-auth test shim (the M11/M40 `orders-routes.test.ts` / `mdm-routes.test.ts` precedent) ──
@@ -121,6 +124,10 @@ const LETTER_PLAN_ID = "10000000-0000-4000-8000-0000000000bb";
 const LETTER_ATTENDING = "10000000-0000-4000-8000-0000000000cc";
 /** ADR-0109 D10 — the one mailing run the fake mailing service knows. */
 const MAILING_RUN_ID = "10000000-0000-4000-8000-0000000000f1";
+// ADR-0109 D10 (PR 3) — a group the counselor facilitates (staff) and one the volunteer facilitates.
+const STAFF_GROUP_ID = "10000000-0000-4000-8000-0000000000a1";
+const VOLUNTEER_GROUP_ID = "10000000-0000-4000-8000-0000000000a2";
+const PROGRAM_ID = "10000000-0000-4000-8000-0000000000a3";
 const PICKED_CLINICIAN = "10000000-0000-4000-8000-0000000000dd";
 /** The care team of `DRAFT_PATIENT`: only the plan counselor's user sits on it. */
 const ASSESSOR_PROBE: PreDeathAssessorProbe = {
@@ -861,7 +868,35 @@ function createFakeBackend() {
     [VOLUNTEER_ID]: "bereavement_volunteer",
   };
 
+  const groupFacilitators: Record<string, { kind: "staff" | "volunteer"; facilitator: string }> = {
+    [STAFF_GROUP_ID]: { kind: "staff", facilitator: COUNSELOR_ID },
+    [VOLUNTEER_GROUP_ID]: { kind: "volunteer", facilitator: VOLUNTEER_ID },
+  };
+  /** ADR-0109 D10 (PR 3) — every program-service call, by method name (a stub service answers a fixed shape; the GUARDS are under test). */
+  const programCalls: string[] = [];
+  const programStub = <T>(): T =>
+    new Proxy(
+      {},
+      {
+        get: (_t, method: string) => async () => {
+          programCalls.push(method);
+          return method.startsWith("list") || method.startsWith("contact") ? [] : { ok: true };
+        },
+      },
+    ) as T;
   const resolver: BereavementAbacResolver = {
+    async loadGroupFacilitation(orgId, ref) {
+      const g = ref.groupId === undefined ? undefined : groupFacilitators[ref.groupId];
+      return g === undefined
+        ? null
+        : {
+            organizationId: orgId,
+            groupId: ref.groupId as string,
+            facilitatorKind: g.kind,
+            facilitatorUserId: g.facilitator,
+            coFacilitatorUserId: null,
+          };
+    },
     async loadPlan(_orgId, planId) {
       const p = plans.get(planId);
       return p ? planFacts(p) : null;
@@ -1128,6 +1163,10 @@ function createFakeBackend() {
     letterService,
     mailingService,
     mailingCalls,
+    groupService: programStub<M16GroupService>(),
+    memorialService: programStub<M16MemorialService>(),
+    libraryService: programStub<M16LibraryService>(),
+    programCalls,
     seedLetter,
     letters,
     letterEvents,
@@ -1211,6 +1250,9 @@ function makeServer(): { app: ReturnType<typeof buildServer>; backend: FakeBacke
     draftService: backend.draftService,
     letterService: backend.letterService,
     mailingService: backend.mailingService,
+    groupService: backend.groupService,
+    memorialService: backend.memorialService,
+    libraryService: backend.libraryService,
   });
   return { app, backend };
 }
@@ -2707,6 +2749,223 @@ describe("M16 §4.1 route 52 — a contact's program timeline", () => {
       ).statusCode,
     ).toBe(404);
     expect((await app.inject({ method: "GET", url, headers: NO_PERMS })).statusCode).toBe(403);
+    await app.close();
+  });
+});
+
+// ── ADR-0109 D10 (PR 3) — support groups, memorial services and the grief library: the GUARD composition per route ──
+describe("M16 §4.1 routes 53-81 — program activities (groups, memorials, library)", () => {
+  let seq = 0;
+  const key = () => {
+    seq += 1;
+    return { "idempotency-key": `p-${seq}` };
+  };
+  const writeHeaders = (version = 1) => ({ ...key(), "if-match": `"${version}"` });
+  const GROUPS = "/api/v1/bereavement/groups";
+  const MEMORIALS = "/api/v1/bereavement/memorials";
+  const LIBRARY = "/api/v1/bereavement/library";
+  const status = async (
+    app: ReturnType<typeof makeServer>["app"],
+    method: "GET" | "POST" | "PATCH" | "PUT",
+    url: string,
+    headers: Record<string, string>,
+    payload?: object,
+  ) => (await app.inject({ method, url, headers, ...(payload ? { payload } : {}) })).statusCode;
+
+  const GROUP_BODY = {
+    name: "Evening group",
+    description: null,
+    format: "drop_in",
+    recurrence: null,
+    modality: "in_person",
+    enrollmentRequired: true,
+    facilitatorKind: "staff",
+    facilitatorUserId: COUNSELOR_ID,
+    coFacilitatorUserId: null,
+    capacity: 12,
+    timezone: "America/Chicago",
+    venueText: "Room 2",
+  };
+
+  it("the group list is for bereavement-capable staff and oversight; a caller with no key is refused", async () => {
+    const { app } = makeServer();
+    expect(await status(app, "GET", GROUPS, COUNSELOR)).toBe(200);
+    expect(await status(app, "GET", GROUPS, SUPERVISOR)).toBe(200);
+    expect(await status(app, "GET", `${GROUPS}/${STAFF_GROUP_ID}/sessions`, VOLUNTEER)).toBe(200);
+    expect(await status(app, "GET", GROUPS, NO_PERMS)).toBe(403);
+    await app.close();
+  });
+
+  it("creating a group is oversight only and needs an Idempotency-Key", async () => {
+    const { app, backend } = makeServer();
+    expect(await status(app, "POST", GROUPS, { ...COUNSELOR, ...key() }, GROUP_BODY)).toBe(403);
+    expect(await status(app, "POST", GROUPS, SUPERVISOR, GROUP_BODY)).toBe(400);
+    expect(await status(app, "POST", GROUPS, { ...SUPERVISOR, ...key() }, GROUP_BODY)).toBe(201);
+    expect(backend.programCalls).toEqual(["createGroup"]);
+    await app.close();
+  });
+
+  it("the staff facilitator manages their group; another clinician gets 404; If-Match is required", async () => {
+    const { app } = makeServer();
+    const { format: _format, recurrence: _recurrence, ...EDIT } = GROUP_BODY;
+    const url = `${GROUPS}/${STAFF_GROUP_ID}`;
+    expect(await status(app, "PATCH", url, { ...COUNSELOR, ...writeHeaders() }, EDIT)).toBe(200);
+    expect(await status(app, "POST", `${url}/open`, { ...COUNSELOR, ...key() })).toBe(428);
+    expect(await status(app, "POST", `${url}/open`, { ...COUNSELOR, ...writeHeaders() })).toBe(200);
+    expect(await status(app, "PATCH", url, { ...OFFTEAM_MSW, ...writeHeaders() }, EDIT)).toBe(404);
+    expect(await status(app, "GET", `${url}/roster`, OFFTEAM_MSW)).toBe(404);
+    await app.close();
+  });
+
+  it("a volunteer facilitator runs their group (roster, attendance) but never manages it", async () => {
+    const { app, backend } = makeServer();
+    const { format: _format, recurrence: _recurrence, ...EDIT } = GROUP_BODY;
+    const url = `${GROUPS}/${VOLUNTEER_GROUP_ID}`;
+    expect(await status(app, "GET", `${url}/roster`, VOLUNTEER)).toBe(200);
+    expect(
+      await status(
+        app,
+        "POST",
+        `${url}/sessions/${PROGRAM_ID}/attendance`,
+        { ...VOLUNTEER, ...key() },
+        {
+          contactIds: [PROGRAM_ID],
+        },
+      ),
+    ).toBe(200);
+    expect(await status(app, "PATCH", url, { ...VOLUNTEER, ...writeHeaders() }, EDIT)).toBe(404);
+    expect(
+      await status(
+        app,
+        "POST",
+        `${url}/sessions`,
+        { ...VOLUNTEER, ...key() },
+        {
+          startsAt: "2026-12-01T18:00:00.000Z",
+          endsAt: "2026-12-01T19:30:00.000Z",
+        },
+      ),
+    ).toBe(404);
+    expect(backend.programCalls).toEqual(["roster", "recordAttendance"]);
+    await app.close();
+  });
+
+  it("enrolling is the family's window: the assigned counselor or oversight, never an unassigned clinician", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const contact = backend.seedContact(plan.planId);
+    const url = `${GROUPS}/${STAFF_GROUP_ID}/enrollments`;
+    const body = { contactId: contact.contactId };
+    expect(await status(app, "POST", url, { ...COUNSELOR, ...key() }, body)).toBe(200);
+    expect(await status(app, "POST", url, { ...OFFTEAM_MSW, ...key() }, body)).toBe(404);
+    expect(
+      await status(
+        app,
+        "GET",
+        `/api/v1/bereavement/contacts/${contact.contactId}/support-groups`,
+        SUPERVISOR,
+      ),
+    ).toBe(200);
+    expect(
+      await status(
+        app,
+        "POST",
+        `${url}/${contact.contactId}/withdraw`,
+        { ...COUNSELOR, ...key() },
+        {
+          reason: "requested",
+        },
+      ),
+    ).toBe(200);
+    await app.close();
+  });
+
+  it("memorials: staff read the service list; create, invitations and attendance are oversight; a phone RSVP is the family's window", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const contact = backend.seedContact(plan.planId);
+    const body = {
+      title: "Season of remembrance",
+      description: null,
+      startsAt: "2026-12-12T18:00:00.000Z",
+      endsAt: "2026-12-12T20:00:00.000Z",
+      modality: "in_person",
+      venueText: "Chapel",
+      capacity: 80,
+      rsvpBy: "2026-12-05",
+      inviteWindowMonths: 12,
+    };
+    expect(await status(app, "GET", MEMORIALS, COUNSELOR)).toBe(200);
+    expect(await status(app, "POST", MEMORIALS, { ...COUNSELOR, ...key() }, body)).toBe(403);
+    expect(await status(app, "POST", MEMORIALS, { ...SUPERVISOR, ...key() }, body)).toBe(201);
+    expect(await status(app, "GET", `${MEMORIALS}/${PROGRAM_ID}/invitations`, COUNSELOR)).toBe(403);
+    expect(await status(app, "GET", `${MEMORIALS}/${PROGRAM_ID}/invitations`, SUPERVISOR)).toBe(
+      200,
+    );
+    expect(
+      await status(app, "POST", `${MEMORIALS}/${PROGRAM_ID}/publish`, {
+        ...SUPERVISOR,
+        ...writeHeaders(),
+      }),
+    ).toBe(200);
+    const rsvp = `/api/v1/bereavement/contacts/${contact.contactId}/memorial-invitations/${PROGRAM_ID}/rsvp`;
+    expect(
+      await status(app, "PUT", rsvp, { ...COUNSELOR, ...key() }, { response: "yes", guests: 2 }),
+    ).toBe(200);
+    expect(
+      await status(app, "PUT", rsvp, { ...OFFTEAM_MSW, ...key() }, { response: "yes", guests: 2 }),
+    ).toBe(404);
+    expect(
+      await status(app, "PUT", rsvp, { ...COUNSELOR, ...key() }, { response: "yes", guests: 11 }),
+    ).toBe(422);
+    expect(
+      await status(
+        app,
+        "POST",
+        `${MEMORIALS}/${PROGRAM_ID}/invitations/${PROGRAM_ID}/attendance`,
+        {
+          ...COUNSELOR,
+          ...key(),
+        },
+        { attended: true },
+      ),
+    ).toBe(403);
+    await app.close();
+  });
+
+  it("the grief library is oversight only (a counselor holding the keys is refused)", async () => {
+    const { app, backend } = makeServer();
+    const body = {
+      documentId: PROGRAM_ID,
+      title: "When grief arrives",
+      summary: null,
+      category: "understanding_grief",
+      transcriptDocumentId: null,
+      sortOrder: 0,
+    };
+    expect(await status(app, "GET", LIBRARY, COUNSELOR)).toBe(403);
+    expect(await status(app, "POST", LIBRARY, { ...COUNSELOR, ...key() }, body)).toBe(403);
+    expect(await status(app, "GET", LIBRARY, SUPERVISOR)).toBe(200);
+    expect(await status(app, "POST", LIBRARY, { ...SUPERVISOR, ...key() }, body)).toBe(201);
+    expect(
+      await status(
+        app,
+        "POST",
+        `${LIBRARY}/${PROGRAM_ID}/status`,
+        { ...SUPERVISOR, ...writeHeaders() },
+        {
+          status: "published",
+        },
+      ),
+    ).toBe(200);
+    const preview = await app.inject({
+      method: "GET",
+      url: `${LIBRARY}/${PROGRAM_ID}/url`,
+      headers: SUPERVISOR,
+    });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.headers["cache-control"]).toBe("no-store");
+    expect(backend.programCalls).toEqual(["listItems", "createItem", "setStatus", "itemUrl"]);
     await app.close();
   });
 });
