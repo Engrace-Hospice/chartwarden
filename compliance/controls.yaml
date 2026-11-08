@@ -165,7 +165,7 @@ controls:
       owner: engineering
       review_by: 2026-12-31
 
-  - id: CW-AC-10
+  - id: CW-AC-11
     title: Request-integrity route kit — pagination cursors are HMAC-signed per org and checked against the list's anchor shape, writes without an active membership are refused, and optimistic concurrency, Idempotency-Key and the D13 AI block run through one shared implementation
     hipaa: ["164.312(c)(1)", "164.312(a)(1)"]
     soc2: ["CC6.1", "PI1.4"]
