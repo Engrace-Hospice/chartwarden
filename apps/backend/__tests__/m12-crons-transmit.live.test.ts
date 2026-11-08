@@ -488,6 +488,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
             skipped: 0,
             deferredByOutage: 0,
             skippedConfigFault: 1,
+            errored: 0,
           });
         }
         // nothing was written for the order: same row, same version, same timestamp, no new audit row, transmission untouched
@@ -549,6 +550,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
             deferredByOutage: 0,
             skipped: 0,
             orgsSkippedByConfigFault: 1,
+            errored: 0,
           });
         }
         // (b) an order the vendor boundary sends back to queued mid-batch is no longer discarded silently
@@ -576,6 +578,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
             deferredByOutage: 1,
             skipped: 0,
             orgsSkippedByConfigFault: 0,
+            errored: 0,
           });
         }
       });
@@ -1013,6 +1016,154 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         (e) => e.payload.breakerName === `dosespot-queued_orders_stale:${ORG_A}`,
       );
       expect(raised).toHaveLength(1);
+    });
+  });
+
+  // Review of slice 4 (LOW): the retry backoff was applied in JS AFTER the batch was chosen, so a batch of orders waiting out their backoff, older than
+  // a ready one, took every slot (and its row lock) and the ready order was never reached. The backoff is now part of the candidate query.
+  it("orders waiting out their retry backoff never starve the claim: more than one batch of them, all older, and a fresh order is still sent", async () => {
+    const patientId = await h.seedPatient(ORG_A, { synced: "501" });
+    const waiting: string[] = [];
+    for (let i = 0; i < TRANSMIT_BATCH_SIZE + 1; i += 1) {
+      const o = await h.seedOrder({
+        org: ORG_A,
+        patientId,
+        status: "queued_for_transmission",
+        sendState: "queued",
+      });
+      waiting.push(o.orderId);
+    }
+    // each failed once just now: a one-minute backoff that has not elapsed at T0
+    await h.admin.query(
+      "UPDATE medication_order_transmission SET retry_count=1, transmission_failed_at=$2 WHERE medication_order_id = ANY($1::uuid[])",
+      [waiting, T0],
+    );
+    const fresh = await h.seedOrder({
+      org: ORG_A,
+      patientId,
+      status: "queued_for_transmission",
+      sendState: "queued",
+    });
+    const sends: string[] = [];
+    const vendor = new FakeDoseSpotVendor({
+      transmit: async (_org, payload) => {
+        sends.push(payload.medicationOrderId);
+        return { dosespotPrescriptionId: "rx-fresh", transmittedAt: T0.toISOString() };
+      },
+    });
+    expect(await runTransmitNewRxForOrg(deps(vendor), ORG_A)).toMatchObject({
+      claimed: 1,
+      transmitted: 1,
+    });
+    expect(sends).toEqual([fresh.orderId]);
+    // the waiting orders were neither claimed nor touched; once their backoff elapses they are claimed (one batch's worth)
+    const untouched = await h.q(
+      "SELECT count(*)::int AS n FROM medication_order WHERE id = ANY($1::uuid[]) AND dosespot_send_state='queued'",
+      [waiting],
+    );
+    expect(untouched[0]?.n).toBe(waiting.length);
+    expect((await runTransmitNewRxForOrg(deps(vendor, minutes(2)), ORG_A)).claimed).toBe(
+      TRANSMIT_BATCH_SIZE,
+    );
+  });
+
+  // Review of slice 4 (MEDIUM): one order whose attempt or settle THREW aborted the whole pass (orders k+1..n stranded in flight) and, through the
+  // fan-out, skipped the org's age alerts.
+  describe("one order's fault does not strand the rest of the pass", () => {
+    it("a settle that throws for order k: the orders after it are still sent, the fault is counted and logged with ids only", async () => {
+      const patientId = await h.seedPatient(ORG_A, { synced: "501" });
+      const orders: string[] = [];
+      for (let i = 0; i < 4; i += 1) {
+        orders.push(
+          (
+            await h.seedOrder({
+              org: ORG_A,
+              patientId,
+              status: "queued_for_transmission",
+              sendState: "queued",
+            })
+          ).orderId,
+        );
+      }
+      const broken = orders[1] as string;
+      const warnings: { fields: Record<string, string | number>; message: string }[] = [];
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async (_org, payload) => ({
+          dosespotPrescriptionId: `rx-${payload.medicationOrderId}`,
+          transmittedAt: T0.toISOString(),
+        }),
+      });
+      const world: M12CronDeps = {
+        ...deps(vendor),
+        // the settle of `broken` throws inside its transaction (a stand-in for a database fault), with a value in its message
+        outbox: {
+          publish: async (tx, ev) => {
+            if (ev.aggregateId === broken) throw new TypeError(`bound value ${broken} Jane Synthetic`);
+            return h.outbox.publish(tx, ev);
+          },
+        },
+        warn: (fields, message) => warnings.push({ fields, message }),
+      };
+      const pass = await runTransmitNewRxForOrg(world, ORG_A);
+      expect(pass).toMatchObject({ claimed: 4, transmitted: 3, errored: 1 });
+      for (const id of orders.filter((o) => o !== broken)) {
+        expect((await orderRow(id)).status, id).toBe("transmitted");
+      }
+      // the broken order's settle rolled back: it is still an in-flight claim, which the recovery drain will hold (its call began)
+      expect(await orderRow(broken)).toMatchObject({
+        status: "queued_for_transmission",
+        s: "in_flight",
+      });
+      expect(warnings.map((w) => w.fields)).toContainEqual({
+        organizationId: ORG_A,
+        orderId: broken,
+        cause: "TypeError",
+        errorClass: "TypeError",
+      });
+      expect(JSON.stringify(warnings)).not.toContain("Jane");
+    });
+
+    it("an org whose pass throws still gets its age alerts, and the tick still reports the org as failed", async () => {
+      const { orderId } = await queued();
+      await h.admin.query(
+        "UPDATE medication_order_transmission SET queued_at = now() - interval '2 hours' WHERE medication_order_id=$1",
+        [orderId],
+      );
+      await h.admin.query("DELETE FROM outbox_event WHERE event_type='m12.dosespot_degraded'");
+      // the first transaction of the tick (the pass's claim) fails; every later one (the age alerts) goes through
+      let transactions = 0;
+      const realDb = h.handle.db;
+      const flakyDb = new Proxy(realDb, {
+        get(target, prop, receiver) {
+          if (prop === "transaction") {
+            return (...args: unknown[]) => {
+              transactions += 1;
+              if (transactions === 1) return Promise.reject(new Error("connection reset"));
+              return (target.transaction as (...a: unknown[]) => unknown).apply(target, args);
+            };
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+      const noCall = new FakeDoseSpotVendor({
+        transmit: async () => {
+          throw new Error("no call is expected");
+        },
+      });
+      const runners = buildM12CronRunners({
+        ...deps(noCall),
+        db: flakyDb,
+        episodes: createEpisodeTracker(),
+        connection: {} as never,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        config: { isConfiguredFor: async () => true, configFor: async () => ({}) } as never,
+      });
+      await expect(runners.transmitNewRx()).rejects.toThrow(/1 of 1 org/);
+      const raised = (await h.eventsOf("m12.dosespot_degraded", ORG_A)).filter(
+        (e) => e.payload.breakerName === `dosespot-queued_orders_stale:${ORG_A}`,
+      );
+      expect(raised).toHaveLength(1);
+      expect((await orderRow(orderId)).s).toBe("queued");
     });
   });
 
@@ -1970,6 +2121,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
           deferredByOutage: 0,
           skipped: 1,
           orgsSkippedByConfigFault: 0,
+          errored: 0,
         });
       });
     });

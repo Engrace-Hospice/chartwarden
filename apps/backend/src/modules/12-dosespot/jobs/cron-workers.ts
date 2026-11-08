@@ -107,23 +107,34 @@ export function buildM12CronRunners(
       let deferredByOutage = 0;
       let skipped = 0;
       let orgsSkippedByConfigFault = 0;
+      let errored = 0;
       try {
         await runForEachActiveOrg(label, deps.activeOrgs, async (org) => {
-          if (!vendorBound || (await deps.config.isConfiguredFor(org))) {
-            const pass = passOf(await perOrg(org));
-            deferredByOutage += pass?.deferredByOutage ?? 0;
-            skipped += pass?.skipped ?? 0;
-            orgsSkippedByConfigFault += pass?.skippedConfigFault ?? 0;
+          // the org's pass may throw (a claim that cannot be read, say): the every-org work (the age alerts) still runs for it, and the
+          // pass's fault is rethrown after it, so runForEachActiveOrg still reports the org as failed
+          let passFault: { readonly error: unknown } | null = null;
+          try {
+            if (!vendorBound || (await deps.config.isConfiguredFor(org))) {
+              const pass = passOf(await perOrg(org));
+              deferredByOutage += pass?.deferredByOutage ?? 0;
+              skipped += pass?.skipped ?? 0;
+              orgsSkippedByConfigFault += pass?.skippedConfigFault ?? 0;
+              errored += pass?.errored ?? 0;
+            }
+          } catch (error) {
+            passFault = { error };
           }
           await forEveryOrg?.(org);
+          if (passFault !== null) throw passFault.error;
         });
       } finally {
         // orders sent back to `queued` (a registration that stopped being live mid-batch, an open circuit), orders whose claim was lost before the
-        // worker could write (their result was discarded) and orgs skipped whole were never visible to the tick's caller: say so, once per tick
-        if (deferredByOutage > 0 || skipped > 0 || orgsSkippedByConfigFault > 0) {
+        // worker could write (their result was discarded), orders whose attempt threw, and orgs skipped whole were never visible to the tick's
+        // caller: say so, once per tick
+        if (deferredByOutage > 0 || skipped > 0 || orgsSkippedByConfigFault > 0 || errored > 0) {
           deps.warn?.(
-            { cron: label, deferredByOutage, skipped, orgsSkippedByConfigFault },
-            "M12 cron tick did not transmit every order it reached: some were deferred (an outage, an org skipped for a config fault), and `skipped` were lost to another owner mid-pass, their result discarded",
+            { cron: label, deferredByOutage, skipped, orgsSkippedByConfigFault, errored },
+            "M12 cron tick did not transmit every order it reached: some were deferred (an outage, an org skipped for a config fault), `skipped` were lost to another owner mid-pass, their result discarded, and `errored` threw and were passed over",
           );
         }
       }

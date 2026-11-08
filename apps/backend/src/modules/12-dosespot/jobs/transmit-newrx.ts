@@ -55,7 +55,6 @@ const STALE_CALL_DETAIL =
 const MAX_BACKOFF_MINUTES = 60;
 
 type OrderRow = typeof MO.$inferSelect;
-type TransmissionRow = typeof MOT.$inferSelect;
 
 export interface TransmitPassResult {
   readonly claimed: number;
@@ -69,16 +68,22 @@ export interface TransmitPassResult {
   readonly deferredByOutage: number;
   /** 1 when the org's config could not be read or opened, so the pass was skipped whole (no claim, no write); 0 otherwise. */
   readonly skippedConfigFault: number;
+  /**
+   * Orders whose attempt or settle THREW (a database fault, a bug): logged with ids only and passed over so the rest of the batch still goes.
+   * The order is left as the throw found it (an `in_flight` claim, stamped or not), which the recovery drain releases or holds.
+   */
+  readonly errored: number;
 }
 
 /** Minutes to wait after the Nth failed attempt: 1, 2, 4, 8, ... capped. */
 export const backoffMinutes = (retryCount: number): number =>
   Math.min(2 ** Math.max(0, retryCount - 1), MAX_BACKOFF_MINUTES);
 
-function dueForAttempt(t: TransmissionRow | undefined, now: Date): boolean {
-  if (!t || t.retryCount === 0 || !t.transmissionFailedAt) return true;
-  return t.transmissionFailedAt.getTime() + backoffMinutes(t.retryCount) * 60_000 <= now.getTime();
-}
+/** {@link backoffMinutes} in SQL: a transmission row whose retry backoff has elapsed at `now` (or that never failed). */
+const dueForAttemptSql = (now: Date) =>
+  sql`(${MOT.retryCount} = 0 OR ${MOT.transmissionFailedAt} IS NULL OR ${MOT.transmissionFailedAt}
+    + make_interval(mins => LEAST(power(2, GREATEST(0, ${MOT.retryCount} - 1)), ${MAX_BACKOFF_MINUTES})::int)
+    <= ${now.toISOString()}::timestamptz)`;
 
 async function claim(
   deps: M12CronDeps,
@@ -87,8 +92,9 @@ async function claim(
 ): Promise<readonly Claimed[]> {
   const now = nowOf(deps);
   return inOrg(deps.db, organizationId, async (tx) => {
-    // Only orders that HAVE a transmission row are candidates (`mot_order_idx`): the batch is chosen before the rows are read, so an order without
-    // one (an orphan) would otherwise take a batch slot every tick, and enough of them, older than the real orders, would fill the whole batch.
+    // Only orders that HAVE a transmission row whose retry backoff has elapsed are candidates (`mot_order_idx`): the batch is chosen before the
+    // rows are read, so an order without one (an orphan), or one still waiting out its backoff, would otherwise take a batch slot (and its row
+    // lock) every tick, and enough of them, older than the real orders, would fill the whole batch.
     const candidates = await tx
       .select()
       .from(MO)
@@ -100,7 +106,13 @@ async function claim(
             tx
               .select({ one: sql`1` })
               .from(MOT)
-              .where(and(eq(MOT.organizationId, organizationId), eq(MOT.medicationOrderId, MO.id))),
+              .where(
+                and(
+                  eq(MOT.organizationId, organizationId),
+                  eq(MOT.medicationOrderId, MO.id),
+                  dueForAttemptSql(now),
+                ),
+              ),
           ),
         ),
       )
@@ -121,7 +133,7 @@ async function claim(
     const claimed: Claimed[] = [];
     for (const order of candidates) {
       const transmission = byOrder.get(order.id);
-      if (!transmission || !dueForAttempt(transmission, now)) continue;
+      if (!transmission) continue;
       const moved = await tx
         .update(MO)
         .set({ dosespotSendState: "in_flight", updatedAt: now })
@@ -265,8 +277,16 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
     const fenced = await markCallStarted(deps, organizationId, c);
     if (fenced === null) return beforeFence({ kind: "superseded" });
     token = fenced;
-  } catch {
+  } catch (fault) {
     // the stamp could not be committed, so the vendor was NOT called: the order waits (no retry spent) and the drain releases the claim
+    deps.warn?.(
+      {
+        organizationId,
+        orderId: c.order.id,
+        cause: fault instanceof Error ? fault.name : "unknown",
+      },
+      "M12 transmit: the call-started stamp could not be committed; the vendor was not called and the order waits",
+    );
     return beforeFence({ kind: "outage" });
   }
   const owned = (outcome: Outcome): Attempt => ({ outcome, owns: { stage: "call", token } });
@@ -357,6 +377,7 @@ export async function runTransmitNewRxForOrg(
       skipped: 0,
       deferredByOutage: 0,
       skippedConfigFault: 1,
+      errored: 0,
     };
   }
   await reportRecovery(deps, organizationId, "config_unavailable");
@@ -367,9 +388,26 @@ export async function runTransmitNewRxForOrg(
   let held = 0;
   let skipped = 0;
   let deferredByOutage = 0;
+  let errored = 0;
   for (const c of claimed) {
-    const attempt = await attemptOne(deps, organizationId, c);
-    const result = await settle(deps, organizationId, c, attempt);
+    let result: Awaited<ReturnType<typeof settle>>;
+    try {
+      result = await settle(deps, organizationId, c, await attemptOne(deps, organizationId, c));
+    } catch (error) {
+      // one order's fault must not strand the rest of the batch: say so with ids and the error class only (never a message: a database
+      // error embeds bound values), and go on. The order stays as the throw left it; the recovery drain releases or holds it.
+      errored += 1;
+      deps.warn?.(
+        {
+          organizationId,
+          orderId: c.order.id,
+          cause: error instanceof Error ? error.name : "unknown",
+          errorClass: errorClassOf(error),
+        },
+        "M12 transmit: an order's attempt or settle threw; it was passed over and the batch went on",
+      );
+      continue;
+    }
     if (result === "transmitted") transmitted += 1;
     else if (result === "requeued") requeued += 1;
     else if (result === "failed") failed += 1;
@@ -386,6 +424,7 @@ export async function runTransmitNewRxForOrg(
     skipped,
     deferredByOutage,
     skippedConfigFault: 0,
+    errored,
   };
 }
 
