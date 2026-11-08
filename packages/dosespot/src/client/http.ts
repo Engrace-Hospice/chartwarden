@@ -524,6 +524,8 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         // remember it OUTSIDE this process before the send: a retry elsewhere then re-runs only the send
         await resume?.onCreated?.(prescriptionId);
       }
+      // the caller's last chance to refuse, on the create path AND the resumed one (a persisted id skips the create, and `onCreated` with it)
+      await resume?.beforeSend?.();
       const sent = await call(
         "transmitNewRx",
         orgId,

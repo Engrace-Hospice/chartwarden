@@ -190,7 +190,10 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   before the transmission row, as in the administrator's resolution, so a late failure racing a resolution cannot deadlock, and a late outage
   after a drain hold clears the stale hold marker. The adapter sends a prescription as soon as `onCreated` returns, and `onCreated` used to update the
   transmission row by id alone, so a worker that had lost the order (an administrator resolved it NOT SENT) still sent it; it now answers only while the
-  worker owns the call and throws otherwise, which stops the send (the created prescription stays at DoseSpot as an unsent draft). A late DEFINITIVE
+  worker owns the call and throws otherwise, which stops the send (the created prescription stays at DoseSpot as an unsent draft). `onCreated` runs only
+  when a call creates the prescription, so a retry handed a PERSISTED created id (the create skipped) was still unchecked: the adapter now also calls
+  `beforeSend` just before the send on every path and the worker re-checks ownership there, so a resolved order is not sent from a resume either. What
+  remains is a send already in flight, whose success is then recorded nowhere (a warning with ids only). A late DEFINITIVE
   failure after a drain hold is deliberately NOT kept held: it is the call's own answer to what the hold was waiting for, so it is settled as an ordinary
   failure (retryable: requeued, one retry spent, the persisted created id re-sent, the marker replaced; permanent: the order fails and the
   administrators are told), and an administrator mid-resolution is then refused with 409 DOSESPOT_TRANSMISSION_NOT_HELD.

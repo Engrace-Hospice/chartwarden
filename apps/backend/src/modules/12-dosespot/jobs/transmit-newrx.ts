@@ -234,14 +234,16 @@ async function markCallStarted(
   });
 }
 
+/** What the adapter's hooks throw when the worker no longer owns the order: the adapter then does not send. Carries no id and no content. */
+const LOST_ORDER = "this worker no longer owns the order, so the prescription is not sent";
+
 /**
  * Persist the id of a prescription that was CREATED at DoseSpot but not yet sent, on the transmission row, before the send. The order itself
  * carries an id only once it is really sent (webhooks bind by it). A failure here propagates: the send is not attempted, the order is retried.
  *
- * It answers only while the worker still owns the call (see {@link Ownership}): the adapter SENDS the prescription once this returns, so a worker
- * that lost the order meanwhile (an administrator resolved it NOT SENT, say) must not go on to send it. It throws instead, and the adapter stops
- * before the send. The prescription it just created stays at DoseSpot as an unsent draft, which the administrator's own check of the prescriber's
- * account shows. Locks the order, then the transmission row, like every other writer.
+ * It answers only while the worker still owns the call (see {@link Ownership}): it throws otherwise, so the id of a prescription the worker had no
+ * right to create for this order is not recorded, and the adapter stops before the send. The prescription stays at DoseSpot as an unsent draft, which
+ * the administrator's own check of the prescriber's account shows. Locks the order, then the transmission row, like every other writer.
  */
 async function rememberCreated(
   deps: M12CronDeps,
@@ -251,15 +253,27 @@ async function rememberCreated(
   prescriptionId: string,
 ): Promise<void> {
   await inOrg(deps.db, organizationId, async (tx) => {
-    if (!(await lockOwnership(tx, c, { stage: "call", token }))) {
-      throw new Error(
-        "this worker no longer owns the order, so the created prescription is not sent",
-      );
-    }
+    if (!(await lockOwnership(tx, c, { stage: "call", token }))) throw new Error(LOST_ORDER);
     await tx
       .update(MOT)
       .set({ dosespotPrescriptionId: prescriptionId })
       .where(eq(MOT.id, c.transmission.id));
+  });
+}
+
+/**
+ * The adapter's `beforeSend`: just before it SENDS, on every path, the worker re-checks that it still owns the call and throws if not. `onCreated`
+ * covers only a prescription this call created; a retry that is handed a persisted created id skips the create and goes straight to the send, so
+ * without this a worker whose order an administrator resolved NOT SENT meanwhile would still send it. What it cannot cover: a send already in flight.
+ */
+async function requireOwnership(
+  deps: M12CronDeps,
+  organizationId: string,
+  c: Claimed,
+  token: string,
+): Promise<void> {
+  await inOrg(deps.db, organizationId, async (tx) => {
+    if (!(await lockOwnership(tx, c, { stage: "call", token }))) throw new Error(LOST_ORDER);
   });
 }
 
@@ -339,6 +353,7 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
           ? { createdPrescriptionId: c.transmission.dosespotPrescriptionId }
           : {}),
         onCreated: (id) => rememberCreated(deps, organizationId, c, token, id),
+        beforeSend: () => requireOwnership(deps, organizationId, c, token),
       },
     );
     return owned({

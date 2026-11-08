@@ -1753,6 +1753,57 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         });
       });
 
+      // The resumed path (item 1a of the next round): a retry handed a PERSISTED created id skips the create, so `onCreated` never runs and its ownership
+      // check never happened. The adapter's `beforeSend` runs on both paths; the worker re-checks there. The fake vendor stands in for the adapter and
+      // calls the hooks as the real one does (the adapter's own order is pinned in packages/dosespot http-client.test.ts).
+      it("RESUME: a retry handed a persisted created id is stopped before the SEND when the administrator resolved the order meanwhile", async () => {
+        const warnings: Warning[] = [];
+        const sends: string[] = [];
+        const { orderId, transmissionId } = await queued();
+        await h.admin.query(
+          "UPDATE medication_order_transmission SET dosespot_prescription_id='rx-persisted-3c4d' WHERE id=$1",
+          [transmissionId],
+        );
+        const vendor = new FakeDoseSpotVendor({
+          transmit: async (_org, payload, _key, resume) => {
+            expect(resume?.createdPrescriptionId).toBe("rx-persisted-3c4d"); // the create is skipped: only the send is left
+            await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A);
+            await resolveNotSent(orderId);
+            await resume?.beforeSend?.(); // the adapter calls it just before the send, on this path too
+            sends.push(payload.medicationOrderId);
+            return { dosespotPrescriptionId: "rx-persisted-3c4d", transmittedAt: T0.toISOString() };
+          },
+        });
+        const pass = await runTransmitNewRxForOrg(
+          { ...deps(vendor), warn: (fields, message) => warnings.push({ fields, message }) },
+          ORG_A,
+        );
+        expect(sends).toEqual([]); // the send was never reached
+        expect(pass).toMatchObject({ claimed: 1, transmitted: 0, skipped: 1 });
+        expect(await orderRow(orderId)).toMatchObject({ status: "transmission_failed", rx: null });
+        expect(warnings.filter((w) => /no longer owns/.test(w.message))).toHaveLength(1);
+        expect(JSON.stringify(warnings)).not.toContain("rx-persisted-3c4d");
+      });
+
+      it("RESUME (control): while the worker still owns the call, a persisted created id is sent as before", async () => {
+        const sends: string[] = [];
+        const { orderId, transmissionId } = await queued();
+        await h.admin.query(
+          "UPDATE medication_order_transmission SET dosespot_prescription_id='rx-persisted-5e6f' WHERE id=$1",
+          [transmissionId],
+        );
+        const vendor = new FakeDoseSpotVendor({
+          transmit: async (_org, payload, _key, resume) => {
+            await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A); // held by the drain, not resolved
+            await resume?.beforeSend?.();
+            sends.push(payload.medicationOrderId);
+            return { dosespotPrescriptionId: "rx-persisted-5e6f", transmittedAt: T0.toISOString() };
+          },
+        });
+        expect((await runTransmitNewRxForOrg(deps(vendor), ORG_A)).transmitted).toBe(1);
+        expect(sends).toEqual([orderId]);
+      });
+
       it("the cron tick reports the skipped order", async () => {
         const run = await scenario(async () => {
           throw retryable();

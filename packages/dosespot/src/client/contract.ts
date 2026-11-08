@@ -81,6 +81,12 @@ export interface DoseSpotNewRxResume {
   readonly createdPrescriptionId?: string;
   /** Called with the id as soon as the create answered, BEFORE the send. If it throws, the send is not attempted and the error propagates. */
   readonly onCreated?: (dosespotPrescriptionId: string) => Promise<void>;
+  /**
+   * Called just before the send on EVERY path: after this call's own create (and its `onCreated`), and when a persisted `createdPrescriptionId` is
+   * handed back and the create is skipped (where `onCreated` never runs). It is the caller's last chance to refuse: if it throws, the send is not
+   * attempted and the error propagates. A caller that must not send for an order it no longer owns checks that here.
+   */
+  readonly beforeSend?: () => Promise<void>;
 }
 
 export interface DoseSpotNewRxResponse {
