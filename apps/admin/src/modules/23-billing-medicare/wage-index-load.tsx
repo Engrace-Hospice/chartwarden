@@ -1,9 +1,8 @@
 import {
   Button,
-  EmptyState,
+  Glyph,
   InlineAlert,
   Modal,
-  Panel,
   ReverifyLink,
   SelectField,
   TextAreaField,
@@ -133,7 +132,7 @@ export function WageIndexLoad(): JSX.Element {
           </div>
         </header>
 
-        <div className="wx-stat-grid grid-cols-1 md:grid-cols-3" aria-label="Load summary">
+        <div className="wx-work-summary" aria-label="Load summary">
           <div className="wx-stat-card">
             <div>
               <span className="wx-stat-label">Fiscal year</span>
@@ -144,13 +143,7 @@ export function WageIndexLoad(): JSX.Element {
           <div className="wx-stat-card">
             <div>
               <span className="wx-stat-label">Rows ready</span>
-              <span
-                className={
-                  parsed.rows.length > 0 && parsed.problems.length === 0
-                    ? "wx-stat-value wx-nums text-[var(--color-success)]"
-                    : "wx-stat-value wx-nums"
-                }
-              >
+              <span className="wx-stat-value wx-nums">
                 {parsed.rows.length.toLocaleString("en-US")}
               </span>
               <span className="wx-row-sub">Up to 7,000 per load</span>
@@ -159,13 +152,7 @@ export function WageIndexLoad(): JSX.Element {
           <div className="wx-stat-card">
             <div>
               <span className="wx-stat-label">Problems</span>
-              <span
-                className={
-                  parsed.problems.length > 0
-                    ? "wx-stat-value wx-nums text-[var(--color-error)]"
-                    : "wx-stat-value wx-nums"
-                }
-              >
+              <span className="wx-stat-value wx-nums">
                 {parsed.problems.length.toLocaleString("en-US")}
               </span>
               <span className="wx-row-sub">Fix every one before loading</span>
@@ -178,12 +165,14 @@ export function WageIndexLoad(): JSX.Element {
             Restored the table, fiscal year and source reference from before you re-verified.
           </InlineAlert>
         ) : null}
-        <Panel
-          title="Source"
-          icon="file-text"
-          description="Which fiscal year this table is for, and where it was published."
-        >
-          <div className="grid gap-3 md:grid-cols-[14rem_1fr]">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Source</h3>
+          </div>
+          <p className="wx-source-line">
+            Which fiscal year this table is for, and where it was published.
+          </p>
+          <div className="wx-form-grid">
             <SelectField
               label="Fiscal year"
               value={String(fy)}
@@ -207,14 +196,17 @@ export function WageIndexLoad(): JSX.Element {
               }}
             />
           </div>
-        </Panel>
+        </section>
 
-        <Panel
-          title="Wage-index table"
-          icon="upload"
-          description="One row per CCN: CCN, wage index — or CCN, CBSA, wage index. Comma, tab or semicolon separated; a header row is skipped."
-        >
-          <div className="flex flex-col gap-3">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Wage-index table</h3>
+          </div>
+          <p className="wx-source-line">
+            One row per CCN: CCN, wage index — or CCN, CBSA, wage index. Comma, tab or semicolon
+            separated; a header row is skipped.
+          </p>
+          <div className="wx-form-stack">
             <TextField
               type="file"
               label="Upload a CSV"
@@ -234,13 +226,13 @@ export function WageIndexLoad(): JSX.Element {
               }}
             />
           </div>
-        </Panel>
+        </section>
 
         <PreviewPanel parsed={parsed} />
 
         {result ? <LoadResult result={result} /> : null}
 
-        <div className="flex items-center justify-end gap-3">
+        <div className="wx-form-actions">
           <Button onClick={review}>Review and load</Button>
         </div>
       </div>
@@ -268,20 +260,19 @@ type Parsed = ReturnType<typeof parseWageIndexTable>;
 function PreviewPanel({ parsed }: { readonly parsed: Parsed }): JSX.Element {
   const shown = parsed.rows.slice(0, PREVIEW_ROWS);
   return (
-    <Panel
-      title="Preview"
-      icon="eye"
-      flush={shown.length > 0}
-      description={
-        parsed.rows.length > PREVIEW_ROWS
-          ? `First ${PREVIEW_ROWS} of ${plural(parsed.rows.length, "row")}.`
-          : undefined
-      }
-    >
+    <section className="wx-drawer-card">
+      <div className="wx-drawer-card-head">
+        <h3>Preview</h3>
+      </div>
+      {parsed.rows.length > PREVIEW_ROWS ? (
+        <p className="wx-source-line">
+          {`First ${PREVIEW_ROWS} of ${plural(parsed.rows.length, "row")}.`}
+        </p>
+      ) : null}
       {parsed.problems.length > 0 ? (
         <InlineAlert tone="error">
           <strong>{plural(parsed.problems.length, "problem")} in the table</strong>
-          <ul className="m-0 pl-5">
+          <ul>
             {parsed.problems.slice(0, PROBLEMS_SHOWN).map((p) => (
               <li key={`${p.line}-${p.message}`}>
                 Line {p.line}: {p.message}
@@ -291,10 +282,11 @@ function PreviewPanel({ parsed }: { readonly parsed: Parsed }): JSX.Element {
         </InlineAlert>
       ) : null}
       {shown.length === 0 ? (
-        <EmptyState
-          title="No rows yet"
-          description="Upload or paste the CMS table to preview it here."
-        />
+        <div className="wx-list-state">
+          <Glyph name="eye" size={24} />
+          <strong>No rows yet</strong>
+          <span className="wx-row-sub">Upload or paste the CMS table to preview it here.</span>
+        </div>
       ) : (
         <div className="wx-list-table-wrap">
           <table className="wx-list-table wx-list-table-static">
@@ -324,7 +316,7 @@ function PreviewPanel({ parsed }: { readonly parsed: Parsed }): JSX.Element {
           </table>
         </div>
       )}
-    </Panel>
+    </section>
   );
 }
 
@@ -396,9 +388,9 @@ function ConfirmLoadModal({
         {failure ? (
           <InlineAlert tone="error">
             <strong>{failure.title}</strong>
-            <p className="m-0">{failure.message}</p>
+            <p>{failure.message}</p>
             {failure.details.length > 0 ? (
-              <ul className="m-0 pl-5">
+              <ul>
                 {failure.details.map((d) => (
                   <li key={d}>{d}</li>
                 ))}
@@ -407,9 +399,7 @@ function ConfirmLoadModal({
           </InlineAlert>
         ) : null}
         {failure?.stepUp ? (
-          <div className="flex justify-start">
-            <ReverifyLink onNavigate={onReverify}>Re-verify and come back</ReverifyLink>
-          </div>
+          <ReverifyLink onNavigate={onReverify}>Re-verify and come back</ReverifyLink>
         ) : null}
         <div className="wx-modal-actions">
           <Button tone="tertiary" onClick={onClose} disabled={busy}>
