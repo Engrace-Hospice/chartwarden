@@ -1880,7 +1880,8 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
           WHERE event_type='m35.subscription.billing_service_mode_changed' AND context->>'organizationId'=$1 ORDER BY created_at`,
         [org],
       );
-    const VENDOR_KEY = "fake-claimmd-key-J#live-1";
+    // One vendor account per organization (migration 1403): each org gets its own synthetic key.
+    const VENDOR_KEY = (slug: string) => `fake-claimmd-key-${slug}#live-1`;
     const inForce = (org: string) => modeInForce(tenantPool.db, org);
 
     it("refuses a LIVE tenant's own switch out of outside while it has a contract (409), and changes nothing", async () => {
@@ -1892,7 +1893,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         "PUT",
         ORG_I,
         "",
-        { vendor: "claimmd", mode: "production", secret: VENDOR_KEY },
+        { vendor: "claimmd", mode: "production", secret: VENDOR_KEY("ch-i") },
         { "if-match": String(version) },
       );
 
@@ -1910,7 +1911,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         "PUT",
         ORG_K,
         "",
-        { vendor: "claimmd", mode: "production", secret: VENDOR_KEY },
+        { vendor: "claimmd", mode: "production", secret: VENDOR_KEY("ch-k") },
         { "if-match": String(version) },
       );
       expect(res.statusCode, res.body).toBe(200);
@@ -1949,7 +1950,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         "PUT",
         "ch-j",
         "",
-        { vendor: "claimmd", mode: "production", secret: VENDOR_KEY, reason: REASON },
+        { vendor: "claimmd", mode: "production", secret: VENDOR_KEY("ch-j"), reason: REASON },
         { "if-match": String(version) },
       );
       expect(res.statusCode, res.body).toBe(422);
@@ -2000,7 +2001,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       const body = {
         vendor: "claimmd",
         mode: "production",
-        secret: VENDOR_KEY,
+        secret: VENDOR_KEY("ch-j"),
         billingServiceMode: "managed_billing",
         reason: REASON,
       };
@@ -2015,10 +2016,10 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     });
 
     const dataOperator = { ...operator, request: { correlationId: "live-switch" } };
-    const switchBody = (billingServiceMode: string) => ({
+    const switchBody = (billingServiceMode: string, slug: string) => ({
       vendor: "claimmd",
       mode: "production",
-      secret: VENDOR_KEY,
+      secret: VENDOR_KEY(slug),
       billingServiceMode,
     });
     const dataServiceOver = (port: OnboardingClearinghousePort) =>
@@ -2047,7 +2048,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         flaky.putClearinghouse(
           dataOperator,
           "ch-j",
-          switchBody("managed_billing"),
+          switchBody("managed_billing", "ch-j"),
           REASON,
           version ?? undefined,
         ),
@@ -2070,7 +2071,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         {
           vendor: "claimmd",
           mode: "production",
-          secret: VENDOR_KEY,
+          secret: VENDOR_KEY("ch-j"),
           billingServiceMode: "managed_billing",
           reason: REASON,
         },
@@ -2087,7 +2088,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       });
       expect(last?.context.reason).toBe(REASON);
       // the credential never reached the pricing side or any audit row
-      expect(JSON.stringify(await modeAudits(ORG_J))).not.toContain(VENDOR_KEY);
+      expect(JSON.stringify(await modeAudits(ORG_J))).not.toContain(VENDOR_KEY("ch-j"));
     });
 
     const firstOfNextMonth = async () =>
@@ -2118,7 +2119,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         "PUT",
         "ch-i",
         "",
-        { ...switchBody("managed_billing"), reason: REASON },
+        { ...switchBody("managed_billing", "ch-i"), reason: REASON },
         { "if-match": String(before.version) },
       );
 
@@ -2139,7 +2140,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         "PUT",
         "ch-i",
         "",
-        { vendor: "claimmd", mode: "test", secret: VENDOR_KEY, reason: REASON },
+        { vendor: "claimmd", mode: "test", secret: VENDOR_KEY("ch-i"), reason: REASON },
         { "if-match": String((await configOf("ch-i")).version) },
       );
       expect(plain.statusCode, plain.body).toBe(409);
@@ -2176,7 +2177,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         "PUT",
         ORG_N,
         "",
-        { vendor: "claimmd", mode: "production", secret: VENDOR_KEY },
+        { vendor: "claimmd", mode: "production", secret: VENDOR_KEY("ch-n") },
         { "if-match": String(version) },
       );
       expect(own.statusCode, own.body).toBe(409);
@@ -2186,7 +2187,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         "PUT",
         "ch-n",
         "",
-        { ...switchBody("billing_software"), reason: REASON },
+        { ...switchBody("billing_software", "ch-n"), reason: REASON },
         { "if-match": String(version) },
       );
       expect(operatorsSwitch.statusCode, operatorsSwitch.body).toBe(200);
@@ -2222,7 +2223,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       await racing.putClearinghouse(
         dataOperator,
         "ch-o",
-        switchBody("managed_billing"),
+        switchBody("managed_billing", "ch-o"),
         REASON,
         version ?? undefined,
       );
@@ -2315,7 +2316,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         {
           vendor: "claimmd",
           mode: "production",
-          secret: `${VENDOR_KEY}-rotated`,
+          secret: `${VENDOR_KEY("ch-j")}-rotated`,
           billingServiceMode: "none",
           reason: REASON,
         },
