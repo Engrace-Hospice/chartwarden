@@ -129,6 +129,9 @@ export function mountM23Routes(
       ...(services.tenantClearinghouseVerifyRateLimit
         ? { verifyRateLimit: services.tenantClearinghouseVerifyRateLimit as never }
         : {}),
+      ...(services.tenantClearinghousePutRateLimit
+        ? { putRateLimit: services.tenantClearinghousePutRateLimit as never }
+        : {}),
     });
   }
   // F-210 — the tenant-entered hospice rate table (the per-diem input claim assembly prices from).

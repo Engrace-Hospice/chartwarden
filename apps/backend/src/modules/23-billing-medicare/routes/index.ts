@@ -115,6 +115,8 @@ export interface M23RouteServices {
   readonly tenantClearinghouseService?: TenantClearinghouseRouteService;
   /** Per-user cap on the tenant clearinghouse `verify` (a vendor call per request); fail-open. Absent = unlimited. */
   readonly tenantClearinghouseVerifyRateLimit?: (request: never, reply: never) => Promise<void>;
+  /** Per-user cap on the tenant clearinghouse `PUT` (its 409 says a credential is held elsewhere); fail-open. Absent = unlimited. */
+  readonly tenantClearinghousePutRateLimit?: (request: never, reply: never) => Promise<void>;
   /** The Medicare transfer notice (8xC / 8xD) service (absent ⇒ /billing/transfer-notices is not mounted). */
   readonly transferNoticeService?: TransferNoticeService;
   /** ADR-0052 — the DDE work-queue service (absent ⇒ /billing/dde-items is not mounted). */

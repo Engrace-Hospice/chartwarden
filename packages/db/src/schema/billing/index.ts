@@ -32,6 +32,7 @@ export * from "./transfer-notice-record";
 export * from "./clearinghouse-submission-attempt";
 export * from "./provider-npi-verification";
 export * from "./tenant-clearinghouse-config";
+export * from "./tenant-clearinghouse-credential-reservation";
 export * from "./dde-change-cursor";
 export * from "./dde-work-item";
 export * from "./dde-work-event";

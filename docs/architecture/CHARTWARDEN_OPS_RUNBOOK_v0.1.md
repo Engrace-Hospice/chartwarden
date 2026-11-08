@@ -1267,6 +1267,12 @@ of the three as requiring a **re-encryption project**, not a rotation — and no
 data is recoverable by re-entry (a user re-enrols 2FA; an operator re-enters a trading-partner
 secret) except for message bodies, which are not.
 
+`M24_CREDENTIAL_ENCRYPTION_KEY` also keys the M23 tenant clearinghouse credentials and their **fingerprints** (migrations
+1403/1404: an HMAC under a key derived from it, held unique across organizations so one credential belongs to one tenant). A
+re-encryption project for this key must recompute every fingerprint as it re-seals each credential (the service's credential save
+does both), and recompute the held reservations in `tenant_clearinghouse_credential_reservation` with them: a digest left under the
+old key no longer matches, and the uniqueness lapses silently for that credential.
+
 > **Update (M36 WP 2.13, ADR-0058 P1; code on branch `feat/m36-wp213-body-key-ring`, backfill not yet run anywhere):** message
 > bodies are moving off `MESSAGING_ENCRYPTION_KEY` onto the M34 wrapped-DEK ring (`tenant_key_ring`), which rotates (a new DEK
 > version; old rows stay readable by their recorded version) and shreds (destroying the ring makes ring-sealed bodies unreadable).

@@ -376,6 +376,7 @@ import {
   AFTERHOURS_TRIAGE_LINES_ROUTE_RATE_LIMIT,
   AI_ROUTE_RATE_LIMIT,
   ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
+  CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT,
   CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
   DEATH_BOARD_ROUTE_RATE_LIMIT,
   DOSESPOT_VERIFY_ROUTE_RATE_LIMIT,
@@ -1254,6 +1255,7 @@ import { buildClearinghouseAttemptResolutionService } from "./modules/23-billing
 import { buildExternalNoticeOnboardingPort } from "./modules/23-billing-medicare/services/external-notice-onboarding-port";
 import { resolveInpatientCapDifferential } from "./modules/23-billing-medicare/services/inpatient-cap-differential";
 import { platformFallbackFromEnv } from "./modules/23-billing-medicare/tenant-clearinghouse/choice";
+import { countHeldCredentials } from "./modules/23-billing-medicare/tenant-clearinghouse/config-store";
 import { buildTenantClearinghouseOnboardingPort } from "./modules/23-billing-medicare/tenant-clearinghouse/onboarding-port";
 import { registerM23TenantClearinghouseSeams } from "./modules/23-billing-medicare/tenant-clearinghouse/register";
 import { createTenantClearinghouseRuntime } from "./modules/23-billing-medicare/tenant-clearinghouse/resolver";
@@ -6823,15 +6825,34 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           const m23BillsOutside = async (organizationId: string): Promise<boolean> =>
             (await getSeam("TenantClearinghouseReader").choiceForOrg(organizationId)).vendor ===
             "outside";
+          // A tenant may not seal the platform's own vendor account (owner decision 2026-11-08).
+          const m23PlatformFingerprints = clearinghouseSecretCipher
+            ? platformCredentialFingerprints(clearinghouseSecretCipher, process.env)
+            : new Set<string>();
+          // Boot check (security review LOW-4): a platform key changed to one a tenant already sealed is a loud error, not a refusal to
+          // boot. Shared-account responses are applied only on immutable ownership evidence (CW-AC-10), so nothing is misapplied
+          // meanwhile, and failing the boot would take every tenant offline for an operator's env mistake. The fix is the env key.
+          if (platformDbHandle && m23PlatformFingerprints.size > 0) {
+            void countHeldCredentials(platformDbHandle.db, [...m23PlatformFingerprints])
+              .then((held) => {
+                if (held > 0)
+                  app.log.error(
+                    { code: "M23_PLATFORM_CREDENTIAL_HELD_BY_TENANT", held },
+                    "m23.clearinghouse: a platform vendor key (CLAIMMD_ACCOUNT_KEY / STEDI_API_KEY) is also sealed by a tenant; give the platform its own account key",
+                  );
+              })
+              .catch((err: unknown) =>
+                app.log.warn(
+                  { err },
+                  "m23.clearinghouse: the platform credential boot check failed",
+                ),
+              );
+          }
           const tenantClearinghouseService = createTenantClearinghouseService({
             ...(clearinghouseSecretCipher
               ? {
                   cipher: clearinghouseSecretCipher,
-                  // A tenant may not seal the platform's own vendor account (owner decision 2026-11-08).
-                  platformCredentialFingerprints: platformCredentialFingerprints(
-                    clearinghouseSecretCipher,
-                    process.env,
-                  ),
+                  platformCredentialFingerprints: m23PlatformFingerprints,
                 }
               : {}),
             // Claim.MD has a safe no-PHI probe (uploadlist); Stedi has none, so its `verify` is an attestation with evidence.
@@ -7475,6 +7496,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   store: rateLimitStore ?? createInMemoryRateLimitStore(),
                   limit: CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
                   keyPrefix: "m23-clearinghouse-verify",
+                }),
+                tenantClearinghousePutRateLimit: createRouteRateLimit({
+                  store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                  limit: CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT,
+                  keyPrefix: "m23-clearinghouse-put",
                 }),
                 tenantClearinghouseService: buildDrizzleTenantClearinghouseRouteService({
                   db: dbHandle.db,

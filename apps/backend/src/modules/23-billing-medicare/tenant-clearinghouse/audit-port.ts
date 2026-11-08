@@ -11,6 +11,8 @@ export const CLEARINGHOUSE_AUDIT_EVENTS = {
   baaRecorded: "m23.tenant_clearinghouse.baa_recorded",
   verified: "m23.tenant_clearinghouse.verified",
   activated: "m23.tenant_clearinghouse.activated",
+  /** A save refused because another organization or the platform holds the credential (outcome `denied`; never the fingerprint). */
+  credentialRefused: "m23.tenant_clearinghouse.credential_refused",
 } as const;
 export type ClearinghouseAuditEvent =
   (typeof CLEARINGHOUSE_AUDIT_EVENTS)[keyof typeof CLEARINGHOUSE_AUDIT_EVENTS];
@@ -20,6 +22,8 @@ export interface ClearinghouseAuditEntry {
   readonly actorUserId: string;
   readonly actorMembershipId: string;
   readonly eventType: ClearinghouseAuditEvent;
+  /** Absent = `success` (the change committed); `denied` for a refused attempt, recorded after its transaction rolled back. */
+  readonly outcome?: "success" | "denied";
   /** The config row's id. */
   readonly resourceId: string;
   /** Names of the fields the change touched (never values). */

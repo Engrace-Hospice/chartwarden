@@ -61,6 +61,16 @@ export interface OnboardingClearinghousePort {
     scope: OnboardingWriteScope,
     expected: { readonly recordedAt: string },
   ): Promise<OnboardingClearinghouseResult>;
+  /**
+   * The operator releases every clearinghouse credential the tenant still holds except its current one (an account moved to another
+   * organization, a key retired by a rotation). The view is `{ released, config }`; refused while the tenant's vendor responses may
+   * still arrive.
+   */
+  releaseCredentials(
+    tx: DbClient,
+    scope: OnboardingWriteScope,
+    reason: string,
+  ): Promise<OnboardingClearinghouseResult>;
 }
 
 /** What `prepareVerify` read. Opaque to the platform: it only carries it from step 1 to step 3. */

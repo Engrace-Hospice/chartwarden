@@ -873,6 +873,8 @@ exports.MODULES = [
       "provider_npi_verification",
       // ADR-0053 amendment 2026-11-06 (migration 1386): the clearinghouse each tenant chose, with its sealed credential.
       "tenant_clearinghouse_config",
+      // Migration 1404: every credential a tenant sealed, held to it until a platform operator releases it.
+      "tenant_clearinghouse_credential_reservation",
       "claim",
       "claim_acknowledgment",
       "claim_line",

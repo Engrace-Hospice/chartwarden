@@ -45,6 +45,8 @@ export const ONBOARDING_DATA_AUDIT_EVENTS = {
   dosespotPrescriberEnrolled: "m34.tenant_onboarding.dosespot_prescriber_enrolled",
   /** A platform operator verified the BAA the tenant recorded for its own vendor account (a live tenant too: not status-gated). */
   clearinghouseBaaVerified: "m34.tenant_onboarding.clearinghouse_baa_verified",
+  /** A platform operator released the clearinghouse credentials a tenant still held, except its current one (not status-gated). */
+  clearinghouseCredentialsReleased: "m34.tenant_onboarding.clearinghouse_credentials_released",
   /**
    * A platform operator withdrew a tenant's "filed outside ChartWarden" NOE / NOTR record (not status-gated). The row names the
    * operator, the tenant, the reason, the notice kind and id, the filed date withdrawn and the record's `recordedAt`.
