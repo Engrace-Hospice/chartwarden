@@ -275,7 +275,11 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
     platformPool = createDbClient({ connectionString: platformUrl.toString() });
 
     objects = createInMemoryObjectStore();
-    const uploads = createServerUploadService({ db: tenantPool.db, objects: objects.store });
+    const uploads = createServerUploadService({
+      db: tenantPool.db,
+      objects: objects.store,
+      logger: { warn: () => undefined },
+    });
     registerPlatformJob(JOB_ID);
     const service = buildDrizzleOnboardingDataService({
       db: tenantPool.db,
@@ -524,18 +528,19 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
      * failure comes from the commit itself, through the real driver and drizzle's own `rollback` handling (nothing here is a hand-built error).
      */
     const withCommitTimeFailure = async (body: string, run: () => Promise<void>) => {
-      await admin.query(
-        `CREATE FUNCTION baa_live_commit_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN ${body} RETURN NULL; END $$`,
-      );
-      await admin.query(
-        `CREATE CONSTRAINT TRIGGER baa_live_commit_fail_trg AFTER INSERT ON document DEFERRABLE INITIALLY DEFERRED
-           FOR EACH ROW WHEN (NEW.aggregate_type = 'tenant_baa') EXECUTE FUNCTION baa_live_commit_fail()`,
-      );
+      // The try starts BEFORE anything is created: a failure half-way through the setup still drops what was made.
       try {
+        await admin.query(
+          `CREATE FUNCTION baa_live_commit_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN ${body} RETURN NULL; END $$`,
+        );
+        await admin.query(
+          `CREATE CONSTRAINT TRIGGER baa_live_commit_fail_trg AFTER INSERT ON document DEFERRABLE INITIALLY DEFERRED
+             FOR EACH ROW WHEN (NEW.aggregate_type = 'tenant_baa') EXECUTE FUNCTION baa_live_commit_fail()`,
+        );
         await run();
       } finally {
-        await admin.query("DROP TRIGGER baa_live_commit_fail_trg ON document");
-        await admin.query("DROP FUNCTION baa_live_commit_fail()");
+        await admin.query("DROP TRIGGER IF EXISTS baa_live_commit_fail_trg ON document");
+        await admin.query("DROP FUNCTION IF EXISTS baa_live_commit_fail()");
       }
     };
 

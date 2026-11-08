@@ -30,6 +30,7 @@ function fakeUploads(discard = vi.fn(async () => undefined)) {
       documentId: "33333333-3333-4333-8333-333333333333",
       versionId: "v1",
       versionNumber: 1,
+      objectKey: "uploads/00000000/tenant_baa-0123456789ab",
       mimeType: "application/pdf",
       byteSize: PDF.byteLength,
       sha256Hex: DIGEST,

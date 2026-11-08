@@ -35,6 +35,8 @@ export interface OnboardingBaaDocument {
 export interface OnboardingBaaDocumentUpload {
   /** The document id (the audit row's resource id). */
   readonly resourceId: string;
+  /** The stored object's key, for a log line when the object is kept or orphaned (no sweep exists yet; reconcile by objectKey). */
+  readonly objectKey: string;
   readonly view: OnboardingBaaDocument;
   /** Non-sensitive facts for the platform audit row: the kind, the MIME type, the size and the digest. */
   readonly detail: Readonly<Record<string, string | number | boolean>>;

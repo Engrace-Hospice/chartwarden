@@ -88,6 +88,7 @@ export function mountDocumentRoutes(
   // flow (content-type/magic-byte/size/SHA-256 verified, no AV engine).
   const uploads = createServerUploadService({
     db,
+    logger: app.log, // the production logger: the upload's "best effort" warnings (an orphan object, an abandoned put) must be heard
     objects,
     scanRequired: process.env.DOCUMENT_UPLOAD_SCAN_REQUIRED === "true",
     referralReader: {

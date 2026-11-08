@@ -79,15 +79,19 @@ export interface ServerUploadDeps {
   readonly scanner?: DocumentContentScanner | null;
   /** Fail closed when no scanner is bound (production posture while no scanner implementation exists). */
   readonly scanRequired?: boolean;
-  readonly logger?: UploadLogger;
+  /**
+   * REQUIRED: every "best effort" in this file is only as good as the warning that says it did not work (an orphan object, a put that was
+   * abandoned), and an optional logger made those warnings silent in production.
+   */
+  readonly logger: UploadLogger;
   /**
    * How long `createDocumentOn` makes the CALLER wait on things that leave the process while it holds a transaction (and, for the
    * onboarding writes, the shared onboarding advisory lock). The malware scan and the object store's put share ONE deadline of this length
    * (default 30 s); the clean-up of an object after a failure gets its own bound of the same length (it is needed precisely because that
    * deadline ran out), so the worst case is twice this (about 60 s). A store or scanner that never answers must not hold the transaction
    * and the lock: the caller stops waiting (a call that ignores its abort signal is abandoned, not awaited), and the upload is a 503
-   * (`document-storage` / `document-scanner`). The clean-up is best effort: when it fails or times out the object is an orphan until a
-   * sweep reclaims it, and a warning says so.
+   * (`document-storage` / `document-scanner`). The clean-up is best effort: when it fails or times out the object is an orphan, a warning
+   * names its objectKey, and no sweep exists yet (reconcile by objectKey).
    */
   readonly heldTimeoutMs?: number;
   readonly now?: () => Date;
@@ -102,6 +106,8 @@ export interface CommittedUpload {
 
 /** A document filed on the CALLER's transaction: what was verified, and the way to take the object back out. */
 export interface FiledUpload extends CommittedUpload {
+  /** The stored object's key: what a log line names if the object is ever orphaned (no sweep exists yet; reconcile by objectKey). */
+  readonly objectKey: string;
   readonly mimeType: string;
   readonly byteSize: number;
   readonly sha256Hex: string;
@@ -201,7 +207,10 @@ interface HeldBounds {
 function raceAbort<T>(work: Promise<T>, signal: AbortSignal, onAbort: () => Error): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const abort = () => reject(onAbort());
-    if (signal.aborted) return abort();
+    if (signal.aborted) {
+      work.catch(() => undefined); // the abandoned call may still reject later: that must not be an unhandled rejection
+      return abort();
+    }
     signal.addEventListener("abort", abort, { once: true });
     work.then(
       (value) => {
@@ -355,8 +364,9 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     // The scan may have spent the whole deadline: the store is not even asked (nothing to clean up).
     if (held?.deadline.aborted) throw storageTimedOut();
     let stored: { readonly sha256Hex: string };
+    let put: Promise<{ readonly sha256Hex: string }> | undefined;
     try {
-      const put = objects.putObject({
+      put = objects.putObject({
         bucket,
         objectKey,
         bytes: content.bytes,
@@ -366,7 +376,16 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
       stored = held ? await raceAbort(put, held.deadline, storageTimedOut) : await put;
     } catch (error) {
       if (!held?.deadline.aborted) throw error;
-      await destroyQuietly(organizationId, objectKey, held.cleanupMs); // a put that timed out may still have landed
+      deps.logger.warn(
+        { organizationId, objectKey },
+        "m22 upload: the object store's put was abandoned at the deadline and may still land; a clean-up is attempted now and again if the put settles late (no sweep exists yet; reconcile by objectKey)",
+      );
+      await destroyQuietly(organizationId, objectKey, held.cleanupMs);
+      // The abandoned put may settle LATER and leave the object behind the clean-up above: delete it then, too (best effort, never throws).
+      void put?.then(
+        () => destroyQuietly(organizationId, objectKey, held.cleanupMs),
+        () => undefined, // it failed: nothing landed
+      );
       throw storageTimedOut();
     }
     if (stored.sha256Hex !== verified.sha256Hex) {
@@ -384,9 +403,9 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
       // serialization failure, a deferred constraint: it rolled back, so the object points at nothing). A socket or connection loss, or
       // a connection-class or server-error SQLSTATE, leaves it unknown whether the commit landed.
       if (options.commitMayHaveLanded?.() && !isDefiniteDatabaseRefusal(error)) {
-        deps.logger?.warn(
+        deps.logger.warn(
           { organizationId, objectKey },
-          "m22 upload: the commit failed after the rows were written, so the object is kept (the commit may have landed); an orphan sweep, not this path, removes it if it did not",
+          "m22 upload: the commit failed after the rows were written, so the object is kept (the commit may have landed); if it did not, the object is an orphan (no sweep exists yet; reconcile by objectKey)",
         );
       } else {
         await destroyQuietly(organizationId, objectKey, held?.cleanupMs);
@@ -396,7 +415,8 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
   }
 
   /**
-   * Remove the object, best effort: a failure is logged, never thrown, and the object is then an orphan until a sweep reclaims it.
+   * Remove the object, best effort: a failure is logged with the objectKey, never thrown, and the object is then an orphan (no sweep
+   * exists yet; reconcile by objectKey).
    * `boundMs`: where the caller holds a transaction, the delete is aborted AND abandoned after that long (a store that ignores the
    * signal cannot hold the transaction).
    */
@@ -417,9 +437,9 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
         ? raceAbort(destroy, signal, () => new Error("the object store did not answer in time"))
         : destroy);
     } catch {
-      deps.logger?.warn(
+      deps.logger.warn(
         { organizationId, objectKey },
-        "m22 upload: an object could not be removed (best effort); it stays as an orphan until a sweep reclaims it",
+        "m22 upload: an object could not be removed (best effort); it stays as an orphan (no sweep exists yet; reconcile by objectKey)",
       );
     }
   }
@@ -552,6 +572,7 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
         documentId: filed.documentId,
         versionId: filed.versionId,
         versionNumber: filed.versionNumber,
+        objectKey: filed.objectKey,
         mimeType: filed.mimeType,
         byteSize: filed.byteSize,
         sha256Hex: filed.sha256Hex,

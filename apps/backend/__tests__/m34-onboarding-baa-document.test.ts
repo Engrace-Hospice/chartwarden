@@ -367,6 +367,7 @@ function fakePort(overrides: Partial<OnboardingBaaDocumentPort> = {}) {
   const upload = vi.fn(
     async (): Promise<OnboardingBaaDocumentUpload> => ({
       resourceId: DOCUMENT_ID,
+      objectKey: "uploads/00000000/tenant_baa-0123456789ab",
       view: {
         documentId: DOCUMENT_ID,
         mimeType: "application/pdf",
@@ -524,7 +525,11 @@ describe("service: uploadBaaDocument", () => {
     expect(discard).not.toHaveBeenCalled();
     expect(warned).toHaveLength(1);
     expect(warned[0]?.message).toContain("commit failed after the document was filed");
-    expect(warned[0]?.context).toMatchObject({ documentId: DOCUMENT_ID });
+    expect(warned[0]?.message).toContain("reconcile by objectKey");
+    expect(warned[0]?.context).toMatchObject({
+      documentId: DOCUMENT_ID,
+      objectKey: "uploads/00000000/tenant_baa-0123456789ab",
+    });
   });
 
   it("DISCARDS the stored object when the COMMIT fails with a SQLSTATE: the database answered no and rolled back", async () => {

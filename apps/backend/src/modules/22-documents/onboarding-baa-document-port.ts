@@ -20,6 +20,7 @@ import {
 import { assertTxScopedToOrg } from "../../bootstrap/onboarding-credential-port";
 import {
   type ServerUploadService,
+  type UploadLogger,
   createServerUploadService,
   decodeBase64Content,
 } from "./routes/server-upload";
@@ -82,6 +83,7 @@ export function buildTenantBaaDocumentOnboardingPort(
       );
       return {
         resourceId: filed.documentId,
+        objectKey: filed.objectKey,
         view: {
           documentId: filed.documentId,
           mimeType: filed.mimeType,
@@ -101,11 +103,15 @@ export function buildTenantBaaDocumentOnboardingPort(
 }
 
 /** The production port: the bound object store (`MINIO_*`) and the scan posture the other M22 uploads use. */
-export function buildEnvTenantBaaDocumentOnboardingPort(db: DbClient): OnboardingBaaDocumentPort {
+export function buildEnvTenantBaaDocumentOnboardingPort(
+  db: DbClient,
+  logger: UploadLogger,
+): OnboardingBaaDocumentPort {
   const objectStoreConfig = s3ObjectStoreConfigFromEnv(process.env);
   return buildTenantBaaDocumentOnboardingPort(
     createServerUploadService({
       db,
+      logger,
       objects: objectStoreConfig ? createS3ObjectStore(objectStoreConfig) : null,
       scanRequired: process.env.DOCUMENT_UPLOAD_SCAN_REQUIRED === "true",
     }),

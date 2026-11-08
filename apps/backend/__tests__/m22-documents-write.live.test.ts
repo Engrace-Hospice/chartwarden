@@ -1058,7 +1058,11 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
 
   it("#655: a single-request upload for a patient that does not exist in the org is refused (404), storing nothing", async () => {
     const mem = createInMemoryObjectStore();
-    const uploads = createServerUploadService({ db: handle.db, objects: mem.store });
+    const uploads = createServerUploadService({
+      db: handle.db,
+      objects: mem.store,
+      logger: { warn: () => undefined },
+    });
     const backend = createDbDocumentBackend(handle.db, {}, uploads).service;
     const ghost = "99999999-9999-4999-8999-999999999999";
     await expect(
@@ -1079,7 +1083,11 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
 
   it("GAP-068: single-request upload stores the object and commits document + v1 + v2 with verified size/hash", async () => {
     const mem = createInMemoryObjectStore();
-    const uploads = createServerUploadService({ db: handle.db, objects: mem.store });
+    const uploads = createServerUploadService({
+      db: handle.db,
+      objects: mem.store,
+      logger: { warn: () => undefined },
+    });
     const backend = createDbDocumentBackend(handle.db, {}, uploads).service;
     const pdf = new TextEncoder().encode("%PDF-1.7 gap-068 live");
     const doc = await backend.uploadDocument(ORG_A as never, ACTOR, {

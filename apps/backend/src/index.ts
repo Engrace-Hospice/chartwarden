@@ -6250,7 +6250,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 // An operator withdraws a tenant's "filed outside ChartWarden" NOE / NOTR record (M23's own rule, on the caller's tx).
                 notices: buildExternalNoticeOnboardingPort(),
                 // An operator uploads a tenant's signed BAA (onboarding step 3) through M22's own upload pipeline, on the caller's tx.
-                baaDocuments: buildEnvTenantBaaDocumentOnboardingPort(dbHandle.db),
+                baaDocuments: buildEnvTenantBaaDocumentOnboardingPort(dbHandle.db, app.log),
                 // The operator's switch out of `outside` names the billing mode: M35 sets it before the vendor (put back if that fails).
                 billingMode: buildOnboardingBillingModePort(() => pricingContracts.get()),
                 settleOnboarding: settleOnboardingForOrg,
@@ -7331,7 +7331,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               baseUrl: process.env.PORTAL_APP_URL ?? webAppBaseUrl,
               ...(portalOriginFor ? { baseUrlFor: portalOriginFor } : {}),
             }),
-            uploadIntake: buildPortalUploadIntakePort(dbHandle.db),
+            uploadIntake: buildPortalUploadIntakePort(dbHandle.db, app.log),
             // GAP-158 - accepting an invitation issued for a roster caregiver claims that caregiver for the login.
             caregiverLink: { linkInTx: linkCaregiverToUserInTx },
             // GAP-159 - invited / activated / granted ride the issue + accept transactions.

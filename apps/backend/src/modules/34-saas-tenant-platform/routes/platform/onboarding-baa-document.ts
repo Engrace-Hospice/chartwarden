@@ -54,8 +54,8 @@ export async function uploadTenantBaaDocument(
       resourceKind: "tenant_baa_document",
       reason,
       // The rows roll back with the transaction, the stored object would not: take it out, unless the COMMIT itself failed (the rows
-      // may have landed, and deleting the file of a document that exists would lose the agreement): then keep it and say so. An orphan
-      // sweep is the way to reclaim an object whose commit did not land (an open item in ADR-0053's amendment, not built here).
+      // may have landed, and deleting the file of a document that exists would lose the agreement): then keep it and say so, naming the
+      // objectKey. No sweep exists yet to reclaim one whose commit did not land (an open item in ADR-0053's amendment): reconcile by objectKey.
       onFailure: async ({ commitReached }) => {
         if (!filed) return;
         if (!commitReached) {
@@ -63,8 +63,12 @@ export async function uploadTenantBaaDocument(
           return;
         }
         deps.warn?.(
-          "m34.onboarding BAA upload: the commit failed after the document was filed; the object is kept because the commit may have landed",
-          { documentId: filed.resourceId, organizationId: op.organizationId },
+          "m34.onboarding BAA upload: the commit failed after the document was filed; the object is kept because the commit may have landed (if it did not, the object is an orphan: no sweep exists yet; reconcile by objectKey)",
+          {
+            documentId: filed.resourceId,
+            objectKey: filed.objectKey,
+            organizationId: op.organizationId,
+          },
         );
       },
     },
