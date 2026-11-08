@@ -354,7 +354,7 @@ controls:
       owner: engineering
       review_by: 2027-01-31
 
-  - id: CW-AC-22
+  - id: CW-AC-23
     title: >-
       An e-prescription whose DoseSpot outcome is unknown is HELD for a person, never failed and never sent a second time, and only an
       organization administrator resolves it. When DoseSpot accepts a NewRx call (2xx) but its answer is unreadable or carries no prescription
