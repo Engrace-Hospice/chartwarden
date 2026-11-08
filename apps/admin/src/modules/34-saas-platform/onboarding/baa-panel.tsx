@@ -377,12 +377,7 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
                 what={`upload the signed agreement (that needs the ${ONBOARDING_KEYS.baaDocumentUpload} permission); a record can be marked Executed only if it already carries a signed agreement`}
               />
               {fieldError("documentId") ? (
-                <fieldset
-                  ref={documentAlert}
-                  tabIndex={-1}
-                  aria-label="Signed agreement"
-                  style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
-                >
+                <fieldset ref={documentAlert} tabIndex={-1} aria-label="Signed agreement">
                   <InlineAlert>{fieldError("documentId")}</InlineAlert>
                 </fieldset>
               ) : null}
