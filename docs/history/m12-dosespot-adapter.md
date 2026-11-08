@@ -157,7 +157,7 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   still `queued_for_transmission` / `in_flight`, its transmission row `last_error_class = 'unconfirmed_outcome'` with a detail line, no retry
   spent, skipped by the claim and by the stale-claim drain. `m12.medication_order.transmission_unconfirmed` is published in the same transaction
   and M36's `dosespot-alerts` pages the tenant's administrators once, naming the order, and again as a reminder when the hold is over 24 hours
-  old (`held_orders_aged`, through the same episode machinery). The way out is an ADMINISTRATOR's resolution (MEDIUM-1 of the next review):
+  old (`held_orders_aged`, through the same episode machinery: ONE reminder per episode, so while any order stays held past 24 hours the episode stays open and a second order that ages meanwhile is covered by it, not by a new reminder; each order still gets its own alert when it is held). The way out is an ADMINISTRATOR's resolution (MEDIUM-1 of the next review):
   `POST /api/v1/medication-orders/:id/resolve-held-transmission` (`prescribing.clinic.admin` + a fresh step-up + a human actor + an
   Idempotency-Key + a reason), offered on the medication-order detail to administrators. The administrator checks the prescriber's DoseSpot
   account and says SENT (entering the DoseSpot prescription id: the order becomes `transmitted`, the `transmitted` event goes out as for a
