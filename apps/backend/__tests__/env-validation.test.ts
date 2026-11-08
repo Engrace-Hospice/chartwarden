@@ -268,6 +268,10 @@ describe("collectEnvProblems", () => {
     expect(collectEnvProblems({ ...GOOD, [KEY]: `${retired},short` })).toEqual([
       { key: KEY, problem: "must be comma-separated base64 keys of 32 bytes" },
     ]);
+    // strict base64: a typo Buffer.from would skip still decodes to 32 bytes, and is refused
+    expect(
+      collectEnvProblems({ ...GOOD, [KEY]: `${retired.slice(0, 10)}*${retired.slice(10)}` }),
+    ).toEqual([{ key: KEY, problem: "must be comma-separated base64 keys of 32 bytes" }]);
     expect(collectEnvProblems({ ...GOOD, [KEY]: GOOD.M24_CREDENTIAL_ENCRYPTION_KEY })).toEqual([
       { key: KEY, problem: "must not repeat the current M24_CREDENTIAL_ENCRYPTION_KEY" },
     ]);

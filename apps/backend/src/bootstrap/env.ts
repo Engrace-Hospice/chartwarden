@@ -242,7 +242,8 @@ const REQUIREMENTS: readonly Requirement[] = [
     rule: (value, env) => {
       const current = env.M24_CREDENTIAL_ENCRYPTION_KEY?.trim();
       for (const entry of value.split(",").map((e) => e.trim())) {
-        if (Buffer.from(entry, "base64").length !== 32)
+        // strict: Buffer.from skips unknown characters, so a typo could still decode to 32 bytes (secret-cipher STRICT_KEY_BASE64)
+        if (!/^[A-Za-z0-9+/]{43}=$/.test(entry) || Buffer.from(entry, "base64").length !== 32)
           return "must be comma-separated base64 keys of 32 bytes";
         if (current && entry === current)
           return "must not repeat the current M24_CREDENTIAL_ENCRYPTION_KEY";

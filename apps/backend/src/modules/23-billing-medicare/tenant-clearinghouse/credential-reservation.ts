@@ -75,6 +75,10 @@ export const isFingerprintViolation = (err: unknown): boolean => {
  * waits for the first to commit, then inserts nothing); the keys are inserted in the same order everywhere, so they cannot deadlock.
  * A conflict on this organization's own reservation is a concurrent save of the same credential (a version conflict, retried by the
  * caller), never a refusal.
+ *
+ * A throw MUST roll the caller's transaction back: with several keys, an earlier key's row may already be inserted when a later
+ * one conflicts, and a committed stray row would block the true holder's later re-entry. Every caller today runs on the put's
+ * transaction and lets the throw propagate (security review LOW-3); a caller that catches it must roll back first.
  */
 export async function reserveCredential(
   store: ConfigStore,
@@ -148,15 +152,20 @@ export async function backfillFingerprint(
   if (row.secretCipher === null) return patch;
   if (row.vendor !== "stedi" && row.vendor !== "claimmd") return patch;
   if (row.credentialFingerprint !== null) {
+    if (await store.holdsCredential(row.organizationId, row.credentialFingerprint)) return patch;
+    // The row's key id may be stale (a pre-1405 build rewrote the fingerprint and left the old label; security review LOW-5), so it
+    // is re-derived from the credential when it opens: the key whose fingerprint matches, else null (unknown). Unopenable: null.
+    const keyId = await keyIdOf(row, cipherOf, row.credentialFingerprint);
     await reserveCredential(
       store,
       row.organizationId,
       row.vendor,
-      // null key id: recorded before 1405, under the KEK current then (no unseal needed to re-reserve it)
-      [{ keyId: row.credentialFingerprintKeyId, fingerprint: row.credentialFingerprint }],
+      [{ keyId, fingerprint: row.credentialFingerprint }],
       platformFingerprints,
     );
-    return patch;
+    return keyId === row.credentialFingerprintKeyId
+      ? patch
+      : { ...patch, credentialFingerprintKeyId: keyId };
   }
   if (row.mode !== "test" && row.mode !== "production") return patch;
   const cipher = cipherOf();
@@ -188,4 +197,29 @@ export async function backfillFingerprint(
     credentialFingerprint: current.fingerprint,
     credentialFingerprintKeyId: current.keyId,
   };
+}
+
+/** The configured key a stored fingerprint was computed under, from the unsealed credential; null when unknown or unopenable. */
+async function keyIdOf(
+  row: ConfigRow,
+  cipherOf: () => ClearinghouseSecretCipher,
+  fingerprint: string,
+): Promise<string | null> {
+  if (row.secretCipher === null || (row.vendor !== "stedi" && row.vendor !== "claimmd"))
+    return null;
+  if (row.mode !== "test" && row.mode !== "production") return null;
+  const cipher = cipherOf();
+  try {
+    const secret = await cipher.decrypt(
+      row.organizationId,
+      { vendor: row.vendor, mode: row.mode as TenantClearinghouseMode },
+      row.secretCipher,
+    );
+    return (
+      cipher.fingerprints(row.vendor, secret).find((f) => f.fingerprint === fingerprint)?.keyId ??
+      null
+    );
+  } catch {
+    return null;
+  }
 }
