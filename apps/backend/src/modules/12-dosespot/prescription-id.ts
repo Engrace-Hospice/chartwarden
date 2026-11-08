@@ -44,14 +44,3 @@ export async function isPrescriptionIdTaken(
     .limit(1);
   return other !== undefined;
 }
-
-/** Lock, then check, in one call: `true` means refuse (409 DOSESPOT_PRESCRIPTION_ID_IN_USE) or hold the order; `false` means free to record. */
-export async function prescriptionIdTakenByAnotherOrder(
-  tx: DbClient,
-  organizationId: string,
-  prescriptionId: string,
-  orderId: string,
-): Promise<boolean> {
-  await lockPrescriptionId(tx, organizationId, prescriptionId);
-  return isPrescriptionIdTaken(tx, organizationId, prescriptionId, orderId);
-}
