@@ -39,7 +39,9 @@ describe("deploy/production/nginx/chartwarden-platform.conf", () => {
   });
 
   it("the snippet strips the actor assertion and proxies to the API", () => {
-    const snippet = withoutComments(readFileSync(join(NGINX, "chartwarden-platform-proxy.conf"), "utf8"));
+    const snippet = withoutComments(
+      readFileSync(join(NGINX, "chartwarden-platform-proxy.conf"), "utf8"),
+    );
     expect(snippet).toContain('proxy_set_header X-CW-Actor-Assertion "";');
     expect(snippet).toContain("proxy_pass http://127.0.0.1:3000;");
   });
