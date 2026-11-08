@@ -228,11 +228,14 @@ jobs:
       # with `out of shared memory`. That GUC needs a RESTART, so ALTER SYSTEM + pg_reload_conf()
       # cannot fix it from a step. Verified locally: Postgres at the default fails the baseline, M25,
       # M26 and M30 suites; at 4096 all fifteen pass.
-      - name: Start Postgres (pgvector image — M38 ships a `vector` column; raised lock limit)
+      # The image is built from deploy/production/postgres (production's Postgres: Wolfi + PG18 + pgvector, M38 ships a
+      # `vector` column). Pinned base and packages, so the runner's layer cache makes the build a no-op after the first.
+      - name: Start Postgres (production's Postgres image; raised lock limit)
         run: |
+          docker build -q -t chartwarden-postgres:ci deploy/production/postgres >/dev/null
           docker run -d --name chartwarden-ci-pg \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_test \
-            -p 5432:5432 pgvector/pgvector:pg18 \
+            -p 5432:5432 chartwarden-postgres:ci \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec chartwarden-ci-pg pg_isready -h 127.0.0.1 -U postgres -d chartwarden_test && exit 0
@@ -501,6 +504,7 @@ jobs:
           - { name: "M23 Ack cursor", scripts: "test:m23:ack-cursor:live" }
           # M23 durable clearinghouse attempt store: the package contract run against the real table as chartwarden_app, plus RLS isolation, the identity/final-row guard and no-delete.
           - { name: "M23 Clearinghouse attempts", scripts: "test:m23:clearinghouse-attempts:live" }
+          - { name: "M23 Claim.MD response inbox", scripts: "test:m23:claimmd-response-inbox:live" }
           # M23 per-(provider entity, route) EDI profile (migration 1269): the compare-and-set upsert, FORCEd RLS as chartwarden_app, the CHECKs, no delete, the audit row.
           - { name: "M23 EDI profile", scripts: "test:m23:edi-profile:live" }
           # M23 submit/retry workers and the 999/277CA crons over the bound clearinghouse transport (in-memory), real catalog-validating publisher, legacy portal forbidden (#707).
@@ -1445,11 +1449,12 @@ jobs:
         run: bun install --frozen-lockfile
       # Same explicit `docker run` + raised lock limit as rls-live, and for the same reason (see that job's
       # note): these suites replay the full migration set, partitioned parents included, in one transaction.
-      - name: Start Postgres (pgvector image; raised lock limit)
+      - name: Start Postgres (production's Postgres image; raised lock limit)
         run: |
+          docker build -q -t chartwarden-postgres:ci deploy/production/postgres >/dev/null
           docker run -d --name chartwarden-ci-pg-lifecycle \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_test \
-            -p 5432:5432 pgvector/pgvector:pg18 \
+            -p 5432:5432 chartwarden-postgres:ci \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec chartwarden-ci-pg-lifecycle pg_isready -h 127.0.0.1 -U postgres -d chartwarden_test && exit 0
@@ -1492,14 +1497,15 @@ jobs:
           bun-version: "1.3.5"
       - name: Install dependencies (frozen lockfile)
         run: bun install --frozen-lockfile
-      # Same pgvector image + raised lock limit as rls-live, and for the same reason: the full
+      # Same Postgres image + raised lock limit as rls-live, and for the same reason: the full
       # migration chain includes ~47 partitioned parents and blows past the default
       # max_locks_per_transaction=64.
-      - name: Start Postgres (pgvector image; raised lock limit)
+      - name: Start Postgres (production's Postgres image; raised lock limit)
         run: |
+          docker build -q -t chartwarden-postgres:ci deploy/production/postgres >/dev/null
           docker run -d --name chartwarden-ci-pg-migrate \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_migration_gate \
-            -p 5432:5432 pgvector/pgvector:pg18 \
+            -p 5432:5432 chartwarden-postgres:ci \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec chartwarden-ci-pg-migrate pg_isready -h 127.0.0.1 -U postgres -d chartwarden_migration_gate && exit 0
@@ -1556,11 +1562,12 @@ jobs:
         run: bun install --frozen-lockfile
       # Same explicit `docker run` as rls-live, and for the same reason: this suite applies the FULL
       # migration set, which exhausts the default max_locks_per_transaction=64. See the rls-live note.
-      - name: Start Postgres (pgvector image — M38 ships a `vector` column; raised lock limit)
+      - name: Start Postgres (production's Postgres image; raised lock limit)
         run: |
+          docker build -q -t chartwarden-postgres:ci deploy/production/postgres >/dev/null
           docker run -d --name chartwarden-ci-pg \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_test \
-            -p 5432:5432 pgvector/pgvector:pg18 \
+            -p 5432:5432 chartwarden-postgres:ci \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec chartwarden-ci-pg pg_isready -h 127.0.0.1 -U postgres -d chartwarden_test && exit 0
@@ -1615,12 +1622,13 @@ jobs:
           bun-version: "1.3.5"
       - name: Install dependencies (frozen lockfile)
         run: bun install --frozen-lockfile
-      # Same pgvector image + raised lock limit as rls-live: booting applies the full migration set.
-      - name: Start Postgres (pgvector image; raised lock limit)
+      # Same Postgres image + raised lock limit as rls-live: booting applies the full migration set.
+      - name: Start Postgres (production's Postgres image; raised lock limit)
         run: |
+          docker build -q -t chartwarden-postgres:ci deploy/production/postgres >/dev/null
           docker run -d --name chartwarden-ci-pg-boot \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_boot \
-            -p 5432:5432 pgvector/pgvector:pg18 \
+            -p 5432:5432 chartwarden-postgres:ci \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec chartwarden-ci-pg-boot pg_isready -h 127.0.0.1 -U postgres -d chartwarden_boot && exit 0
@@ -1844,11 +1852,12 @@ jobs:
         run: bun install --frozen-lockfile
       # Same explicit `docker run` + raised lock limit as rls-live, and for the same reason (see that
       # job's note): booting replays the full migration set, ~47 partitioned parents included.
-      - name: Start Postgres (pgvector image; raised lock limit)
+      - name: Start Postgres (production's Postgres image; raised lock limit)
         run: |
+          docker build -q -t chartwarden-postgres:ci deploy/production/postgres >/dev/null
           docker run -d --name chartwarden-ci-pg-e2e \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=chartwarden_e2e \
-            -p 5432:5432 pgvector/pgvector:pg18 \
+            -p 5432:5432 chartwarden-postgres:ci \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
             docker exec chartwarden-ci-pg-e2e pg_isready -h 127.0.0.1 -U postgres -d chartwarden_e2e && exit 0

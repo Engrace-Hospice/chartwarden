@@ -29,7 +29,11 @@ name: chartwarden
 
 services:
   postgres:
-    image: pgvector/pgvector:pg18
+    # Production's Postgres (Wolfi + PG18 + pgvector), built for this machine's arch. After pulling a Dockerfile change:
+    # `docker compose build postgres`. A volume created by an older image logs "collation version mismatch" until
+    # `docker compose exec -u postgres postgres cw-refresh-collation` (deploy/production/README.md, Postgres image).
+    image: chartwarden-postgres:dev
+    build: ./deploy/production/postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres

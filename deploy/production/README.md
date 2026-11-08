@@ -400,6 +400,39 @@ failing step, the exit code and the applied migration filenames. Delivery is bes
 timeout; a failure is logged and never changes the deploy's exit status); the URL is never printed. Unset means no
 alert, and the failed `deploy` workflow run is then the only signal.
 
+## Postgres image (`postgres/`)
+
+`postgres/Dockerfile` is ChartWarden's Postgres: PostgreSQL 18 + pgvector on Wolfi, with the base digest and every
+directly installed package pinned (the glibc locale packages follow the base's glibc) (0 HIGH/CRITICAL at pin time, against 4 CRITICAL / 77 HIGH for `pgvector/pgvector:pg18-bookworm`).
+Dev compose, every CI live-DB job and the restore drills build it from this folder. Production will run the copy that
+`.github/workflows/postgres-image.yml` (manual, `main` only) builds, scans, signs and publishes as
+`ghcr.io/engrace-hospice/chartwarden-postgres`, once `compose.yml` pins it (until then it runs the Debian image in
+the table below). It opens a volume the Debian image created as is: postgres is uid/gid
+999, PGDATA is `/var/lib/postgresql/18/docker`, and the server also listens on `/var/run/postgresql`.
+
+**Collation.** glibc orders every text index. The Dockerfile asserts `GLIBC_VERSION`, so a bump that moves glibc fails
+the build. When glibc does change (the first start on a Debian-created volume: 2.36 → 2.44), Postgres logs
+`collation version mismatch` on every connection until the indexes are rebuilt. Stop `api` and `worker`, then:
+
+```bash
+docker compose exec -u postgres postgres cw-refresh-collation   # REINDEX + REFRESH COLLATION VERSION, every database
+```
+
+Range partitions need nothing more: every range partition key is a date or timestamp.
+
+**Bumping it.** Refresh the base digest and the package pins in the Dockerfile (its header says how), open a PR (the
+`Postgres image smoke and CVE scan` job in `pr-image-gate.yml` builds, starts and scans it), merge, run
+`gh workflow run postgres-image.yml`, and pin the digest the run prints in `compose.yml`. `backup/Dockerfile` cannot just take it as a base (it installs
+pgBackRest with apt and execs Debian's entrypoint): it needs its own Wolfi port, proven by `backup:restore-drill`, first.
+Apply with a fresh pgBackRest backup first, then `docker compose ... up -d --wait postgres` (`deploy.sh` never recreates
+postgres), then `cw-refresh-collation` if `GLIBC_VERSION` changed. Rollback is the previous digest, plus a
+refresh again when glibc differs. An image without the script (the Debian one) takes it by copy, from this folder:
+
+```bash
+docker compose cp postgres/cw-refresh-collation.sh postgres:/tmp/cw-refresh-collation.sh
+docker compose exec -u postgres postgres sh /tmp/cw-refresh-collation.sh
+```
+
 ## Infrastructure images: digest pins (#855)
 
 Every third-party image in `compose.yml` is `repo:tag@sha256:<digest>` (the tag is the human label; the digest is

@@ -33,6 +33,16 @@ export interface FoundationSiteReader {
     tx: DbClient,
     locationId: string,
   ): Promise<{ readonly providerEntityId: string } | null>;
+  /** Bounded account-wide identity routing: ownership only, with no current billing identifiers. */
+  providerEntityOwners(
+    tx: DbClient,
+    providerEntityIds: readonly string[],
+  ): Promise<readonly { readonly id: string; readonly organizationId: string }[]>;
+  /** Bounded location-to-provider facts used only to validate an immutable send snapshot. */
+  locationOwners(
+    tx: DbClient,
+    locationIds: readonly string[],
+  ): Promise<readonly { readonly id: string; readonly providerEntityId: string }[]>;
   /** A provider entity's CMS identifiers (NPI + CCN), or null when not found in the org. */
   providerEntityIdentifiers(
     tx: DbClient,
@@ -135,6 +145,18 @@ export function buildFoundationSiteReader(): FoundationSiteReader {
         .where(eq(LOCATION.id, locationId))
         .limit(1);
       return location ?? null;
+    },
+
+    async providerEntityOwners(tx, providerEntityIds) {
+      if (providerEntityIds.length === 0) return [];
+      return tx.select({ id: PROVIDER.id, organizationId: PROVIDER.organizationId }).from(PROVIDER)
+        .where(inArray(PROVIDER.id, [...new Set(providerEntityIds)]));
+    },
+
+    async locationOwners(tx, locationIds) {
+      if (locationIds.length === 0) return [];
+      return tx.select({ id: LOCATION.id, providerEntityId: LOCATION.providerEntityId }).from(LOCATION)
+        .where(inArray(LOCATION.id, [...new Set(locationIds)]));
     },
 
     async providerEntityIdentifiers(tx, organizationId, providerEntityId) {

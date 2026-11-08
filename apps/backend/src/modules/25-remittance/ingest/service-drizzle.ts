@@ -8,7 +8,7 @@ import {
   parseX12TransactionSetControlNumbers,
 } from "@chartwarden/x12-835-client";
 import type { ParsedClaim835, ParsedRemittanceAdvice } from "@chartwarden/x12-835-client";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { autoMatch, classifyPostingOutcome, effectiveCategory, routeAdjustment } from "../domain";
 import type { DenialCategory } from "../domain";
 import type { WriteOutboxPort } from "../routes/write-service";
@@ -25,8 +25,10 @@ import type {
   X12835WorkerClient,
 } from "./service";
 import { DENY_TERMINOLOGY, NO_CLAIM_MATCH_CANDIDATES } from "./service";
+import { claimMdEraM25SerializationKey } from "./claimmd-era-duplicate";
 
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
+const CLAIMMD_ERA_STAGE = schema.claimmdEraM25Stage;
 const DENIAL_CATEGORIES: ReadonlySet<string> = new Set([
   "denial",
   "reduction",
@@ -141,7 +143,7 @@ function money(n: number): string {
  * value that is not date-led is parsed as an instant.
  */
 /** Order-independent digest of a set's claim payments; two files with the same digest pay the same claims the same way. */
-function contentDigestOf(parsed: ParsedRemittanceAdvice): string {
+export function m25ContentDigestOf(parsed: ParsedRemittanceAdvice): string {
   const rows = parsed.claims
     .map((c) =>
       [
@@ -619,7 +621,25 @@ export function buildDrizzleM25IngestService(
     // The payment itself is identified by TRN02 + payer + payee + amount: the same payment is never posted twice.
     // Same-file sets are excluded (their sha matches) - they are separate payments sharing a file.
     const trace = parsed.checkOrEftTraceNumber;
-    const digest = contentDigestOf(parsed);
+    const digest = m25ContentDigestOf(parsed);
+    const serializationKey = claimMdEraM25SerializationKey({ organizationId: actor.organizationId,
+      providerEntityId: input.providerEntityId, paymentTrace: trace ?? null,
+      interchangeControlNumber: parsed.interchangeControlNumber,
+      transactionSetControlNumber: parsed.transactionSetControlNumber });
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${serializationKey}, 1))`);
+    // A verified Claim.MD ERA may already occupy the non-posting staging boundary. If it won
+    // the shared identity lock first, refuse legacy intake before creating an advice/event that
+    // could reach postAdvice. The new stage remains available for review and no posting occurs.
+    const stagedIdentity = await tx.select({ id: CLAIMMD_ERA_STAGE.id }).from(CLAIMMD_ERA_STAGE).where(and(
+      eq(CLAIMMD_ERA_STAGE.organizationId, actor.organizationId),
+      eq(CLAIMMD_ERA_STAGE.providerEntityId, input.providerEntityId),
+      or(and(eq(CLAIMMD_ERA_STAGE.interchangeControlNumber, parsed.interchangeControlNumber),
+        eq(CLAIMMD_ERA_STAGE.transactionSetControlNumber, parsed.transactionSetControlNumber)),
+      ...(trace ? [eq(CLAIMMD_ERA_STAGE.paymentTraceDigest,
+        createHash("sha256").update(trace, "utf8").digest("hex"))] : [])),
+    )).limit(1);
+    if (stagedIdentity[0]) return { outcome: "review_required", stageId: stagedIdentity[0].id,
+      reason: "CLAIMMD_ERA_STAGE_MATCH" };
     if (trace) {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.organizationId}|${input.providerEntityId}|${input.payerId}|${trace}`}, 0))`,
@@ -838,8 +858,11 @@ export function buildDrizzleM25IngestService(
               transactionSetControlNumber: RA.transactionSetControlNumber,
               payerKind: RA.payerKind,
               payerId: RA.payerId,
+              checkOrEftTraceNumber: RA.checkOrEftTraceNumber,
+              contentDigest: RA.contentDigest,
               minioObjectKey: RA.minioObjectKey,
               parseStatus: RA.parseStatus,
+              parseSummary: RA.parseSummary,
               receivedAt: RA.receivedAt,
               totalPaymentAmount: RA.totalPaymentAmount,
             })
@@ -850,6 +873,12 @@ export function buildDrizzleM25IngestService(
       const advice = current[0];
       if (!advice) return { outcome: "not_found", adviceId };
       if (advice.parseStatus !== "queued" && advice.parseStatus !== "failed") {
+        if ((advice.parseStatus as string) === "held_duplicate") {
+          const reason = advice.parseSummary && typeof advice.parseSummary === "object" &&
+            (advice.parseSummary as { reason?: unknown }).reason === "MISSING_FINANCIAL_IDENTITY"
+            ? "MISSING_FINANCIAL_IDENTITY" as const : "CROSS_SOURCE_POSTED_IDENTITY" as const;
+          return { outcome: "held_duplicate", adviceId, reason };
+        }
         // A redelivery retries a delete that failed after the original post (delete is idempotent).
         if (advice.parseStatus === "posted" || advice.parseStatus === "partial_posted")
           await dropStagedRaw(actor.organizationId, adviceId);
@@ -912,13 +941,51 @@ export function buildDrizzleM25IngestService(
           { organizationId: actor.organizationId, userId: "" },
           async (tx) => {
             const guard = await tx
-              .select({ parseStatus: RA.parseStatus })
+              .select({ parseStatus: RA.parseStatus, parseSummary: RA.parseSummary })
               .from(RA)
               .where(eq(RA.id, adviceId))
               .for("update")
               .limit(1);
-            if (guard[0]?.parseStatus !== "queued" && guard[0]?.parseStatus !== "failed") {
+            const currentGuard = guard[0];
+            if (!currentGuard) throw new Error("M25_ADVICE_DISAPPEARED_DURING_POST");
+            if (currentGuard.parseStatus !== "queued" && currentGuard.parseStatus !== "failed") {
+              if ((currentGuard.parseStatus as string) === "held_duplicate")
+                return { outcome: "held_duplicate" as const, reason: currentGuard.parseSummary &&
+                  typeof currentGuard.parseSummary === "object" &&
+                  (currentGuard.parseSummary as { reason?: unknown }).reason === "MISSING_FINANCIAL_IDENTITY"
+                  ? "MISSING_FINANCIAL_IDENTITY" as const : "CROSS_SOURCE_POSTED_IDENTITY" as const };
               return { outcome: "already_posted" as const };
+            }
+            // A missing TRN or the immutable parsed-content digest leaves no defensible
+            // cross-source posting identity. Keep the original advice for operator review;
+            // never let an absent key bypass the common financial-effects guard.
+            const trace = advice.checkOrEftTraceNumber;
+            if (!trace || !advice.contentDigest) {
+              await tx.update(RA).set({ parseStatus: "held_duplicate",
+                parseSummary: { reason: "MISSING_FINANCIAL_IDENTITY" } }).where(eq(RA.id, adviceId));
+              return { outcome: "held_duplicate" as const, reason: "MISSING_FINANCIAL_IDENTITY" as const };
+            }
+            // Serialize every supported source at the financial effect boundary. This exact identity
+            // (tenant/provider, payer, trace, amount, and parsed-content digest) avoids treating a
+            // legitimate partial/secondary payment as a duplicate based on amount/date alone.
+            {
+              await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.organizationId}|${advice.providerEntityId}|${advice.payerId}|${trace}`}, 0))`);
+              const [prior] = await tx.select({ id: RA.id }).from(RA).where(and(
+                eq(RA.organizationId, actor.organizationId),
+                eq(RA.providerEntityId, advice.providerEntityId),
+                eq(RA.payerId, advice.payerId),
+                eq(RA.checkOrEftTraceNumber, trace),
+                eq(RA.totalPaymentAmount, advice.totalPaymentAmount),
+                eq(RA.contentDigest, advice.contentDigest),
+                sql`${RA.id} <> ${adviceId}`,
+                sql`${RA.parseStatus} IN ('posted','partial_posted')`,
+              )).limit(1);
+              if (prior) {
+                await tx.update(RA).set({ parseStatus: "held_duplicate",
+                  parseSummary: { reason: "CROSS_SOURCE_POSTED_IDENTITY", existingAdviceId: prior.id } })
+                  .where(eq(RA.id, adviceId));
+                return { outcome: "held_duplicate" as const, reason: "CROSS_SOURCE_POSTED_IDENTITY" as const };
+              }
             }
             let postedLineCount = 0;
             let unmatchedLineCount = 0;
@@ -976,6 +1043,8 @@ export function buildDrizzleM25IngestService(
           await dropStagedRaw(actor.organizationId, adviceId);
           return { outcome: "already_posted", adviceId };
         }
+        if (result.outcome === "held_duplicate")
+          return { outcome: "held_duplicate", adviceId, reason: result.reason };
         await dropStagedRaw(actor.organizationId, adviceId);
         return {
           outcome: result.outcome,

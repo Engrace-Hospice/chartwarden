@@ -1,0 +1,7 @@
+# M1 and historical claim correlation
+
+M25 imports the owner-exported `FoundationSiteReader` contract from `apps/backend/src/bootstrap/foundation-site-reader.ts`; it does not query M1 provider/location schema. `providerEntityOwners` verifies each provider's organization and `locationOwners` verifies any historically evidenced location still belongs to that provider. These checks run within the same platform-audited repeatable-read callback as the billing evidence readers.
+
+M23 exports `readClaimMdEraSubmissionFacts` from its module barrel. It returns bounded Claim.MD submission evidence, opens TIN only in memory via the existing `createClaimMdEvidenceCipher`, and retains rows only when M23 claim and transport-attempt evidence pass the same exact predicates as the existing Claim.MD candidate resolver. The platform composition root injects M41's `readClaimMdCommercialSubmissionFacts`; the resolver requires equality of submission, org, provider, location, claim, control number/PCN, payer id and vendor.
+
+M23/M41 immutable send evidence supplies historical NPI/TIN, PCN, claim, provider, location, payer and service period. The resolver does not consume a patient name, amount-only candidate, or mutable billing profile. `CLP07` is preserved as payer ICN, but is not treated as an internal key without a verified namespace mapping. Claim line REF identifiers and dates are retained in the encrypted decision for later review.

@@ -2297,6 +2297,20 @@
       "when": 1792285128543,
       "tag": "1122_m6_admission_contract_details",
       "breakpoints": true
+    },
+    {
+      "idx": 328,
+      "version": "7",
+      "when": 1793992658000,
+      "tag": "1352_m23_claimmd_submission_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 329,
+      "version": "7",
+      "when": 1793996952181,
+      "tag": "1353_m23_claimmd_candidate_runtime",
+      "breakpoints": true
     }
   ]
 }

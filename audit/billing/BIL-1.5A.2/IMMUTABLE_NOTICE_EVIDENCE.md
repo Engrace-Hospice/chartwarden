@@ -1,0 +1,9 @@
+# Immutable notice evidence
+
+`extractX12NoticeEvidence()` in `packages/x12-837-client/src/clearinghouse/notice-submission-evidence.ts` parses the finalized X12 bytes, requires one 837I transaction set, one GS/GE and ISA/IEA envelope, matching control references, one billing provider NPI/TIN and one payer ID, then hashes the exact UTF-8 bytes. It does not require CLM01 and never treats it as the notice UUID or PCN.
+
+`claimmd_notice_submission_evidence` stores tenant, provider, optional location, notice kind/UUID, durable M23 submission UUID/attempt index, account/environment, NPI, encrypted TIN, payer, sender/receiver IDs from both ISA and GS, transaction set, notice control number, separate optional outbound business control number, ISA13/GS06/ST02, digest and reservation time. Parser validation requires the Claim.MD receiver code and the account sender ID to agree between ISA and GS. A separate relation from `claimmd_submission_evidence` avoids weakening claim constraints or falsifying claim IDs.
+
+The `claimmd_notice_evidence` TIN envelope uses the existing tenant DEK/keyring with notice-specific authenticated data binding evidence UUID, tenant, provider and attempt. Reservation commits inside `withOrgContext` before `submitNotice()`. An idempotent replay must match the notice, attempt, provider, environment, payload digest, NPI, payer and decrypted historical TIN; otherwise it fails closed. Evidence and receipt rows reject update/delete and are audited with encrypted TIN scrubbed.
+
+The transport verifies account usage equals the provider context and checks payload NPI and payer ID against that context. It cannot independently prove that the vendor's account or payer route accepts hospice notices. `locationId` is nullable because NOE/NOTR schema does not carry a location; transfer may provide its location only if the existing caller has it.

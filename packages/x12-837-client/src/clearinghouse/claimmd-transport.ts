@@ -499,7 +499,7 @@ export class ClaimMdTransport implements ClearinghouseTransport {
         type: "reconciled_from_upload_list",
         idempotencyKey: attempt.idempotencyKey,
       });
-      return this.complete(ctx, attempt, `file:${found}`, true);
+      return this.complete(ctx, attempt, `file:${found.value}`, true, [{ field: found.field, value: found.value }]);
     }
     try {
       const won = await this.attempts.retake(
@@ -522,7 +522,7 @@ export class ClaimMdTransport implements ClearinghouseTransport {
     key: string,
     attempt: SubmissionAttempt,
     existing: SubmissionAttempt,
-  ): Promise<string | null | "error"> {
+  ): Promise<{ readonly field: "inboundid"; readonly value: string } | null | "error"> {
     // The format is not recorded on the attempt, so either extension of OUR name counts as the upload.
     const names = new Set([
       claimMdFilename(attempt.scope, attempt.idempotencyKey, "x12"),
@@ -543,7 +543,11 @@ export class ClaimMdTransport implements ClearinghouseTransport {
         if (!w.ok || vendorError(w.body) || !hasList(w.body, "file")) return "error";
         const files = listOf(w.body, "file");
         const hit = files.find((f) => names.has(str(f.filename) ?? ""));
-        if (hit) return str(hit.inboundid)?.slice(0, MAX_VENDOR_ID_LENGTH) || "unknown";
+        if (hit) {
+          const inboundid = str(hit.inboundid);
+          if (!inboundid || inboundid.length > MAX_VENDOR_ID_LENGTH) return "error";
+          return { field: "inboundid", value: inboundid };
+        }
         if (files.length < UPLOAD_LIST_PAGE) break;
         if (page === MAX_UPLOAD_LIST_PAGES) return "error";
       }
@@ -589,7 +593,12 @@ export class ClaimMdTransport implements ClearinghouseTransport {
         "Claim.MD's upload answer does not name the claim; it is reconciled before any resend",
       );
     }
-    return this.complete(ctx, attempt, id, false);
+    const vendorIdentifiers = ["fileid", "batchid", "claimid", "claimmd_id", "remote_claimid", "pcn"]
+      .flatMap((field) => {
+        const value = str(mine?.[field]);
+        return value && value.length <= MAX_VENDOR_ID_LENGTH ? [{ field, value }] : [];
+      });
+    return this.complete(ctx, attempt, id, false, vendorIdentifiers);
   }
 
   /** reserved -> sent. Retried, because losing the record could later cause a duplicate upload. */
@@ -598,6 +607,7 @@ export class ClaimMdTransport implements ClearinghouseTransport {
     attempt: SubmissionAttempt,
     clearinghouseSubmissionId: string,
     replayed: boolean,
+    vendorIdentifiers?: readonly { readonly field: string; readonly value: string }[],
   ): Promise<X12WorkerResult<SubmissionReceipt>> {
     for (let i = 0; i < RECORD_ATTEMPTS; i++) {
       try {
@@ -610,7 +620,7 @@ export class ClaimMdTransport implements ClearinghouseTransport {
         );
         const receipt = stored === null ? null : receiptOf(stored, replayed);
         if (receipt === null) break;
-        return { ok: true, data: receipt };
+        return { ok: true, data: vendorIdentifiers ? { ...receipt, vendorIdentifiers } : receipt };
       } catch {
         // retry
       }

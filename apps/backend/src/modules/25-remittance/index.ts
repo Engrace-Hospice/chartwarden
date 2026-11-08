@@ -64,6 +64,9 @@ export {
   buildDrizzleM25WriteService,
 } from "./routes/index";
 export { mountM25Routes } from "./routes/mount";
+export { buildDrizzleClaimMdEraReviewService, type ClaimMdEraReviewService, type ClaimMdEraReviewItem } from "./ingest/claimmd-era-review";
+export { createClaimMdEraRecoveryService, type ClaimMdEraRecoveryActor, type ClaimMdEraRecoveryRequest } from "./ingest/claimmd-era-recovery";
+export { registerClaimMdEraReviewRoutes } from "./routes/claimmd-era-review.routes";
 
 // Milestone 8a-1 - advisory ADR documentation readiness: the deny-stubbed assistant port (no M32 import) and the AI
 // prohibited-zone boot validator (run in the composition root's db-present onReady hook).

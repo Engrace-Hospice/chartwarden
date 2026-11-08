@@ -255,6 +255,7 @@ export async function pullOrgAcks(
   const failures: string[] = [];
   const backlog: string[] = [];
   const quarantined: { eventId: string; reason: string }[] = [];
+  if (deps.binding.vendor === "claimmd") return { ...tally, failures, backlog, quarantined };
   const work = await outstanding(deps, organizationId);
   // Provider entities that hold events but have no live work left (their submission failed, the claim was voided) are still swept,
   // with no transport call, so a dead held event is abandoned instead of waiting forever.
@@ -291,6 +292,9 @@ export async function runAckPull(deps: AckWorkerDeps): Promise<AckPullResult> {
   const failures: string[] = [];
   const backlog: string[] = [];
   const quarantined: { eventId: string; reason: string }[] = [];
+  // Claim.MD's account-wide normalized stream is owned by the BIL-1.1 inbox. The
+  // legacy provider poller cannot safely attribute or label those events as X12.
+  if (deps.binding.vendor === "claimmd") return { ...total, failures, backlog, quarantined };
   for (const { organizationId } of await deps.activeOrgs.listActiveOrgs()) {
     if (deps.binding.vendor === null) {
       try {

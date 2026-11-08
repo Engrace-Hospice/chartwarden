@@ -1,0 +1,9 @@
+# ERA ownership resolution
+
+The resolver accepts only captured inbox rows scoped by inbox UUID, `vendor=claimmd`, account reference and `test|production` usage. `createClaimMdEraStore.readCapturedEra` verifies captured state, key identifier, authenticated decryption, file count and the original SHA-256 over the canonical JSON file list before returning plaintext to the internal resolver frame.
+
+Payee matching uses only immutable `claimmd_submission_evidence` facts from the same Claim.MD account/environment. The M23 owner reader decrypts historical TIN values using the existing row-bound tenant evidence cipher and validates M23 claim submission plus reserved/sent transport-attempt evidence. M41 records are additionally checked through M41's owner-exported commercial-submission reader. M1 confirms provider ownership and current location-to-provider relationship in the same audited repeatable-read snapshot. Current provider NPI/TIN is never used as historical identity evidence.
+
+NPI is matched exactly (normalized digits); an ERA TIN, when present, must match historical TIN. TIN alone never chooses an owner. Candidate queries are capped at 500 source rows plus one sentinel; a hit on the cap returns `needs_review`. Duplicate provider identity snapshots are collapsed only on the complete organization/provider/NPI/TIN tuple. Same PCN across different tenants/providers is a conflict. Claim match requires exact PCN plus account/environment, verified tenant/provider, and matching historical NPI/TIN. Claim amount, dates, name, and current UI context do not select a claim.
+
+Verified payee owner and claim outcomes are stored separately in the encrypted decision. Unmatched claims remain unresolved. A unique historical location is returned only when evidence identifies one; multiple/unknown locations remain null.

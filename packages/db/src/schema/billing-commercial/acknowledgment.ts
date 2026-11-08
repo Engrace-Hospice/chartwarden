@@ -21,6 +21,7 @@ export const commercialAcknowledgments = pgTable(
     submissionId: uuid("submission_id").notNull(),
     clearinghouseKey: text("clearinghouse_key").notNull(),
     eventId: text("event_id").notNull(),
+    sourceRepresentation: text("source_representation").notNull().default("unknown_legacy"),
     stage: text("stage").notNull(), // clearinghouse | payer
     disposition: text("disposition").notNull(), // accepted | rejected | partial (payer stage only)
     reasonCodes: text("reason_codes").array().notNull().default([]),

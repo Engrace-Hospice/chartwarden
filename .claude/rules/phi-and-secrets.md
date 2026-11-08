@@ -11,7 +11,7 @@ Agents working in this repo never see real patient data or live credentials. The
   or database dumps, and don't dump the environment. To learn a config's shape, read `.env.example`.
   If you truly need a value, ask the human.
 - **No production access from a session.** Don't `psql` or `ssh` to non-local hosts. Live suites run
-  against a private `pgvector/pgvector:pg18` container on its own port (not 5432, and not AiSOC's 15432).
+  against a private `chartwarden-postgres:dev` container (built from `deploy/production/postgres`) on its own port (not 5432, and not AiSOC's 15432).
   Exception: the human may explicitly authorize one named host in the current message; that covers only
   that host and only that session. The confirmation hook in `scripts/harness/patterns.ts` still asks
   before every non-local `ssh`/`scp`/`sftp`/`rsync`, and no PHI may enter the session.

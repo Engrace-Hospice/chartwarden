@@ -588,7 +588,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
     const queued = await m23.submitNotr(WRITE_ACTOR as never, notr.id);
     expect(queued.kind).toBe("notr");
     await withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) =>
-      runNotrSubmit(tx as never, workerDeps, { organizationId: ORG, notrId: notr.id }),
+      runNotrSubmit(tx as never, workerDeps, { organizationId: ORG, notrId: notr.id, submissionId: queued.submissionId }),
     );
     const submission = await one<{ id: string }>(
       "SELECT id FROM claim_submission WHERE notr_id=$1 AND kind='notr' AND outcome='submitted'",
@@ -681,7 +681,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
     // The correction goes through the ordinary queue, worker and ack routing.
     const queued2 = await m23.submitNotr(WRITE_ACTOR as never, corrected);
     await withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) =>
-      runNotrSubmit(tx as never, workerDeps, { organizationId: ORG, notrId: corrected }),
+      runNotrSubmit(tx as never, workerDeps, { organizationId: ORG, notrId: corrected, submissionId: queued2.submissionId }),
     );
     const ctl = await one<{ notr_control_number: string }>(
       "SELECT notr_control_number FROM notr_record WHERE id=$1",
