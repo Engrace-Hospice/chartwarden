@@ -21,16 +21,25 @@ export interface Banner {
 }
 
 /** Both live regions stay mounted so a banner appearing or changing is announced (a region inserted with its text is not).
- *  Deliberately kept over the no-nested-live-region rule: an inserted `<output>` is announced unreliably. */
+ *  Deliberately kept over the no-nested-live-region rule: an inserted `<output>` is announced unreliably. The alert inside
+ *  is `live={false}`, so each banner has exactly one live region (the wrapper), not a nested second one. */
 export function BannerView({ banner }: { banner: Banner | null }): JSX.Element {
   return (
     <>
       {/* biome-ignore lint/a11y/useSemanticElements: <output> is the shared loading-spinner marker (screens-smoke settles on none) */}
       <div role="status">
-        {banner?.ok ? <InlineAlert tone="success">{banner.message}</InlineAlert> : null}
+        {banner?.ok ? (
+          <InlineAlert tone="success" live={false}>
+            {banner.message}
+          </InlineAlert>
+        ) : null}
       </div>
       <div role="alert">
-        {banner && !banner.ok ? <InlineAlert tone="error">{banner.message}</InlineAlert> : null}
+        {banner && !banner.ok ? (
+          <InlineAlert tone="error" live={false}>
+            {banner.message}
+          </InlineAlert>
+        ) : null}
       </div>
     </>
   );

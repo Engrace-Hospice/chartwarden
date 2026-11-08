@@ -25,4 +25,31 @@ describe("InlineAlert", () => {
     expect(screen.getByRole("status").textContent).toBe("Rates differ from the CMS reference");
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  it("live={false} renders a plain paragraph with no live-region role, for any tone", () => {
+    render(
+      <>
+        <InlineAlert live={false}>refused</InlineAlert>
+        <InlineAlert tone="success" live={false}>
+          saved
+        </InlineAlert>
+      </>,
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByText("refused").tagName).toBe("P");
+    expect(screen.getByText("saved").tagName).toBe("P");
+  });
+
+  it("keeps the same visual style when live={false}", () => {
+    render(
+      <>
+        <InlineAlert>live</InlineAlert>
+        <InlineAlert live={false}>quiet</InlineAlert>
+      </>,
+    );
+    expect(screen.getByText("quiet").getAttribute("style")).toBe(
+      screen.getByText("live").getAttribute("style"),
+    );
+  });
 });

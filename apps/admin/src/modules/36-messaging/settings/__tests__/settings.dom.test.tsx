@@ -9,6 +9,7 @@ import { AlertRules } from "../alert-rules";
 import { DeliveryEndpoints } from "../delivery-endpoints";
 import { settingsScreens } from "../index";
 import { NotificationPreferences, toggleChannel } from "../notification-preferences";
+import { BannerView } from "../ui";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const RULE = {
@@ -93,6 +94,14 @@ describe("AlertRules", () => {
     mount(<AlertRules />, () => json({ rules: [RULE] }));
     expect(screen.getByRole("status", { name: "Loading alert rules…" })).toBeTruthy();
     expect(await screen.findByLabelText(/^Sfv due enabled/)).toBeTruthy();
+  });
+
+  it("names each toggle with its rule and visible state, so the accessible name contains the On/Off text", async () => {
+    mount(<AlertRules />, () => json({ rules: [RULE] }));
+    // The visible "On" is a separate span inside the label; the sr-only prefix completes the name (WCAG 2.5.3 Label in Name).
+    const box = await screen.findByRole("checkbox", { name: "Sfv due enabled: On" });
+    expect((box as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText("On")).toBeTruthy();
   });
 
   it("renders the empty state", async () => {
@@ -267,5 +276,23 @@ describe("DeliveryEndpoints", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Verify a@b.c" }));
     expect(await screen.findByText(/code was not accepted/)).toBeTruthy();
+  });
+});
+
+describe("BannerView", () => {
+  it("keeps both wrappers mounted and announces each banner through exactly one live region", () => {
+    const { rerender } = render(<BannerView banner={null} />);
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+
+    rerender(<BannerView banner={{ ok: true, message: "Saved." }} />);
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("status").textContent).toBe("Saved.");
+
+    rerender(<BannerView banner={{ ok: false, message: "Could not save." }} />);
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("alert").textContent).toBe("Could not save.");
   });
 });
