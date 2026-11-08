@@ -5,7 +5,7 @@
 // ANY answer: the server caches whatever it answered under the key, refusals included, so a retry on the same key after re-verifying
 // would be handed the cached 403.
 import { type OpsFailure, describeOpsError, useIdempotencyKeeper } from "@chartwarden/ui";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { WIZARD_ERROR_COPY } from "./wizard-errors";
 
 export type OpsWriteOutcome<T> =
@@ -21,10 +21,15 @@ interface FetchResult<T> {
 export interface OpsWrite {
   readonly busy: boolean;
   readonly failure: OpsFailure | null;
-  /** `fingerprint` is the body (any stable text): the same one keeps the key across a retry, a changed one gets a new key. */
+  /**
+   * `fingerprint` is the body (any stable text): the same one keeps the key across a retry, a changed one gets a new key.
+   * `afterSuccess` (a reload, closing the editor) runs inside the same in-flight window: until it finishes, `busy` stays true and a
+   * second `run` (a double submit, an Enter while the first is saving) is dropped: it never settles, so its caller does nothing.
+   */
   run<T>(
     fingerprint: string,
     call: (idempotencyKey: string) => Promise<FetchResult<T>>,
+    afterSuccess?: (data: T) => Promise<unknown> | void,
   ): Promise<OpsWriteOutcome<T>>;
   clear(): void;
 }
@@ -40,14 +45,14 @@ export function useOpsWrite(): OpsWrite {
   const keeper = useIdempotencyKeeper();
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<OpsFailure | null>(null);
+  // A ref, not the `busy` state: two submits in the same tick both see the stale `busy === false`.
+  const inFlight = useRef(false);
 
-  const run = useCallback(
+  const send = useCallback(
     async <T>(
       fingerprint: string,
       call: (idempotencyKey: string) => Promise<FetchResult<T>>,
     ): Promise<OpsWriteOutcome<T>> => {
-      setBusy(true);
-      setFailure(null);
       try {
         const result = await call(keeper.keyFor(fingerprint));
         // The server answered, and its answer is cached under the key: the next attempt starts on a new one. A 5xx WITHOUT the standard
@@ -68,11 +73,33 @@ export function useOpsWrite(): OpsWrite {
         const unreachable = describeOpsError(undefined, null, WIZARD_ERROR_COPY);
         setFailure(unreachable);
         return { ok: false, failure: unreachable };
-      } finally {
-        setBusy(false);
       }
     },
     [keeper],
+  );
+
+  const run = useCallback(
+    async <T>(
+      fingerprint: string,
+      call: (idempotencyKey: string) => Promise<FetchResult<T>>,
+      afterSuccess?: (data: T) => Promise<unknown> | void,
+    ): Promise<OpsWriteOutcome<T>> => {
+      // ponytail: a dropped run never settles (its caller's follow-up never runs); a distinct outcome if a caller ever needs to know.
+      if (inFlight.current) return new Promise<never>(() => {});
+      inFlight.current = true;
+      setBusy(true);
+      setFailure(null);
+      try {
+        const outcome = await send(fingerprint, call);
+        // The follow-up's own failure (a reload that throws) is the caller's to see, not a write failure: it is outside `send`.
+        if (outcome.ok) await afterSuccess?.(outcome.data);
+        return outcome;
+      } finally {
+        inFlight.current = false;
+        setBusy(false);
+      }
+    },
+    [send],
   );
 
   const clear = useCallback(() => setFailure(null), []);

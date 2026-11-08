@@ -179,6 +179,19 @@ describe("BaaPanel", () => {
     await waitFor(() => expect(ctx.refresh).toHaveBeenCalled());
   });
 
+  it("a second submit while the save (or its reload) is in flight sends nothing more", async () => {
+    const { client } = mount([], { POST: { [REGISTER]: () => new Promise(() => {}) } });
+    await screen.findByText(/No BAA on record/);
+    fireEvent.click(screen.getByRole("button", { name: "Record BAA" }));
+    fireEvent.change(screen.getByLabelText("Addendum version"), { target: { value: "v1" } });
+    const form = screen.getByRole("form", { name: "BAA form" });
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    await screen.findByRole("button", { name: "Saving…" });
+    fireEvent.submit(form);
+    expect(client.POST.mock.calls.filter(([path]) => path === REGISTER)).toHaveLength(1);
+  });
+
   it("will not save an executed BAA without its document, and says why", async () => {
     const { client } = mount([]);
     await screen.findByText(/No BAA on record/);

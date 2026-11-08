@@ -241,6 +241,28 @@ describe("TenantOnboardingWizard: marking a step done with evidence", () => {
     expect(writes(client)).toHaveLength(1);
   });
 
+  it("a submit during the reload that follows a saved attestation sends nothing more", async () => {
+    const { client } = setup();
+    await openAttest(client);
+    fill("Confirmed enrolment letter", "", "Customer asked us to settle this");
+    // the write answers; the wizard's reload after it never does
+    const reads = client.GET.getMockImplementation();
+    client.GET.mockImplementation((path: string, init) =>
+      path === ONBOARDING
+        ? new Promise(() => {})
+        : (reads as NonNullable<typeof reads>)(path, init),
+    );
+    const form = screen.getByRole("form", { name: "Mark this step done" });
+    fireEvent.submit(form);
+    await waitFor(() => expect(writes(client)).toHaveLength(1));
+    await waitFor(() =>
+      expect(client.GET.mock.calls.some(([path]) => path === ONBOARDING)).toBe(true),
+    );
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(writes(client)).toHaveLength(1);
+  });
+
   it("leaves the reference out when it is blank", async () => {
     const { client } = setup();
     await openAttest(client);

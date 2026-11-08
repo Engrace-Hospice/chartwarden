@@ -205,7 +205,7 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
     const id = editing.id;
     const addendumVersion = form.addendumVersion.trim();
     // the whole body is the fingerprint: a create's addendum version is part of it, so a corrected version is a new attempt
-    const outcome = await write.run(
+    await write.run(
       `${id ?? "new"}:${id === null ? addendumVersion : ""}:${JSON.stringify(fields)}`,
       (key) =>
         id === null
@@ -218,11 +218,12 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
               body: fields,
               headers: { "Idempotency-Key": key },
             }),
+      // closing the editor and the reloads run inside the write's in-flight window: a submit during them is dropped
+      async () => {
+        setEditing(null);
+        await Promise.all([list.reload(true), ctx.refresh()]);
+      },
     );
-    if (outcome.ok) {
-      setEditing(null);
-      await Promise.all([list.reload(true), ctx.refresh()]);
-    }
   }
 
   const fieldError = (field: keyof Form): string | undefined =>
@@ -299,8 +300,6 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
           noValidate
           onSubmit={(e) => {
             e.preventDefault();
-            // a second Enter while the write is in flight must not send it twice
-            if (write.busy) return;
             void save();
           }}
         >

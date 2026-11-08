@@ -66,17 +66,18 @@ export function AttestCard({
       reason: normalizeReason(reason),
     };
     const taskId = step.id;
-    const outcome = await write.run(JSON.stringify(body), (key) =>
-      client.POST("/api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/attest", {
-        params: { path: { orgSlug, taskId } },
-        body,
-        headers: { "Idempotency-Key": key },
-      }),
+    const outcome = await write.run(
+      JSON.stringify(body),
+      (key) =>
+        client.POST("/api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/attest", {
+          params: { path: { orgSlug, taskId } },
+          body,
+          headers: { "Idempotency-Key": key },
+        }),
+      // the reload runs inside the write's in-flight window: a submit during it is dropped
+      () => ctx.refresh(),
     );
-    if (outcome.ok) {
-      await ctx.refresh();
-      onCancel();
-    }
+    if (outcome.ok) onCancel();
   }
 
   const failure = write.failure;
@@ -92,8 +93,6 @@ export function AttestCard({
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
-        // a second Enter while the write is in flight must not send it twice
-        if (write.busy) return;
         void submit();
       }}
     >
