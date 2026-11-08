@@ -30,16 +30,17 @@ function FieldFrame({
   const hintId = `${inputId}-hint`;
   const errorId = `${inputId}-error`;
   const describedBy = error ? errorId : hint ? hintId : undefined;
+  // Only the label text is the <label>: the hint and error are tied to the control by aria-describedby, so inside the label
+  // they would be read twice (once as part of the name, once as the description).
   return (
-    <label
-      htmlFor={inputId}
+    <div
       className="wx-field"
       style={{ display: "flex", flexDirection: "column", gap: t.space2, color: t.onSurface }}
     >
-      <span style={{ fontSize: "0.8125rem", fontWeight: 650 }}>
+      <label htmlFor={inputId} style={{ fontSize: "0.8125rem", fontWeight: 650 }}>
         {label}
         {required ? <span aria-hidden="true"> *</span> : null}
-      </span>
+      </label>
       {children({ inputId, describedBy, invalid: Boolean(error) })}
       {hint && !error ? (
         <span id={hintId} style={{ color: t.onSurfaceVariant, fontSize: "0.75rem" }}>
@@ -51,7 +52,7 @@ function FieldFrame({
           {error}
         </span>
       ) : null}
-    </label>
+    </div>
   );
 }
 
