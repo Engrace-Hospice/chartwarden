@@ -29,6 +29,15 @@ import { CenteredCardLayout } from "../layouts/patterns";
  * Control characters are refused too: the URL parser strips tab and newline, so "/\t/host" would
  * otherwise reach the router as "//host".
  */
+/** The history state a successful step-up returns with, so a screen restores a stashed draft only on that return (not on a later visit). */
+export const STEP_UP_RETURN_STATE = { fromStepUp: true } as const;
+
+/** Whether a location state is the step-up return. */
+export const isStepUpReturn = (state: unknown): boolean =>
+  typeof state === "object" &&
+  state !== null &&
+  (state as { fromStepUp?: unknown }).fromStepUp === true;
+
 export function safeReturnTo(raw: string | null | undefined): string {
   if (!raw?.startsWith("/")) return "/";
   if (raw.startsWith("//") || raw.startsWith("/\\")) return "/";
@@ -196,7 +205,7 @@ export function StepUpCard({
       return;
     }
     onVerified?.(returnTo);
-    navigate(returnTo); // freshness recorded — resume the action that required step-up
+    navigate(returnTo, { state: STEP_UP_RETURN_STATE }); // freshness recorded — resume the action that required step-up
   }
 
   async function verifyPasskey(): Promise<void> {
@@ -263,7 +272,7 @@ export function StepUpCard({
       return;
     }
     onVerified?.(returnTo);
-    navigate(returnTo); // freshness recorded — resume the action that required step-up
+    navigate(returnTo, { state: STEP_UP_RETURN_STATE }); // freshness recorded — resume the action that required step-up
   }
 
   return (

@@ -40,6 +40,8 @@ export interface ReasonDialogProps {
   readonly reasonLabel?: string;
   /** The reason the box starts with when it opens (the operator's earlier attempt, after closing to fix a field); empty by default. */
   readonly initialReason?: string;
+  /** Every change to the typed reason (a caller that stashes it across a Re-verify needs the live text, not the last submitted one). */
+  readonly onReasonChange?: (reason: string) => void;
   readonly onConfirm: (reason: string) => void;
   readonly onCancel: () => void;
 }
@@ -58,6 +60,7 @@ export function ReasonDialog({
   stale = false,
   reasonLabel = "Reason",
   initialReason,
+  onReasonChange,
   onConfirm,
   onCancel,
 }: ReasonDialogProps): JSX.Element | null {
@@ -115,7 +118,10 @@ export function ReasonDialog({
           hint="Recorded in the audit trail and visible to the tenant. Use a ticket reference; no patient information."
           rows={3}
           value={reason}
-          onChange={(e) => setReason(e.target.value)}
+          onChange={(e) => {
+            setReason(e.target.value);
+            onReasonChange?.(e.target.value);
+          }}
           error={problem ?? fieldError}
         />
         {/* A text error is an alert line; anything richer (a notice with its own alert, a list, a link) brings its own semantics. */}

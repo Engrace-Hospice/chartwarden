@@ -73,7 +73,12 @@ export { NavGroup, NavLink, groupByNavGroup } from "./components/nav-link";
 export { CountBadge, FlagChip, InfoRows, Panel } from "./components/panel";
 export type { InfoRow, PanelProps } from "./components/panel";
 export type { NavGroupProps, NavLinkProps } from "./components/nav-link";
-export { StepUpCard, safeReturnTo } from "./components/step-up-card";
+export {
+  StepUpCard,
+  isStepUpReturn,
+  safeReturnTo,
+  STEP_UP_RETURN_STATE,
+} from "./components/step-up-card";
 export type { StepUpCardProps } from "./components/step-up-card";
 export {
   ReverifyLink,
