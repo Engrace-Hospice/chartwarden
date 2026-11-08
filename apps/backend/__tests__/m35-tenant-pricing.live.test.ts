@@ -609,12 +609,14 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       );
       // a pin from before the edit (another operator changed the draft since): refused, nothing published
       const stale = "2020-01-01T00:00:00.000Z";
+      // read the current pin first: an await inside the matcher leaves the rejection unhandled until it resolves
+      const currentPin = await pinOf(planV2Id);
       await expect(
         plans.publish(operator, planV2Id, "approved by the owner", stale),
       ).rejects.toMatchObject({
         code: "PRICING_PLAN_CHANGED",
         statusCode: 409,
-        details: [{ field: "currentUpdatedAt", message: await pinOf(planV2Id) }],
+        details: [{ field: "currentUpdatedAt", message: currentPin }],
       });
       expect((await plans.get(planV2Id)).status).toBe("draft");
       await expect(

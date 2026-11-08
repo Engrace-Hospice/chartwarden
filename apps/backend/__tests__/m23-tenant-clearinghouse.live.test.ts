@@ -727,7 +727,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     // migration 1406: the app role's column grant alone cannot release it; only the platform release path's setting can
     await expect(
       asTenant(
-        ORG_H,
+        ORG_Q,
         `UPDATE tenant_clearinghouse_credential_reservation SET released_at=now() WHERE id='${held[0]?.id}'`,
       ),
     ).rejects.toThrow(/released only by the platform release/);
