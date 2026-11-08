@@ -2,8 +2,8 @@ name: Publish Postgres image
 
 # Builds deploy/production/postgres (Wolfi + PG18 + pgvector), fails on any HIGH/CRITICAL, pushes it to GHCR, signs it
 # keyless and attests its SBOM, the same chain deploy.yml runs for the app images. Manual only: production pins the
-# digest this prints in deploy/production/compose.yml (and backup/Dockerfile, once it is ported to Wolfi) by hand, because a new digest can mean a new
-# glibc, and that is a planned REINDEX (cw-refresh-collation; deploy/production/README.md), never an automatic roll.
+# digest this prints in deploy/production/compose.yml and in backup/Dockerfile's POSTGRES_IMAGE default by hand, because
+# a new digest can mean a new glibc, and that is a planned REINDEX (cw-refresh-collation; deploy/production/README.md), never an automatic roll.
 on:
   workflow_dispatch: {}
 
@@ -73,5 +73,5 @@ jobs:
             echo '```'
             echo "${IMAGE}:18-sha-${GITHUB_SHA}@${DIGEST}"
             echo '```'
-            echo "Pin it in deploy/production/compose.yml (and backup/Dockerfile once ported to Wolfi); read the README's Postgres image section first."
+            echo "Pin it in deploy/production/compose.yml and in deploy/production/backup/Dockerfile's POSTGRES_IMAGE default; read the README's Postgres image section first."
           } >> "$GITHUB_STEP_SUMMARY"

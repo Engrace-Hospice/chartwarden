@@ -244,7 +244,7 @@ manifest with sha256). Design, variables, key management and RPO/RTO: `docs/arch
 cd /opt/chartwarden    # after setting the BACKUP_* ids in .env.production and the files in ./secrets/ (DR/BCP §4.8.4)
 install -d -m 0700 -o 999 -g 999 secrets   # one file per secret, mode 0400, owner 999 (the image's postgres user)
 dc() { docker compose --env-file .env.production -f compose.yml -f compose.backup.yml "$@"; }
-dc build postgres                      # chartwarden-backup:local (pgvector/pgvector:pg18 + pgBackRest + mc)
+dc build postgres                      # chartwarden-backup:local (the signed Wolfi Postgres image + pgBackRest 2.60.0 built from source + mc)
 dc run --rm object-store-provision     # adds the backup's read-only SeaweedFS key (reader-policy.json)
 docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate --wait seaweedfs  # reload identities
 dc up -d postgres backup               # recreates postgres once (same volume) with archive_mode=on
@@ -404,33 +404,157 @@ alert, and the failed `deploy` workflow run is then the only signal.
 
 `postgres/Dockerfile` is ChartWarden's Postgres: PostgreSQL 18 + pgvector on Wolfi, with the base digest and every
 directly installed package pinned (the glibc locale packages follow the base's glibc) (0 HIGH/CRITICAL at pin time, against 4 CRITICAL / 77 HIGH for `pgvector/pgvector:pg18-bookworm`).
-Dev compose, every CI live-DB job and the restore drills build it from this folder. Production will run the copy that
+Dev compose, every CI live-DB job and the restore drills build it from this folder. Production runs the copy that
 `.github/workflows/postgres-image.yml` (manual, `main` only) builds, scans, signs and publishes as
-`ghcr.io/engrace-hospice/chartwarden-postgres`, once `compose.yml` pins it (until then it runs the Debian image in
-the table below). It opens a volume the Debian image created as is: postgres is uid/gid
-999, PGDATA is `/var/lib/postgresql/18/docker`, and the server also listens on `/var/run/postgresql`.
+`ghcr.io/engrace-hospice/chartwarden-postgres`. `compose.yml` pins its digest, and so does the `POSTGRES_IMAGE` default of
+`backup/Dockerfile`: production runs `postgres` through the backup overlay, so the image it actually starts is
+`chartwarden-backup:local`, built `FROM` that digest plus pgBackRest and `mc`. The image opens a volume the Debian image
+created as is: postgres is uid/gid 999, PGDATA is `/var/lib/postgresql/18/docker`, and the server also listens on
+`/var/run/postgresql`.
 
 **Collation.** glibc orders every text index. The Dockerfile asserts `GLIBC_VERSION`, so a bump that moves glibc fails
 the build. When glibc does change (the first start on a Debian-created volume: 2.36 → 2.44), Postgres logs
-`collation version mismatch` on every connection until the indexes are rebuilt. Stop `api` and `worker`, then:
+`collation version mismatch` on every connection until the indexes are rebuilt, and an index that is out of order
+returns wrong results and misses unique violations, so the app must not write before the refresh. Stop `api` and
+`worker`, then (`dc` is the overlay alias from "Backups and restore"):
 
 ```bash
-docker compose exec -u postgres postgres cw-refresh-collation   # REINDEX + REFRESH COLLATION VERSION, every database
+dc exec -u postgres postgres cw-refresh-collation   # REINDEX + REFRESH COLLATION VERSION, every database
 ```
 
-Range partitions need nothing more: every range partition key is a date or timestamp.
+It does not verify the result; the runbook below adds an amcheck pass. Range partitions need nothing more: every
+range partition key is a date or timestamp. A backup taken before a glibc move holds indexes in the old order, so
+restoring one onto the new image needs the same refresh before anything reads the restored database.
+
+**Migration runbook (Debian → Wolfi, one time).** Run it from `/opt/chartwarden` with `dc` defined as in "Backups and
+restore" (`deploy.sh` never recreates `postgres`; the overlay keeps WAL archiving on, see the `compose.backup.yml`
+header). Steps 1-2 change nothing that is running; the downtime is steps 3-9 and grows with the reindex.
+Preconditions: the release that carries the Wolfi `backup/Dockerfile` and the pinned `compose.yml` is deployed;
+`cosign` is installed (Supply chain, below); `docker login ghcr.io` was done on the host (the package is private) and
+it can reach cgr.dev and github.com (the build compiles pgBackRest); `dc ps backup` is healthy.
+
+1. **Verify the base digest.** Refuse to continue if anything below fails or prints nothing:
+
+   ```sh
+   digest=sha256:b325d5fd8f295ef1aaed77508f808fcbd573787ff0469de6126fdff4ae261636
+   ref=ghcr.io/engrace-hospice/chartwarden-postgres@$digest
+   id=https://github.com/Engrace-Hospice/chartwarden/.github/workflows/postgres-image.yml@refs/heads/main
+   grep -l "$digest" compose.yml backup/Dockerfile      # must list both files: the two pins agree
+   cosign verify "$ref" --certificate-identity "$id" --certificate-github-workflow-repository Engrace-Hospice/chartwarden \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null && echo signature ok
+   cosign verify-attestation "$ref" --type spdxjson --certificate-identity "$id" \
+     --certificate-github-workflow-repository Engrace-Hospice/chartwarden \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null && echo SBOM attestation ok
+   ```
+
+2. **Build the new backup image, and keep the Debian one.** The running containers keep their image until recreated:
+
+   ```sh
+   docker tag chartwarden-backup:local chartwarden-backup:debian-rollback   # PGDG may no longer carry pgbackrest 2.60.*: do not rely on rebuilding Debian
+   dc build postgres
+   docker run --rm --entrypoint sh chartwarden-backup:local -c '/lib/libc.so.6 | head -1; pgbackrest version; psql --version'   # glibc 2.44, pgBackRest 2.60.0, psql 18.6
+   ```
+
+3. **Maintenance on, clients off** (maintenance page, above). Nothing may write from here on:
+
+   ```sh
+   /opt/chartwarden/maintenance.sh on
+   dc stop api worker                  # and hl7-listener / rust when those profiles run; they are the only DB clients
+   ```
+
+4. **Fresh backup**, DB and objects. Continue only if it succeeds, and note the time and snapshot id: it is the
+   restore point if the migration must be undone.
+
+   ```sh
+   dc exec backup cw-backup.sh snapshot full
+   dc exec backup cw-backup.sh marker
+   dc exec -u postgres backup pgbackrest --stanza=chartwarden info     # the new full on repo1 and repo2
+   ```
+
+5. **Stop the sidecar, confirm no client is left, shut postgres down cleanly** (the 10 s default can end in SIGKILL):
+
+   ```sh
+   dc stop backup
+   dc exec -T postgres psql -U postgres -d postgres -Atc "SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend' AND pid <> pg_backend_pid()"   # 0
+   dc stop -t 120 postgres
+   ```
+
+6. **Start postgres on the Wolfi image** (same volume, archiving on). From here every connection logs `collation
+   version mismatch`: expected until step 7. The first recreate since `compose.yml` added the internal `rust-db`
+   network also attaches it:
+
+   ```sh
+   dc up -d --wait postgres
+   dc exec -T postgres psql -U postgres -d postgres -Atc "SHOW archive_mode" -c "SHOW server_version"   # on, 18.6
+   ```
+
+7. **Rebuild the indexes** (it prints recorded vs OS collation version per database; they must match):
+
+   ```sh
+   dc exec -u postgres postgres cw-refresh-collation
+   ```
+
+8. **Verify the indexes** with amcheck. The extension exists only inside a rolled-back transaction, so the database
+   keeps no trace of it. An `ERROR` or a non-zero exit means: keep `api`/`worker` stopped and `REINDEX` the named
+   index. Then confirm no database still reports a collation mismatch:
+
+   ```sh
+   dc exec -T -u postgres postgres sh -eu <<'SH'
+   for db in $(psql -X -At -d postgres -c "SELECT datname FROM pg_database WHERE datallowconn ORDER BY datname"); do
+     echo "== $db"
+     psql -X -v ON_ERROR_STOP=1 -d "$db" <<'SQL'
+   BEGIN;
+   CREATE EXTENSION amcheck;
+   SELECT count(*) AS btree_indexes, count(bt_index_check(index => c.oid, heapallindexed => true)) AS verified
+     FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_am a ON a.oid = c.relam
+    WHERE a.amname = 'btree' AND c.relkind = 'i' AND c.relpersistence <> 't' AND i.indisvalid;
+   ROLLBACK;
+   SQL
+   done
+   SH
+   dc exec -T postgres psql -U postgres -d postgres -Atc "SELECT count(*) FROM pg_database WHERE datallowconn AND datcollversion IS DISTINCT FROM pg_database_collation_actual_version(oid)"   # 0
+   ```
+
+9. **Start the sidecar and the app, then check.** `smoke.sh` probes the public hostnames, so maintenance goes off
+   first; on a failure turn it back on and use the rollback:
+
+   ```sh
+   dc up -d backup
+   dc up -d --wait api worker          # and hl7-listener / rust when you stopped them
+   /opt/chartwarden/maintenance.sh off
+   ./smoke.sh
+   ```
+
+10. **Take a new full backup** (the first of the Wolfi-built cluster; it also checks that WAL reaches both
+    repositories): `dc exec backup cw-backup.sh snapshot full`. Expect no `backup.*` notice on `OPS_ALERT_WEBHOOK_URL`.
+    Within a week run the monthly isolated restore and verifier (Ops runbook §5.7) so a restore from this image is
+    proven on production data. Delete `chartwarden-backup:debian-rollback` once that passes.
+
+**Rollback.** Before step 6 nothing has changed: `dc up -d backup`, `dc up -d --wait api worker`, maintenance off.
+After it, glibc moves back to 2.36, so the indexes are rebuilt again before anything writes:
+
+1. `maintenance.sh on`, `dc stop api worker backup`, `dc stop -t 120 postgres`.
+2. Put the Debian image back: `docker tag chartwarden-backup:debian-rollback chartwarden-backup:local`, and revert
+   `backup/Dockerfile` and `compose.yml` through git (a PR, so the next release does not rebuild Wolfi over that tag)
+   to `pgvector/pgvector:pg18-bookworm@sha256:c29f30688a9ad961691bdf0ec1650717cc132a5814619d80f80463d6e4c42e47`.
+3. `dc up -d --no-build --wait postgres`, then run the refresh by copy (the Debian image has no script; snippet under
+   "Bumping it") and the step 8 checks.
+4. `dc up -d backup`, `dc up -d --wait api worker`, `maintenance.sh off`, `./smoke.sh`, then a new full backup.
 
 **Bumping it.** Refresh the base digest and the package pins in the Dockerfile (its header says how), open a PR (the
 `Postgres image smoke and CVE scan` job in `pr-image-gate.yml` builds, starts and scans it), merge, run
-`gh workflow run postgres-image.yml`, and pin the digest the run prints in `compose.yml`. `backup/Dockerfile` cannot just take it as a base (it installs
-pgBackRest with apt and execs Debian's entrypoint): it needs its own Wolfi port, proven by `backup:restore-drill`, first.
-Apply with a fresh pgBackRest backup first, then `docker compose ... up -d --wait postgres` (`deploy.sh` never recreates
-postgres), then `cw-refresh-collation` if `GLIBC_VERSION` changed. Rollback is the previous digest, plus a
-refresh again when glibc differs. An image without the script (the Debian one) takes it by copy, from this folder:
+`gh workflow run postgres-image.yml`, and pin the digest the run prints in `compose.yml` AND in the `POSTGRES_IMAGE`
+default of `backup/Dockerfile`, which takes the image as its base; `bun run backup:coordinated-drill` and
+`backup:restore-drill` prove the pair. Apply it as the runbook above does (verify the digest, rebuild the backup image,
+fresh backup, `dc up -d --wait postgres`; `deploy.sh` never recreates postgres), then `cw-refresh-collation` and the
+amcheck pass if `GLIBC_VERSION` changed. Rollback is the previous digest (keep the previous `chartwarden-backup:local`
+tagged), plus a refresh again when glibc differs. An image without the script (the Debian one) takes it by copy; the
+VPS has no `postgres/` folder, so lift the script out of the published image (`ref` as in step 1):
 
 ```bash
-docker compose cp postgres/cw-refresh-collation.sh postgres:/tmp/cw-refresh-collation.sh
-docker compose exec -u postgres postgres sh /tmp/cw-refresh-collation.sh
+docker run --rm --entrypoint cat "$ref" /usr/local/bin/cw-refresh-collation > cw-refresh-collation.sh && chmod 0644 cw-refresh-collation.sh
+dc cp cw-refresh-collation.sh postgres:/tmp/cw-refresh-collation.sh
+dc exec -u postgres postgres sh /tmp/cw-refresh-collation.sh
 ```
 
 ## Infrastructure images: digest pins (#855)
@@ -441,7 +565,7 @@ arch:compose-policy` (part of `arch:fitness`) fails on any literal image without
 
 | Service | Image | Version at pin time (2026-10-27) |
 |---|---|---|
-| postgres | `pgvector/pgvector:pg18-bookworm` | PostgreSQL 18.6, Debian 12 / glibc 2.36 (same digest as `backup/Dockerfile`) |
+| postgres | `ghcr.io/engrace-hospice/chartwarden-postgres` | PostgreSQL 18.6 + pgvector 0.8.7, Wolfi / glibc 2.44 (pinned 2026-11-08; built by `postgres-image.yml`; same digest as `backup/Dockerfile`'s `POSTGRES_IMAGE` default) |
 | valkey | `valkey/valkey:8-alpine` | Valkey 8.x |
 | seaweedfs | `chrislusf/seaweedfs:4.52` | SeaweedFS 4.52 (pinned 2026-11-05) |
 | fluent-bit | `fluent/fluent-bit:5.1.5` | Fluent Bit 5.1.5 (pinned 2026-11-05) |
@@ -461,10 +585,9 @@ registry you control (e.g. GHCR) before relying on it for disaster recovery.
 
 **Updating an image**
 1. Resolve the new digest: `docker buildx imagetools inspect <repo:tag>` (the top-level `Digest:` is the index digest).
-2. Edit `compose.yml` (tag and digest together) and the version table above; if it is postgres, update
-   `backup/Dockerfile` to the same digest. Keep the `-bookworm` suffix: a different Debian release changes glibc,
-   whose collation orders every text index, so it is a REINDEX migration, not a digest bump. `deploy.sh` never
-   recreates postgres; apply a new digest with `docker compose --env-file .env.production -f compose.yml up -d --wait postgres`.
+2. Edit `compose.yml` (tag and digest together) and the version table above. Postgres is the exception: follow
+   "Bumping it" under "Postgres image" (the digest also moves in `backup/Dockerfile`, and a glibc change is a
+   REINDEX migration, not a digest bump). `deploy.sh` never recreates postgres.
 3. Restore-test: run the restore drill (`docs/runbooks/m36-restore-drill.md`; for postgres/minio also restore the
    previous backup onto the new image) and `smoke.sh` against a staging stack.
 4. `bun run arch:compose-policy`, then ship through the normal PR/deploy path. Rollback is the previous digest.
@@ -548,6 +671,11 @@ and nothing else, and that identity is never accepted for the other images eithe
 (no override), `CHARTWARDEN_COSIGN_IDENTITY` does not apply to it, and `CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED` does not
 apply either: a Rust image is never rolled unverified. Only the verified digest is written, to `CHARTWARDEN_RUST_IMAGE` in
 `.env.production`. `deploy.sh` never pulls or starts the `rust` compose service.
+
+**The Postgres image.** `deploy.sh` never touches `postgres`, so nothing verifies its image at deploy time. The
+operator verifies the signature and the SBOM attestation by hand against
+`https://github.com/Engrace-Hospice/chartwarden/.github/workflows/postgres-image.yml@refs/heads/main` before building
+or recreating (step 1 of the migration runbook under "Postgres image"), and a digest that fails is not used.
 
 ## Rolling back
 

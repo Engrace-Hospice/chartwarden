@@ -710,7 +710,7 @@ docker compose --env-file .env.production -f compose.yml exec -T postgres psql -
 docker compose --env-file .env.production -f compose.yml exec -T postgres psql -U postgres -d postgres -Atc "SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate"   # expect exactly: postgres, wardenx (migration 1142 is cluster-global)
 # 2. Stop everything (NEVER -v) with a long grace so postgres can checkpoint (the default 10 s can end in SIGKILL). Downtime starts here.
 docker compose --env-file .env.production -f compose.yml down -t 120
-docker run --rm -u postgres -v wardenx_postgres-data:/var/lib/postgresql:ro --entrypoint pg_controldata pgvector/pgvector:pg18 /var/lib/postgresql/18/docker | grep 'Database cluster state'   # must say: shut down
+docker run --rm -u postgres -v wardenx_postgres-data:/var/lib/postgresql:ro --entrypoint pg_controldata ghcr.io/engrace-hospice/chartwarden-postgres@sha256:b325d5fd8f295ef1aaed77508f808fcbd573787ff0469de6126fdff4ae261636 /var/lib/postgresql/18/docker | grep 'Database cluster state'   # must say: shut down (any PG18 image reads it; this is the digest compose.yml pins)
 # 3. Copy + verify. Refuses if a container still uses a source volume or a destination already holds data; never writes to the source.
 sh volumes-copy.sh copy wardenx chartwarden        # one "identical" digest line per volume; any non-zero exit: STOP (Rollback)
 sh volumes-copy.sh verify wardenx chartwarden      # REQUIRED green before step 4 (re-reads both sides; read-only)
