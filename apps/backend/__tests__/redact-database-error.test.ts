@@ -16,6 +16,7 @@ import { applyErrorHandler } from "../src/bootstrap/plugins/error-handler";
 import { buildLoggerOptions } from "../src/bootstrap/plugins/logger";
 import {
   hasDatabaseErrorInChain,
+  isDefiniteDatabaseRefusal,
   redactDatabaseError,
   redactPgMessage,
   redactSqlLiterals,
@@ -388,5 +389,76 @@ describe("M34 best-effort warn sinks log a database error through the redacting 
     expect(line).toBeTruthy();
     for (const value of PHI) expect(line).not.toContain(value);
     expect(line).toContain("23505"); // still diagnosable
+  });
+});
+
+describe("isDefiniteDatabaseRefusal — whether a failed COMMIT is certainly a rollback", () => {
+  /** A `pg` DatabaseError with the given SQLSTATE (the shape the driver presents: severity and routine accompany `code`). */
+  const pgError = (code: string, cause?: unknown): Error =>
+    Object.assign(new Error(`database said ${code}`), {
+      code,
+      severity: "ERROR",
+      routine: "r",
+      ...(cause === undefined ? {} : { cause }),
+    });
+
+  it.each([
+    ["a unique violation", "23505"],
+    ["a check violation raised by a deferred constraint", "23514"],
+    ["a serialization failure", "40001"],
+    ["a deadlock", "40P01"],
+    ["a query canceled by the statement timeout", "57014"],
+    ["an exception raised by a trigger", "P0001"],
+  ])("is true for %s (%s): the database refused it, so it rolled back", (_name, code) => {
+    expect(isDefiniteDatabaseRefusal(pgError(code))).toBe(true);
+  });
+
+  it.each([
+    ["a connection exception", "08006"],
+    ["a protocol violation (PgBouncer)", "08P01"],
+    ["an admin shutdown", "57P01"],
+    ["a crash shutdown", "57P02"],
+    ["cannot connect now", "57P03"],
+    ["statement completion unknown", "40003"],
+    ["a server I/O failure", "58030"],
+    ["an internal error", "XX000"],
+    ["a corrupted index", "XX002"],
+  ])(
+    "is false for %s (%s): the outcome is unknown even though the database spoke",
+    (_name, code) => {
+      expect(isDefiniteDatabaseRefusal(pgError(code))).toBe(false);
+    },
+  );
+
+  it("is false when no database answered: a socket error, a plain error, a non-error", () => {
+    // Node's EPIPE is five uppercase characters too, but it is no pg error (no severity or routine).
+    expect(
+      isDefiniteDatabaseRefusal(Object.assign(new Error("write EPIPE"), { code: "EPIPE" })),
+    ).toBe(false);
+    expect(isDefiniteDatabaseRefusal(new Error("Connection terminated unexpectedly"))).toBe(false);
+    expect(isDefiniteDatabaseRefusal("boom")).toBe(false);
+    expect(isDefiniteDatabaseRefusal(undefined)).toBe(false);
+  });
+
+  it("looks through a wrapper: a definite SQLSTATE under a Drizzle error is true, an unknown one is false", () => {
+    const wrap = (cause: unknown) =>
+      new DrizzleQueryError("commit", [], cause instanceof Error ? cause : undefined);
+    expect(isDefiniteDatabaseRefusal(wrap(pgError("40001")))).toBe(true);
+    expect(isDefiniteDatabaseRefusal(wrap(pgError("57P01")))).toBe(false);
+    expect(
+      isDefiniteDatabaseRefusal(Object.assign(new Error("wrapped"), { cause: pgError("23505") })),
+    ).toBe(true);
+  });
+
+  it("lets an unknown-outcome SQLSTATE anywhere on the chain win over a definite one", () => {
+    expect(isDefiniteDatabaseRefusal(pgError("23505", pgError("08006")))).toBe(false);
+    expect(isDefiniteDatabaseRefusal(pgError("08006", pgError("23505")))).toBe(false);
+  });
+
+  it("terminates on a cause cycle", () => {
+    const a = pgError("23505");
+    const b = Object.assign(new Error("b"), { cause: a });
+    Object.assign(a, { cause: b });
+    expect(isDefiniteDatabaseRefusal(a)).toBe(true);
   });
 });

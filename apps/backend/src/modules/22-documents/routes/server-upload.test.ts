@@ -373,6 +373,28 @@ describe("createServerUploadService: the put and the commit while the caller hol
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["08P01", "a protocol violation answered by a pooler"],
+    ["57P01", "an admin shutdown"],
+    ["40003", "statement completion unknown"],
+    ["58030", "a server I/O error"],
+    ["XX000", "an internal error"],
+  ])(
+    "KEEPS the object when the COMMIT fails with SQLSTATE %s (%s): the database spoke, but the outcome is unknown",
+    async (code) => {
+      const unknown = Object.assign(new Error(`terminated ${code}`), { code, severity: "FATAL" });
+      const { db } = fakeDb({ failCommit: unknown });
+      const mem = createInMemoryObjectStore();
+      const warn = vi.fn();
+      const svc = createServerUploadService({ db, objects: mem.store, logger: { warn } });
+
+      await expect(svc.createDocument(ORG, ACTOR, ARGS)).rejects.toThrow(`terminated ${code}`);
+
+      expect(mem.objects.size).toBe(1);
+      expect(warn).toHaveBeenCalledOnce();
+    },
+  );
+
   it("finds the SQLSTATE on the cause of a wrapped error (a driver wrapper), and a Node EPIPE is not a SQLSTATE", async () => {
     const wrapped = Object.assign(new Error("Failed query"), {
       cause: Object.assign(new Error("deadlock detected"), { code: "40P01", severity: "ERROR" }),

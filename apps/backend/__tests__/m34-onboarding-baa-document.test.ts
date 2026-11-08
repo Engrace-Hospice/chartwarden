@@ -543,6 +543,27 @@ describe("service: uploadBaaDocument", () => {
     expect(discard).toHaveBeenCalledOnce();
   });
 
+  it.each(["08P01", "57P01", "40003", "58030", "XX000"])(
+    "KEEPS the stored object when the COMMIT fails with SQLSTATE %s: the database spoke, but the outcome is unknown",
+    async (code) => {
+      const unknown = Object.assign(new Error(`terminated ${code}`), { code, severity: "FATAL" });
+      const { db } = stubDb("onboarding", { failCommit: unknown });
+      const { port, discard } = fakePort();
+      const service = buildDrizzleOnboardingDataService({
+        db,
+        resolveTenant,
+        baaDocuments: port,
+        warn: () => undefined,
+      });
+
+      await expect(service.uploadBaaDocument(OPERATOR, "tenant-b", INPUT, REASON)).rejects.toThrow(
+        `terminated ${code}`,
+      );
+
+      expect(discard).not.toHaveBeenCalled();
+    },
+  );
+
   it("discards nothing when the file itself was refused (nothing was stored)", async () => {
     const { db } = stubDb("onboarding");
     const refusing = fakePort({

@@ -257,6 +257,8 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
     tenantPool = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
+    // pg emits 'error' on a CHECKED-OUT client whose backend is terminated (the commit-kill test below), and nothing listens for it there.
+    tenantPool.pool.on("connect", (client) => client.on("error", () => {}));
     const provisioned = spawnSync("bun", ["run", "scripts/db/provision-runtime-roles.ts"], {
       cwd: join(__dirname, "../../.."),
       env: {
@@ -513,6 +515,53 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
       }
       expect((await documentsOf(ORG_B)).length).toBe(before.docs);
       expect(objects.objects.size).toBe(before.objects);
+    });
+  });
+
+  describe("a COMMIT that fails on the real driver and real drizzle rollback", () => {
+    /**
+     * A constraint trigger that fires when the transaction COMMITS (deferred), so the callback and the audit row have finished and the
+     * failure comes from the commit itself, through the real driver and drizzle's own `rollback` handling (nothing here is a hand-built error).
+     */
+    const withCommitTimeFailure = async (body: string, run: () => Promise<void>) => {
+      await admin.query(
+        `CREATE FUNCTION baa_live_commit_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN ${body} RETURN NULL; END $$`,
+      );
+      await admin.query(
+        `CREATE CONSTRAINT TRIGGER baa_live_commit_fail_trg AFTER INSERT ON document DEFERRABLE INITIALLY DEFERRED
+           FOR EACH ROW WHEN (NEW.aggregate_type = 'tenant_baa') EXECUTE FUNCTION baa_live_commit_fail()`,
+      );
+      try {
+        await run();
+      } finally {
+        await admin.query("DROP TRIGGER baa_live_commit_fail_trg ON document");
+        await admin.query("DROP FUNCTION baa_live_commit_fail()");
+      }
+    };
+
+    it("REMOVES the object when the database refuses the COMMIT with a definite error (a deferred check, 23514): it rolled back, so the object points at nothing", async () => {
+      const before = { docs: (await documentsOf(ORG_B)).length, objects: objects.objects.size };
+      await withCommitTimeFailure(
+        "RAISE EXCEPTION 'baa live: deferred check refused' USING ERRCODE = '23514';",
+        async () => {
+          const res = await upload("baa-b");
+          expect(res.statusCode, res.body).toBe(500);
+        },
+      );
+      expect((await documentsOf(ORG_B)).length).toBe(before.docs);
+      expect(objects.objects.size).toBe(before.objects);
+    });
+
+    it("KEEPS the object when the server kills the connection at COMMIT (the outcome is unknown, and here nothing landed: a possible orphan, never a lost agreement)", async () => {
+      const before = { docs: (await documentsOf(ORG_B)).length, objects: objects.objects.size };
+      await withCommitTimeFailure("PERFORM pg_terminate_backend(pg_backend_pid());", async () => {
+        const res = await upload("baa-b");
+        expect(res.statusCode, res.body).toBe(500);
+      });
+      // Terminated before it committed: no row. The object is kept all the same, because nothing the process could see said the commit
+      // had not landed (a lost connection answers neither way).
+      expect((await documentsOf(ORG_B)).length).toBe(before.docs);
+      expect(objects.objects.size).toBe(before.objects + 1);
     });
   });
 

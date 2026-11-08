@@ -20,7 +20,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { DocumentAggregateType, OrgId } from "@chartwarden/types";
 import { ChartWardenError, DegradedError, NotFoundError } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { databaseAnsweredInChain } from "../../../bootstrap/redact-database-error";
+import { isDefiniteDatabaseRefusal } from "../../../bootstrap/redact-database-error";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";
 import { assertKindWritable } from "./immutable-kinds";
@@ -369,9 +369,10 @@ export function createServerUploadService(deps: ServerUploadDeps): ServerUploadS
     try {
       return await commit();
     } catch (error) {
-      // Ambiguous only when the callback finished and the failure is NOT an answer from the database: a SQLSTATE means the database said
-      // no and rolled back, so the object points at nothing; a socket or connection loss leaves it unknown whether the commit landed.
-      if (options.commitMayHaveLanded?.() && !databaseAnsweredInChain(error)) {
+      // Ambiguous when the callback finished and the failure is not a refusal the database answered with a definite error class (a
+      // serialization failure, a deferred constraint: it rolled back, so the object points at nothing). A socket or connection loss, or
+      // a connection-class or server-error SQLSTATE, leaves it unknown whether the commit landed.
+      if (options.commitMayHaveLanded?.() && !isDefiniteDatabaseRefusal(error)) {
         deps.logger?.warn(
           { organizationId, objectKey },
           "m22 upload: the commit failed after the rows were written, so the object is kept (the commit may have landed); an orphan sweep, not this path, removes it if it did not",

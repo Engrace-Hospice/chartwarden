@@ -27,8 +27,9 @@ export interface WriteSpec {
   /**
    * Runs when the write fails (before the error is rethrown), for a callback that made something the transaction cannot roll back (an
    * object in a store). `commitReached` is true when the callback and the audit row finished and the failure came from the COMMIT itself
-   * WITHOUT the database answering (no SQLSTATE: a socket or connection loss): then the rows may have landed, and a caller must not undo
-   * what they point at. A commit the database refused (a SQLSTATE) is a definite rollback, so `commitReached` is false.
+   * without a refusal the database answered with a definite error class (a socket or connection loss, or a connection-class or
+   * server-error SQLSTATE): then the rows may have landed, and a caller must not undo what they point at. A commit the database refused
+   * with a definite error class (a serialization failure, a deferred constraint) is a rollback, so `commitReached` is false.
    */
   readonly onFailure?: (info: { readonly commitReached: boolean }) => Promise<void>;
 }
