@@ -1360,8 +1360,21 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
     for (const kind of ["retryable", "permanent"] as const) {
       it(`a late ${kind.toUpperCase()} failure after the drain held the order is settled as an ordinary failure: ${kind === "retryable" ? "requeued, one retry spent, the marker replaced" : "the order fails and the administrators are told"}`, async () => {
         const { orderId, transmissionId } = await queued();
+        const keys: string[] = [];
+        const resumedWith: (string | undefined)[] = [];
         const vendor = new FakeDoseSpotVendor({
-          transmit: async () => {
+          transmit: async (_org, _payload, key, resume) => {
+            keys.push(key);
+            resumedWith.push(resume?.createdPrescriptionId);
+            if (resume?.createdPrescriptionId !== undefined) {
+              // the SECOND attempt: handed the persisted id, it only re-runs the send
+              await resume.beforeSend?.();
+              return {
+                dosespotPrescriptionId: resume.createdPrescriptionId,
+                transmittedAt: minutes(5).toISOString(),
+              };
+            }
+            await resume?.onCreated?.("rx-created-late"); // the create answered and was persisted, then the send is slow ...
             await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A);
             expect((await txRow(transmissionId as string)).last_error_class).toBe(
               "unconfirmed_outcome",
@@ -1379,6 +1392,17 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
             s: "queued",
           });
           expect(t.retry_count).toBe(1);
+          expect(t.dosespot_prescription_id).toBe("rx-created-late"); // the persisted created id survives the requeue
+          // ... and the next attempt re-sends THAT prescription under the SAME Idempotency-Key (the second attempt's backoff has elapsed)
+          const second = await runTransmitNewRxForOrg(deps(vendor, minutes(5)), ORG_A);
+          expect(second).toMatchObject({ claimed: 1, transmitted: 1 });
+          expect(resumedWith).toEqual([undefined, "rx-created-late"]);
+          expect(keys).toHaveLength(2);
+          expect(keys[1]).toBe(keys[0]);
+          expect(await orderRow(orderId)).toMatchObject({
+            status: "transmitted",
+            rx: "rx-created-late",
+          });
         } else {
           expect(pass).toMatchObject({ failed: 1, requeued: 0, held: 0 });
           expect(await orderRow(orderId)).toMatchObject({ status: "transmission_failed" });
@@ -1516,7 +1540,10 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       expect(pass).toMatchObject({ claimed: 1, transmitted: 1, skipped: 0, held: 0 });
       expect(await orderRow(orderId)).toMatchObject({ status: "transmitted", rx: "rx-benign" });
       expect((await txRow(transmissionId as string)).transmission_succeeded_at).not.toBeNull();
-      expect((await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A)).released).toBe(0);
+      // nothing is left over from the benign writes: no hold marker, no "unconfirmed" announcement, and the read says transmitted
+      expect((await txRow(transmissionId as string)).last_error_class).toBeNull();
+      expect(await eventsFor("m12.medication_order.transmission_unconfirmed", orderId)).toEqual([]);
+      expect((await backend.getTransmission(ORG_A, orderId)).status).toBe("transmitted");
     });
 
     // LOW (review of d333d1d9d..HEAD): the token after the fence is a per-call NONCE (a uuid the fence writes), not the app-clock stamp, so two cycles
