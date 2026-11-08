@@ -7,7 +7,9 @@
 //   m12.medication_order.transmission_unconfirmed -> the same name  critical  (seeded tenant_admins rule): DoseSpot accepted a NewRx call
 //                           but did not answer readably, so the order is HELD (never retried) until a person checks the prescriber's DoseSpot account
 //   m12.medication_order.transmission_failed -> the same name  critical  (seeded tenant_admins rule): the retry budget was used up (or an
-//                           administrator resolved a held order as never sent): the prescription has NOT reached the pharmacy
+//                           administrator resolved a held order as never sent): the prescription has NOT reached the pharmacy. One class is
+//                           different: `no_pharmacy_ack_24h` (the status sweep) is an order that WAS sent with no pharmacy acknowledgment
+//                           in 24 hours, so it may still reach the pharmacy and is told apart
 //
 // `m12.dosespot_config.deactivated` is NOT consumed here: the clinic service raises that alert directly after its commit, so a second
 // path would page twice (its seeded rule is in the same file as these two).
@@ -58,8 +60,15 @@ const FAILED_DETAIL =
   "A signed prescription could not be sent to DoseSpot (every attempt failed, or the order cannot be sent as written). It has NOT reached the pharmacy. The prescriber must retransmit it from the order page.";
 const RESOLVED_NOT_SENT_DETAIL =
   "An administrator confirmed that this prescription never reached DoseSpot. It has NOT been sent. The prescriber must retransmit it from the order page.";
+const NO_PHARMACY_ACK_DETAIL =
+  "A signed prescription was sent to DoseSpot, but no pharmacy acknowledgment arrived within 24 hours. It may still reach the pharmacy. Check the prescriber's DoseSpot account for its status before retransmitting it, so it is not sent twice.";
+/** `transmission_failed` sentences by the class M12 named; any other class is an order that never left. */
+const FAILED_DETAIL_BY_CLASS: Readonly<Record<string, string>> = {
+  resolved_not_sent: RESOLVED_NOT_SENT_DETAIL,
+  no_pharmacy_ack_24h: NO_PHARMACY_ACK_DETAIL,
+};
 const UNCONFIRMED_DETAIL =
-  "DoseSpot accepted this prescription request but its answer could not be read, so the prescription may already exist there. ChartWarden is holding the order and will not send it again. Check the prescriber's DoseSpot account, then open the order and resolve it: if the prescription is there, mark it sent and enter its DoseSpot prescription id; if it is not, mark it not sent and the prescriber can retransmit it.";
+  "A prescription request reached DoseSpot but its answer was missing or could not be read, so the prescription may already exist there, or be on its way to the pharmacy. ChartWarden is holding the order and will not send it again. Check the prescriber's DoseSpot account, then open the order and resolve it: if the prescription is there, mark it sent and enter its DoseSpot prescription id; if it is not, mark it not sent and the prescriber can retransmit it.";
 function requireString(p: Record<string, unknown>, key: string, eventName: string): string {
   const v = p[key];
   if (typeof v !== "string" || v.length === 0) {
@@ -122,7 +131,7 @@ export function planDosespotAlert(event: DispatchableOutboxEvent): DosespotAlert
         orderId,
         lastErrorClass,
         retryCount,
-        detail: lastErrorClass === "resolved_not_sent" ? RESOLVED_NOT_SENT_DETAIL : FAILED_DETAIL,
+        detail: FAILED_DETAIL_BY_CLASS[lastErrorClass] ?? FAILED_DETAIL,
       },
     };
   }

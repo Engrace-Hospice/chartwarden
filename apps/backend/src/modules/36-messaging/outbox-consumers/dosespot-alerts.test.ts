@@ -108,6 +108,8 @@ describe("M36 dosespot-alerts consumer", () => {
       lastErrorClass: "unconfirmed_outcome",
     });
     expect(String(plan.payload.detail)).toMatch(/DoseSpot account/);
+    // a held order (an unconfirmed create or SEND) may have left: it is never told it has not
+    expect(String(plan.payload.detail)).not.toMatch(/NOT reached the pharmacy/);
     expect(() =>
       planDosespotAlert(
         event("m12.medication_order.transmission_unconfirmed", { lastErrorClass: "x" }),
@@ -151,6 +153,22 @@ describe("M36 dosespot-alerts consumer", () => {
         event("m12.medication_order.transmission_failed", { lastErrorClass: "x", retryCount: 1 }),
       ),
     ).toThrow(/orderId/);
+  });
+
+  it("tells an order that WAS sent but had no pharmacy acknowledgment in 24 hours apart: it may still reach the pharmacy", () => {
+    const plan = planDosespotAlert(
+      event("m12.medication_order.transmission_failed", {
+        orderId: "order-4",
+        lastErrorClass: "no_pharmacy_ack_24h",
+        retryCount: 0,
+      }),
+    );
+    const detail = String(plan.payload.detail);
+    expect(detail).toMatch(/sent to DoseSpot/);
+    expect(detail).toMatch(/24 hours/);
+    expect(detail).toMatch(/may still reach the pharmacy/);
+    expect(detail).toMatch(/DoseSpot account/);
+    expect(detail).not.toMatch(/NOT reached the pharmacy/);
   });
 
   it("refuses an event it does not own (the deactivation alert is raised directly, so a second path would page twice)", () => {
