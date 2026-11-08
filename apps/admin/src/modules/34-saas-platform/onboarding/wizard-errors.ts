@@ -37,8 +37,9 @@ export const WIZARD_ERROR_COPY: OpsErrorCopy = {
     "ChartWarden staff cannot be a tenant's compliance officer. Pick one of the customer's own staff.",
   BAA_UPLOAD_TOO_LARGE:
     "The signed agreement is too large to upload. It can be at most 10 MiB; save it as a smaller PDF and try again.",
+  // A 413 with no envelope comes from a proxy in front of the API, whose cap may be wrong: do not quote the API's limit.
   PAYLOAD_TOO_LARGE:
-    "That upload is too large. The signed agreement can be at most 10 MiB; save it as a smaller PDF and try again.",
+    "The server refused this upload as too large. If the file is under 10 MiB, tell engineering: the upload should have been accepted.",
   BAA_DOCUMENT_REQUIRED: "An executed BAA needs the document id of the signed agreement.",
   INVALID_ORG_TIMEZONE: "That is not a valid time zone. Use an IANA name such as America/Denver.",
   INVALID_DISPLAY_NAME: "That display name is not valid.",
