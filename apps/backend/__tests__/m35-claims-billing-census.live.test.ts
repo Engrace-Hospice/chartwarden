@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { registerSeam } from "../src/bootstrap/seams/registry";
 import { buildPatientCensusReader } from "../src/modules/05-patient/census-reader";
 import { buildDrizzleAddonService } from "../src/modules/35-subscription/addon/addon-service";
 import {
@@ -239,15 +240,30 @@ describe.skipIf(!DB_URL)("ADR-0108 claims-billing census — LIVE Postgres", () 
     );
     expect(rows).toEqual([{ total_quantity: "3", inclusive_quantity: "0", overage_quantity: "3" }]);
 
+    // ADR-0053 amendment 2026-11-06: `entitled` / `reason` are the GATE's decision (M23, from the org's clearinghouse choice),
+    // read through its seam; the add-on row only informs `status` and the census count. A stub stands in for M23 here:
+    // org A chose a live clearinghouse, orgs B and C did not (B holds an ACTIVE add-on and is still refused: no coupling).
+    registerSeam("ClaimsBillingEntitlementReader", {
+      entitlementForOrg: async (org) =>
+        org === ORG_A
+          ? { entitled: true }
+          : { entitled: false, reason: "clearinghouse_outside" as const },
+    });
     const addons = buildDrizzleAddonService(app.db);
     expect(await addons.claimsBillingForOrg(ORG_A)).toMatchObject({
       entitled: true,
       status: "active",
       activePatientCount: 3,
     });
+    expect(await addons.claimsBillingForOrg(ORG_B)).toMatchObject({
+      entitled: false,
+      reason: "clearinghouse_outside",
+      status: "active",
+    });
     expect(await addons.claimsBillingForOrg(ORG_C)).toMatchObject({
       entitled: false,
-      reason: "never_purchased",
+      reason: "clearinghouse_outside",
+      status: "none",
       activePatientCount: null,
     });
     const platform = createDbClient({ connectionString: DB_URL as string });

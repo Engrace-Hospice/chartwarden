@@ -40,6 +40,63 @@ function buildApp(
 const hit = (app: ReturnType<typeof buildApp>, org: string, user: string, url = "/limited") =>
   app.inject({ method: "GET", url, headers: { "x-test-org": org, "x-test-user": user } });
 
+describe("createRouteRateLimit scopeOf (a platform operator acts on a tenant: count per TARGET org)", () => {
+  const PLATFORM_ORG = "00000000-0000-0000-0000-0000000000ff";
+  function buildScopedApp(store: RateLimitStore) {
+    const app = Fastify();
+    applyErrorHandler(app);
+    app.addHook("onRequest", async (request) => {
+      const user = request.headers["x-test-user"];
+      (request as { context?: unknown }).context = {
+        correlationId: "cid-test",
+        organizationId: PLATFORM_ORG, // every operator belongs to the platform org
+        ...(typeof user === "string" ? { userId: user } : {}),
+      };
+    });
+    const limited = createRouteRateLimit({
+      store,
+      limit: LIMIT,
+      keyPrefix: "scoped",
+      scopeOf: (request) => (request.params as { orgSlug?: string }).orgSlug,
+    });
+    app.post("/tenants/:orgSlug/verify", { preHandler: [limited] }, async () => ({ ok: true }));
+    return app;
+  }
+  const verify = (app: ReturnType<typeof buildScopedApp>, slug: string, user: string) =>
+    app.inject({
+      method: "POST",
+      url: `/tenants/${slug}/verify`,
+      headers: { "x-test-user": user },
+    });
+
+  it("one tenant's budget is its own: exhausting it by several operators does not block another tenant", async () => {
+    const app = buildScopedApp(createInMemoryRateLimitStore());
+    for (let i = 0; i < 5; i++)
+      expect((await verify(app, "tenant-a", `op${i}`)).statusCode).toBe(200);
+    expect((await verify(app, "tenant-a", "op9")).statusCode).toBe(429); // tenant-a: 5/5 across five operators
+    expect((await verify(app, "tenant-b", "op9")).statusCode).toBe(200); // tenant-b is untouched
+  });
+
+  it("the same operator has a budget per tenant, not one across every tenant", async () => {
+    const app = buildScopedApp(createInMemoryRateLimitStore());
+    for (let i = 0; i < 3; i++) expect((await verify(app, "tenant-a", "op1")).statusCode).toBe(200);
+    expect((await verify(app, "tenant-a", "op1")).statusCode).toBe(429);
+    expect((await verify(app, "tenant-b", "op1")).statusCode).toBe(200);
+  });
+
+  it("keys name the target tenant, never the operator's own org", async () => {
+    const seen: string[] = [];
+    const store: RateLimitStore = {
+      increment: async (key) => {
+        seen.push(key);
+        return 1;
+      },
+    };
+    await verify(buildScopedApp(store), "tenant-a", "op1");
+    expect(seen).toEqual(["scoped:user:tenant-a:op1", "scoped:org:tenant-a"]);
+  });
+});
+
 describe("createRouteRateLimit", () => {
   it("allows exactly perUser requests, then 429s with the envelope and Retry-After", async () => {
     const app = buildApp(LIMIT, createInMemoryRateLimitStore());

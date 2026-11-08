@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 // ever stored here (D13, §8.7).
 import {
   type AnyPgColumn,
+  boolean,
   date,
   index,
   integer,
@@ -66,6 +67,17 @@ export const noeRecord = pgTable(
     // one (M23 §2.2); the biller's reason stays here and never reaches an event.
     correctsNoticeId: uuid("corrects_notice_id").references((): AnyPgColumn => noeRecord.id),
     correctionReason: text("correction_reason"),
+
+    // Migration 1353 — a tenant that bills outside ChartWarden files this notice itself. `pending` = parked for the tenant to
+    // file with its biller (still on the deadline tracker); `filed` = the tenant recorded the date it filed (the three
+    // filed_* columns are then all set, else all NULL — a CHECK). No state change: a parked notice stays draft / ready.
+    externalFilingStatus: text("external_filing_status").$type<"pending" | "filed">(),
+    filedExternallyOn: date("filed_externally_on"),
+    filedExternallyRecordedAt: timestamp("filed_externally_recorded_at", { withTimezone: true }),
+    filedExternallyByMembershipId: uuid("filed_externally_by_membership_id"), // logical FK → M2
+    // Migration 1353 — true when the external-filing RECORD wrote the breach stamp itself (a late record stamps its filed date); false
+    // for a stamp the deadline watchdog wrote, even on the same date. A withdrawal clears the stamp only when this is true.
+    externalFilingSetBreach: boolean("external_filing_set_breach").notNull().default(false),
 
     // Submission / acknowledgment pointers (latest):
     latestSubmissionId: uuid("latest_submission_id"),

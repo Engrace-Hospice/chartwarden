@@ -383,6 +383,17 @@ export interface NoticeCorrectionView<V> {
   readonly notice: V;
 }
 
+/**
+ * A tenant that bills outside ChartWarden files its NOE / NOTR itself (owner decision D4). `filed_externally_pending`: parked,
+ * "file with your biller" (the window keeps counting); `filed_externally`: the tenant recorded the date it filed. Null on
+ * ChartWarden's own path. The tenant's own statement, never Medicare's answer.
+ */
+export interface NoticeExternalFilingView {
+  readonly status: "filed_externally_pending" | "filed_externally";
+  readonly filedOn: string | null;
+  readonly recordedAt: string | null;
+}
+
 export interface NoeView extends NoticeAckOutcomeView, NoticeCorrectionLinkView {
   readonly noeId: string;
   readonly organizationId: string;
@@ -394,6 +405,7 @@ export interface NoeView extends NoticeAckOutcomeView, NoticeCorrectionLinkView 
   readonly electionEffectiveDate: string;
   readonly windowTargetAt: string;
   readonly windowBreachedAt: string | null;
+  readonly externalFiling: NoticeExternalFilingView | null;
   readonly noeControlNumber: string;
   readonly payerNoeControlNumber: string | null;
   readonly latestSubmissionId: string | null;
@@ -417,6 +429,7 @@ export interface NotrView extends NoticeAckOutcomeView, NoticeCorrectionLinkView
   readonly effectiveEndDate: string;
   readonly windowTargetAt: string;
   readonly windowBreachedAt: string | null;
+  readonly externalFiling: NoticeExternalFilingView | null;
   readonly state: NoticeState;
   readonly notrControlNumber: string;
   readonly payerNotrControlNumber: string | null;

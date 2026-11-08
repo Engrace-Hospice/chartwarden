@@ -159,6 +159,13 @@ export const UpdateRuleConfigBodySchema = Type.Object({
 export const CancelNoeBodySchema = Type.Object({ electionReversed: Type.Boolean() });
 export const CancelNotrBodySchema = Type.Object({ terminatingEventReversed: Type.Boolean() });
 
+// ── a tenant that bills outside ChartWarden records the date it filed its NOE / NOTR itself (owner decision D4) ──────
+// A date and nothing else: no free text (it could carry PHI), no extra keys. Org, user and membership come from the session.
+export const RecordExternalFilingBodySchema = Type.Object(
+  { filedOn: isoDate() },
+  { additionalProperties: false },
+);
+
 // ── corrected NOE / NOTR after a rejection (ch. 11 §20.1.1 / §20.1.2; migration 0378) ────────────────────
 // The biller's reason (kept on the corrected row; never in an event) and, optionally, the corrected notice date
 // (NOE: admission / election effective date; NOTR: effective end date). Everything else is copied.

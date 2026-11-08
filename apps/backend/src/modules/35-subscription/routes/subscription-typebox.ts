@@ -316,10 +316,14 @@ export const UsagePeriodDto = Type.Object({
 });
 export const UsageHistoryResponseDto = cursorPage(UsagePeriodDto);
 
-// ADR-0108 — the tenant's claims-billing add-on posture (the web ClaimsBillingNotice reads it). `status` is the
-// latest add-on row's status (`none` = never held); `reason` is set iff `entitled` is false. `activePatientCount` is
-// the current period's census count (null until the first census sweep for the org).
+// ADR-0108 (repurposed, ADR-0053 amendment 2026-11-06) — the tenant's claims-billing posture (the web ClaimsBillingNotice
+// reads it). `entitled` / `reason` follow the org's clearinghouse choice (M23): no add-on, no fee. `status` is still the
+// latest add-on row's status (`none` = never held), informational only; `activePatientCount` is the current period's census
+// count (null until the first census sweep for the org).
 export const ClaimsBillingDenyReasonLit = Type.Union([
+  Type.Literal("clearinghouse_not_chosen"),
+  Type.Literal("clearinghouse_outside"),
+  Type.Literal("clearinghouse_not_active"),
   Type.Literal("never_purchased"),
   Type.Literal("lapsed"),
   Type.Literal("subscription_suspended"),

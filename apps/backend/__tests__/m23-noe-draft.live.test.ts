@@ -27,7 +27,12 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { claimLateNoeSpans, noeTimeliness5d, repositories } from "@chartwarden/billing";
+import {
+  claimLateNoeSpans,
+  medicareReceiptDay,
+  noeTimeliness5d,
+  repositories,
+} from "@chartwarden/billing";
 import { createDbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
@@ -53,6 +58,7 @@ import {
   M23_OUTBOX_EVENTS,
   buildDrizzleM23WriteService,
   buildM23NoeDraftConsumer,
+  buildM23NoticeFiledLateConsumer,
   noeWindowTargetAt,
 } from "../src/modules/23-billing-medicare/index";
 import {
@@ -63,7 +69,10 @@ import {
   runAckPull999,
   runNoeSubmit,
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
+import { buildNoticeWindowPort } from "../src/modules/23-billing-medicare/jobs/m23-worker-ports";
+import { parkNoticeForExternalFiling } from "../src/modules/23-billing-medicare/jobs/notice-external-filing";
 import { buildClaimValidationContextPort } from "../src/modules/23-billing-medicare/services/claim-validation-context-port";
+import { withdrawExternalNoticeFiling } from "../src/modules/23-billing-medicare/services/external-notice-filing";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
@@ -106,6 +115,8 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
   let workerDeps: M23WorkerDeps;
   const alerts: { alertCode: string; organizationId: string; payload: Record<string, unknown> }[] =
     [];
+  const lateAlerts: Record<string, unknown>[] = [];
+  const lateOpsNotices: Record<string, unknown>[] = [];
   let parsed999: Parsed999[] = [];
   let parsed277: Parsed277ca[] = [];
   // The M23 write service the NOE routes call (correct / submit), as chartwarden_app with the real publisher.
@@ -294,6 +305,11 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
             return rows[0].ccn as string;
           },
           onSkipped: (info) => skips.push(info),
+        }),
+        // Round 2, Q4: a late externally recorded filing -> the M36 alert to the tenant and a platform-ops notice.
+        buildM23NoticeFiledLateConsumer({
+          alerts: { dispatch: async (a) => void lateAlerts.push(a) },
+          opsNotice: (n) => void lateOpsNotices.push(n),
         }),
       ],
       eventCatalog: catalog,
@@ -904,7 +920,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
       {
         organizationId: ORG_A,
         claimId: "",
-        submissionId: queued.submissionId,
+        submissionId: queued.submissionId as string,
         claimControlNumber: chain[1].noe_control_number,
         accepted: true,
         reasonCodes: [],
@@ -917,7 +933,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
       {
         organizationId: ORG_A,
         claimId: "",
-        submissionId: queued.submissionId,
+        submissionId: queued.submissionId as string,
         outcome: "accepted",
         payerClaimControlNumber: "ICN-CORRECTED",
         reasonCodes: [],
@@ -993,7 +1009,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
       {
         organizationId: ORG_A,
         claimId: "",
-        submissionId: queued.submissionId,
+        submissionId: queued.submissionId as string,
         claimControlNumber: "x",
         accepted: true,
         reasonCodes: [],
@@ -1005,7 +1021,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
       {
         organizationId: ORG_A,
         claimId: "",
-        submissionId: queued.submissionId,
+        submissionId: queued.submissionId as string,
         outcome: "accepted",
         payerClaimControlNumber: "ICN-ONTIME",
         reasonCodes: [],
@@ -1046,4 +1062,712 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     expect(await noesFor(admissionId)).toHaveLength(1);
     expect(await eventRows("m23.noe.correction_created", "correctsNoeId", noeId)).toHaveLength(0);
   }, 120_000);
+  // ── an organization that bills outside ChartWarden files its NOE itself (owner decision D4; migration 1353) ───────
+  // ChartWarden transmits NOTHING for it: submit parks the notice, the tenant records the date it filed, and the deadline
+  // tracker keeps counting until then. The pure rules are unit-tested (`m23-notice-external-filing.test.ts`); this proves the
+  // SQL: the CHECKs, the same-state patch under RLS as `chartwarden_app`, the audit trigger, and the two tracker scans.
+
+  // The Eastern (CMS) calendar day, as the service judges "today" (UTC is a day ahead in the Eastern evening).
+  const todayIso = () => medicareReceiptDay(new Date());
+
+  /** A bare NOE row. The ids that point at other modules are logical FKs, so none of them has to exist. */
+  async function seedNoe(
+    org: string,
+    over: { state?: string; effective?: string; status?: "pending" | "filed" | null } = {},
+  ): Promise<string> {
+    const effective = over.effective ?? addDays(todayIso(), -1);
+    const filed = over.status === "filed";
+    const { rows } = await admin.query(
+      `INSERT INTO noe_record (organization_id, provider_entity_id, patient_id, admission_id, election_period_id, state,
+              election_effective_date, window_target_at, noe_control_number, external_filing_status,
+              filed_externally_on, filed_externally_recorded_at, filed_externally_by_membership_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+      [
+        org,
+        providerOf[org],
+        randomUUID(),
+        randomUUID(),
+        randomUUID(),
+        over.state ?? "READY",
+        effective,
+        addDays(effective, 5),
+        `EXT-${randomUUID().slice(0, 12)}`,
+        over.status ?? null,
+        filed ? effective : null,
+        filed ? new Date() : null,
+        filed ? USER : null,
+      ],
+    );
+    return rows[0].id as string;
+  }
+  const noeRow = async (id: string) =>
+    (
+      await admin.query(
+        `SELECT state, version, external_filing_status, filed_externally_on::text AS filed_on,
+                filed_externally_by_membership_id AS by, window_breached_at::text AS breached,
+                external_filing_set_breach AS set_breach
+           FROM noe_record WHERE id=$1`,
+        [id],
+      )
+    ).rows[0] as Record<string, unknown>;
+
+  /** The M23 write service for a deployment whose orgs all bill outside (`outside`) or none does, with a recording queue. */
+  function externalFilingService(outside: boolean) {
+    const enqueued: unknown[] = [];
+    const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M23_OUTBOX_EVENTS]));
+    const service = buildDrizzleM23WriteService(handle.db as never, {
+      outbox: {
+        publish: (tx: unknown, e: Record<string, unknown>) =>
+          publisher.publish(tx as never, { ...e, callerModule: "m23" } as never),
+      } as never,
+      jobs: {
+        enqueue: async (...args: unknown[]) => {
+          enqueued.push(args);
+          return { jobId: randomUUID() };
+        },
+      },
+      providerCcn: {
+        ccnForProviderEntity: async (_tx, organizationId) => ccnOf[organizationId] as string,
+      },
+      billsOutside: async () => outside,
+    });
+    return { service, enqueued };
+  }
+
+  it("migration 1353: external_filing_status is pending | filed, and the three filed_* columns move with `filed` (all set, or all NULL)", async () => {
+    const id = await seedNoe(ORG_A);
+    expect(await noeRow(id)).toMatchObject({ external_filing_status: null, filed_on: null });
+    const set = (sql: string) => admin.query(`UPDATE noe_record SET ${sql} WHERE id=$1`, [id]);
+    await expect(set("external_filing_status='done'")).rejects.toMatchObject({ code: "23514" });
+    await expect(set("external_filing_status='filed'")).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      set("external_filing_status='pending', filed_externally_on=CURRENT_DATE"),
+    ).rejects.toMatchObject({
+      code: "23514",
+    });
+    await expect(set("filed_externally_on=CURRENT_DATE")).rejects.toMatchObject({ code: "23514" });
+    await set("external_filing_status='pending'");
+    await set(
+      `external_filing_status='filed', filed_externally_on=CURRENT_DATE, filed_externally_recorded_at=now(),
+       filed_externally_by_membership_id='${USER}'`,
+    );
+    expect(await noeRow(id)).toMatchObject({ external_filing_status: "filed", by: USER });
+    await set(
+      "external_filing_status=NULL, filed_externally_on=NULL, filed_externally_recorded_at=NULL, filed_externally_by_membership_id=NULL",
+    );
+  });
+
+  it("migration 1353: external_filing_set_breach is NOT NULL, false by default, and can only be true on a notice recorded as filed", async () => {
+    const id = await seedNoe(ORG_A);
+    expect(await noeRow(id)).toMatchObject({ set_breach: false });
+    const set = (sql: string) => admin.query(`UPDATE noe_record SET ${sql} WHERE id=$1`, [id]);
+    await expect(set("external_filing_set_breach=NULL")).rejects.toMatchObject({ code: "23502" });
+    await expect(set("external_filing_set_breach=true")).rejects.toMatchObject({ code: "23514" });
+    await set("external_filing_status='pending'");
+    await expect(set("external_filing_set_breach=true")).rejects.toMatchObject({ code: "23514" });
+    await set(
+      `external_filing_status='filed', filed_externally_on=CURRENT_DATE, filed_externally_recorded_at=now(),
+       filed_externally_by_membership_id='${USER}', external_filing_set_breach=true`,
+    );
+    expect(await noeRow(id)).toMatchObject({ set_breach: true });
+    // leaving `filed` without clearing the flag is refused: a withdrawal resets both together
+    await expect(
+      set(
+        "external_filing_status=NULL, filed_externally_on=NULL, filed_externally_recorded_at=NULL, filed_externally_by_membership_id=NULL",
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+  });
+
+  it("the deadline tracker keeps counting for a parked or unmarked NOE of an outside org, and drops one recorded as filed", async () => {
+    const effective = addDays(todayIso(), -12); // due 7 days ago: past due, not yet stamped
+    const unmarked = await seedNoe(ORG_A, { effective });
+    const parked = await seedNoe(ORG_A, { effective, status: "pending" });
+    const filed = await seedNoe(ORG_A, { effective, status: "filed" });
+    const mine = new Set([unmarked, parked, filed]);
+    const scan = (
+      fn: (
+        r: InstanceType<typeof repositories.NoeRepository>,
+      ) => Promise<readonly { id: string }[]>,
+    ) =>
+      withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, async (tx) =>
+        fn(new repositories.NoeRepository(tx as never)),
+      ).then((rows) =>
+        rows
+          .map((r) => r.id)
+          .filter((id) => mine.has(id))
+          .sort(),
+      );
+
+    const expected = [unmarked, parked].sort();
+    expect(await scan((r) => r.listWindowWatchCandidates(ORG_A, todayIso()))).toEqual(expected);
+    expect(await scan((r) => r.listDdeWatchCandidates(ORG_A, addDays(todayIso(), 7)))).toEqual(
+      expected,
+    );
+  });
+
+  it("an outside org: submit parks the NOE (nothing queued, sent or announced), the tenant records the date, the tracker lets go, and it is write-audited", async () => {
+    const { service, enqueued } = externalFilingService(true);
+    const id = await seedNoe(ORG_A, { state: "DRAFT" });
+
+    const parkedView = await service.submitNoe(actorOf(ORG_A), id);
+
+    expect(parkedView).toEqual({
+      submissionId: null,
+      jobId: null,
+      kind: "noe",
+      externalFiling: "pending",
+    });
+    expect(await noeRow(id)).toMatchObject({ state: "READY", external_filing_status: "pending" });
+    expect(enqueued).toEqual([]);
+    expect(
+      (await admin.query("SELECT count(*)::int AS n FROM claim_submission WHERE noe_id=$1", [id]))
+        .rows[0].n,
+    ).toBe(0);
+    expect(await eventRows("m23.noe.submit_requested", "noeId", id)).toHaveLength(0);
+
+    // A pending NOE is still on the tracker; recording the date takes it off.
+    const watch = () =>
+      withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, (tx) =>
+        new repositories.NoeRepository(tx as never).listDdeWatchCandidates(
+          ORG_A,
+          addDays(todayIso(), 7),
+        ),
+      ).then((rows) => rows.some((r) => r.id === id));
+    expect(await watch()).toBe(true);
+
+    const recorded = await service.recordNoeExternalFiling(actorOf(ORG_A), id, {
+      filedOn: todayIso(),
+    });
+    expect(recorded.externalFiling).toMatchObject({
+      status: "filed_externally",
+      filedOn: todayIso(),
+    });
+    const row = await noeRow(id);
+    expect(row).toMatchObject({
+      state: "READY",
+      external_filing_status: "filed",
+      filed_on: todayIso(),
+      by: USER,
+      breached: null,
+    });
+    expect(await watch()).toBe(false);
+
+    // Idempotent for the same date (nothing rewritten); another date is refused.
+    await service.recordNoeExternalFiling(actorOf(ORG_A), id, { filedOn: todayIso() });
+    expect((await noeRow(id)).version).toBe(row.version);
+    await expect(
+      service.recordNoeExternalFiling(actorOf(ORG_A), id, { filedOn: addDays(todayIso(), -1) }),
+    ).rejects.toMatchObject({ code: "NOTICE_ALREADY_FILED_EXTERNALLY", statusCode: 409 });
+    // A recorded filing is never submitted a second time, even once the org transmits through ChartWarden.
+    await expect(
+      externalFilingService(false).service.submitNoe(actorOf(ORG_A), id),
+    ).rejects.toMatchObject({
+      code: "NOTICE_FILED_EXTERNALLY",
+    });
+
+    // Write-audited by the table's trigger: the acting user, before and after.
+    const { rows: audit } = await admin.query(
+      `SELECT actor_user_id, before->>'external_filing_status' AS before_status, after->>'external_filing_status' AS after_status
+         FROM audit_event WHERE resource_kind='noe_record' AND resource_id=$1 AND event_type='noe_record.update'
+          AND after->>'external_filing_status'='filed'`,
+      [id],
+    );
+    expect(audit).toEqual([
+      { actor_user_id: USER, before_status: "pending", after_status: "filed" },
+    ]);
+  }, 60_000);
+
+  it("a date after the due date stamps the breach on record with the filing date; a bad date writes nothing", async () => {
+    const { service } = externalFilingService(true);
+    const effective = addDays(todayIso(), -12);
+    const late = await seedNoe(ORG_A, { effective, status: "pending" });
+    const filedOn = addDays(effective, 8); // due on +5: three days late
+    await service.recordNoeExternalFiling(actorOf(ORG_A), late, { filedOn });
+    expect(await noeRow(late)).toMatchObject({
+      external_filing_status: "filed",
+      breached: filedOn,
+    });
+
+    // Round 2, Q4: the late filing is published (real catalog-validating publisher, same transaction) and reaches the alert + ops sink.
+    const windowTargetAt = addDays(effective, 5);
+    const lateEvents = await eventRows("m23.noe.filed_externally_late", "noeId", late);
+    expect(lateEvents).toHaveLength(1);
+    expect(lateEvents[0]?.organization_id).toBe(ORG_A);
+    expect(lateEvents[0]?.payload).toEqual({
+      noeId: late,
+      admissionId: expect.any(String),
+      filedOn,
+      windowTargetAt,
+    });
+    lateAlerts.length = 0;
+    lateOpsNotices.length = 0;
+    await dispatcher.tick();
+    expect(lateAlerts.filter((a) => (a.payload as { noeId?: string }).noeId === late)).toEqual([
+      expect.objectContaining({
+        alertCode: "m23.noe.filed_externally_late",
+        severity: "critical",
+        organizationId: ORG_A,
+        payload: { noeId: late, admissionId: expect.any(String), filedOn, windowTargetAt },
+      }),
+    ]);
+    expect(
+      lateOpsNotices.filter((n) => (n.details as { noticeId?: string }).noticeId === late),
+    ).toEqual([expect.objectContaining({ kind: "m23.notice_filed_late" })]);
+    // An idempotent replay of the same recording publishes nothing more.
+    await service.recordNoeExternalFiling(actorOf(ORG_A), late, { filedOn });
+    expect(await eventRows("m23.noe.filed_externally_late", "noeId", late)).toHaveLength(1);
+
+    const untouched = await seedNoe(ORG_A, { effective });
+    for (const [bad, code] of [
+      [addDays(todayIso(), 1), "FILED_ON_IN_FUTURE"],
+      [addDays(effective, -1), "FILED_ON_BEFORE_EFFECTIVE_DATE"],
+    ] as const) {
+      await expect(
+        service.recordNoeExternalFiling(actorOf(ORG_A), untouched, { filedOn: bad }),
+      ).rejects.toMatchObject({
+        code,
+        statusCode: 422,
+      });
+    }
+    expect(await noeRow(untouched)).toMatchObject({ external_filing_status: null, version: 0 });
+  }, 60_000);
+
+  it("a breach stamp the deadline watchdog set is NEVER cleared by a tenant's record: an on-time date over it announces the contradiction with both dates; a late one keeps its stamp", async () => {
+    const { service } = externalFilingService(true);
+    const effective = addDays(todayIso(), -3); // due in +5: two days left
+    const onTime = await seedNoe(ORG_A, { effective, status: "pending" });
+    const observed = todayIso();
+    await admin.query("UPDATE noe_record SET window_breached_at=$2 WHERE id=$1", [
+      onTime,
+      observed,
+    ]);
+
+    await service.recordNoeExternalFiling(actorOf(ORG_A), onTime, { filedOn: todayIso() });
+
+    // the stamp survives; the attested date is recorded beside it
+    expect(await noeRow(onTime)).toMatchObject({
+      external_filing_status: "filed",
+      filed_on: todayIso(),
+      breached: observed,
+    });
+    // ...and compliance and ops are told (real catalog-validating publisher, same transaction): the late-filing event, with the observed date
+    const events = await eventRows("m23.noe.filed_externally_late", "noeId", onTime);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.payload).toEqual({
+      noeId: onTime,
+      admissionId: expect.any(String),
+      filedOn: todayIso(),
+      windowTargetAt: addDays(effective, 5),
+      breachObservedAt: observed,
+    });
+    lateAlerts.length = 0;
+    lateOpsNotices.length = 0;
+    await dispatcher.tick();
+    expect(lateAlerts.filter((a) => (a.payload as { noeId?: string }).noeId === onTime)).toEqual([
+      expect.objectContaining({
+        alertCode: "m23.noe.filed_externally_late",
+        severity: "critical",
+        organizationId: ORG_A,
+        payload: expect.objectContaining({ breachObservedAt: observed, filedOn: todayIso() }),
+      }),
+    ]);
+    expect(
+      lateOpsNotices.filter((n) => (n.details as { noticeId?: string }).noticeId === onTime),
+    ).toEqual([expect.objectContaining({ kind: "m23.notice_filing_contradicts_breach" })]);
+    // a replay announces nothing more
+    await service.recordNoeExternalFiling(actorOf(ORG_A), onTime, { filedOn: todayIso() });
+    expect(await eventRows("m23.noe.filed_externally_late", "noeId", onTime)).toHaveLength(1);
+
+    // an on-time record with NO stamp publishes nothing
+    const clean = await seedNoe(ORG_A, { effective, status: "pending" });
+    await service.recordNoeExternalFiling(actorOf(ORG_A), clean, { filedOn: todayIso() });
+    expect(await eventRows("m23.noe.filed_externally_late", "noeId", clean)).toHaveLength(0);
+
+    const lateEffective = addDays(todayIso(), -12); // due 7 days ago
+    const late = await seedNoe(ORG_A, { effective: lateEffective, status: "pending" });
+    const stamp = addDays(todayIso(), -6);
+    await admin.query("UPDATE noe_record SET window_breached_at=$2 WHERE id=$1", [late, stamp]);
+    await service.recordNoeExternalFiling(actorOf(ORG_A), late, { filedOn: todayIso() });
+    expect(await noeRow(late)).toMatchObject({ external_filing_status: "filed", breached: stamp });
+    const lateEvents = await eventRows("m23.noe.filed_externally_late", "noeId", late);
+    expect(lateEvents).toHaveLength(1);
+    expect(lateEvents[0]?.payload).not.toHaveProperty("breachObservedAt");
+  }, 60_000);
+
+  it("a withdrawn LATE record takes its own breach stamp with it: re-recording the true on-time date announces nothing, and the window watch scans the notice again", async () => {
+    const { service } = externalFilingService(true);
+    const effective = addDays(todayIso(), -12); // due 7 days ago
+    const id = await seedNoe(ORG_A, { effective, status: "pending" });
+    const lateOn = addDays(effective, 8); // three days late
+    await service.recordNoeExternalFiling(actorOf(ORG_A), id, { filedOn: lateOn });
+    // the record wrote the stamp itself, and says so (what a withdrawal reads to know the stamp is its own)
+    expect(await noeRow(id)).toMatchObject({
+      external_filing_status: "filed",
+      breached: lateOn,
+      set_breach: true,
+    });
+    expect(await eventRows("m23.noe.filed_externally_late", "noeId", id)).toHaveLength(1);
+    await dispatcher.tick(); // the late filing's own alert goes out now
+
+    const {
+      rows: [{ recorded_at: recordedAt }],
+    } = await admin.query(
+      "SELECT filed_externally_recorded_at AS recorded_at FROM noe_record WHERE id=$1",
+      [id],
+    );
+    const inOrgA = <T>(fn: (tx: never) => Promise<T>) =>
+      withOrgContext<never, T>(handle.db as never, { organizationId: ORG_A, userId: USER }, fn);
+    const withdrawn = await inOrgA((tx) =>
+      withdrawExternalNoticeFiling(tx, {
+        kind: "noe",
+        organizationId: ORG_A,
+        noticeId: id,
+        expectedRecordedAt: (recordedAt as Date).toISOString(),
+      }),
+    );
+    expect(await noeRow(id)).toMatchObject({
+      external_filing_status: null,
+      filed_on: null,
+      breached: null,
+      set_breach: false,
+    });
+    expect(withdrawn.clearedBreachStamp).toBe(lateOn);
+    // the notice is overdue and un-stamped, so the window watch (which re-stamps) scans it again
+    const candidates = await inOrgA((tx) =>
+      new repositories.NoeRepository(tx).listWindowWatchCandidates(ORG_A, todayIso()),
+    );
+    expect(candidates.map((c) => c.id)).toContain(id);
+
+    // the tenant records the TRUE date, which was on time: no stamp to contradict, so nothing is announced
+    lateAlerts.length = 0;
+    lateOpsNotices.length = 0;
+    const onTimeOn = addDays(effective, 3);
+    await service.recordNoeExternalFiling(actorOf(ORG_A), id, { filedOn: onTimeOn });
+    expect(await noeRow(id)).toMatchObject({
+      external_filing_status: "filed",
+      filed_on: onTimeOn,
+      breached: null,
+    });
+    expect(await eventRows("m23.noe.filed_externally_late", "noeId", id)).toHaveLength(1); // the first record's, no second
+    await dispatcher.tick();
+    expect(lateAlerts.filter((a) => (a.payload as { noeId?: string }).noeId === id)).toEqual([]);
+    expect(
+      lateOpsNotices.filter((n) => (n.details as { noticeId?: string }).noticeId === id),
+    ).toEqual([]);
+  }, 60_000);
+
+  // The deadline watchdog stamps `medicareReceiptDay(now)` on its first tick after the due day: target + 1. A tenant that filed
+  // exactly one day late records filedOn = target + 1, the very same date, so the dates cannot say who wrote the stamp. The record
+  // says it itself (`external_filing_set_breach`): here the watchdog (the REAL stamp port) wrote first, so the record never owned it.
+  it("a withdrawn record keeps the stamp the watchdog wrote first, even when a one-day-late record carries the same date: no re-stamp, no second breach, and an on-time re-record still announces the contradiction", async () => {
+    const { service } = externalFilingService(true);
+    const effective = addDays(todayIso(), -6); // due yesterday: today is target + 1
+    const target = addDays(effective, 5);
+    const id = await seedNoe(ORG_A, { effective, status: "pending" });
+    const inOrgA = <T>(fn: (tx: never) => Promise<T>) =>
+      withOrgContext<never, T>(handle.db as never, { organizationId: ORG_A, userId: USER }, fn);
+
+    // the watchdog's first tick after the due day stamps the breach (the real port; today = target + 1)
+    await inOrgA((tx) =>
+      buildNoticeWindowPort().recordBreach({
+        tx,
+        kind: "noe",
+        noticeId: id,
+        expectedVersion: 0,
+        breachedAt: new Date(),
+      }),
+    );
+    const watchdogStamp = addDays(target, 1);
+    expect(await noeRow(id)).toMatchObject({ breached: watchdogStamp, set_breach: false });
+
+    // the tenant, exactly one day late, records the same date: it keeps the watchdog's stamp and does not claim it
+    await service.recordNoeExternalFiling(actorOf(ORG_A), id, { filedOn: watchdogStamp });
+    expect(await noeRow(id)).toMatchObject({
+      external_filing_status: "filed",
+      filed_on: watchdogStamp,
+      breached: watchdogStamp,
+      set_breach: false,
+    });
+    expect(await eventRows("m23.noe.filed_externally_late", "noeId", id)).toHaveLength(1);
+    await dispatcher.tick();
+
+    // the operator withdraws the record: the watchdog's observed breach stays, untouched
+    const {
+      rows: [{ recorded_at: recordedAt }],
+    } = await admin.query(
+      "SELECT filed_externally_recorded_at AS recorded_at FROM noe_record WHERE id=$1",
+      [id],
+    );
+    const withdrawn = await inOrgA((tx) =>
+      withdrawExternalNoticeFiling(tx, {
+        kind: "noe",
+        organizationId: ORG_A,
+        noticeId: id,
+        expectedRecordedAt: (recordedAt as Date).toISOString(),
+      }),
+    );
+    expect(withdrawn.clearedBreachStamp).toBeNull();
+    expect(await noeRow(id)).toMatchObject({
+      external_filing_status: null,
+      filed_on: null,
+      breached: watchdogStamp,
+      set_breach: false,
+    });
+    // so the window watch does not scan it again: no re-stamp with a moved date, no second `window_breached`, no second alert
+    const candidates = await inOrgA((tx) =>
+      new repositories.NoeRepository(tx).listWindowWatchCandidates(ORG_A, todayIso()),
+    );
+    expect(candidates.map((c) => c.id)).not.toContain(id);
+
+    // the tenant re-records an on-time date before any further tick: the observed breach is not lost, and the contradiction is announced
+    lateAlerts.length = 0;
+    const onTimeOn = addDays(effective, 3);
+    await service.recordNoeExternalFiling(actorOf(ORG_A), id, { filedOn: onTimeOn });
+    expect(await noeRow(id)).toMatchObject({
+      external_filing_status: "filed",
+      filed_on: onTimeOn,
+      breached: watchdogStamp,
+      set_breach: false,
+    });
+    const events = await eventRows("m23.noe.filed_externally_late", "noeId", id);
+    expect(events).toHaveLength(2);
+    expect(events.map((e) => e.payload)).toContainEqual(
+      expect.objectContaining({ filedOn: onTimeOn, breachObservedAt: watchdogStamp }),
+    );
+    await dispatcher.tick();
+    expect(lateAlerts.filter((a) => (a.payload as { noeId?: string }).noeId === id)).toEqual([
+      expect.objectContaining({
+        alertCode: "m23.noe.filed_externally_late",
+        payload: expect.objectContaining({ breachObservedAt: watchdogStamp }),
+      }),
+    ]);
+  }, 60_000);
+
+  it("refuses an organization ChartWarden files for; a parked NOE goes the normal way once the org transmits again, and the marker clears", async () => {
+    const id = await seedNoe(ORG_A, { status: "pending" });
+    const transmits = externalFilingService(false);
+    await expect(
+      transmits.service.recordNoeExternalFiling(actorOf(ORG_A), id, { filedOn: todayIso() }),
+    ).rejects.toMatchObject({ code: "ORG_NOT_BILLING_OUTSIDE", statusCode: 409 });
+
+    const queued = await transmits.service.submitNoe(actorOf(ORG_A), id);
+    expect(queued).not.toHaveProperty("externalFiling");
+    expect(queued.submissionId).toEqual(expect.any(String));
+    expect(transmits.enqueued).toHaveLength(1);
+    expect(await noeRow(id)).toMatchObject({ external_filing_status: null });
+    expect(await eventRows("m23.noe.submit_requested", "noeId", id)).toHaveLength(1);
+  }, 60_000);
+
+  /** A notice's transmission attempts, oldest first. */
+  const attemptsOf = async (noeId: string) =>
+    (
+      await admin.query(
+        `SELECT id, attempt_index, outcome, outcome_reason, submitted_at IS NOT NULL AS sent
+           FROM claim_submission WHERE noe_id=$1 ORDER BY attempt_index`,
+        [noeId],
+      )
+    ).rows as {
+      id: string;
+      attempt_index: number;
+      outcome: string;
+      outcome_reason: string | null;
+      sent: boolean;
+    }[];
+
+  it("park, switch back to a vendor, resubmit: the new transmission is recorded on a NEW attempt and the parked attempt stays closed", async () => {
+    const id = await seedNoe(ORG_A, { state: "DRAFT" });
+    const vendor = externalFilingService(false);
+
+    // vendor era: submit appends attempt 0 (queued) and enqueues a job carrying it
+    const first = await vendor.service.submitNoe(actorOf(ORG_A), id);
+    expect(await attemptsOf(id)).toMatchObject([{ attempt_index: 0, outcome: "queued" }]);
+
+    // the org switches to outside before the job runs: the worker pre-flight parks the notice and closes ITS attempt
+    await parkNoticeForExternalFiling(
+      { db: handle.db as never },
+      {
+        organizationId: ORG_A,
+        kind: "noe",
+        noticeId: id,
+        submissionId: first.submissionId as string,
+      },
+    );
+    expect(await noeRow(id)).toMatchObject({ state: "READY", external_filing_status: "pending" });
+    expect(await attemptsOf(id)).toMatchObject([
+      { attempt_index: 0, outcome: "failed_worker", outcome_reason: "PARKED_FOR_EXTERNAL_FILING" },
+    ]);
+
+    // the org switches back to a vendor and the tenant resubmits: a NEW attempt, never the closed row handed back
+    const second = await vendor.service.submitNoe(actorOf(ORG_A), id);
+    expect(second.submissionId).not.toBe(first.submissionId);
+    expect(await noeRow(id)).toMatchObject({ external_filing_status: null });
+    expect(await attemptsOf(id)).toMatchObject([
+      { attempt_index: 0, outcome: "failed_worker" },
+      { attempt_index: 1, outcome: "queued", id: second.submissionId },
+    ]);
+
+    // the worker records the transmission on THAT attempt
+    await withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, (tx) =>
+      runNoeSubmit(tx as never, workerDeps, {
+        organizationId: ORG_A,
+        noeId: id,
+        submissionId: second.submissionId as string,
+      }),
+    );
+    expect(await attemptsOf(id)).toMatchObject([
+      { attempt_index: 0, outcome: "failed_worker", outcome_reason: "PARKED_FOR_EXTERNAL_FILING" },
+      { attempt_index: 1, outcome: "submitted", id: second.submissionId, sent: true },
+    ]);
+    const { rows } = await admin.query(
+      "SELECT state, latest_submission_id FROM noe_record WHERE id=$1",
+      [id],
+    );
+    expect(rows[0]).toMatchObject({
+      state: "SUBMITTED",
+      latest_submission_id: second.submissionId,
+    });
+  }, 60_000);
+
+  it("a notice recorded as filed while a vendor-era attempt is queued: the job (outside: the park; vendor again: the submit worker) ends without transmitting and closes its OWN attempt", async () => {
+    const outside = externalFilingService(true);
+    const vendor = externalFilingService(false);
+    for (const org of ["outside", "vendor"] as const) {
+      const id = await seedNoe(ORG_A, { state: "DRAFT" });
+      const queued = await vendor.service.submitNoe(actorOf(ORG_A), id);
+      // the org goes outside and the tenant records the filing; the queued attempt is NOT closed from the request path
+      await outside.service.recordNoeExternalFiling(actorOf(ORG_A), id, { filedOn: todayIso() });
+      expect(await attemptsOf(id)).toMatchObject([{ attempt_index: 0, outcome: "queued" }]);
+      const submitted = (name: string) => eventRows(name, "noeId", id);
+
+      if (org === "outside") {
+        await parkNoticeForExternalFiling(
+          { db: handle.db as never },
+          {
+            organizationId: ORG_A,
+            kind: "noe",
+            noticeId: id,
+            submissionId: queued.submissionId as string,
+          },
+        );
+      } else {
+        await withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, (tx) =>
+          runNoeSubmit(tx as never, workerDeps, {
+            organizationId: ORG_A,
+            noeId: id,
+            submissionId: queued.submissionId as string,
+          }),
+        );
+      }
+      expect(await attemptsOf(id)).toMatchObject([
+        {
+          attempt_index: 0,
+          outcome: "failed_worker",
+          outcome_reason:
+            org === "outside" ? "PARKED_FOR_EXTERNAL_FILING" : "NOTICE_FILED_EXTERNALLY",
+          sent: false,
+        },
+      ]);
+      // never transmitted: the notice is still the tenant's recorded filing, and nothing was announced as submitted
+      expect(await noeRow(id)).toMatchObject({ state: "READY", external_filing_status: "filed" });
+      expect(await submitted("m23.noe.submitted")).toHaveLength(0);
+    }
+  }, 60_000);
+
+  // Round 3, L1a: the worker read the notice, checked it, then spent a network call on the upload before it wrote anything, so a
+  // record / park of the same notice could commit in between and the notice would be transmitted AND recorded as filed. The worker
+  // now takes the row's lock with its read and holds it to its commit: the concurrent write waits, and then loses (412).
+  it.each(["record", "park"] as const)(
+    "the submit worker holds the NOE row from its read to its commit: a concurrent %s waits for the upload and then loses, so the notice is never transmitted AND filed",
+    async (concurrent) => {
+      const vendor = externalFilingService(false);
+      const outside = externalFilingService(true);
+      const id = await seedNoe(ORG_A, { state: "DRAFT" });
+      const queued = await vendor.service.submitNoe(actorOf(ORG_A), id);
+
+      let reachedUpload!: () => void;
+      const atUpload = new Promise<void>((resolve) => {
+        reachedUpload = resolve;
+      });
+      let finishUpload!: () => void;
+      const uploadMayFinish = new Promise<void>((resolve) => {
+        finishUpload = resolve;
+      });
+      const portal = workerDeps.macPortal as NonNullable<M23WorkerDeps["macPortal"]>;
+      const slowDeps: M23WorkerDeps = {
+        ...workerDeps,
+        macPortal: {
+          ...portal,
+          upload: async (input) => {
+            reachedUpload();
+            await uploadMayFinish;
+            return { accepted: true, generatedFileUri: `s3://notices/${input.controlNumber}.x12` };
+          },
+        },
+      };
+      const worker = withOrgContext(
+        handle.db as never,
+        { organizationId: ORG_A, userId: "" },
+        (tx) =>
+          runNoeSubmit(tx as never, slowDeps, {
+            organizationId: ORG_A,
+            noeId: id,
+            submissionId: queued.submissionId as string,
+          }),
+      );
+      await atUpload; // the worker has read and checked the notice and is mid-upload
+
+      let outcome = "pending";
+      const rival =
+        concurrent === "record"
+          ? outside.service.recordNoeExternalFiling(actorOf(ORG_A), id, { filedOn: todayIso() })
+          : outside.service.submitNoe(actorOf(ORG_A), id);
+      const settledRival = rival.then(
+        () => {
+          outcome = "committed";
+        },
+        (error: { code?: string }) => {
+          outcome = error.code ?? "failed";
+        },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      const outcomeWhileUploading = outcome;
+      finishUpload(); // always let the worker end, so a failing assertion cannot strand its connection
+      const workerResult = await worker.then(
+        () => "done",
+        (error: unknown) => String(error),
+      );
+      await settledRival;
+      expect(
+        outcomeWhileUploading,
+        "the concurrent write must wait behind the worker's row lock",
+      ).toBe("pending");
+      expect(workerResult).toBe("done");
+      expect(outcome).toBe("VERSION_CONFLICT");
+      expect(await noeRow(id)).toMatchObject({ state: "SUBMITTED", external_filing_status: null });
+      expect(await eventRows("m23.noe.submitted", "noeId", id)).toHaveLength(1);
+    },
+    60_000,
+  );
+
+  it("cross-tenant: org B cannot record (or park) org A's NOE; the worker's park of a job enqueued before the org switched is org-scoped too", async () => {
+    const { service } = externalFilingService(true);
+    const id = await seedNoe(ORG_A);
+    await expect(
+      service.recordNoeExternalFiling(actorOf(ORG_B), id, { filedOn: todayIso() }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    await expect(service.submitNoe(actorOf(ORG_B), id)).rejects.toMatchObject({ statusCode: 404 });
+    expect(await noeRow(id)).toMatchObject({ external_filing_status: null, version: 0 });
+
+    // The worker pre-flight (a job enqueued before the org went `outside`): parks only the job's own org's notice.
+    await parkNoticeForExternalFiling(
+      { db: handle.db as never },
+      { organizationId: ORG_B, kind: "noe", noticeId: id },
+    );
+    expect(await noeRow(id)).toMatchObject({ external_filing_status: null });
+    await parkNoticeForExternalFiling(
+      { db: handle.db as never },
+      { organizationId: ORG_A, kind: "noe", noticeId: id },
+    );
+    expect(await noeRow(id)).toMatchObject({ state: "READY", external_filing_status: "pending" });
+  }, 60_000);
 });

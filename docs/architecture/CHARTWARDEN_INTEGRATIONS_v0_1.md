@@ -348,12 +348,18 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
   `M23_HETS_SUBMITTER_ID`, `M23_HETS_AUTH_TOKEN` or `M23_HETS_CLIENT_CERT_FILE` + `M23_HETS_CLIENT_KEY_FILE`,
   `M23_HETS_USAGE`, `M23_HETS_TIMEOUT_MS`. The `sandbox` transport answers with synthetic 271 fixtures and is
   refused when `NODE_ENV=production`.
-- **Clearinghouse binding (ADR-0053 D3):** the platform selects ONE `ClearinghouseTransport` (created and logged at boot; not yet injected into any
-  consumer, which is the Stedi-transport work) through the
-  `CLEARINGHOUSE_VENDOR` env var (`stedi` | `direct_mac`; `in_memory` is a test double refused in production).
-  Unset = unbound: every call answers `CH_NOT_WIRED`. A vendor with no adapter registered in the build throws at
-  boot, and `check:boot:platform` asserts the `Clearinghouse binding:` log line. The vendor credential lives in the
-  platform environment, never per tenant or per ProviderEntity.
+- **Clearinghouse binding (ADR-0053 D3, amended 2026-11-06):** the clearinghouse is a **per-tenant choice**, not one platform vendor.
+  Each tenant chooses `stedi`, `claimmd` or `outside` ("bills outside ChartWarden") and holds its OWN vendor account: its credential is
+  sealed in `tenant_clearinghouse_config` (AES-256-GCM under a per-tenant HKDF key derived from the existing M24 credential KEK, the AAD
+  binding organization, vendor and mode; write-only, audit-scrubbed, RLS FORCE, no DELETE), and the backend resolves a transport PER
+  ORGANIZATION (`ClearinghouseBinding.forOrg`), bound to that organization so a call naming another is refused. A tenant-held vendor
+  account needs the tenant's own vendor BAA, recorded by the tenant and verified by a platform operator, before it may go `active`.
+  The `CLEARINGHOUSE_VENDOR` env var (`stedi` | `claimmd` | `direct_mac`; `in_memory` is a test double refused in production) remains
+  as the platform's OWN account and serves ONLY the organizations named in `CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` (the demo tenants) while
+  they have no row of their own. An organization with no live clearinghouse resolves UNBOUND (`not_chosen`, `not_active` or `outside`):
+  nothing is sent for it and the legacy launch-gateway ports are never the fallback; its claim work is held until it finishes setup.
+  `check:boot:platform` asserts the `Clearinghouse binding:` log line. Platform-level: the X12 generation gateway, `CLEARINGHOUSE_PAYER_ID`
+  and the Claim.MD webhook intake (the PLATFORM account's HMAC key only: a tenant's own Claim.MD account does not deliver through it).
 - **Request (CG §7.3, Appendix A):** MBI + last name + first name + DOB in 2100C (no middle name/gender —
   those draw a 999), 2100B = the hospice NPI, `DTP*291` service date(s) within 4 years back / 4 months
   ahead, `EQ*30^45` (STC 45 is what makes HETS return the hospice section).

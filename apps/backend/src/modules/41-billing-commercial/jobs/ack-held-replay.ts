@@ -16,6 +16,7 @@
 import { schema } from "@chartwarden/db";
 import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { validateAckEvent } from "../domain/ack-event";
+import { withOrgBinding } from "../services/org-binding";
 import type { CommercialTx } from "../services/types";
 import {
   ACK_POLL_MAX_AGE_DAYS,
@@ -299,9 +300,10 @@ async function replayRow(
  * transaction and stamped `resolved_at` there. A row that cannot apply yet stays held; one that never can is abandoned out loud.
  */
 export async function replayHeldEvents(
-  deps: AckApplyDeps,
+  rawDeps: AckApplyDeps,
   scope: Scope,
 ): Promise<{ readonly applied: number; readonly abandoned: number }> {
+  const deps = await withOrgBinding(rawDeps, scope.organizationId, rawDeps.log);
   const Q = schema.commercialAckQuarantine;
   const vendor = deps.binding.vendor;
   const cutoff = nowOf(deps).getTime() - ACK_POLL_MAX_AGE_DAYS * DAY_MS;
@@ -342,9 +344,10 @@ export async function replayHeldEvents(
 
 /** Provider entities of the org that still hold unresolved replayable events (so dead ones get swept even with no live work). */
 export async function entitiesWithHeldEvents(
-  deps: AckApplyDeps,
+  rawDeps: AckApplyDeps,
   organizationId: string,
 ): Promise<string[]> {
+  const deps = await withOrgBinding(rawDeps, organizationId, rawDeps.log);
   const Q = schema.commercialAckQuarantine;
   const vendor = deps.binding.vendor;
   const cutoff = new Date(nowOf(deps).getTime() - ACK_POLL_MAX_AGE_DAYS * DAY_MS);
@@ -382,9 +385,10 @@ export interface HeldQuarantineReport {
 }
 
 export async function heldQuarantineReport(
-  deps: AckApplyDeps,
+  rawDeps: AckApplyDeps,
   organizationId: string,
 ): Promise<HeldQuarantineReport> {
+  const deps = await withOrgBinding(rawDeps, organizationId, rawDeps.log);
   const Q = schema.commercialAckQuarantine;
   const vendor = deps.binding.vendor;
   const replayableReason = inArray(Q.reason, ["no_receipt", "scope_mismatch", "vendor_mismatch"]);
@@ -422,10 +426,11 @@ export async function heldQuarantineReport(
  * ponytail: bounded per call (HELD_ENTITY_LIMIT rows); call again for more.
  */
 export async function abandonForeignHeldEvents(
-  deps: AckApplyDeps,
+  rawDeps: AckApplyDeps,
   organizationId: string,
   operatorUserId?: string,
 ): Promise<{ readonly abandoned: number }> {
+  const deps = await withOrgBinding(rawDeps, organizationId, rawDeps.log);
   const vendor = deps.binding.vendor;
   if (vendor === null) return { abandoned: 0 };
   const Q = schema.commercialAckQuarantine;
@@ -567,10 +572,11 @@ export async function listHeldRows(
  * Throws on a database fault; the caller turns that into a failure label.
  */
 export async function sweepHeldEvents(
-  deps: AckApplyDeps,
+  rawDeps: AckApplyDeps,
   organizationId: string,
   liveProviderEntityIds: ReadonlySet<string>,
 ): Promise<void> {
+  const deps = await withOrgBinding(rawDeps, organizationId, rawDeps.log);
   for (const providerEntityId of await entitiesWithHeldEvents(deps, organizationId)) {
     if (!liveProviderEntityIds.has(providerEntityId)) {
       await replayHeldEvents(deps, { organizationId, providerEntityId });

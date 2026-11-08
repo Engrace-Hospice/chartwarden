@@ -76,6 +76,14 @@ export const BILLING_CAP_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   // #714: the clearinghouse (Stedi) or MAC submitter credential was rejected at runtime (401/403); filings and ack
   // pulls for that provider entity are held until it is fixed.
   rule("m23.clearinghouse.credential_rejected", "critical", BILLING_AND_COMPLIANCE),
+  // Tenant clearinghouses (ADR-0053 amendment 2026-11-06): a tenant whose clearinghouse is not live has its claim jobs HELD (not failed)
+  // and is told ONCE per window; the tenant admins are who can finish the setup. `m41...` is the same signal from M41's shared crons.
+  rule("m23.clearinghouse.unbound_hold", "warn", TENANT_ADMINS),
+  rule("m41.clearinghouse.unbound_with_work", "warn", TENANT_ADMINS),
+  // A tenant billing outside ChartWarden recorded that it filed a NOE / NOTR AFTER the CMS window: the watchdog cannot see it (a
+  // recorded notice leaves its scan), so this is the only signal. Raised by M23's own consumer of `m23.{noe,notr}.filed_externally_late`.
+  rule("m23.noe.filed_externally_late", "critical", BILLING_AND_COMPLIANCE),
+  rule("m23.notr.filed_externally_late", "critical", BILLING_AND_COMPLIANCE),
   rule("m23.taxonomy.unmapped_taxonomy_alert", "warn", BILLING_MANAGERS),
   // #767: the daily DDE queue aging digest (no-deadline items overdue by age, items unassigned too long).
   rule("m23.dde.queue_aging", "warn", BILLING_MANAGERS),

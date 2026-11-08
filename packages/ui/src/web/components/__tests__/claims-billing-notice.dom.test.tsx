@@ -73,6 +73,13 @@ describe("ClaimsBillingNotice (ADR-0108)", () => {
     expect(submit().disabled).toBe(true);
   });
 
+  it("a clearinghouse reason is spelled out (never `undefined`) and blocks when enforced", async () => {
+    mount({ entitled: false, enforced: true, reason: "clearinghouse_outside" });
+    expect(await screen.findByText(/bills outside ChartWarden/)).toBeTruthy();
+    expect(screen.queryByText(/undefined/)).toBeNull();
+    expect(submit().disabled).toBe(true);
+  });
+
   it("shadow: informs, blocks nothing", async () => {
     mount({ entitled: false, enforced: false, reason: "never_purchased" });
     expect(await screen.findByText(/nothing is blocked yet/)).toBeTruthy();

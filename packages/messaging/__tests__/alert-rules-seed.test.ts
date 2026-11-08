@@ -144,6 +144,12 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m23.mac_portal.unavailable",
       "m23.mac_portal.recovered",
       "m23.clearinghouse.credential_rejected",
+      // A tenant's clearinghouse is not live (nothing chosen, a draft config, or outside): its claim jobs are HELD and say so once.
+      "m23.clearinghouse.unbound_hold",
+      "m41.clearinghouse.unbound_with_work",
+      // A tenant billing outside ChartWarden recorded a NOE / NOTR it filed AFTER the due date.
+      "m23.noe.filed_externally_late",
+      "m23.notr.filed_externally_late",
       "m23.taxonomy.unmapped_taxonomy_alert",
       "m23.dde.queue_aging",
       "denial.aging_threshold_breached",

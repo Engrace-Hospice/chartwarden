@@ -5,6 +5,7 @@
 // The §3.12 seed exercises exactly this grammar:
 //   org_seeded                 context.providerEntityCount > 0 AND context.locationCount > 0
 //   ccn_registered             context.providerEntities[*].ccn != null
+//   clearinghouse_selected     context.clearinghouseSettled == true
 //   mac_configured             context.macFeedConfigured == true
 //   go_live_checklist_complete context.allCanonicalTasksDoneOrSkipped == true AND context.baaExecuted == true
 //
@@ -152,6 +153,7 @@ const CONTEXT_SCALARS: ReadonlySet<string> = new Set([
   "providerEntityCount",
   "locationCount",
   "macFeedConfigured",
+  "clearinghouseSettled",
   "dosespotKickoffRecorded",
   "xeroConnected",
   "gustoConnected",

@@ -32,6 +32,17 @@ export const ONBOARDING_DATA_AUDIT_EVENTS = {
   locationUpdated: "m34.tenant_onboarding.location_updated",
   macCredentialUpserted: "m34.tenant_onboarding.mac_credential_upserted",
   medicaidCredentialUpserted: "m34.tenant_onboarding.medicaid_credential_upserted",
+  /** ADR-0053 amendment 2026-11-06: the tenant's clearinghouse choice (vendor, mode, sealed credential). */
+  clearinghouseSet: "m34.tenant_onboarding.clearinghouse_set",
+  clearinghouseVerified: "m34.tenant_onboarding.clearinghouse_verified",
+  clearinghouseActivated: "m34.tenant_onboarding.clearinghouse_activated",
+  /** A platform operator verified the BAA the tenant recorded for its own vendor account (a live tenant too: not status-gated). */
+  clearinghouseBaaVerified: "m34.tenant_onboarding.clearinghouse_baa_verified",
+  /**
+   * A platform operator withdrew a tenant's "filed outside ChartWarden" NOE / NOTR record (not status-gated). The row names the
+   * operator, the tenant, the reason, the notice kind and id, the filed date withdrawn and the record's `recordedAt`.
+   */
+  noticeExternalFilingWithdrawn: "m34.tenant_onboarding.notice_external_filing_withdrawn",
   dataRead: "m34.tenant_onboarding.data_read",
   /** The tenant is not provisioning/onboarding: the write was refused before it ran. */
   writeRefused: "m34.tenant_onboarding.write_refused",

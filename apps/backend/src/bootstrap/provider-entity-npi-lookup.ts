@@ -1,5 +1,6 @@
 // apps/backend/src/bootstrap/provider-entity-npi-lookup.ts — M1 Foundation's cross-tenant reads of its own
-// `provider_entity` for M23's Claim.MD intake (one vendor account serves every tenant, ADR-0053 D8):
+// `provider_entity` for M23's Claim.MD intake (the PLATFORM Claim.MD account's webhook, ADR-0053 D8: a tenant that brings its own
+// Claim.MD account does not deliver through it, so this routes only what the platform account receives):
 //   - providerEntityByNpi: which tenant and provider entity an NPI names (`npi` is unique platform-wide, so at most one);
 //   - providerEntityById / listProviderEntitiesForPlatform: what the platform NPI-verification screen shows and verifies.
 // All run on the PLATFORM role inside the caller's own audited withPlatformContext transaction (the caller passes that
