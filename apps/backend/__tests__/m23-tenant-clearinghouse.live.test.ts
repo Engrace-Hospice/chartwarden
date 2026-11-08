@@ -142,6 +142,7 @@ const ORG_L = "ac000000-0000-4000-8000-0000000000ac"; // outside with a mode tha
 const ORG_N = "ad000000-0000-4000-8000-0000000000ad"; // outside with a PAUSED contract: the tenant's own switch is still refused, the operator's names the mode
 const ORG_O = "ae000000-0000-4000-8000-0000000000ae"; // the race: the system sets none between the operator's mode write and the vendor commit
 const ORG_P = "af000000-0000-4000-8000-0000000000af"; // two mode writers at once (the subscription row is the lock)
+const ORG_Q = "b0000000-0000-4000-8000-0000000000b0"; // tries to seal org A's Claim.MD account (migration 1403)
 const OPERATOR = "c9000000-0000-4000-8000-0000000000c9";
 const MEMBERSHIP = "e9000000-0000-4000-8000-0000000000e9";
 const TENANT_ADMIN = "7a000000-0000-4000-8000-0000000000a7";
@@ -281,6 +282,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       [ORG_N, "ch-n"],
       [ORG_O, "ch-o"],
       [ORG_P, "ch-p"],
+      [ORG_Q, "ch-q"],
     ] as const) {
       await admin.query(
         "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -517,7 +519,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
             },
           ],
         },
-        ...[ORG_A, ORG_B, ORG_G, ORG_I, ORG_K, ORG_N].map((orgId) => ({
+        ...[ORG_A, ORG_B, ORG_G, ORG_I, ORG_K, ORG_N, ORG_Q].map((orgId) => ({
           orgId,
           userId: TENANT_ADMIN,
           grants: [
@@ -598,6 +600,49 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     expect(row?.secret_cipher).toBeTruthy();
     expect(row?.secret_cipher).not.toContain(KEY_A);
     expect((await tenantCall("GET", ORG_A, "")).body).not.toContain(KEY_A);
+  });
+
+  // Migration 1403 (owner decision 2026-11-08): one vendor account belongs to ONE organization. Org Q (nothing chosen) saving org
+  // A's Claim.MD key is refused by the cross-org unique index, under the real NOBYPASSRLS role that cannot even see A's row; the
+  // refusal never names the holder, and nothing is written. A re-saving its own key succeeds.
+  it("a second organization saving the same Claim.MD account key gets 409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder may re-save it", async () => {
+    const dup = await tenantCall("PUT", ORG_Q, "", {
+      vendor: "claimmd",
+      mode: "test",
+      secret: KEY_A,
+    });
+    expect(dup.statusCode, dup.body).toBe(409);
+    expect(errorCode(dup)).toBe("CLEARINGHOUSE_ACCOUNT_IN_USE");
+    expect(dup.body).not.toContain(ORG_A);
+    expect(dup.body).not.toContain(KEY_A);
+    expect(
+      await q("SELECT 1 FROM tenant_clearinghouse_config WHERE organization_id=$1", [ORG_Q]),
+    ).toEqual([]);
+
+    const [current] = await q<{ version: number; credential_fingerprint: string }>(
+      "SELECT version, credential_fingerprint FROM tenant_clearinghouse_config WHERE organization_id=$1",
+      [ORG_A],
+    );
+    expect(current?.credential_fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    const resave = await tenantCall(
+      "PUT",
+      ORG_A,
+      "",
+      { vendor: "claimmd", mode: "test", secret: KEY_A },
+      { "if-match": String(current?.version) },
+    );
+    expect(resave.statusCode, resave.body).toBe(200);
+    const [after] = await q<{ credential_fingerprint: string }>(
+      "SELECT credential_fingerprint FROM tenant_clearinghouse_config WHERE organization_id=$1",
+      [ORG_A],
+    );
+    expect(after?.credential_fingerprint).toBe(current?.credential_fingerprint);
+    // the write-audit row scrubs the fingerprint like the sealed secret
+    const audits = await q<{ after: Record<string, unknown> }>(
+      "SELECT after FROM audit_event WHERE organization_id=$1 AND event_type LIKE 'tenant_clearinghouse_config.%' ORDER BY created_at DESC LIMIT 1",
+      [ORG_A],
+    );
+    expect(JSON.stringify(audits)).not.toContain(String(current?.credential_fingerprint));
   });
 
   it("verifies with the connection test on the unsealed key; activation needs the vendor BAA recorded by the tenant and verified by an operator; the gate follows", async () => {

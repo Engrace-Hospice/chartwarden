@@ -109,6 +109,8 @@ export interface TenantClearinghouseServiceDeps {
   readonly hasPricingContract?: (organizationId: string, tx: ConfigStore["tx"]) => Promise<boolean>;
   /** Cause logging for a failure the caller is told about only in general terms (`err` goes to the redacting logger). */
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
+  /** Fingerprints of the platform's OWN vendor account keys (the env binding): a tenant may never seal one of those. */
+  readonly platformCredentialFingerprints?: ReadonlySet<string>;
 }
 
 /** What `prepareVerify` read: everything `completeVerify` needs, so no store call is open while the vendor is called. */

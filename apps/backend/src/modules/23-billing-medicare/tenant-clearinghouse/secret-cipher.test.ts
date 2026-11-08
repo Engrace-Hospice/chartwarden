@@ -1,6 +1,18 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { buildClearinghouseSecretCipher } from "./secret-cipher";
+import { buildClearinghouseSecretCipher, platformCredentialFingerprints } from "./secret-cipher";
+
+describe("the platform's own account fingerprints", () => {
+  it("covers each platform vendor key that is set, and nothing else", () => {
+    const cipher = buildClearinghouseSecretCipher(randomBytes(32));
+    const set = platformCredentialFingerprints(cipher, {
+      CLAIMMD_ACCOUNT_KEY: " fake-platform-claimmd#1 ",
+      STEDI_API_KEY: "",
+    });
+    expect([...set]).toEqual([cipher.fingerprint("claimmd", "fake-platform-claimmd#1")]);
+    expect(platformCredentialFingerprints(cipher, {}).size).toBe(0);
+  });
+});
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
@@ -43,6 +55,20 @@ describe("clearinghouse secret cipher", () => {
     const a = await cipher.encrypt(ORG_A, KEY, ctx);
     const b = await cipher.encrypt(ORG_A, KEY, ctx);
     expect(a.cipher).not.toBe(b.cipher);
+  });
+
+  // One vendor account belongs to one tenant (migration 1403): the fingerprint is the same for the same account whoever seals it,
+  // differs per vendor, ignores surrounding whitespace, is keyed (another KEK gives another value) and never contains the key.
+  it("fingerprints an account key: stable across orgs and modes, per vendor, keyed, and never the key itself", () => {
+    const fp = cipher.fingerprint("claimmd", KEY);
+    expect(fp).toMatch(/^[0-9a-f]{64}$/);
+    expect(fp).not.toContain(KEY);
+    expect(cipher.fingerprint("claimmd", `  ${KEY} `)).toBe(fp);
+    expect(cipher.fingerprint("stedi", KEY)).not.toBe(fp);
+    expect(cipher.fingerprint("claimmd", `${KEY}x`)).not.toBe(fp);
+    expect(buildClearinghouseSecretCipher(randomBytes(32)).fingerprint("claimmd", KEY)).not.toBe(
+      fp,
+    );
   });
 
   it("rejects a KEK that is not 32 bytes", () => {

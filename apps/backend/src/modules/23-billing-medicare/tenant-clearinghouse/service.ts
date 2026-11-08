@@ -96,6 +96,28 @@ const conflict = (code: string, message: string): ChartWardenError =>
 const versionConflict = (message: string): ChartWardenError =>
   new ChartWardenError("VERSION_CONFLICT", message, 412);
 
+/** The index that keeps one vendor account to one organization (migration 1403). */
+const FINGERPRINT_INDEX = "tenant_clearinghouse_config_fingerprint_uq";
+
+/** One refusal for "another organization, or the platform, already uses this account": it never says which. */
+export const accountInUse = (): ChartWardenError =>
+  conflict(
+    "CLEARINGHOUSE_ACCOUNT_IN_USE",
+    "this vendor account is already connected elsewhere; each organization needs its own account",
+  );
+
+/** True when `err` is a unique violation of the fingerprint index (the constraint name is on the error or its cause). */
+const isFingerprintViolation = (err: unknown): boolean => {
+  if (!isUniqueViolation(err)) return false;
+  const e = err as {
+    constraint_name?: string;
+    constraint?: string;
+    cause?: { constraint_name?: string; constraint?: string };
+  };
+  const name = e.constraint_name ?? e.constraint ?? e.cause?.constraint_name ?? e.cause?.constraint;
+  return name === FINGERPRINT_INDEX;
+};
+
 const isTransmitting = (vendor: string): vendor is TransmittingClearinghouseVendor =>
   vendor === "stedi" || vendor === "claimmd";
 
@@ -252,9 +274,14 @@ export function createTenantClearinghouseService(
         status: "active",
         secretCipher: null,
         secretDekVersion: null,
+        credentialFingerprint: null, // no account any more: the slot frees up
       };
     }
     const mode = input.mode as TenantClearinghouseMode;
+    const fingerprint = input.secret
+      ? requireCipher().fingerprint(input.vendor, input.secret)
+      : null;
+    if (fingerprint && deps.platformCredentialFingerprints?.has(fingerprint)) throw accountInUse();
     const sealed = input.secret
       ? await requireCipher().encrypt(actor.organizationId, input.secret, {
           vendor: input.vendor,
@@ -269,14 +296,18 @@ export function createTenantClearinghouseService(
       mode,
       secretCipher: sealed?.cipher ?? null,
       secretDekVersion: sealed?.dekVersion ?? null,
+      credentialFingerprint: fingerprint,
     };
   }
 
   async function save(store: ConfigStore, row: ConfigRow, patch: ConfigPatch): Promise<ConfigRow> {
-    const updated = await store.update(row.organizationId, row.version, {
-      ...patch,
-      updatedAt: now(),
-    });
+    let updated: ConfigRow | null;
+    try {
+      updated = await store.update(row.organizationId, row.version, { ...patch, updatedAt: now() });
+    } catch (err) {
+      if (isFingerprintViolation(err)) throw accountInUse();
+      throw err;
+    }
     if (!updated)
       throw versionConflict("the clearinghouse config changed while it was being updated");
     return updated;
@@ -343,6 +374,7 @@ export function createTenantClearinghouseService(
         changedFields: changedFieldsOf(null, input),
       };
     } catch (err) {
+      if (isFingerprintViolation(err)) throw accountInUse();
       if (!isUniqueViolation(err)) throw err;
       throw versionConflict(
         "a clearinghouse config was created concurrently; read it and send its version in If-Match",
