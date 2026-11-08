@@ -24,7 +24,7 @@ import {
 } from "./form-rules";
 import { idempotencyKey } from "./status";
 import { type Outcome, OutcomeBanner, failureOutcome } from "./ui";
-import { useSuccessRedirect } from "./use-success-redirect";
+import { REFUND_REDIRECT_DELAY_MS, useSuccessRedirect } from "./use-success-redirect";
 
 const REASONS = ["duplicate", "fraudulent", "requested_by_customer", "other"] as const;
 const KINDS = ["full", "partial", "credit_only"] as const;
@@ -96,7 +96,7 @@ export function RefundNew(): JSX.Element {
       message: "Refund request created — awaiting a distinct approver (four-eyes).",
     });
     setBusy(false);
-    finish("/admin/refunds", 1000);
+    finish("/admin/refunds", REFUND_REDIRECT_DELAY_MS);
   }, [busy, done, client, form, finish]);
 
   return (
@@ -155,21 +155,24 @@ export function RefundNew(): JSX.Element {
               options={REASON_OPTIONS}
               onChange={(e) => setForm({ ...form, reasonCode: e.target.value })}
             />
-            <div className="wx-form-field">
-              <TextAreaField
-                id="detail"
-                label="Reason detail"
-                hint="Do not include patient information."
-                required
-                error={errors.detail}
-                value={form.detail}
-                onChange={(e) => setForm({ ...form, detail: e.target.value })}
-                rows={4}
-              />
-              <span className={`wx-nums ${detailShort ? "wx-form-error" : "wx-form-hint"}`}>
-                {form.detail.trim().length}/{MIN_REFUND_REASON} characters
-              </span>
-            </div>
+            <TextAreaField
+              id="detail"
+              label="Reason detail"
+              hint={
+                <>
+                  Do not include patient information.{" "}
+                  <span className={detailShort ? "wx-nums wx-text-error" : "wx-nums"}>
+                    {form.detail.trim().length}/{MIN_REFUND_REASON} characters
+                    {detailShort ? ` — too short, ${MIN_REFUND_REASON} needed` : ""}
+                  </span>
+                </>
+              }
+              required
+              error={errors.detail}
+              value={form.detail}
+              onChange={(e) => setForm({ ...form, detail: e.target.value })}
+              rows={4}
+            />
             {outcome ? (
               <OutcomeBanner
                 {...outcome}

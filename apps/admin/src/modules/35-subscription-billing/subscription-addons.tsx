@@ -68,6 +68,7 @@ export function AddonsPanel({
     attempted && mode === "trial" && !trialEndsAt ? "Pick the day the trial ends." : undefined;
 
   const grant = useCallback(async () => {
+    if (busy) return;
     setAttempted(true);
     if (reason.trim().length < 3 || (mode === "trial" && !trialEndsAt)) return;
     setBusy(true);
@@ -93,7 +94,7 @@ export function AddonsPanel({
     setReason("");
     setAttempted(false);
     await load();
-  }, [client, subscriptionId, mode, trialEndsAt, reason, load]);
+  }, [busy, client, subscriptionId, mode, trialEndsAt, reason, load]);
 
   const cancel = useCallback(
     async (addonId: string) => {
@@ -120,7 +121,7 @@ export function AddonsPanel({
   return (
     <section className="wx-drawer-card">
       <div className="wx-drawer-card-head">
-        <h3>Add-ons</h3>
+        <h2>Add-ons</h2>
       </div>
       {rows === null ? (
         <StateLoading label="Loading add-ons…" />

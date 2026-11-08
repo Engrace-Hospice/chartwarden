@@ -28,7 +28,7 @@ import {
   failureOutcome,
   isNotFound,
 } from "./ui";
-import { useSuccessRedirect } from "./use-success-redirect";
+import { REFUND_REDIRECT_DELAY_MS, useSuccessRedirect } from "./use-success-redirect";
 
 type Refund = operations["getApiAdminRefundsById"]["responses"][200]["content"]["application/json"];
 
@@ -65,7 +65,8 @@ export function RefundApprove(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [busy, setBusy] = useState(false);
+  // Which decision is in flight (and stays set once it succeeded): both buttons lock, only that one shows the spinner.
+  const [acting, setActing] = useState<"approve" | "deny" | null>(null);
   const [denyReason, setDenyReason] = useState("");
   const [denyAttempted, setDenyAttempted] = useState(false);
   const decisionRef = useRef<HTMLDivElement>(null);
@@ -100,8 +101,8 @@ export function RefundApprove(): JSX.Element {
   }, [load]);
 
   const approve = useCallback(async () => {
-    if (!id || busy || done) return;
-    setBusy(true);
+    if (!id || acting || done) return;
+    setActing("approve");
     setOutcome(null);
     const res = await client.POST("/api/admin/refunds/{id}/approve", {
       params: { path: { id } },
@@ -109,22 +110,21 @@ export function RefundApprove(): JSX.Element {
     });
     if (res.error) {
       setOutcome(denial(res.error, "Could not approve the refund."));
-      setBusy(false);
+      setActing(null);
       return;
     }
     setOutcome({ ok: true, message: "Refund approved — queued for execution." });
-    setBusy(false);
-    finish("/admin/refunds", 1000);
-  }, [busy, done, client, id, finish]);
+    finish("/admin/refunds", REFUND_REDIRECT_DELAY_MS);
+  }, [acting, done, client, id, finish]);
 
   const deny = useCallback(async () => {
-    if (!id || busy || done) return;
+    if (!id || acting || done) return;
     setDenyAttempted(true);
     if (denyReason.trim().length === 0) {
       focusFirstInvalid(decisionRef.current);
       return;
     }
-    setBusy(true);
+    setActing("deny");
     setOutcome(null);
     const res = await client.POST("/api/admin/refunds/{id}/deny", {
       params: { path: { id } },
@@ -133,13 +133,12 @@ export function RefundApprove(): JSX.Element {
     });
     if (res.error) {
       setOutcome(denial(res.error, "Could not deny the refund."));
-      setBusy(false);
+      setActing(null);
       return;
     }
     setOutcome({ ok: true, message: "Refund denied." });
-    setBusy(false);
-    finish("/admin/refunds", 1000);
-  }, [busy, done, client, id, denyReason, finish]);
+    finish("/admin/refunds", REFUND_REDIRECT_DELAY_MS);
+  }, [acting, done, client, id, denyReason, finish]);
 
   const pageHead = (
     <header className="wx-page-head">
@@ -189,7 +188,11 @@ export function RefundApprove(): JSX.Element {
             </div>
             <div className="wx-form-stack" ref={decisionRef}>
               <div className="wx-drawer-actions">
-                <Button loading={busy || done} onClick={() => void approve()}>
+                <Button
+                  loading={acting === "approve"}
+                  disabled={acting !== null || done}
+                  onClick={() => void approve()}
+                >
                   Approve refund
                 </Button>
               </div>
@@ -207,7 +210,12 @@ export function RefundApprove(): JSX.Element {
                 placeholder="Why is this refund being denied?"
               />
               <div className="wx-drawer-actions">
-                <Button tone="secondary" onClick={() => void deny()} disabled={busy || done}>
+                <Button
+                  tone="secondary"
+                  loading={acting === "deny"}
+                  disabled={acting !== null || done}
+                  onClick={() => void deny()}
+                >
                   Deny refund
                 </Button>
               </div>

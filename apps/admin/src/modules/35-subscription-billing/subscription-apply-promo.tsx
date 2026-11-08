@@ -16,7 +16,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { idempotencyKey } from "./status";
 import { type Outcome, OutcomeBanner, StateError, StateLoading, failureOutcome } from "./ui";
 import { useSubscriptionGate } from "./use-subscription-gate";
-import { useSuccessRedirect } from "./use-success-redirect";
+import { SUBSCRIPTION_REDIRECT_DELAY_MS, useSuccessRedirect } from "./use-success-redirect";
 
 export function SubscriptionApplyPromo(): JSX.Element {
   const client = useApiClient();
@@ -58,8 +58,9 @@ export function SubscriptionApplyPromo(): JSX.Element {
     }
     setOutcome({ ok: true, message: `Promo "${promoCode}" applied.` });
     setCode("");
+    setAttempted(false);
     setBusy(false);
-    finish(`/admin/subscriptions/${id}`, 800);
+    finish(`/admin/subscriptions/${id}`, SUBSCRIPTION_REDIRECT_DELAY_MS);
   }, [busy, done, client, id, code, finish]);
 
   return (
