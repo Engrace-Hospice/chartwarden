@@ -10,9 +10,11 @@ its full description there. Newest first.
 
 **Why.** The console offered Skip from its own list and guessed which BAA record go-live judges; both now come from the server.
 
-- Each step of `GET /api/v1/platform/tenants/{orgSlug}/onboarding` carries `skippable`: true for a tenant-added (non-canonical) step and
+- Each step of `GET /api/v1/platform/tenants/{orgSlug}/onboarding` carries `skippable`: true for a non-canonical catalog step (added by platform ops) and
   for the canonical steps on the server's allowlist (MAC configuration, payer enrollment, the DoseSpot kickoff, sample data). Go-live is
   never skippable.
+- `POST /api/v1/platform/onboarding-templates` naming the key of a canonical template is now `409 ONBOARDING_TEMPLATE_CANONICAL` and
+  changes nothing (it could overwrite the template and mark it non-canonical). Canonical templates change only by migration.
 - `POST /api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/skip` on any other step is `409 ONBOARDING_STEP_NOT_SKIPPABLE` (answered
   before the sequence check, so it is final whatever is still open).
 - Each item of `GET /api/v1/platform/baa-register` carries `governing` (true on the one record per tenant that go-live and step 3 judge:

@@ -302,7 +302,7 @@ describe("skip", () => {
     expect((await wizard().getPlatform("acme")).steps[0]?.skippable).toBe(false);
   });
 
-  it("a tenant-added (non-canonical) step is skippable; go-live never is, even off the canonical list", () => {
+  it("a non-canonical catalog step (added by platform ops) is skippable; go-live never is, even off the canonical list", () => {
     expect(isSkippableStep({ key: "tenant_custom_training", canonical: false })).toBe(true);
     expect(isSkippableStep({ key: "organisation", canonical: true })).toBe(false);
     expect(isSkippableStep({ key: "sample_data_loaded", canonical: true })).toBe(true);
