@@ -7,7 +7,7 @@
 // the belt. The role condition is the one the wizard judges an officer by (an enabled role whose grant has not expired).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 
 const MB = schema.memberships;
 const U = schema.users;
@@ -85,6 +85,11 @@ export async function listActiveMembers(
         .where(
           and(
             eq(MR.organizationId, organizationId),
+            // only the listed members' roles: a capped list never reads the role rows of the members it cut
+            inArray(
+              MR.membershipId,
+              members.map((m) => m.membershipId),
+            ),
             eq(R.enabled, true),
             or(isNull(MR.expiresAt), gt(MR.expiresAt, sql`now()`)),
           ),
