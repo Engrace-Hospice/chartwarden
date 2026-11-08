@@ -118,6 +118,13 @@ describe("TenantClearinghouseCard", () => {
     expect(screen.queryByRole("link", { name: /Open the clearinghouse step/ })).toBeNull();
   });
 
+  it("for a provisioning tenant, says the step opens when provisioning finishes (the wizard's steps are not open yet)", async () => {
+    mount(NOTHING, null, "provisioning");
+    fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+    expect(await screen.findByText(/opens when provisioning finishes/)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Open the clearinghouse step/ })).toBeNull();
+  });
+
   it("says nothing is chosen yet, and points an onboarding tenant to the step where it is chosen", async () => {
     mount(NOTHING, null, "onboarding");
     fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
