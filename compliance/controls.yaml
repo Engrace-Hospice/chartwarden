@@ -566,15 +566,19 @@ controls:
     title: >-
       The Idempotency-Key request fingerprint that the shared middleware stores for every mutating route is a keyed hash, so a credential
       in a request body is not testable against guesses by someone who can read the table. idempotency_key.request_hash holds "h1:" +
-      a short key id (8 hex characters: an HMAC of a fixed label under the server key, the same for every row, so it gives a reader of the
-      table nothing to test a guess against) + ":" + HMAC-SHA-256 over the organization, user, method, route, path parameters, If-Match,
+      a short key id (8 hex characters: an HMAC of a fixed, public label under the server key, the same for every row; it reveals nothing
+      about a request body, but it does let a reader of the table test CANDIDATE SERVER SECRETS offline, 32 bits at a time) + ":" +
+      HMAC-SHA-256 over the organization, user, method, route, path parameters, If-Match,
       key and body, under a server key derived from
       BETTER_AUTH_SECRET with a purpose label (configuration the platform already requires; no key in code). Production refuses to boot
       without the secret; a non-production process with none uses a process-local random key. Across a deploy a record stored under the
       earlier plain SHA-256 still matches the same request by its legacy hash (computed, never written, for the 24 h TTL), so a retry
       replays rather than re-executes, and a record under another key (a rotated secret, told by its key id) is a 409 of its own,
       IDEMPOTENCY_KEY_STALE, whose message says the first request may or may not have taken effect and to retry with a new key (the same
-      key with another body stays IDEMPOTENCY_CONFLICT), never a replay or a re-run.
+      key with another body stays IDEMPOTENCY_CONFLICT), never a replay or a re-run. Because of the key id, this control's strength against
+      someone who can read idempotency_key rests on BETTER_AUTH_SECRET being high-entropy: it must be generated (at least 32 random bytes),
+      never chosen. Production boot enforces that the secret is present and at least 32 characters long, not its entropy, so this is
+      operating policy and not a machine check.
       Routes that return a one-time secret opt out of response capture (noIdempotencyCapture). Scope: the request fingerprint, not the
       cached response body.
     hipaa: ["164.312(a)(2)(iv)", "164.312(c)(1)"]
