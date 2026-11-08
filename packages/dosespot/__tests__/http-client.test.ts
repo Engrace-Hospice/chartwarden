@@ -46,7 +46,12 @@ interface Recorded {
 type Responder = (
   req: Recorded,
   n: number,
-) => { status: number; body?: unknown; text?: string } | "network" | "timeout" | "refused" | "refused-bun";
+) =>
+  | { status: number; body?: unknown; text?: string }
+  | "network"
+  | "timeout"
+  | "refused"
+  | "refused-bun";
 
 function fakeTransport(routes: Record<string, Responder>) {
   const calls: Recorded[] = [];
@@ -72,7 +77,9 @@ function fakeTransport(routes: Record<string, Responder>) {
       throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } });
     // Bun's shape: the code is on the error itself, no `cause`
     if (out === "refused-bun")
-      throw Object.assign(new TypeError("ECONNREFUSED: Unable to connect"), { code: "ECONNREFUSED" });
+      throw Object.assign(new TypeError("ECONNREFUSED: Unable to connect"), {
+        code: "ECONNREFUSED",
+      });
     return {
       status: out.status,
       text: async () => out.text ?? (out.body === undefined ? "" : JSON.stringify(out.body)),
