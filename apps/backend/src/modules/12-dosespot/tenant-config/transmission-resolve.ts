@@ -26,6 +26,7 @@ import {
   RESOLVED_SENT_CLASS,
   UNCONFIRMED_OUTCOME_CLASS,
 } from "../jobs/hold";
+import { isPrescriptionIdTaken, lockPrescriptionId } from "../prescription-id";
 import { CLINIC_AUDIT_EVENTS, type ClinicAuditPort } from "./audit-port";
 
 const MO = schema.medicationOrders;
@@ -114,6 +115,9 @@ export function createTransmissionResolveService(
       async (rawTx): Promise<ResolveHeldResult> => {
         const tx = rawTx as DbClient;
         const at = now();
+        // a "sent" resolution records an id webhooks will bind by: the per-(org, id) advisory lock comes FIRST (the lock order every writer of an
+        // id follows), so two writers of one id are serialized and the check below cannot be raced
+        if (input.outcome === "sent") await lockPrescriptionId(tx, organizationId, prescriptionId);
         // the order row is the lock every other writer of this order (the worker, the drain, another resolution) also takes
         const [order] = await tx.select().from(MO).where(eq(MO.id, orderId)).limit(1).for("update");
         if (!order) throw new NotFoundError(`medication order ${orderId} not found`);
@@ -144,6 +148,13 @@ export function createTransmissionResolveService(
 
         let result: ResolveHeldResult;
         if (input.outcome === "sent") {
+          if (await isPrescriptionIdTaken(tx, organizationId, prescriptionId, orderId)) {
+            throw new ChartWardenError(
+              "DOSESPOT_PRESCRIPTION_ID_IN_USE",
+              "another order of this organization already carries that DoseSpot prescription id; check the id you entered",
+              409,
+            );
+          }
           transitionMedicationOrder("queued_for_transmission", {
             type: "resolveHeldSent",
             actorIsAdministrator: true,

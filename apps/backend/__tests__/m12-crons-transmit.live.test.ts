@@ -1389,6 +1389,114 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       );
     });
 
+    // H2: webhooks bind an order by dosespot_prescription_id and take the first match, so an id recorded on two orders could land a dispense or a
+    // refill on the wrong patient. The "sent" resolution and the worker's own success refuse to record an id another order of the org carries.
+    it("SENT with a prescription id another order already carries is refused (409 DOSESPOT_PRESCRIPTION_ID_IN_USE) and the order stays held", async () => {
+      const { orderId, transmissionId } = await hold();
+      const other = await h.seedOrder({
+        org: ORG_A,
+        patientId: await h.seedPatient(ORG_A, { synced: "501" }),
+        status: "active",
+        sendState: "acked",
+        dosespotPrescriptionId: "rx-taken",
+        transmittedAt: T0,
+      });
+      expect(
+        await errorCodeOf(
+          resolver().resolve(await actorFor(), orderId, {
+            outcome: "sent",
+            reason: REASON,
+            dosespotPrescriptionId: "rx-taken",
+          }),
+        ),
+      ).toBe("DOSESPOT_PRESCRIPTION_ID_IN_USE");
+      expect(await orderRow(orderId)).toMatchObject({
+        status: "queued_for_transmission",
+        s: "in_flight",
+      });
+      expect((await txRow(transmissionId)).last_error_class).toBe("unconfirmed_outcome");
+      expect((await orderRow(other.orderId)).rx).toBe("rx-taken"); // the other order is untouched
+      // an id nobody carries still works
+      await resolver().resolve(await actorFor(), orderId, {
+        outcome: "sent",
+        reason: REASON,
+        dosespotPrescriptionId: "rx-free",
+      });
+      expect((await orderRow(orderId)).rx).toBe("rx-free");
+    });
+
+    it("RACE: two held orders resolved as SENT with the SAME new id, in parallel, cannot both record it (the advisory lock makes check-then-write atomic)", async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const a = await hold();
+        const b = await hold();
+        // hold both orders' row locks so both resolutions are in flight before either may write
+        await h.admin.query("BEGIN");
+        await h.admin.query(
+          "SELECT id FROM medication_order WHERE id = ANY($1::uuid[]) FOR UPDATE",
+          [[a.orderId, b.orderId]],
+        );
+        const id = `rx-dup-${attempt}`;
+        const both = Promise.allSettled(
+          [a, b].map(async (o) =>
+            resolver().resolve(await actorFor(), o.orderId, {
+              outcome: "sent",
+              reason: REASON,
+              dosespotPrescriptionId: id,
+            }),
+          ),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await h.admin.query("COMMIT");
+        const settled = await both;
+        expect(
+          settled.filter((r) => r.status === "fulfilled"),
+          `attempt ${attempt}`,
+        ).toHaveLength(1);
+        const lost = settled.find((r) => r.status === "rejected") as PromiseRejectedResult;
+        expect(lost.reason).toMatchObject({ code: "DOSESPOT_PRESCRIPTION_ID_IN_USE" });
+        const carrying = await h.q(
+          "SELECT count(*)::int AS n FROM medication_order WHERE organization_id=$1 AND dosespot_prescription_id=$2",
+          [ORG_A, id],
+        );
+        expect(carrying[0]?.n, `attempt ${attempt}`).toBe(1);
+      }
+    });
+
+    it("the worker's own success refuses to record an id another order carries: the order is HELD (not transmitted), with the event", async () => {
+      await h.seedOrder({
+        org: ORG_A,
+        patientId: await h.seedPatient(ORG_A, { synced: "501" }),
+        status: "active",
+        sendState: "acked",
+        dosespotPrescriptionId: "rx-clash",
+        transmittedAt: T0,
+      });
+      const { orderId, transmissionId } = await queued();
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async () => ({
+          dosespotPrescriptionId: "rx-clash",
+          transmittedAt: T0.toISOString(),
+        }),
+      });
+      const pass = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+      expect(pass).toMatchObject({ claimed: 1, held: 1, transmitted: 0 });
+      expect(await orderRow(orderId)).toMatchObject({
+        status: "queued_for_transmission",
+        s: "in_flight",
+      });
+      const t = await txRow(transmissionId as string);
+      expect(t.last_error_class).toBe("unconfirmed_outcome");
+      expect(String(t.last_error_detail)).toMatch(/already recorded on another order/);
+      expect(
+        await eventsFor("m12.medication_order.transmission_unconfirmed", orderId),
+      ).toHaveLength(1);
+      const carrying = await h.q(
+        "SELECT count(*)::int AS n FROM medication_order WHERE organization_id=$1 AND dosespot_prescription_id='rx-clash'",
+        [ORG_A],
+      );
+      expect(carrying[0]?.n).toBe(1);
+    });
+
     it("the transmission read says unconfirmed_outcome while held and the resolved state after", async () => {
       const backend = createDbDoseSpotBackend(h.handle.db, h.outbox);
       const { orderId } = await hold();

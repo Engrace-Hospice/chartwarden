@@ -38,6 +38,7 @@ import {
   transitionMedicationOrder,
 } from "@chartwarden/dosespot";
 import { and, asc, eq, inArray, isNull, lt, notExists, sql } from "drizzle-orm";
+import { prescriptionIdTakenByAnotherOrder } from "../prescription-id";
 import { type M12CronDeps, errorClassOf, inOrg, isCircuitOpenError, nowOf } from "./cron-common";
 import { reportDegradation, reportRecovery } from "./degradation-reports";
 import { UNCONFIRMED_OUTCOME_CLASS } from "./hold";
@@ -52,6 +53,8 @@ export const TRANSMIT_BATCH_SIZE = 25;
 export const RECOVERY_BATCH_SIZE = 100;
 /** An `in_flight` claim older than this is a crashed worker's; the recovery drain re-queues it. */
 export const IN_FLIGHT_STALE_MS = 10 * 60_000;
+const DUPLICATE_ID_DETAIL =
+  "DoseSpot returned a prescription id already recorded on another order, so this order was not marked sent. The prescription may exist at DoseSpot.";
 const STALE_CALL_DETAIL =
   "A worker stopped after the call to DoseSpot was made, before the answer was recorded. The prescription may already exist at DoseSpot.";
 const MAX_BACKOFF_MINUTES = 60;
@@ -311,12 +314,12 @@ async function settle(
       return "deferred";
     }
 
-    if (outcome.kind === "unconfirmed") {
-      // The order stays `in_flight` (nothing re-claims it: the claim takes only `queued`, and the drain skips this class); only the row
-      // that says why, and the event that tells a person, are written. No retry is spent and no failure timestamp is set.
+    // The order stays `in_flight` (nothing re-claims it: the claim takes only `queued`, and the drain skips a held one); only the row that
+    // says why, and the event that tells a person, are written. No retry is spent and no failure timestamp is set.
+    const hold = async (detail: string): Promise<"held"> => {
       const held = await tx
         .update(MOT)
-        .set({ lastErrorClass: UNCONFIRMED_OUTCOME_CLASS, lastErrorDetail: outcome.detail })
+        .set({ lastErrorClass: UNCONFIRMED_OUTCOME_CLASS, lastErrorDetail: detail })
         .where(eq(MOT.id, c.transmission.id))
         .returning({ id: MOT.id });
       if (held.length !== 1) throw new Error("transmission row not updated at unconfirmed hold");
@@ -325,9 +328,18 @@ async function settle(
         lastErrorClass: UNCONFIRMED_OUTCOME_CLASS,
       });
       return "held";
-    }
+    };
+
+    if (outcome.kind === "unconfirmed") return hold(outcome.detail);
 
     if (outcome.kind === "success") {
+      // webhooks bind an order by its prescription id and take the first match: an id another order already carries must not be recorded
+      // twice (the same guard the administrator's "sent" resolution uses). Held for a person, like any outcome that cannot be trusted.
+      if (
+        await prescriptionIdTakenByAnotherOrder(tx, organizationId, outcome.prescriptionId, orderId)
+      ) {
+        return hold(DUPLICATE_ID_DETAIL);
+      }
       transitionMedicationOrder("queued_for_transmission", {
         type: "transmissionSucceeded",
         isSystemActor: true,

@@ -164,7 +164,10 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   worker success and the status poll follows it as normal) or NOT SENT (the order becomes `transmission_failed`, whose only way on is the
   existing retransmit, where the prescriber signs a replacement; it is never put back on the queue). Either is accepted only while the hold
   marker is on the transmission row, under a row lock and a conditional update, so two resolutions, or a resolution racing the recovery drain,
-  cannot both win (409 `DOSESPOT_TRANSMISSION_NOT_HELD`); the reason is stored on the transmission row's denylisted `last_error_detail`, and the
+  cannot both win (409 `DOSESPOT_TRANSMISSION_NOT_HELD`); the marker, not `transmission_failed_at`, says an order is held (an earlier retry sets that
+  timestamp and the backoff needs it kept); a "sent" id that another order of the organization already carries is refused (409
+  `DOSESPOT_PRESCRIPTION_ID_IN_USE`: webhooks bind an order by that id and take the first match), by a per-(org, id) advisory lock taken before the
+  order row, and the worker's own success applies the same guard (it holds the order instead of recording a duplicate id); the reason is stored on the transmission row's denylisted `last_error_detail`, and the
   audit entry (`m12.dosespot_order.transmission_resolved`) carries ids and the outcome only. `GET .../transmission` reports `unconfirmed_outcome`
   while held. (The same 2xx-but-no-id ambiguity after the create step used to be a permanent
   refusal; it is now this class, like an enrolment's.) The claim also stamps `transmission_started_at` in its own committed transaction just
