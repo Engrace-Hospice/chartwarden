@@ -38,17 +38,34 @@ describe("deploy/production/nginx/chartwarden-platform.conf", () => {
     expect(withoutComments(locationBody(BAA_LOCATION))).toContain("client_max_body_size 16m;");
   });
 
-  it("the snippet strips the actor assertion and proxies to the API", () => {
+  it("bounds the BAA upload's body read and upstream wait", () => {
+    const baa = withoutComments(locationBody(BAA_LOCATION));
+    expect(baa).toContain("client_body_timeout 30s;");
+    expect(baa).toContain("proxy_read_timeout 90s;");
+  });
+
+  it("the snippet carries all seven proxy directives, the stripped actor assertion included", () => {
     const snippet = withoutComments(
       readFileSync(join(NGINX, "chartwarden-platform-proxy.conf"), "utf8"),
     );
-    expect(snippet).toContain('proxy_set_header X-CW-Actor-Assertion "";');
-    expect(snippet).toContain("proxy_pass http://127.0.0.1:3000;");
+    const directives = snippet
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    expect(directives).toEqual([
+      "proxy_pass http://127.0.0.1:3000;",
+      'proxy_set_header X-CW-Actor-Assertion "";',
+      "proxy_http_version 1.1;",
+      "proxy_set_header Host $host;",
+      "proxy_set_header X-Real-IP $remote_addr;",
+      "proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;",
+      "proxy_set_header X-Forwarded-Proto $scheme;",
+    ]);
   });
 
-  it("bootstrap installs the snippet", () => {
+  it("bootstrap installs the snippet at the path the vhost includes", () => {
     expect(readFileSync(join(ROOT, "deploy/production/bootstrap-vps.sh"), "utf8")).toContain(
-      "nginx/chartwarden-platform-proxy.conf",
+      'install -m 0644 "$SOURCE_DIR/nginx/chartwarden-platform-proxy.conf" /etc/nginx/snippets/chartwarden-platform-proxy.conf',
     );
   });
 });
