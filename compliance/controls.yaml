@@ -366,6 +366,8 @@ controls:
       - file: apps/backend/__tests__/m34-baa-document-upload.live.test.ts
       - file: apps/backend/src/modules/22-documents/routes/immutable-kinds.ts
       - file: apps/backend/src/modules/34-saas-tenant-platform/routes/platform/baa-guards.ts
+      - file: apps/backend/src/modules/22-documents/routes/server-upload.ts
+      - file: apps/backend/src/modules/22-documents/routes/server-upload.test.ts
       - script: test:m34:onboarding-wizard:live
     gap:
       reason: No malware scanner implementation exists in this repo, so the upload is content-verified (type, magic bytes, size, SHA-256) but not virus-scanned unless one is bound; with DOCUMENT_UPLOAD_SCAN_REQUIRED=true an unbound scanner refuses the upload (503) instead, and unset (the default) an unscanned file is stored. This is the posture of every other M22 upload; the BAA upload inherits it and adds no scanner of its own.
