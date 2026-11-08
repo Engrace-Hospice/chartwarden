@@ -84,10 +84,10 @@ describe("useDrawerA11y", () => {
 describe("useDrawerA11y focus hand-off", () => {
   /** A list with a drawer per selected row, like the admin list screens: the open row is `tr.is-selected`. */
   function RowsWithDrawer({
-    setSelection,
-  }: { setSelection: (set: (id: string | null) => void) => void }): JSX.Element {
+    controls,
+  }: { controls: { select: (id: string | null) => void } }): JSX.Element {
     const [id, setId] = useState<string | null>(null);
-    setSelection(setId);
+    controls.select = setId;
     return (
       <div>
         <input aria-label="filter" />
@@ -100,6 +100,9 @@ describe("useDrawerA11y focus hand-off", () => {
                 className={id === row ? "is-selected" : undefined}
                 tabIndex={0}
                 onClick={() => setId(row)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") setId(row);
+                }}
               >
                 <td>{row}</td>
               </tr>
@@ -119,9 +122,9 @@ describe("useDrawerA11y focus hand-off", () => {
     );
   }
   const mountRows = (): { select: (id: string | null) => void } => {
-    let select: (id: string | null) => void = () => undefined;
-    render(<RowsWithDrawer setSelection={(set) => (select = set)} />);
-    return { select: (id) => act(() => select(id)) };
+    const controls = { select: (_id: string | null): void => undefined };
+    render(<RowsWithDrawer controls={controls} />);
+    return { select: (id) => act(() => controls.select(id)) };
   };
 
   it("hands focus to the selected row when the drawer opened with nothing focused (a deep link)", () => {
