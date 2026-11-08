@@ -1,6 +1,5 @@
 import {
   Button,
-  Panel,
   TextAreaField,
   TextField,
   stashStepUpMemoryDraft,
@@ -69,42 +68,50 @@ export function SubscriptionPause(): JSX.Element {
         ) : gate === "error" ? (
           <StateError message="Subscription unavailable." onRetry={retry} />
         ) : (
-          <div className="max-w-xl">
-            <Panel title="Pause" icon="clock">
-              <div className="grid gap-4">
-                <TextField
-                  id="paused-until"
-                  label="Paused until (optional)"
-                  type="date"
-                  value={until}
-                  onChange={(e) => setUntil(e.target.value)}
+          <form
+            className="wx-drawer-card"
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submit();
+            }}
+          >
+            <div className="wx-drawer-card-head">
+              <h3>Pause</h3>
+            </div>
+            <div className="wx-form-stack">
+              <TextField
+                id="paused-until"
+                label="Paused until (optional)"
+                type="date"
+                value={until}
+                onChange={(e) => setUntil(e.target.value)}
+              />
+              <TextAreaField
+                id="pause-reason"
+                label="Reason (for your ops record)"
+                hint="Do not include patient information."
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={3}
+                placeholder="Why is this subscription being paused?"
+              />
+              {outcome ? (
+                <OutcomeBanner
+                  {...outcome}
+                  onReverify={() => stashStepUpMemoryDraft(draftKey, { until, reason })}
                 />
-                <TextAreaField
-                  id="pause-reason"
-                  label="Reason (for your ops record)"
-                  hint="Do not include patient information."
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  rows={3}
-                  placeholder="Why is this subscription being paused?"
-                />
-                {outcome ? (
-                  <OutcomeBanner
-                    {...outcome}
-                    onReverify={() => stashStepUpMemoryDraft(draftKey, { until, reason })}
-                  />
-                ) : null}
-                <div className="wx-action-row is-end">
-                  <Button tone="tertiary" onClick={() => navigate(`/admin/subscriptions/${id}`)}>
-                    Cancel
-                  </Button>
-                  <Button loading={busy} onClick={() => void submit()}>
-                    Pause subscription
-                  </Button>
-                </div>
-              </div>
-            </Panel>
-          </div>
+              ) : null}
+            </div>
+            <div className="wx-drawer-actions">
+              <Button type="submit" loading={busy}>
+                Pause subscription
+              </Button>
+              <Button tone="tertiary" onClick={() => navigate(`/admin/subscriptions/${id}`)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
         )}
       </div>
     </div>

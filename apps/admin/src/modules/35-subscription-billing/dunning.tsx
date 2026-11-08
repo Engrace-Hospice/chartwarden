@@ -184,7 +184,7 @@ function DunningTable({
               <td className="wx-nums">{formatDate(r.enteredAt)}</td>
               <td className="wx-nums">{formatDate(r.nextAttemptAt)}</td>
               <td>
-                <div className="flex justify-end gap-2">
+                <div className="wx-action-row is-end">
                   <Button
                     tone="secondary"
                     size="sm"

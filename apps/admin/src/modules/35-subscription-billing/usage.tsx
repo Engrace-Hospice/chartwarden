@@ -76,8 +76,8 @@ export function Usage(): JSX.Element {
             <p>One tenant's metered usage for the current billing period.</p>
           </div>
         </header>
-        <form className="flex max-w-xl items-end gap-2" onSubmit={view} ref={formRef}>
-          <div className="min-w-0 flex-1">
+        <form className="wx-drawer-card" noValidate onSubmit={view} ref={formRef}>
+          <div className="wx-form-grid">
             <TextField
               label="Organization id"
               value={orgInput}
@@ -86,7 +86,9 @@ export function Usage(): JSX.Element {
               placeholder="Organization id"
             />
           </div>
-          <Button type="submit">View</Button>
+          <div className="wx-drawer-actions">
+            <Button type="submit">View</Button>
+          </div>
         </form>
         {!organizationId ? (
           <StateEmpty icon="search">

@@ -1,7 +1,6 @@
 import {
   Button,
   InlineAlert,
-  Panel,
   StatusPill,
   TextAreaField,
   focusFirstInvalid,
@@ -23,6 +22,7 @@ import {
   DrawerHead,
   type Outcome,
   OutcomeBanner,
+  StateEmpty,
   StateError,
   StateLoading,
   failureOutcome,
@@ -164,46 +164,47 @@ export function RefundApprove(): JSX.Element {
     <div className="wx-list-drawer has-drawer">
       <div className="wx-list-drawer-main">
         {pageHead}
-        <div className="grid max-w-xl gap-4">
-          <InlineAlert tone="info">
-            Approval is step-up-gated and enforces four-eyes: you may not approve a refund you
-            requested. A denied step-up or a self-approval attempt is reported below.
-          </InlineAlert>
-          {outcome ? <OutcomeBanner {...outcome} /> : null}
-          {decided ? (
-            <p className="m-0 text-sm">
-              This refund is already {cap(refund.status)} — no action available.
-            </p>
-          ) : (
-            <Panel title="Decision" icon="scale">
-              <div className="grid gap-4" ref={decisionRef}>
-                <div className="wx-action-row">
-                  <Button loading={busy} onClick={() => void approve()}>
-                    Approve refund
-                  </Button>
-                </div>
-                <TextAreaField
-                  id="deny-reason"
-                  label="Deny reason"
-                  value={denyReason}
-                  onChange={(e) => setDenyReason(e.target.value)}
-                  error={
-                    denyAttempted && denyReason.trim().length === 0
-                      ? "Say why this refund is being denied."
-                      : undefined
-                  }
-                  rows={3}
-                  placeholder="Why is this refund being denied?"
-                />
-                <div className="wx-action-row">
-                  <Button tone="secondary" onClick={() => void deny()} disabled={busy}>
-                    Deny refund
-                  </Button>
-                </div>
+        <InlineAlert tone="info">
+          Approval is step-up-gated and enforces four-eyes: you may not approve a refund you
+          requested. A denied step-up or a self-approval attempt is reported below.
+        </InlineAlert>
+        {outcome ? <OutcomeBanner {...outcome} /> : null}
+        {decided ? (
+          <StateEmpty>
+            This refund is already {cap(refund.status)} — no action available.
+          </StateEmpty>
+        ) : (
+          <section className="wx-drawer-card">
+            <div className="wx-drawer-card-head">
+              <h3>Decision</h3>
+            </div>
+            <div className="wx-form-stack" ref={decisionRef}>
+              <div className="wx-drawer-actions">
+                <Button loading={busy} onClick={() => void approve()}>
+                  Approve refund
+                </Button>
               </div>
-            </Panel>
-          )}
-        </div>
+              <TextAreaField
+                id="deny-reason"
+                label="Deny reason"
+                value={denyReason}
+                onChange={(e) => setDenyReason(e.target.value)}
+                error={
+                  denyAttempted && denyReason.trim().length === 0
+                    ? "Say why this refund is being denied."
+                    : undefined
+                }
+                rows={3}
+                placeholder="Why is this refund being denied?"
+              />
+              <div className="wx-drawer-actions">
+                <Button tone="secondary" onClick={() => void deny()} disabled={busy}>
+                  Deny refund
+                </Button>
+              </div>
+            </div>
+          </section>
+        )}
       </div>
       <RefundSummary refund={refund} />
     </div>
@@ -236,7 +237,7 @@ function RefundSummary({ refund }: { refund: Refund }): JSX.Element {
             <dt>Requested</dt>
             <dd className="wx-nums">{formatDate(refund.requestedAt)}</dd>
             <dt>Requested by</dt>
-            <dd className="wx-data-md break-all">{refund.requestedByMembershipId}</dd>
+            <dd className="wx-data-md">{refund.requestedByMembershipId}</dd>
           </dl>
         </section>
       </div>

@@ -47,7 +47,7 @@ export function OutcomeBanner({
   onReverify?: () => void;
 }): JSX.Element {
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="wx-action-row">
       <InlineAlert tone={ok ? "success" : "error"}>{message}</InlineAlert>
       {stepUp ? <ReverifyLink onNavigate={onReverify} /> : null}
     </div>

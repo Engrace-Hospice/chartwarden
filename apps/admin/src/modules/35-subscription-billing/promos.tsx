@@ -359,7 +359,7 @@ function CreatePromoDrawer({
             value={form.code}
             onChange={(e) => onChange({ ...form, code: e.target.value })}
           />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="wx-form-grid">
             <SelectField
               label="Kind"
               value={form.kind}

@@ -1,6 +1,5 @@
 import {
   Button,
-  Panel,
   TextField,
   focusFirstInvalid,
   stashStepUpMemoryDraft,
@@ -30,7 +29,7 @@ export function SubscriptionApplyPromo(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [attempted, setAttempted] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLFormElement>(null);
 
   const submit = useCallback(async () => {
     const promoCode = code.trim();
@@ -79,34 +78,43 @@ export function SubscriptionApplyPromo(): JSX.Element {
         ) : gate === "error" ? (
           <StateError message="Subscription unavailable." onRetry={retry} />
         ) : (
-          <div className="max-w-xl">
-            <Panel title="Promo" icon="receipt">
-              <div className="grid gap-4" ref={panelRef}>
-                <TextField
-                  id="promo-code"
-                  label="Promo code"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  error={attempted && !code.trim() ? "Enter the promo code to apply." : undefined}
-                  placeholder="e.g. LAUNCH25"
+          <form
+            className="wx-drawer-card"
+            ref={panelRef}
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submit();
+            }}
+          >
+            <div className="wx-drawer-card-head">
+              <h3>Promo</h3>
+            </div>
+            <div className="wx-form-stack">
+              <TextField
+                id="promo-code"
+                label="Promo code"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                error={attempted && !code.trim() ? "Enter the promo code to apply." : undefined}
+                placeholder="e.g. LAUNCH25"
+              />
+              {outcome ? (
+                <OutcomeBanner
+                  {...outcome}
+                  onReverify={() => stashStepUpMemoryDraft(draftKey, code)}
                 />
-                {outcome ? (
-                  <OutcomeBanner
-                    {...outcome}
-                    onReverify={() => stashStepUpMemoryDraft(draftKey, code)}
-                  />
-                ) : null}
-                <div className="wx-action-row is-end">
-                  <Button tone="tertiary" onClick={() => navigate(`/admin/subscriptions/${id}`)}>
-                    Cancel
-                  </Button>
-                  <Button loading={busy} onClick={() => void submit()}>
-                    Apply promo
-                  </Button>
-                </div>
-              </div>
-            </Panel>
-          </div>
+              ) : null}
+            </div>
+            <div className="wx-drawer-actions">
+              <Button type="submit" loading={busy}>
+                Apply promo
+              </Button>
+              <Button tone="tertiary" onClick={() => navigate(`/admin/subscriptions/${id}`)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
         )}
       </div>
     </div>

@@ -20,7 +20,7 @@ import {
   usageThresholdTone,
 } from "./status";
 import { type AddonUsage, AddonsPanel } from "./subscription-addons";
-import { DrawerHead, StateError, StateLoading, isNotFound } from "./ui";
+import { DrawerHead, StateEmpty, StateError, StateLoading, isNotFound } from "./ui";
 
 type AdminSub =
   operations["getApiAdminSubscriptionsById"]["responses"][200]["content"]["application/json"];
@@ -123,16 +123,18 @@ export function SubscriptionDetail(): JSX.Element {
             <Button onClick={() => navigate(`/admin/subscriptions/${sub.id}/pause`)}>Pause</Button>
           </div>
         </header>
-        <h2 className="m-0 text-base font-semibold">Usage this period</h2>
+        <h2 className="wx-action-title">Usage this period</h2>
         {!usage || usage.length === 0 ? (
-          <p className="m-0 text-sm">No metered usage recorded for the current period.</p>
+          <StateEmpty icon="bar-chart">
+            No metered usage recorded for the current period.
+          </StateEmpty>
         ) : (
           <UsageTable meters={usage} />
         )}
         <AddonsPanel subscriptionId={sub.id} usage={addonUsage} />
-        <h2 className="m-0 text-base font-semibold">Refund history</h2>
+        <h2 className="wx-action-title">Refund history</h2>
         {refunds.length === 0 ? (
-          <p className="m-0 text-sm">No refunds requested for this organization.</p>
+          <StateEmpty icon="rotate-ccw">No refunds requested for this organization.</StateEmpty>
         ) : (
           <RefundsTable refunds={refunds} />
         )}

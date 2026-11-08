@@ -7,7 +7,14 @@ import type { operations } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { formatCents, formatDate, idempotencyKey } from "./status";
-import { type Outcome, OutcomeBanner, StateError, StateLoading, failureOutcome } from "./ui";
+import {
+  type Outcome,
+  OutcomeBanner,
+  StateEmpty,
+  StateError,
+  StateLoading,
+  failureOutcome,
+} from "./ui";
 
 type Current =
   operations["getApiAdminRevenueCurrent"]["responses"][200]["content"]["application/json"];
@@ -104,9 +111,11 @@ export function Revenue(): JSX.Element {
                 </div>
               ))}
             </div>
-            <h2 className="m-0 text-base font-semibold">Trailing snapshots</h2>
+            <h2 className="wx-action-title">Trailing snapshots</h2>
             {snapshots.length === 0 ? (
-              <p className="m-0 text-sm">No revenue snapshots recorded yet — run a recompute.</p>
+              <StateEmpty icon="bar-chart">
+                No revenue snapshots recorded yet — run a recompute.
+              </StateEmpty>
             ) : (
               <SnapshotsTable snapshots={snapshots} />
             )}
