@@ -28,7 +28,7 @@ import { PlanEditor, WriteFailure } from "./pricing-plan-form";
 import {
   ACTION_COPY,
   type PlanAction,
-  type PlanForm,
+  type PlanDraft,
   type PricingPlan,
   actionsFor,
   blankForm,
@@ -435,20 +435,24 @@ function PlanDrawer({
   onDone: (planId: string, message: string) => Promise<void>;
   onReload: () => Promise<void>;
 }): JSX.Element {
-  // A step-up refusal sends the operator to /step-up and back; the typed prices come back ONCE (Cancel or a save drops them).
-  const restored = useStepUpMemoryDraft<PlanForm>(editDraftKey(plan.id));
-  const [stash, setStash] = useState<PlanForm | undefined>(restored);
-  const [editing, setEditing] = useState(
-    restored !== undefined && plan.status === "draft" && canWrite,
-  );
+  // A step-up refusal sends the operator to /step-up and back; the typed prices come back ONCE (Cancel or a save drops them), with
+  // the version they were typed against: a save after someone else's is refused (409), never a blind overwrite.
+  const restored = useStepUpMemoryDraft<PlanDraft>(editDraftKey(plan.id));
+  const [stash, setStash] = useState<PlanDraft | undefined>(restored);
+  const editable = plan.status === "draft" && canWrite;
+  const [editing, setEditing] = useState(restored !== undefined && editable);
   const [asking, setAsking] = useState<PlanAction | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   // The edited flag (Escape stops closing a drawer once something was typed) resets when the dialog or the editor closes.
   const drawer = useDrawerA11y<HTMLElement>(onClose, editing ? "editing" : asking);
+  // Focus goes back to the drawer (its buttons return or change), not to the page; after the modal's own focus restore.
+  const focusDrawer = (): void => {
+    setTimeout(() => drawer.ref.current?.focus({ preventScroll: true }), 0);
+  };
   const stopEditing = (): void => {
     setStash(undefined);
     setEditing(false);
-    // Focus goes back to the drawer (its buttons return), not to the page.
-    drawer.ref.current?.focus({ preventScroll: true });
+    focusDrawer();
   };
 
   return (
@@ -456,13 +460,22 @@ function PlanDrawer({
       <DrawerHead icon="layout-grid" title={plan.name} sub={plan.slug} onClose={onClose} />
       <div className="wx-drawer-body">
         {outcome ? <InlineAlert tone="success">{outcome}</InlineAlert> : null}
-        {editing ? (
+        {notice ? <InlineAlert tone="warning">{notice}</InlineAlert> : null}
+        {/* a reload that finds the plan no longer a draft closes the editor */}
+        {editing && editable ? (
           <PlanEditor
             mode={{ kind: "edit", plan }}
-            initial={stash ?? formFromPlan(plan)}
+            initial={stash?.form ?? formFromPlan(plan)}
+            {...(stash?.pin ? { pin: stash.pin } : {})}
             draftKey={editDraftKey(plan.id)}
             onCancel={stopEditing}
-            onConflict={() => void onReload()}
+            onConflict={() => {
+              stopEditing();
+              setNotice(
+                "Someone changed this draft since you opened it. These are its prices now: open Edit prices and make your change again.",
+              );
+              void onReload();
+            }}
             onSaved={async (saved) => {
               stopEditing();
               await onDone(saved.id, `"${saved.name}" prices saved.`);
@@ -476,13 +489,27 @@ function PlanDrawer({
               family={family}
               canWrite={canWrite}
               locked={reloading || asking !== null}
-              onEdit={() => setEditing(true)}
-              onAsk={setAsking}
+              onEdit={() => {
+                setNotice(null);
+                setEditing(true);
+              }}
+              onAsk={(action) => {
+                setNotice(null);
+                setAsking(action);
+              }}
             />
           </section>
         )}
       </div>
-      <ActionDialog plan={plan} action={asking} onClose={() => setAsking(null)} onDone={onDone} />
+      <ActionDialog
+        plan={plan}
+        action={asking}
+        onClose={() => setAsking(null)}
+        onDone={async (planId, message) => {
+          await onDone(planId, message);
+          focusDrawer();
+        }}
+      />
     </aside>
   );
 }
@@ -498,7 +525,7 @@ function CreateDrawer({
 }): JSX.Element {
   const drawer = useDrawerA11y<HTMLElement>(onClose);
   // A step-up refusal sends the operator to /step-up and back; the typed plan comes back (when the bands still match).
-  const restored = useStepUpMemoryDraft<PlanForm>(CREATE_DRAFT_KEY);
+  const restored = useStepUpMemoryDraft<PlanDraft>(CREATE_DRAFT_KEY)?.form;
   const initial =
     restored && restored.bandFees.length === thresholds.length
       ? restored

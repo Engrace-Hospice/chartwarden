@@ -3,6 +3,7 @@ import {
   type OpsFailure,
   type ReasonDialogRecordLine,
   hundredthsText,
+  isValid,
   parseHundredths,
   parsePriceCents,
 } from "@chartwarden/ui";
@@ -127,21 +128,36 @@ export function pricingFormErrors(
   return errors;
 }
 
-/** The prices of a valid form (call only when `pricingFormErrors` is empty), as the PUT body without its reason. */
-export function pricesOf(form: PlanForm, thresholds: readonly number[]) {
-  const cents = (raw: string): number => parsePriceCents(raw) ?? 0;
+/** The PUT body's prices (without its reason). */
+export interface PlanPricesBody {
+  readonly name: string;
+  readonly perUserPriceCents: number;
+  readonly bands: { minAdc: number; monthlyFeeCents: number }[];
+  readonly billingSoftwareBps: number;
+  readonly managedBillingBps: number;
+  readonly contractTermMonths: number;
+  readonly implementationFeeCents: number;
+  readonly minimumMonthlyCents: number | null;
+}
+
+/** The form's prices as the validator parsed them; null when any field does not parse (so nothing defaults to 0 silently). */
+export function pricesOf(form: PlanForm, thresholds: readonly number[]): PlanPricesBody | null {
+  if (!isValid(pricingFormErrors(form, "edit"))) return null;
+  const cents = (raw: string, max: number): number => parsePriceCents(raw, max) as number;
+  const bps = (raw: string): number => parsePercentBps(raw) as number;
   return {
     name: form.name.trim(),
-    perUserPriceCents: cents(form.perUserPrice),
+    perUserPriceCents: cents(form.perUserPrice, MAX_PER_USER_CENTS),
     bands: thresholds.map((minAdc, i) => ({
       minAdc,
-      monthlyFeeCents: cents(form.bandFees[i] ?? ""),
+      monthlyFeeCents: cents(form.bandFees[i] ?? "", MAX_CENTS),
     })),
-    billingSoftwareBps: parsePercentBps(form.billingSoftwarePct) ?? 0,
-    managedBillingBps: parsePercentBps(form.managedBillingPct) ?? 0,
+    billingSoftwareBps: bps(form.billingSoftwarePct),
+    managedBillingBps: bps(form.managedBillingPct),
     contractTermMonths: Number(form.termMonths.trim()),
-    implementationFeeCents: cents(form.implementationFee),
-    minimumMonthlyCents: form.minimumMonthly.trim() === "" ? null : cents(form.minimumMonthly),
+    implementationFeeCents: cents(form.implementationFee, MAX_CENTS),
+    minimumMonthlyCents:
+      form.minimumMonthly.trim() === "" ? null : cents(form.minimumMonthly, MAX_CENTS),
   };
 }
 
@@ -158,6 +174,17 @@ export const percentText = (bps: number | null): string =>
 /** A contract term in words; "None" when unset (never "— months"). */
 export const termText = (months: number | null): string =>
   months === null ? "None" : `${months} ${months === 1 ? "month" : "months"}`;
+
+/** Nothing to show (the dialog opens only on a form that parses). */
+export const EMPTY_PRICES: PlanPrices = {
+  perUserPriceCents: null,
+  bands: [],
+  billingSoftwareBps: null,
+  managedBillingBps: null,
+  contractTermMonths: null,
+  implementationFeeCents: null,
+  minimumMonthlyCents: null,
+};
 
 /** What a plan's prices say, as label/value lines: the drawer's details and the record a reason dialog shows. */
 export interface PlanPrices {
@@ -203,7 +230,9 @@ const sentence = (s: string): string => {
 
 /** A refused write in words: what failed, the server's reason, and each detail it named (operator-safe envelope text). */
 export function failureText(failure: OpsFailure, failed: string): string {
-  const lines = [failure.message, ...failure.details.map((d) => d.message)].map(sentence);
+  // a stale-pin detail carries the current timestamp for a retry, not words for the operator
+  const details = failure.details.filter((d) => d.field !== "currentUpdatedAt");
+  const lines = [failure.message, ...details.map((d) => d.message)].map(sentence);
   return [failed, ...new Set(lines.filter((l) => l !== ""))].join(" ");
 }
 
@@ -283,3 +312,9 @@ export const ACTION_COPY: Readonly<Record<PlanAction, ActionCopy>> = {
 
 /** The `If-Match` a write on an existing version sends: the `updatedAt` the operator read. */
 export const pinOf = (plan: PricingPlan): string => `"${plan.updatedAt}"`;
+
+/** What a Re-verify keeps of the editor: the typed form and, on an edit, the version it was typed against (its pin). */
+export interface PlanDraft {
+  readonly form: PlanForm;
+  readonly pin?: string;
+}

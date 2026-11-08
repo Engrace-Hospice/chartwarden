@@ -337,6 +337,12 @@ describe("PricingPlans", () => {
     confirmWithReason("Archive");
     expect(await screen.findByText(/"Hospice core" archived/)).toBeTruthy();
     expect(sent[0]?.url).toBe(`/api/admin/pricing/plans/${PUBLISHED.id}/archive`);
+    // the Archive button is gone; focus is on the drawer, not lost to the page
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("complementary", { name: "Price plan" }),
+      ),
+    );
   });
 
   it("a new version opens the new draft", async () => {
@@ -560,7 +566,7 @@ describe("PricingPlans", () => {
     fireEvent.click(within(d).getByRole("button", { name: "Edit prices" }));
     await waitFor(() => expect(document.activeElement).toBe(within(d).getByLabelText(/^Name/)));
     fireEvent.click(within(d).getByRole("button", { name: "Cancel" }));
-    expect(document.activeElement).toBe(d);
+    await waitFor(() => expect(document.activeElement).toBe(d));
   });
 
   it("edit: a field the server refuses is marked on the form, the dialog closes, and the reason comes back on the next try", async () => {
@@ -596,43 +602,74 @@ describe("PricingPlans", () => {
     expect((within(dialog()).getByRole("textbox") as HTMLTextAreaElement).value).toBe(REASON);
   });
 
-  it("edit: a draft changed by someone else (409) re-reads the list, so the next save pins the fresh version", async () => {
-    const changed = { ...DRAFT, updatedAt: "2026-11-08T12:00:00.000Z" };
-    writeReplies = [
-      () =>
-        json(
-          {
-            error: {
-              code: "PRICING_PLAN_CHANGED",
-              message: "this plan changed since you read it; re-read it and confirm again",
-              correlationId: "c",
-              details: [
-                {
-                  field: "currentUpdatedAt",
-                  code: "PRICING_PLAN_CHANGED",
-                  message: changed.updatedAt,
-                },
-              ],
-            },
-          },
-          409,
-        ),
-      () => json(changed),
-    ];
+  const changedReply = (updatedAt: string) => () =>
+    json(
+      {
+        error: {
+          code: "PRICING_PLAN_CHANGED",
+          message: "this plan changed since you read it; re-read it and confirm again",
+          correlationId: "c",
+          details: [
+            { field: "currentUpdatedAt", code: "PRICING_PLAN_CHANGED", message: updatedAt },
+          ],
+        },
+      },
+      409,
+    );
+
+  it("edit: a draft changed by someone else (409) closes the editor, shows what the draft says now, and sends nothing more", async () => {
+    const changed = { ...DRAFT, perUserPriceCents: 6100, updatedAt: "2026-11-08T12:00:00.000Z" };
+    writeReplies = [changedReply(changed.updatedAt)];
     mount(`/admin/pricing-plans?plan=${DRAFT.id}`);
     const d = await editPrice("55");
     list = [changed];
     fireEvent.click(within(d).getByRole("button", { name: "Save prices" }));
     confirmWithReason("Save prices");
-    expect(await within(dialog()).findByText(/changed since you read it/)).toBeTruthy();
+    expect(
+      await within(d).findByText(/Someone changed this draft since you opened it/),
+    ).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(within(d).queryByLabelText(/Per user a month/)).toBeNull(); // the editor closed
+    await waitFor(() => expect(within(d).getByText("$61.00 a month")).toBeTruthy());
+    expect(sent).toHaveLength(1); // no blind second save
+    // editing again starts from the fresh prices, pinned to the fresh version
+    fireEvent.click(within(d).getByRole("button", { name: "Edit prices" }));
+    expect(perUser(d)).toBe("61");
+    expect(within(d).queryByText(/Someone changed this draft/)).toBeNull();
+  });
+
+  it("edit: a Re-verify draft keeps the version it was typed against, so a save after someone else's is refused, not an overwrite", async () => {
+    writeReplies = [() => refusal(403, "STEP_UP_REQUIRED", "refused")];
+    mount(`/admin/pricing-plans?plan=${DRAFT.id}`);
+    const d = await editPrice("77");
+    fireEvent.click(within(d).getByRole("button", { name: "Save prices" }));
+    confirmWithReason("Save prices");
+    fireEvent.click(await within(dialog()).findByRole("link", { name: "Re-verify" }));
+    await screen.findByText("step-up page");
+    cleanup();
+    // meanwhile another operator saved the draft
+    list = [{ ...DRAFT, updatedAt: "2026-11-08T12:00:00.000Z" }];
+    writeReplies = [changedReply("2026-11-08T12:00:00.000Z")];
+    mount(`/admin/pricing-plans?plan=${DRAFT.id}`);
+    const back = await drawer();
+    expect(perUser(back)).toBe("77");
+    fireEvent.click(within(back).getByRole("button", { name: "Save prices" }));
+    confirmWithReason("Save prices");
+    expect(await within(back).findByText(/Someone changed this draft/)).toBeTruthy();
+    expect(sent.map((x) => x.ifMatch)).toEqual([`"${DRAFT.updatedAt}"`, `"${DRAFT.updatedAt}"`]);
+  });
+
+  it("edit: a reload that finds the plan no longer a draft closes the editor", async () => {
+    writeReplies = [changedReply("2026-11-08T12:00:00.000Z")];
+    mount(`/admin/pricing-plans?plan=${DRAFT.id}`);
+    const d = await editPrice("55");
+    list = [{ ...DRAFT, status: "published", updatedAt: "2026-11-08T12:00:00.000Z" }];
+    fireEvent.click(within(d).getByRole("button", { name: "Save prices" }));
+    confirmWithReason("Save prices");
     await waitFor(() =>
-      expect(within(dialog()).getByRole("button", { name: "Save prices" })).toBeTruthy(),
+      expect(within(d).queryByRole("button", { name: "Edit prices" })).toBeNull(),
     );
-    // the list reload has landed: the retry pins what it read
-    await new Promise((r) => setTimeout(r, 0));
-    fireEvent.click(within(dialog()).getByRole("button", { name: "Save prices" }));
-    await screen.findByText(/"Hospice core" prices saved/);
-    expect(sent.map((x) => x.ifMatch)).toEqual([`"${DRAFT.updatedAt}"`, `"${changed.updatedAt}"`]);
+    expect(within(d).queryByLabelText(/Per user a month/)).toBeNull();
   });
 
   it("publish: the dialog re-reads the plan and shows what changed since the drawer was read, then pins that read", async () => {
@@ -769,6 +806,16 @@ describe("the model's refusal helpers", () => {
   it("says what failed, then the server's reason and its details, once each", () => {
     expect(
       failureText(failure({ name: "the plan's prices are not valid" }), "Could not save."),
+    ).toBe("Could not save. The plan's prices are not valid.");
+    // a stale pin's detail is a timestamp for a retry, never shown as a sentence
+    expect(
+      failureText(
+        {
+          ...failure({}),
+          details: [{ field: "currentUpdatedAt", code: "X", message: "2026-11-08T12:00:00.000Z" }],
+        },
+        "Could not save.",
+      ),
     ).toBe("Could not save. The plan's prices are not valid.");
   });
 

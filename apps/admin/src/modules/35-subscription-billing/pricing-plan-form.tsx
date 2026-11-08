@@ -18,7 +18,9 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import {
+  EMPTY_PRICES,
   type FormKey,
+  type PlanDraft,
   type PlanForm,
   type PlanFormMode,
   type PricingPlan,
@@ -120,6 +122,7 @@ function PlanFields({
 export function PlanEditor({
   mode,
   initial,
+  pin,
   draftKey,
   onSaved,
   onCancel,
@@ -127,11 +130,19 @@ export function PlanEditor({
 }: {
   mode: PlanFormMode;
   initial: PlanForm;
+  /**
+   * An edit's If-Match when it is not the plan's current read: the version a Re-verify draft was typed against, so a save that
+   * comes back after someone else saved is refused (409) rather than overwriting their prices.
+   */
+  pin?: string;
   /** The step-up draft key the typed form is kept under (in memory) across a Re-verify. */
   draftKey: string;
   onSaved: (plan: PricingPlan) => Promise<void>;
   onCancel?: () => void;
-  /** The draft changed under the operator (409): the caller re-reads it, so the next save pins the fresh version. */
+  /**
+   * The draft changed under the operator (409): the caller closes the editor and re-reads the plan, so the operator sees what it
+   * now says and makes the change again (a retry here would overwrite the other save blind).
+   */
   onConflict?: () => void;
 }): JSX.Element {
   const client = useApiClient();
@@ -175,6 +186,7 @@ export function PlanEditor({
 
   async function save(reason: string): Promise<void> {
     const prices = pricesOf(form, thresholds);
+    if (prices === null) return; // the submit checked the form; nothing is sent from a form that does not parse
     const outcome = await write.run(
       JSON.stringify({ mode: mode.kind, familySlug: form.familySlug.trim(), prices, reason }),
       (key) =>
@@ -186,7 +198,7 @@ export function PlanEditor({
           : client.PUT("/api/admin/pricing/plans/{id}", {
               params: {
                 path: { id: mode.plan.id },
-                header: { "Idempotency-Key": key, "If-Match": pinOf(mode.plan) },
+                header: { "Idempotency-Key": key, "If-Match": pin ? `"${pin}"` : pinOf(mode.plan) },
               },
               // The form does not edit the description; it is sent back as read, so a save never erases it.
               body: { ...prices, description: mode.plan.description, reason },
@@ -199,7 +211,11 @@ export function PlanEditor({
       return;
     }
     setLastReason(reason);
-    if (outcome.failure.kind === "conflict") onConflict?.();
+    if (outcome.failure.kind === "conflict" && onConflict) {
+      setAsking(false);
+      onConflict();
+      return;
+    }
     const onFields =
       outcome.failure.kind === "validation" ? serverFieldErrors(outcome.failure) : {};
     if (Object.keys(onFields).length > 0) {
@@ -241,7 +257,7 @@ export function PlanEditor({
         {...(asking
           ? {
               record: priceLines(
-                pricesOf(form, thresholds),
+                pricesOf(form, thresholds) ?? EMPTY_PRICES,
                 creating ? "USD" : mode.plan.currencyCode,
               ),
             }
@@ -258,7 +274,12 @@ export function PlanEditor({
                   failed={
                     creating ? "Could not create the plan." : "Could not save the draft's prices."
                   }
-                  onReverify={() => stashStepUpMemoryDraft(draftKey, form)}
+                  onReverify={() =>
+                    stashStepUpMemoryDraft<PlanDraft>(draftKey, {
+                      form,
+                      ...(mode.kind === "edit" ? { pin: pin ?? mode.plan.updatedAt } : {}),
+                    })
+                  }
                 />
               ),
             }
