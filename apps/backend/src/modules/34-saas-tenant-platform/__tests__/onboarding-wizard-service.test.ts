@@ -3,7 +3,13 @@
 // load-bearing ones on the real roles.
 import { ChartWardenError } from "@chartwarden/types";
 import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PlatformActor, StepTemplate, TenantActor, TenantRef } from "../onboarding/model";
+import {
+  type PlatformActor,
+  type StepTemplate,
+  type TenantActor,
+  type TenantRef,
+  isSkippableStep,
+} from "../onboarding/model";
 import { type OnboardingWizardDeps, createOnboardingWizard } from "../onboarding/wizard-service";
 import {
   type MemoryWizardState,
@@ -294,6 +300,13 @@ describe("skip", () => {
     ).toBe("ONBOARDING_STEP_NOT_SKIPPABLE");
     expect(statusOf("organisation")).not.toBe("skipped");
     expect((await wizard().getPlatform("acme")).steps[0]?.skippable).toBe(false);
+  });
+
+  it("a tenant-added (non-canonical) step is skippable; go-live never is, even off the canonical list", () => {
+    expect(isSkippableStep({ key: "tenant_custom_training", canonical: false })).toBe(true);
+    expect(isSkippableStep({ key: "organisation", canonical: true })).toBe(false);
+    expect(isSkippableStep({ key: "sample_data_loaded", canonical: true })).toBe(true);
+    expect(isSkippableStep({ key: "go_live_checklist_complete", canonical: false })).toBe(false);
   });
 
   it("refuses to skip go-live", async () => {

@@ -9,7 +9,7 @@
 export const GO_LIVE_TEMPLATE_KEY = "go_live_checklist_complete";
 
 /**
- * The only steps a skip may settle: the ones where "does not apply" is a real answer (owner decision: MAC-type steps are attested with
+ * The only CANONICAL steps a skip may settle (a tenant-added step is always skippable, `isSkippableStep`): the ones where "does not apply" is a real answer (owner decision: MAC-type steps are attested with
  * evidence and skipped only where the step does not apply; the Organisation, plan, provider entity, BAA and the rest are never skipped).
  * Enforced by `skip` for every actor, the system's outside-billing skip included; the wizard view carries it per step as `skippable`
  * so the console offers Skip from this list rather than its own copy.
@@ -20,6 +20,12 @@ export const SKIPPABLE_STEP_KEYS: ReadonlySet<string> = new Set([
   "dosespot_kickoff_initiated",
   "sample_data_loaded",
 ]);
+
+/** A skip may settle this step: a tenant-added (non-canonical) step, or a canonical one on the allowlist. Never go-live. */
+export function isSkippableStep(template: Pick<StepTemplate, "key" | "canonical">): boolean {
+  if (template.key === GO_LIVE_TEMPLATE_KEY) return false;
+  return !template.canonical || SKIPPABLE_STEP_KEYS.has(template.key);
+}
 
 /** Who may settle a step. `either` = the tenant's org_admin or platform ops. */
 export const STEP_OWNERS = ["platform_ops", "org_admin", "compliance_officer", "either"] as const;

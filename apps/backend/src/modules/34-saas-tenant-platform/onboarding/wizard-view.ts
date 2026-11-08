@@ -14,12 +14,12 @@ import {
 import {
   type CompletionMode,
   type GoLiveAttestation,
-  SKIPPABLE_STEP_KEYS,
   type StepOwner,
   type StepTask,
   type StepTemplate,
   type TaskStatus,
   type TenantRef,
+  isSkippableStep,
 } from "./model";
 import { currentStepKey, lockedByStep, orderedTemplates } from "./sequence";
 
@@ -52,7 +52,7 @@ export interface WizardStepView {
   readonly completedAt: string | null;
   readonly blockerReason: string | null;
   readonly skipRationale: string | null;
-  /** A skip may settle this step (`SKIPPABLE_STEP_KEYS`); the server refuses a skip on any other with ONBOARDING_STEP_NOT_SKIPPABLE. */
+  /** A skip may settle this step (`isSkippableStep`: tenant-added, or on `SKIPPABLE_STEP_KEYS`); the server refuses a skip on any other with ONBOARDING_STEP_NOT_SKIPPABLE. */
   readonly skippable: boolean;
   /** The skip was made by the system (the tenant bills outside ChartWarden), not typed by a person: read this, never the rationale text. */
   readonly systemSkipped: boolean;
@@ -137,7 +137,7 @@ export function toWizardStepView(
     blockerReason: task?.blockerReason ?? null,
     skipRationale: task?.status === "skipped" ? (task.skipRationale ?? null) : null,
     systemSkipped: task?.status === "skipped" && task.skippedBySystem === true,
-    skippable: SKIPPABLE_STEP_KEYS.has(template.key),
+    skippable: isSkippableStep(template),
     createdAt: iso(task?.createdAt ?? null),
     templateKey: template.key,
     isCanonical: template.canonical,
