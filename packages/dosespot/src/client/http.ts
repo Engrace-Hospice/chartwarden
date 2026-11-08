@@ -468,9 +468,14 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         return out;
       } catch (err) {
         // a half-open probe that ends in ANY hold (an unreadable 2xx included) is not a recovery: it re-opens the breaker rather than
-        // leaving it cooled, which would let every following call through as another probe (a hold already counted where it was raised is
-        // counted again here: a second failure on an open snapshot only moves its openedAt)
-        if (isUnconfirmedOutcomeError(err) && gate.effectiveState === "half_open") {
+        // leaving it cooled, which would let every following call through as another probe. Only while the stored breaker is still open: a
+        // hold already counted where it was raised is then counted again, which only moves openedAt; if a concurrent success closed the
+        // breaker meanwhile, a second failure would count one hold twice on the closed snapshot
+        if (
+          isUnconfirmedOutcomeError(err) &&
+          gate.effectiveState === "half_open" &&
+          breakers.get(orgId)?.state === "open"
+        ) {
           noteBreaker(orgId, "failure", "unconfirmed_outcome");
         }
         if (!isRetryableError(err)) throw err; // permanent (a hold's own counting aside): does not count against the breaker

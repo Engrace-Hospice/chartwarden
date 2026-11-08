@@ -649,6 +649,57 @@ describe("transmitNewRx", () => {
     expect(edges).toEqual(["opened"]); // never closed in between
   });
 
+  it("a probe held after a concurrent success closed the breaker adds exactly one failure to the closed breaker", async () => {
+    let at = Date.parse("2026-10-06T12:00:00.000Z");
+    const r = routes([{ Id: 9001 }]);
+    r["POST /api/patients/501/prescriptions/send"] = () => ({ status: 502 });
+    r["GET /api/patients/501/prescriptions"] = () => ({ status: 200, body: { Items: [] } });
+    const t = fakeTransport(r);
+    // the probe's send is parked until the concurrent read has closed the breaker
+    let holdSend = false;
+    let sendReached = (): void => undefined;
+    let releaseSend = (): void => undefined;
+    const reached = new Promise<void>((resolve) => {
+      sendReached = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      releaseSend = resolve;
+    });
+    const edges: string[] = [];
+    const c = createHttpDoseSpotClient({
+      resolver: resolver(),
+      fetch: async (url, init) => {
+        if (holdSend && url.endsWith("/prescriptions/send")) {
+          sendReached();
+          await released;
+        }
+        return t.fetchImpl(url, init);
+      },
+      now: () => new Date(at),
+      sleep: async () => undefined,
+      newCorrelationId: () => "00000000-0000-4000-8000-0000000000ac",
+      onBreakerEdge: (e) => edges.push(e.edge),
+    });
+    for (let i = 0; i < 5; i += 1)
+      await c.transmitNewRx(ORG, NEWRX, `idem-race-${i}`).catch(() => undefined);
+    expect(edges).toEqual(["opened"]);
+    at += 31_000; // cooled: the parked send and the read both pass the gate as half-open probes
+    holdSend = true;
+    const probe = c.transmitNewRx(ORG, NEWRX, "idem-race-probe").catch((e) => e);
+    await reached;
+    holdSend = false;
+    await c.getPrescriptionStatus(ORG, "501", "77").catch(() => undefined);
+    expect(edges).toEqual(["opened", "closed"]);
+    releaseSend();
+    expect(isUnconfirmedOutcomeError(await probe)).toBe(true);
+    // the probe's hold is one failure: three more held sends make four, under the threshold of five
+    for (let i = 0; i < 3; i += 1)
+      await c.transmitNewRx(ORG, NEWRX, `idem-race-b${i}`).catch(() => undefined);
+    expect(edges).toEqual(["opened", "closed"]);
+    await c.transmitNewRx(ORG, NEWRX, "idem-race-c").catch(() => undefined);
+    expect(edges).toEqual(["opened", "closed", "opened"]);
+  });
+
   it("a 500 on the CREATE (not the send) stays a retryable error, not a held one", async () => {
     const r = routes([{ Id: 9001 }]);
     r["POST /api/patients/501/prescriptions/coded"] = () => ({ status: 500 });
