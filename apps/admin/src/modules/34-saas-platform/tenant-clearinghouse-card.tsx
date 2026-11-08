@@ -12,9 +12,9 @@ import {
   peekStepUpMemoryDraft,
   useApiClient,
 } from "@chartwarden/ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { NoticeFilingsDrawer } from "./notice-filings-drawer";
 import { VerifyBaa } from "./onboarding/clearinghouse-baa-verify";
 import { MODE_LABEL, VENDOR_LABEL, isTransmitting } from "./onboarding/clearinghouse-model";
@@ -171,7 +171,14 @@ export function TenantClearinghouseCard({
 }: { orgSlug: string; tenantStatus: string }): JSX.Element {
   // A Re-verify from the release dialog comes back to the card open (the dialog reopens with the typed reason). Only on that return:
   // a later visit with the draft still in memory opens nothing, so the audited clearinghouse read never happens without a click.
-  const returnedFromStepUp = isStepUpReturn(useLocation().state);
+  // The marker is read once, then cleared from history, so Back/Forward or a reload never re-asserts it.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [returnedFromStepUp] = useState(() => isStepUpReturn(location.state));
+  useEffect(() => {
+    if (isStepUpReturn(location.state))
+      navigate(location.pathname + location.search, { replace: true, state: null });
+  }, [location, navigate]);
   const [shown, setShown] = useState(
     () => returnedFromStepUp && peekStepUpMemoryDraft(releaseDraftKey(orgSlug)) !== undefined,
   );

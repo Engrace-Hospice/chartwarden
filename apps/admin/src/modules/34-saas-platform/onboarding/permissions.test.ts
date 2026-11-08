@@ -1,5 +1,6 @@
-// Every key the console gates an onboarding control on is a real catalog key that the platform_ops role template carries, so a gate
-// can never be on a misspelt key (always closed) nor on one no operator holds (React review L4; the skip / read gap).
+// Every key in ONBOARDING_KEYS is a real catalog key that the platform_ops role template carries, so a gate on one of them can never
+// be on a misspelt key (always closed) nor on one no operator holds (React review L4; the skip / read gap). A gate on a literal key
+// outside ONBOARDING_KEYS is not covered here.
 import { allPermissionMirrorRows, rolesForPermission } from "@chartwarden/auth";
 import { describe, expect, it } from "vitest";
 import { ONBOARDING_KEYS } from "./wizard-model";

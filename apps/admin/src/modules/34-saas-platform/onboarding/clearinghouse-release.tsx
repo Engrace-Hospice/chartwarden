@@ -55,6 +55,7 @@ export function ReleaseCredentials({
     if (!outcome.ok) return;
     setOpen(false);
     setReason("");
+    typedRef.current = "";
     onReleased(outcome.data.released);
   }
 
@@ -92,6 +93,7 @@ export function ReleaseCredentials({
         onCancel={() => {
           write.clear();
           setReason("");
+          typedRef.current = "";
           setOpen(false);
         }}
       />

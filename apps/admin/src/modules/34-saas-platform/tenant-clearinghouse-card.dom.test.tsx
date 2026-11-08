@@ -1,8 +1,10 @@
-import { STEP_UP_RETURN_STATE } from "@chartwarden/ui";
+import { STEP_UP_RETURN_STATE, isStepUpReturn } from "@chartwarden/ui";
 // @vitest-environment jsdom
 // The tenant hub's clearinghouse card: which clearinghouse the tenant uses and how far it got, and the way into the notices the tenant
 // recorded as filed outside ChartWarden. Read on request, like the contract: each read of a tenant's billing setup is audited.
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import type { JSX } from "react";
+import { useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ONBOARDING_OPERATOR, ok, refused, renderAt, stubClient } from "./onboarding/test-support";
 import { TenantClearinghouseCard } from "./tenant-clearinghouse-card";
@@ -74,6 +76,11 @@ function mount(choice: unknown, contractMode: string | null = null, tenantStatus
 }
 const reads = (client: ReturnType<typeof stubClient>, path: string) =>
   client.GET.mock.calls.filter((c) => c[0] === path).length;
+
+/** Whether the current history entry still carries the step-up return marker. */
+function MarkerProbe(): JSX.Element {
+  return <output data-testid="marker">{String(isStepUpReturn(useLocation().state))}</output>;
+}
 
 // a Re-verify stashes the switch form: no test may resume another test's draft
 beforeEach(() => window.sessionStorage.clear());
@@ -288,7 +295,12 @@ describe("TenantClearinghouseCard", () => {
         [
           {
             path: "/x",
-            element: <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus="active" />,
+            element: (
+              <>
+                <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus="active" />
+                <MarkerProbe />
+              </>
+            ),
           },
         ],
         client,
@@ -362,6 +374,8 @@ describe("TenantClearinghouseCard", () => {
       expect((back.getByLabelText(/^Reason/) as HTMLTextAreaElement).value).toBe(
         "Ticket OPS-79 retire the old Claim.MD key",
       );
+      // the marker is consumed: Back/Forward or a reload of this entry does not re-assert it
+      await waitFor(() => expect(screen.getByTestId("marker").textContent).toBe("false"));
     });
 
     it("a later visit (not the step-up return) opens nothing, so the audited read waits for a click", async () => {

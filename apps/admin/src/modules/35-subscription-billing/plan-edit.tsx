@@ -5,8 +5,10 @@ import {
   focusFirstInvalid,
   parsePriceCents,
   parseWholeNumber,
+  stashStepUpMemoryDraft,
   useApiClient,
   useRequestGuard,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Plan editor (`/admin/plans/:id/edit`, plan.admin.write).
@@ -40,6 +42,9 @@ interface MeterDraft {
   threshold: string;
 }
 
+const BLANK_METER: MeterDraft = { eventType: "", inclusive: "0", overage: "0", threshold: "80" };
+const meterDraftKey = (id: string): string => `plan-meter:${id}`;
+
 /** The new meter's field messages (strict: "1e3" and "0x1f" are not quantities or prices). */
 function meterErrors(m: MeterDraft): Partial<Record<keyof MeterDraft, string>> {
   const errors: Partial<Record<keyof MeterDraft, string>> = {};
@@ -63,12 +68,9 @@ export function PlanEdit(): JSX.Element {
   const [notFound, setNotFound] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
-  const [meter, setMeter] = useState({
-    eventType: "",
-    inclusive: "0",
-    overage: "0",
-    threshold: "80",
-  });
+  // A step-up refusal sends the operator to /step-up and back; the typed meter comes back once.
+  const restoredMeter = useStepUpMemoryDraft<MeterDraft>(meterDraftKey(id ?? ""));
+  const [meter, setMeter] = useState<MeterDraft>(restoredMeter ?? BLANK_METER);
 
   const guard = useRequestGuard();
   const load = useCallback(async () => {
@@ -153,7 +155,7 @@ export function PlanEdit(): JSX.Element {
       "Could not add the meter (check the fields).",
     );
     if (!added) return; // a refused meter keeps what was typed, to fix and retry
-    setMeter({ eventType: "", inclusive: "0", overage: "0", threshold: "80" });
+    setMeter(BLANK_METER);
     setMeterAttempted(false);
   }, [client, id, meter, run]);
 
@@ -225,7 +227,12 @@ export function PlanEdit(): JSX.Element {
             )}
           </div>
         </header>
-        {outcome ? <OutcomeBanner {...outcome} /> : null}
+        {outcome ? (
+          <OutcomeBanner
+            {...outcome}
+            onReverify={() => stashStepUpMemoryDraft(meterDraftKey(id ?? ""), meter)}
+          />
+        ) : null}
         <h2 className="m-0 text-base font-semibold">Usage meters</h2>
         {plan.meters.length === 0 ? (
           <p className="m-0 text-sm">No meters yet — add one below.</p>

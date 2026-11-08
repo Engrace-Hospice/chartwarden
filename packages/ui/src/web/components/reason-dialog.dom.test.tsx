@@ -41,6 +41,13 @@ describe("ReasonDialog", () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  it("reports every change to the typed reason, raw", () => {
+    const onReasonChange = vi.fn();
+    renderDialog({ onReasonChange });
+    type("ticket  CHG-1");
+    expect(onReasonChange).toHaveBeenLastCalledWith("ticket  CHG-1");
+  });
+
   it("confirms with the normalised reason", () => {
     const { onConfirm } = renderDialog();
     type("  ticket   CHG-4521\n approved  ");

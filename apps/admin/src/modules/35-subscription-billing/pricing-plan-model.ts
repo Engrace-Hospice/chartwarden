@@ -100,12 +100,19 @@ function rateErrors(form: PlanForm, errors: FieldErrors<FormKey>): void {
     errors.managedBillingPct = "Managed billing cannot cost less than billing software.";
 }
 
-/** Per-field messages; empty when the form can be sent. `create` also checks the plan family. */
+/**
+ * Per-field messages; empty when the form can be sent. `create` also checks the plan family. Given the census `thresholds`, a form
+ * without exactly one fee per band is refused too (nothing would be sent).
+ */
 export function pricingFormErrors(
   form: PlanForm,
   kind: PlanFormMode["kind"] = "create",
+  thresholds?: readonly number[],
 ): FieldErrors<FormKey> {
   const errors: FieldErrors<FormKey> = {};
+  if (thresholds && form.bandFees.length !== thresholds.length)
+    errors.band0 =
+      "The census bands changed since this form opened: cancel and enter one fee per band.";
   const slug = form.familySlug.trim();
   if (
     kind === "create" &&
@@ -142,8 +149,7 @@ export interface PlanPricesBody {
 
 /** The form's prices as the validator parsed them; null when any field does not parse (so nothing defaults to 0 silently). */
 export function pricesOf(form: PlanForm, thresholds: readonly number[]): PlanPricesBody | null {
-  if (!isValid(pricingFormErrors(form, "edit"))) return null;
-  if (form.bandFees.length !== thresholds.length) return null; // one fee per census band, or nothing is sent
+  if (!isValid(pricingFormErrors(form, "edit", thresholds))) return null; // one fee per census band, or nothing is sent
   const cents = (raw: string, max: number): number => parsePriceCents(raw, max) as number;
   const bps = (raw: string): number => parsePercentBps(raw) as number;
   return {
@@ -314,8 +320,9 @@ export const ACTION_COPY: Readonly<Record<PlanAction, ActionCopy>> = {
 /** The `If-Match` a write on an existing version sends: the `updatedAt` the operator read. */
 export const pinOf = (plan: PricingPlan): string => `"${plan.updatedAt}"`;
 
-/** What a Re-verify keeps of the editor: the typed form and, on an edit, the version it was typed against (its pin). */
+/** What a Re-verify keeps of the editor: the typed form, the reason typed so far and, on an edit, the version it was typed against (its pin). */
 export interface PlanDraft {
   readonly form: PlanForm;
+  readonly reason?: string;
   readonly pin?: string;
 }

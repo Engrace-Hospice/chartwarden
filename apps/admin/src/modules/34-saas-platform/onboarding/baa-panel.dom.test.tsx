@@ -143,6 +143,33 @@ describe("BaaPanel", () => {
     expect(screen.queryByRole("button", { name: "Record BAA" })).toBeNull();
   });
 
+  it("without the upload key, refuses a new Executed record visibly and sends nothing (React review M1)", async () => {
+    const session = {
+      ...ONBOARDING_OPERATOR,
+      permissions:
+        ONBOARDING_OPERATOR.permissions?.filter(
+          (k) => k !== "tenant_baa_document.upload_platform",
+        ) ?? [],
+    };
+    const { client } = mount(
+      [],
+      { POST: { [REGISTER]: () => ok(record(), 201) } },
+      view(),
+      session,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Record BAA" }));
+    fireEvent.change(screen.getByLabelText("Addendum version"), { target: { value: "v1" } });
+    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "executed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save BAA" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/executed BAA needs the signed agreement/i);
+    expect(document.activeElement?.contains(alert)).toBe(true);
+    expect(
+      screen.getByText(/marked Executed only if it already carries a signed agreement/),
+    ).toBeTruthy();
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
   it("lists the records and the facts, and says the recorder cannot approve go-live", async () => {
     mount([
       record({

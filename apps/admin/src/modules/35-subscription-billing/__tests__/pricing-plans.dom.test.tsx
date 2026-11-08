@@ -15,6 +15,7 @@ import {
   actionsFor,
   failureText,
   parsePercentBps,
+  pricesOf,
   pricingFormErrors,
   serverFieldErrors,
 } from "../pricing-plan-model";
@@ -233,6 +234,17 @@ describe("pricingFormErrors", () => {
     expect(pricingFormErrors({ ...valid, familySlug: "a".repeat(65) }).familySlug).toBeTruthy();
     expect(pricingFormErrors({ ...valid, perUserPrice: "10000000.01" }).perUserPrice).toBeTruthy();
     expect(pricingFormErrors({ ...valid, termMonths: "1e1" }).termMonths).toBeTruthy();
+  });
+
+  it("given the census thresholds, refuses a form without one fee per band; pricesOf then sends nothing", () => {
+    expect(pricingFormErrors(valid, "edit", [0, 50])).toEqual({});
+    expect(pricingFormErrors(valid, "edit", [0, 50, 100]).band0).toMatch(/census bands changed/);
+    expect(pricesOf(valid, [0, 50])?.bands).toEqual([
+      { minAdc: 0, monthlyFeeCents: 100000 },
+      { minAdc: 50, monthlyFeeCents: 200000 },
+    ]);
+    expect(pricesOf(valid, [0, 50, 100])).toBeNull();
+    expect(pricesOf(valid, [0])).toBeNull();
   });
 
   it("an edit does not check the plan family (a draft keeps its family)", () => {
@@ -473,7 +485,11 @@ describe("PricingPlans", () => {
     fill(await drawer("New price plan"));
     fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
     confirmWithReason("Create draft");
-    fireEvent.click(await within(dialog()).findByRole("link", { name: "Re-verify" }));
+    const reVerify = await within(dialog()).findByRole("link", { name: "Re-verify" });
+    fireEvent.change(within(dialog()).getByRole("textbox"), {
+      target: { value: "Edited after the refusal, ticket PRICE-12" },
+    });
+    fireEvent.click(reVerify);
     expect(await screen.findByText("step-up page")).toBeTruthy();
     cleanup();
     mount("/admin/pricing-plans?plan=new");
@@ -482,6 +498,11 @@ describe("PricingPlans", () => {
       "hospice-core",
     );
     expect((within(form).getByLabelText(/Per user a month/) as HTMLInputElement).value).toBe("49");
+    // the reason comes back too: the live text typed after the refusal, shown when the dialog next opens
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    expect((within(dialog()).getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+      "Edited after the refusal, ticket PRICE-12",
+    );
   });
 
   it("edits a draft's prices in place (PUT, no plan family)", async () => {

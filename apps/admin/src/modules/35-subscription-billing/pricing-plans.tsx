@@ -466,6 +466,7 @@ function PlanDrawer({
             mode={{ kind: "edit", plan }}
             initial={stash?.form ?? formFromPlan(plan)}
             {...(stash?.pin ? { pin: stash.pin } : {})}
+            {...(stash?.reason ? { initialReason: stash.reason } : {})}
             draftKey={editDraftKey(plan.id)}
             onCancel={stopEditing}
             onConflict={() => {
@@ -524,11 +525,9 @@ function CreateDrawer({
 }): JSX.Element {
   const drawer = useDrawerA11y<HTMLElement>(onClose);
   // A step-up refusal sends the operator to /step-up and back; the typed plan comes back (when the bands still match).
-  const restored = useStepUpMemoryDraft<PlanDraft>(CREATE_DRAFT_KEY)?.form;
-  const initial =
-    restored && restored.bandFees.length === thresholds.length
-      ? restored
-      : blankForm(thresholds.length);
+  const draft = useStepUpMemoryDraft<PlanDraft>(CREATE_DRAFT_KEY);
+  const restored = draft && draft.form.bandFees.length === thresholds.length ? draft : undefined;
+  const initial = restored?.form ?? blankForm(thresholds.length);
   return (
     <aside className="wx-admission-drawer" aria-label="New price plan" {...drawer}>
       <DrawerHead icon="plus" title="New price plan" sub="Created as a draft" onClose={onClose} />
@@ -536,6 +535,7 @@ function CreateDrawer({
         <PlanEditor
           mode={{ kind: "create", thresholds }}
           initial={initial}
+          {...(restored?.reason ? { initialReason: restored.reason } : {})}
           draftKey={CREATE_DRAFT_KEY}
           onSaved={onCreated}
         />

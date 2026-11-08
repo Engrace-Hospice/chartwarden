@@ -17,7 +17,7 @@ import {
   useApiClient,
   useStepUpDraft,
 } from "@chartwarden/ui";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { BaaDocumentField } from "./baa-document-field";
 import { FailureNotice } from "./failure-notice";
@@ -232,6 +232,12 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   const fieldError = (field: keyof Form): string | undefined =>
     errors[field] ?? write.failure?.fieldErrors[field];
   const editorHeading = useEditorFocus(editing !== null && canWrite, "baa");
+  // Without the upload key the document field is hidden, so its refusal (ours or the server's 422) shows here and takes focus.
+  const documentAlert = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const message = errors.documentId ?? write.failure?.fieldErrors.documentId;
+    if (!mayUpload && message) documentAlert.current?.focus();
+  }, [errors, write.failure, mayUpload]);
 
   return (
     <StepFrame ctx={ctx}>
@@ -362,7 +368,16 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
               }
             />
           ) : (
-            <RoleCannot what="upload the signed agreement (that needs the tenant_baa_document.upload_platform permission); a record can still link one already filed" />
+            <>
+              <RoleCannot
+                what={`upload the signed agreement (that needs the ${ONBOARDING_KEYS.baaDocumentUpload} permission); a record can be marked Executed only if it already carries a signed agreement`}
+              />
+              {fieldError("documentId") ? (
+                <div ref={documentAlert} tabIndex={-1}>
+                  <InlineAlert>{fieldError("documentId")}</InlineAlert>
+                </div>
+              ) : null}
+            </>
           )}
           {write.failure ? (
             <FailureNotice

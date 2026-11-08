@@ -22,13 +22,6 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router-do
 import { useApiClient } from "../../core/api/provider";
 import { CenteredCardLayout } from "../layouts/patterns";
 
-/**
- * The `returnTo` to navigate to after a successful step-up, or "/" when the raw value is missing or not
- * an app-relative path. Only "/..." qualifies: "//host" and "/\\host" are protocol-relative URLs to
- * another origin in browsers, and anything with a scheme ("https:", "javascript:") is not a path at all.
- * Control characters are refused too: the URL parser strips tab and newline, so "/\t/host" would
- * otherwise reach the router as "//host".
- */
 /** The history state a successful step-up returns with, so a screen restores a stashed draft only on that return (not on a later visit). */
 export const STEP_UP_RETURN_STATE = { fromStepUp: true } as const;
 
@@ -38,6 +31,13 @@ export const isStepUpReturn = (state: unknown): boolean =>
   state !== null &&
   (state as { fromStepUp?: unknown }).fromStepUp === true;
 
+/**
+ * The `returnTo` to navigate to after a successful step-up, or "/" when the raw value is missing or not
+ * an app-relative path. Only "/..." qualifies: "//host" and "/\\host" are protocol-relative URLs to
+ * another origin in browsers, and anything with a scheme ("https:", "javascript:") is not a path at all.
+ * Control characters are refused too: the URL parser strips tab and newline, so "/\t/host" would
+ * otherwise reach the router as "//host".
+ */
 export function safeReturnTo(raw: string | null | undefined): string {
   if (!raw?.startsWith("/")) return "/";
   if (raw.startsWith("//") || raw.startsWith("/\\")) return "/";

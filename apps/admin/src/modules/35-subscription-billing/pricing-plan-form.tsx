@@ -122,6 +122,7 @@ function PlanFields({
 export function PlanEditor({
   mode,
   initial,
+  initialReason = "",
   pin,
   draftKey,
   onSaved,
@@ -130,6 +131,8 @@ export function PlanEditor({
 }: {
   mode: PlanFormMode;
   initial: PlanForm;
+  /** The reason a Re-verify kept (shown when the dialog next opens). */
+  initialReason?: string;
   /**
    * An edit's If-Match when it is not the plan's current read: the version a Re-verify draft was typed against, so a save that
    * comes back after someone else saved is refused (409) rather than overwriting their prices.
@@ -153,10 +156,15 @@ export function PlanEditor({
   const [asking, setAsking] = useState(false);
   const [serverErrors, setServerErrors] = useState<FieldErrors<FormKey>>({});
   // The reason of an attempt the server refused on a field: closing the dialog to fix it must not cost the operator their reason.
-  const [lastReason, setLastReason] = useState("");
+  const [lastReason, setLastReason] = useState(initialReason);
+  // What is in the reason box right now (a Re-verify keeps the live text, not the last submitted one).
+  const typedRef = useRef(initialReason);
   const thresholds = thresholdsOf(mode);
   const creating = mode.kind === "create";
-  const errors = { ...(attempted ? pricingFormErrors(form, mode.kind) : {}), ...serverErrors };
+  const errors = {
+    ...(attempted ? pricingFormErrors(form, mode.kind, thresholds) : {}),
+    ...serverErrors,
+  };
   const editing = mode.kind === "edit";
 
   // Editing starts in the first field (a keyboard user is not left on the button that just unmounted).
@@ -175,7 +183,7 @@ export function PlanEditor({
 
   const submit = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
-    if (!isValid(pricingFormErrors(form, mode.kind))) {
+    if (!isValid(pricingFormErrors(form, mode.kind, thresholds))) {
       setAttempted(true);
       focusFirstInvalid(e.currentTarget);
       return;
@@ -207,6 +215,7 @@ export function PlanEditor({
     );
     if (outcome.ok) {
       setLastReason("");
+      typedRef.current = "";
       setAsking(false);
       return;
     }
@@ -265,6 +274,9 @@ export function PlanEditor({
         rule={REASON_RULES.pricing}
         confirmLabel={confirmLabel}
         initialReason={lastReason}
+        onReasonChange={(typed) => {
+          typedRef.current = typed;
+        }}
         busy={write.busy}
         {...(write.failure
           ? {
@@ -277,6 +289,7 @@ export function PlanEditor({
                   onReverify={() =>
                     stashStepUpMemoryDraft<PlanDraft>(draftKey, {
                       form,
+                      reason: typedRef.current,
                       ...(mode.kind === "edit" ? { pin: pin ?? mode.plan.updatedAt } : {}),
                     })
                   }

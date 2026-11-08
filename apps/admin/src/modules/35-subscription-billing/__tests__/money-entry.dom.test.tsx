@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { promoFormErrors, refundFormErrors } from "../form-rules";
 import { PlanEdit } from "../plan-edit";
+import { Promos } from "../promos";
 import { RefundNew } from "../refund-new";
 
 const BAD = ["1.005", "1e3", "0x1f"];
@@ -13,6 +14,9 @@ const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 let posted: Array<{ url: string; body: unknown }> = [];
+let postReply: () => Response = () => json({ id: "r1" }, 201);
+const refusal = (status: number, code: string): Response =>
+  json({ error: { code, message: "refused", correlationId: "c" } }, status);
 const PLAN = {
   id: "44444444-4444-4444-8444-444444444444",
   slug: "starter-monthly",
@@ -30,9 +34,9 @@ const PLAN = {
 async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const req = input instanceof Request ? input : new Request(input, init);
   const url = new URL(req.url).pathname;
-  if (req.method === "GET") return json(PLAN);
+  if (req.method === "GET") return json(url === "/api/admin/promos" ? [] : PLAN);
   posted = [...posted, { url, body: await req.json() }];
-  return json({ id: "r1" }, 201);
+  return postReply();
 }
 function mount(path: string): void {
   render(
@@ -42,6 +46,8 @@ function mount(path: string): void {
           <Route path="/admin/refunds/new" element={<RefundNew />} />
           <Route path="/admin/refunds" element={<p>refunds</p>} />
           <Route path="/admin/plans/:id/edit" element={<PlanEdit />} />
+          <Route path="/admin/promos" element={<Promos />} />
+          <Route path="/step-up" element={<p>step-up</p>} />
         </Routes>
       </MemoryRouter>
     </ApiClientProvider>,
@@ -50,6 +56,7 @@ function mount(path: string): void {
 afterEach(() => {
   cleanup();
   posted = [];
+  postReply = () => json({ id: "r1" }, 201);
   discardStepUpDrafts();
 });
 
@@ -133,5 +140,77 @@ describe("plan meter", () => {
       overageUnitPriceCents: 29,
       warningThresholdPercent: 80,
     });
+  });
+});
+
+describe("plan meter refusals", () => {
+  const set = (label: string | RegExp, value: string): void => {
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  };
+  const typeMeter = (): void => {
+    set("Event type", "seat");
+    set(/^Included qty/, "10");
+    set(/^Overage/, "0.29");
+    set(/^Warn %/, "75");
+  };
+  const values = () =>
+    ["Event type", /^Included qty/, /^Overage/, /^Warn %/].map(
+      (label) => (screen.getByLabelText(label) as HTMLInputElement).value,
+    );
+
+  it("a 422 keeps what was typed, to fix and retry", async () => {
+    postReply = () => refusal(422, "VALIDATION_FAILED");
+    mount(`/admin/plans/${PLAN.id}/edit`);
+    await screen.findByLabelText("Event type");
+    typeMeter();
+    fireEvent.click(screen.getByRole("button", { name: "Add meter" }));
+    expect(await screen.findByText(/Could not add the meter/)).toBeTruthy();
+    expect(values()).toEqual(["seat", "10", "0.29", "75"]);
+  });
+
+  it("a step-up refusal keeps the typed meter across Re-verify, restored once", async () => {
+    postReply = () => refusal(403, "STEP_UP_REQUIRED");
+    mount(`/admin/plans/${PLAN.id}/edit`);
+    await screen.findByLabelText("Event type");
+    typeMeter();
+    fireEvent.click(screen.getByRole("button", { name: "Add meter" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Re-verify" }));
+    await screen.findByText("step-up");
+    cleanup();
+    mount(`/admin/plans/${PLAN.id}/edit`);
+    await screen.findByLabelText("Event type");
+    expect(values()).toEqual(["seat", "10", "0.29", "75"]);
+    cleanup();
+    mount(`/admin/plans/${PLAN.id}/edit`);
+    await screen.findByLabelText("Event type");
+    expect(values()).toEqual(["", "0", "0", "80"]);
+  });
+});
+
+describe("promo create body", () => {
+  async function createPromo(kind: "percent_off" | "amount_off", value: string): Promise<unknown> {
+    mount("/admin/promos");
+    await screen.findByText(/No promos yet/);
+    fireEvent.click(screen.getByRole("button", { name: "New promo" }));
+    fireEvent.change(screen.getByLabelText(/^Code/), { target: { value: "LAUNCH" } });
+    fireEvent.change(screen.getByLabelText(/^Kind/), { target: { value: kind } });
+    fireEvent.change(screen.getByLabelText(kind === "percent_off" ? /^Percent/ : /^Amount/), {
+      target: { value },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create promo" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    return posted[0]?.body;
+  }
+
+  it("a percent_off promo sends percentOff and no fixedOffCents", async () => {
+    const body = (await createPromo("percent_off", "15")) as Record<string, unknown>;
+    expect(body.percentOff).toBe(15);
+    expect("fixedOffCents" in body).toBe(false);
+  });
+
+  it("an amount_off promo sends fixedOffCents and no percentOff", async () => {
+    const body = (await createPromo("amount_off", "10.50")) as Record<string, unknown>;
+    expect(body.fixedOffCents).toBe(1050);
+    expect("percentOff" in body).toBe(false);
   });
 });

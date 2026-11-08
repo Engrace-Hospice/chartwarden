@@ -198,8 +198,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
       ...validateChoice(current, form, secret, choiceContext),
       ...(isLeavingOutside(current, form, choiceContext) && !mayChooseMode
         ? {
-            billingServiceMode:
-              "Leaving outside also sets the billing mode, and your role cannot (that needs the subscription.onboard_platform permission).",
+            billingServiceMode: `Leaving outside also sets the billing mode, and your role cannot (that needs the ${ONBOARDING_KEYS.pricingWrite} permission).`,
           }
         : {}),
     };
