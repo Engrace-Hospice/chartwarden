@@ -1778,6 +1778,17 @@ describe.skipIf(!DB_URL)(
         expect((await confirmationOf(m.membershipId))?.mdm).toBeNull();
       });
 
+      it("the registration's SECURITY DEFINER audit trigger pins its search_path with pg_temp last and names its objects by schema", async () => {
+        const [fn] = await q<{ secdef: boolean; config: string[] | null; src: string }>(
+          `SELECT prosecdef AS secdef, proconfig AS config, prosrc AS src FROM pg_proc
+            WHERE proname = 'audit_phi_write_dosespot_clinic_registration'`,
+        );
+        expect(fn?.secdef).toBe(true);
+        expect(fn?.config).toContain("search_path=pg_catalog, public, pg_temp");
+        expect(fn?.src).toContain("INSERT INTO public.audit_event");
+        expect(fn?.src).not.toMatch(/[^.]audit_scrub\(/);
+      });
+
       it("the guard function is SECURITY INVOKER with a pinned search_path (it cannot be shadowed from a caller-controlled schema)", async () => {
         const [fn] = await q<{ secdef: boolean; config: string[] | null }>(
           `SELECT prosecdef AS secdef, proconfig AS config FROM pg_proc WHERE proname = 'dosespot_prescriber_link_confirmation_guard'`,

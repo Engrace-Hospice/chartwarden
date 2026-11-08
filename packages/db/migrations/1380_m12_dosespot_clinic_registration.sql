@@ -100,17 +100,19 @@ GRANT ALL ON "dosespot_clinic_registration" TO chartwarden_admin;--> statement-b
 -- M04 write-audit: the registration decides where the tenant's prescriptions (PHI) go, so every change is compliance-retained.
 -- The sealed secret is never copied into the audit row (audit_scrub replaces it with the change marker), and the marker is the
 -- same on both sides, so a swapped credential would be invisible: the context therefore carries `secret_changed`.
+-- SECURITY DEFINER, so its search_path is pinned with pg_temp LAST and every object it writes or calls is schema-qualified: a caller's temporary
+-- table or function can never stand in for `audit_event` or `audit_scrub`.
 CREATE OR REPLACE FUNCTION audit_phi_write_dosespot_clinic_registration() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY['secret_cipher']::text[]; v_secret_changed boolean;
 BEGIN
-  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), v_cols) ELSE NULL END;
-  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), v_cols) ELSE NULL END;
+  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN public.audit_scrub(to_jsonb(OLD), v_cols) ELSE NULL END;
+  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN public.audit_scrub(to_jsonb(NEW), v_cols) ELSE NULL END;
   v_secret_changed := CASE TG_OP
     WHEN 'INSERT' THEN NEW.secret_cipher IS NOT NULL
     WHEN 'UPDATE' THEN OLD.secret_cipher IS DISTINCT FROM NEW.secret_cipher
     ELSE OLD.secret_cipher IS NOT NULL END;
-  INSERT INTO audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id, correlation_id, outcome, severity, before, after, context, retention_class)
+  INSERT INTO public.audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id, correlation_id, outcome, severity, before, after, context, retention_class)
   VALUES (COALESCE(NEW.organization_id, OLD.organization_id), NULLIF(current_setting('app.user_id', true), '')::uuid, 'system', 'dosespot_clinic_registration.' || lower(TG_OP), 'dosespot_clinic_registration', COALESCE(NEW.id, OLD.id), COALESCE(NULLIF(current_setting('app.correlation_id', true), ''), 'system'), 'success', 'warn', v_before, v_after, jsonb_build_object('secret_changed', v_secret_changed), 'compliance');
   RETURN COALESCE(NEW, OLD);
 END $$;--> statement-breakpoint
