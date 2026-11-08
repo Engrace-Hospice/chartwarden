@@ -19,7 +19,8 @@ import {
   assertBaaDocumentFiled,
   assertExecutedBaaHasDocument,
   baaLinkNeedsJudging,
-  governingFactsOf,
+  governingBaaIds,
+  withGoverningFacts,
 } from "./baa-guards";
 import { type CursorPage, paginate } from "./concurrency";
 
@@ -183,7 +184,7 @@ export interface BaaRecordView {
   readonly documentId: string | null;
   readonly attestedAt: string | null;
 }
-/** A register list row: the record plus what go-live judges of it (`governingFactsOf`). */
+/** A register list row: the record plus what go-live judges of it (`governingBaaIds` / `withGoverningFacts`). */
 export interface BaaRegisterListItem extends BaaRecordView {
   /** This is the record go-live and step 3 judge for its tenant (`pickGoverningBaa`). */
   readonly governing: boolean;
@@ -1106,15 +1107,18 @@ export function createInMemoryTenantPlatformBackend(
           createdAt: b.executedOn ?? b.effectiveOn ?? "0000-00-00",
         })),
       );
-      const facts = await governingFactsOf(all, options.baaDocumentFiled);
+      const governingIds = governingBaaIds(all);
       const rows = all
         .filter((b) =>
           filter.tenantAccountId ? b.tenantAccountId === filter.tenantAccountId : true,
         )
-        .filter((b) => (filter.status ? b.baaStatus === filter.status : true))
-        .map((b) => ({ ...b, ...(facts.get(b.id) ?? { governing: false, documentFiled: null }) }));
+        .filter((b) => (filter.status ? b.baaStatus === filter.status : true));
       const page = paginate(rows, cursor, limit);
-      return { ...page, items: page.items.map(({ createdAt: _c, ...b }) => b) };
+      const items = page.items.map(({ createdAt: _c, ...b }) => b);
+      return {
+        ...page,
+        items: await withGoverningFacts(items, governingIds, options.baaDocumentFiled),
+      };
     },
     async createBaaRecord(_actorUserId, args) {
       assertExecutedBaaHasDocument(args);

@@ -71,7 +71,8 @@ import {
   assertExecutedBaaHasDocument,
   baaLinkNeedsJudging,
   governingBaaDocumentFiled,
-  governingFactsOf,
+  governingBaaIds,
+  withGoverningFacts,
 } from "./baa-guards";
 import {
   type CursorPage,
@@ -1280,21 +1281,15 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const tenantRows = rows.filter((b) =>
           filter.tenantAccountId ? b.tenantAccountId === filter.tenantAccountId : true,
         );
-        // What go-live judges, over each tenant's whole register in register order (before the status filter).
-        const facts = await governingFactsOf(tenantRows.map(baaView), boundTo(tx));
-        const views: BaaRegisterListItem[] = tenantRows
+        // What go-live picks, over each tenant's whole register in register order (before the status filter); documents judged per page.
+        const governingIds = governingBaaIds(tenantRows.map(baaView));
+        const withCursor = tenantRows
           .filter((b) => (filter.status ? b.baaStatus === filter.status : true))
           .map(baaView)
-          .map((v) => ({
-            ...v,
-            ...(facts.get(v.id) ?? { governing: false, documentFiled: null }),
-          }));
-        const withCursor = views.map((v) => ({
-          ...v,
-          createdAt: v.executedOn ?? v.effectiveOn ?? "0000-00-00",
-        }));
+          .map((v) => ({ ...v, createdAt: v.executedOn ?? v.effectiveOn ?? "0000-00-00" }));
         const p = paginate(withCursor, cursor, limit);
-        return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
+        const items = p.items.map(({ createdAt: _c, ...v }) => v);
+        return { ...p, items: await withGoverningFacts(items, governingIds, boundTo(tx)) };
       });
     },
 

@@ -4,7 +4,8 @@ import {
   assertBaaDocumentFiled,
   baaLinkNeedsJudging,
   governingBaaDocumentFiled,
-  governingFactsOf,
+  governingBaaIds,
+  withGoverningFacts,
 } from "../routes/platform/baa-guards";
 
 const REF = { organizationId: "org-1", documentId: "doc-1" };
@@ -75,7 +76,7 @@ describe("baaLinkNeedsJudging", () => {
   });
 });
 
-describe("governingFactsOf", () => {
+describe("governingBaaIds / withGoverningFacts", () => {
   const row = (
     id: string,
     tenantAccountId: string,
@@ -92,33 +93,48 @@ describe("governingFactsOf", () => {
     documentId,
   });
 
-  it("marks the record the go-live guard picks, per tenant, and asks M22 about its document only", async () => {
+  const register = [
+    row("t1-pending", "t1", "pending", null),
+    row("t1-new", "t1", "executed", "2026-10-01", "doc-new"),
+    row("t1-old", "t1", "executed", "2025-01-01", "doc-old"),
+    row("t2-term", "t2", "terminated", null),
+    row("t2-exec", "t2", "executed", "2026-01-01", "doc-2"),
+  ];
+
+  it("picks the record the go-live guard picks, per tenant, without asking M22", () => {
+    expect([...governingBaaIds(register)].sort()).toEqual(["t1-new", "t2-term"]);
+  });
+
+  it("asks M22 about the governing record's document only, and only for the page", async () => {
     const isFiled = vi.fn(async () => true);
-    const facts = await governingFactsOf(
-      [
-        row("t1-pending", "t1", "pending", null),
-        row("t1-new", "t1", "executed", "2026-10-01", "doc-new"),
-        row("t1-old", "t1", "executed", "2025-01-01", "doc-old"),
-        row("t2-term", "t2", "terminated", null),
-        row("t2-exec", "t2", "executed", "2026-01-01", "doc-2"),
-      ],
-      isFiled,
+    const ids = governingBaaIds(register);
+    const page = await withGoverningFacts(register, ids, isFiled);
+    const facts = new Map(
+      page.map((r) => [r.id, { governing: r.governing, documentFiled: r.documentFiled }]),
     );
     expect(facts.get("t1-new")).toEqual({ governing: true, documentFiled: true });
     expect(facts.get("t1-old")).toEqual({ governing: false, documentFiled: null });
     expect(facts.get("t1-pending")).toEqual({ governing: false, documentFiled: null });
-    // an undated termination governs, and with no document it is not filed
+    // an undated termination governs, and with no document it is not filed (no M22 call)
     expect(facts.get("t2-term")).toEqual({ governing: true, documentFiled: false });
     expect(facts.get("t2-exec")?.governing).toBe(false);
     expect(isFiled).toHaveBeenCalledTimes(1);
     expect(isFiled).toHaveBeenCalledWith({ organizationId: "org-t1", documentId: "doc-new" });
   });
 
-  it("says null (not judged) when no M22 check is bound", async () => {
-    const facts = await governingFactsOf(
-      [row("a", "t1", "executed", "2026-01-01", "d")],
-      undefined,
+  it("calls the check once per governing row ON THE PAGE, not once per tenant in the register", async () => {
+    const many = Array.from({ length: 30 }, (_, i) =>
+      row(`r${i}`, `t${i}`, "executed", "2026-01-01", `doc-${i}`),
     );
-    expect(facts.get("a")).toEqual({ governing: true, documentFiled: null });
+    const isFiled = vi.fn(async () => true);
+    const page = await withGoverningFacts(many.slice(0, 5), governingBaaIds(many), isFiled);
+    expect(page.filter((r) => r.governing)).toHaveLength(5);
+    expect(isFiled).toHaveBeenCalledTimes(5);
+  });
+
+  it("says null (not judged) when no M22 check is bound", async () => {
+    const rows = [row("a", "t1", "executed", "2026-01-01", "d")];
+    const [a] = await withGoverningFacts(rows, governingBaaIds(rows), undefined);
+    expect(a).toMatchObject({ governing: true, documentFiled: null });
   });
 });

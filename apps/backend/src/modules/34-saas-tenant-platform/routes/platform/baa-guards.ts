@@ -106,35 +106,44 @@ export interface GoverningFacts {
   readonly documentFiled: boolean | null;
 }
 
+interface RegisterRow {
+  readonly id: string;
+  readonly tenantAccountId: string;
+  readonly organizationId: string;
+  readonly baaStatus: string;
+  readonly executedOn: string | null;
+  readonly expiresOn: string | null;
+  readonly documentId: string | null;
+}
+
 /**
- * The same judgment go-live and step 3 make, for the register list: per tenant, `pickGoverningBaa` over the tenant's rows IN REGISTER ORDER
- * (`executed_on DESC, id DESC`; its fallback takes the first row), and `governingBaaDocumentFiled` on the governing row. So the console
- * shows the facts of the record the server judges, not a record of its own choosing.
+ * The same pick go-live and step 3 make, for the register list: per tenant, `pickGoverningBaa` over the tenant's rows IN REGISTER ORDER
+ * (`executed_on DESC, id DESC`; its fallback takes the first row). In memory over every row, so the caller can judge documents for one
+ * page only (`withGoverningFacts`). The console shows the facts of the record the server judges, not a record of its own choosing.
  */
-export async function governingFactsOf<
-  T extends {
-    readonly id: string;
-    readonly tenantAccountId: string;
-    readonly organizationId: string;
-    readonly baaStatus: string;
-    readonly executedOn: string | null;
-    readonly expiresOn: string | null;
-    readonly documentId: string | null;
-  },
->(rows: readonly T[], isFiled: BaaDocumentCheck | undefined): Promise<Map<string, GoverningFacts>> {
-  const byTenant = new Map<string, T[]>();
+export function governingBaaIds(rows: readonly RegisterRow[]): ReadonlySet<string> {
+  const byTenant = new Map<string, RegisterRow[]>();
   for (const r of rows)
     byTenant.set(r.tenantAccountId, [...(byTenant.get(r.tenantAccountId) ?? []), r]);
-  const facts = new Map<string, GoverningFacts>(
-    rows.map((r) => [r.id, { governing: false, documentFiled: null }]),
-  );
+  const ids = new Set<string>();
   for (const tenantRows of byTenant.values()) {
     const governing = pickGoverningBaa(tenantRows);
-    if (!governing) continue;
-    facts.set(governing.id, {
-      governing: true,
-      documentFiled: isFiled ? await governingBaaDocumentFiled(governing, isFiled) : null,
-    });
+    if (governing) ids.add(governing.id);
   }
-  return facts;
+  return ids;
+}
+
+/** The page's rows with their `GoverningFacts`: `governingBaaDocumentFiled` runs once per GOVERNING row on the page, never for the rest. */
+export async function withGoverningFacts<T extends RegisterRow>(
+  page: readonly T[],
+  governingIds: ReadonlySet<string>,
+  isFiled: BaaDocumentCheck | undefined,
+): Promise<(T & GoverningFacts)[]> {
+  const out: (T & GoverningFacts)[] = [];
+  for (const r of page) {
+    const governing = governingIds.has(r.id);
+    const documentFiled = governing && isFiled ? await governingBaaDocumentFiled(r, isFiled) : null;
+    out.push({ ...r, governing, documentFiled });
+  }
+  return out;
 }
