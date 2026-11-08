@@ -29,7 +29,7 @@ export interface OpsWrite {
   run<T>(
     fingerprint: string,
     call: (idempotencyKey: string) => Promise<FetchResult<T>>,
-    afterSuccess?: (data: T) => Promise<unknown> | void,
+    afterSuccess?: (data: T) => Promise<unknown>,
   ): Promise<OpsWriteOutcome<T>>;
   clear(): void;
 }
@@ -82,7 +82,7 @@ export function useOpsWrite(): OpsWrite {
     async <T>(
       fingerprint: string,
       call: (idempotencyKey: string) => Promise<FetchResult<T>>,
-      afterSuccess?: (data: T) => Promise<unknown> | void,
+      afterSuccess?: (data: T) => Promise<unknown>,
     ): Promise<OpsWriteOutcome<T>> => {
       // ponytail: a dropped run never settles (its caller's follow-up never runs); a distinct outcome if a caller ever needs to know.
       if (inFlight.current) return new Promise<never>(() => {});
