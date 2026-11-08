@@ -6,8 +6,9 @@
 //   queued_orders_stale  signed orders have sat in `queued_for_transmission` longer than {@link QUEUED_ORDER_ALERT_AGE_MS}, whatever
 //                        the reason (a deactivated registration, a fault, an outage): "queued ones wait" must not mean "forever".
 // "Once per episode" is remembered in a store shared by every process (episode-store.ts), so a restart or a second replica does not alert
-// again and the process that sees the recovery announces it. Reporting is best effort and never fails a tick: an unreachable store or a failed
-// publish delays the alert (or the recovery) to the next tick, it never drops it.
+// again and the process that sees the recovery announces it, after two consecutive clean ticks. Reporting is best effort and never fails a tick:
+// each announcement is a short-lived claim confirmed after its event commits, so an unreachable store, a failed publish or a crash delays the
+// alert (or the recovery) to a later tick and never drops it. (At-least-once: a crash after the commit announces it twice.)
 import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, exists, lt, sql } from "drizzle-orm";
 import { type M12CronDeps, inOrg, nowOf } from "./cron-common";
@@ -47,8 +48,10 @@ async function publish(
 const causeNameOf = (cause: unknown): string => (cause instanceof Error ? cause.name : "unknown");
 
 /**
- * Raise `kind` for `org`: an alert on the first report of an episode (in any process), nothing on the rest. Never throws: an
- * unreachable episode store or a failed publish delays the alert to the next tick, it does not drop it and does not fail the tick.
+ * Raise `kind` for `org`: an alert on the first report of an episode (in any process), nothing on the rest. Never throws.
+ * The alert is a CLAIM confirmed after the publish commits: an unreachable store, a failed publish, or a crash anywhere in between leaves
+ * only a short-lived claim that expires, so the next tick publishes. Late, never lost; a crash AFTER the publish committed but before the
+ * confirm announces it twice (see episode-store.ts).
  */
 export async function reportDegradation(
   deps: M12CronDeps,
@@ -58,11 +61,12 @@ export async function reportDegradation(
   const episodes = deps.episodes;
   if (!episodes) return;
   const key = keyOf(kind, org);
+  const fields = { organizationId: org, kind };
   try {
     if (!(await episodes.raise(key))) return;
   } catch (cause) {
     deps.warn?.(
-      { organizationId: org, kind, cause: causeNameOf(cause) },
+      { ...fields, cause: causeNameOf(cause) },
       "M12 degradation episode store unavailable; the alert is retried on the next tick",
     );
     return;
@@ -71,18 +75,27 @@ export async function reportDegradation(
     await publish(deps, org, kind, "opened");
   } catch (cause) {
     deps.warn?.(
-      { organizationId: org, kind, cause: causeNameOf(cause) },
+      { ...fields, cause: causeNameOf(cause) },
       "M12 degradation alert could not be published",
     );
-    // not alerted: release the episode so the next tick (any process) tries again
-    await episodes.clear(key).catch(() => undefined);
+    // release the claim so the next tick tries at once; if that fails too the claim expires on its own
+    await episodes.abortRaise(key).catch(() => undefined);
+    return;
   }
+  await episodes
+    .confirmRaised(key)
+    .catch((cause: unknown) =>
+      deps.warn?.(
+        { ...fields, cause: causeNameOf(cause) },
+        "M12 degradation alert was published but the episode could not be confirmed; it may be announced again",
+      ),
+    );
 }
 
 /**
- * End the episode for `org` (an event only when one was open, whichever process opened it). Never throws: a store that cannot be
- * reached leaves the episode open for the next tick, and a recovery that cannot be published re-opens it so it is announced later
- * instead of being lost with the cleared key.
+ * End the episode for `org` once it has been clean long enough (an event only when one was open, whichever process opened it). Never
+ * throws. Symmetric to {@link reportDegradation}: the recovery is a claim confirmed after its publish commits, so a crash or a failed
+ * publish leaves the episode open and the next clean tick announces it.
  */
 export async function reportRecovery(
   deps: M12CronDeps,
@@ -92,11 +105,12 @@ export async function reportRecovery(
   const episodes = deps.episodes;
   if (!episodes) return;
   const key = keyOf(kind, org);
+  const fields = { organizationId: org, kind };
   try {
     if (!(await episodes.clear(key))) return;
   } catch (cause) {
     deps.warn?.(
-      { organizationId: org, kind, cause: causeNameOf(cause) },
+      { ...fields, cause: causeNameOf(cause) },
       "M12 degradation episode store unavailable; the recovery is retried on the next tick",
     );
     return;
@@ -105,11 +119,20 @@ export async function reportRecovery(
     await publish(deps, org, kind, "closed");
   } catch (cause) {
     deps.warn?.(
-      { organizationId: org, kind, cause: causeNameOf(cause) },
+      { ...fields, cause: causeNameOf(cause) },
       "M12 recovery event could not be published",
     );
-    await episodes.raise(key).catch(() => undefined);
+    await episodes.abortClear(key).catch(() => undefined);
+    return;
   }
+  await episodes
+    .confirmCleared(key)
+    .catch((cause: unknown) =>
+      deps.warn?.(
+        { ...fields, cause: causeNameOf(cause) },
+        "M12 recovery event was published but the episode could not be closed; it may be announced again",
+      ),
+    );
 }
 
 /**

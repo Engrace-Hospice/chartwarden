@@ -10,34 +10,33 @@ import {
 } from "@chartwarden/dosespot";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
+import { createInMemoryEpisodeStore, createValkeyEpisodeTracker } from "./episode-store";
 
 /** A worker-driven write names no acting membership (the M12 sync worker's convention). */
 export const CRON_USER_ID = "";
 
 /**
- * Remembers which faults are already reported, so one is alerted ONCE per episode (and its clearing once) instead of on every tick.
- * `raise` is true on the first report of an episode (a report of an open one only keeps it open); `clear` is true when an episode was
- * open and has now ended. Either rejects when the memory cannot be reached: the caller must not read that as "no episode".
- * Production uses the Valkey-backed tracker (`episode-store.ts`), shared by every process, so a restart or a second replica neither
- * alerts again nor loses a recovery. The in-memory one below is for a single process (tests, a boot with no Valkey).
+ * Remembers which faults are already reported, so one is alerted ONCE per episode (and its clearing once) instead of on every tick, and
+ * so neither the alert nor the recovery is dropped by a crash. Each announcement is a CLAIM that is confirmed after the event commits:
+ *   `raise`         true = the caller owns announcing the alert: publish it, then `confirmRaised` (or `abortRaise` if the publish failed).
+ *                   false = the episode is open (this report only keeps it so) or another process is announcing it right now.
+ *   `clear`         true = the episode is open, has been clean for enough consecutive ticks, and the caller owns announcing the recovery:
+ *                   publish it, then `confirmCleared` (or `abortClear`). false otherwise (not open, not clean long enough, or claimed).
+ * Every method rejects when the memory cannot be reached: the caller must not read that as "no episode". Production uses the
+ * Valkey-backed tracker (`episode-store.ts`), shared by every process; the in-memory one is for one process (tests, a boot without Valkey).
  */
 export interface EpisodeTracker {
   raise(key: string): Promise<boolean>;
+  confirmRaised(key: string): Promise<void>;
+  abortRaise(key: string): Promise<void>;
   clear(key: string): Promise<boolean>;
+  confirmCleared(key: string): Promise<void>;
+  abortClear(key: string): Promise<void>;
 }
 
+/** The in-process tracker: the same state machine over an in-memory store (see `episode-store.ts`). */
 export function createEpisodeTracker(): EpisodeTracker {
-  const open = new Set<string>();
-  return {
-    async raise(key) {
-      if (open.has(key)) return false;
-      open.add(key);
-      return true;
-    },
-    async clear(key) {
-      return open.delete(key);
-    },
-  };
+  return createValkeyEpisodeTracker(createInMemoryEpisodeStore());
 }
 
 export interface M12CronDeps {

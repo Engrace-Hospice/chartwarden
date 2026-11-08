@@ -29,7 +29,9 @@ import {
 import { inOrg } from "../src/modules/12-dosespot/jobs/cron-common";
 import { staleQueuedOrdersQuery } from "../src/modules/12-dosespot/jobs/degradation-reports";
 import {
+  EPISODE_CLAIM_MS,
   type EpisodeStoreClient,
+  createInMemoryEpisodeStore,
   createValkeyEpisodeTracker,
 } from "../src/modules/12-dosespot/jobs/episode-store";
 import {
@@ -580,7 +582,9 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
           "UPDATE medication_order_transmission SET queued_at = now() WHERE medication_order_id=$1",
           [orderId],
         );
-        await runners.transmitNewRx();
+        await runners.transmitNewRx(); // clean tick 1: a recovery needs two in a row
+        expect(await eventsNamed("m12.dosespot_recovered", breaker)).toHaveLength(0);
+        await runners.transmitNewRx(); // clean tick 2
         expect(await eventsNamed("m12.dosespot_recovered", breaker)).toHaveLength(1);
         await runners.transmitNewRx();
         expect(await eventsNamed("m12.dosespot_recovered", breaker)).toHaveLength(1);
@@ -978,41 +982,35 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
   // stand-in for the SET NX PX / PEXPIRE / DEL subset; the real Valkey is exercised by m12-episode-store.live.test.ts.
   describe("degradation alerts across processes (shared episode store)", () => {
     const sharedStore = () => {
-      const expiresAt = new Map<string, number>();
+      const clock = { t: Date.now() }; // a test moves time instead of sleeping
+      const inner = createInMemoryEpisodeStore(() => clock.t);
       const faults = { down: false };
-      const live = (key: string) => {
-        const at = expiresAt.get(key);
-        if (at === undefined) return false;
-        if (at <= Date.now()) {
-          expiresAt.delete(key);
-          return false;
-        }
-        return true;
-      };
       const reach = () => {
         if (faults.down) throw new Error("ECONNREFUSED");
       };
       const client: EpisodeStoreClient = {
-        async set(key, _value, _px, ms, _nx) {
+        set: (async (...args: Parameters<EpisodeStoreClient["set"]>) => {
           reach();
-          if (live(key)) return null;
-          expiresAt.set(key, Date.now() + ms);
-          return "OK";
+          return (inner.set as (...a: unknown[]) => Promise<"OK" | null>)(...args);
+        }) as EpisodeStoreClient["set"],
+        pexpire: async (key, ms) => {
+          reach();
+          return inner.pexpire(key, ms);
         },
-        async pexpire(key, ms) {
+        del: async (...keys) => {
           reach();
-          if (!live(key)) return 0;
-          expiresAt.set(key, Date.now() + ms);
-          return 1;
+          return inner.del(...keys);
         },
-        async del(key) {
+        exists: async (key) => {
           reach();
-          const was = live(key);
-          expiresAt.delete(key);
-          return was ? 1 : 0;
+          return inner.exists(key);
+        },
+        incr: async (key) => {
+          reach();
+          return inner.incr(key);
         },
       };
-      return { client, faults };
+      return { client, faults, clock };
     };
     const BREAKER = `dosespot-queued_orders_stale:${ORG_A}`;
     const events = async (type: string) =>
@@ -1052,17 +1050,46 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
     it("two replicas raise ONE alert, and the replica that sees the recovery announces it even though the other raised the alert", async () => {
       await clearEvents();
       const { setAge } = await staleOrder();
-      const { client } = sharedStore();
+      const { client, clock } = sharedStore();
       const replicaA = makeReplica(client);
       const replicaB = makeReplica(client);
       expect(await runQueuedAgeAlertForOrg(replicaA, ORG_A)).toBe(true);
       expect(await runQueuedAgeAlertForOrg(replicaB, ORG_A)).toBe(true); // B sees the same fault: no second alert
       expect(await events("m12.dosespot_degraded")).toHaveLength(1);
       await setAge("1 minute");
-      expect(await runQueuedAgeAlertForOrg(replicaB, ORG_A)).toBe(false); // B, not A, announces the recovery
+      expect(await runQueuedAgeAlertForOrg(replicaB, ORG_A)).toBe(false); // clean tick 1: not announced yet (no flapping)
+      expect(await events("m12.dosespot_recovered")).toHaveLength(0);
+      expect(await runQueuedAgeAlertForOrg(replicaB, ORG_A)).toBe(false); // clean tick 2: B, not A, announces the recovery
       expect(await events("m12.dosespot_recovered")).toHaveLength(1);
       expect(await runQueuedAgeAlertForOrg(replicaA, ORG_A)).toBe(false);
+      expect(await runQueuedAgeAlertForOrg(replicaA, ORG_A)).toBe(false);
       expect(await events("m12.dosespot_recovered")).toHaveLength(1);
+      // the episode is CLOSED, not merely claimed: long after the claim window nobody announces the recovery a second time
+      clock.t += EPISODE_CLAIM_MS + 1_000;
+      await runQueuedAgeAlertForOrg(replicaA, ORG_A);
+      await runQueuedAgeAlertForOrg(replicaA, ORG_A);
+      await runQueuedAgeAlertForOrg(replicaB, ORG_A);
+      expect(await events("m12.dosespot_recovered")).toHaveLength(1);
+      expect(await events("m12.dosespot_degraded")).toHaveLength(1);
+    });
+
+    it("replicas that disagree do not flap: a replica that still sees the fault restarts the clean count, so no recovery is announced", async () => {
+      await clearEvents();
+      const { setAge } = await staleOrder();
+      const { client } = sharedStore();
+      const sees = makeReplica(client);
+      const doesNotSee = makeReplica(client);
+      await runQueuedAgeAlertForOrg(sees, ORG_A);
+      expect(await events("m12.dosespot_degraded")).toHaveLength(1);
+      for (let i = 0; i < 4; i += 1) {
+        // the fault is visible to one replica and not the other (e.g. each sees its own view of a flaky dependency), alternating ticks
+        await setAge("2 hours");
+        await runQueuedAgeAlertForOrg(sees, ORG_A);
+        await setAge("1 minute");
+        await runQueuedAgeAlertForOrg(doesNotSee, ORG_A);
+      }
+      expect(await events("m12.dosespot_degraded")).toHaveLength(1);
+      expect(await events("m12.dosespot_recovered")).toHaveLength(0);
     });
 
     it("a restart does not alert again: a fresh process over the same store joins the open episode", async () => {
@@ -1093,14 +1120,70 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       };
       await runQueuedAgeAlertForOrg(flaky, ORG_A);
       await setAge("1 minute");
-      await expect(runQueuedAgeAlertForOrg(flaky, ORG_A)).resolves.toBe(false); // a tick never fails on it
+      await runQueuedAgeAlertForOrg(flaky, ORG_A); // clean tick 1
+      await expect(runQueuedAgeAlertForOrg(flaky, ORG_A)).resolves.toBe(false); // clean tick 2 claims it; the publish fails; a tick never fails on it
       expect(await events("m12.dosespot_recovered")).toHaveLength(0);
       expect(warnings.map((w) => w.message)).toContain("M12 recovery event could not be published");
       failRecovery = false;
-      await runQueuedAgeAlertForOrg(flaky, ORG_A);
+      await runQueuedAgeAlertForOrg(flaky, ORG_A); // the claim was released and the clean count kept: announced on the very next tick
       expect(await events("m12.dosespot_recovered")).toHaveLength(1);
       await runQueuedAgeAlertForOrg(flaky, ORG_A);
       expect(await events("m12.dosespot_recovered")).toHaveLength(1);
+    });
+
+    // MEDIUM-2: the two windows the previous design left open. A "crash" is modelled as the publish failing AND the release failing (the
+    // claim is then all that is left); time then moves past the claim window.
+    const withBrokenRelease = (replica: M12CronDeps): M12CronDeps => ({
+      ...replica,
+      episodes: {
+        ...(replica.episodes as NonNullable<M12CronDeps["episodes"]>),
+        abortRaise: () => Promise.reject(new Error("release failed")),
+        abortClear: () => Promise.reject(new Error("release failed")),
+      },
+    });
+    const failing = (replica: M12CronDeps, eventName: string): M12CronDeps => ({
+      ...replica,
+      outbox: {
+        publish: (tx, e) =>
+          e.eventName === eventName
+            ? Promise.reject(new Error("outbox unavailable"))
+            : replica.outbox.publish(tx, e),
+      },
+    });
+
+    it("opening window: a claimant whose publish AND release both failed does not block the alert; another replica's ticks do not extend the claim; it is published once the claim lapses", async () => {
+      await clearEvents();
+      await staleOrder();
+      const { client, clock } = sharedStore();
+      const crashed = withBrokenRelease(failing(makeReplica(client), "m12.dosespot_degraded"));
+      const healthy = makeReplica(client);
+      await runQueuedAgeAlertForOrg(crashed, ORG_A); // claim taken, publish failed, release failed
+      await runQueuedAgeAlertForOrg(healthy, ORG_A); // sees a claim in progress: nothing, and it must not extend it
+      expect(await events("m12.dosespot_degraded")).toHaveLength(0);
+      clock.t += EPISODE_CLAIM_MS - 1_000;
+      await runQueuedAgeAlertForOrg(healthy, ORG_A); // still inside the window
+      expect(await events("m12.dosespot_degraded")).toHaveLength(0);
+      clock.t += 2_000; // past the ORIGINAL claim: only true if no tick refreshed it
+      await runQueuedAgeAlertForOrg(healthy, ORG_A);
+      expect(await events("m12.dosespot_degraded")).toHaveLength(1);
+    });
+
+    it("closing window: a claimant whose recovery publish AND release both failed leaves the episode open; the recovery is published once the claim lapses", async () => {
+      await clearEvents();
+      const { setAge } = await staleOrder();
+      const { client, clock } = sharedStore();
+      const healthy = makeReplica(client);
+      await runQueuedAgeAlertForOrg(healthy, ORG_A);
+      await setAge("1 minute");
+      const crashed = withBrokenRelease(failing(makeReplica(client), "m12.dosespot_recovered"));
+      await runQueuedAgeAlertForOrg(crashed, ORG_A);
+      await runQueuedAgeAlertForOrg(crashed, ORG_A); // claim taken, publish failed, release failed
+      await runQueuedAgeAlertForOrg(healthy, ORG_A); // sees the recovery claimed: nothing
+      expect(await events("m12.dosespot_recovered")).toHaveLength(0);
+      clock.t += EPISODE_CLAIM_MS + 1_000;
+      await runQueuedAgeAlertForOrg(healthy, ORG_A);
+      expect(await events("m12.dosespot_recovered")).toHaveLength(1);
+      expect(await events("m12.dosespot_degraded")).toHaveLength(1);
     });
 
     it("an alert that could not be published is retried on the next tick (the episode is released)", async () => {
@@ -1205,6 +1288,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         expect(await recipientsOf(degraded[0]?.id as string)).toEqual([adminUserId]);
         await setAge("1 minute");
         await runQueuedAgeAlertForOrg(replica, ORG_A);
+        await runQueuedAgeAlertForOrg(replica, ORG_A); // the second clean tick announces the recovery
         await dispatcher.tick();
         const recovered = await alertsNamed("m12.dosespot_recovered");
         expect(recovered).toHaveLength(1);

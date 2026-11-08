@@ -140,9 +140,13 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
 - Degradation alerts (review of slice 4, M3): `m12.dosespot_degraded` / `_recovered` (breaker edges, an org whose config cannot be opened, signed
   orders queued over an hour) are consumed by M36's `dosespot-alerts` and reach the tenant's administrators (seeded `tenant_admins` rules, the
   deactivation alert's rule among them; before, these events had no consumer and the deactivation alert no rule, so nobody was told). The
-  "once per episode" memory is a Valkey key per (kind, org) (`chartwarden:m12:episode:*`, SET NX PX, refreshed while the fault lasts), shared by
-  every replica: a restart does not re-alert, and the replica that sees the recovery announces it whichever one raised the alert. An unreachable
-  store or a failed publish delays an alert or a recovery to the next tick, never drops it. The circuit breaker's own edges are still paired
+  "once per episode" memory is a few Valkey keys per (kind, org) (`chartwarden:m12:episode:*`), shared by every replica: a restart does not
+  re-alert, and the replica that sees the recovery announces it whichever one raised the alert, after two consecutive clean ticks (a report of
+  the fault resets the count, so replicas that disagree do not flap). Each announcement is a short-lived CLAIM (2 minutes, never refreshed by
+  other ticks) that is confirmed only after its event has committed: `open` is written after the alert is published and removed after the
+  recovery is, so a crash, a failed publish, a failed release or an unreachable store delays an announcement until the claim lapses and never
+  drops one. It is at-least-once: a process that dies after its publish committed but before the confirm announces it a second time. The circuit
+  breaker's own edges are still paired
   in-process (a restart while a breaker is open leaves that alert without its recovery notice).
 - An outcome DoseSpot left unconfirmed (review of slice 4, L-e): a 2xx that is unreadable or carries no prescription id means the prescription
   may already exist there, so `transmitNewRx` neither fails the order nor retries it (a second send could dispense twice). The order is HELD:
