@@ -5,7 +5,6 @@ import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ActorSessionProvider, type Session } from "../../../shell/session";
 import { parsePriceCents } from "../plans-list";
 import { PricingPlans, actionsFor, parsePercentBps, pricingFormErrors } from "../pricing-plans";
 
@@ -71,6 +70,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   if (req.method === "GET") {
     if (url === "/api/admin/pricing/defaults")
       return json({ bandThresholds: [0, 25], currencyCode: "USD" });
+    if (url === "/api/v1/auth/context") return json(actor);
     return listReply();
   }
   sent = [
@@ -87,24 +87,31 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   return next();
 }
 
-const WRITER: Session = {
+interface Actor {
+  userId: string;
+  organizationId: string;
+  roles: string[];
+  permissions: string[];
+}
+const WRITER: Actor = {
   userId: "u1",
   organizationId: "o1",
+  roles: ["platform_billing_admin"],
   permissions: ["plan.admin.read", "plan.admin.write"],
 };
-const READER: Session = { ...WRITER, permissions: ["plan.admin.read"] };
+const READER: Actor = { ...WRITER, permissions: ["plan.admin.read"] };
+let actor: Actor = WRITER;
 
-function mount(path = "/admin/pricing-plans", session: Session = WRITER): void {
+function mount(path = "/admin/pricing-plans", as: Actor = WRITER): void {
+  actor = as;
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
-      <ActorSessionProvider initial={session}>
-        <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route path="/admin/pricing-plans" element={<PricingPlans />} />
-            <Route path="/step-up" element={<p>step-up page</p>} />
-          </Routes>
-        </MemoryRouter>
-      </ActorSessionProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/admin/pricing-plans" element={<PricingPlans />} />
+          <Route path="/step-up" element={<p>step-up page</p>} />
+        </Routes>
+      </MemoryRouter>
     </ApiClientProvider>,
   );
 }
@@ -233,6 +240,7 @@ describe("PricingPlans", () => {
   it("an operator without plan.admin.write sees the plans but no write buttons", async () => {
     mount(`/admin/pricing-plans?plan=${DRAFT.id}`, READER);
     const d = await drawer();
+    expect(within(d).getByText("2.5% of net collections")).toBeTruthy();
     expect(within(d).queryByRole("button", { name: "Publish" })).toBeNull();
     expect(within(d).queryByRole("button", { name: "Edit prices" })).toBeNull();
     expect(screen.queryByRole("button", { name: "New plan" })).toBeNull();

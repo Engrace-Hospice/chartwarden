@@ -19,11 +19,11 @@ import type { operations } from "@chartwarden/ui";
 // the billing-service rates in basis points and an implementation fee. Lifecycle over /api/admin/pricing/plans (plan-service.ts): a draft
 // is edited in place and published (its prices then freeze for good); a published plan is archived; a published or archived plan
 // starts a new draft version, while its family has no draft yet. Every write is plan.admin.write (step-up, Idempotency-Key and a
-// recorded reason, enforced server-side); the write buttons show only to an operator who holds it.
+// recorded reason, enforced server-side); the write buttons show only to an operator who holds it (read from the actor context the
+// shell reads too: this module may not import the shell, which M34 owns).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useSession } from "../../shell/session";
 import {
   PlanEditor,
   type PlanForm,
@@ -107,8 +107,8 @@ interface PlanOutcome {
 
 export function PricingPlans(): JSX.Element {
   const client = useApiClient();
-  const permissions = useSession()?.permissions ?? [];
-  const canWrite = permissions.includes("plan.admin.write");
+  // Fail closed: until the actor context answers (or if it cannot), no write buttons.
+  const [canWrite, setCanWrite] = useState(false);
   const [params, setParams] = useSearchParams();
   const selectedId = params.get("plan");
   const creating = selectedId === "new";
@@ -126,11 +126,13 @@ export function PricingPlans(): JSX.Element {
     setLoaded(false);
     setError(null);
     try {
-      const [list, defs] = await Promise.all([
+      const [list, defs, actor] = await Promise.all([
         client.GET("/api/admin/pricing/plans"),
         client.GET("/api/admin/pricing/defaults"),
+        client.GET("/api/v1/auth/context"),
       ]);
       if (!isCurrent()) return;
+      setCanWrite(actor.data?.permissions?.includes("plan.admin.write") ?? false);
       if (list.error || defs.error) {
         const forbidden = (list.error ? list.response : defs.response).status === 403;
         setError(
