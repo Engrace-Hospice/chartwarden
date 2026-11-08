@@ -18,7 +18,7 @@
  *     versions, not syntax.
  *
  * WHAT IT ENFORCES. No tracked file contains a conflict marker at the start of a line: `<<<<<<< `,
- * `>>>>>>> `, or a bare seven-equals line. Scanning is over `git ls-files`, so it covers the whole
+ * `>>>>>>> ` (seven or more), or a bare seven-equals line. Scanning is over `git ls-files`, so it covers the whole
  * tracked tree — YAML, JSON, Markdown and SQL included — rather than only the paths a language
  * toolchain happens to read.
  *
@@ -50,9 +50,15 @@ const EXEMPT_PREFIX = [
 
 /**
  * `<<<<<<< ` / `>>>>>>> ` must start a line and be followed by a branch label; `=======` is required
- * to be the WHOLE line (see the header note on setext headings).
+ * to be the WHOLE line (see the header note on setext headings). The angle-bracket markers match a run
+ * of SEVEN OR MORE: git writes longer ones for a conflict inside a conflicted region (a merge of a
+ * file that already held markers, or `conflict-marker-size`), and an 8-character pair once reached a
+ * committed ADR unnoticed. The `=` divider stays exactly seven, since longer runs are setext rules.
  */
-const MARKER_RE = /^(?:<{7} .+|>{7} .+|={7})$/;
+const MARKER_RE = /^(?:<{7,} .+|>{7,} .+|={7})$/;
+
+/** True when `line` is a conflict marker the gate rejects. Exported for the gate's own test. */
+export const isConflictMarker = (line: string): boolean => MARKER_RE.test(line);
 
 export interface MarkerHit {
   readonly file: string;
@@ -80,7 +86,7 @@ export function findMergeArtifacts(root: string = REPO_ROOT): MarkerHit[] {
       continue;
     }
     src.split("\n").forEach((text, i) => {
-      if (MARKER_RE.test(text)) hits.push({ file, line: i + 1, text });
+      if (isConflictMarker(text)) hits.push({ file, line: i + 1, text });
     });
   }
   return hits;

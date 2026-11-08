@@ -8,7 +8,7 @@ import { join } from "node:path";
  * suite stayed green across seven merges while the file could not be parsed by GitHub at all.
  */
 import { describe, expect, it } from "vitest";
-import { findMergeArtifacts } from "../check-merge-artifacts";
+import { findMergeArtifacts, isConflictMarker } from "../check-merge-artifacts";
 
 const FIXTURE = join(__dirname, "../__fixtures__/merge-artifacts");
 const REPO_ROOT = join(__dirname, "../..");
@@ -47,5 +47,14 @@ describe("merge-artifact gate", () => {
     const heading = "Title\n=========\n\nbody";
     const markers = heading.split("\n").filter((l) => /^(?:<{7} .+|>{7} .+|={7})$/.test(l));
     expect(markers).toEqual([]);
+  });
+
+  it("flags the longer markers git writes for a nested conflict (eight characters reached a committed ADR)", () => {
+    expect(isConflictMarker("<<<<<<<< HEAD")).toBe(true);
+    expect(isConflictMarker(">>>>>>>> feat/tenant-clearinghouse")).toBe(true);
+    expect(isConflictMarker("<<<<<<< HEAD")).toBe(true);
+    // six is not a marker, and a longer equals run stays a setext rule
+    expect(isConflictMarker("<<<<<< HEAD")).toBe(false);
+    expect(isConflictMarker("========")).toBe(false);
   });
 });
