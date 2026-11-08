@@ -25,6 +25,10 @@ const ERROR_COPY: Readonly<Record<string, string>> = {
     "This order is no longer held (someone may have resolved it already). Reload the page.",
   DOSESPOT_PRESCRIPTION_ID_REQUIRED: "Enter the DoseSpot prescription id you found.",
   DOSESPOT_PRESCRIPTION_ID_UNEXPECTED: "A prescription id belongs to an order that was sent.",
+  DOSESPOT_PRESCRIPTION_ID_IN_USE:
+    "Another order in your organization already carries that DoseSpot prescription id. Check the id you entered.",
+  DOSESPOT_REASON_REQUIRED:
+    "Describe what you checked in at least 10 characters (spaces alone do not count).",
 };
 
 // No outcome is preselected: either one is a clinical claim about the prescriber's DoseSpot account, so the administrator must choose it.

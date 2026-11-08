@@ -237,6 +237,35 @@ describe("a held transmission on the medication-order detail", () => {
     });
   });
 
+  it("maps the id-already-in-use and the empty-reason refusals to sentences, never the raw server text", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Resolve held transmission" }));
+    const dialog = await screen.findByRole("dialog", { name: "Resolve held transmission" });
+    fireEvent.change(within(dialog).getByLabelText("What you found"), {
+      target: { value: "sent" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("DoseSpot prescription id"), {
+      target: { value: "9001" },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/What you checked/), {
+      target: { value: REASON },
+    });
+    const refusals: ReadonlyArray<readonly [number, string, RegExp]> = [
+      [
+        409,
+        "DOSESPOT_PRESCRIPTION_ID_IN_USE",
+        /Another order in your organization already carries that DoseSpot prescription id/,
+      ],
+      [422, "DOSESPOT_REASON_REQUIRED", /at least 10 characters/],
+    ];
+    for (const [status, code, copy] of refusals) {
+      writeFailure = { status, body: { error: { code, message: "raw server text" } } };
+      fireEvent.click(within(dialog).getByRole("button", { name: "Resolve" }));
+      await waitFor(() => expect(within(dialog).getByRole("alert").textContent).toMatch(copy));
+      expect(within(dialog).getByRole("alert").textContent).not.toMatch(/raw server text/);
+    }
+  });
+
   it("maps a refusal to a sentence, and a stale step-up goes to the step-up page", async () => {
     writeFailure = {
       status: 409,
