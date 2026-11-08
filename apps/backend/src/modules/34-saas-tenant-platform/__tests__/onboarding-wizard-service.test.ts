@@ -309,6 +309,29 @@ describe("skip", () => {
     expect(isSkippableStep({ key: "go_live_checklist_complete", canonical: false })).toBe(false);
   });
 
+  it("skip() settles a non-canonical catalog step, and the view offers Skip on it", async () => {
+    const extra = tpl("custom_training", 5, { canonical: false });
+    state = createMemoryWizardState({
+      tenants: state.tenants,
+      templates: [...TEMPLATES, extra],
+      tasks: [...TEMPLATES, extra].map((t) => memoryTask(TENANT, t.key)),
+      members: state.members,
+      baa: state.baa,
+      profiles: state.profiles,
+    });
+    settle("organisation", "billing", "locations", "baa_auto");
+    const before = await wizard().getPlatform("acme");
+    expect(before.steps.find((s) => s.key === "custom_training")?.skippable).toBe(true);
+    const step = await wizard().skipPlatform(
+      "acme",
+      taskId("custom_training"),
+      OPS,
+      "not part of this customer's rollout",
+    );
+    expect(step).toMatchObject({ status: "skipped", skippable: true });
+    expect(statusOf("custom_training")).toBe("skipped");
+  });
+
   it("refuses to skip go-live", async () => {
     settle("organisation", "billing", "locations", "baa_auto");
     expect(
