@@ -243,7 +243,7 @@ export function InvocationSearch({
     </>
   );
 
-  const frame = `wx-list-drawer${embedded ? " p-0" : ""}${selectedId ? " has-drawer" : ""}`;
+  const frame = `wx-list-drawer${embedded ? " is-embedded" : ""}${selectedId ? " has-drawer" : ""}`;
   return (
     <div className={frame}>
       <div className="wx-list-drawer-main">

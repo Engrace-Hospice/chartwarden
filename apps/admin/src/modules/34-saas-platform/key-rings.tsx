@@ -138,9 +138,11 @@ export function KeyRings(): JSX.Element {
               if (e.key === "Enter") void load();
             }}
           />
-          <Button tone="primary" onClick={() => void load()}>
-            Load
-          </Button>
+          <div className="wx-list-toolbar-action">
+            <Button tone="primary" onClick={() => void load()}>
+              Load
+            </Button>
+          </div>
         </div>
 
         {banner ? <InlineAlert tone={banner.tone}>{banner.text}</InlineAlert> : null}

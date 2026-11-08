@@ -124,9 +124,11 @@ export function ChannelMembers(): JSX.Element {
               onChange={(ev) => setRole(ev.target.value as MemberRole)}
               options={MEMBER_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
             />
-            <Button type="submit" size="lg" loading={busy}>
-              Add member
-            </Button>
+            <div className="wx-list-toolbar-action">
+              <Button type="submit" size="lg" loading={busy}>
+                Add member
+              </Button>
+            </div>
           </form>
         ) : null}
         {failure ? <InlineAlert tone="error">{failure}</InlineAlert> : null}

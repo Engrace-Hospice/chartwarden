@@ -188,25 +188,27 @@
     justify-content: flex-start;
     align-items: flex-start;
   }
-  /* A field beside a button: line the button up with the input, not the label. The field's hint/error text is taken out
-     of flow (it drops under the input), so it cannot push the input row above the button's baseline while it shows; the
-     toolbar makes room for it meanwhile. */
+  /* A field beside a button (`is-bottom`): the button lines up with the INPUT, not the field's label or its hint/error text,
+     which stay in flow under the input and push the toolbar's next row down when it wraps. Fields top-align; the button sits in
+     a `.wx-list-toolbar-action` box that reserves the label line and the field's gap (`is-unlabelled` for an sr-only label,
+     which only leaves the gap) plus the input's height, and bottom-aligns the button in it — so it matches the input whether or
+     not a message is showing, and whatever the button's own size. The label's line-height is pinned to the same variable, so
+     the reserved height is exact, not a guess at the browser's `normal` line height. */
   .wx-list-toolbar-fields.is-bottom {
+    --wx-field-label-line: 1.25rem;
+    --wx-field-control-height: 2.5rem; /* the kit input's min-height (fields.tsx) */
+    align-items: flex-start;
+  }
+  .wx-list-toolbar-fields.is-bottom > .wx-field > :first-child {
+    line-height: var(--wx-field-label-line);
+  }
+  .wx-list-toolbar-fields.is-bottom > .wx-list-toolbar-action {
+    display: flex;
     align-items: flex-end;
+    min-height: calc(var(--wx-field-label-line) + var(--space-2) + var(--wx-field-control-height));
   }
-  .wx-list-toolbar-fields.is-bottom > .wx-field {
-    position: relative;
-  }
-  .wx-list-toolbar-fields.is-bottom > .wx-field > [role="alert"],
-  .wx-list-toolbar-fields.is-bottom > .wx-field > [id$="-hint"] {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    margin-top: var(--space-2);
-  }
-  .wx-list-toolbar-fields.is-bottom:has(> .wx-field > [role="alert"], > .wx-field > [id$="-hint"]) {
-    padding-bottom: 1.25rem;
+  .wx-list-toolbar-fields.is-bottom > .wx-list-toolbar-action.is-unlabelled {
+    min-height: calc(var(--space-2) + var(--wx-field-control-height));
   }
   .wx-list-toolbar-fields > .wx-field {
     flex: 1 1 14rem;
@@ -288,6 +290,10 @@
   }
   .wx-list-drawer.has-drawer {
     grid-template-columns: minmax(0, 1fr) 24rem;
+  }
+  /* The frame inside another screen's tab panel: that screen already pads it. */
+  .wx-list-drawer.is-embedded {
+    padding: 0;
   }
   .wx-list-drawer-main {
     display: grid;
@@ -496,9 +502,12 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 1rem;
   }
-  /* A labelled group of stat cards is a <fieldset>; its default min-width is min-content, which would stop the grid shrinking. */
+  /* A labelled group of stat cards is a <fieldset>; its default min-width is min-content, which would stop the grid shrinking.
+     `wx-fieldset-reset` is the same fix for a fieldset that only exists to carry a name or focus (preflight already zeroes its
+     border, margin and padding). */
   fieldset.wx-stat-grid,
-  fieldset.wx-work-summary {
+  fieldset.wx-work-summary,
+  fieldset.wx-fieldset-reset {
     min-width: 0;
   }
   .wx-form-layout {
@@ -1099,7 +1108,7 @@
     color: var(--color-alert-pill-fg);
   }
   .wx-text-error {
-    color: var(--color-error);
+    color: var(--color-error-pill-fg);
   }
   .wx-text-success {
     color: var(--color-success-pill-fg);

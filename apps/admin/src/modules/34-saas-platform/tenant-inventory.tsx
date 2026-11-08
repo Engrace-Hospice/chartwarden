@@ -185,9 +185,11 @@ export function TenantInventory(): JSX.Element {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <Button type="submit" tone="secondary">
-            Search
-          </Button>
+          <div className="wx-list-toolbar-action is-unlabelled">
+            <Button type="submit" tone="secondary">
+              Search
+            </Button>
+          </div>
         </form>
 
         {status === "" ? (
