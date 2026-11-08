@@ -246,6 +246,7 @@
         "apps/backend/__tests__/dosespot-routes.test.ts",
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
+        "apps/backend/__tests__/m12-roster-write-routes.test.ts",
         "apps/backend/__tests__/m12-tenant-dosespot-routes.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
         "apps/backend/__tests__/m36-medication-question-no-order-route.test.ts",
