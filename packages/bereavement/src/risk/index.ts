@@ -10,3 +10,4 @@
 export * from "./rubric";
 export * from "./evidence";
 export * from "./layer2";
+export * from "./manual-factors";

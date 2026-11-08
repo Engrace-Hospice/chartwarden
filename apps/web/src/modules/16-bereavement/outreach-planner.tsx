@@ -46,6 +46,7 @@ import {
   LOG_OUTCOMES,
   OUTREACH_STATUS_TONE,
   anniversaryMarkLabel,
+  cadenceMarkLabel,
   dateTime,
   dueLabel,
   humanize,
@@ -57,13 +58,13 @@ import {
 import {
   Card,
   CheckboxField,
+  ErrorText,
   FilterRow,
   Modal,
   Notice,
   SelectField,
   TextAreaField,
   TextField,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
   linkStyle,
@@ -195,7 +196,7 @@ export function BereavementOutreachPlanner(): JSX.Element {
         touchpoint whose due date has already passed is never resurrected as a backdated obligation.
       </Notice>
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? <ErrorText>{actionError}</ErrorText> : null}
 
       <FilterRow>
         <SelectField label="Status" value={status} options={STATUS_FILTERS} onChange={setStatus} />
@@ -238,7 +239,8 @@ export function BereavementOutreachPlanner(): JSX.Element {
                     <td style={td}>{nameOf(o.contactId)}</td>
                     <td style={td}>{outreachKindLabel(o.kind)}</td>
                     <td style={td}>
-                      {o.anniversaryMark ? anniversaryMarkLabel(o.anniversaryMark) : "—"}
+                      {cadenceMarkLabel(o.cadenceMark) ??
+                        (o.anniversaryMark ? anniversaryMarkLabel(o.anniversaryMark) : "—")}
                     </td>
                     <td style={td}>
                       <StatusPill
@@ -479,7 +481,7 @@ function CompleteModal({
         onChange={setNotes}
         hint="Counselor notes are encrypted at rest and are NOT what the family portal shows."
       />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -536,7 +538,7 @@ function OutcomeModal({
           : "A no-response feeds the three-strikes proposal that can later mark this survivor unreachable. The threshold is the lifecycle machine's, not this form's."}
       </Notice>
       <TextAreaField label="Note (optional)" value={notes} onChange={setNotes} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -580,7 +582,7 @@ function CancelModal({
       }
     >
       <TextAreaField label="Reason" value={reason} onChange={setReason} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -657,7 +659,7 @@ function RegenerateModal({
         onChange={setFromAt}
       />
       {summary ? <p style={mutedStyle}>{summary}</p> : null}
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }

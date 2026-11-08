@@ -79,3 +79,13 @@ export async function withOrgBinding<B extends PerOrgBinding<B>, D extends { rea
   if (!deps.binding.forOrg) return deps;
   return { ...deps, binding: await resolveForOrg(deps.binding.forOrg, organizationId, log) };
 }
+
+/**
+ * True when the resolved binding is the platform's own Claim.MD account. Its account-wide normalized feed belongs to the BIL-1.1
+ * inbox and the gated dispatcher, so the legacy provider poller never reads or applies it. A binding built from a tenant's OWN
+ * sealed Claim.MD credential (`account: "tenant"`) keeps the per-tenant ack path (owner decision 2026-11-08).
+ */
+export const isPlatformClaimMdBinding = (binding: {
+  readonly vendor: string | null;
+  readonly account?: "tenant";
+}): boolean => binding.vendor === "claimmd" && binding.account !== "tenant";

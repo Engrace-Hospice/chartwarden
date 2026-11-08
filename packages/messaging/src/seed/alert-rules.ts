@@ -11,6 +11,7 @@
 import type { AlertCategory, AlertRecipientResolver, AlertSeverity } from "../interfaces/kinds";
 import type { ResolverArgs } from "../resolution";
 import type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
+import { BEREAVEMENT_ALERT_RULES } from "./alert-rules-bereavement";
 import { BILLING_CAP_ALERT_RULES } from "./alert-rules-billing-cap";
 import { DOSESPOT_ALERT_RULES } from "./alert-rules-dosespot";
 
@@ -1796,6 +1797,8 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   },
   // M12 DoseSpot e-prescribing: the adapter-health pair (M36 `dosespot-alerts` consumer) and the registration going out of service.
   ...DOSESPOT_ALERT_RULES,
+  // ADR-0109 D7 — the M16 bereavement program's oversight alerts (death intake, physician letter, overdue assessment).
+  ...BEREAVEMENT_ALERT_RULES,
 ];
 
 /** The event types of the `system_locked` platform rules (§7.4) — the always-on floor a

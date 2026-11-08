@@ -62,7 +62,11 @@ function depsFor(bound: Record<string, string>) {
         resolved.push(organizationId);
         const vendor = bound[organizationId] ?? null;
         reached[organizationId] ??= [];
-        return bindingOf(vendor, reached[organizationId] as ClearinghouseContext[]);
+        // A per-org binding resolved from the tenant's own sealed credential (the resolver marks it `account: "tenant"`).
+        return {
+          ...bindingOf(vendor, reached[organizationId] as ClearinghouseContext[]),
+          account: "tenant",
+        };
       },
     },
     contexts: {

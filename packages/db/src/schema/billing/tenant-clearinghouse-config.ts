@@ -1,4 +1,4 @@
-// @chartwarden/db — `tenant_clearinghouse_config` (M23 Billing-Medicare; ADR-0053 amendment 2026-11-06; migration 1350).
+// @chartwarden/db — `tenant_clearinghouse_config` (M23 Billing-Medicare; ADR-0053 amendment 2026-11-06; migration 1386).
 // The clearinghouse a tenant chose: `stedi`, `claimmd` or `outside` ("bills outside ChartWarden"), its mode, its sealed
 // vendor credential and where the config is in draft -> verified -> active. One row per organization. The CHECKs in the
 // migration are the authority on which column combinations are legal; this file mirrors the shape for Drizzle.

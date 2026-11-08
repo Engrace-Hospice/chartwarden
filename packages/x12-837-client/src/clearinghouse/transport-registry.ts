@@ -44,6 +44,12 @@ export interface ClearinghouseBinding {
   /** Set on an UNBOUND per-organization binding (`vendor` null): why it is unbound. Absent on a bound one. */
   readonly unboundReason?: UnboundReason;
   /**
+   * `tenant` on a binding built from the organization's OWN sealed credential (tenant clearinghouse). Absent on the platform's
+   * env binding (and on the orgs it serves through CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS): the platform account's Claim.MD
+   * response capture serves those, never a tenant's own account (owner decision 2026-11-08).
+   */
+  readonly account?: "tenant";
+  /**
    * Per-organization binding (tenant clearinghouse, ADR-0053 amendment 2026-11-06). When present, `vendor` and
    * `transport` above are the UNBOUND platform default and say nothing about any organization: a consumer that acts for
    * an organization MUST resolve its own binding through {@link bindingForOrg}. The resolved binding is a plain one

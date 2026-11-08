@@ -1,12 +1,12 @@
 {
   "totals": {
-    "routes": 1966,
-    "enriched": 1966,
-    "deficit": 0,
-    "mutating": 1134,
-    "mutatingNoBody": 1,
-    "gets": 779,
-    "getsNoResponse": 9
+    "routes": 1973,
+    "enriched": 1970,
+    "deficit": 3,
+    "mutating": 1133,
+    "mutatingNoBody": 2,
+    "gets": 787,
+    "getsNoResponse": 11
   },
   "modules": [
     {
@@ -111,12 +111,12 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 43,
-      "enriched": 43,
+      "routes": 34,
+      "enriched": 34,
       "deficit": 0,
-      "mutating": 30,
+      "mutating": 23,
       "mutatingNoBody": 0,
-      "gets": 13,
+      "gets": 11,
       "getsNoResponse": 0
     },
     {
@@ -151,12 +151,12 @@
     },
     {
       "module": "16-bereavement",
-      "routes": 34,
-      "enriched": 34,
+      "routes": 53,
+      "enriched": 53,
       "deficit": 0,
-      "mutating": 27,
+      "mutating": 36,
       "mutatingNoBody": 0,
-      "gets": 7,
+      "gets": 17,
       "getsNoResponse": 0
     },
     {
@@ -241,13 +241,13 @@
     },
     {
       "module": "25-remittance",
-      "routes": 158,
+      "routes": 160,
       "enriched": 158,
-      "deficit": 0,
+      "deficit": 2,
       "mutating": 104,
       "mutatingNoBody": 0,
-      "gets": 51,
-      "getsNoResponse": 0
+      "gets": 53,
+      "getsNoResponse": 2
     },
     {
       "module": "26-cap",
@@ -301,10 +301,10 @@
     },
     {
       "module": "31-portal",
-      "routes": 67,
-      "enriched": 67,
+      "routes": 68,
+      "enriched": 68,
       "deficit": 0,
-      "mutating": 33,
+      "mutating": 34,
       "mutatingNoBody": 0,
       "gets": 34,
       "getsNoResponse": 0
@@ -331,12 +331,12 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 94,
-      "enriched": 94,
+      "routes": 87,
+      "enriched": 87,
       "deficit": 0,
-      "mutating": 62,
+      "mutating": 57,
       "mutatingNoBody": 0,
-      "gets": 31,
+      "gets": 29,
       "getsNoResponse": 0
     },
     {
@@ -411,11 +411,11 @@
     },
     {
       "module": "bootstrap",
-      "routes": 11,
+      "routes": 12,
       "enriched": 11,
-      "deficit": 0,
-      "mutating": 1,
-      "mutatingNoBody": 0,
+      "deficit": 1,
+      "mutating": 2,
+      "mutatingNoBody": 1,
       "gets": 10,
       "getsNoResponse": 1
     }

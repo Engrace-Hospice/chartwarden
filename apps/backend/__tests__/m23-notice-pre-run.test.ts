@@ -146,10 +146,14 @@ const notr = (over: Row = {}): Row => ({
   ...over,
 });
 
-/** An attempt row of notice `row` (`pe-1`, its control number), by default attempt 0, QUEUED. */
+/** An attempt row of notice `row` (its org, `pe-1`, its kind and control number), by default attempt 0, QUEUED. */
 function seedAttempt(row: Row, over: Row = {}): Row {
+  const kind = row.noeControlNumber ? "noe" : "notr";
   const attempt = {
     id: `att-${fakes.attempts.length}`,
+    organizationId: row.organizationId,
+    kind,
+    [kind === "noe" ? "noeId" : "notrId"]: row.id,
     providerEntityId: "pe-1",
     claimControlNumber: (row.noeControlNumber ?? row.notrControlNumber) as string,
     attemptIndex: 0,
@@ -405,12 +409,13 @@ describe.each([
     "%s: a live org's job runs the submit",
     async (_k, queue, data, table, id, make, kind) => {
       table.set(id, make());
+      seedAttempt(make(), { id: "att-own" });
       const { deps, generated } = depsFor(LIVE);
       register(deps);
       const { job } = jobOf();
       await expect(
         (fakes.processors.get(queue) as NonNullable<ReturnType<typeof fakes.processors.get>>)(
-          { ...job, data: { organizationId: ORG, ...data } },
+          { ...job, data: { organizationId: ORG, ...data, submissionId: "att-own" } },
           "tok",
         ),
       ).rejects.toThrow("stop after generate");
@@ -463,10 +468,11 @@ describe("runNoeSubmit / runNotrSubmit: the defensive guard (the org may switch 
     "%s: reads the notice with its row lock, so a concurrent record or park waits for the upload",
     async (_k, run, data, table, id, make) => {
       table.set(id, make());
+      seedAttempt(make(), { id: "att-own" });
       const { deps } = depsFor(LIVE);
       // (the fake generator stops the job after the read: all this proves is HOW the notice was read)
       await expect(
-        run({} as never, deps, { organizationId: ORG, ...data } as never),
+        run({} as never, deps, { organizationId: ORG, ...data, submissionId: "att-own" } as never),
       ).rejects.toThrow("stop after generate");
       expect(fakes.lockedReads).toEqual([id]);
     },
@@ -528,15 +534,28 @@ describe("runNoeSubmit / runNotrSubmit: the defensive guard (the org may switch 
   );
 
   it.each(cases)(
-    "%s: without a submissionId and without a queued attempt it appends a NEW attempt after the latest terminal one",
-    async (_k, run, data, table, id, make) => {
+    "%s: refuses a job whose attempt is missing, or is another org's, provider entity's or notice's (main's job contract)",
+    async (_k, run, data, table, id, make, kind) => {
       table.set(id, make());
-      seedAttempt(make(), { id: "att-0", outcome: "failed_worker", outcomeReason: "PARKED" });
-      const { deps } = depsFor(LIVE, { transmits: true });
-      await run({} as never, deps, { organizationId: ORG, ...data } as never);
-      const appended = fakes.attempts.find((r) => String(r.id).startsWith("appended-"));
-      expect(appended).toMatchObject({ attemptIndex: 1, outcome: "submitted" });
-      expect(table.get(id)).toMatchObject({ state: "submitted", latestSubmissionId: appended?.id });
+      seedAttempt(make(), { id: "att-other-org", organizationId: OTHER_ORG });
+      seedAttempt(make(), { id: "att-other-pe", providerEntityId: "pe-2" });
+      seedAttempt(make(), {
+        id: "att-other-notice",
+        [kind === "noe" ? "noeId" : "notrId"]: "other",
+      });
+      const { deps, generated } = depsFor(LIVE, { transmits: true });
+      for (const submissionId of [
+        "att-missing",
+        "att-other-org",
+        "att-other-pe",
+        "att-other-notice",
+      ]) {
+        await expect(
+          run({} as never, deps, { organizationId: ORG, ...data, submissionId } as never),
+        ).rejects.toThrow(/submission attempt does not match the notice/);
+      }
+      expect(generated).toEqual([]);
+      expect(fakes.attempts.some((r) => String(r.id).startsWith("appended-"))).toBe(false);
     },
   );
 
@@ -544,10 +563,15 @@ describe("runNoeSubmit / runNotrSubmit: the defensive guard (the org may switch 
     "%s: still runs for a live vendor and on the legacy path",
     async (_k, run, data, table, id, make, kind) => {
       table.set(id, make());
+      seedAttempt(make(), { id: "att-own" });
       for (const binding of [LIVE, null]) {
         const { deps, generated } = depsFor(binding);
         await expect(
-          run({} as never, deps, { organizationId: ORG, ...data } as never),
+          run({} as never, deps, {
+            organizationId: ORG,
+            ...data,
+            submissionId: "att-own",
+          } as never),
         ).rejects.toThrow("stop after generate");
         expect(generated).toEqual([kind]);
       }

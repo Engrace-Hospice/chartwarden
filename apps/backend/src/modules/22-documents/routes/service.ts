@@ -18,6 +18,7 @@ import type { DocumentAbacFacts, DocumentAbacResolver } from "../abac-predicates
 import type { ClinicalWritebackSummary } from "../extraction/writeback-commit-clinical-db";
 import type { ExtractionWritebackSummary } from "../extraction/writeback-commit-db";
 import type { ExtractionDiagnosisWritebackSummary } from "../extraction/writeback-commit-dx-db";
+import { assertNotInternalOnlyForPatientFacing } from "../internal-documents";
 import type { ExternalRecipientRef } from "../outbox-consumers/decide-document-request";
 import { type CursorPage, paginate } from "./concurrency";
 import type { SignedUrlObjectFacts, SignedUrlObjectResolver } from "./signed-url-service";
@@ -276,6 +277,8 @@ export interface DocumentRouteService {
       patientScope?: readonly string[] | null;
       patientId?: string;
       aggregateType?: string;
+      /** ADR-0109 — aggregate types left out of the list (the internal-only ones, for a caller who may not read them). */
+      excludeAggregateTypes?: readonly string[];
       aggregateId?: string;
       retentionClass?: string;
       /** F-060 — the cross-document tag query `document_tag_org_key_idx` was built for and nothing
@@ -777,6 +780,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
           )
           .filter((r) => (filter.patientId ? r.patientId === filter.patientId : true))
           .filter((r) => (filter.aggregateType ? r.aggregateType === filter.aggregateType : true))
+          .filter((r) => !filter.excludeAggregateTypes?.includes(r.aggregateType))
           .filter((r) => (filter.aggregateId ? r.aggregateId === filter.aggregateId : true))
           .filter((r) =>
             filter.retentionClass ? r.retentionClass === filter.retentionClass : true,
@@ -802,6 +806,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
           "the document is under an active legal hold",
           409,
         );
+      if (patch.patientFacing === true) assertNotInternalOnlyForPatientFacing(r.aggregateType);
       if (patch.title !== undefined) r.title = patch.title;
       if (patch.patientFacing !== undefined) r.patientFacing = patch.patientFacing;
       if (patch.attachToDisclosures !== undefined)
@@ -1061,6 +1066,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         documentId: r.id,
         patientId: r.patientId,
         retentionClass: r.retentionClass,
+        aggregateType: r.aggregateType,
         legalHoldActive: r.legalHoldActive,
         patientDischargedAt: null,
       };

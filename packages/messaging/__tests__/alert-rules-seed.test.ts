@@ -252,6 +252,10 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       // M12: a transmission that exhausted its retry budget (or was resolved by an administrator as never sent) pages the administrators.
       "m12.medication_order.transmission_failed",
       "m12.dosespot_config.deactivated",
+      // ADR-0109 D7 — the M16 bereavement program's oversight alerts.
+      "m16.bereavement.death_intake",
+      "m16.bereavement.physician_letter_pending_review",
+      "m16.bereavement.risk_assessment_overdue",
     ]);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();

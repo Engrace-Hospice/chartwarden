@@ -3,6 +3,10 @@
 // the composition root binds (the M15/M24/M25/M26 routes/index.ts precedent).
 export type {
   BereavedContactRowView,
+  ContactTimelineEntry,
+  ContactTimelinePage,
+  BereavementAssessmentTaskList,
+  BereavementAssessmentTaskView,
   BereavementClosureView,
   BereavementOutreachRowView,
   BereavementPlanDetail,
@@ -23,6 +27,33 @@ export type {
 } from "./write-service";
 export { type M16ReadDeps, buildDrizzleM16ReadService } from "./read-service-drizzle";
 export { type M16WriteDeps, buildDrizzleM16WriteService } from "./write-service-drizzle";
+export { type M16DraftDeps, buildDrizzleM16DraftService } from "./draft-service-drizzle";
+export type {
+  M16DraftService,
+  PreDeathDraftView,
+  PutPreDeathDraftInput,
+} from "./draft-service";
+export { type M16LetterDeps, buildDrizzleM16LetterService } from "./letter-service-drizzle";
+export { type M16MailingDeps, buildDrizzleM16MailingService } from "./mailing-service-drizzle";
+export type {
+  ListMailingItemsInput,
+  ListMailingRunsInput,
+  M16MailingService,
+  MailingConfigView,
+  MailingDownloadView,
+  MailingItemCounts,
+  MailingItemView,
+  MailingRunView,
+  PutMailingConfigInput,
+} from "./mailing-service";
+export type {
+  ApprovePhysicianLetterInput,
+  DeclinePhysicianLetterInput,
+  ListPhysicianLettersInput,
+  M16LetterService,
+  PhysicianLetterStatus,
+  PhysicianLetterView,
+} from "./letter-service";
 export {
   type M16MutatingActor,
   type M16ReadActor,
@@ -56,11 +87,20 @@ export {
   runEffects,
 } from "./effects-runner";
 
+import type { M16DraftService } from "./draft-service";
+import type { M16LetterService } from "./letter-service";
+import type { M16MailingService } from "./mailing-service";
 import type { M16ReadService } from "./read-service";
 import type { M16WriteService } from "./write-service";
 
-/** The two services every M16 route plugin composes over (bound to Drizzle, or in-memory in tests). */
+/** The services every M16 route plugin composes over (bound to Drizzle, or in-memory in tests). */
 export interface M16RouteServices {
   readonly readService: M16ReadService;
   readonly writeService: M16WriteService;
+  /** ADR-0109 D5 — the pre-death risk-assessment draft (addressed by admission, before any plan). */
+  readonly draftService: M16DraftService;
+  /** ADR-0109 D6 — the physician condolence letter review queue (bereavement oversight only). */
+  readonly letterService: M16LetterService;
+  /** ADR-0109 D10 — the mailing program: configs, runs, the batch download and confirm-mailed (bereavement oversight only). */
+  readonly mailingService: M16MailingService;
 }

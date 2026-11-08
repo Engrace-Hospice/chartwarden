@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1955,
-    "coveredRoutes": 1955,
-    "directRoutesReferenced": 1781
+    "routes": 1961,
+    "coveredRoutes": 1961,
+    "directRoutesReferenced": 1786
   },
   "modules": [
     {
@@ -239,20 +239,18 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 43,
+      "routes": 34,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/cop27-hospice-coverage.test.ts",
         "apps/backend/__tests__/dosespot-routes.test.ts",
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
-        "apps/backend/__tests__/m12-roster-write-routes.test.ts",
-        "apps/backend/__tests__/m12-tenant-dosespot-routes.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
         "apps/backend/__tests__/m36-medication-question-no-order-route.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 35
+      "directRoutesReferenced": 27
     },
     {
       "module": "13-emar",
@@ -299,14 +297,16 @@
     },
     {
       "module": "16-bereavement",
-      "routes": 34,
+      "routes": 53,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/bereavement-inject.test.ts",
+        "apps/backend/__tests__/m16-mailings.live.test.ts",
         "apps/backend/__tests__/m16-routes.live.test.ts",
+        "apps/backend/__tests__/m22-internal-documents.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 34
+      "directRoutesReferenced": 53
     },
     {
       "module": "17-scheduling",
@@ -376,7 +376,10 @@
         "apps/backend/__tests__/f238-prospect-summary.test.ts",
         "apps/backend/__tests__/f238-records-request-expiry.test.ts",
         "apps/backend/__tests__/f238-records-request.test.ts",
+        "apps/backend/__tests__/m16-mailings.live.test.ts",
         "apps/backend/__tests__/m22-doclens-sud-gate.test.ts",
+        "apps/backend/__tests__/m22-internal-documents.live.test.ts",
+        "apps/backend/__tests__/m22-internal-documents.test.ts",
         "apps/backend/__tests__/m25-audit-response.live.test.ts",
         "apps/backend/__tests__/m25-beneficiary-representative.live.test.ts",
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
@@ -443,7 +446,7 @@
     },
     {
       "module": "25-remittance",
-      "routes": 158,
+      "routes": 160,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-adr-readiness.live.test.ts",
@@ -518,7 +521,7 @@
     },
     {
       "module": "31-portal",
-      "routes": 67,
+      "routes": 68,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts",
@@ -528,7 +531,7 @@
         "apps/backend/__tests__/m31-signature-requests.live.test.ts",
         "apps/backend/__tests__/portal-inject.test.ts"
       ],
-      "directRoutesReferenced": 62
+      "directRoutesReferenced": 63
     },
     {
       "module": "32-ai-platform",
@@ -555,20 +558,19 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 94,
+      "routes": 87,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
         "apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-data-routes.test.ts",
         "apps/backend/__tests__/m34-onboarding-data.live.test.ts",
-        "apps/backend/__tests__/m34-onboarding-dosespot-routes.test.ts",
         "apps/backend/__tests__/m34-onboarding-wizard-routes.test.ts",
         "apps/backend/__tests__/m34-ops-routes-inject.test.ts",
         "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/saas-tenant-platform-inject.test.ts"
       ],
-      "directRoutesReferenced": 93
+      "directRoutesReferenced": 86
     },
     {
       "module": "35-subscription",
@@ -713,6 +715,7 @@
         "apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts",
         "apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts",
         "apps/backend/__tests__/m16-routes.live.test.ts",
+        "apps/backend/__tests__/m22-internal-documents.test.ts",
         "apps/backend/__tests__/m31-signature-requests.live.test.ts",
         "apps/backend/__tests__/m36-tenant-idor.live.test.ts"
       ],

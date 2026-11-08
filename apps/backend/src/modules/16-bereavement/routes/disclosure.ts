@@ -48,6 +48,12 @@ export interface BereavementDisclosureDecision {
   readonly sudAllowed: boolean;
   /** D10 — false when the caller is a bereavement VOLUNTEER, whose scope excludes clinical risk content. */
   readonly clinicalRiskAllowed: boolean;
+  /**
+   * ADR-0109 — may the caller read the contact's care goals (sealed free text a counselor records with the family)? The
+   * same D10 scope as clinical risk: a volunteer and every portal session are refused. Redaction is shape, not status — the
+   * field is ABSENT and `clinical_risk` is named in `redactedCategories`.
+   */
+  readonly careGoalsAllowed: boolean;
   /** The response-envelope field — categories the caller is NOT cleared for on this plan. */
   readonly redactedCategories: readonly BereavementRedactedCategory[];
 }
@@ -126,16 +132,18 @@ export async function resolveBereavementDisclosure(
       })());
 
   const clinicalRiskAllowed = !restrictedSession && !isBereavementVolunteer(actor);
+  const careGoalsAllowed = clinicalRiskAllowed;
 
   const redactedCategories: BereavementRedactedCategory[] = [];
   if (!sudAllowed) redactedCategories.push("sud");
   if (!clinicalRiskAllowed) redactedCategories.push("clinical_risk");
-  return { sudAllowed, clinicalRiskAllowed, redactedCategories };
+  return { sudAllowed, clinicalRiskAllowed, careGoalsAllowed, redactedCategories };
 }
 
 /** The posture a bereaved person's OWN portal session gets: their row, nothing clinical, nothing Part 2. */
 export const PORTAL_SELF_DISCLOSURE: BereavementDisclosureDecision = {
   sudAllowed: false,
   clinicalRiskAllowed: false,
+  careGoalsAllowed: false,
   redactedCategories: ["sud", "clinical_risk"],
 };

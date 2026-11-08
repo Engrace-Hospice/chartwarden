@@ -118,12 +118,16 @@ export async function assertNoticeMayTransmit(
  *     The job ENDS (returns; a throw would roll back the close) and its own queued attempt is closed.
  *   - A job whose own attempt is already settled or closed (parked, or long done) has nothing to transmit: the notice's live
  *     attempt has its own job.
- * Otherwise `attempt` is the queued row the transmission terminalizes (null: no queued attempt, the worker appends one).
+ * Otherwise `attempt` is the job's own queued row, which the transmission terminalizes. The job always carries its attempt
+ * (`submissionId` is required): a missing row, or one of another organization, provider entity, notice or kind, is refused.
  */
 export async function settleNoticeJobAttempt(
   tx: BillingDb,
   input: {
-    readonly submissionId?: string;
+    readonly organizationId: string;
+    readonly submissionId: string;
+    readonly kind: "noe" | "notr";
+    readonly noticeId: string;
     readonly providerEntityId: string;
     readonly controlNumber: string;
     readonly externalFilingStatus: "pending" | "filed" | null;
@@ -132,15 +136,26 @@ export async function settleNoticeJobAttempt(
   | { readonly proceed: false }
   | {
       readonly proceed: true;
-      readonly attempt: Awaited<ReturnType<repositories.ClaimSubmissionRepository["findById"]>>;
+      readonly attempt: NonNullable<
+        Awaited<ReturnType<repositories.ClaimSubmissionRepository["findById"]>>
+      >;
     }
 > {
   const submissions = new repositories.ClaimSubmissionRepository(tx);
   const attempt = await ownedNoticeAttempt(submissions, input);
+  const noticeId = input.kind === "noe" ? attempt?.noeId : attempt?.notrId;
+  if (
+    !attempt ||
+    attempt.organizationId !== input.organizationId ||
+    attempt.providerEntityId !== input.providerEntityId ||
+    noticeId !== input.noticeId ||
+    attempt.kind !== input.kind
+  )
+    throw new Error(`${input.kind.toUpperCase()} submission attempt does not match the notice`);
   if (input.externalFilingStatus === "filed") {
     await closeNoticeAttempt(submissions, attempt, FILED_EXTERNALLY_ATTEMPT_REASON);
     return { proceed: false };
   }
-  if (input.submissionId && attempt && attempt.outcome !== "queued") return { proceed: false };
+  if (attempt.outcome !== "queued") return { proceed: false };
   return { proceed: true, attempt };
 }
