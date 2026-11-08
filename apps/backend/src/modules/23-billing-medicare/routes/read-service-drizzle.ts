@@ -27,6 +27,7 @@ import {
 // `BillingDb` (the repo handle) is `NodePgDatabase<typeof schema>`, reconstructed in the package — a tx
 // handle is assignable to it, so the repos + the local aggregation queries share the same `tx`.
 import * as schema from "@chartwarden/db/schema";
+import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
@@ -150,25 +151,6 @@ function mapValidationRun(row: schema.ValidationRun): ValidationRunView {
 
 const OVERRIDE_AUDIT_PAGE_DEFAULT = 50;
 const OVERRIDE_AUDIT_PAGE_MAX = 200;
-
-/** Opaque keyset cursor over `(applied_at, id)` — base64url JSON; a malformed one reads as "no cursor". */
-function encodeOverrideCursor(appliedAt: Date, id: string): string {
-  return Buffer.from(JSON.stringify({ t: appliedAt.toISOString(), id })).toString("base64url");
-}
-function decodeOverrideCursor(cursor: string | undefined): { t: string; id: string } | null {
-  if (!cursor) return null;
-  try {
-    const v = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as {
-      t?: unknown;
-      id?: unknown;
-    };
-    return typeof v.t === "string" && typeof v.id === "string" && !Number.isNaN(Date.parse(v.t))
-      ? { t: v.t, id: v.id }
-      : null;
-  } catch {
-    return null;
-  }
-}
 
 function mapOverride(row: schema.ValidationOverride): ValidationOverrideView {
   return {
@@ -715,7 +697,7 @@ export function buildDrizzleM23ReadService(
         Math.max(limit ?? OVERRIDE_AUDIT_PAGE_DEFAULT, 1),
         OVERRIDE_AUDIT_PAGE_MAX,
       );
-      const after = decodeOverrideCursor(cursor);
+      const after = decodeKeysetCursor(actor.organizationId, cursor, "instant");
       return read(actor, async (tx) => {
         const O = schema.validationOverride;
         const R = schema.validationResult;
@@ -745,7 +727,7 @@ export function buildDrizzleM23ReadService(
               filter.appliedFrom ? gte(O.appliedAt, new Date(filter.appliedFrom)) : undefined,
               filter.appliedTo ? lte(O.appliedAt, new Date(filter.appliedTo)) : undefined,
               after
-                ? sql`(${O.appliedAt}, ${O.id}) < (${new Date(after.t)}, ${after.id})`
+                ? sql`(${O.appliedAt}, ${O.id}) < (${new Date(after.a)}, ${after.id}::uuid)`
                 : undefined,
             ),
           )
@@ -763,7 +745,10 @@ export function buildDrizzleM23ReadService(
           })),
           nextCursor:
             hasMore && last
-              ? encodeOverrideCursor(last.override.appliedAt, last.override.id)
+              ? encodeCursor(actor.organizationId, {
+                  a: last.override.appliedAt.toISOString(),
+                  id: last.override.id,
+                })
               : null,
           hasMore,
         } satisfies CursorPage<ValidationOverrideAuditView>;
