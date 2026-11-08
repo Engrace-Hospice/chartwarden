@@ -122,11 +122,11 @@ const AMBIGUOUS_ON_LOST_ANSWER: ReadonlySet<keyof typeof DOSESPOT_ENDPOINTS> = n
   "sendPrescriptions",
 ]);
 /**
- * For those same endpoints, the 5xx answers that do NOT mean "not processed": a 500 (failed mid-way), a 502 or a 504 (a gateway lost the
- * upstream's answer) may follow a send that reached the pharmacy, so they are held like a lost answer. 429 and 503 say the request was
- * not taken and stay retryable.
+ * For those same endpoints, every 5xx but a 503 is held like a lost answer: a 500 (failed mid-way), a 502/504 (a gateway lost the
+ * upstream's answer), a 501, a 505-511 or a proxy's 52x/599 may follow a send that reached the pharmacy. A 503 (and a 429) says the
+ * request was not taken and stays retryable.
  */
-const AMBIGUOUS_STATUSES: ReadonlySet<number> = new Set([500, 502, 504]);
+const isAmbiguousStatus = (status: number): boolean => status >= 500 && status !== 503;
 /** Socket errors that mean the connection was never made, so nothing reached DoseSpot (a connect TIMEOUT is an abort, not one of these: it is held). */
 const NOT_CONNECTED_CODES: ReadonlySet<string> = new Set([
   // Bun 1.3.5 (production's runtime) reports a refused connection AND a failed DNS lookup as a plain Error with code "ConnectionRefused"
@@ -354,7 +354,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         forceFresh = true;
         continue;
       }
-      if (ambiguousOnLostAnswer && AMBIGUOUS_STATUSES.has(res.status)) {
+      if (ambiguousOnLostAnswer && isAmbiguousStatus(res.status)) {
         throw new UnconfirmedOutcomeError(
           "dosespot",
           op,

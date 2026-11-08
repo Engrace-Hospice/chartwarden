@@ -520,8 +520,8 @@ describe("transmitNewRx", () => {
     }
   });
 
-  it("a send answered 500, 502 or 504 may have reached the pharmacy: UNCONFIRMED, attempted once", async () => {
-    for (const status of [500, 502, 504]) {
+  it("a send answered with any 5xx but a 503 may have reached the pharmacy: UNCONFIRMED, attempted once", async () => {
+    for (const status of [500, 501, 502, 504, 505, 511, 520, 524, 599]) {
       const r = routes([{ Id: 9001 }]);
       r["POST /api/patients/501/prescriptions/send"] = () => ({ status });
       const { c, calls } = client(r);
