@@ -23,6 +23,9 @@ import { ModeUnconfirmedNotice } from "./onboarding/mode-unconfirmed-notice";
 import { useLoad } from "./onboarding/use-load";
 import { cap } from "./saas-status";
 
+/** The tenant statuses in which the wizard's clearinghouse step can still be worked (wizard-model's readOnlyReasonOf). */
+const ONBOARDING_STATUSES: ReadonlySet<string> = new Set(["provisioning", "onboarding"]);
+
 const STATUS_TONE: Record<string, StatusTone> = {
   draft: "neutral",
   verified: "progress",
@@ -86,13 +89,19 @@ function Body({
             </>
           ) : null}
         </dl>
-      ) : (
+      ) : ONBOARDING_STATUSES.has(tenantStatus) ? (
         <p>
           No clearinghouse is chosen yet.{" "}
           <Link to={`/tenants/${encodeURIComponent(orgSlug)}/onboarding/clearinghouse_selected`}>
             Open the clearinghouse step
           </Link>
           .
+        </p>
+      ) : (
+        // The wizard's step is read-only once onboarding is closed, so a link there is a dead end.
+        <p>
+          No clearinghouse is chosen yet. Onboarding is closed for this tenant, so its billing admin
+          chooses one from the tenant side.
         </p>
       )}
       {chosen && !isTransmitting(view) ? (

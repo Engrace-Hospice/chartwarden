@@ -46,7 +46,7 @@ const CLAIMMD = {
   version: 3,
 };
 
-function mount(choice: unknown, contractMode: string | null = null) {
+function mount(choice: unknown, contractMode: string | null = null, tenantStatus = "active") {
   const client = stubClient({
     GET: {
       [CH]: () => ok(choice),
@@ -64,7 +64,7 @@ function mount(choice: unknown, contractMode: string | null = null) {
     [
       {
         path: "/x",
-        element: <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus="active" />,
+        element: <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus={tenantStatus} />,
       },
     ],
     client,
@@ -111,8 +111,15 @@ describe("TenantClearinghouseCard", () => {
     expect(await screen.findByText(/billing service mode is still None/)).toBeTruthy();
   });
 
-  it("says nothing is chosen yet, and points to the step where it is chosen", async () => {
+  it("for a live tenant with nothing chosen, offers no link to the wizard's read-only step", async () => {
     mount(NOTHING);
+    fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+    expect(await screen.findByText(/Onboarding is closed for this tenant/)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Open the clearinghouse step/ })).toBeNull();
+  });
+
+  it("says nothing is chosen yet, and points an onboarding tenant to the step where it is chosen", async () => {
+    mount(NOTHING, null, "onboarding");
     fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
     expect(await screen.findByText(/No clearinghouse is chosen yet/)).toBeTruthy();
     expect(
