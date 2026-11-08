@@ -57,7 +57,8 @@ export type ClaimSubmissionOutcome =
   | "generated"
   | "submitted"
   | "failed_worker"
-  | "failed_portal";
+  | "failed_portal"
+  | "held_stale_source";
 export type ClaimAcknowledgmentKind = "ack_999" | "ack_277ca" | "ack_835";
 export type NotrTriggerKind = "revocation" | "transfer_out" | "discharge";
 
@@ -262,6 +263,8 @@ export interface ClaimSubmissionView {
   readonly claimControlNumber: string;
   readonly attemptIndex: number;
   readonly outcome: ClaimSubmissionOutcome;
+  readonly dispatchState: "pending" | "sending" | "in_doubt" | "finished";
+  readonly dispatchReasonCode: string | null;
   readonly outcomeReason: string | null;
   readonly generatedFileUri: string | null;
   readonly submittedAt: string | null;

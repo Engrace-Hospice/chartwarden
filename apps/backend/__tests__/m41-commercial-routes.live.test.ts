@@ -251,7 +251,7 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     app: FastifyInstance,
     method: "GET" | "POST",
     url: string,
-    opts: { user?: string; stepUp?: boolean; payload?: unknown; key?: boolean } = {},
+    opts: { user?: string; stepUp?: boolean; payload?: unknown; key?: boolean | string } = {},
   ) =>
     app.inject({
       method,
@@ -259,7 +259,9 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
       headers: {
         "x-test-user": opts.user ?? "admin",
         ...(opts.stepUp ? { "x-test-stepup": "yes" } : {}),
-        ...(method === "POST" && opts.key !== false ? { "idempotency-key": `k-${++idem}` } : {}),
+        ...(method === "POST" && opts.key !== false
+          ? { "idempotency-key": typeof opts.key === "string" ? opts.key : `k-${++idem}` }
+          : {}),
       },
       ...(opts.payload === undefined ? {} : { payload: opts.payload as object }),
     });
@@ -892,5 +894,122 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     });
     expect(status.json().status).toBe("voided");
     expect(commercialPayer).toBeTruthy();
+  });
+
+  it("creates a corrected draft only from verified clearinghouse rejection and enforces route authorization", async () => {
+    const s = await seed("not_required");
+    const app = server(s.admissionId);
+    const assembled = await call(app, "POST", `${BASE}/claims/assemble`, {
+      payload: assembleBody(s.patientId),
+    });
+    expect(assembled.statusCode).toBe(201);
+    const originalId = assembled.json().claimId as string;
+    expect((await call(app, "POST", `${BASE}/claims/${originalId}/ready`)).statusCode).toBe(200);
+    await admin.query("UPDATE commercial_claim SET state='submitted' WHERE id=$1", [originalId]);
+    await admin.query("UPDATE commercial_claim SET state='rejected' WHERE id=$1", [originalId]);
+    await admin.query(
+      `INSERT INTO commercial_claim_state_history (organization_id,provider_entity_id,claim_id,from_state,to_state,actor_kind)
+       VALUES ($1,$2,$3,'ready','submitted','system'),($1,$2,$3,'submitted','rejected','system')`,
+      [ORG, providerEntityId, originalId],
+    );
+    const submissionId = randomUUID();
+    const original = (
+      await admin.query("SELECT claim_control_number FROM commercial_claim WHERE id=$1", [
+        originalId,
+      ])
+    ).rows[0];
+    await admin.query(
+      `INSERT INTO commercial_submission (id,organization_id,provider_entity_id,claim_id,idempotency_key,control_number,
+        clearinghouse_key,clearinghouse_payer_id,status,attempt_count,requested_by_membership_id,sent_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'stedi','SYNTH01','sent',1,$7,now())`,
+      [
+        submissionId,
+        ORG,
+        providerEntityId,
+        originalId,
+        `route-${randomUUID()}`,
+        original.claim_control_number,
+        membershipId,
+      ],
+    );
+    await admin.query(
+      `INSERT INTO commercial_acknowledgment (organization_id,provider_entity_id,claim_id,submission_id,clearinghouse_key,event_id,stage,disposition,reason_codes)
+       VALUES ($1,$2,$3,$4,'stedi',$5,'clearinghouse','rejected',ARRAY['A7'])`,
+      [ORG, providerEntityId, originalId, submissionId, `event-${randomUUID()}`],
+    );
+    const eligibleView = await call(app, "GET", `${BASE}/claims/${originalId}`);
+    expect(eligibleView.statusCode).toBe(200);
+    expect(eligibleView.json().correction.rejectedCorrection).toEqual({
+      eligible: true,
+      reasonCode: "VERIFIED_CLEARINGHOUSE_REJECTION",
+    });
+
+    const body = { reasonCode: "clearinghouse_edit_corrected" };
+    const denied = await call(
+      app,
+      "POST",
+      `${BASE}/claims/${originalId}/corrections/clearinghouse-rejection`,
+      { user: "plain", payload: body },
+    );
+    expect(denied.statusCode).toBe(403);
+    const wrongProvider = await call(
+      app,
+      "POST",
+      `${BASE}/claims/${originalId}/corrections/clearinghouse-rejection`,
+      { user: "pe2", payload: body },
+    );
+    expect(wrongProvider.statusCode).toBe(404);
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM commercial_claim WHERE correction_of_claim_id=$1",
+          [originalId],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    const actionKey = `correction-route-${randomUUID()}`;
+    const created = await call(
+      app,
+      "POST",
+      `${BASE}/claims/${originalId}/corrections/clearinghouse-rejection`,
+      { payload: body, key: actionKey },
+    );
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ parentClaimId: originalId, replayed: false });
+    const replay = await call(
+      app,
+      "POST",
+      `${BASE}/claims/${originalId}/corrections/clearinghouse-rejection`,
+      { payload: body, key: actionKey },
+    );
+    // The global request idempotency layer replays the original 201 envelope before this route is invoked again.
+    expect(replay.statusCode).toBe(201);
+    expect(replay.json()).toEqual(created.json());
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM commercial_claim WHERE correction_of_claim_id=$1",
+          [originalId],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    const child = await admin.query(
+      "SELECT state, correction_of_claim_id FROM commercial_claim WHERE id=$1",
+      [created.json().claimId],
+    );
+    expect(child.rows[0]).toMatchObject({ state: "draft", correction_of_claim_id: originalId });
+    const childView = await call(app, "GET", `${BASE}/claims/${created.json().claimId}`);
+    expect(childView.statusCode).toBe(200);
+    expect(childView.json().correction).toMatchObject({
+      correctionOfClaimId: originalId,
+      relatedClaims: expect.arrayContaining([
+        expect.objectContaining({ id: originalId, relation: "original" }),
+        expect.objectContaining({ id: created.json().claimId, relation: "correction" }),
+      ]),
+    });
+    expect(
+      (await admin.query("SELECT state FROM commercial_claim WHERE id=$1", [originalId])).rows[0]
+        .state,
+    ).toBe("rejected");
   });
 });
