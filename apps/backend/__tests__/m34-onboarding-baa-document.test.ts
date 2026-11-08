@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 // M34 — `POST /api/v1/platform/tenants/:orgSlug/baa-document`: a platform operator uploads the signed BAA for a tenant that is still
 // onboarding. The guard stack through the REAL guards (its OWN permission, `tenant_lifecycle_platform_ops`, step-up, AI-actor block,
 // Idempotency-Key, reason, the body's shape and size), and the service's status lock, audit row and object clean-up over a stubbed
@@ -21,7 +23,10 @@ import type {
   OnboardingBaaDocumentUpload,
 } from "../src/bootstrap/onboarding-baa-document-port";
 import { createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
-import { createRouteRateLimit } from "../src/bootstrap/plugins/route-rate-limit";
+import {
+  CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
+  createRouteRateLimit,
+} from "../src/bootstrap/plugins/route-rate-limit";
 import {
   type OnboardingDataService,
   type OnboardingOperator,
@@ -163,6 +168,38 @@ describe("POST baa-document: the per-user limiter", () => {
     expect((await send()).statusCode).toBe(429);
     expect(calls).toHaveLength(2);
     await app.close();
+  });
+});
+
+describe("POST baa-document: the production limiter", () => {
+  it("fails OPEN on the shipped budget: a store outage lets the upload through (an availability control)", async () => {
+    expect(CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT.failMode).toBe("open");
+    const storeErrors: unknown[] = [];
+    const limiter = createRouteRateLimit({
+      store: {
+        increment: async () => {
+          throw new Error("valkey down");
+        },
+      },
+      limit: CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
+      keyPrefix: "m34-baa-upload",
+      scopeOf: targetTenantScopeOf,
+      onStoreError: (err) => storeErrors.push(err),
+    }) as unknown as (request: never, reply: never) => Promise<void>;
+    const calls: UploadCall[] = [];
+    const app = makeServer(calls, limiter);
+    const res = await app.inject({ method: "POST", url: URL, headers: fresh(), payload: BODY });
+    await app.close();
+    expect(res.statusCode, res.body).toBe(201);
+    expect(calls).toHaveLength(1);
+    expect(storeErrors).toHaveLength(1);
+  });
+
+  it("the composition root builds the m34-baa-upload limiter from that budget and hands it to the onboarding-data routes", () => {
+    const root = readFileSync(join(__dirname, "../src/index.ts"), "utf8");
+    expect(root).toMatch(
+      /baaUploadRateLimit: createRouteRateLimit\(\{[^}]*limit: CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,[^}]*keyPrefix: "m34-baa-upload",[^}]*scopeOf: targetTenantScopeOf/s,
+    );
   });
 });
 
