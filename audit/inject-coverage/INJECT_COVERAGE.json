@@ -2,8 +2,8 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1912,
-    "coveredRoutes": 1912,
+    "routes": 1914,
+    "coveredRoutes": 1914,
     "directRoutesReferenced": 1745
   },
   "modules": [
@@ -435,7 +435,7 @@
     },
     {
       "module": "25-remittance",
-      "routes": 158,
+      "routes": 160,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-adr-readiness.live.test.ts",
