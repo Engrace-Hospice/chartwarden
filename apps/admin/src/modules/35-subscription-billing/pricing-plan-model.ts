@@ -143,6 +143,7 @@ export interface PlanPricesBody {
 /** The form's prices as the validator parsed them; null when any field does not parse (so nothing defaults to 0 silently). */
 export function pricesOf(form: PlanForm, thresholds: readonly number[]): PlanPricesBody | null {
   if (!isValid(pricingFormErrors(form, "edit"))) return null;
+  if (form.bandFees.length !== thresholds.length) return null; // one fee per census band, or nothing is sent
   const cents = (raw: string, max: number): number => parsePriceCents(raw, max) as number;
   const bps = (raw: string): number => parsePercentBps(raw) as number;
   return {

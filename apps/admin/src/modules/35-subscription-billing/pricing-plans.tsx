@@ -461,8 +461,7 @@ function PlanDrawer({
       <div className="wx-drawer-body">
         {outcome ? <InlineAlert tone="success">{outcome}</InlineAlert> : null}
         {notice ? <InlineAlert tone="warning">{notice}</InlineAlert> : null}
-        {/* a reload that finds the plan no longer a draft closes the editor */}
-        {editing && editable ? (
+        {editing ? (
           <PlanEditor
             mode={{ kind: "edit", plan }}
             initial={stash?.form ?? formFromPlan(plan)}
@@ -472,7 +471,7 @@ function PlanDrawer({
             onConflict={() => {
               stopEditing();
               setNotice(
-                "Someone changed this draft since you opened it. These are its prices now: open Edit prices and make your change again.",
+                "Someone changed this plan since you opened it, so nothing was saved. What it says now is shown below: if it is still a draft, open Edit prices and make your change again.",
               );
               void onReload();
             }}

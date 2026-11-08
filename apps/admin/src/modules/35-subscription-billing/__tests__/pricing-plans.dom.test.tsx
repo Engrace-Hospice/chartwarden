@@ -626,7 +626,7 @@ describe("PricingPlans", () => {
     fireEvent.click(within(d).getByRole("button", { name: "Save prices" }));
     confirmWithReason("Save prices");
     expect(
-      await within(d).findByText(/Someone changed this draft since you opened it/),
+      await within(d).findByText(/Someone changed this plan since you opened it/),
     ).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(within(d).queryByLabelText(/Per user a month/)).toBeNull(); // the editor closed
@@ -635,7 +635,7 @@ describe("PricingPlans", () => {
     // editing again starts from the fresh prices, pinned to the fresh version
     fireEvent.click(within(d).getByRole("button", { name: "Edit prices" }));
     expect(perUser(d)).toBe("61");
-    expect(within(d).queryByText(/Someone changed this draft/)).toBeNull();
+    expect(within(d).queryByText(/Someone changed this plan/)).toBeNull();
   });
 
   it("edit: a Re-verify draft keeps the version it was typed against, so a save after someone else's is refused, not an overwrite", async () => {
@@ -655,7 +655,7 @@ describe("PricingPlans", () => {
     expect(perUser(back)).toBe("77");
     fireEvent.click(within(back).getByRole("button", { name: "Save prices" }));
     confirmWithReason("Save prices");
-    expect(await within(back).findByText(/Someone changed this draft/)).toBeTruthy();
+    expect(await within(back).findByText(/Someone changed this plan/)).toBeTruthy();
     expect(sent.map((x) => x.ifMatch)).toEqual([`"${DRAFT.updatedAt}"`, `"${DRAFT.updatedAt}"`]);
   });
 

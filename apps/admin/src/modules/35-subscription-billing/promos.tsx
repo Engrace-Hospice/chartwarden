@@ -103,6 +103,10 @@ export function Promos(): JSX.Element {
 
   const create = useCallback(async () => {
     if (!isValid(promoFormErrors(form))) return;
+    const percentOff = form.kind === "percent_off" ? parseWholeNumber(form.percent) : null;
+    const fixedOffCents = form.kind === "amount_off" ? parsePriceCents(form.amount) : null;
+    // The validator passed, so the chosen kind's amount parsed; refuse rather than send a promo with no amount (as plans-list does).
+    if (form.kind === "percent_off" ? percentOff === null : fixedOffCents === null) return;
     setBusy(true);
     setOutcome(null);
     const res = await client.POST("/api/admin/promos", {
@@ -111,10 +115,8 @@ export function Promos(): JSX.Element {
         stripeCouponId: form.coupon.trim() || form.code.trim(),
         stripePromotionCodeId: form.promotion.trim() || form.code.trim(),
         kind: form.kind as "percent_off" | "amount_off",
-        percentOff:
-          form.kind === "percent_off" ? (parseWholeNumber(form.percent) ?? undefined) : undefined,
-        fixedOffCents:
-          form.kind === "amount_off" ? (parsePriceCents(form.amount) ?? undefined) : undefined,
+        ...(percentOff !== null ? { percentOff } : {}),
+        ...(fixedOffCents !== null ? { fixedOffCents } : {}),
         duration: form.duration as "once" | "repeating" | "forever",
       },
       headers: { "Idempotency-Key": idempotencyKey() },

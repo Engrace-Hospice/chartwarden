@@ -99,13 +99,18 @@ export function PlanEdit(): JSX.Element {
   }, [load]);
 
   const run = useCallback(
-    async (fn: () => Promise<{ error?: unknown }>, okMsg: string, failMsg: string) => {
+    async (
+      fn: () => Promise<{ error?: unknown }>,
+      okMsg: string,
+      failMsg: string,
+    ): Promise<boolean> => {
       setBusy(true);
       setOutcome(null);
       const res = await fn();
       setOutcome(res.error ? failureOutcome(res.error, failMsg) : { ok: true, message: okMsg });
       if (!res.error) await load();
       setBusy(false);
+      return !res.error;
     },
     [load],
   );
@@ -114,7 +119,7 @@ export function PlanEdit(): JSX.Element {
   const meterIssues = meterAttempted ? meterErrors(meter) : {};
   const meterRowRef = useRef<HTMLDivElement>(null);
 
-  const addMeter = useCallback(() => {
+  const addMeter = useCallback(async () => {
     if (!id) return;
     setMeterAttempted(true);
     const issues = meterErrors(meter);
@@ -130,7 +135,7 @@ export function PlanEdit(): JSX.Element {
       focusFirstInvalid(meterRowRef.current);
       return;
     }
-    void run(
+    const added = await run(
       () =>
         client.POST("/api/admin/plans/{id}/meters", {
           params: { path: { id } },
@@ -147,6 +152,7 @@ export function PlanEdit(): JSX.Element {
       `Meter "${meter.eventType}" added.`,
       "Could not add the meter (check the fields).",
     );
+    if (!added) return; // a refused meter keeps what was typed, to fix and retry
     setMeter({ eventType: "", inclusive: "0", overage: "0", threshold: "80" });
     setMeterAttempted(false);
   }, [client, id, meter, run]);
@@ -257,7 +263,7 @@ export function PlanEdit(): JSX.Element {
             error={meterIssues.threshold}
             onChange={(e) => setMeter({ ...meter, threshold: e.target.value })}
           />
-          <Button onClick={addMeter} disabled={busy}>
+          <Button onClick={() => void addMeter()} disabled={busy}>
             Add meter
           </Button>
         </div>
