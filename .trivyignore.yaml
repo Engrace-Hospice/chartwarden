@@ -119,3 +119,16 @@ vulnerabilities:
       release scan on 2026-11-06. No application source calls the gz* file API or loads libz through
       FFI (Bun ships its own compression), so the path is reached only by Debian tools in the base
       image. Remove this when the Bun base image carries a patched zlib1g, or re-examine by the expiry.
+  - id: CVE-2026-78661
+    paths: ["usr/local/bin/mc"]
+    expired_at: 2026-12-08
+    statement: >
+      golang.org/x/net/html denial of service via crafted HTML (fixed in x/net 0.62.0) in the MinIO
+      client `mc` that deploy/production/backup/Dockerfile copies from the pinned Chainguard
+      minio-client digest, which is built with x/net v0.60.0. Found by the backup image scan in
+      pr-image-gate.yml on 2026-11-08; as of that date Chainguard has published no minio-client build
+      with a fixed x/net. Scoped to that one binary: cw-backup.sh runs mc only for S3 and MinIO API
+      calls (cat, cp, ls, mb, mirror, stat, retention, admin) against the operator-configured off-site
+      and source endpoints and never hands it HTML, so the x/net/html parser is not reachable from the
+      backup flow. Remove this when the Dockerfile pins a minio-client digest built with x/net 0.62.0
+      or later, or re-examine by the expiry.
