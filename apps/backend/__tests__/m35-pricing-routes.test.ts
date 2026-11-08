@@ -48,6 +48,7 @@ const PLATFORM_ORG = "11111111-1111-4111-8111-aaaaaaaaaaaa";
 const TENANT_ORG = "22222222-2222-4222-8222-bbbbbbbbbbbb";
 const OPS_MEMBERSHIP = "33333333-3333-4333-8333-cccccccccccc";
 const PLAN_ID = "44444444-4444-4444-8444-dddddddddddd";
+const PIN = "2026-11-05T00:00:00.000Z";
 const SUB_ID = "55555555-5555-4555-8555-eeeeeeeeeeee";
 
 const plan: PricingPlanView = {
@@ -116,20 +117,20 @@ function makeServices(calls: Calls): { plans: PricingPlanService; contracts: Con
       calls.planWrites.push({ op: "create", actor, input, reason });
       return { ...plan, status: "draft", offered: false, publishedAt: null };
     },
-    replaceDraft: async (actor, id, input, reason) => {
-      calls.planWrites.push({ op: "replace", actor, id, input, reason });
+    replaceDraft: async (actor, id, input, reason, pin) => {
+      calls.planWrites.push({ op: "replace", actor, id, input, reason, pin });
       return { ...plan, status: "draft", offered: false, publishedAt: null };
     },
-    publish: async (actor, id, reason) => {
-      calls.planWrites.push({ op: "publish", actor, id, reason });
+    publish: async (actor, id, reason, pin) => {
+      calls.planWrites.push({ op: "publish", actor, id, reason, pin });
       return plan;
     },
-    newVersion: async (actor, id, reason) => {
-      calls.planWrites.push({ op: "new-version", actor, id, reason });
+    newVersion: async (actor, id, reason, pin) => {
+      calls.planWrites.push({ op: "new-version", actor, id, reason, pin });
       return { ...plan, version: 2, slug: "hospice-standard-v2", status: "draft", offered: false };
     },
-    archive: async (actor, id, reason) => {
-      calls.planWrites.push({ op: "archive", actor, id, reason });
+    archive: async (actor, id, reason, pin) => {
+      calls.planWrites.push({ op: "archive", actor, id, reason, pin });
       return { ...plan, status: "archived", offered: false };
     },
   };
@@ -660,13 +661,14 @@ describe("the plan editor: /api/admin/pricing/plans", () => {
     expect(calls.planWrites).toHaveLength(1);
   });
 
-  it("draft edit, publish, new version and archive each reach the service with the session's operator", async () => {
+  it("draft edit, publish, new version and archive each reach the service with the session's operator and pin", async () => {
     const { app, calls } = makeServer();
     const reason = { reason: "annual price review" };
+    const pin = { "if-match": `"${PIN}"` };
     const put = await app.inject({
       method: "PUT",
       url: `/api/admin/pricing/plans/${PLAN_ID}`,
-      headers: { ...BILLING, ...idem() },
+      headers: { ...BILLING, ...idem(), ...pin },
       payload: (({ familySlug: _f, ...rest }) => rest)(PLAN_BODY),
     });
     expect(put.statusCode).toBe(200);
@@ -678,7 +680,7 @@ describe("the plan editor: /api/admin/pricing/plans", () => {
       const res = await app.inject({
         method: "POST",
         url: `/api/admin/pricing/plans/${PLAN_ID}/${op}`,
-        headers: { ...BILLING, ...idem() },
+        headers: { ...BILLING, ...idem(), ...pin },
         payload: reason,
       });
       expect(res.statusCode, op).toBe(status);
@@ -692,6 +694,33 @@ describe("the plan editor: /api/admin/pricing/plans", () => {
     expect(calls.planWrites[0]).toMatchObject({
       actor: { userId: "billing", membershipId: OPS_MEMBERSHIP },
     });
+    expect(calls.planWrites.map((w) => (w as { pin: string }).pin)).toEqual([PIN, PIN, PIN, PIN]);
+  });
+
+  it("a write on an existing version without its updatedAt pin is a 428, a malformed one a 422, and neither reaches the service", async () => {
+    const { app, calls } = makeServer();
+    const send = (headers: Record<string, string>, op = "publish") =>
+      app.inject({
+        method: "POST",
+        url: `/api/admin/pricing/plans/${PLAN_ID}/${op}`,
+        headers: { ...BILLING, ...idem(), ...headers },
+        payload: { reason: "annual price review" },
+      });
+    for (const op of ["publish", "new-version", "archive"]) {
+      const missing = await send({}, op);
+      expect(missing.statusCode, op).toBe(428);
+      expect(missing.json().error.code).toBe("IF_MATCH_REQUIRED");
+    }
+    expect((await send({ "if-match": "7" })).statusCode).toBe(422);
+    expect((await send({ "if-match": "2026-02-30T00:00:00.000Z" })).statusCode).toBe(422);
+    const put = await app.inject({
+      method: "PUT",
+      url: `/api/admin/pricing/plans/${PLAN_ID}`,
+      headers: { ...BILLING, ...idem() },
+      payload: (({ familySlug: _f, ...rest }) => rest)(PLAN_BODY),
+    });
+    expect(put.statusCode).toBe(428);
+    expect(calls.planWrites).toHaveLength(0);
   });
 
   it("refuses a band outside the safe money range and a plan body with an unknown field", async () => {

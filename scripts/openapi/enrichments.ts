@@ -3109,6 +3109,15 @@ const IDEMPOTENCY_AND_IF_MATCH_HEADERS: RouteEnrichment["headers"] = {
   ...IDEMPOTENCY_KEY_HEADER,
   ...IF_MATCH_HEADER,
 };
+/** M35 plan editor: a write on an existing plan version pins the `updatedAt` the operator read. */
+const PRICING_PLAN_PIN_HEADERS: RouteEnrichment["headers"] = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  "If-Match": {
+    required: true,
+    description:
+      'The plan\'s `updatedAt` (UTC ISO timestamp) as the operator read it; 428 IF_MATCH_REQUIRED without one, and a plan changed since is refused with 409 PRICING_PLAN_CHANGED carrying its current value in the error details as {field: "currentUpdatedAt", message: <timestamp>}.',
+  },
+};
 
 /** `METHOD /path` → enrichment. Keys MUST match a scanned route (openapi:check enforces). */
 export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
@@ -3257,26 +3266,26 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "PUT /api/admin/pricing/plans/:id": {
     body: M35ReplacePricingDraftBody,
     response: M35PricingPlanDto,
-    headers: IDEMPOTENCY_KEY_HEADER,
+    headers: PRICING_PLAN_PIN_HEADERS,
     summary: "Replace a draft plan's prices and bands",
   },
   "POST /api/admin/pricing/plans/:id/publish": {
     body: M35PricingReasonBody,
     response: M35PricingPlanDto,
-    headers: IDEMPOTENCY_KEY_HEADER,
+    headers: PRICING_PLAN_PIN_HEADERS,
     summary: "Publish a draft plan; its prices are frozen from then on",
   },
   "POST /api/admin/pricing/plans/:id/new-version": {
     body: M35PricingReasonBody,
     response: M35PricingPlanDto,
-    headers: IDEMPOTENCY_KEY_HEADER,
+    headers: PRICING_PLAN_PIN_HEADERS,
     status: 201,
     summary: "Copy a published or archived plan into a new draft version",
   },
   "POST /api/admin/pricing/plans/:id/archive": {
     body: M35PricingReasonBody,
     response: M35PricingPlanDto,
-    headers: IDEMPOTENCY_KEY_HEADER,
+    headers: PRICING_PLAN_PIN_HEADERS,
     summary: "Archive a published plan; subscriptions on it keep their price",
   },
   // Slice 2 — onboarding step 2 (platform operations).
