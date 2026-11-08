@@ -68,6 +68,22 @@ export function claimMdWebhookEnabled(env: EnvLike): boolean {
   return env[CLAIMMD_WEBHOOK_ENABLED_ENV] === "true";
 }
 
+/** `tenant:<org id>` names a tenant's OWN Claim.MD account in the evidence tables; the platform's reference may never take it. */
+const TENANT_ACCOUNT_REFERENCE = /^tenant:/i;
+const TENANT_REFERENCE_PROBLEM =
+  "must not start with 'tenant:' (reserved for a tenant's own account)";
+
+/**
+ * The platform's Claim.MD account reference (trimmed), or undefined when unset. Throws on a `tenant:` value: the platform readers
+ * would otherwise match a tenant's own evidence rows. Every boot site reads it through here.
+ */
+export function platformClaimMdAccountReference(env: EnvLike): string | undefined {
+  const value = env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+  if (value && TENANT_ACCOUNT_REFERENCE.test(value))
+    throw new Error(`CLAIMMD_ACCOUNT_REFERENCE ${TENANT_REFERENCE_PROBLEM}`);
+  return value || undefined;
+}
+
 /** One unmet production requirement. */
 export interface EnvProblem {
   readonly key: string;
@@ -254,7 +270,11 @@ const REQUIREMENTS: readonly Requirement[] = [
   {
     key: "CLAIMMD_ACCOUNT_REFERENCE",
     rule: (v) =>
-      /^[A-Za-z0-9._:-]{1,128}$/.test(v) ? null : "must be a stable non-secret account reference",
+      TENANT_ACCOUNT_REFERENCE.test(v)
+        ? TENANT_REFERENCE_PROBLEM
+        : /^[A-Za-z0-9._:-]{1,128}$/.test(v)
+          ? null
+          : "must be a stable non-secret account reference",
     when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
   },
   {

@@ -25,3 +25,32 @@ export function shouldRunLegacyClaimMdEraPull(input: {
 }): boolean {
   return input.vendor !== "claimmd" || (!input.captureEnabled && !input.deliveryEnabled);
 }
+
+type EraFlags = Pick<ClaimMdEraRuntimeConfig, "captureEnabled" | "deliveryEnabled">;
+
+/**
+ * The legacy ERA pull per ACCOUNT (owner decision 2026-11-08): a tenant's OWN Claim.MD account (`account: "tenant"`) is not in
+ * main's capture and keeps its per-org pull; the platform's Claim.MD account follows {@link shouldRunLegacyClaimMdEraPull}.
+ */
+export function shouldRunLegacyEraPullFor(
+  binding: { readonly vendor: string | null; readonly account?: "tenant" },
+  flags: EraFlags,
+): boolean {
+  return (
+    binding.account === "tenant" ||
+    shouldRunLegacyClaimMdEraPull({ vendor: binding.vendor, ...flags })
+  );
+}
+
+/** One org's binding for the pull: itself when it pulls, else unbound (vendor null: the pull skips that org). */
+export function eraPullBindingForOrg<
+  B extends {
+    readonly vendor: string | null;
+    readonly account?: "tenant";
+    readonly transport: unknown;
+  },
+>(bound: B, flags: EraFlags): B | { readonly transport: B["transport"]; readonly vendor: null } {
+  return shouldRunLegacyEraPullFor(bound, flags)
+    ? bound
+    : { transport: bound.transport, vendor: null };
+}

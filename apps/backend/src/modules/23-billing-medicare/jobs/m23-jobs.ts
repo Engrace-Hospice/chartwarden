@@ -86,6 +86,7 @@ import {
   M23_NOTICE_PARK_QUEUES,
   assertNoticeMayTransmit,
   noticeIdOfJob,
+  noticeSubmissionIdOfJob,
   parkNoticeForExternalFiling,
   settleNoticeJobAttempt,
 } from "./notice-external-filing";
@@ -2021,15 +2022,6 @@ async function runTransportAckPull(
     // BIL-1.1 captures it centrally and only the gated BIL-1.3 dispatcher interprets it. A tenant's OWN Claim.MD account is
     // not in that capture and keeps this poll, capture on or off (owner decision 2026-11-08).
     if (isPlatformClaimMdAccount(orgTransport.binding)) continue;
-    if (
-      !shouldRunLegacyClaimMdAckPoll({
-        captureActive: deps.claimMdResponseCaptureActive === true,
-        dispatcherActive: deps.claimMdAckDispatcherActive === true,
-        vendor: orgTransport.binding.vendor,
-        ...(orgTransport.binding.account ? { account: orgTransport.binding.account } : {}),
-      })
-    )
-      continue;
     // Each page is applied before its cursor advances (#749), so a failed apply throws out of the handler and the
     // page is read again next tick.
     const onPage = async (page: readonly TransportAck[]): Promise<void> => {
@@ -2700,7 +2692,8 @@ export async function holdBeforeRun(
       organizationId: data.organizationId,
       kind: noticeKind,
       noticeId: noticeIdOfJob(noticeKind, data),
-      submissionId: typeof data.submissionId === "string" ? data.submissionId : undefined,
+      // Main's contract: a notice job always carries its attempt; one without it is malformed and fails loudly.
+      submissionId: noticeSubmissionIdOfJob(noticeKind, data),
     });
     return "parked";
   }
