@@ -6400,6 +6400,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               db: dbHandle.db,
               outbox: m12OutboxPublisher,
               audit: buildClinicAuditPort(),
+              warn: (fields, message) => app.log.warn(fields, message),
             }),
             verifyRateLimit: createRouteRateLimit({
               store: rateLimitStore ?? createInMemoryRateLimitStore(),

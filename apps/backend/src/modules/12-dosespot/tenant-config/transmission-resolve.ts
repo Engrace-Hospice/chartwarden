@@ -18,7 +18,7 @@ import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { transitionMedicationOrder } from "@chartwarden/dosespot";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError, NotFoundError } from "@chartwarden/types";
+import { ChartWardenError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
 import {
@@ -61,11 +61,20 @@ export interface ResolveHeldResult {
   readonly status: "transmitted" | "transmission_failed";
 }
 
+/**
+ * What the caller's authorization established, said explicitly by the ROUTE after its permission check (`prescribing.clinic.admin` + a fresh
+ * step-up): the service does not assume it. The order machine refuses a resolution without it.
+ */
+export interface ResolveHeldAuthorization {
+  readonly actorIsAdministrator: boolean;
+}
+
 export interface TransmissionResolveService {
   resolve(
     actor: ResolveHeldActor,
     orderId: string,
     input: ResolveHeldInput,
+    authorization: ResolveHeldAuthorization,
   ): Promise<ResolveHeldResult>;
 }
 
@@ -74,6 +83,12 @@ export interface TransmissionResolveDeps {
   readonly outbox: DoseSpotWriteOutboxPort;
   readonly audit: ClinicAuditPort;
   readonly now?: () => Date;
+  /**
+   * A structured warning (pino's `(fields, message)` shape): ids and the error's class only. REQUIRED: an unexpected fault of the resolve
+   * transaction is rethrown WITHOUT its cause (a database error embeds the bound values, the administrator's free-text reason among them),
+   * so this is the only place it is seen.
+   */
+  readonly warn: (fields: Record<string, string>, message: string) => void;
 }
 
 /** The shortest reason that can say what an administrator checked (the request schema's minimum, applied after trimming). */
@@ -95,8 +110,12 @@ export function createTransmissionResolveService(
     actor: ResolveHeldActor,
     orderId: string,
     input: ResolveHeldInput,
+    authorization: ResolveHeldAuthorization,
   ): Promise<ResolveHeldResult> {
     const { organizationId } = actor;
+    if (!authorization.actorIsAdministrator) {
+      throw new ForbiddenError("only an organization administrator can resolve a held transmission");
+    }
     const prescriptionId = input.dosespotPrescriptionId?.trim() ?? "";
     // the schema's length counts padding: a reason must say something once trimmed (and that is what is stored)
     const reason = input.reason.trim();
@@ -121,6 +140,37 @@ export function createTransmissionResolveService(
         422,
       );
     }
+    try {
+      return await resolveInTx(actor, orderId, input, authorization, prescriptionId, reason);
+    } catch (error) {
+      if (error instanceof ChartWardenError) throw error; // typed refusals carry fixed messages
+      // anything else (a database fault, a deadlock) may carry the bound values, the reason among them: log ids and the class, rethrow bare
+      deps.warn(
+        {
+          organizationId,
+          orderId,
+          outcome: input.outcome,
+          cause: error instanceof Error ? error.name : "unknown",
+        },
+        "DoseSpot held-transmission resolution failed; nothing was changed",
+      );
+      throw new ChartWardenError(
+        "DOSESPOT_RESOLVE_FAILED",
+        "the held order could not be resolved; nothing was changed, try again",
+        500,
+      );
+    }
+  }
+
+  function resolveInTx(
+    actor: ResolveHeldActor,
+    orderId: string,
+    input: ResolveHeldInput,
+    authorization: ResolveHeldAuthorization,
+    prescriptionId: string,
+    reason: string,
+  ): Promise<ResolveHeldResult> {
+    const { organizationId } = actor;
     return withOrgContext(
       deps.db,
       { organizationId, userId: actor.userId },
@@ -131,12 +181,18 @@ export function createTransmissionResolveService(
         // id follows), so two writers of one id are serialized and the check below cannot be raced
         if (input.outcome === "sent") await lockPrescriptionId(tx, organizationId, prescriptionId);
         // the order row is the lock every other writer of this order (the worker, the drain, another resolution) also takes
-        const [order] = await tx.select().from(MO).where(eq(MO.id, orderId)).limit(1).for("update");
+        // RLS scopes the session to its org; the explicit org predicate is defence in depth (a mis-set GUC must not reach another org's order)
+        const [order] = await tx
+          .select()
+          .from(MO)
+          .where(and(eq(MO.id, orderId), eq(MO.organizationId, organizationId)))
+          .limit(1)
+          .for("update");
         if (!order) throw new NotFoundError(`medication order ${orderId} not found`);
         const [t] = await tx
           .select()
           .from(MOT)
-          .where(eq(MOT.medicationOrderId, orderId))
+          .where(and(eq(MOT.medicationOrderId, orderId), eq(MOT.organizationId, organizationId)))
           .orderBy(desc(MOT.queuedAt))
           .limit(1)
           .for("update");
@@ -169,7 +225,7 @@ export function createTransmissionResolveService(
           }
           transitionMedicationOrder("queued_for_transmission", {
             type: "resolveHeldSent",
-            actorIsAdministrator: true,
+            actorIsAdministrator: authorization.actorIsAdministrator,
             dosespotPrescriptionId: prescriptionId,
           });
           const digest = createHash("sha256")
@@ -208,7 +264,7 @@ export function createTransmissionResolveService(
         } else {
           transitionMedicationOrder("queued_for_transmission", {
             type: "resolveHeldNotSent",
-            actorIsAdministrator: true,
+            actorIsAdministrator: authorization.actorIsAdministrator,
           });
           const moved = await tx
             .update(MO)

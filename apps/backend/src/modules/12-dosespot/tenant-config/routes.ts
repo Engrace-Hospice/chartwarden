@@ -176,6 +176,8 @@ export function registerTenantDoseSpotRoutes(
           clinicActorOf(request),
           id,
           parse(ResolveHeldTransmissionBodySchema, request.body),
+          // RESOLVE's guards passed: prescribing.clinic.admin (the org administrator's key) with a fresh step-up, a human actor
+          { actorIsAdministrator: true },
         );
       },
     );

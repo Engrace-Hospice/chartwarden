@@ -82,6 +82,7 @@ interface Call {
   readonly expectedVersion?: number | undefined;
   readonly orderId?: string;
   readonly userId?: string;
+  readonly authorization?: unknown;
 }
 
 function makeServer(opts: { verifyLimit?: number } = {}) {
@@ -164,7 +165,7 @@ function makeServer(opts: { verifyLimit?: number } = {}) {
     },
   };
   const resolveService: TransmissionResolveService = {
-    async resolve(actor, orderId, input) {
+    async resolve(actor, orderId, input, authorization) {
       calls.push({
         method: "resolve",
         organizationId: actor.organizationId,
@@ -172,6 +173,7 @@ function makeServer(opts: { verifyLimit?: number } = {}) {
         userId: actor.userId,
         orderId,
         body: input,
+        authorization,
       });
       return {
         orderId,
@@ -557,6 +559,7 @@ describe("an administrator's resolution of a held transmission", () => {
         userId: "admin_1",
         orderId: ORDER,
         body: SENT,
+        authorization: { actorIsAdministrator: true }, // the route states what its guards established
       },
       {
         method: "resolve",
@@ -565,6 +568,7 @@ describe("an administrator's resolution of a held transmission", () => {
         userId: "admin_1",
         orderId: ORDER,
         body: NOT_SENT,
+        authorization: { actorIsAdministrator: true }, // the route states what its guards established
       },
     ]);
     await app.close();

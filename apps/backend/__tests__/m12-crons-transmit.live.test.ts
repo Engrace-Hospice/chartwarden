@@ -1907,10 +1907,16 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         db: h.handle.db,
         outbox: h.outbox,
         audit: buildClinicAuditPort(),
-      }).resolve({ organizationId: ORG_A, userId: USER, membershipId }, orderId, {
-        outcome: "not_sent",
-        reason: "Checked the prescriber's DoseSpot account: nothing there.",
-      });
+        warn: () => undefined,
+      }).resolve(
+        { organizationId: ORG_A, userId: USER, membershipId },
+        orderId,
+        {
+          outcome: "not_sent",
+          reason: "Checked the prescriber's DoseSpot account: nothing there.",
+        },
+        { actorIsAdministrator: true },
+      );
     };
     const outboxCount = async () =>
       (await h.q("SELECT count(*)::int AS n FROM outbox_event"))[0]?.n as number;
@@ -2413,12 +2419,20 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
   // it: SENT (with the prescription id) or NOT SENT. Both are accepted only while the hold marker is on the transmission row, under a row lock.
   describe("an administrator resolves a held order", () => {
     const REASON = "Checked the prescriber's DoseSpot account on 11/6 with the clinic lead.";
-    const resolver = () =>
-      createTransmissionResolveService({
+    /** The service as the route calls it: after the route's permission check, which is what `actorIsAdministrator` states. */
+    const resolver = () => {
+      const service = createTransmissionResolveService({
         db: h.handle.db,
         outbox: h.outbox,
         audit: buildClinicAuditPort(),
+        warn: () => undefined,
       });
+      type Args = Parameters<typeof service.resolve>;
+      return {
+        resolve: (actor: Args[0], orderId: Args[1], input: Args[2]) =>
+          service.resolve(actor, orderId, input, { actorIsAdministrator: true }),
+      };
+    };
     const actorFor = async (org = ORG_A) => ({
       organizationId: org,
       userId: USER,
