@@ -3,8 +3,8 @@
 // dropped it, so a retry replays) and is renewed by ANY answer, because the server caches a refusal under the key and a retry on it
 // would be handed the refusal again (a 403 STEP_UP_REQUIRED would never clear). A refusal becomes an OpsFailure the screen switches on.
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { useOpsWrite } from "./use-ops-write";
+import { describe, expect, it, vi } from "vitest";
+import { AFTER_SUCCESS_TIMEOUT_MS, useOpsWrite } from "./use-ops-write";
 
 type Result = { data?: { id: string }; error?: unknown; response?: { status: number } };
 
@@ -87,6 +87,40 @@ describe("useOpsWrite", () => {
     await attempt("body-1", "throw");
     await attempt("body-2", { data: { id: "1" }, response: { status: 200 } });
     expect(keys[1]).not.toBe(keys[0]);
+  });
+
+  it("releases busy and accepts a new run once a hung reload outlasts the follow-up bound", async () => {
+    vi.useFakeTimers();
+    try {
+      const hook = renderHook(() => useOpsWrite());
+      const ok = { data: { id: "1" }, response: { status: 200 } };
+      let first: Promise<unknown> = Promise.resolve();
+      await act(async () => {
+        first = hook.result.current.run(
+          "a",
+          async () => ok,
+          () => new Promise(() => {}),
+        );
+      });
+      expect(hook.result.current.busy).toBe(true);
+      // Still inside the window: a double submit is dropped.
+      let second = false;
+      void hook.result.current
+        .run("a", async () => ok)
+        .then(() => {
+          second = true;
+        });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(AFTER_SUCCESS_TIMEOUT_MS);
+      });
+      await expect(first).resolves.toEqual({ ok: true, data: { id: "1" } });
+      expect(second).toBe(false);
+      expect(hook.result.current.busy).toBe(false);
+      const third = await act(async () => hook.result.current.run("b", async () => ok));
+      expect(third).toEqual({ ok: true, data: { id: "1" } });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("can be cleared by the screen", async () => {

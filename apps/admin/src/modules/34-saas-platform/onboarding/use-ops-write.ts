@@ -25,6 +25,8 @@ export interface OpsWrite {
    * `fingerprint` is the body (any stable text): the same one keeps the key across a retry, a changed one gets a new key.
    * `afterSuccess` (a reload, closing the editor) runs inside the same in-flight window: until it finishes, `busy` stays true and a
    * second `run` (a double submit, an Enter while the first is saving) is dropped: it never settles, so its caller does nothing.
+   * The window is bounded: a follow-up still pending after `AFTER_SUCCESS_TIMEOUT_MS` (a hung reload) stops holding it, so the button
+   * cannot stay on "Saving…"; the write already landed, the run returns its outcome and the follow-up finishes on its own.
    */
   run<T>(
     fingerprint: string,
@@ -32,6 +34,22 @@ export interface OpsWrite {
     afterSuccess?: (data: T) => Promise<unknown>,
   ): Promise<OpsWriteOutcome<T>>;
   clear(): void;
+}
+
+/** How long a write's follow-up (a reload) may hold the in-flight window before the screen is released. */
+export const AFTER_SUCCESS_TIMEOUT_MS = 15_000;
+
+/** Waits for `followUp`, but no longer than `ms`; its failure still reaches the caller when it comes first. */
+async function boundedFollowUp(followUp: Promise<unknown>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ms);
+  });
+  try {
+    await Promise.race([followUp, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** A gateway error page: a 5xx whose body is not the API's error envelope never got to the app. */
@@ -92,7 +110,9 @@ export function useOpsWrite(): OpsWrite {
       try {
         const outcome = await send(fingerprint, call);
         // The follow-up's own failure (a reload that throws) is the caller's to see, not a write failure: it is outside `send`.
-        if (outcome.ok) await afterSuccess?.(outcome.data);
+        if (outcome.ok && afterSuccess) {
+          await boundedFollowUp(afterSuccess(outcome.data), AFTER_SUCCESS_TIMEOUT_MS);
+        }
         return outcome;
       } finally {
         inFlight.current = false;
