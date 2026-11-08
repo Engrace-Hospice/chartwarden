@@ -5,7 +5,7 @@
  *
  *   progress   `readOnboardingProgress`, on the audited platform credential: the tenant list's "7 of 13, current step, go-live state".
  *              It counts the gating steps only, so a task kept as history on a retired template, an optional step and a
- *              tenant-added step never move it, and it reads a whole inventory in one batch.
+ *              non-canonical catalog step (added by platform ops) never move it, and it reads a whole inventory in one batch.
  *   members    `listMembers`, on the NOBYPASSRLS `chartwarden_app` tenant pool scoped to the TARGET org: a tenant's ACTIVE staff
  *              (a suspended member is absent), with the roles each holds NOW (an expired grant is not one), and nothing of any
  *              other tenant. The read leaves one audit row that names the operator and the count, never a name or an email.

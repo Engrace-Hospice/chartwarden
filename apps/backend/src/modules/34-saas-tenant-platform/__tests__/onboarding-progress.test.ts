@@ -1,6 +1,6 @@
 // The one-line progress of a tenant's onboarding (the hub list's "7 of 13, current step, go-live state"), as a pure function.
 // It judges exactly the steps the activation guard judges: canonical, not optional, not retired. A task that belongs to a
-// retired template (xero_connected and the like are kept as history) or to a tenant-added step is never part of the count.
+// retired template (xero_connected and the like are kept as history) or to a non-canonical catalog step (added by platform ops) is never part of the count.
 import { describe, expect, it } from "vitest";
 import type { GoLiveAttestation, StepTask, StepTemplate, TaskStatus } from "../onboarding/model";
 import { summarizeOnboarding } from "../onboarding/progress";
@@ -59,7 +59,7 @@ const pending = (): GoLiveAttestation => ({
 });
 
 describe("summarizeOnboarding", () => {
-  it("counts only the gating steps: optional and tenant-added steps are not part of the total", () => {
+  it("counts only the gating steps: optional and non-canonical catalog steps (added by platform ops) are not part of the total", () => {
     const p = summarizeOnboarding({
       tenantStatus: "onboarding",
       templates: TEMPLATES,

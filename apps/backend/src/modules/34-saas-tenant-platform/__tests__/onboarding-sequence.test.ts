@@ -56,7 +56,7 @@ describe("orderedTemplates", () => {
 });
 
 describe("gatingTemplateKeys", () => {
-  it("is the canonical, non-optional templates: optional and tenant-added steps never gate", () => {
+  it("is the canonical, non-optional templates: optional and non-canonical catalog steps (added by platform ops) never gate", () => {
     expect(gatingTemplateKeys(TEMPLATES)).toEqual(["a", "b", "c"]);
   });
 });
@@ -91,7 +91,7 @@ describe("lockedByStep", () => {
     expect(lockedByStep(TEMPLATES, [task("a", "done"), task("c", "pending")], "c")).toBe("b");
   });
 
-  it("a tenant-added step is locked by unsettled gating steps but never locks one", () => {
+  it("a non-canonical catalog step (added by platform ops) is locked by unsettled gating steps but never locks one", () => {
     const t = [
       task("a", "done"),
       task("b", "done"),

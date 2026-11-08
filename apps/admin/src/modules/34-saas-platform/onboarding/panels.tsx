@@ -1,5 +1,5 @@
 // apps/admin/src/modules/34-saas-platform/onboarding — which panel draws which step. A step with no panel of its own (a step the
-// platform adds later, a tenant-added step, a step settled only by evidence) gets the generic one: the frame, and nothing else.
+// platform adds later, a non-canonical catalog step (added by platform ops), a step settled only by evidence) gets the generic one: the frame, and nothing else.
 import type { ComponentType, JSX } from "react";
 import { BaaPanel } from "./baa-panel";
 import { ClearinghousePanel } from "./clearinghouse-panel";

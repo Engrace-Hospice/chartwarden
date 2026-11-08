@@ -81,7 +81,7 @@ describe("evaluateActivationGuards", () => {
     expect(missingRow.canonicalTasksComplete).toBe(false);
   });
 
-  it("ignores non-canonical tenant-added tasks when judging completeness and counting", () => {
+  it("ignores the tasks of a non-canonical catalog step (added by platform ops) when judging completeness and counting", () => {
     const guards = evaluateActivationGuards({
       canonicalTemplateKeys: ["account_created"],
       tasks: [
