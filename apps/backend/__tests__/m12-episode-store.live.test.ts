@@ -10,6 +10,7 @@ import IORedis from "ioredis";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   EPISODE_KEY_PREFIX,
+  type EpisodeStoreClient,
   createValkeyEpisodeTracker,
 } from "../src/modules/12-dosespot/jobs/episode-store";
 
@@ -147,6 +148,86 @@ describe.skipIf(!REDIS_URL)("M12 episode store — LIVE Valkey", () => {
         expect(await tracker.clear("config_unavailable:org-9")).toBe(false);
       expect(await admin.keys(`${EPISODE_KEY_PREFIX}*`)).toEqual([]);
     });
+  });
+
+  // The duplicate-announcement window: between a miss and a won claim another process can finish its whole cycle. Winning the claim is not enough;
+  // the state the claim was for must still hold.
+  describe("a claim won after another process finished its cycle", () => {
+    /** A client over a real connection that runs `before` ahead of a SET on a key containing `needle` (once). */
+    const interleaving = (needle: string, before: () => Promise<void>): EpisodeStoreClient => {
+      const conn = connect();
+      let done = false;
+      return {
+        set: (async (key: string, ...rest: unknown[]) => {
+          if (!done && key.includes(needle)) {
+            done = true;
+            await before();
+          }
+          return (conn.set as (...a: unknown[]) => Promise<"OK" | null>)(key, ...rest);
+        }) as EpisodeStoreClient["set"],
+        pexpire: (key, ms) => conn.pexpire(key, ms),
+        del: (...keys) => conn.del(...keys),
+        exists: (key) => conn.exists(key),
+        incr: (key) => conn.incr(key),
+      };
+    };
+
+    it("ALERT: the loser of the race does not announce a second time (the episode is already open) and leaves no claim behind", async () => {
+      const other = createValkeyEpisodeTracker(connect());
+      const racer = createValkeyEpisodeTracker(
+        interleaving(":pending:k", async () => {
+          expect(await other.raise("k")).toBe(true); // another process claims, publishes and confirms between the racer's miss and its claim
+          await other.confirmRaised("k");
+        }),
+      );
+      expect(await racer.raise("k")).toBe(false);
+      expect(await admin.pttl(`${EPISODE_KEY_PREFIX}pending:k`)).toBe(-2); // no claim left to block a later alert
+      expect(await admin.exists(`${EPISODE_KEY_PREFIX}open:k`)).toBe(1);
+    });
+
+    it("RECOVERY: the loser of the race does not announce a second recovery (the episode is already closed) and leaves no claim behind", async () => {
+      const other = createValkeyEpisodeTracker(connect());
+      await openEpisode(other, "k");
+      expect(await other.clear("k")).toBe(false); // clean tick 1
+      const racer = createValkeyEpisodeTracker(
+        interleaving(":closing:k", async () => {
+          expect(await other.clear("k")).toBe(true); // clean tick 2: another process claims the recovery, publishes and confirms it
+          await other.confirmCleared("k");
+        }),
+      );
+      expect(await racer.clear("k")).toBe(false); // the racer's own tick 2 (it counted the same two ticks) must not announce again
+      expect(await admin.pttl(`${EPISODE_KEY_PREFIX}closing:k`)).toBe(-2);
+      expect(await admin.exists(`${EPISODE_KEY_PREFIX}open:k`)).toBe(0);
+    });
+  });
+
+  it("the clean-tick count always gets its lifetime back: a tick that died between the INCR and its EXPIRE is repaired by the next one", async () => {
+    const conn = connect();
+    let failOnce = true;
+    const flaky: EpisodeStoreClient = {
+      set: ((...args: unknown[]) =>
+        (conn.set as (...a: unknown[]) => Promise<"OK" | null>)(
+          ...args,
+        )) as EpisodeStoreClient["set"],
+      pexpire: async (key, ms) => {
+        if (failOnce && key.includes(":clean:")) {
+          failOnce = false;
+          throw new Error("died between INCR and EXPIRE");
+        }
+        return conn.pexpire(key, ms);
+      },
+      del: (...keys) => conn.del(...keys),
+      exists: (key) => conn.exists(key),
+      incr: (key) => conn.incr(key),
+    };
+    const tracker = createValkeyEpisodeTracker(flaky, { ttlMs: 60_000, cleanTicks: 3 });
+    await openEpisode(tracker, "k");
+    await expect(tracker.clear("k")).rejects.toThrow("died between INCR and EXPIRE");
+    expect(await admin.pttl(`${EPISODE_KEY_PREFIX}clean:k`)).toBe(-1); // no lifetime: the crash window
+    await tracker.clear("k");
+    const remaining = await admin.pttl(`${EPISODE_KEY_PREFIX}clean:k`);
+    expect(remaining).toBeGreaterThan(0);
+    expect(remaining).toBeLessThanOrEqual(60_000);
   });
 
   it("the keys are namespaced and always carry a lifetime (an orphaned episode cannot outlive it)", async () => {

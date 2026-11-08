@@ -15,6 +15,8 @@
 //                  `open` in place; the claim expires and the next clean tick announces the recovery. `confirmCleared` removes the episode
 //                  once the recovery has committed.
 //
+// A won claim is re-checked against the state it was for (`open` must still be absent for an alert, present for a recovery): another process can
+// finish its whole cycle between a miss and a claim, and the loser would otherwise announce a duplicate.
 // At-least-once, not exactly-once: a process that dies AFTER its publish committed but BEFORE the confirm leaves the claim to expire and
 // the event is published again (a second alert, or a second recovery notice). That is the price of never dropping one.
 
@@ -79,7 +81,14 @@ export function createValkeyEpisodeTracker(
         return false;
       }
       // not open: claim the right to publish. A claim already held (by this or another process) is NOT refreshed.
-      return (await client.set(at("pending", key), "1", "PX", claimMs, "NX")) === "OK";
+      if ((await client.set(at("pending", key), "1", "PX", claimMs, "NX")) !== "OK") return false;
+      // Winning the claim is not enough: between the miss above and the claim another process may have published, confirmed and released its own
+      // (so the claim was free). If the episode is open now, this alert is a duplicate: give the claim back.
+      if ((await client.exists(at("open", key))) === 1) {
+        await client.del(at("pending", key));
+        return false;
+      }
+      return true;
     },
     async confirmRaised(key) {
       await client.set(at("open", key), "1", "PX", ttlMs);
@@ -91,9 +100,17 @@ export function createValkeyEpisodeTracker(
     async clear(key) {
       if ((await client.exists(at("open", key))) !== 1) return false; // the healthy common path: one read
       const clean = await client.incr(at("clean", key));
-      if (clean === 1) await client.pexpire(at("clean", key), ttlMs);
+      // every tick, not only the first: a tick that died between the INCR and this EXPIRE left a count with no lifetime, and the next one repairs it
+      await client.pexpire(at("clean", key), ttlMs);
       if (clean < cleanTicks) return false;
-      return (await client.set(at("closing", key), "1", "PX", claimMs, "NX")) === "OK";
+      if ((await client.set(at("closing", key), "1", "PX", claimMs, "NX")) !== "OK") return false;
+      // Symmetric re-check: another process may have announced and CLOSED the episode between our read of `open` and our claim. A recovery for an
+      // episode that is already closed is a duplicate: give the claim back.
+      if ((await client.exists(at("open", key))) !== 1) {
+        await client.del(at("closing", key));
+        return false;
+      }
+      return true;
     },
     async confirmCleared(key) {
       await client.del(at("open", key), at("closing", key), at("clean", key));
