@@ -372,7 +372,7 @@ off-site S3-compatible target) and drops what has no host to run on (repo2 backu
 
 | Piece | File | Role |
 | --- | --- | --- |
-| Backup image | `deploy/production/backup/Dockerfile` | `pgvector/pgvector:pg18` (digest-pinned, the image compose.yml runs) + pgBackRest + `mc` |
+| Backup image | `deploy/production/backup/Dockerfile` | Wolfi base = the published, signed `ghcr.io/engrace-hospice/chartwarden-postgres` digest (`POSTGRES_IMAGE`, the digest compose.yml pins) + pgBackRest 2.60.0 compiled from source (tag `release/2.60.0`, commit asserted) + `mc` (Chainguard) |
 | Overlay | `deploy/production/compose.backup.yml` | `postgres` with `archive_mode=on`; the `backup` sidecar (`cw-backup.sh schedule`); an `object-store-provision` overlay that adds the read-only backup reader to SeaweedFS's identities (reader-policy.json) |
 | Job | `deploy/production/backup/cw-backup.sh` | `snapshot`, `schedule`, `healthcheck`, `marker`, `restore-db`, `restore-objects` |
 | Restore | `deploy/production/backup/restore.sh` | restores a snapshot into NEW containers on a NEW network, ports on 127.0.0.1, `archive_mode=off` |
@@ -513,13 +513,16 @@ every live row that references an object (registry in `scripts/lib/backup/object
 column that looks like one) has it, retrievable through the app's own S3 adapter, sha256 equal to the snapshot and to
 the row; M4 audit seals link and every sealed month recomputes. For a real recovery (not a drill), promote the
 verified restore by pointing a fresh stack at the restored volume and MinIO data, then re-take a full backup.
+A snapshot taken on the Debian image (before the Wolfi switch, glibc 2.36) carries text indexes in that glibc's order:
+after restoring one onto the current image, run `cw-refresh-collation` (deploy/production/README.md, "Postgres image")
+before anything reads the restored database.
 
 #### 4.8.7 What is operational, not code (tracked in the #857 follow-up issue)
 
 1. Provision the off-site bucket: Object Lock + versioning at creation, default retention COMPLIANCE >= 100 days,
    lifecycle: noncurrent versions and delete markers after 120 days, incomplete multipart uploads after 7 days. Create
    its three scoped keys (§4.8.5); generate and escrow the encryption keys; write `./secrets/`; set the mandatory
-   https `OPS_ALERT_WEBHOOK_URL`. Mirror the backup image's base and `mc` digests into a registry you control.
+   https `OPS_ALERT_WEBHOOK_URL`. Mirror the backup image's `mc` and build-stage base digests into a registry you control (the Postgres base is already ours on GHCR).
 2. Set the §4.8.4 variables, build the image, run `object-store-provision` with the overlay, recreate `seaweedfs`, `up -d postgres backup`.
 3. First witnessed restore of production data with `restore.sh` + the verifier; record it under `audit/restore-drill/`.
 4. Recurring cadence: monthly isolated restore + verify (§8.2), quarterly full off-site restore timed against the RTO

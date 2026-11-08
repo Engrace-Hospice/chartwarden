@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # deploy/production/backup/cw-backup.sh — coordinated Postgres + object-store backup and restore (#857).
 #
-# Runs inside the image built from ./Dockerfile (pgvector/pgvector:pg18 + pgBackRest + mc). Subcommands:
-#   entrypoint <cmd...>        render /etc/pgbackrest/pgbackrest.conf from BACKUP_* env, then the stock entrypoint
+# Runs inside the image built from ./Dockerfile (ChartWarden's Wolfi Postgres image + pgBackRest + mc). Subcommands:
+#   entrypoint <cmd...>        render /etc/pgbackrest/pgbackrest.conf from BACKUP_* env, then the Postgres image's entrypoint
 #   snapshot [full|diff|incr|none]
 #                              one coordinated snapshot: optional pgBackRest base backup (local + off-site repo), then
 #                              capture the DB LSN, force + confirm WAL archiving up to it, list every MinIO object
@@ -522,7 +522,8 @@ entrypoint)
   if [ "${1:-}" = postgres ]; then render_conf; fi
   if [ "$(id -u)" = 0 ]; then chown -R postgres:postgres /etc/pgbackrest /var/spool/pgbackrest; fi
   umask 022 # the stock entrypoint creates PGDATA's parents as root, then drops to postgres
-  exec docker-entrypoint.sh "$@"
+  # The Postgres image's wrapper (adds the /var/run/postgresql socket, then Wolfi's stock script); by full path, not PATH.
+  exec /usr/local/bin/docker-entrypoint.sh "$@"
   ;;
 render-conf) render_conf ;;
 snapshot) cmd_snapshot "$@" ;;
