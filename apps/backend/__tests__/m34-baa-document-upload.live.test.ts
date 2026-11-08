@@ -502,12 +502,14 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
       expect(await tasks()).toEqual(before);
       expect(await overdue()).toBe(0);
       expect(alertCalls).toEqual([]);
-      // Control: the same pass run directly does flag these tasks, so the silence above is the write's status gate.
+      // Control: the same pass over the same tasks, once the tenant is onboarding, does flag them (so the silence above is the status gate).
       const [account] = (
         await admin.query("SELECT id FROM tenant_account WHERE organization_id=$1", [ORG_X])
       ).rows;
+      await admin.query("UPDATE tenant_account SET status='onboarding' WHERE id=$1", [account.id]);
       await advance({ tenantAccountId: account.id, orgId: ORG_X });
       expect(await overdue()).toBeGreaterThan(0);
+      await admin.query("UPDATE tenant_account SET status='active' WHERE id=$1", [account.id]);
     });
 
     it("also files for a provisioning tenant", async () => {

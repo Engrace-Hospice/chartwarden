@@ -34,6 +34,7 @@ import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, desc, eq, inArray, isNull, lte } from "drizzle-orm";
 import { pickGoverningBaa } from "../routes/platform/activation-guards";
 import { governingBaaDocumentFiled } from "../routes/platform/baa-guards";
+import { ONBOARDING_WRITABLE_STATUSES } from "../routes/platform/tenant-onboarding-lock";
 import { M34_JOB_SCHEDULES, M34_QUEUES } from "./index";
 
 /**
@@ -459,41 +460,69 @@ export interface OnboardingAdvanceDeps {
 /**
  * One advance pass for a tenant, inside its own org transaction: settle `auto`/`either` steps whose fact now holds,
  * block an unmet `auto` step, raise overdue alerts. It never activates a tenant.
+ *
+ * Only for a tenant still provisioning or onboarding (`ONBOARDING_WRITABLE_STATUSES`, read in the same transaction): every caller (the
+ * sweep, the wizard, the onboarding-data writes, the BAA register) routes through here, so a live tenant's write (a BAA renewal) settles
+ * no step and emits no onboarding event (m34.tenant.onboarding_overdue) whoever triggers the pass.
  */
 export function createOnboardingAdvancer(
   deps: OnboardingAdvanceDeps,
 ): (input: { tenantAccountId: string; orgId: string }) => Promise<OnboardingAdvanceReport> {
   const now = deps.now ?? (() => new Date());
   return (input) =>
-    withOrgContext(deps.db, { organizationId: input.orgId, userId: SYSTEM_USER_ID }, (rawTx) => {
-      const tx = rawTx as unknown as DbClient;
-      const repo = new OnboardingRepository(tx);
-      return runOnboardingAdvance(input, {
-        repo,
-        now,
-        gatherContext: (i) => gatherOnboardingContext(tx, i, deps.facts ?? {}, repo),
-        publishOutbox: async (payload) => {
-          const { event, ...rest } = payload;
-          await deps.outbox.publish(tx, {
-            eventName: event,
-            payload: rest,
-            organizationId: input.orgId,
-            aggregateKind: "tenant_account",
-            aggregateId: payload.tenantAccountId,
-          });
-        },
-        routeAlert: async (alert) => {
-          await deps.alerts.emit(input.orgId, {
-            eventType: alert.alertKey,
-            payload: { tenantAccountId: alert.tenantAccountId, templateKey: alert.templateKey },
-            severity: "warn",
-            correlationId: `m34-onboarding-${alert.alertKey}-${alert.tenantAccountId}-${alert.templateKey ?? "all"}-${now()
-              .toISOString()
-              .slice(0, 10)}`,
-          });
-        },
-      });
-    });
+    withOrgContext(
+      deps.db,
+      { organizationId: input.orgId, userId: SYSTEM_USER_ID },
+      async (rawTx) => {
+        const tx = rawTx as unknown as DbClient;
+        const [account] = await tx
+          .select({ status: schema.tenantAccount.status })
+          .from(schema.tenantAccount)
+          .where(eq(schema.tenantAccount.id, input.tenantAccountId))
+          .limit(1);
+        if (!account || !ONBOARDING_WRITABLE_STATUSES.has(account.status)) {
+          return notOnboarding(input.tenantAccountId);
+        }
+        const repo = new OnboardingRepository(tx);
+        return runOnboardingAdvance(input, {
+          repo,
+          now,
+          gatherContext: (i) => gatherOnboardingContext(tx, i, deps.facts ?? {}, repo),
+          publishOutbox: async (payload) => {
+            const { event, ...rest } = payload;
+            await deps.outbox.publish(tx, {
+              eventName: event,
+              payload: rest,
+              organizationId: input.orgId,
+              aggregateKind: "tenant_account",
+              aggregateId: payload.tenantAccountId,
+            });
+          },
+          routeAlert: async (alert) => {
+            await deps.alerts.emit(input.orgId, {
+              eventType: alert.alertKey,
+              payload: { tenantAccountId: alert.tenantAccountId, templateKey: alert.templateKey },
+              severity: "warn",
+              correlationId: `m34-onboarding-${alert.alertKey}-${alert.tenantAccountId}-${alert.templateKey ?? "all"}-${now()
+                .toISOString()
+                .slice(0, 10)}`,
+            });
+          },
+        });
+      },
+    );
+}
+
+/** The report of a pass that did nothing because the tenant is past (or not in) onboarding: no step, nothing settled or flagged. */
+function notOnboarding(tenantAccountId: string): OnboardingAdvanceReport {
+  return {
+    tenantAccountId,
+    currentStep: "",
+    nextStep: "",
+    completed: [],
+    blocked: [],
+    overdue: [],
+  };
 }
 
 /** Tenants that are `active` with an approved go-live whose organization is still `created` (platform credential, cross-tenant). */

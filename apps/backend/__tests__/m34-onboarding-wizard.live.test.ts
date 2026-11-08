@@ -2233,6 +2233,78 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       expect(await statusOf(T_S2, "provisioning_complete")).toBe("done");
     });
 
+    it("a BAA register create and update on a LIVE tenant run no onboarding pass: its past-due tasks stay as they are and nothing is emitted", async () => {
+      const ORG_LIVE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb10";
+      const T_LIVE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb11";
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'wiz-live','wiz-live','wiz-live')",
+        [ORG_LIVE],
+      );
+      await admin.query(
+        "INSERT INTO tenant_account (id, organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,'active','wiz-live','b@x.test','p@x.test')",
+        [T_LIVE, ORG_LIVE],
+      );
+      // Every task past due: a pass over this tenant WOULD flag them overdue.
+      await admin.query(
+        `INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key, due_at)
+         SELECT $1, $2, key, now() - interval '30 days' FROM onboarding_task_template WHERE retired_at IS NULL`,
+        [ORG_LIVE, T_LIVE],
+      );
+      const tasks = async () =>
+        (
+          await admin.query(
+            "SELECT * FROM onboarding_task WHERE tenant_account_id=$1 ORDER BY template_key",
+            [T_LIVE],
+          )
+        ).rows;
+      const onboardingEvents = async () =>
+        (
+          await admin.query(
+            "SELECT event_type FROM outbox_event WHERE organization_id=$1 AND event_type LIKE 'm34.tenant.onboarding%'",
+            [ORG_LIVE],
+          )
+        ).rows;
+      const before = await tasks();
+      expect(before.length).toBeGreaterThan(0);
+      const alertsBefore = alertCalls.length;
+      const advanced: string[] = [];
+      const live = backend({
+        advanceOnboarding: async (tenant) => {
+          advanced.push(tenant.tenantAccountId);
+          await advancer()({
+            tenantAccountId: tenant.tenantAccountId,
+            orgId: tenant.organizationId,
+          });
+        },
+      }).service;
+
+      const created = await live.createBaaRecord(OPS_USER, {
+        tenantAccountId: T_LIVE,
+        addendumVersion: "v-renewal",
+        baaStatus: "executed",
+        executedOn: "2026-10-01",
+        effectiveOn: "2026-10-01",
+        expiresOn: "2028-10-01",
+        breachNotificationContactEmail: null,
+        breachNotificationContactPhone: null,
+        documentId: await fileDocument(ORG_LIVE),
+      });
+      await live.updateBaaRecord(created.id, OPS_USER, { expiresOn: "2029-10-01" });
+
+      expect(advanced).toEqual([T_LIVE, T_LIVE]); // the pass was asked for, and declined: the tenant is live
+      expect(await tasks()).toEqual(before);
+      expect(await onboardingEvents()).toEqual([]);
+      expect(alertCalls.length).toBe(alertsBefore);
+
+      // Control: the same pass over the same tasks, once the tenant is onboarding, does flag them.
+      await admin.query("UPDATE tenant_account SET status='onboarding' WHERE id=$1", [T_LIVE]);
+      await advancer()({ tenantAccountId: T_LIVE, orgId: ORG_LIVE });
+      expect((await onboardingEvents()).map((r) => r.event_type)).toContain(
+        "m34.tenant.onboarding_overdue",
+      );
+      await admin.query("UPDATE tenant_account SET status='active' WHERE id=$1", [T_LIVE]);
+    });
+
     it("an advance failure after a BAA write is logged, never thrown: the write stays", async () => {
       const warnings: string[] = [];
       const created = await backend({
