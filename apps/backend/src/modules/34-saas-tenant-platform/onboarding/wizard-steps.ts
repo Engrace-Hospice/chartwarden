@@ -10,7 +10,10 @@ import {
 import {
   GO_LIVE_TEMPLATE_KEY,
   type PlatformActor,
-  SKIPPABLE_STEP_KEYS, type StepTask, type WizardActor } from "./model";
+  SKIPPABLE_STEP_KEYS,
+  type StepTask,
+  type WizardActor,
+} from "./model";
 import { assertStepActionable, isSettled } from "./sequence";
 import {
   type Loaded,

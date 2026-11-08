@@ -135,9 +135,13 @@ describe("describeOpsError", () => {
   });
 
   it("a 413 with no envelope (a proxy's HTML page) reads as PAYLOAD_TOO_LARGE so the caller's copy can explain it", () => {
-    const failure = describeOpsError("<html>413 Request Entity Too Large</html>", { status: 413 }, {
-      PAYLOAD_TOO_LARGE: "too big",
-    });
+    const failure = describeOpsError(
+      "<html>413 Request Entity Too Large</html>",
+      { status: 413 },
+      {
+        PAYLOAD_TOO_LARGE: "too big",
+      },
+    );
     expect(failure.code).toBe("PAYLOAD_TOO_LARGE");
     expect(failure.message).toBe("too big");
     // the server's own 413 code wins when there is an envelope

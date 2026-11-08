@@ -290,9 +290,7 @@ describe("skip", () => {
 
   it("refuses to skip a step outside the skippable list (the plan, the provider entity, the organisation...)", async () => {
     expect(
-      await code(
-        wizard().skipPlatform("acme", taskId("organisation"), OPS, "customer migrating"),
-      ),
+      await code(wizard().skipPlatform("acme", taskId("organisation"), OPS, "customer migrating")),
     ).toBe("ONBOARDING_STEP_NOT_SKIPPABLE");
     expect(statusOf("organisation")).not.toBe("skipped");
     expect((await wizard().getPlatform("acme")).steps[0]?.skippable).toBe(false);
