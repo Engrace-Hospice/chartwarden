@@ -1401,6 +1401,101 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       });
     }
 
+    // MEDIUM-1 of the review of 436fd3c1c..: `updated_at` is shared with writes that have nothing to do with the claim (a coverage determination,
+    // a correction's version bump). Once the call began the worker's claim is the stamp it wrote on the transmission row, so a benign write during
+    // the call must not turn a legitimate owner into a skipped one (which orphaned the accepted prescription: held by the drain, resolved by hand).
+    it("OWNERSHIP after the fence is the call's own stamp: a coverage save and a correction's version bump during the call do not orphan the accepted prescription", async () => {
+      const backend = createDbDoseSpotBackend(h.handle.db, h.outbox);
+      const { orderId, transmissionId } = await queued();
+      const membership = (
+        await h.q("SELECT id FROM membership WHERE organization_id=$1 LIMIT 1", [ORG_A])
+      )[0]?.id as string;
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async () => {
+          await backend.setCoverageDetermination(ORG_A, membership, orderId, {
+            hospiceCoverage: "not_covered_unrelated",
+            reason: "Unrelated to the terminal diagnosis, per the attending.",
+          });
+          // what `correctOrder` writes to the ORIGINAL order (it has no status guard)
+          await h.admin.query(
+            "UPDATE medication_order SET version = version + 1, updated_at = now() + interval '1 second' WHERE id=$1",
+            [orderId],
+          );
+          return { dosespotPrescriptionId: "rx-benign", transmittedAt: new Date().toISOString() };
+        },
+      });
+      const pass = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+      expect(pass).toMatchObject({ claimed: 1, transmitted: 1, skipped: 0, held: 0 });
+      expect(await orderRow(orderId)).toMatchObject({ status: "transmitted", rx: "rx-benign" });
+      expect((await txRow(transmissionId as string)).transmission_succeeded_at).not.toBeNull();
+      expect((await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A)).released).toBe(0);
+    });
+
+    it("OWNERSHIP after the fence: a worker whose call was overtaken (the order released and a NEW claim fenced and calling) writes nothing over the new owner, whatever it found", async () => {
+      for (const found of ["failure", "outage", "unconfirmed"] as const) {
+        await h.admin.query("DELETE FROM medication_order_transmission");
+        await h.admin.query("DELETE FROM medication_order");
+        const { orderId, transmissionId } = await queued();
+        let bEntered!: () => void;
+        const bIsCalling = new Promise<void>((resolve) => {
+          bEntered = resolve;
+        });
+        let releaseB!: () => void;
+        const bMayFinish = new Promise<void>((resolve) => {
+          releaseB = resolve;
+        });
+        const sendsB: string[] = [];
+        const vendorB = new FakeDoseSpotVendor({
+          transmit: async (_org, payload) => {
+            sendsB.push(payload.medicationOrderId);
+            bEntered();
+            await bMayFinish;
+            return { dosespotPrescriptionId: "rx-by-b", transmittedAt: new Date().toISOString() };
+          },
+        });
+        let takeover: Promise<unknown> | undefined;
+        const vendorA = new FakeDoseSpotVendor({
+          transmit: async () => {
+            // the claim is released while A is still in its call (an operator's fix-up, say), and ANOTHER worker claims, fences and calls
+            await h.admin.query(
+              "UPDATE medication_order SET dosespot_send_state='queued' WHERE id=$1",
+              [orderId],
+            );
+            await h.admin.query(
+              "UPDATE medication_order_transmission SET transmission_started_at = NULL WHERE id=$1",
+              [transmissionId],
+            );
+            takeover = runTransmitNewRxForOrg(deps(vendorB, minutes(30)), ORG_A); // NOT awaited: B is mid-call
+            await bIsCalling;
+            if (found === "failure") throw retryable();
+            if (found === "outage") throw circuitOpen();
+            throw new UnconfirmedOutcomeError("dosespot", "transmitNewRx", "unreadable", "c-a");
+          },
+        });
+        try {
+          const pass = await runTransmitNewRxForOrg(deps(vendorA), ORG_A);
+          expect(pass, found).toMatchObject({ claimed: 1, skipped: 1, requeued: 0, held: 0 });
+          expect(pass.deferredByOutage, found).toBe(0);
+          // B's claim is intact: still in flight, its stamp not cleared, no marker and no failure written over it
+          expect(await orderRow(orderId), found).toMatchObject({ s: "in_flight" });
+          const t = await txRow(transmissionId as string);
+          expect(t.transmission_started_at, found).not.toBeNull();
+          expect(t.last_error_class, found).toBeNull();
+          expect(t.retry_count, found).toBe(0);
+          releaseB();
+          await takeover;
+          expect(await orderRow(orderId), found).toMatchObject({
+            status: "transmitted",
+            rx: "rx-by-b",
+          });
+          expect(sendsB, found).toEqual([orderId]);
+        } finally {
+          releaseB();
+          await takeover?.catch(() => undefined);
+        }
+      }
+    });
+
     // LOW (lock order): the worker's settle now takes the ORDER row before the transmission row, the order the administrator's resolution takes, so a
     // late failure racing a resolution cannot deadlock (40P01): one of them wins, the other is refused or skipped, and the state is coherent.
     it("a late failure racing an administrator's resolution of the same hold never deadlocks and leaves a coherent order", async () => {

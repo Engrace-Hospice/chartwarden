@@ -198,8 +198,9 @@ async function buildPayload(
  * `transmission_started_at`. Zero rows at (1) means the claim was drained and taken over (or the order changed) while this worker was busy with
  * an earlier order of its batch: it returns false and the caller makes NO call, so the order cannot be sent twice with one key. Moving
  * `updated_at` also restarts the stale-claim clock at the call (it used to run from the claim, which a slow batch could outlast).
- * It returns the `updated_at` the worker now owns (the fence time). A worker that dies after this and before its settle leaves a stale claim
- * carrying the stamp, which the drain HOLDS instead of re-sending. A failure here throws and the order is not called: it stays a claim without the stamp, which the drain releases.
+ * It returns the fence time: from here on the stamp is what the worker owns (see {@link Ownership}), the order's `updated_at` only keeps the stale clock.
+ * A worker that dies after this and before its settle leaves a stale claim carrying the stamp, which the drain HOLDS instead of re-sending. A
+ * failure here throws and the order is not called: it stays a claim without the stamp, which the drain releases.
  */
 async function markCallStarted(
   deps: M12CronDeps,
@@ -265,14 +266,28 @@ type Outcome =
       syncPatient: boolean;
     };
 
-/** What a worker found and the `updated_at` its claim carries when it comes to write: the claim's own, or the fence's after the fence. */
+/**
+ * What a worker owns when it comes to write. BEFORE the fence it owns the CLAIM: the order's `updated_at` that the claim wrote. AFTER the fence it
+ * owns the CALL: the `transmission_started_at` the fence stamped on the transmission row. `updated_at` cannot stay the token after the fence: it
+ * is shared with writes that have nothing to do with the claim (a coverage determination is allowed in every status, a correction bumps the
+ * original order's version), and one of them during the call would turn the legitimate owner into a "skipped" one, orphaning a prescription
+ * DoseSpot had accepted and leaving a stamp the drain then holds.
+ */
+type Ownership =
+  | { readonly stage: "claim"; readonly claimedAt: Date }
+  | { readonly stage: "call"; readonly startedAt: Date };
+
+/** What a worker found, and what it owns when it comes to write it. */
 interface Attempt {
   readonly outcome: Outcome;
-  readonly ownedAt: Date;
+  readonly owns: Ownership;
 }
 
 async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed): Promise<Attempt> {
-  const beforeFence = (outcome: Outcome): Attempt => ({ outcome, ownedAt: c.claimedAt });
+  const beforeFence = (outcome: Outcome): Attempt => ({
+    outcome,
+    owns: { stage: "claim", claimedAt: c.claimedAt },
+  });
   const built = await buildPayload(deps, organizationId, c.order);
   if (built.kind === "patient_not_synced") {
     return beforeFence({
@@ -292,17 +307,17 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
       syncPatient: false,
     });
   }
-  let ownedAt: Date;
+  let startedAt: Date;
   try {
     // the fence: null = this worker no longer owns the claim (it was drained and taken over): make no call and touch nothing
     const fencedAt = await markCallStarted(deps, organizationId, c);
     if (fencedAt === null) return beforeFence({ kind: "superseded" });
-    ownedAt = fencedAt;
+    startedAt = fencedAt;
   } catch {
     // the stamp could not be committed, so the vendor was NOT called: the order waits (no retry spent) and the drain releases the claim
     return beforeFence({ kind: "outage" });
   }
-  const owned = (outcome: Outcome): Attempt => ({ outcome, ownedAt });
+  const owned = (outcome: Outcome): Attempt => ({ outcome, owns: { stage: "call", startedAt } });
   try {
     const res = await deps.client.transmitNewRx(
       organizationId,
@@ -344,11 +359,44 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
   }
 }
 
+/** The order row only while it is still in flight under the status it was claimed in and, before the fence, with the `updated_at` the claim wrote. */
+function orderStillTheWorkers(orderId: string, owns: Ownership) {
+  return and(
+    eq(MO.id, orderId),
+    eq(MO.status, "queued_for_transmission"),
+    eq(MO.dosespotSendState, "in_flight"),
+    owns.stage === "claim" ? eq(MO.updatedAt, owns.claimedAt) : undefined,
+  );
+}
+
 /**
- * SETTLE: write what the attempt found. Every write is conditional on the claim still being THIS worker's (`in_flight` with the `updated_at` it
- * owns), so a worker whose claim was drained and taken over (a slow batch, a payload build that failed after a takeover) can neither requeue,
- * exhaust, hold nor record over the new owner: it writes nothing and answers "skipped". Lock order is the advisory lock for a prescription id
- * (success only), then the ORDER row, then the transmission row: the order the administrator's resolution takes, so the two cannot deadlock.
+ * Lock what the worker owns and say whether it still owns it: the ORDER row, then (after the fence) the TRANSMISSION row carrying the stamp this
+ * worker wrote. That is the order the administrator's resolution and the drain lock them in, so none of them can deadlock; the locks last to the end of the
+ * transaction, so what is checked here still holds for every write after it.
+ */
+async function lockOwnership(tx: DbClient, c: Claimed, owns: Ownership): Promise<boolean> {
+  const [order] = await tx
+    .select({ id: MO.id })
+    .from(MO)
+    .where(orderStillTheWorkers(c.order.id, owns))
+    .limit(1)
+    .for("update");
+  if (!order) return false;
+  if (owns.stage === "claim") return true;
+  const [stamp] = await tx
+    .select({ id: MOT.id })
+    .from(MOT)
+    .where(and(eq(MOT.id, c.transmission.id), eq(MOT.transmissionStartedAt, owns.startedAt)))
+    .limit(1)
+    .for("update");
+  return stamp !== undefined;
+}
+
+/**
+ * SETTLE: write what the attempt found. Every write to the order is conditional on the claim still being THIS worker's (see {@link Ownership}), so
+ * a worker whose claim was drained and taken over (a slow batch, a payload build that failed after a takeover), or whose order an administrator
+ * resolved meanwhile, can neither requeue, exhaust, hold nor record over the new owner: it writes nothing and answers "skipped". Lock order is
+ * the advisory lock for a prescription id (success only), then the ORDER row, then the transmission row.
  */
 async function settle(
   deps: M12CronDeps,
@@ -356,7 +404,7 @@ async function settle(
   c: Claimed,
   attempt: Attempt,
 ): Promise<"transmitted" | "requeued" | "failed" | "deferred" | "held" | "skipped"> {
-  const { outcome, ownedAt } = attempt;
+  const { outcome, owns } = attempt;
   // a superseded claim belongs to another worker now: nothing of this worker's is written
   if (outcome.kind === "superseded") return "skipped";
   const now = nowOf(deps);
@@ -370,18 +418,12 @@ async function settle(
         aggregateKind: "medication_order",
         aggregateId: orderId,
       });
-    /** The order row only while it is still this worker's claim; every MO write below repeats the predicate. */
-    const stillMine = and(
-      eq(MO.id, orderId),
-      eq(MO.status, "queued_for_transmission"),
-      eq(MO.dosespotSendState, "in_flight"),
-      eq(MO.updatedAt, ownedAt),
-    );
+    /** Every MO write below repeats the predicate. */
+    const stillMine = orderStillTheWorkers(orderId, owns);
 
     if (outcome.kind === "success")
       await lockPrescriptionId(tx, organizationId, outcome.prescriptionId);
-    const [owned] = await tx.select({ id: MO.id }).from(MO).where(stillMine).limit(1).for("update");
-    if (!owned) {
+    if (!(await lockOwnership(tx, c, owns))) {
       if (outcome.kind === "success") {
         // DoseSpot accepted a prescription for an order this worker no longer owns (an administrator resolved it meanwhile, say): it cannot be
         // recorded over their decision, so it is said, with ids only
