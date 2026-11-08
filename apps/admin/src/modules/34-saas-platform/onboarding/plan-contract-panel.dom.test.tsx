@@ -153,6 +153,17 @@ describe("PlanContractPanel", () => {
       billingServiceMode: "none",
     });
     expect(client.POST).toHaveBeenCalledTimes(1);
+    // a price for other inputs is not this price: changing staff, census or collections clears it
+    for (const [label, value] of [
+      ["Staff accounts", "13"],
+      ["Average daily census", "15"],
+      [/^Expected net collections/, "60000"],
+    ] as const) {
+      fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
+      expect(await screen.findByText("$1,088.00")).toBeTruthy();
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+      expect(screen.queryByText("$1,088.00")).toBeNull();
+    }
   });
 
   it("a blank staff count or census is not zero: it asks for them, and prices nothing", async () => {

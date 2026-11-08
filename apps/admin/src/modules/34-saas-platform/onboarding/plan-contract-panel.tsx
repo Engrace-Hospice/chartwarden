@@ -366,19 +366,28 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
                   label="Staff accounts"
                   inputMode="numeric"
                   value={staff}
-                  onChange={(e) => setStaff(e.target.value)}
+                  onChange={(e) => {
+                    setStaff(e.target.value);
+                    setPreview(null);
+                  }}
                 />
                 <TextField
                   label="Average daily census"
                   inputMode="decimal"
                   value={census}
-                  onChange={(e) => setCensus(e.target.value)}
+                  onChange={(e) => {
+                    setCensus(e.target.value);
+                    setPreview(null);
+                  }}
                 />
                 <TextField
                   label="Expected net collections a month (dollars)"
                   inputMode="decimal"
                   value={collections}
-                  onChange={(e) => setCollections(e.target.value)}
+                  onChange={(e) => {
+                    setCollections(e.target.value);
+                    setPreview(null);
+                  }}
                 />
               </div>
               {inputError ? <InlineAlert tone="error">{inputError}</InlineAlert> : null}
