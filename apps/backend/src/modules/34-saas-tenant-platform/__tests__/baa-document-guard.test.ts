@@ -1,6 +1,10 @@
 // The BAA register's document link: judged by M22's check on the write's own transaction (the live wizard suite proves it on real rows).
 import { describe, expect, it, vi } from "vitest";
-import { assertBaaDocumentFiled, governingBaaDocumentFiled } from "../routes/platform/baa-guards";
+import {
+  assertBaaDocumentFiled,
+  baaLinkNeedsJudging,
+  governingBaaDocumentFiled,
+} from "../routes/platform/baa-guards";
 
 const REF = { organizationId: "org-1", documentId: "doc-1" };
 
@@ -51,5 +55,21 @@ describe("governingBaaDocumentFiled: the one rule go-live rests on", () => {
       governingBaaDocumentFiled({ organizationId: "org-1", documentId: null }, isFiled),
     ).resolves.toBe(false);
     expect(isFiled).not.toHaveBeenCalled();
+  });
+});
+
+describe("baaLinkNeedsJudging", () => {
+  const executed = { baaStatus: "executed", documentId: "legacy-doc" };
+  it("judges a new link and a transition to executed", () => {
+    expect(baaLinkNeedsJudging(executed, { documentId: "new-doc" })).toBe(true);
+    expect(
+      baaLinkNeedsJudging({ baaStatus: "pending", documentId: null }, { baaStatus: "executed" }),
+    ).toBe(true);
+  });
+
+  it("does not re-judge an executed row on an unrelated edit, or when the same link is sent again", () => {
+    expect(baaLinkNeedsJudging(executed, {})).toBe(false);
+    expect(baaLinkNeedsJudging(executed, { documentId: "legacy-doc" })).toBe(false);
+    expect(baaLinkNeedsJudging(executed, { baaStatus: "executed" })).toBe(false);
   });
 });

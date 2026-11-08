@@ -27,6 +27,20 @@ export function assertExecutedBaaHasDocument(input: {
   }
 }
 
+/**
+ * Whether an UPDATE must judge the record's document link: when the link changes or the record becomes executed. Never on an unrelated
+ * edit (the expiry of an executed row whose legacy link predates the check), so such a row stays correctable; a legacy link still proves
+ * nothing, because go-live and step 3 judge the governing record's document themselves (`governingBaaDocumentFiled`).
+ */
+export function baaLinkNeedsJudging(
+  existing: { readonly baaStatus: string; readonly documentId: string | null },
+  args: { readonly baaStatus?: string; readonly documentId?: string },
+): boolean {
+  const linkChanges = args.documentId !== undefined && args.documentId !== existing.documentId;
+  const becomesExecuted = args.baaStatus === "executed" && existing.baaStatus !== "executed";
+  return linkChanges || becomesExecuted;
+}
+
 /** The check M22 provides, bound to one transaction (or, for the in-memory twin, to its own stand-in). */
 export type BaaDocumentCheck = (ref: {
   readonly organizationId: string;

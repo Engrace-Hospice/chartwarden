@@ -115,9 +115,9 @@ export interface OnboardingDataService {
     expected: { readonly recordedAt: string | null },
   ): Promise<OnboardingNoticeView>;
   /**
-   * The operator uploads the signed BAA for the tenant (onboarding step 3): M22's own upload pipeline files one document kind
-   * (`tenant_baa`) on the tenant's RLS scope, and the BAA register row then links the returned id. Only while the tenant is provisioning or
-   * onboarding; a successful upload voids a pending go-live attestation like any other onboarding data write.
+   * The operator uploads the signed BAA for the tenant (onboarding step 3, or a live tenant's renewal): M22's own upload pipeline files one
+   * document kind (`tenant_baa`) on the tenant's RLS scope, and the BAA register row then links the returned id. Only in
+   * `BAA_DOCUMENT_UPLOAD_STATUSES` (being set up, or live; never offboarding or later); a successful upload voids a pending go-live attestation like any other onboarding data write.
    */
   uploadBaaDocument(
     op: OnboardingOperator,

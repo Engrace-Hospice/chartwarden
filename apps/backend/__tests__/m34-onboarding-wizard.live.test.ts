@@ -1975,6 +1975,41 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         });
       });
 
+      it("review fix (register dead end): an unrelated edit of an executed row with a legacy link is accepted; a new link or a transition is judged", async () => {
+        // a legacy row from before the link check: executed, linked to a document that is not this tenant's BAA
+        const legacy = (
+          await admin.query(
+            `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+             VALUES ($1,$2,'v-legacy','executed','2025-10-01','2025-10-01','2026-12-01',$3) RETURNING id`,
+            [ORG_S4, T_S4, await fileDocument(ORG_S2)],
+          )
+        ).rows[0].id as string;
+        await backend().service.updateBaaRecord(legacy, OPS_USER, { expiresOn: "2027-12-01" });
+        expect(await baaRow(legacy)).toMatchObject({ updated_by_user_id: OPS_USER });
+        expect(
+          (
+            await admin.query(
+              "SELECT expires_on::text AS e FROM platform_tenant_baa_record WHERE id=$1",
+              [legacy],
+            )
+          ).rows[0].e,
+        ).toBe("2027-12-01");
+        // re-linking it is judged: another tenant's document is still refused, its own filed renewal is accepted
+        const refused = await refusal(
+          backend().service.updateBaaRecord(legacy, OPS_USER, {
+            documentId: await fileDocument(ORG_S2),
+          }),
+        );
+        expect(refused.code).toBe("BAA_DOCUMENT_INVALID");
+        const renewal = await fileDocument(ORG_S4);
+        await backend().service.updateBaaRecord(legacy, OPS_USER, { documentId: renewal });
+        expect(await baaRow(legacy)).toMatchObject({ document_id: renewal });
+        await admin.query(
+          "UPDATE platform_tenant_baa_record SET baa_status='terminated' WHERE id=$1",
+          [legacy],
+        );
+      });
+
       it("go-live judges the governing BAA's document too: the wizard store says whether the link verifies, with the real adapter", async () => {
         const governing = async () =>
           createDrizzleWizardRunner({

@@ -1,6 +1,6 @@
 -- compat: expand
--- M34 - tenant_baa_document.upload_platform: a platform operator uploads the signed BAA for a tenant that is still onboarding (owner
--- decision 2026-11-06). The NARROWEST grant that does it: the key admits one route, which files one document kind (`tenant_baa`) for
+-- M34 - tenant_baa_document.upload_platform: a platform operator uploads the signed BAA for a tenant that is onboarding (owner
+-- decision 2026-11-06), or a live tenant's renewal. The NARROWEST grant that does it: the key admits one route, which files one document kind (`tenant_baa`) for
 -- the tenant in the path, on the tenant's own RLS scope (`app.org_id` = that tenant). It is NOT `documents.upload`: the key reads no
 -- document, lists none, and uploads no other kind. Mirrored into the DB catalog (the 1352 / 1355 shape) and bound to the
 -- platform-owned `platform_ops` role row where it already exists (the template grant in packages/auth/src/roles/templates.ts). Only

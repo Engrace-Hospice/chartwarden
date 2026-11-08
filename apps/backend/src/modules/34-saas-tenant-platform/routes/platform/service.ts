@@ -18,6 +18,7 @@ import {
   type BaaDocumentCheck,
   assertBaaDocumentFiled,
   assertExecutedBaaHasDocument,
+  baaLinkNeedsJudging,
 } from "./baa-guards";
 import { type CursorPage, paginate } from "./concurrency";
 
@@ -1148,8 +1149,8 @@ export function createInMemoryTenantPlatformBackend(
         expiresOn: args.expiresOn ?? b.expiresOn,
         documentId: args.documentId ?? b.documentId,
       };
-      assertExecutedBaaHasDocument(view);
-      if (args.documentId !== undefined || view.baaStatus === "executed") {
+      if (baaLinkNeedsJudging(b, args)) {
+        assertExecutedBaaHasDocument(view);
         await assertBaaDocumentFiled(options.baaDocumentFiled, {
           organizationId: view.organizationId,
           documentId: view.documentId,

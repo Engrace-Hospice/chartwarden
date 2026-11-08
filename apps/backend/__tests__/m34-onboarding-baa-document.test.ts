@@ -425,13 +425,13 @@ describe("service: uploadBaaDocument", () => {
     expect(JSON.stringify(audit[0]?.values)).not.toContain(PDF_BASE64);
   });
 
-  it("accepts only provisioning and onboarding: every other status is a 409, audited, and nothing is filed", async () => {
+  it("accepts a tenant being set up or live (a renewal): offboarding and later is a 409, audited, and nothing is filed", async () => {
     for (const status of schema.tenantAccountStatus.enumValues) {
       const { db, inserts } = stubDb(status);
       const { port, upload } = fakePort();
       const service = buildDrizzleOnboardingDataService({ db, resolveTenant, baaDocuments: port });
       const attempt = service.uploadBaaDocument(OPERATOR, "tenant-b", INPUT, REASON);
-      if (status === "provisioning" || status === "onboarding") {
+      if (["provisioning", "onboarding", "active", "at_risk", "suspended"].includes(status)) {
         await expect(attempt, status).resolves.toBeDefined();
         continue;
       }

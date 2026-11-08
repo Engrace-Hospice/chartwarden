@@ -6,9 +6,10 @@
 // `tenant_lifecycle_platform_ops` predicate (the exact `platform_ops` role), a FRESH step-up, the AI-actor block (a
 // person acts for a tenant, never an AI principal) and `Idempotency-Key`; the body carries a required `reason`
 // (8-500 characters after normalising: whitespace collapsed, control characters removed) that lands on the audit row beside the operator and the tenant. The service then
-// accepts the write only while the tenant is provisioning or onboarding (409 `TENANT_NOT_ONBOARDING` otherwise), with three named
-// exceptions: the clearinghouse switch out of `outside` that names a billing mode (an explicit allowlist of statuses: provisioning,
-// onboarding, active, at_risk, suspended), and the vendor-BAA verification and the notice withdrawal (any status, still locked and audited).
+// accepts the write only while the tenant is provisioning or onboarding (409 `TENANT_NOT_ONBOARDING` otherwise), with four named
+// exceptions: the clearinghouse switch out of `outside` that names a billing mode and the signed-BAA upload (a live tenant's renewal),
+// each on an explicit allowlist of statuses (provisioning, onboarding, active, at_risk, suspended), and the vendor-BAA verification and the
+// notice withdrawal (any status, still locked and audited).
 // READS (masked: no EIN, no secret exists in any view) need the read permission + the same predicate, and are audited.
 //
 // Org and operator are server-side: the tenant is the PATH slug, the operator is the session, never the body.
@@ -477,10 +478,10 @@ export function registerOnboardingDataRoutes(
     },
   );
 
-  // POST baa-document — the operator uploads the signed BAA for a tenant that is still onboarding (step 3). The bytes go through M22's own
-  // upload pipeline (type / size / magic-byte gate, scan, the tenant's bucket) on the tenant's RLS scope; the kind is fixed server-side
-  // and no document is read or listed. The panel then records the BAA (the register row) with the returned document id. Only while the
-  // tenant is provisioning or onboarding (409 otherwise). The body is the bytes, their type and the reason, nothing else.
+  // POST baa-document — the operator uploads the signed BAA for a tenant that is onboarding (step 3) or live (a renewal). The bytes go
+  // through M22's own upload pipeline (type / size / magic-byte gate, scan, the tenant's bucket) on the tenant's RLS scope; the kind is
+  // fixed server-side and no document is read or listed. The panel then records the BAA (the register row) with the returned document id.
+  // Only in BAA_DOCUMENT_UPLOAD_STATUSES (409 otherwise). The body is the bytes, their type and the reason, nothing else.
   app.post(
     "/api/v1/platform/tenants/:orgSlug/baa-document",
     {

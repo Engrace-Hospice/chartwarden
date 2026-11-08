@@ -17,7 +17,8 @@ import { spawnSync } from "node:child_process";
  *     DOCUMENT_IMMUTABLE on a new version, a metadata edit, a link and a tag, and the row is unchanged;
  *   - a tenant user's documents are unaffected: their pre-existing rows are untouched, the other tenant cannot see the BAA, and the
  *     ordinary upload route still works;
- *   - a refused file (type mismatch), an active tenant (409), an unknown tenant (404) store nothing; a failure AFTER the object was stored
+ *   - a live (active) tenant's renewal is filed like an onboarding one
+ *   - a refused file (type mismatch), an offboarding tenant (409), an unknown tenant (404) store nothing; a failure AFTER the object was stored
  *     takes the object back out and leaves no row; an Idempotency-Key retry replays one upload.
  */
 import { createHash } from "node:crypto";
@@ -69,7 +70,8 @@ const PLATFORM_ORG = "a0000000-0000-4000-8000-0000000000a0";
 const ORG_A = "a1000000-0000-4000-8000-0000000000a1"; // another tenant, active, with its own document
 const ORG_B = "b2000000-0000-4000-8000-0000000000b2"; // the tenant being onboarded
 const ORG_D = "d4000000-0000-4000-8000-0000000000d4"; // provisioning
-const ORG_X = "e6000000-0000-4000-8000-0000000000e6"; // active: the upload is refused
+const ORG_X = "e6000000-0000-4000-8000-0000000000e6"; // active: a renewal is filed
+const ORG_Y = "e7000000-0000-4000-8000-0000000000e7"; // offboarding: the upload is refused
 const OPERATOR = "c3000000-0000-4000-8000-0000000000c3";
 const OPERATOR_MEMBERSHIP = "e5000000-0000-4000-8000-0000000000e5";
 const ADMIN_ONLY = "c3000000-0000-4000-8000-0000000000c4"; // platform_admin in the DB: no upload key
@@ -191,6 +193,7 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
       [ORG_B, "baa-b"],
       [ORG_D, "baa-d"],
       [ORG_X, "baa-x"],
+      [ORG_Y, "baa-y"],
     ] as const) {
       await admin.query(
         "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -209,6 +212,7 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
       [ORG_B, "onboarding"],
       [ORG_D, "provisioning"],
       [ORG_X, "active"],
+      [ORG_Y, "offboarding_initiated"],
     ] as const) {
       await admin.query(
         "INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,$3,'b@x.test','p@x.test')",
@@ -439,6 +443,13 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
       expect(written.every((r) => r.actor_user_id === OPERATOR)).toBe(true);
     });
 
+    it("files a live (active) tenant's renewal: the register needs the new signed copy of an executed BAA", async () => {
+      const res = await upload("baa-x");
+      expect(res.statusCode, res.body).toBe(201);
+      expect((await documentsOf(ORG_X)).map((d) => d.aggregate_type)).toEqual(["tenant_baa"]);
+      expect(await auditRows(ORG_X, "m34.tenant_onboarding.write_refused")).toEqual([]);
+    });
+
     it("also files for a provisioning tenant", async () => {
       const res = await upload("baa-d");
       expect(res.statusCode, res.body).toBe(201);
@@ -483,16 +494,16 @@ describe.skipIf(!DB_URL)("M34 BAA document upload, LIVE Postgres on the real rol
       expect(failed.at(-1)?.context).toMatchObject({ errorCode: "UPLOAD_CONTENT_MISMATCH" });
     });
 
-    it("refuses text that is not base64 (422) and a tenant that is active (409, audited), storing nothing", async () => {
+    it("refuses text that is not base64 (422) and a tenant that is offboarding (409, audited), storing nothing", async () => {
       const before = objects.objects.size;
       const bad = await upload("baa-b", { ...BODY, contentBase64: "not base64!!" });
       expect(bad.statusCode, bad.body).toBe(422);
-      const active = await upload("baa-x");
-      expect(active.statusCode, active.body).toBe(409);
-      expect(errorCode(active)).toBe("TENANT_NOT_ONBOARDING");
-      expect(await documentsOf(ORG_X)).toEqual([]);
+      const offboarding = await upload("baa-y");
+      expect(offboarding.statusCode, offboarding.body).toBe(409);
+      expect(errorCode(offboarding)).toBe("TENANT_NOT_ONBOARDING");
+      expect(await documentsOf(ORG_Y)).toEqual([]);
       expect(objects.objects.size).toBe(before);
-      expect(await auditRows(ORG_X, "m34.tenant_onboarding.write_refused")).toHaveLength(1);
+      expect(await auditRows(ORG_Y, "m34.tenant_onboarding.write_refused")).toHaveLength(1);
     });
 
     it("answers 404 for an unknown tenant", async () => {

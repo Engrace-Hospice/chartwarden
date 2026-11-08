@@ -69,6 +69,7 @@ import {
   type BaaDocumentCheck,
   assertBaaDocumentFiled,
   assertExecutedBaaHasDocument,
+  baaLinkNeedsJudging,
   governingBaaDocumentFiled,
 } from "./baa-guards";
 import {
@@ -1340,20 +1341,16 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const repo = new BaaRegisterRepository(tx);
         const existing = await repo.findById(baaId);
         if (!existing) throw new NotFoundError("platform-tenant BAA record");
-        // The row as it will be after this write must still satisfy `executed => document`.
-        assertExecutedBaaHasDocument({
-          baaStatus: args.baaStatus ?? existing.baaStatus,
-          documentId: args.documentId ?? existing.documentId,
-        });
-        // The link is judged whenever it changes or the record is (or becomes) executed: a legacy link that proves nothing cannot
-        // stay under an executed status through an unrelated edit.
-        if (
-          args.documentId !== undefined ||
-          (args.baaStatus ?? existing.baaStatus) === "executed"
-        ) {
+        // Judged only when the link changes or the record becomes executed (see baaLinkNeedsJudging), on the row as it will be.
+        if (baaLinkNeedsJudging(existing, args)) {
+          const documentId = args.documentId ?? existing.documentId;
+          assertExecutedBaaHasDocument({
+            baaStatus: args.baaStatus ?? existing.baaStatus,
+            documentId,
+          });
           await assertBaaDocumentFiled(boundTo(tx), {
             organizationId: existing.organizationId,
-            documentId: args.documentId ?? existing.documentId,
+            documentId,
           });
         }
         const row = await repo.update(baaId, {
