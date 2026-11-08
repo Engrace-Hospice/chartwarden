@@ -198,7 +198,7 @@ export function TenantOverview(): JSX.Element {
     return (
       <div className="wx-list-drawer">
         <div className="wx-list-drawer-main">
-          <div className="wx-list-state" role="alert">
+          <div className="wx-list-state">
             <InlineAlert tone="error">{error ?? "No tenant."}</InlineAlert>
             {notFound ? null : (
               <Button tone="secondary" onClick={() => void load()}>
@@ -462,7 +462,12 @@ function OnboardingCard({
           <span className="wx-nums">
             {done} of {total} steps done
           </span>
-          <progress className="wx-progress" value={pct} max={100} aria-label={`${pct}% complete`} />
+          <progress
+            className="wx-progress-bar"
+            value={pct}
+            max={100}
+            aria-label={`${pct}% complete`}
+          />
           {awaitingApproval ? (
             <InlineAlert tone="warning">
               Waiting for your approval: the compliance officer has attested go-live readiness.

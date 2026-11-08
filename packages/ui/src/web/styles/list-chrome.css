@@ -188,9 +188,25 @@
     justify-content: flex-start;
     align-items: flex-start;
   }
-  /* A field beside a button: line the button up with the input, not the label. */
+  /* A field beside a button: line the button up with the input, not the label. The field's hint/error text is taken out
+     of flow (it drops under the input), so it cannot push the input row above the button's baseline while it shows; the
+     toolbar makes room for it meanwhile. */
   .wx-list-toolbar-fields.is-bottom {
     align-items: flex-end;
+  }
+  .wx-list-toolbar-fields.is-bottom > .wx-field {
+    position: relative;
+  }
+  .wx-list-toolbar-fields.is-bottom > .wx-field > [role="alert"],
+  .wx-list-toolbar-fields.is-bottom > .wx-field > [id$="-hint"] {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: var(--space-2);
+  }
+  .wx-list-toolbar-fields.is-bottom:has(> .wx-field > [role="alert"], > .wx-field > [id$="-hint"]) {
+    padding-bottom: 1.25rem;
   }
   .wx-list-toolbar-fields > .wx-field {
     flex: 1 1 14rem;
@@ -239,6 +255,11 @@
   .wx-list-table td:first-child {
     position: relative;
     padding-left: 1.25rem;
+  }
+  /* A cell of free text (a rationale): capped so a long entry wraps instead of widening the table. */
+  .wx-list-table td.wx-cell-wrap {
+    max-width: 24rem;
+    overflow-wrap: anywhere;
   }
   .wx-list-table tbody tr {
     cursor: pointer;
@@ -323,7 +344,9 @@
     border-radius: var(--radius-md);
     background: var(--color-surface-lowest);
   }
-  .wx-drawer-card h3 {
+  /* A card in the drawer takes an h3 under the drawer's h2; a full-page card under the page h1 takes an h2 in its head. */
+  .wx-drawer-card h3,
+  .wx-drawer-card-head h2 {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -418,8 +441,8 @@
   .wx-grid-span-all {
     grid-column: 1 / -1;
   }
-  /* Thin full-width progress bar in the primary colour. */
-  .wx-progress {
+  /* Thin full-width progress bar in the primary colour (a native <progress>; apps/web's own `.wx-progress` is a div + span). */
+  .wx-progress-bar {
     width: 100%;
     height: 0.5rem;
     overflow: hidden;
@@ -428,13 +451,13 @@
     appearance: none;
     background: var(--color-surface-container);
   }
-  .wx-progress::-webkit-progress-bar {
+  .wx-progress-bar::-webkit-progress-bar {
     background: var(--color-surface-container);
   }
-  .wx-progress::-webkit-progress-value {
+  .wx-progress-bar::-webkit-progress-value {
     background: var(--color-primary);
   }
-  .wx-progress::-moz-progress-bar {
+  .wx-progress-bar::-moz-progress-bar {
     background: var(--color-primary);
   }
   .wx-action-body.is-flush {
@@ -444,9 +467,11 @@
     flex: 1;
     min-width: 0;
   }
-  .wx-drawer-head-main {
+  /* The title block of a card head: shrinks beside its button and wraps a long name instead of pushing the button off. */
+  .wx-card-head-main {
     flex: 1;
     min-width: 0;
+    overflow-wrap: anywhere;
   }
   .wx-checklist-text {
     flex: 1;
@@ -470,6 +495,11 @@
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 1rem;
+  }
+  /* A labelled group of stat cards is a <fieldset>; its default min-width is min-content, which would stop the grid shrinking. */
+  fieldset.wx-stat-grid,
+  fieldset.wx-work-summary {
+    min-width: 0;
   }
   .wx-form-layout {
     display: grid;
@@ -671,6 +701,15 @@
     align-items: center;
     gap: 0.5rem;
     flex-wrap: wrap;
+  }
+  /* A row of labelled fields and a button: the button sits on the inputs' baseline, not on the label line. */
+  .wx-drawer-title-row.is-bottom {
+    align-items: flex-end;
+  }
+  /* A kit select that must be a 44px touch target. The kit sets its 2.5rem minimum inline, hence !important; scope it
+     to the screens that need it rather than changing the kit default. */
+  .wx-touch-select {
+    min-height: 2.75rem !important;
   }
   .wx-kv {
     display: grid;
@@ -1055,14 +1094,15 @@
   .wx-text-muted {
     color: var(--color-on-surface-variant);
   }
+  /* Alert and success text sit on small type, so they take the pill foreground tokens (the raw colours fail 4.5:1). */
   .wx-text-alert {
-    color: var(--color-alert);
+    color: var(--color-alert-pill-fg);
   }
   .wx-text-error {
     color: var(--color-error);
   }
   .wx-text-success {
-    color: var(--color-success);
+    color: var(--color-success-pill-fg);
   }
   /* A short status with an optional leading glyph in a table cell (Armed / Inactive). */
   .wx-inline-flag {
@@ -1076,7 +1116,9 @@
   }
 }
 
-/* A native checkbox with its label on one line (the audit response late-filing acknowledgement). */
+/* A native checkbox with its label on one line (the audit response late-filing acknowledgement, and the admin console's
+   checkbox rows). It enlarges the box to 1.25rem and the row to a 44px target; apps/web's audit-response panel takes that
+   too, deliberately: it is an accessibility improvement there, not a regression. */
 .wx-action-check {
   display: flex;
   gap: 0.5rem;
