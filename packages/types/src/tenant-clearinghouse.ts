@@ -57,3 +57,10 @@ export function transmitsThroughChartWarden(choice: TenantClearinghouseChoice): 
 export interface TenantClearinghouseReader {
   choiceForOrg(organizationId: string): Promise<TenantClearinghouseChoice>;
 }
+
+/**
+ * How long after an organization's latest production submission a platform operator may not release its earlier clearinghouse
+ * credentials (migration 1404): late acknowledgments and remittances for those claims may still arrive on the vendor account. The
+ * server refuses with 409 CLEARINGHOUSE_RESPONSES_PENDING; the console says the same number.
+ */
+export const CLEARINGHOUSE_RELEASE_QUIET_DAYS = 90;

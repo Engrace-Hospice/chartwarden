@@ -3,7 +3,7 @@
 // (migration 1404), whose partial unique index spans organizations; switching to `outside` or rotating keeps the old reservation, and
 // only the platform-ops release frees it. The database index is the enforcement point: RLS hides the other organization's row, the
 // index is checked regardless, and its unique violation becomes one typed 409 that never names the holder.
-import { ChartWardenError } from "@chartwarden/types";
+import { CLEARINGHOUSE_RELEASE_QUIET_DAYS, ChartWardenError } from "@chartwarden/types";
 import type { TenantClearinghouseMode } from "@chartwarden/types";
 import {
   type ConfigPatch,
@@ -26,7 +26,7 @@ const FINGERPRINT_INDEXES: ReadonlySet<string> = new Set([
  * ponytail: a fixed window over the attempt's reservation time (the only clock a `sent` attempt carries); replace with a per-claim
  * adjudication check when M23 records one.
  */
-export const RELEASE_QUIET_DAYS = 90;
+export const RELEASE_QUIET_DAYS = CLEARINGHOUSE_RELEASE_QUIET_DAYS;
 const DAY_MS = 86_400_000;
 
 /**
