@@ -122,6 +122,28 @@ describe("MacPanel", () => {
     await waitFor(() => expect(ctx.refresh).toHaveBeenCalled());
   });
 
+  it("Cancel drops the typed secret and returns focus to the control that opened the form", async () => {
+    mount([]);
+    await screen.findByText(/No MAC credential yet/);
+    fireEvent.click(screen.getByRole("button", { name: "Add MAC credential" }));
+    expect(document.activeElement?.textContent).toBe("New MAC credential");
+    fill();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Add MAC credential" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add MAC credential" }));
+    expect((screen.getByLabelText(/^Client secret/) as HTMLInputElement).value).toBe("");
+  });
+
+  it("Enter in a field submits the form: it asks for the reason rather than writing", async () => {
+    const { client } = mount([]);
+    await screen.findByText(/No MAC credential yet/);
+    fireEvent.click(screen.getByRole("button", { name: "Add MAC credential" }));
+    fill();
+    fireEvent.submit(screen.getByRole("form", { name: "MAC credential form" }));
+    expect(await screen.findByLabelText(/^Reason/)).toBeTruthy();
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
   it("updates a credential pinned to the version that was read", async () => {
     const { client } = mount([CRED], { POST: { [MAC]: () => ok(CRED) } });
     fireEvent.click(

@@ -1,6 +1,7 @@
 // apps/admin/src/modules/34-saas-platform/onboarding — settle a step with evidence, on the tenant's behalf.
 // The evidence and the reason are recorded on the step and in the audit trail the tenant can read, so the form says so and the server
-// screens both for patient identifiers. A refusal keeps what was typed; a stale step-up offers Re-verify and carries the form through it.
+// screens both for patient identifiers. A refusal keeps what was typed; a stale step-up offers Re-verify and carries the form through it
+// in this tab's memory only: the note, the reference and the reason are free text, and free text never goes to sessionStorage.
 import {
   Button,
   REASON_RULES,
@@ -8,9 +9,9 @@ import {
   TextField,
   checkReason,
   normalizeReason,
-  stashStepUpDraft,
+  stashStepUpMemoryDraft,
   useApiClient,
-  useStepUpDraft,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
@@ -40,7 +41,7 @@ export function AttestCard({
   const client = useApiClient();
   const { orgSlug, step } = ctx;
   const draftKey = attestDraftKey(orgSlug, step.key);
-  const restored = useStepUpDraft<Draft>(draftKey);
+  const restored = useStepUpMemoryDraft<Draft>(draftKey);
   const [note, setNote] = useState(restored?.evidenceNote ?? "");
   const [ref, setRef] = useState(restored?.evidenceRef ?? "");
   const [reason, setReason] = useState(restored?.reason ?? "");
@@ -80,12 +81,20 @@ export function AttestCard({
 
   const failure = write.failure;
   const stash = (): void =>
-    stashStepUpDraft<Draft>(draftKey, { evidenceNote: note, evidenceRef: ref, reason });
+    stashStepUpMemoryDraft<Draft>(draftKey, { evidenceNote: note, evidenceRef: ref, reason });
   const fieldError = (field: string): string | undefined =>
     errors[field as keyof Draft] ?? failure?.fieldErrors[field];
 
   return (
-    <section className="wx-drawer-card" aria-label="Mark this step done">
+    <form
+      className="wx-drawer-card"
+      aria-label="Mark this step done"
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
       <div className="wx-drawer-card-head">
         <h3>Mark this step done</h3>
       </div>
@@ -119,10 +128,10 @@ export function AttestCard({
         <Button tone="secondary" onClick={onCancel} disabled={write.busy}>
           Cancel
         </Button>
-        <Button onClick={() => void submit()} disabled={write.busy}>
+        <Button type="submit" disabled={write.busy}>
           {write.busy ? "Saving…" : "Save and mark done"}
         </Button>
       </div>
-    </section>
+    </form>
   );
 }

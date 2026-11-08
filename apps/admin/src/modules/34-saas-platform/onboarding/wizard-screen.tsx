@@ -10,7 +10,7 @@ import {
   StepRail,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ProvisioningCard } from "../provisioning-card";
@@ -49,6 +49,19 @@ export function TenantOnboardingWizard(): JSX.Element {
   useEffect(() => {
     if (view && !stepKey && resume) navigate(stepPath(orgSlug, resume), { replace: true });
   }, [view, stepKey, resume, orgSlug, navigate]);
+
+  // A change of step moves focus to the new step's heading, so a keyboard or screen-reader user lands on what they opened (the first
+  // step shown, a resume included, keeps the page's own focus).
+  const shownStep = useRef<string | undefined>(undefined);
+  const stepShown = view?.steps.some((s) => s.key === stepKey) ?? false;
+  useEffect(() => {
+    if (!stepShown) return;
+    const previous = shownStep.current;
+    shownStep.current = stepKey;
+    if (previous !== undefined && previous !== stepKey) {
+      document.querySelector<HTMLElement>("[data-step-heading]")?.focus();
+    }
+  }, [stepKey, stepShown]);
 
   const refresh = useCallback(() => wizard.reload(true), [wizard.reload]);
   const titles = useMemo(() => {

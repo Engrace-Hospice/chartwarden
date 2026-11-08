@@ -2,7 +2,7 @@
 // The tenant hub's clearinghouse card: which clearinghouse the tenant uses and how far it got, and the way into the notices the tenant
 // recorded as filed outside ChartWarden. Read on request, like the contract: each read of a tenant's billing setup is audited.
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { ok, refused, renderAt, stubClient } from "./onboarding/test-support";
 import { TenantClearinghouseCard } from "./tenant-clearinghouse-card";
 
@@ -73,6 +73,9 @@ function mount(choice: unknown, contractMode: string | null = null) {
 }
 const reads = (client: ReturnType<typeof stubClient>, path: string) =>
   client.GET.mock.calls.filter((c) => c[0] === path).length;
+
+// a Re-verify stashes the switch form: no test may resume another test's draft
+beforeEach(() => window.sessionStorage.clear());
 
 describe("TenantClearinghouseCard", () => {
   it("reads nothing until the operator asks, and says the read is audited", () => {
@@ -438,7 +441,15 @@ describe("TenantClearinghouseCard: switching a live outside tenant to a vendor",
     fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: reason } });
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Switch" }));
 
-    expect(await screen.findByRole("link", { name: /Re-verify/ })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    const stashed = JSON.parse(
+      window.sessionStorage.getItem(
+        "wx.admin.step-up-draft:wizard:cedar-ridge:clearinghouse:switch",
+      ) ?? "null",
+    ) as { value: { form: Record<string, string>; pinnedVersion: number } } | null;
+    // the form and the pin it was opened on are kept for the return; the credential is not
+    expect(stashed?.value.form).toMatchObject({ vendor: "claimmd", billingServiceMode: "none" });
+    expect(stashed?.value.pinnedVersion).toBe(4);
     expect(JSON.stringify(window.sessionStorage)).not.toContain("vendor-credential-for-test-only");
   });
 });

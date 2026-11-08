@@ -1,6 +1,8 @@
 // apps/admin/src/modules/34-saas-platform/onboarding — step 3, BAA: the business associate agreement between ChartWarden and the tenant.
-// The operator records it (status, dates, the signed document's id); the platform settles the step at once when the latest record is
-// executed, has its document and has more than 90 days left (the same facts the go-live guard judges). The operator who records the BAA
+// The operator records it (status, dates, the signed document's id); the platform settles the step at once when the GOVERNING record
+// (the one the server marks: an undated termination, else the newest dated record) is executed, its signed agreement is filed for this
+// tenant, and it has more than 90 days left (or no expiry). The register says which record governs and whether its document verifies,
+// so these facts are the server's, never a pick of the panel's own. The operator who records the BAA
 // cannot also approve go-live (four eyes), so the panel says so before anyone is surprised at the last step.
 // The operator uploads the signed agreement here (its own permission, a fresh step-up and a reason): the platform files it with the
 // tenant's documents and answers its id, which the BAA record then carries.
@@ -22,6 +24,7 @@ import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
 import { StepFrame } from "./step-frame";
+import { useEditorFocus } from "./use-editor-focus";
 import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
 
@@ -33,6 +36,10 @@ interface BaaRecord {
   effectiveOn: string | null;
   expiresOn: string | null;
   documentId: string | null;
+  /** The server marks the record go-live judges for this tenant. */
+  governing: boolean;
+  /** On the governing record: its document is a signed BAA filed for this tenant (M22). Null on any other record. */
+  documentFiled: boolean | null;
 }
 interface Form {
   addendumVersion: string;
@@ -63,31 +70,62 @@ const BLANK: Form = {
 };
 const draftKey = (orgSlug: string): string => `wizard:${orgSlug}:baa_executed:record`;
 
-/** The facts that settle the step, judged on the record the go-live guard would pick: the executed one with the latest expiry. */
+/**
+ * The facts that settle the step, judged as the server judges them (activation-guards.ts): on the record the register marks `governing`,
+ * executed with its signed agreement filed for this tenant (`documentFiled`), and more than 90 days left; a record with no expiry does not
+ * expire.
+ */
 export function baaFacts(records: readonly BaaRecord[], today: Date): Fact[] {
-  const executed = records
-    .filter((r) => r.baaStatus === "executed")
-    .sort((a, b) => (b.expiresOn ?? "9999").localeCompare(a.expiresOn ?? "9999"))[0];
+  const governing = records.find((r) => r.governing);
+  const statusExecuted = governing?.baaStatus === "executed";
+  const executed = statusExecuted && governing?.documentFiled !== false;
   const daysLeft =
-    executed?.expiresOn != null
+    governing?.expiresOn != null
       ? Math.floor(
-          (new Date(`${executed.expiresOn}T00:00:00Z`).getTime() - today.getTime()) / DAY_MS,
+          (new Date(`${governing.expiresOn}T00:00:00Z`).getTime() - today.getTime()) / DAY_MS,
         )
       : null;
+  const expiryState = !executed
+    ? "pending"
+    : daysLeft === null || daysLeft > MIN_DAYS_LEFT
+      ? "ok"
+      : "blocked";
   return [
-    { key: "executed", label: "A BAA is executed", state: executed ? "ok" : "pending" },
+    {
+      key: "executed",
+      label: "The governing BAA is executed",
+      state: statusExecuted ? "ok" : "pending",
+      ...(governing && !statusExecuted
+        ? {
+            detail: `The record that governs (${governing.addendumVersion}) is ${governing.baaStatus}.`,
+          }
+        : {}),
+    },
     {
       key: "document",
-      label: "Its signed document is linked",
-      state: executed?.documentId ? "ok" : "pending",
+      label: "Its signed agreement is filed for this tenant",
+      state:
+        governing?.documentFiled === true
+          ? "ok"
+          : statusExecuted && governing?.documentFiled === false
+            ? "blocked"
+            : "pending",
+      ...(statusExecuted && governing?.documentFiled === false
+        ? {
+            detail:
+              "The linked document is not a signed BAA filed for this tenant: upload the signed agreement and link it.",
+          }
+        : {}),
     },
     {
       key: "expiry",
       label: `It has more than ${MIN_DAYS_LEFT} days left`,
-      state: daysLeft === null ? "pending" : daysLeft > MIN_DAYS_LEFT ? "ok" : "blocked",
-      ...(executed && daysLeft === null ? { detail: "No expiry date is recorded yet." } : {}),
-      ...(daysLeft !== null && daysLeft <= MIN_DAYS_LEFT
-        ? { detail: `Expires ${executed?.expiresOn}: ${Math.max(daysLeft, 0)} days left.` }
+      state: expiryState,
+      ...(executed && daysLeft === null
+        ? { detail: "No expiry date is recorded: it does not expire." }
+        : {}),
+      ...(expiryState === "blocked" && daysLeft !== null
+        ? { detail: `Expires ${governing?.expiresOn}: ${Math.max(daysLeft, 0)} days left.` }
         : {}),
     },
   ];
@@ -165,17 +203,21 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
       ...(form.documentId.trim() ? { documentId: form.documentId.trim() } : {}),
     };
     const id = editing.id;
-    const outcome = await write.run(`${id ?? "new"}:${JSON.stringify(fields)}`, (key) =>
-      id === null
-        ? client.POST("/api/v1/platform/baa-register", {
-            body: { tenantAccountId, addendumVersion: form.addendumVersion.trim(), ...fields },
-            headers: { "Idempotency-Key": key },
-          })
-        : client.PATCH("/api/v1/platform/baa-register/{id}", {
-            params: { path: { id } },
-            body: fields,
-            headers: { "Idempotency-Key": key },
-          }),
+    const addendumVersion = form.addendumVersion.trim();
+    // the whole body is the fingerprint: a create's addendum version is part of it, so a corrected version is a new attempt
+    const outcome = await write.run(
+      `${id ?? "new"}:${id === null ? addendumVersion : ""}:${JSON.stringify(fields)}`,
+      (key) =>
+        id === null
+          ? client.POST("/api/v1/platform/baa-register", {
+              body: { tenantAccountId, addendumVersion, ...fields },
+              headers: { "Idempotency-Key": key },
+            })
+          : client.PATCH("/api/v1/platform/baa-register/{id}", {
+              params: { path: { id } },
+              body: fields,
+              headers: { "Idempotency-Key": key },
+            }),
     );
     if (outcome.ok) {
       setEditing(null);
@@ -185,6 +227,7 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
 
   const fieldError = (field: keyof Form): string | undefined =>
     errors[field] ?? write.failure?.fieldErrors[field];
+  const editorHeading = useEditorFocus(editing !== null && canWrite, "baa");
 
   return (
     <StepFrame ctx={ctx}>
@@ -192,7 +235,7 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         <div className="wx-drawer-card-head">
           <h3>Business associate agreement</h3>
           {canWrite && !editing ? (
-            <Button size="sm" tone="secondary" onClick={() => open(null)}>
+            <Button size="sm" tone="secondary" data-editor-return="baa" onClick={() => open(null)}>
               Record BAA
             </Button>
           ) : null}
@@ -226,7 +269,10 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
                   <td>{r.baaStatus}</td>
                   <td className="wx-nums">{r.executedOn ?? "—"}</td>
                   <td className="wx-nums">{r.expiresOn ?? "—"}</td>
-                  <td>{r.documentId ? "Linked" : "—"}</td>
+                  <td>
+                    {r.documentId ? "Linked" : "—"}
+                    {r.governing ? " · Governs" : ""}
+                  </td>
                   <td>
                     {canWrite ? (
                       <Button
@@ -247,9 +293,19 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
       </section>
 
       {editing && canWrite ? (
-        <section className="wx-drawer-card" aria-label="BAA form">
+        <form
+          className="wx-drawer-card"
+          aria-label="BAA form"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
           <div className="wx-drawer-card-head">
-            <h3>{editing.id === null ? "Record a BAA" : "Edit BAA"}</h3>
+            <h3 ref={editorHeading} tabIndex={-1}>
+              {editing.id === null ? "Record a BAA" : "Edit BAA"}
+            </h3>
           </div>
           <PendingAttestationWarning view={view} />
           <div className="wx-form-grid">
@@ -313,11 +369,11 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
             <Button tone="secondary" onClick={() => setEditing(null)}>
               Cancel
             </Button>
-            <Button onClick={() => void save()} disabled={write.busy}>
+            <Button type="submit" disabled={write.busy}>
               {write.busy ? "Saving…" : "Save BAA"}
             </Button>
           </div>
-        </section>
+        </form>
       ) : null}
     </StepFrame>
   );

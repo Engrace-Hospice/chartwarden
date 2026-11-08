@@ -18,6 +18,7 @@ import type { PanelContext } from "./panel-types";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { StepFrame } from "./step-frame";
+import { useEditorFocus } from "./use-editor-focus";
 import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
 
@@ -190,6 +191,7 @@ export function LocationsPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   const fieldError = (field: keyof Form): string | undefined =>
     errors[field] ?? write.failure?.fieldErrors[field];
   const needsEntity = entities.data !== null && entityList.length === 0;
+  const editorHeading = useEditorFocus(editing !== null && canWrite, "location");
 
   return (
     <StepFrame ctx={ctx}>
@@ -197,7 +199,12 @@ export function LocationsPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         <div className="wx-drawer-card-head">
           <h3>Locations</h3>
           {canWrite && !editing && !needsEntity ? (
-            <Button size="sm" tone="secondary" onClick={() => open(null)}>
+            <Button
+              size="sm"
+              tone="secondary"
+              data-editor-return="location"
+              onClick={() => open(null)}
+            >
               Add location
             </Button>
           ) : null}
@@ -247,9 +254,19 @@ export function LocationsPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
       </section>
 
       {editing && canWrite ? (
-        <section className="wx-drawer-card" aria-label="Location form">
+        <form
+          className="wx-drawer-card"
+          aria-label="Location form"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            askForReason();
+          }}
+        >
           <div className="wx-drawer-card-head">
-            <h3>{editing.id === null ? "New location" : "Edit location"}</h3>
+            <h3 ref={editorHeading} tabIndex={-1}>
+              {editing.id === null ? "New location" : "Edit location"}
+            </h3>
           </div>
           <PendingAttestationWarning view={view} />
           <div className="wx-form-grid">
@@ -313,12 +330,12 @@ export function LocationsPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
             <Button tone="secondary" onClick={() => setEditing(null)}>
               Cancel
             </Button>
-            <Button onClick={askForReason}>Save location</Button>
+            <Button type="submit">Save location</Button>
           </div>
           {write.failure && !asking ? (
             <FailureNotice failure={write.failure} orgSlug={orgSlug} />
           ) : null}
-        </section>
+        </form>
       ) : null}
 
       <RecordSaveDialog

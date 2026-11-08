@@ -8,7 +8,7 @@ import {
   ReasonDialog,
   StatusPill,
   type StatusTone,
-  peekStepUpDraft,
+  peekStepUpMemoryDraft,
   useApiClient,
 } from "@chartwarden/ui";
 import { useState } from "react";
@@ -100,7 +100,8 @@ export function StepFrame({
   const { step, actions, orgSlug } = ctx;
   // Coming back from Re-verify with a stashed form: the card opens with what was typed (the card itself restores it).
   const [attesting, setAttesting] = useState(
-    () => actions.canAttest && peekStepUpDraft(attestDraftKey(orgSlug, step.key)) !== undefined,
+    () =>
+      actions.canAttest && peekStepUpMemoryDraft(attestDraftKey(orgSlug, step.key)) !== undefined,
   );
   const [dialog, setDialog] = useState<Dialog>(null);
   const write = useOpsWrite();
@@ -133,7 +134,10 @@ export function StepFrame({
     <div className="wx-wizard-panel">
       <section className="wx-drawer-card" aria-label={step.title}>
         <div className="wx-drawer-card-head">
-          <h2>{step.title}</h2>
+          {/* wizard-screen moves focus here when the operator changes step */}
+          <h2 tabIndex={-1} data-step-heading="">
+            {step.title}
+          </h2>
           <StatusPill label={statusLabel(step.status)} tone={STEP_TONE[step.status] ?? "neutral"} />
         </div>
         <p className="wx-row-sub">

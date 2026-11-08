@@ -2,7 +2,7 @@
 // credential is write-only (sealed under the tenant's own key, never returned, never stashed through a re-verify: the operator types it
 // again). Outside takes no mode and no credential. A first choice, and any change of vendor or mode, needs a credential.
 import { Button, InlineAlert, SelectField, TextField } from "@chartwarden/ui";
-import type { JSX } from "react";
+import type { JSX, Ref } from "react";
 import {
   type ClearinghouseMode,
   type ClearinghouseVendor,
@@ -147,6 +147,7 @@ export function ChoiceFormCard({
   onContinue,
   vendors = VENDORS,
   title,
+  headingRef,
 }: {
   view: ClearinghouseView;
   form: ChoiceForm;
@@ -156,6 +157,8 @@ export function ChoiceFormCard({
   /** The vendors offered (all three by default; a switch OUT of outside offers only the two that transmit). */
   vendors?: readonly { value: ClearinghouseVendor; label: string }[];
   title?: string;
+  /** The caller's editor-focus ref: focus lands on the heading when the card opens. */
+  headingRef?: Ref<HTMLHeadingElement>;
   onChange: (next: ChoiceForm) => void;
   onSecret: (value: string) => void;
   onCancel: () => void;
@@ -165,9 +168,17 @@ export function ChoiceFormCard({
   const secretNeeded = needsSecret(view, form);
   const leavingOutside = isLeavingOutside(view, form, context);
   return (
-    <section className="wx-drawer-card" aria-label="Clearinghouse choice">
+    <form
+      className="wx-drawer-card"
+      aria-label="Clearinghouse choice"
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault();
+        onContinue();
+      }}
+    >
       <div className="wx-drawer-card-head">
-        <h3>
+        <h3 ref={headingRef} tabIndex={-1}>
           {title ??
             (view.vendor === null ? "Choose the clearinghouse" : "Change the clearinghouse")}
         </h3>
@@ -222,8 +233,8 @@ export function ChoiceFormCard({
         <Button tone="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button onClick={onContinue}>Continue</Button>
+        <Button type="submit">Continue</Button>
       </div>
-    </section>
+    </form>
   );
 }

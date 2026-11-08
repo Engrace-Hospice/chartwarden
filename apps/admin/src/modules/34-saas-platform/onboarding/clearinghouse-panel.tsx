@@ -43,6 +43,7 @@ import { PendingAttestationWarning } from "./pending-attestation-warning";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { StaleNotice } from "./stale-notice";
 import { StepFrame } from "./step-frame";
+import { useEditorFocus } from "./use-editor-focus";
 import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
 
@@ -298,6 +299,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
 
   const facts: Fact[] = current ? clearinghouseFacts(current) : [];
   const vendorChosen = current !== null && isTransmitting(current) && current.source === "tenant";
+  const choiceHeading = useEditorFocus(editing && canWrite && current !== null, "clearinghouse");
 
   return (
     <StepFrame ctx={ctx}>
@@ -306,7 +308,12 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
         <div className="wx-drawer-card-head">
           <h3>Clearinghouse</h3>
           {canWrite && current && !editing ? (
-            <Button size="sm" tone="secondary" onClick={openChoice}>
+            <Button
+              size="sm"
+              tone="secondary"
+              data-editor-return="clearinghouse"
+              onClick={openChoice}
+            >
               {current.vendor !== null && current.source === "tenant"
                 ? "Change"
                 : "Choose clearinghouse"}
@@ -376,6 +383,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
         <>
           <PendingAttestationWarning view={wizard} />
           <ChoiceFormCard
+            headingRef={choiceHeading}
             view={current}
             form={form}
             secret={secret}

@@ -89,8 +89,11 @@ export {
   STEP_UP_DRAFT_TTL_MS,
   discardStepUpDrafts,
   peekStepUpDraft,
+  peekStepUpMemoryDraft,
   stashStepUpDraft,
+  stashStepUpMemoryDraft,
   useStepUpDraft,
+  useStepUpMemoryDraft,
 } from "./components/step-up-draft";
 export { StatusPill } from "./components/status-pill";
 export type { StatusPillProps, StatusTone } from "./components/status-pill";

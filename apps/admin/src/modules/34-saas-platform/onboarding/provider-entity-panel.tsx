@@ -6,6 +6,7 @@ import {
   Button,
   type Fact,
   FactList,
+  InlineAlert,
   TextField,
   stashStepUpDraft,
   useApiClient,
@@ -19,6 +20,7 @@ import type { PanelContext } from "./panel-types";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { StepFrame } from "./step-frame";
+import { useEditorFocus } from "./use-editor-focus";
 import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
 
@@ -43,7 +45,7 @@ interface Form {
   fiscalYearEnd: string;
   iqiesFacilityId: string;
 }
-type Errors = Partial<Record<keyof Form | "taxId", string>>;
+type Errors = Partial<Record<keyof Form | "taxId" | "taxIdConfirm", string>>;
 
 const BLANK: Form = {
   ccn: "",
@@ -67,13 +69,20 @@ const formOf = (e: Entity): Form => ({
   iqiesFacilityId: e.iqiesFacilityId ?? "",
 });
 
-function validate(form: Form, taxId: string, creating: boolean): Errors {
+/** An EIN as typed, with or without its hyphen (12-3456789): nine digits once the hyphen is dropped. */
+const einDigits = (value: string): string => value.trim().replace(/-/g, "");
+
+function validate(form: Form, taxId: string, taxIdConfirm: string, creating: boolean): Errors {
   const errors: Errors = {};
   if (form.legalName.trim() === "") errors.legalName = "Enter the legal name.";
   if (creating) {
     if (!/^[0-9A-Z]{6}$/.test(form.ccn.trim())) errors.ccn = "A CCN is six letters or digits.";
     if (!/^[0-9]{10}$/.test(form.npi.trim())) errors.npi = "An NPI is ten digits.";
-    if (taxId.trim() === "") errors.taxId = "Enter the EIN, for example 12-3456789.";
+    // Write-once and typed masked: nine digits, entered twice, so a typo is caught here and not after it is sealed.
+    if (!/^[0-9]{9}$/.test(einDigits(taxId)))
+      errors.taxId = "An EIN is nine digits, for example 12-3456789.";
+    else if (einDigits(taxIdConfirm) !== einDigits(taxId))
+      errors.taxIdConfirm = "The two EINs do not match. Enter it again.";
     if (!/^[0-9]{4}$/.test(form.fiscalYearEnd.trim()))
       errors.fiscalYearEnd = "Four digits, month then day: 0630.";
   }
@@ -98,6 +107,7 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
   );
   const [form, setForm] = useState<Form>(restored?.form ?? BLANK);
   const [taxId, setTaxId] = useState("");
+  const [taxIdConfirm, setTaxIdConfirm] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const [asking, setAsking] = useState(false);
   const write = useOpsWrite();
@@ -110,12 +120,13 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
     write.clear();
     setErrors({});
     setTaxId("");
+    setTaxIdConfirm("");
     setForm(entity ? formOf(entity) : BLANK);
     setEditing({ id: entity?.id ?? null });
   }
 
   function askForReason(): void {
-    const found = validate(form, taxId, editing?.id === null);
+    const found = validate(form, taxId, taxIdConfirm, editing?.id === null);
     setErrors(found);
     if (Object.keys(found).length === 0) setAsking(true);
   }
@@ -158,6 +169,7 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
       setAsking(false);
       setEditing(null);
       setTaxId("");
+      setTaxIdConfirm("");
       await Promise.all([list.reload(true), ctx.refresh()]);
     }
   }
@@ -186,6 +198,13 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
   ];
   const fieldError = (field: keyof Errors): string | undefined =>
     errors[field] ?? write.failure?.fieldErrors[field];
+  const editorHeading = useEditorFocus(editing !== null && canWrite, "provider-entity");
+  function cancel(): void {
+    // the EIN is never kept: not in a stash, and not in a form that was cancelled
+    setTaxId("");
+    setTaxIdConfirm("");
+    setEditing(null);
+  }
 
   return (
     <StepFrame ctx={ctx}>
@@ -193,7 +212,12 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
         <div className="wx-drawer-card-head">
           <h3>Provider entities</h3>
           {canWrite && !editing ? (
-            <Button size="sm" tone="secondary" onClick={() => open(null)}>
+            <Button
+              size="sm"
+              tone="secondary"
+              data-editor-return="provider-entity"
+              onClick={() => open(null)}
+            >
               Add provider entity
             </Button>
           ) : null}
@@ -243,11 +267,27 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
       </section>
 
       {editing && canWrite ? (
-        <section className="wx-drawer-card" aria-label="Provider entity form">
+        <form
+          className="wx-drawer-card"
+          aria-label="Provider entity form"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            askForReason();
+          }}
+        >
           <div className="wx-drawer-card-head">
-            <h3>{editing.id === null ? "New provider entity" : "Edit provider entity"}</h3>
+            <h3 ref={editorHeading} tabIndex={-1}>
+              {editing.id === null ? "New provider entity" : "Edit provider entity"}
+            </h3>
           </div>
           <PendingAttestationWarning view={view} />
+          {editing.id === null ? (
+            <InlineAlert tone="info">
+              The CCN, NPI, EIN and fiscal year end cannot be changed after saving. Check them
+              before you save.
+            </InlineAlert>
+          ) : null}
           <div className="wx-form-grid">
             {editing.id === null ? (
               <>
@@ -304,19 +344,28 @@ export function ProviderEntityPanel({ ctx }: { ctx: PanelContext }): JSX.Element
                   onChange={(e) => setTaxId(e.target.value)}
                   error={fieldError("taxId")}
                 />
+                <TextField
+                  label="Confirm EIN"
+                  hint="Enter the EIN again: it cannot be shown or changed after saving."
+                  type="password"
+                  autoComplete="new-password"
+                  value={taxIdConfirm}
+                  onChange={(e) => setTaxIdConfirm(e.target.value)}
+                  error={fieldError("taxIdConfirm")}
+                />
               </>
             ) : null}
           </div>
           <div className="wx-drawer-actions">
-            <Button tone="secondary" onClick={() => setEditing(null)}>
+            <Button tone="secondary" onClick={cancel}>
               Cancel
             </Button>
-            <Button onClick={askForReason}>Save provider entity</Button>
+            <Button type="submit">Save provider entity</Button>
           </div>
           {write.failure && !asking ? (
             <FailureNotice failure={write.failure} orgSlug={orgSlug} />
           ) : null}
-        </section>
+        </form>
       ) : null}
 
       <RecordSaveDialog

@@ -19,6 +19,7 @@ import type { PanelContext } from "./panel-types";
 import { PendingAttestationWarning } from "./pending-attestation-warning";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { StepFrame } from "./step-frame";
+import { useEditorFocus } from "./use-editor-focus";
 import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
 
@@ -193,6 +194,7 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   const fieldError = (field: keyof Errors): string | undefined =>
     errors[field] ?? write.failure?.fieldErrors[field];
   const creating = editing !== null && editing.pinnedVersion === null;
+  const editorHeading = useEditorFocus(editing !== null && canWrite, "mac");
 
   return (
     <StepFrame ctx={ctx}>
@@ -200,7 +202,7 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         <div className="wx-drawer-card-head">
           <h3>MAC credentials</h3>
           {canWrite && !editing && entityList.length > 0 && items.length === 0 ? (
-            <Button size="sm" tone="secondary" onClick={() => open(null)}>
+            <Button size="sm" tone="secondary" data-editor-return="mac" onClick={() => open(null)}>
               Add MAC credential
             </Button>
           ) : null}
@@ -261,9 +263,19 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
       ) : null}
 
       {editing && canWrite ? (
-        <section className="wx-drawer-card" aria-label="MAC credential form">
+        <form
+          className="wx-drawer-card"
+          aria-label="MAC credential form"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            askForReason();
+          }}
+        >
           <div className="wx-drawer-card-head">
-            <h3>{creating ? "New MAC credential" : "Replace MAC credential"}</h3>
+            <h3 ref={editorHeading} tabIndex={-1}>
+              {creating ? "New MAC credential" : "Replace MAC credential"}
+            </h3>
           </div>
           <PendingAttestationWarning view={view} />
           <div className="wx-form-grid">
@@ -315,15 +327,22 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
             />
           </div>
           <div className="wx-drawer-actions">
-            <Button tone="secondary" onClick={() => setEditing(null)}>
+            <Button
+              tone="secondary"
+              onClick={() => {
+                // the write-only secret never outlives the form it was typed into
+                setClientSecret("");
+                setEditing(null);
+              }}
+            >
               Cancel
             </Button>
-            <Button onClick={askForReason}>Save credential</Button>
+            <Button type="submit">Save credential</Button>
           </div>
           {write.failure && !asking ? (
             <FailureNotice failure={write.failure} orgSlug={orgSlug} />
           ) : null}
-        </section>
+        </form>
       ) : null}
 
       <RecordSaveDialog

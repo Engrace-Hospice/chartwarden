@@ -1,3 +1,4 @@
+import { peekStepUpMemoryDraft, stashStepUpMemoryDraft } from "@chartwarden/ui";
 // @vitest-environment jsdom
 // The onboarding wizard screen: one ordered list of steps, the current one open, every write behind a reason and (when it is refused)
 // an explanation the operator can act on. The server owns the rules; this proves what the operator sees and what is sent.
@@ -97,6 +98,12 @@ describe("TenantOnboardingWizard: reading", () => {
     expect(await screen.findByRole("heading", { level: 2, name: "Organisation" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Billing: MAC credentials/ }));
     await waitFor(() => expect(where()).toBe(`${URL_BASE}/mac_configured`));
+    // a change of step moves focus to the new step's heading
+    const heading = await screen.findByRole("heading", {
+      level: 2,
+      name: "Billing: MAC credentials",
+    });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
   it("says a locked step is locked and offers no write on it", async () => {
@@ -240,24 +247,27 @@ describe("TenantOnboardingWizard: marking a step done with evidence", () => {
     const reverify = await screen.findByRole("link", { name: /Re-verify/ });
     fireEvent.click(reverify);
     expect(await screen.findByText("step-up page")).toBeTruthy();
-    const stashed = window.sessionStorage.getItem(
-      "wx.admin.step-up-draft:wizard:cedar-ridge:payer_enrollment:attest",
+    // free text (the note, the reference, the reason) is kept in memory only, never in sessionStorage
+    expect(
+      window.sessionStorage.getItem(
+        "wx.admin.step-up-draft:wizard:cedar-ridge:payer_enrollment:attest",
+      ),
+    ).toBeNull();
+    expect(JSON.stringify({ ...window.sessionStorage })).not.toContain(
+      "Confirmed enrolment letter",
     );
-    expect(stashed).toContain("Confirmed enrolment letter");
+    expect(
+      peekStepUpMemoryDraft<{ evidenceNote: string }>("wizard:cedar-ridge:payer_enrollment:attest")
+        ?.evidenceNote,
+    ).toBe("Confirmed enrolment letter");
   });
 
   it("restores the stashed form once the operator comes back", async () => {
-    window.sessionStorage.setItem(
-      "wx.admin.step-up-draft:wizard:cedar-ridge:payer_enrollment:attest",
-      JSON.stringify({
-        savedAt: Date.now(),
-        value: {
-          evidenceNote: "Typed before re-verifying",
-          evidenceRef: "",
-          reason: "Typed reason for audit",
-        },
-      }),
-    );
+    stashStepUpMemoryDraft("wizard:cedar-ridge:payer_enrollment:attest", {
+      evidenceNote: "Typed before re-verifying",
+      evidenceRef: "",
+      reason: "Typed reason for audit",
+    });
     const { client } = setup();
     renderAt(`${URL_BASE}/payer_enrollment`, ROUTES, client);
     expect(await screen.findByDisplayValue("Typed before re-verifying")).toBeTruthy();

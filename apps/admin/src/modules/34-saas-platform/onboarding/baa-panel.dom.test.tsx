@@ -3,8 +3,8 @@
 // permission, a fresh step-up and a reason) and records the BAA (status, dates) with the document id the upload returned; the platform
 // settles the step at once when the latest record is executed, has its document and has more than 90 days left. The operator who
 // records it cannot also approve go-live (four eyes), so the panel says so.
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BaaPanel, baaFacts } from "./baa-panel";
 import {
   ok,
@@ -32,6 +32,8 @@ const record = (over: Partial<BaaRow> = {}): BaaRow & Record<string, unknown> =>
   expiresOn: null,
   documentId: null,
   attestedAt: null,
+  governing: false,
+  documentFiled: null,
   ...over,
 });
 const view = (over = {}) =>
@@ -76,37 +78,45 @@ describe("baaFacts", () => {
     expect(states([])).toEqual({ executed: "pending", document: "pending", expiry: "pending" });
   });
 
-  it("is met when the latest record is executed, has its document and clears 90 days", () => {
-    expect(
-      states([record({ baaStatus: "executed", documentId: DOC, expiresOn: "2027-12-31" })]),
-    ).toEqual({
+  const governs = (over: Partial<BaaRow>) =>
+    record({
+      baaStatus: "executed",
+      documentId: DOC,
+      governing: true,
+      documentFiled: true,
+      ...over,
+    });
+
+  it("is met when the governing record is executed, its agreement is filed and it clears 90 days", () => {
+    expect(states([governs({ expiresOn: "2027-12-31" })])).toEqual({
       executed: "ok",
       document: "ok",
       expiry: "ok",
     });
   });
 
-  it("blocks an executed BAA that expires within 90 days, and one with no recorded expiry stays pending", () => {
-    expect(
-      states([record({ baaStatus: "executed", documentId: DOC, expiresOn: "2027-01-15" })]).expiry,
-    ).toBe("blocked");
-    expect(
-      states([record({ baaStatus: "executed", documentId: DOC, expiresOn: null })]).expiry,
-    ).toBe("pending");
+  it("blocks an executed BAA that expires within 90 days; one with no expiry does not expire (as the server judges it)", () => {
+    expect(states([governs({ expiresOn: "2027-01-15" })]).expiry).toBe("blocked");
+    expect(states([governs({ expiresOn: null })]).expiry).toBe("ok");
   });
 
-  it("judges the executed record, not an older pending one", () => {
+  it("judges the record the server marks governing, not one the panel would pick (an older executed one with a later expiry)", () => {
     const facts = states([
-      record({ id: "a", baaStatus: "pending", addendumVersion: "v1" }),
       record({
-        id: "b",
+        id: "old",
         baaStatus: "executed",
         documentId: DOC,
-        expiresOn: "2028-01-01",
-        addendumVersion: "v2",
+        expiresOn: "2030-01-01",
+        addendumVersion: "v1",
       }),
+      record({ id: "new", baaStatus: "terminated", addendumVersion: "v2", governing: true }),
     ]);
-    expect(facts.executed).toBe("ok");
+    expect(facts).toEqual({ executed: "pending", document: "pending", expiry: "pending" });
+  });
+
+  it("blocks an executed record whose link is not a signed BAA filed for this tenant", () => {
+    const facts = states([governs({ documentFiled: false, expiresOn: "2028-01-01" })]);
+    expect(facts).toEqual({ executed: "ok", document: "blocked", expiry: "pending" });
   });
 });
 
@@ -118,11 +128,15 @@ describe("BaaPanel", () => {
         documentId: DOC,
         expiresOn: "2030-01-01",
         executedOn: "2026-10-01",
+        governing: true,
+        documentFiled: true,
       }),
     ]);
     expect(await screen.findByText("v1")).toBeTruthy();
     expect(screen.getByText(/cannot also approve go-live/i)).toBeTruthy();
-    expect(screen.getByText(/A BAA is executed/).closest("li")?.textContent).toMatch(/Met/);
+    expect(screen.getByText(/The governing BAA is executed/).closest("li")?.textContent).toMatch(
+      /Met/,
+    );
   });
 
   it("asks for this tenant's records only", async () => {
@@ -308,6 +322,67 @@ describe("BaaPanel: uploading the signed agreement", () => {
     });
     // nothing is recorded until the operator saves the BAA
     expect(client.POST.mock.calls.map((c) => c[0])).not.toContain(REGISTER);
+  });
+
+  it("a slow read of an earlier pick never replaces a file chosen after it", async () => {
+    const reads: Array<() => void> = [];
+    class SlowReader {
+      result: string | null = null;
+      error: Error | null = null;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      readAsDataURL(file: File): void {
+        reads.push(() => {
+          this.result = `data:${file.type};base64,${btoa(file.name)}`;
+          this.onload?.();
+        });
+      }
+    }
+    vi.stubGlobal("FileReader", SlowReader);
+    try {
+      const { client } = await openNew({ POST: { [UPLOAD]: () => ok(UPLOADED, 201) } });
+      const input = screen.getByLabelText(/^Signed agreement/);
+      fireEvent.change(input, { target: { files: [pdf("first.pdf")] } });
+      fireEvent.change(input, { target: { files: [pdf("second.pdf")] } });
+      reads[1]?.(); // the later pick lands first...
+      const ask = screen.getByRole("button", { name: "Upload agreement" }) as HTMLButtonElement;
+      await waitFor(() => expect(ask.disabled).toBe(false));
+      reads[0]?.(); // ...then the stale one, which must not replace it
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      fireEvent.click(ask);
+      fireEvent.change(screen.getByLabelText(/^Reason/), {
+        target: { value: "Signed BAA from the customer, CHG-5" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+      await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+      const init = client.POST.mock.calls[0]?.[1] as { body: { contentBase64: string } };
+      expect(init.body.contentBase64).toBe(btoa("second.pdf"));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("a different file of the same name and size is a new attempt, never a replay of the first one's key", async () => {
+    let calls = 0;
+    const { client } = await openNew({
+      POST: {
+        [UPLOAD]: () => {
+          calls += 1;
+          // the first attempt reaches no one (a dropped connection): its key is kept for a retry of THAT file
+          if (calls === 1) throw new Error("network");
+          return ok(UPLOADED, 201);
+        },
+      },
+    });
+    await chooseAndUpload(new File(["%PDF-1.7 a"], "baa.pdf", { type: "application/pdf" }));
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    await chooseAndUpload(new File(["%PDF-1.7 b"], "baa.pdf", { type: "application/pdf" }));
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(2));
+    const keyOf = (i: number) =>
+      (client.POST.mock.calls[i]?.[1] as { params: { header: Record<string, string> } }).params
+        .header["Idempotency-Key"];
+    expect(keyOf(1)).not.toBe(keyOf(0));
   });
 
   it("refuses a file of the wrong type, an empty one and an oversized one before any request, and keeps the upload closed", async () => {

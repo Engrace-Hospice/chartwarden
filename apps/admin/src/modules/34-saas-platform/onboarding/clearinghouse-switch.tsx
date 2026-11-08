@@ -3,8 +3,9 @@
 // to set), and the wizard's step 7 is read-only once it is active. This is the operator's way: the choose form with the billing service mode
 // pick (no default; None is an explicit choice), then the reason prompt, then one pinned write that sets the mode and the vendor together.
 // For a live tenant the mode is dated the 1st of next month, and the form says so before anything is confirmed. The vendor credential is
-// write-only and never kept: a stale pin (412) or a missing one (428) closes the form and reads the record again.
-import { Button, useApiClient } from "@chartwarden/ui";
+// write-only and never kept (a Re-verify stashes the form and its pin, never the credential): a stale pin (412) or a missing one (428)
+// closes the form and reads the record again.
+import { Button, stashStepUpDraft, useApiClient, useStepUpDraft } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import {
@@ -18,11 +19,13 @@ import {
 } from "./clearinghouse-choice-form";
 import type { ClearinghouseView } from "./clearinghouse-model";
 import { RecordSaveDialog } from "./record-save-dialog";
+import { useEditorFocus } from "./use-editor-focus";
 import { useOpsWrite } from "./use-ops-write";
 
 const PATH = "/api/v1/platform/tenants/{orgSlug}/clearinghouse";
 /** The tenant statuses in which the switch is offered here: a live tenant (the wizard's step 7 serves one that is still onboarding). */
 const LIVE_STATUSES: ReadonlySet<string> = new Set(["active", "at_risk", "suspended"]);
+const draftKey = (orgSlug: string): string => `wizard:${orgSlug}:clearinghouse:switch`;
 
 /** Whether the operator is offered the switch: a live tenant on its own `outside` choice that holds a contract (the server's answer). */
 export function canSwitchToVendor(view: ClearinghouseView, tenantStatus: string): boolean {
@@ -51,21 +54,29 @@ export function SwitchToVendor({
 }): JSX.Element | null {
   const client = useApiClient();
   const write = useOpsWrite();
-  const [open, setOpen] = useState(false);
+  // Coming back from Re-verify: the form and its pin are restored (the credential is typed again).
+  const restored = useStepUpDraft<{ form: ChoiceForm; pinnedVersion: number | null }>(
+    draftKey(orgSlug),
+  );
+  const [open, setOpen] = useState(restored !== undefined);
   const [asking, setAsking] = useState(false);
-  const [form, setForm] = useState<ChoiceForm>({ ...BLANK_CHOICE, vendor: "claimmd" });
+  const [form, setForm] = useState<ChoiceForm>(
+    restored?.form ?? { ...BLANK_CHOICE, vendor: "claimmd" },
+  );
+  // The pin is the version the operator read when the form opened, captured then: a reload behind them never moves it.
+  const [pinned, setPinned] = useState<number | null>(restored?.pinnedVersion ?? null);
   const [secret, setSecret] = useState("");
   const [errors, setErrors] = useState<ChoiceErrors>({});
+  const heading = useEditorFocus(open, "clearinghouse-switch");
   if (!canSwitchToVendor(view, tenantStatus)) return null;
   const context = { tenantStatus, hasContract: view.hasContract };
-  // The pin is the version the operator read when the form opened; it is never re-read behind them.
-  const pinned = view.version;
 
   function begin(): void {
     write.clear();
     setErrors({});
     setSecret("");
     setForm({ ...BLANK_CHOICE, vendor: "claimmd" });
+    setPinned(view.version);
     setOpen(true);
   }
 
@@ -133,6 +144,7 @@ export function SwitchToVendor({
     <>
       {open ? (
         <ChoiceFormCard
+          headingRef={heading}
           view={view}
           form={form}
           secret={secret}
@@ -146,7 +158,12 @@ export function SwitchToVendor({
           onContinue={next}
         />
       ) : (
-        <Button tone="secondary" size="sm" onClick={begin}>
+        <Button
+          tone="secondary"
+          size="sm"
+          data-editor-return="clearinghouse-switch"
+          onClick={begin}
+        >
           Switch to a vendor
         </Button>
       )}
@@ -157,6 +174,7 @@ export function SwitchToVendor({
         confirmLabel="Switch"
         write={write}
         orgSlug={orgSlug}
+        onReverify={() => stashStepUpDraft(draftKey(orgSlug), { form, pinnedVersion: pinned })}
         onConfirm={(reason) => void confirm(reason)}
         onCancel={() => {
           write.clear();

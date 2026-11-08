@@ -52,6 +52,7 @@ const fillNew = () => {
     target: { value: "Beta Hospice of the Valley" },
   });
   fireEvent.change(screen.getByLabelText(/^EIN/), { target: { value: "12-3456789" } });
+  fireEvent.change(screen.getByLabelText(/^Confirm EIN/), { target: { value: "12-3456789" } });
   fireEvent.change(screen.getByLabelText(/^Fiscal year end/), { target: { value: "0630" } });
 };
 
@@ -150,6 +151,38 @@ describe("ProviderEntityPanel", () => {
     expect(screen.getByLabelText(/^EIN/).getAttribute("autocomplete")).toBe("new-password");
   });
 
+  it("the write-once EIN is entered twice and must be nine digits; the form says what cannot change later", async () => {
+    const { client } = mount([]);
+    await screen.findByText(/No provider entity yet/);
+    fireEvent.click(screen.getByRole("button", { name: "Add provider entity" }));
+    expect(screen.getByText(/CCN, NPI, EIN and fiscal year end cannot be changed/)).toBeTruthy();
+    fillNew();
+    expect(screen.getByLabelText(/^Confirm EIN/).getAttribute("type")).toBe("password");
+    fireEvent.change(screen.getByLabelText(/^Confirm EIN/), { target: { value: "12-3456780" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save provider entity" }));
+    expect(screen.getByText(/The two EINs do not match/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/^EIN/), { target: { value: "12-345678" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save provider entity" }));
+    expect(screen.getByText(/An EIN is nine digits/)).toBeTruthy();
+    expect(screen.queryByLabelText(/^Reason/)).toBeNull();
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
+  it("moves focus to the form when it opens, and Cancel drops the EIN and returns focus to Add", async () => {
+    mount([]);
+    await screen.findByText(/No provider entity yet/);
+    fireEvent.click(screen.getByRole("button", { name: "Add provider entity" }));
+    expect(document.activeElement?.textContent).toBe("New provider entity");
+    fillNew();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Add provider entity" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add provider entity" }));
+    expect((screen.getByLabelText(/^EIN/) as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText(/^Confirm EIN/) as HTMLInputElement).value).toBe("");
+  });
+
   it("never stashes the EIN through a re-verify, and keeps the rest", async () => {
     mount([], { POST: { [LIST]: () => refused(403, "STEP_UP_REQUIRED") } });
     await screen.findByText(/No provider entity yet/);
@@ -236,6 +269,7 @@ describe("ProviderEntityPanel: coming back from Re-verify", () => {
     const { client } = mount([ENTITY], { POST: { [LIST]: () => ok(ENTITY, 201) } });
     expect(((await screen.findByLabelText("CCN")) as HTMLInputElement).value).toBe("444444");
     fireEvent.change(screen.getByLabelText(/^EIN/), { target: { value: "12-3456789" } }); // never stashed
+    fireEvent.change(screen.getByLabelText(/^Confirm EIN/), { target: { value: "12-3456789" } });
     fireEvent.click(screen.getByRole("button", { name: "Save provider entity" }));
     fireEvent.change(screen.getByLabelText(/^Reason/), {
       target: { value: "Customer asked support to enter it" },
