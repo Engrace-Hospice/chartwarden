@@ -424,7 +424,10 @@ describe("ClaimMdTransport submission", () => {
     s.advance(16 * 60_000);
     const reconciled = await s.transport.submitClaim(ctx(), claim("CCN-4"));
     expect(reconciled.ok && reconciled.data.clearinghouseSubmissionId).toMatch(/^file:IN\d+$/);
-    expect(reconciled.ok && reconciled.data.vendorIdentifiers).toContainEqual({ field: "inboundid", value: "IN1001" });
+    expect(reconciled.ok && reconciled.data.vendorIdentifiers).toContainEqual({
+      field: "inboundid",
+      value: "IN1001",
+    });
     expect(s.server.account("test").uploads).toHaveLength(1);
     expect(s.anomalies).toContainEqual({
       type: "reconciled_from_upload_list",

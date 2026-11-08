@@ -1,8 +1,10 @@
 import type { ClaimMdIdentityEvent } from "./resolve";
 
 type Rec = Record<string, unknown>;
-const isRec = (value: unknown): value is Rec => value !== null && typeof value === "object" && !Array.isArray(value);
-const field = (row: Rec, key: string): string | null => typeof row[key] === "string" && (row[key] as string).trim() ? (row[key] as string).trim() : null;
+const isRec = (value: unknown): value is Rec =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+const field = (row: Rec, key: string): string | null =>
+  typeof row[key] === "string" && (row[key] as string).trim() ? (row[key] as string).trim() : null;
 
 /** Extracts only documented identity fields from one retained encrypted source page. Never logs or persists TIN. */
 export function claimMdIdentityFromCapturedPage(input: {
@@ -15,10 +17,18 @@ export function claimMdIdentityFromCapturedPage(input: {
 }): ClaimMdIdentityEvent | null {
   if (!isRec(input.body)) return null;
   const root = isRec(input.body.result) ? input.body.result : input.body;
-  const parents = Array.isArray(root.claim) ? root.claim : root.claim === undefined ? [] : [root.claim];
+  const parents = Array.isArray(root.claim)
+    ? root.claim
+    : root.claim === undefined
+      ? []
+      : [root.claim];
   const parent = parents[input.parentIndex];
   if (!isRec(parent)) return null;
-  const messages = Array.isArray(parent.messages) ? parent.messages : parent.messages === undefined ? [] : [parent.messages];
+  const messages = Array.isArray(parent.messages)
+    ? parent.messages
+    : parent.messages === undefined
+      ? []
+      : [parent.messages];
   const message = input.messageIndex < 0 ? null : messages[input.messageIndex];
   if (input.messageIndex >= 0 && !isRec(message)) return null;
   return {

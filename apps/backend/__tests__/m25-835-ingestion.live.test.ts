@@ -240,21 +240,52 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     const key = "minio/concurrent-posting.835";
     const raw = buildRawEdi("000000991", "0991");
     const parsed: ParsedRemittanceAdvice = {
-      payerProgram: "medicare", interchangeControlNumber: "000000991", transactionSetControlNumber: "0991",
-      checkOrEftTraceNumber: "SYNTHETIC-TRACE-991", paymentMethod: "eft", totalPaymentAmount: 12,
-      productionDate: "2026-03-01", claims: [{ patientControlNumber: "SYNTHETIC-PCN-991", payerIcn: "SYNTHETIC-ICN-991",
-        statusCode: 1, totalCharge: 12, totalPayment: 12, patientResponsibility: 0, adjustments: [], remarks: [], serviceLines: [] }],
+      payerProgram: "medicare",
+      interchangeControlNumber: "000000991",
+      transactionSetControlNumber: "0991",
+      checkOrEftTraceNumber: "SYNTHETIC-TRACE-991",
+      paymentMethod: "eft",
+      totalPaymentAmount: 12,
+      productionDate: "2026-03-01",
+      claims: [
+        {
+          patientControlNumber: "SYNTHETIC-PCN-991",
+          payerIcn: "SYNTHETIC-ICN-991",
+          statusCode: 1,
+          totalCharge: 12,
+          totalPayment: 12,
+          patientResponsibility: 0,
+          adjustments: [],
+          remarks: [],
+          serviceLines: [],
+        },
+      ],
     };
     const service = buildDrizzleM25IngestService(handle.db, {
-      client: fakeClient(new Map([[key, parsed]])), payeeNpi: PAYEE_UNCHECKED,
+      client: fakeClient(new Map([[key, parsed]])),
+      payeeNpi: PAYEE_UNCHECKED,
     });
-    const received = await service.receiveAdvice(actor, { providerEntityId: PE_A, payerId: PAYER, payerKind: "medicare",
-      minioObjectKey: key, fileSha256: sha256Hex(raw), rawEdi: raw });
+    const received = await service.receiveAdvice(actor, {
+      providerEntityId: PE_A,
+      payerId: PAYER,
+      payerKind: "medicare",
+      minioObjectKey: key,
+      fileSha256: sha256Hex(raw),
+      rawEdi: raw,
+    });
     if (received.outcome !== "queued") throw new Error("unreachable");
-    const results = await Promise.all([service.postAdvice(actor, received.adviceId), service.postAdvice(actor, received.adviceId)]);
-    expect(results.map((result) => result.outcome).sort()).toEqual(["already_posted", "partial_posted"]);
+    const results = await Promise.all([
+      service.postAdvice(actor, received.adviceId),
+      service.postAdvice(actor, received.adviceId),
+    ]);
+    expect(results.map((result) => result.outcome).sort()).toEqual([
+      "already_posted",
+      "partial_posted",
+    ]);
     expect(await lineCount(received.adviceId)).toBe(1);
-    const status = await admin.query("SELECT parse_status FROM remittance_advice WHERE id=$1", [received.adviceId]);
+    const status = await admin.query("SELECT parse_status FROM remittance_advice WHERE id=$1", [
+      received.adviceId,
+    ]);
     expect(status.rows[0].parse_status).toBe("partial_posted");
   });
 
@@ -263,21 +294,52 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     const key = "minio/missing-trace.835";
     const raw = buildRawEdi("000000992", "0992");
     const parsed: ParsedRemittanceAdvice = {
-      payerProgram: "medicare", interchangeControlNumber: "000000992", transactionSetControlNumber: "0992",
-      paymentMethod: "eft", totalPaymentAmount: 12, productionDate: "2026-03-01",
-      claims: [{ patientControlNumber: "SYNTHETIC-PCN-992", payerIcn: "SYNTHETIC-ICN-992", statusCode: 1,
-        totalCharge: 12, totalPayment: 12, patientResponsibility: 0, adjustments: [], remarks: [], serviceLines: [] }],
+      payerProgram: "medicare",
+      interchangeControlNumber: "000000992",
+      transactionSetControlNumber: "0992",
+      paymentMethod: "eft",
+      totalPaymentAmount: 12,
+      productionDate: "2026-03-01",
+      claims: [
+        {
+          patientControlNumber: "SYNTHETIC-PCN-992",
+          payerIcn: "SYNTHETIC-ICN-992",
+          statusCode: 1,
+          totalCharge: 12,
+          totalPayment: 12,
+          patientResponsibility: 0,
+          adjustments: [],
+          remarks: [],
+          serviceLines: [],
+        },
+      ],
     };
-    const service = buildDrizzleM25IngestService(handle.db, { client: fakeClient(new Map([[key, parsed]])), payeeNpi: PAYEE_UNCHECKED });
-    const received = await service.receiveAdvice(actor, { providerEntityId: PE_A, payerId: PAYER, payerKind: "medicare",
-      minioObjectKey: key, fileSha256: sha256Hex(raw), rawEdi: raw });
+    const service = buildDrizzleM25IngestService(handle.db, {
+      client: fakeClient(new Map([[key, parsed]])),
+      payeeNpi: PAYEE_UNCHECKED,
+    });
+    const received = await service.receiveAdvice(actor, {
+      providerEntityId: PE_A,
+      payerId: PAYER,
+      payerKind: "medicare",
+      minioObjectKey: key,
+      fileSha256: sha256Hex(raw),
+      rawEdi: raw,
+    });
     if (received.outcome !== "queued") throw new Error("unreachable");
     await expect(service.postAdvice(actor, received.adviceId)).resolves.toMatchObject({
-      outcome: "held_duplicate", reason: "MISSING_FINANCIAL_IDENTITY",
+      outcome: "held_duplicate",
+      reason: "MISSING_FINANCIAL_IDENTITY",
     });
     expect(await lineCount(received.adviceId)).toBe(0);
-    const advice = await admin.query("SELECT parse_status, parse_summary FROM remittance_advice WHERE id=$1", [received.adviceId]);
-    expect(advice.rows[0]).toMatchObject({ parse_status: "held_duplicate", parse_summary: { reason: "MISSING_FINANCIAL_IDENTITY" } });
+    const advice = await admin.query(
+      "SELECT parse_status, parse_summary FROM remittance_advice WHERE id=$1",
+      [received.adviceId],
+    );
+    expect(advice.rows[0]).toMatchObject({
+      parse_status: "held_duplicate",
+      parse_summary: { reason: "MISSING_FINANCIAL_IDENTITY" },
+    });
   });
 
   it("serializes exact identities arriving through independent intake records and holds the losing source", async () => {
@@ -286,29 +348,74 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     const keyB = "manual/source-b.835";
     const rawA = buildRawEdi("000000993", "0993");
     const parsed: ParsedRemittanceAdvice = {
-      payerProgram: "medicare", interchangeControlNumber: "000000993", transactionSetControlNumber: "0993",
-      checkOrEftTraceNumber: "SYNTHETIC-TRACE-993", paymentMethod: "eft", totalPaymentAmount: 17,
-      productionDate: "2026-03-02", claims: [{ patientControlNumber: "SYNTHETIC-PCN-993", payerIcn: "SYNTHETIC-ICN-993",
-        statusCode: 1, totalCharge: 17, totalPayment: 17, patientResponsibility: 0, adjustments: [], remarks: [], serviceLines: [] }],
+      payerProgram: "medicare",
+      interchangeControlNumber: "000000993",
+      transactionSetControlNumber: "0993",
+      checkOrEftTraceNumber: "SYNTHETIC-TRACE-993",
+      paymentMethod: "eft",
+      totalPaymentAmount: 17,
+      productionDate: "2026-03-02",
+      claims: [
+        {
+          patientControlNumber: "SYNTHETIC-PCN-993",
+          payerIcn: "SYNTHETIC-ICN-993",
+          statusCode: 1,
+          totalCharge: 17,
+          totalPayment: 17,
+          patientResponsibility: 0,
+          adjustments: [],
+          remarks: [],
+          serviceLines: [],
+        },
+      ],
     };
-    const service = buildDrizzleM25IngestService(handle.db, { client: fakeClient(new Map([[keyA, parsed], [keyB, parsed]])), payeeNpi: PAYEE_UNCHECKED });
-    const first = await service.receiveAdvice(actor, { providerEntityId: PE_A, payerId: PAYER, payerKind: "medicare",
-      minioObjectKey: keyA, fileSha256: sha256Hex(rawA), rawEdi: rawA });
+    const service = buildDrizzleM25IngestService(handle.db, {
+      client: fakeClient(
+        new Map([
+          [keyA, parsed],
+          [keyB, parsed],
+        ]),
+      ),
+      payeeNpi: PAYEE_UNCHECKED,
+    });
+    const first = await service.receiveAdvice(actor, {
+      providerEntityId: PE_A,
+      payerId: PAYER,
+      payerKind: "medicare",
+      minioObjectKey: keyA,
+      fileSha256: sha256Hex(rawA),
+      rawEdi: rawA,
+    });
     if (first.outcome !== "queued") throw new Error("unreachable");
     // Model an independently accepted legacy/manual source record with a new envelope identity.
     // The service under test still performs both consequential posting transactions.
     const secondId = crypto.randomUUID();
-    await admin.query(`INSERT INTO remittance_advice (id,organization_id,provider_entity_id,payer_id,payer_kind,
+    await admin.query(
+      `INSERT INTO remittance_advice (id,organization_id,provider_entity_id,payer_id,payer_kind,
       interchange_control_number,transaction_set_control_number,check_or_eft_trace_number,payment_method,total_payment_amount,
       content_digest,production_date,minio_object_key,file_sha256,parse_status)
       SELECT $1,organization_id,provider_entity_id,payer_id,payer_kind,'000000994','0994',check_or_eft_trace_number,
       payment_method,total_payment_amount,content_digest,production_date,$2,$3,'queued'
-      FROM remittance_advice WHERE id=$4`, [secondId, keyB, sha256Hex(buildRawEdi("000000994", "0994")), first.adviceId]);
-    const results = await Promise.all([service.postAdvice(actor, first.adviceId), service.postAdvice(actor, secondId)]);
-    expect(results.map((result) => result.outcome).sort()).toEqual(["held_duplicate", "partial_posted"]);
-    expect(await lineCount(first.adviceId) + await lineCount(secondId)).toBe(1);
-    const statuses = await admin.query("SELECT parse_status FROM remittance_advice WHERE id=ANY($1::uuid[]) ORDER BY id", [[first.adviceId, secondId]]);
-    expect(statuses.rows.map((row) => row.parse_status).sort()).toEqual(["held_duplicate", "partial_posted"]);
+      FROM remittance_advice WHERE id=$4`,
+      [secondId, keyB, sha256Hex(buildRawEdi("000000994", "0994")), first.adviceId],
+    );
+    const results = await Promise.all([
+      service.postAdvice(actor, first.adviceId),
+      service.postAdvice(actor, secondId),
+    ]);
+    expect(results.map((result) => result.outcome).sort()).toEqual([
+      "held_duplicate",
+      "partial_posted",
+    ]);
+    expect((await lineCount(first.adviceId)) + (await lineCount(secondId))).toBe(1);
+    const statuses = await admin.query(
+      "SELECT parse_status FROM remittance_advice WHERE id=ANY($1::uuid[]) ORDER BY id",
+      [[first.adviceId, secondId]],
+    );
+    expect(statuses.rows.map((row) => row.parse_status).sort()).toEqual([
+      "held_duplicate",
+      "partial_posted",
+    ]);
   });
 
   it("happy path: a multi-claim 835 posts every matched line + seeds denials/PR-ledger, and stays 'posted'", async () => {

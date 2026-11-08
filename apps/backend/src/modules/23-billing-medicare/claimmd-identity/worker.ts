@@ -20,7 +20,11 @@ export function startClaimMdIdentityWorker(input: {
   readonly worker: ReturnType<typeof createClaimMdIdentityWorker>;
   readonly summarize: () => Promise<IdentityWorkerSummary>;
   readonly intervalMs?: number;
-  readonly log: (event: { processed: number; failed: number; summary: IdentityWorkerSummary }) => void;
+  readonly log: (event: {
+    processed: number;
+    failed: number;
+    summary: IdentityWorkerSummary;
+  }) => void;
 }) {
   let running = false;
   let stopped = false;
@@ -32,14 +36,30 @@ export function startClaimMdIdentityWorker(input: {
       const summary = await input.summarize();
       input.log({ ...result, summary });
     } catch {
-      input.log({ processed: 0, failed: 1, summary: {
-        pending: 0, resolved: 0, unmatched: 0, ambiguous: 0, conflict: 0, needsReview: 0,
-        oldestUnresolvedSeconds: null,
-      } });
-    } finally { running = false; }
+      input.log({
+        processed: 0,
+        failed: 1,
+        summary: {
+          pending: 0,
+          resolved: 0,
+          unmatched: 0,
+          ambiguous: 0,
+          conflict: 0,
+          needsReview: 0,
+          oldestUnresolvedSeconds: null,
+        },
+      });
+    } finally {
+      running = false;
+    }
   };
-  const timer = setInterval(() => { void tick(); }, input.intervalMs ?? CLAIMMD_IDENTITY_INTERVAL_MS);
+  const timer = setInterval(() => {
+    void tick();
+  }, input.intervalMs ?? CLAIMMD_IDENTITY_INTERVAL_MS);
   timer.unref?.();
   void tick();
-  return () => { stopped = true; clearInterval(timer); };
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
 }

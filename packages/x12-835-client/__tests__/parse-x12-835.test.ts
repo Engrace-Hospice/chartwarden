@@ -118,12 +118,22 @@ describe("parseX12835 clean multi-claim 835", () => {
 describe("parseX12835 other valid shapes", () => {
   it("preserves unknown segments and identity references without treating them as posting instructions", () => {
     const at = CLEAN_BODY.findIndex((segment) => segment.startsWith("SVC*"));
-    const body = [...CLEAN_BODY.slice(0, at + 1), "ZZZ*VENDOR-REF*SAFE-SYNTHETIC", ...CLEAN_BODY.slice(at + 1)];
+    const body = [
+      ...CLEAN_BODY.slice(0, at + 1),
+      "ZZZ*VENDOR-REF*SAFE-SYNTHETIC",
+      ...CLEAN_BODY.slice(at + 1),
+    ];
     const result = parse(wrap835(body));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.unknownSegments).toContainEqual({ segmentId: "ZZZ", elements: ["VENDOR-REF", "SAFE-SYNTHETIC"] });
-    expect(result.value.claims[0]?.serviceLines[0]?.references).toContainEqual({ qualifier: "6R", value: "L1" });
+    expect(result.value.unknownSegments).toContainEqual({
+      segmentId: "ZZZ",
+      elements: ["VENDOR-REF", "SAFE-SYNTHETIC"],
+    });
+    expect(result.value.claims[0]?.serviceLines[0]?.references).toContainEqual({
+      qualifier: "6R",
+      value: "L1",
+    });
   });
 
   it("parses a stand-alone denial with a non-payment BPR", () => {

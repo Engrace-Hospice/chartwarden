@@ -149,13 +149,17 @@ export function buildFoundationSiteReader(): FoundationSiteReader {
 
     async providerEntityOwners(tx, providerEntityIds) {
       if (providerEntityIds.length === 0) return [];
-      return tx.select({ id: PROVIDER.id, organizationId: PROVIDER.organizationId }).from(PROVIDER)
+      return tx
+        .select({ id: PROVIDER.id, organizationId: PROVIDER.organizationId })
+        .from(PROVIDER)
         .where(inArray(PROVIDER.id, [...new Set(providerEntityIds)]));
     },
 
     async locationOwners(tx, locationIds) {
       if (locationIds.length === 0) return [];
-      return tx.select({ id: LOCATION.id, providerEntityId: LOCATION.providerEntityId }).from(LOCATION)
+      return tx
+        .select({ id: LOCATION.id, providerEntityId: LOCATION.providerEntityId })
+        .from(LOCATION)
         .where(inArray(LOCATION.id, [...new Set(locationIds)]));
     },
 

@@ -6,7 +6,12 @@ describe("Claim.MD operational metrics", () => {
   it("records bounded outcomes and aggregate queue measures without identifier labels", async () => {
     const registry = new Registry();
     const metrics = registerClaimMdOperationalMetrics(registry);
-    metrics.record("identity_resolution", { pending: 4, resolved: 2, ambiguous: 1, oldestUnresolvedSeconds: 90 });
+    metrics.record("identity_resolution", {
+      pending: 4,
+      resolved: 2,
+      ambiguous: 1,
+      oldestUnresolvedSeconds: 90,
+    });
     metrics.record("era_capture", { code: "FETCH_FAILED", discovered: 3, failed: 1 });
     const exposition = await registry.metrics();
     expect(exposition).toContain('worker="identity_resolution",outcome="success"');
@@ -30,7 +35,9 @@ describe("Claim.MD operational metrics", () => {
 
   it("surfaces durable query failure without throwing from the scrape", async () => {
     const registry = new Registry();
-    registerClaimMdOperationalMetrics(registry, async () => { throw new Error("sensitive database detail"); });
+    registerClaimMdOperationalMetrics(registry, async () => {
+      throw new Error("sensitive database detail");
+    });
     const exposition = await registry.metrics();
     expect(exposition).toContain("chartwarden_claimmd_durable_metrics_read_success 0");
     expect(exposition).not.toContain("sensitive database detail");

@@ -532,7 +532,11 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     });
     const queued = await m23.submitNoe(actorOf(org), drafted.id);
     await withOrgContext(handle.db as never, { organizationId: org, userId: "" }, async (tx) => {
-      await runNoeSubmit(tx as never, workerDeps, { organizationId: org, noeId: drafted.id, submissionId: queued.submissionId });
+      await runNoeSubmit(tx as never, workerDeps, {
+        organizationId: org,
+        noeId: drafted.id,
+        submissionId: queued.submissionId,
+      });
     });
     const { rows } = await admin.query(
       "SELECT id FROM claim_submission WHERE noe_id=$1 AND kind='noe' AND outcome='submitted'",
@@ -906,7 +910,11 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     // Through the ordinary submit queue, the worker and the ack routing.
     const queued = await m23.submitNoe(actorOf(ORG_A), correctedId);
     await withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, (tx) =>
-      runNoeSubmit(tx as never, workerDeps, { organizationId: ORG_A, noeId: correctedId, submissionId: queued.submissionId }),
+      runNoeSubmit(tx as never, workerDeps, {
+        organizationId: ORG_A,
+        noeId: correctedId,
+        submissionId: queued.submissionId,
+      }),
     );
     // Medicare accepts it on day +7 (two days late); we pull the 277CA a day later.
     const payerDate = addDays(admission, 7);
@@ -997,7 +1005,11 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     const correctedId = filed.notice.noeId;
     const queued = await m23.submitNoe(actorOf(ORG_A), correctedId);
     await withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, (tx) =>
-      runNoeSubmit(tx as never, workerDeps, { organizationId: ORG_A, noeId: correctedId, submissionId: queued.submissionId }),
+      runNoeSubmit(tx as never, workerDeps, {
+        organizationId: ORG_A,
+        noeId: correctedId,
+        submissionId: queued.submissionId,
+      }),
     );
     const onTime = { ...workerDeps, now: () => new Date(`${addDays(admission, 4)}T14:00:00.000Z`) };
     parsed999 = [

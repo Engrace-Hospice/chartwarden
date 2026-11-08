@@ -17,18 +17,21 @@ import {
   CH,
   claimMdFilename,
   compareStediClaimJsonToX12,
-  extractX12SubmissionEvidence,
   extractX12NoticeEvidence,
+  extractX12SubmissionEvidence,
   routeAckEvent,
   scopeKey,
 } from "@chartwarden/x12-837-client";
+import type { ClaimMdNoticeEvidencePort } from "../claimmd-evidence/notice-store";
+import type {
+  ClaimMdReceiptIdentifier,
+  ClaimMdSubmissionEvidencePort,
+} from "../claimmd-evidence/store";
 import {
   type CredentialAlertPort,
   type CredentialGuardDeps,
   withCredentialGuard,
 } from "./clearinghouse-credential-guard";
-import type { ClaimMdSubmissionEvidencePort } from "../claimmd-evidence/store";
-import type { ClaimMdNoticeEvidencePort } from "../claimmd-evidence/notice-store";
 
 /** Resolves the per-call clearinghouse context (the composition root reads provider entity + MAC credential). */
 export interface ClearinghouseContextPort {
@@ -165,43 +168,141 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
     let noticeEvidenceId: string | null = null;
     if (transport.binding.vendor === "claimmd") {
       const exact = payloadFor(transport.binding.vendor, kind, input);
-      if (exact.format !== "x12") throw failure(kind, CH.INVALID_REQUEST, "Claim.MD evidence requires the final X12 payload");
+      if (exact.format !== "x12")
+        throw failure(kind, CH.INVALID_REQUEST, "Claim.MD evidence requires the final X12 payload");
       if (kind === "claim") {
         const evidenceStore = transport.claimMdEvidence;
-        if (!evidenceStore || !input.claimId || !input.submissionId || input.attemptIndex === undefined) {
-          throw failure(kind, CH.NOT_WIRED, "Claim.MD claim evidence is not configured for this attempt");
+        if (
+          !evidenceStore ||
+          !input.claimId ||
+          !input.submissionId ||
+          input.attemptIndex === undefined
+        ) {
+          throw failure(
+            kind,
+            CH.NOT_WIRED,
+            "Claim.MD claim evidence is not configured for this attempt",
+          );
         }
-        if (ctx.usage !== evidenceStore.usage) throw failure(kind, CH.INVALID_REQUEST, "Claim.MD account environment does not match submission context");
-        let parsed;
-        try { parsed = extractX12SubmissionEvidence(exact.x12, undefined); }
-        catch { throw failure(kind, CH.INVALID_REQUEST, "Claim.MD outbound X12 identity is incomplete or unsupported"); }
-        if (parsed.claims.length !== 1) throw failure(kind, CH.INVALID_REQUEST, "Claim.MD send requires one claim identity per submission");
+        if (ctx.usage !== evidenceStore.usage)
+          throw failure(
+            kind,
+            CH.INVALID_REQUEST,
+            "Claim.MD account environment does not match submission context",
+          );
+        let parsed: ReturnType<typeof extractX12SubmissionEvidence>;
+        try {
+          parsed = extractX12SubmissionEvidence(exact.x12, undefined);
+        } catch {
+          throw failure(
+            kind,
+            CH.INVALID_REQUEST,
+            "Claim.MD outbound X12 identity is incomplete or unsupported",
+          );
+        }
+        if (parsed.claims.length !== 1)
+          throw failure(
+            kind,
+            CH.INVALID_REQUEST,
+            "Claim.MD send requires one claim identity per submission",
+          );
         const outbound = parsed.claims[0]!;
-        if (outbound.pcn !== input.controlNumber || (ctx.billingNpi && outbound.billingNpi !== ctx.billingNpi)) {
-          throw failure(kind, CH.INVALID_REQUEST, "Claim.MD outbound X12 identity conflicts with the validated submission context");
+        if (
+          outbound.pcn !== input.controlNumber ||
+          (ctx.billingNpi && outbound.billingNpi !== ctx.billingNpi)
+        ) {
+          throw failure(
+            kind,
+            CH.INVALID_REQUEST,
+            "Claim.MD outbound X12 identity conflicts with the validated submission context",
+          );
         }
-        try { evidenceId = await evidenceStore.reserve({ organizationId: input.organizationId, providerEntityId: input.providerEntityId,
-          locationId: input.locationId ?? null, claimId: input.claimId, billingModule: "M23", submissionId: input.submissionId,
-          attemptKey: `${input.submissionId}:${input.attemptIndex}`, accountReference: evidenceStore.accountReference,
-          usage: ctx.usage, x12Claim: outbound, payloadSha256: parsed.payloadSha256,
-          outboundReference: claimMdFilename(scopeKey(ctx), submissionKeyFor(kind, input.controlNumber), "x12"), reservedAt: new Date() });
-        } catch { throw failure(kind, CH.UNAVAILABLE, "immutable Claim.MD evidence could not be reserved"); }
+        try {
+          evidenceId = await evidenceStore.reserve({
+            organizationId: input.organizationId,
+            providerEntityId: input.providerEntityId,
+            locationId: input.locationId ?? null,
+            claimId: input.claimId,
+            billingModule: "M23",
+            submissionId: input.submissionId,
+            attemptKey: `${input.submissionId}:${input.attemptIndex}`,
+            accountReference: evidenceStore.accountReference,
+            usage: ctx.usage,
+            x12Claim: outbound,
+            payloadSha256: parsed.payloadSha256,
+            outboundReference: claimMdFilename(
+              scopeKey(ctx),
+              submissionKeyFor(kind, input.controlNumber),
+              "x12",
+            ),
+            reservedAt: new Date(),
+          });
+        } catch {
+          throw failure(kind, CH.UNAVAILABLE, "immutable Claim.MD evidence could not be reserved");
+        }
       } else {
         const noticeKind = input.kind === "claim_837i" ? null : input.kind;
         const noticeStore = transport.claimMdNoticeEvidence;
-        if (!noticeKind || !transport.claimMdNoticeUploadsEnabled || !noticeStore) throw failure(kind, CH.NOT_WIRED, "Claim.MD notice uploads are disabled or notice evidence is not configured");
-        if (!input.noticeId || !input.submissionId || input.attemptIndex === undefined) throw failure(kind, CH.NOT_WIRED, "Claim.MD notice attempt identity is incomplete");
-        if (ctx.usage !== noticeStore.usage) throw failure(kind, CH.INVALID_REQUEST, "Claim.MD account environment does not match notice context");
-        let parsed;
-        try { parsed = extractX12NoticeEvidence(exact.x12, noticeKind, input.controlNumber, ctx.usage); }
-        catch { throw failure(kind, CH.INVALID_REQUEST, "Claim.MD notice X12 identity is incomplete or unsupported"); }
-        if ((ctx.billingNpi && parsed.billingNpi !== ctx.billingNpi) || parsed.payerId !== ctx.payerId)
-          throw failure(kind, CH.INVALID_REQUEST, "Claim.MD notice provider or payer identity conflicts with validated context");
-        try { noticeEvidenceId = await noticeStore.reserve({ organizationId: input.organizationId, providerEntityId: input.providerEntityId,
-          locationId: input.locationId ?? null, noticeId: input.noticeId, noticeKind, submissionId: input.submissionId,
-          attemptIndex: input.attemptIndex, noticeControlNumber: input.controlNumber, accountReference: noticeStore.accountReference,
-          usage: ctx.usage, x12: parsed, outboundReference: claimMdFilename(scopeKey(ctx), submissionKeyFor(kind, input.controlNumber), "x12"), reservedAt: new Date() });
-        } catch { throw failure(kind, CH.UNAVAILABLE, "immutable Claim.MD notice evidence could not be reserved"); }
+        if (!noticeKind || !transport.claimMdNoticeUploadsEnabled || !noticeStore)
+          throw failure(
+            kind,
+            CH.NOT_WIRED,
+            "Claim.MD notice uploads are disabled or notice evidence is not configured",
+          );
+        if (!input.noticeId || !input.submissionId || input.attemptIndex === undefined)
+          throw failure(kind, CH.NOT_WIRED, "Claim.MD notice attempt identity is incomplete");
+        if (ctx.usage !== noticeStore.usage)
+          throw failure(
+            kind,
+            CH.INVALID_REQUEST,
+            "Claim.MD account environment does not match notice context",
+          );
+        let parsed: ReturnType<typeof extractX12NoticeEvidence>;
+        try {
+          parsed = extractX12NoticeEvidence(exact.x12, noticeKind, input.controlNumber, ctx.usage);
+        } catch {
+          throw failure(
+            kind,
+            CH.INVALID_REQUEST,
+            "Claim.MD notice X12 identity is incomplete or unsupported",
+          );
+        }
+        if (
+          (ctx.billingNpi && parsed.billingNpi !== ctx.billingNpi) ||
+          parsed.payerId !== ctx.payerId
+        )
+          throw failure(
+            kind,
+            CH.INVALID_REQUEST,
+            "Claim.MD notice provider or payer identity conflicts with validated context",
+          );
+        try {
+          noticeEvidenceId = await noticeStore.reserve({
+            organizationId: input.organizationId,
+            providerEntityId: input.providerEntityId,
+            locationId: input.locationId ?? null,
+            noticeId: input.noticeId,
+            noticeKind,
+            submissionId: input.submissionId,
+            attemptIndex: input.attemptIndex,
+            noticeControlNumber: input.controlNumber,
+            accountReference: noticeStore.accountReference,
+            usage: ctx.usage,
+            x12: parsed,
+            outboundReference: claimMdFilename(
+              scopeKey(ctx),
+              submissionKeyFor(kind, input.controlNumber),
+              "x12",
+            ),
+            reservedAt: new Date(),
+          });
+        } catch {
+          throw failure(
+            kind,
+            CH.UNAVAILABLE,
+            "immutable Claim.MD notice evidence could not be reserved",
+          );
+        }
       }
     }
     const submission = {
@@ -216,25 +317,65 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
         : transport.binding.transport.submitNotice(ctx, submission),
     );
     if (!result.ok) throw failure(kind, result.degraded.code, result.degraded.reason);
-    if ((evidenceId && transport.claimMdEvidence) || (noticeEvidenceId && transport.claimMdNoticeEvidence)) {
+    if (
+      (evidenceId && transport.claimMdEvidence) ||
+      (noticeEvidenceId && transport.claimMdNoticeEvidence)
+    ) {
       const value = result.data.clearinghouseSubmissionId;
-      const fieldNamespace: Record<string, "file" | "batch" | "claim" | "remote_claim" | "pcn" | "message" | "opaque_submission"> = {
-        fileid: "file", inboundid: "file", batchid: "batch", claimid: "claim", claimmd_id: "remote_claim",
-        remote_claimid: "remote_claim", pcn: "pcn",
+      const fieldNamespace: Record<
+        string,
+        "file" | "batch" | "claim" | "remote_claim" | "pcn" | "message" | "opaque_submission"
+      > = {
+        fileid: "file",
+        inboundid: "file",
+        batchid: "batch",
+        claimid: "claim",
+        claimmd_id: "remote_claim",
+        remote_claimid: "remote_claim",
+        pcn: "pcn",
       };
       const identifiers = result.data.vendorIdentifiers?.flatMap(({ field, value: identifier }) => {
         const namespace = fieldNamespace[field];
-        return namespace ? [{ field: field as import("../claimmd-evidence/store").ClaimMdReceiptIdentifier["field"], namespace, value: identifier }] : [];
-      }) ?? [{ field: "clearinghouseSubmissionId" as const, namespace: "opaque_submission" as const, value }];
+        return namespace
+          ? [
+              {
+                field: field as ClaimMdReceiptIdentifier["field"],
+                namespace,
+                value: identifier,
+              },
+            ]
+          : [];
+      }) ?? [
+        {
+          field: "clearinghouseSubmissionId" as const,
+          namespace: "opaque_submission" as const,
+          value,
+        },
+      ];
       try {
-        const evidencePort = evidenceId ? transport.claimMdEvidence! : transport.claimMdNoticeEvidence!;
-        await evidencePort.observe({ evidenceId: evidenceId ?? noticeEvidenceId!, organizationId: input.organizationId,
-          accountReference: evidencePort.accountReference, usage: ctx.usage,
+        const evidencePort = evidenceId
+          ? transport.claimMdEvidence!
+          : transport.claimMdNoticeEvidence!;
+        await evidencePort.observe({
+          evidenceId: evidenceId ?? noticeEvidenceId!,
+          organizationId: input.organizationId,
+          accountReference: evidencePort.accountReference,
+          usage: ctx.usage,
           identifiers,
-          source: result.data.vendorIdentifiers ? (result.data.replayed ? "upload_reconciliation" : "upload_response") : "attempt_store_replay",
-          sourceReference: input.submissionId ?? input.controlNumber, observedAt: new Date() });
+          source: result.data.vendorIdentifiers
+            ? result.data.replayed
+              ? "upload_reconciliation"
+              : "upload_response"
+            : "attempt_store_replay",
+          sourceReference: input.submissionId ?? input.controlNumber,
+          observedAt: new Date(),
+        });
       } catch {
-        throw failure(kind, CH.IN_DOUBT, "Claim.MD accepted the upload but receipt evidence could not be recorded");
+        throw failure(
+          kind,
+          CH.IN_DOUBT,
+          "Claim.MD accepted the upload but receipt evidence could not be recorded",
+        );
       }
     }
     return {
