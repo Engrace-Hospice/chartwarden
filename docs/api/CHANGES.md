@@ -27,7 +27,11 @@ blocked while a contract exists, and the operator's write was onboarding-only.
 - If the vendor's commit fails WITHOUT a definite answer from the database (a lost connection, or a connection-class or server-error
   SQLSTATE), the vendor row is read again before the mode is undone. Not saved: the mode goes back to `none` and the failure is answered.
   Saved: the switch stands and the answer is the row as it is. Unreadable: the mode is left as set and the answer is
-  `503 CLEARINGHOUSE_SWITCH_OUTCOME_UNKNOWN` (read the tenant's clearinghouse and contract before changing anything).
+  `503 CLEARINGHOUSE_SWITCH_OUTCOME_UNKNOWN` (read the tenant's clearinghouse and contract before changing anything). One narrow case
+  cannot be closed from the server: a commit the server gave up on can still land after the read-back saw `outside`, leaving a vendor with
+  the mode put back to `none`; after any failed switch, read the tenant's clearinghouse and contract and set the mode if it is not the one chosen.
+- A `write_failed` audit row for a commit that failed with no definite answer carries `detail.commitOutcomeUnknown: true`: the write may
+  have landed, so the row can sit beside a success row (it is not a rollback).
 - A contract that is PAUSED counts: the tenant's own switch is `409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR`, the operator names the
   mode, and the outside-means-none rule applies to it. A canceled contract is none. A contract that cannot be read is
   `503 CLEARINGHOUSE_CONTRACT_UNAVAILABLE` on the operator's route too.
@@ -54,7 +58,7 @@ blocked while a contract exists, and the operator's write was onboarding-only.
   tag from any generic documents route (`409 DOCUMENT_IMMUTABLE`).
 - `POST /api/v1/platform/baa-register` and `PATCH /api/v1/platform/baa-register/{id}` now require `documentId` to be a signed BAA filed for
   the record's own tenant (the document `tenant_baa` kind, in that organization): another tenant's document, a document of another kind or an
-  unknown id is `422 BAA_DOCUMENT_INVALID` (field `documentId`); no document adapter bound is `503 BAA_DOCUMENTS_UNBOUND`. Wizard step 3
+  unknown id is `422 BAA_DOCUMENT_INVALID` (field `documentId`). Wizard step 3
   settles only on a governing BAA whose document verifies the same way.
 - **Deploy note: go-live now needs the BAA's document to verify.** The go-live guard (the wizard's approval and the status route's
   `onboarding -> active` activation) treats a governing BAA as executed only when its `document_id` is a `tenant_baa` document of that
