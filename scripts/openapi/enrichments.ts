@@ -15494,6 +15494,8 @@ import {
   PractitionerLinkViewSchema as M12PractitionerLinkViewSchema,
   PrescriberVendorEnrollmentViewSchema as M12PrescriberVendorEnrollmentViewSchema,
   PutClinicBodySchema as M12PutClinicBodySchema,
+  ResolveHeldTransmissionBodySchema as M12ResolveHeldTransmissionBodySchema,
+  ResolveHeldTransmissionResponseSchema as M12ResolveHeldTransmissionResponseSchema,
   VerifyClinicResponseSchema as M12VerifyClinicResponseSchema,
 } from "../../apps/backend/src/modules/12-dosespot/tenant-config/typebox";
 import {
@@ -15565,6 +15567,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M12ConfirmPractitionerLinkBodySchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     response: M12PractitionerLinkViewSchema,
+  },
+  "POST /api/v1/medication-orders/:id/resolve-held-transmission": {
+    summary:
+      "An organization administrator resolves a medication order HELD because DoseSpot accepted its NewRx call but did not confirm what it created (the order is in flight, its transmission marked unconfirmed_outcome, and is never failed, retried or re-sent). Check the prescriber's DoseSpot account, then say `sent` (with the DoseSpot prescription id: the order becomes transmitted and the status poll follows it as for any transmitted order) or `not_sent` (the order becomes transmission_failed and the prescriber retransmits it; it is never re-sent). Accepted only while the order is still held, under a row lock (409 DOSESPOT_TRANSMISSION_NOT_HELD otherwise, including a second resolution); `sent` without an id is 422 DOSESPOT_PRESCRIPTION_ID_REQUIRED and `not_sent` with one is 422 DOSESPOT_PRESCRIPTION_ID_UNEXPECTED; an order of another organization is 404. The reason is kept on the transmission record, never in an event or an audit entry. prescribing.clinic.admin + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+    body: M12ResolveHeldTransmissionBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12ResolveHeldTransmissionResponseSchema,
   },
   "GET /api/v1/platform/tenants/:orgSlug/dosespot": {
     summary:

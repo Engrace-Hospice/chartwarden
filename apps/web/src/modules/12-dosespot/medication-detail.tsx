@@ -36,6 +36,7 @@ import {
   HospiceCoverageSection,
 } from "../../shell/hospice-coverage";
 import { useSession } from "../../shell/session";
+import { HeldTransmissionModal } from "./held-transmission-modal";
 import {
   type MedicationAction,
   MedicationActionModal,
@@ -156,10 +157,14 @@ export function MedicationDetail(): JSX.Element {
   const [txError, setTxError] = useState(false);
   const [action, setAction] = useState<MedicationAction | null>(null);
   const [retransmitting, setRetransmitting] = useState(false);
+  const [resolvingHeld, setResolvingHeld] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   // GAP-125 — the retransmit route gates `prescribing.sign` (no step-up) plus the standing rule the read reports as
   // `viewerMayRetransmit`; hiding the button is a UX cue only — the server still decides.
   const canSign = useSession()?.permissions?.includes("prescribing.sign") ?? false;
+  // An order HELD for an unconfirmed DoseSpot outcome is resolved by an organization administrator (the org-level clinic admin key); hiding the
+  // button is a UX cue only, the server decides.
+  const canResolveHeld = useSession()?.permissions?.includes("prescribing.clinic.admin") ?? false;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is the intentional refetch trigger a completed write bumps, not read in the body.
   useEffect(() => {
@@ -188,7 +193,8 @@ export function MedicationDetail(): JSX.Element {
         }
         const order = data as MedicationOrderView;
         setRow(order);
-        if (order.transmittedAt) {
+        // a transmitted order shows its status and retries; a QUEUED one may be HELD (DoseSpot accepted the call, the outcome is unconfirmed)
+        if (order.transmittedAt || order.status === "queued_for_transmission") {
           try {
             const { data: transmission, error: transmissionError } = await client.GET(
               "/api/v1/medication-orders/{id}/transmission",
@@ -273,6 +279,16 @@ export function MedicationDetail(): JSX.Element {
           order={row}
           onClose={() => setAction(null)}
           onDone={() => setReloadKey((k) => k + 1)}
+        />
+      ) : null}
+      {row && resolvingHeld ? (
+        <HeldTransmissionModal
+          orderId={row.id}
+          onClose={() => setResolvingHeld(false)}
+          onResolved={() => {
+            setResolvingHeld(false);
+            setReloadKey((k) => k + 1);
+          }}
         />
       ) : null}
       {row && retransmitting ? (
@@ -411,6 +427,26 @@ export function MedicationDetail(): JSX.Element {
                     }}
                   />
                   <Section title="Transmission">
+                    {row.status === "queued_for_transmission" &&
+                    tx?.status === "unconfirmed_outcome" ? (
+                      <section aria-label="Held transmission" style={heldNotice}>
+                        <StatusPill label="Held: outcome unconfirmed" tone="warning" />
+                        <p style={muted}>
+                          DoseSpot accepted this prescription request but its answer could not be
+                          read, so the prescription may already exist there. ChartWarden is holding
+                          the order and will not send it again. An administrator checks the
+                          prescriber's DoseSpot account and resolves it: sent (it is there) or not
+                          sent (the prescriber then retransmits it).
+                        </p>
+                        {canResolveHeld ? (
+                          <Button tone="secondary" onClick={() => setResolvingHeld(true)}>
+                            Resolve held transmission
+                          </Button>
+                        ) : (
+                          <p style={muted}>Ask an administrator to resolve it.</p>
+                        )}
+                      </section>
+                    ) : null}
                     {row.transmittedAt ? (
                       <>
                         <p style={muted}>Sent {dateTime(row.transmittedAt)}</p>
@@ -556,6 +592,13 @@ const description = {
   overflowWrap: "anywhere" as const,
   fontSize: ".875rem",
 };
+const heldNotice = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.5rem",
+  alignItems: "flex-start",
+  marginBottom: "0.75rem",
+} as const;
 const muted = {
   color: "var(--color-on-surface-variant)",
   fontSize: ".875rem",

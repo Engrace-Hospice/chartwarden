@@ -9,7 +9,7 @@
 import { requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { rejectAiActor } from "../../../bootstrap/reject-ai-actor";
-import { MembershipParamsSchema, parse } from "../routes/dosespot-typebox";
+import { MembershipParamsSchema, OrderParamsSchema, parse } from "../routes/dosespot-typebox";
 import type { PractitionerLinkService } from "./practitioner-link";
 import type { PrescriberEnrollmentService } from "./prescriber-enrollment";
 import {
@@ -20,10 +20,12 @@ import {
   requireIdempotencyKey,
 } from "./route-guards";
 import type { DoseSpotClinicRouteService } from "./tenant-service";
+import type { TransmissionResolveService } from "./transmission-resolve";
 import {
   ConfirmPractitionerLinkBodySchema,
   EnrollPrescriberVendorBodySchema,
   PutClinicBodySchema,
+  ResolveHeldTransmissionBodySchema,
 } from "./typebox";
 
 export interface TenantDoseSpotRouteDeps {
@@ -32,6 +34,8 @@ export interface TenantDoseSpotRouteDeps {
   readonly enrollmentService?: Pick<PrescriberEnrollmentService, "enroll">;
   /** The prescriber's own confirmation of the physician record linked to them; absent => those two routes are not mounted. */
   readonly linkService?: PractitionerLinkService;
+  /** An administrator's resolution of an order held for an unconfirmed DoseSpot outcome; absent => that route is not mounted. */
+  readonly resolveService?: TransmissionResolveService;
   /** Per-user cap on `verify` (a vendor call per request); fail-open like the other route limits. Absent = unlimited. */
   readonly verifyRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 }
@@ -51,6 +55,13 @@ const NO_AI_CONFIRM = rejectAiActor(
   "AI principals cannot confirm a prescriber's identity",
 ) as PreHandler;
 const WRITE: readonly PreHandler[] = [ADMIN, ADMIN_STEPUP, NO_AI, IDEMPOTENT];
+// Resolving a held transmission is an org administrator's decision (the same org-level key as the registration, which also decides where
+// prescriptions go): a fresh step-up, a human actor, an Idempotency-Key. The order is named by the path and scoped by the session's org (RLS): an
+// order of another organization is a 404.
+const NO_AI_RESOLVE = rejectAiActor(
+  "AI principals cannot resolve a held DoseSpot transmission",
+) as PreHandler;
+const RESOLVE: readonly PreHandler[] = [ADMIN, ADMIN_STEPUP, NO_AI_RESOLVE, IDEMPOTENT];
 
 export function registerTenantDoseSpotRoutes(
   app: FastifyInstance,
@@ -147,6 +158,26 @@ export function registerTenantDoseSpotRoutes(
           clinicActorOf(request),
           parse(ConfirmPractitionerLinkBodySchema, request.body),
         ),
+    );
+  }
+
+  // An order HELD because DoseSpot accepted the call but did not confirm what it created (it is never failed, retried or re-sent) leaves that
+  // state only here: an administrator checks the prescriber's DoseSpot account and says SENT (with the prescription id: the order becomes
+  // transmitted and is polled as normal) or NOT SENT (transmission_failed: the prescriber retransmits). Accepted only while the hold marker is
+  // on the transmission row, under a row lock, so two resolutions cannot both win (409 DOSESPOT_TRANSMISSION_NOT_HELD).
+  if (deps.resolveService) {
+    const resolver = deps.resolveService;
+    app.post(
+      "/api/v1/medication-orders/:id/resolve-held-transmission",
+      { preHandler: [...RESOLVE] },
+      async (request) => {
+        const { id } = parse(OrderParamsSchema, request.params);
+        return resolver.resolve(
+          clinicActorOf(request),
+          id,
+          parse(ResolveHeldTransmissionBodySchema, request.body),
+        );
+      },
     );
   }
 }

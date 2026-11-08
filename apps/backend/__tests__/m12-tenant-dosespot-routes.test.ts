@@ -28,6 +28,7 @@ import type {
   PutClinicInput,
 } from "../src/modules/12-dosespot/tenant-config/service";
 import type { DoseSpotClinicRouteService } from "../src/modules/12-dosespot/tenant-config/tenant-service";
+import type { TransmissionResolveService } from "../src/modules/12-dosespot/tenant-config/transmission-resolve";
 
 const ORG = "0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a";
 const MEMBERSHIP = "abababab-abab-4bab-8bab-abababababab";
@@ -79,6 +80,8 @@ interface Call {
   readonly membershipId?: string;
   readonly body?: unknown;
   readonly expectedVersion?: number | undefined;
+  readonly orderId?: string;
+  readonly userId?: string;
 }
 
 function makeServer(opts: { verifyLimit?: number } = {}) {
@@ -160,10 +163,28 @@ function makeServer(opts: { verifyLimit?: number } = {}) {
       return { ...LINK_VIEW, confirmed: true };
     },
   };
+  const resolveService: TransmissionResolveService = {
+    async resolve(actor, orderId, input) {
+      calls.push({
+        method: "resolve",
+        organizationId: actor.organizationId,
+        membershipId: actor.membershipId,
+        userId: actor.userId,
+        orderId,
+        body: input,
+      });
+      return {
+        orderId,
+        outcome: input.outcome,
+        status: input.outcome === "sent" ? "transmitted" : "transmission_failed",
+      };
+    },
+  };
   registerTenantDoseSpotRoutes(app, {
     clinicService: service,
     enrollmentService,
     linkService,
+    resolveService,
     ...(opts.verifyLimit
       ? {
           verifyRateLimit: createRouteRateLimit({
@@ -483,6 +504,90 @@ describe("the prescriber's own link confirmation routes", () => {
       expect((await post(bad)).statusCode).toBe(422);
     }
     expect(calls).toHaveLength(1);
+    await app.close();
+  });
+});
+
+describe("an administrator's resolution of a held transmission", () => {
+  const ORDER = "5c5c5c5c-5c5c-4c5c-8c5c-5c5c5c5c5c5c";
+  const URL_OF = (id: string) => `/api/v1/medication-orders/${id}/resolve-held-transmission`;
+  const REASON = "Checked the prescriber's DoseSpot account with the clinic lead.";
+  const SENT = { outcome: "sent", reason: REASON, dosespotPrescriptionId: "9001" };
+  const NOT_SENT = { outcome: "not_sent", reason: REASON };
+
+  it("needs the org-level clinic admin key, a fresh step-up, no AI actor and an Idempotency-Key; no other key opens it", async () => {
+    const { app, calls } = makeServer();
+    const send = (headers: Record<string, string>) =>
+      app.inject({ method: "POST", url: URL_OF(ORDER), headers, payload: NOT_SENT });
+    expect((await send({ ...idem() })).statusCode).toBe(401);
+    for (const user of ["reader_1", "roster_1", "prescriber_1", "none_1"]) {
+      // neither the clinic READ key, the roster key nor the prescriber's signing key is an administrator's
+      expect(
+        (await send({ "x-test-user": user, "x-test-step-up": "1", ...idem() })).statusCode,
+        user,
+      ).toBe(403);
+    }
+    expect((await send({ "x-test-user": "admin_1", ...idem() })).statusCode).toBe(403); // stale step-up
+    expect((await send({ ...ADMIN, "x-test-actor-kind": "ai_agent", ...idem() })).statusCode).toBe(
+      403,
+    );
+    expect((await send(ADMIN)).statusCode).toBe(400); // no Idempotency-Key
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("resolves with the order from the path and the acting administrator from the session; both outcomes reach the service", async () => {
+    const { app, calls } = makeServer();
+    const post = (payload: object) =>
+      app.inject({ method: "POST", url: URL_OF(ORDER), headers: { ...ADMIN, ...idem() }, payload });
+    const sent = await post(SENT);
+    expect(sent.statusCode).toBe(200);
+    expect(sent.json()).toEqual({ orderId: ORDER, outcome: "sent", status: "transmitted" });
+    const notSent = await post(NOT_SENT);
+    expect(notSent.json()).toEqual({
+      orderId: ORDER,
+      outcome: "not_sent",
+      status: "transmission_failed",
+    });
+    expect(calls).toEqual([
+      {
+        method: "resolve",
+        organizationId: ORG,
+        membershipId: MEMBERSHIP,
+        userId: "admin_1",
+        orderId: ORDER,
+        body: SENT,
+      },
+      {
+        method: "resolve",
+        organizationId: ORG,
+        membershipId: MEMBERSHIP,
+        userId: "admin_1",
+        orderId: ORDER,
+        body: NOT_SENT,
+      },
+    ]);
+    await app.close();
+  });
+
+  it("refuses a malformed request before the service runs: a bad order id, an unknown outcome, a short or missing reason, a bad prescription id, an extra field", async () => {
+    const { app, calls } = makeServer();
+    const post = (url: string, payload: object) =>
+      app.inject({ method: "POST", url, headers: { ...ADMIN, ...idem() }, payload });
+    expect((await post(URL_OF("not-a-uuid"), SENT)).statusCode).toBe(422);
+    for (const bad of [
+      { ...SENT, outcome: "maybe" },
+      { ...SENT, reason: "too short" },
+      { outcome: "sent", dosespotPrescriptionId: "9001" },
+      { ...SENT, dosespotPrescriptionId: "has spaces" },
+      { ...SENT, dosespotPrescriptionId: "x".repeat(65) },
+      { ...NOT_SENT, organizationId: "someone-else" },
+      { ...NOT_SENT, membershipId: "99999999-9999-4999-8999-999999999999" },
+      {},
+    ]) {
+      expect((await post(URL_OF(ORDER), bad)).statusCode, JSON.stringify(bad)).toBe(422);
+    }
+    expect(calls).toEqual([]);
     await app.close();
   });
 });

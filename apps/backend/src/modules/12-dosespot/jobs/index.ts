@@ -63,7 +63,17 @@ export {
   createEpisodeTracker,
   runForEachActiveOrg,
 } from "./cron-common";
-export { QUEUED_ORDER_ALERT_AGE_MS, runQueuedAgeAlertForOrg } from "./degradation-reports";
+export {
+  QUEUED_ORDER_ALERT_AGE_MS,
+  runHeldAgeAlertForOrg,
+  runQueuedAgeAlertForOrg,
+} from "./degradation-reports";
+export {
+  HELD_ORDER_REMINDER_AGE_MS,
+  RESOLVED_NOT_SENT_CLASS,
+  RESOLVED_SENT_CLASS,
+  UNCONFIRMED_OUTCOME_CLASS,
+} from "./hold";
 export {
   EPISODE_CLAIM_MS,
   EPISODE_CLEAN_TICKS,

@@ -66,6 +66,7 @@ import {
   logRenderPayload,
 } from "../../bootstrap/render-payload-sources";
 import { getOrderSignatureProvider } from "../11-orders";
+import { UNCONFIRMED_OUTCOME_CLASS } from "./jobs/hold";
 import {
   type ConsentGatePort,
   allergyGateError,
@@ -741,9 +742,11 @@ export function createDbDoseSpotBackend(
             ? "transmitted"
             : t.transmissionFailedAt
               ? "transmission_failed"
-              : t.transmissionStartedAt
-                ? "in_flight"
-                : "queued";
+              : t.lastErrorClass === UNCONFIRMED_OUTCOME_CLASS
+                ? "unconfirmed_outcome" // HELD: DoseSpot accepted the call but did not confirm what it created; an administrator resolves it
+                : t.transmissionStartedAt
+                  ? "in_flight"
+                  : "queued";
         const retryHistory =
           t && t.retryCount > 0
             ? [

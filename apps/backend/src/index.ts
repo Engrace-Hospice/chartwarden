@@ -746,6 +746,7 @@ import {
   createPractitionerProfileSource,
   createPrescriberEnrollmentService,
   createTransmissionGate,
+  createTransmissionResolveService,
   createValkeyEpisodeTracker,
   createWebhookBodyCipher,
   describeM12AdapterPosture,
@@ -6393,6 +6394,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             }),
             enrollmentService: m12PrescriberEnrollment,
             linkService: m12PractitionerLink,
+            // An organization administrator resolves an order HELD for an unconfirmed DoseSpot outcome (sent / not sent): the only way out of the hold.
+            resolveService: createTransmissionResolveService({
+              db: dbHandle.db,
+              outbox: m12OutboxPublisher,
+              audit: buildClinicAuditPort(),
+            }),
             verifyRateLimit: createRouteRateLimit({
               store: rateLimitStore ?? createInMemoryRateLimitStore(),
               limit: DOSESPOT_VERIFY_ROUTE_RATE_LIMIT,

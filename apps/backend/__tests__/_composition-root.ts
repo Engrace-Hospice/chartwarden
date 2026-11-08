@@ -5,12 +5,16 @@ import { join } from "node:path";
 
 export const COMPOSITION_ROOT = readFileSync(join(__dirname, "..", "src", "index.ts"), "utf8");
 
-/** The text of the balanced `callee({ ... })` call, from the callee name to its closing brace. */
-export function callArgument(source: string, callee: string): string {
-  const start = source.indexOf(`${callee}({`);
+/**
+ * The text of the balanced `callee(<leading>{ ... })` call, from the callee name to its closing brace. `leading` is whatever precedes the
+ * object argument (`"app, "` for `registerX(app, { ... })`).
+ */
+export function callArgument(source: string, callee: string, leading = ""): string {
+  const opening = `${callee}(${leading}{`;
+  const start = source.indexOf(opening);
   if (start < 0) throw new Error(`no call to ${callee} in the composition root`);
   let depth = 0;
-  for (let i = start + callee.length + 1; i < source.length; i += 1) {
+  for (let i = start + opening.length - 1; i < source.length; i += 1) {
     if (source[i] === "{") depth += 1;
     if (source[i] === "}") {
       depth -= 1;

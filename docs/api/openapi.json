@@ -183073,6 +183073,127 @@
         }
       }
     },
+    "/api/v1/medication-orders/{id}/resolve-held-transmission": {
+      "post": {
+        "operationId": "postApiV1MedicationordersByIdResolveheldtransmission",
+        "tags": [
+          "12-dosespot"
+        ],
+        "summary": "An organization administrator resolves a medication order HELD because DoseSpot accepted its NewRx call but did not confirm what it created (the order is in flight, its transmission marked unconfirmed_outcome, and is never failed, retried or re-sent). Check the prescriber's DoseSpot account, then say `sent` (with the DoseSpot prescription id: the order becomes transmitted and the status poll follows it as for any transmitted order) or `not_sent` (the order becomes transmission_failed and the prescriber retransmits it; it is never re-sent). Accepted only while the order is still held, under a row lock (409 DOSESPOT_TRANSMISSION_NOT_HELD otherwise, including a second resolution); `sent` without an id is 422 DOSESPOT_PRESCRIPTION_ID_REQUIRED and `not_sent` with one is 422 DOSESPOT_PRESCRIPTION_ID_UNEXPECTED; an order of another organization is 404. The reason is kept on the transmission record, never in an event or an audit entry. prescribing.clinic.admin + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "orderId",
+                    "outcome",
+                    "status"
+                  ],
+                  "properties": {
+                    "orderId": {
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "const": "sent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_sent",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "transmitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "transmission_failed",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "outcome",
+                  "reason"
+                ],
+                "properties": {
+                  "outcome": {
+                    "description": "`sent`: the prescription IS in the prescriber's DoseSpot account (give its id). `not_sent`: it is NOT there; the order becomes transmission_failed and the prescriber retransmits it. Neither re-sends anything.",
+                    "anyOf": [
+                      {
+                        "const": "sent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "not_sent",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 500,
+                    "description": "What you checked and found. Kept on the transmission record (not in any audit image or event); do not put patient details in it.",
+                    "type": "string"
+                  },
+                  "dosespotPrescriptionId": {
+                    "pattern": "^[A-Za-z0-9._-]{1,64}$",
+                    "description": "The DoseSpot prescription id you found. Required for `sent`; refused for `not_sent`.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/medication-orders/{id}/retransmit": {
       "post": {
         "operationId": "postApiV1MedicationordersByIdRetransmit",

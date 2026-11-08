@@ -14,7 +14,7 @@ import {
   type M12CronDeps,
   runForEachActiveOrg,
 } from "./cron-common";
-import { runQueuedAgeAlertForOrg } from "./degradation-reports";
+import { runHeldAgeAlertForOrg, runQueuedAgeAlertForOrg } from "./degradation-reports";
 import { runEpcsAttemptExpirySweepForOrg, runIal2ExpiryWarnForOrg } from "./ial2-and-epcs-sweeps";
 import {
   type M12CronKey,
@@ -130,12 +130,15 @@ export function buildM12CronRunners(
       }
     };
   return {
-    // the age alert covers every org, configured or not: an order that waits for an hour is the tenant's problem either way
+    // the age alerts (queued past an hour, held past a day) cover every org, configured or not: either wait is the tenant's problem
     transmitNewRx: fanOut(
       "M12_TRANSMIT_NEWRX",
       (o) => runTransmitNewRxForOrg(deps, o),
       true,
-      (o) => runQueuedAgeAlertForOrg(deps, o),
+      async (o) => {
+        await runQueuedAgeAlertForOrg(deps, o);
+        await runHeldAgeAlertForOrg(deps, o);
+      },
     ),
     transmitQueuedOnRecovery: fanOut(
       "M12_TRANSMIT_QUEUED_ON_RECOVERY",

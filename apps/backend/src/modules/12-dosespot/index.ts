@@ -313,6 +313,11 @@ export {
   createPractitionerLinkService,
 } from "./tenant-config/practitioner-link";
 export {
+  type HeldResolution,
+  type TransmissionResolveService,
+  createTransmissionResolveService,
+} from "./tenant-config/transmission-resolve";
+export {
   type NppesDirectoryPort,
   type PractitionerDirectoryPort,
   type PractitionerProfile,

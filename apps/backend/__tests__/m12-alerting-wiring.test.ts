@@ -32,6 +32,13 @@ describe("M12 degradation alerting is wired in the composition root", () => {
     expect(construction).toMatch(/commandTimeout:\s*2_000/);
   });
 
+  it("mounts the administrator's resolution of a held transmission with the real service (the only way out of a hold)", () => {
+    const call = callArgument(COMPOSITION_ROOT, "registerTenantDoseSpotRoutes", "app, ");
+    expect(call).toMatch(/\bresolveService:\s*createTransmissionResolveService\(/);
+    expect(call).toMatch(/audit:\s*buildClinicAuditPort\(\)/);
+    expect(call).toMatch(/outbox:\s*m12OutboxPublisher/);
+  });
+
   it("the consumer handles the retry-exhausted transmission too (the event described as an M36 alert that nothing consumed)", () => {
     expect([...M36_DOSESPOT_ALERT_EVENT_TYPES]).toContain(
       "m12.medication_order.transmission_failed",

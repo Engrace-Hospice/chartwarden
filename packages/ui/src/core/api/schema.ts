@@ -15202,6 +15202,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/medication-orders/{id}/resolve-held-transmission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** An organization administrator resolves a medication order HELD because DoseSpot accepted its NewRx call but did not confirm what it created (the order is in flight, its transmission marked unconfirmed_outcome, and is never failed, retried or re-sent). Check the prescriber's DoseSpot account, then say `sent` (with the DoseSpot prescription id: the order becomes transmitted and the status poll follows it as for any transmitted order) or `not_sent` (the order becomes transmission_failed and the prescriber retransmits it; it is never re-sent). Accepted only while the order is still held, under a row lock (409 DOSESPOT_TRANSMISSION_NOT_HELD otherwise, including a second resolution); `sent` without an id is 422 DOSESPOT_PRESCRIPTION_ID_REQUIRED and `not_sent` with one is 422 DOSESPOT_PRESCRIPTION_ID_UNEXPECTED; an order of another organization is 404. The reason is kept on the transmission record, never in an event or an audit entry. prescribing.clinic.admin + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        post: operations["postApiV1MedicationordersByIdResolveheldtransmission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/medication-orders/{id}/retransmit": {
         parameters: {
             query?: never;
@@ -74410,6 +74427,48 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicationordersByIdResolveheldtransmission: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description `sent`: the prescription IS in the prescriber's DoseSpot account (give its id). `not_sent`: it is NOT there; the order becomes transmission_failed and the prescriber retransmits it. Neither re-sends anything. */
+                    outcome: "sent" | "not_sent";
+                    /** @description What you checked and found. Kept on the transmission record (not in any audit image or event); do not put patient details in it. */
+                    reason: string;
+                    /** @description The DoseSpot prescription id you found. Required for `sent`; refused for `not_sent`. */
+                    dosespotPrescriptionId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        orderId: string;
+                        outcome: "sent" | "not_sent";
+                        status: "transmitted" | "transmission_failed";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

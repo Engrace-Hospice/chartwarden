@@ -27,7 +27,7 @@
 //   • §4.7 prescriber eligibility — `prescriberEligible(discipline, medClass)` is resolved server-side
 //     from the caller's own grants. A 403 is the answer, surfaced verbatim.
 //   • The §2.3 verbal-order window, and the §2.7 refill SLA.
-import type { ApiClient, operations } from "@chartwarden/ui";
+import { type ApiClient, isStepUpRequired, type operations } from "@chartwarden/ui";
 import { describeMedicationFindings, medicationFindings } from "./medication-validation";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
@@ -417,6 +417,47 @@ export async function retransmitOrder(
       : res;
   }
   return ok({ newOrderId: data.newOrderId });
+}
+
+// ── a held transmission (an unconfirmed DoseSpot outcome) ─────────────────────────────────────────────
+
+export type ResolveHeldBody = ReqBody<
+  operations["postApiV1MedicationordersByIdResolveheldtransmission"]
+>;
+export type ResolveHeldResult = Ok<
+  operations["postApiV1MedicationordersByIdResolveheldtransmission"]
+>;
+
+/**
+ * An organization administrator resolves an order HELD because DoseSpot accepted its NewRx call but did not confirm what it created
+ * (POST .../resolve-held-transmission: `prescribing.clinic.admin` + a FRESH step-up + an Idempotency-Key, minted here per call). `sent`
+ * (with the DoseSpot prescription id) makes it transmitted; `not_sent` makes it transmission_failed so the prescriber retransmits.
+ * Nothing is sent either way. A refusal for want of a fresh step-up comes back as code `STEP_UP_REQUIRED` so the caller can route to the ceremony.
+ */
+export async function resolveHeldTransmission(
+  client: ApiClient,
+  id: string,
+  body: ResolveHeldBody,
+): Promise<WriteResult<ResolveHeldResult>> {
+  const { data, error, response } = await client.POST(
+    "/api/v1/medication-orders/{id}/resolve-held-transmission",
+    {
+      params: { path: { id }, header: { "Idempotency-Key": globalThis.crypto.randomUUID() } },
+      body,
+    },
+  );
+  if (error || !data) {
+    if (isStepUpRequired(error)) {
+      return {
+        ok: false,
+        status: 403,
+        code: "STEP_UP_REQUIRED",
+        message: "A fresh step-up is required.",
+      };
+    }
+    return failure(response?.status, error);
+  }
+  return ok(data as ResolveHeldResult);
 }
 
 // ── §2.7 refills ───────────────────────────────────────────────────────────────────────────────────────

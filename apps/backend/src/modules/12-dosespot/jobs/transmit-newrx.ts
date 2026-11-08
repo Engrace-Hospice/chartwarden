@@ -19,7 +19,7 @@
 //                       permanent vendor rejection or an unfixable order exhausts immediately.
 //        unconfirmed -> DoseSpot ACCEPTED the call (2xx) but its answer was unreadable or carried no id: the prescription may already
 //                       exist there. The order is HELD, still `in_flight`, its transmission row naming why
-//                       ({@link UNCONFIRMED_OUTCOME_CLASS}): not failed (it did not fail), not re-queued, not retried, and skipped by the
+//                       (`UNCONFIRMED_OUTCOME_CLASS` (hold.ts)): not failed (it did not fail), not re-queued, not retried, and skipped by the
 //                       stale-claim drain (a second send could dispense twice). `m12.medication_order.transmission_unconfirmed` is
 //                       published in the same transaction and M36 tells the tenant's administrators, who check the prescriber's DoseSpot
 //                       account and either find it sent or discontinue the order and sign a new one.
@@ -40,6 +40,7 @@ import {
 import { and, asc, eq, inArray, isNull, lt, notExists, sql } from "drizzle-orm";
 import { type M12CronDeps, errorClassOf, inOrg, isCircuitOpenError, nowOf } from "./cron-common";
 import { reportDegradation, reportRecovery } from "./degradation-reports";
+import { UNCONFIRMED_OUTCOME_CLASS } from "./hold";
 import { DosespotSyncQueueRepository } from "./repository";
 
 const MO = schema.medicationOrders;
@@ -51,8 +52,6 @@ export const TRANSMIT_BATCH_SIZE = 25;
 export const RECOVERY_BATCH_SIZE = 100;
 /** An `in_flight` claim older than this is a crashed worker's; the recovery drain re-queues it. */
 export const IN_FLIGHT_STALE_MS = 10 * 60_000;
-/** The transmission row's `last_error_class` while an order is HELD for an outcome DoseSpot left unconfirmed. */
-export const UNCONFIRMED_OUTCOME_CLASS = "unconfirmed_outcome";
 const STALE_CALL_DETAIL =
   "A worker stopped after the call to DoseSpot was made, before the answer was recorded. The prescription may already exist at DoseSpot.";
 const MAX_BACKOFF_MINUTES = 60;

@@ -45,6 +45,8 @@ export interface DosespotAlertPlan {
 const DEGRADED_DETAIL: Readonly<Record<string, string>> = {
   config_unavailable:
     "ChartWarden could not read or open this organization's DoseSpot configuration, so signed prescriptions are not being sent and stay queued. A platform operator needs to check the configuration and its keys.",
+  held_orders_aged:
+    "A prescription held because DoseSpot's answer was not confirmed has waited over 24 hours for an administrator to resolve it. Check the prescriber's DoseSpot account, then open the order and resolve it: mark it sent with its DoseSpot prescription id, or not sent so the prescriber can retransmit it.",
   queued_orders_stale:
     "Signed prescriptions have been waiting to be sent to DoseSpot for over an hour. They stay queued and are sent once the cause is fixed; if an order cannot wait, follow your downtime prescribing procedure.",
 };
@@ -57,8 +59,7 @@ const FAILED_DETAIL =
 const RESOLVED_NOT_SENT_DETAIL =
   "An administrator confirmed that this prescription never reached DoseSpot. It has NOT been sent. The prescriber must retransmit it from the order page.";
 const UNCONFIRMED_DETAIL =
-  "DoseSpot accepted this prescription request but its answer could not be read, so the prescription may already exist there. ChartWarden is holding the order and will not send it again. Check the prescriber's DoseSpot account: if the prescription is there, the order was sent; if it is not, discontinue this order and sign a new one.";
-
+  "DoseSpot accepted this prescription request but its answer could not be read, so the prescription may already exist there. ChartWarden is holding the order and will not send it again. Check the prescriber's DoseSpot account, then open the order and resolve it: if the prescription is there, mark it sent and enter its DoseSpot prescription id; if it is not, mark it not sent and the prescriber can retransmit it.";
 function requireString(p: Record<string, unknown>, key: string, eventName: string): string {
   const v = p[key];
   if (typeof v !== "string" || v.length === 0) {

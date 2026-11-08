@@ -13,6 +13,8 @@ export const CLINIC_AUDIT_EVENTS = {
   prescriberEnrolled: "m12.dosespot_clinic.prescriber_enrolled",
   /** The prescriber confirmed, from their own account, that the linked physician record is theirs. Ids only. */
   prescriberLinkConfirmed: "m12.dosespot_clinic.prescriber_link_confirmed",
+  /** An administrator resolved an order HELD for an unconfirmed DoseSpot outcome as sent or not sent. Ids and the outcome only. */
+  transmissionResolved: "m12.dosespot_order.transmission_resolved",
 } as const;
 export type ClinicAuditEvent = (typeof CLINIC_AUDIT_EVENTS)[keyof typeof CLINIC_AUDIT_EVENTS];
 
@@ -23,7 +25,10 @@ export interface ClinicAuditEntry {
   readonly eventType: ClinicAuditEvent;
   /** The registration's (or, for an enrolment, the roster row's) id. */
   readonly resourceId: string;
-  readonly resourceKind: "dosespot_clinic_registration" | "dosespot_prescriber";
+  readonly resourceKind:
+    | "dosespot_clinic_registration"
+    | "dosespot_prescriber"
+    | "medication_order";
   /** Names of the fields the change touched (never values). */
   readonly changedFields: readonly string[];
   /** Non-sensitive facts (a code, a status, an outcome). */

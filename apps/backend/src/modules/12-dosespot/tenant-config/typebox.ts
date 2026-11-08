@@ -163,3 +163,37 @@ export const PrescriberVendorEnrollmentViewSchema = Type.Object({
   membershipId: Type.String(),
   enrolledWithDoseSpot: Type.Literal(true),
 });
+
+/**
+ * An organization administrator's resolution of an order HELD for an unconfirmed DoseSpot outcome. The order is named by the path; nothing
+ * here says who acts (the session) or which transmission (the order's current one, which must still carry the hold marker).
+ */
+export const ResolveHeldTransmissionBodySchema = Type.Object(
+  {
+    outcome: Type.Union([Type.Literal("sent"), Type.Literal("not_sent")], {
+      description:
+        "`sent`: the prescription IS in the prescriber's DoseSpot account (give its id). `not_sent`: it is NOT there; the order becomes transmission_failed and the prescriber retransmits it. Neither re-sends anything.",
+    }),
+    reason: Type.String({
+      minLength: 10,
+      maxLength: 500,
+      description:
+        "What you checked and found. Kept on the transmission record (not in any audit image or event); do not put patient details in it.",
+    }),
+    dosespotPrescriptionId: Type.Optional(
+      Type.String({
+        pattern: "^[A-Za-z0-9._-]{1,64}$",
+        description:
+          "The DoseSpot prescription id you found. Required for `sent`; refused for `not_sent`.",
+      }),
+    ),
+  },
+  { additionalProperties: false },
+);
+export type ResolveHeldTransmissionBody = Static<typeof ResolveHeldTransmissionBodySchema>;
+
+export const ResolveHeldTransmissionResponseSchema = Type.Object({
+  orderId: Type.String(),
+  outcome: Type.Union([Type.Literal("sent"), Type.Literal("not_sent")]),
+  status: Type.Union([Type.Literal("transmitted"), Type.Literal("transmission_failed")]),
+});

@@ -20,6 +20,8 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog } from "../src/bootstrap/outbox-persister";
+import { buildClinicAuditPort } from "../src/m12-dosespot-clinic-audit";
+import { createDbDoseSpotBackend } from "../src/modules/12-dosespot/dosespot-route-service-db";
 import {
   type ClinicSecretCipher,
   M12_OUTBOX_EVENTS,
@@ -39,16 +41,18 @@ import {
   buildM12CronRunners,
   createBreakerEdgeRecorder,
   createEpisodeTracker,
+  runHeldAgeAlertForOrg,
   runQueuedAgeAlertForOrg,
   runRecoveryDrainForOrg,
   runTransmissionSweepForOrg,
   runTransmitNewRxForOrg,
 } from "../src/modules/12-dosespot/jobs/index";
 import { alertAfterCommit } from "../src/modules/12-dosespot/tenant-config/effects";
+import { createTransmissionResolveService } from "../src/modules/12-dosespot/tenant-config/transmission-resolve";
 import { createDrizzleAlertEmitter, wireAlertRuleSeed } from "../src/modules/36-messaging/index";
 import { buildM36DosespotAlertConsumer } from "../src/modules/36-messaging/outbox-consumers/dosespot-alerts";
 import { FakeDoseSpotVendor } from "./_fake-dosespot-vendor";
-import { GOOD_DATA, type M12Live, ORG_A, ORG_B, setupM12Live } from "./_m12-live-harness";
+import { GOOD_DATA, type M12Live, ORG_A, ORG_B, USER, setupM12Live } from "./_m12-live-harness";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const T0 = new Date();
@@ -1048,6 +1052,329 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
     });
   });
 
+  // Review of slice 4, MEDIUM-1: the hold had no way out. An organization administrator who checked the prescriber's DoseSpot account resolves
+  // it: SENT (with the prescription id) or NOT SENT. Both are accepted only while the hold marker is on the transmission row, under a row lock.
+  describe("an administrator resolves a held order", () => {
+    const REASON = "Checked the prescriber's DoseSpot account on 11/6 with the clinic lead.";
+    const resolver = () =>
+      createTransmissionResolveService({
+        db: h.handle.db,
+        outbox: h.outbox,
+        audit: buildClinicAuditPort(),
+      });
+    const actorFor = async (org = ORG_A) => ({
+      organizationId: org,
+      userId: USER,
+      membershipId: (
+        await h.q("SELECT id FROM membership WHERE organization_id=$1 LIMIT 1", [org])
+      )[0]?.id as string,
+    });
+    const hold = async () => {
+      const { orderId, transmissionId } = await queued();
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async () => {
+          throw new UnconfirmedOutcomeError(
+            "dosespot",
+            "transmitNewRx",
+            "DoseSpot returned an unreadable response.",
+            "c-held",
+          );
+        },
+      });
+      await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+      return { orderId, transmissionId: transmissionId as string };
+    };
+    const eventsFor = async (type: string, orderId: string) =>
+      (await h.eventsOf(type, ORG_A)).filter(
+        (e) => (e.payload as { orderId?: string }).orderId === orderId,
+      );
+    const never = new FakeDoseSpotVendor({
+      transmit: async () => {
+        throw new Error("nothing may be sent for a resolved order");
+      },
+    });
+    const errorCodeOf = async (promise: Promise<unknown>) =>
+      promise.then(
+        () => "",
+        (e: unknown) => (e as { code?: string }).code ?? "",
+      );
+
+    it("SENT: the order becomes transmitted with the vendor id recorded, the transmitted event goes out as for a worker success, the status poll follows it, and nothing is sent", async () => {
+      const { orderId, transmissionId } = await hold();
+      const before = await orderRow(orderId);
+      const res = await resolver().resolve(await actorFor(), orderId, {
+        outcome: "sent",
+        reason: REASON,
+        dosespotPrescriptionId: "rx-777",
+      });
+      expect(res).toEqual({ orderId, outcome: "sent", status: "transmitted" });
+      const after = await orderRow(orderId);
+      expect(after).toMatchObject({ status: "transmitted", s: "transmitted", rx: "rx-777" });
+      expect(Number(after.version)).toBe(Number(before.version) + 1);
+      const t = await txRow(transmissionId);
+      expect(t).toMatchObject({
+        dosespot_prescription_id: "rx-777",
+        last_error_class: "resolved_sent",
+        last_error_detail: REASON,
+      });
+      expect(t.transmission_succeeded_at).not.toBeNull();
+      const transmitted = await eventsFor("m12.medication_order.transmitted", orderId);
+      expect(transmitted).toHaveLength(1);
+      expect(transmitted[0]?.payload).toMatchObject({ dosespotPrescriptionId: "rx-777" });
+      expect(await eventsFor("m12.medication_order.transmission_failed", orderId)).toEqual([]);
+      // the audit entry is ids and the outcome only; the reason is on the (denylisted) transmission column, in no audit image
+      const audits = await h.q(
+        "SELECT context FROM audit_event WHERE organization_id=$1 AND event_type='m12.dosespot_order.transmission_resolved' AND resource_id=$2",
+        [ORG_A, orderId],
+      );
+      expect(audits).toHaveLength(1);
+      expect(audits[0]?.context).toMatchObject({ outcome: "sent", transmissionId });
+      expect(JSON.stringify(audits[0]?.context)).not.toContain("DoseSpot account");
+      const leaks = await h.q(
+        "SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND (before::text LIKE '%DoseSpot account on 11/6%' OR after::text LIKE '%DoseSpot account on 11/6%' OR context::text LIKE '%DoseSpot account on 11/6%')",
+        [ORG_A],
+      );
+      expect(leaks[0]?.n).toBe(0);
+      // the poll follows it like any transmitted order, and neither a tick nor the drain sends it
+      const poll = new FakeDoseSpotVendor({
+        prescriptionStatus: async (_o, _p, rxId) => ({
+          dosespotPrescriptionId: rxId,
+          phase: "sent",
+          rawStatus: "raw-sent",
+          observedAt: T0.toISOString(),
+        }),
+      });
+      await runTransmissionSweepForOrg(deps(poll), ORG_A);
+      expect(await orderRow(orderId)).toMatchObject({ status: "active", s: "acked" });
+      expect((await runTransmitNewRxForOrg(deps(never), ORG_A)).claimed).toBe(0);
+    });
+
+    it("NOT SENT: the order becomes transmission_failed (the retransmit path), the failed event goes out, and it is never put back on the queue or sent", async () => {
+      const { orderId, transmissionId } = await hold();
+      const res = await resolver().resolve(await actorFor(), orderId, {
+        outcome: "not_sent",
+        reason: REASON,
+      });
+      expect(res).toEqual({ orderId, outcome: "not_sent", status: "transmission_failed" });
+      expect(await orderRow(orderId)).toMatchObject({ status: "transmission_failed", s: "failed" });
+      const t = await txRow(transmissionId);
+      expect(t).toMatchObject({ last_error_class: "resolved_not_sent", last_error_detail: REASON });
+      expect(t.transmission_failed_at).not.toBeNull();
+      expect(t.transmission_succeeded_at).toBeNull();
+      const failed = await eventsFor("m12.medication_order.transmission_failed", orderId);
+      expect(failed).toHaveLength(1);
+      expect(failed[0]?.payload).toMatchObject({
+        lastErrorClass: "resolved_not_sent",
+        retryCount: 0,
+      });
+      expect(await eventsFor("m12.medication_order.transmitted", orderId)).toEqual([]);
+      await h.admin.query(
+        "UPDATE medication_order SET updated_at = now() - interval '3 hours' WHERE id=$1",
+        [orderId],
+      );
+      expect((await runTransmitNewRxForOrg(deps(never), ORG_A)).claimed).toBe(0);
+      expect((await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A)).released).toBe(0);
+      expect((await orderRow(orderId)).status).toBe("transmission_failed");
+    });
+
+    it("is refused unless the order is still HELD: an ordinary queued order, a transmitted one, an already-resolved one and an unknown one", async () => {
+      const resolved = await hold(); // (its pass claims every queued order of the org, so the plain queued order is made AFTER it)
+      const queuedOnly = await queued();
+      const sent = await h.seedOrder({
+        org: ORG_A,
+        patientId: await h.seedPatient(ORG_A, { synced: "501" }),
+        status: "transmitted",
+        sendState: "transmitted",
+        dosespotPrescriptionId: "rx-9",
+        transmittedAt: T0,
+      });
+      await resolver().resolve(await actorFor(), resolved.orderId, {
+        outcome: "not_sent",
+        reason: REASON,
+      });
+      const input = { outcome: "not_sent", reason: REASON } as const;
+      for (const id of [queuedOnly.orderId, sent.orderId, resolved.orderId]) {
+        expect(await errorCodeOf(resolver().resolve(await actorFor(), id, input)), id).toBe(
+          "DOSESPOT_TRANSMISSION_NOT_HELD",
+        );
+      }
+      expect(
+        await errorCodeOf(
+          resolver().resolve(await actorFor(), "99999999-9999-4999-8999-999999999999", input),
+        ),
+      ).toBe("NOT_FOUND");
+      expect((await orderRow(queuedOnly.orderId)).s).toBe("queued"); // nothing was touched
+    });
+
+    it("another organization's administrator cannot resolve it (404 under RLS) and it stays held", async () => {
+      const { orderId } = await hold();
+      expect(
+        await errorCodeOf(
+          resolver().resolve(await actorFor(ORG_B), orderId, {
+            outcome: "not_sent",
+            reason: REASON,
+          }),
+        ),
+      ).toBe("NOT_FOUND");
+      expect((await orderRow(orderId)).s).toBe("in_flight");
+    });
+
+    it("sent needs the prescription id and not sent refuses one (422), before the order is touched", async () => {
+      const { orderId } = await hold();
+      expect(
+        await errorCodeOf(
+          resolver().resolve(await actorFor(), orderId, { outcome: "sent", reason: REASON }),
+        ),
+      ).toBe("DOSESPOT_PRESCRIPTION_ID_REQUIRED");
+      expect(
+        await errorCodeOf(
+          resolver().resolve(await actorFor(), orderId, {
+            outcome: "not_sent",
+            reason: REASON,
+            dosespotPrescriptionId: "rx-1",
+          }),
+        ),
+      ).toBe("DOSESPOT_PRESCRIPTION_ID_UNEXPECTED");
+      expect((await orderRow(orderId)).s).toBe("in_flight");
+    });
+
+    it("RACE: two resolutions of one held order, in parallel, cannot both win (one succeeds, the other is 409), and exactly one outcome event exists", async () => {
+      const pairs = await Promise.all([hold(), hold(), hold(), hold()]);
+      for (const { orderId } of pairs) {
+        const settled = await Promise.allSettled([
+          resolver().resolve(await actorFor(), orderId, {
+            outcome: "sent",
+            reason: REASON,
+            dosespotPrescriptionId: `rx-race-${orderId.slice(0, 8)}`,
+          }),
+          resolver().resolve(await actorFor(), orderId, { outcome: "not_sent", reason: REASON }),
+        ]);
+        const won = settled.filter((r) => r.status === "fulfilled");
+        const lost = settled.filter((r) => r.status === "rejected");
+        expect(won, orderId).toHaveLength(1);
+        expect(lost, orderId).toHaveLength(1);
+        expect((lost[0] as PromiseRejectedResult).reason).toMatchObject({
+          code: "DOSESPOT_TRANSMISSION_NOT_HELD",
+        });
+        const outcome = (won[0] as PromiseFulfilledResult<{ status: string }>).value.status;
+        expect((await orderRow(orderId)).status).toBe(outcome);
+        const sentEvents = await eventsFor("m12.medication_order.transmitted", orderId);
+        const failedEvents = await eventsFor("m12.medication_order.transmission_failed", orderId);
+        expect(sentEvents.length + failedEvents.length).toBe(1);
+      }
+    });
+
+    it("RACE with the interleaving forced: both resolutions are held at the order's row lock until it is released, and still only one wins", async () => {
+      // A free-running pair usually finishes one after the other. Holding the order's row lock from another connection makes both
+      // resolutions reach their first statement before either may write, which is the interleaving the lock and the conditional UPDATE exist for.
+      const { orderId } = await hold();
+      await h.admin.query("BEGIN");
+      await h.admin.query("SELECT id FROM medication_order WHERE id=$1 FOR UPDATE", [orderId]);
+      const both = Promise.allSettled([
+        resolver().resolve(await actorFor(), orderId, {
+          outcome: "sent",
+          reason: REASON,
+          dosespotPrescriptionId: "rx-forced",
+        }),
+        resolver().resolve(await actorFor(), orderId, { outcome: "not_sent", reason: REASON }),
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await h.admin.query("COMMIT");
+      const settled = await both;
+      expect(settled.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      const lost = settled.find((r) => r.status === "rejected") as PromiseRejectedResult;
+      expect(lost.reason).toMatchObject({ code: "DOSESPOT_TRANSMISSION_NOT_HELD" });
+      const sentEvents = await eventsFor("m12.medication_order.transmitted", orderId);
+      const failedEvents = await eventsFor("m12.medication_order.transmission_failed", orderId);
+      expect(sentEvents.length + failedEvents.length).toBe(1);
+    });
+
+    it("an order that is in flight but NOT held (an ordinary claim a worker is processing) cannot be resolved", async () => {
+      const { orderId } = await queued();
+      await h.admin.query(
+        "UPDATE medication_order SET dosespot_send_state='in_flight' WHERE id=$1",
+        [orderId],
+      );
+      expect(
+        await errorCodeOf(
+          resolver().resolve(await actorFor(), orderId, { outcome: "not_sent", reason: REASON }),
+        ),
+      ).toBe("DOSESPOT_TRANSMISSION_NOT_HELD");
+      expect((await orderRow(orderId)).s).toBe("in_flight");
+    });
+
+    it("RACE: a resolution racing the recovery drain wins cleanly: the drain never re-queues or sends the order, whichever outcome", async () => {
+      for (const outcome of ["sent", "not_sent"] as const) {
+        const { orderId } = await hold();
+        await h.admin.query(
+          "UPDATE medication_order SET updated_at = now() - interval '3 hours' WHERE id=$1",
+          [orderId],
+        );
+        const sentOrders: string[] = [];
+        const vendor = new FakeDoseSpotVendor({
+          transmit: async (_org, payload) => {
+            sentOrders.push(payload.medicationOrderId);
+            return { dosespotPrescriptionId: "rx-leak", transmittedAt: new Date().toISOString() };
+          },
+        });
+        const [resolution] = await Promise.allSettled([
+          resolver().resolve(await actorFor(), orderId, {
+            outcome,
+            reason: REASON,
+            ...(outcome === "sent" ? { dosespotPrescriptionId: "rx-after-race" } : {}),
+          }),
+          runRecoveryDrainForOrg(deps(vendor, minutes(300)), ORG_A),
+        ]);
+        expect(resolution.status, outcome).toBe("fulfilled");
+        expect(sentOrders, outcome).not.toContain(orderId);
+        expect((await orderRow(orderId)).status).toBe(
+          outcome === "sent" ? "transmitted" : "transmission_failed",
+        );
+      }
+    });
+
+    it("the transmission read says unconfirmed_outcome while held and the resolved state after", async () => {
+      const backend = createDbDoseSpotBackend(h.handle.db, h.outbox);
+      const { orderId } = await hold();
+      expect((await backend.getTransmission(ORG_A, orderId)).status).toBe("unconfirmed_outcome");
+      await resolver().resolve(await actorFor(), orderId, { outcome: "not_sent", reason: REASON });
+      expect((await backend.getTransmission(ORG_A, orderId)).status).toBe("transmission_failed");
+    });
+
+    it("a hold that has waited over 24 hours raises ONE reminder (the degradation machinery), and resolving it clears it", async () => {
+      await h.admin.query(
+        "DELETE FROM outbox_event WHERE event_type IN ('m12.dosespot_degraded','m12.dosespot_recovered')",
+      );
+      const { orderId, transmissionId } = await hold();
+      const clock = { t: Date.now() };
+      const store = createInMemoryEpisodeStore(() => clock.t);
+      const world: M12CronDeps = {
+        ...deps(never),
+        episodes: createValkeyEpisodeTracker(store),
+        warn: () => undefined,
+      };
+      const reminders = async (type: string) =>
+        (await h.eventsOf(type, ORG_A)).filter(
+          (e) => e.payload.breakerName === `dosespot-held_orders_aged:${ORG_A}`,
+        );
+      expect(await runHeldAgeAlertForOrg(world, ORG_A)).toBe(false); // held for a moment: no reminder yet
+      await h.admin.query(
+        "UPDATE medication_order_transmission SET transmission_started_at = now() - interval '25 hours' WHERE id=$1",
+        [transmissionId],
+      );
+      expect(await runHeldAgeAlertForOrg(world, ORG_A)).toBe(true);
+      expect(await runHeldAgeAlertForOrg(world, ORG_A)).toBe(true);
+      const opened = await reminders("m12.dosespot_degraded");
+      expect(opened).toHaveLength(1);
+      expect(opened[0]?.payload.lastErrorClass).toBe("held_orders_aged");
+      await resolver().resolve(await actorFor(), orderId, { outcome: "not_sent", reason: REASON });
+      expect(await runHeldAgeAlertForOrg(world, ORG_A)).toBe(false);
+      expect(await runHeldAgeAlertForOrg(world, ORG_A)).toBe(false); // the second clean tick announces the recovery
+      expect(await reminders("m12.dosespot_recovered")).toHaveLength(1);
+      expect(await reminders("m12.dosespot_degraded")).toHaveLength(1);
+    });
+  });
+
   // Review of slice 4, M3: the episode memory is shared (Valkey), a recovery is announced by whichever process sees it, and a fault
   // in the store or the publish delays an alert but never drops one or fails a tick. The shared store here is a faithful in-memory
   // stand-in for the SET NX PX / PEXPIRE / DEL subset; the real Valkey is exercised by m12-episode-store.live.test.ts.
@@ -1306,6 +1633,8 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       let emitter: ReturnType<typeof createDrizzleAlertEmitter>;
       let adminUserId: string;
       beforeAll(async () => {
+        // earlier tests of this suite published events nothing consumed; the dispatcher polls a bounded batch oldest first, so start clean
+        await h.admin.query("DELETE FROM outbox_event");
         const member = (
           await h.q("SELECT id, user_id FROM membership WHERE organization_id=$1", [ORG_A])
         )[0];

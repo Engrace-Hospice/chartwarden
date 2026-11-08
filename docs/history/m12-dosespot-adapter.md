@@ -156,9 +156,17 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   may already exist there, so `transmitNewRx` neither fails the order nor retries it (a second send could dispense twice). The order is HELD:
   still `queued_for_transmission` / `in_flight`, its transmission row `last_error_class = 'unconfirmed_outcome'` with a detail line, no retry
   spent, skipped by the claim and by the stale-claim drain. `m12.medication_order.transmission_unconfirmed` is published in the same transaction
-  and M36's `dosespot-alerts` pages the tenant's administrators once, naming the order. The way out is a person's: check the prescriber's
-  DoseSpot account (found there = it was sent; not there = discontinue the order and sign a new one). There is no resolve action in the product
-  yet, and a held order stays `in_flight` until someone acts. (The same 2xx-but-no-id ambiguity after the create step used to be a permanent
+  and M36's `dosespot-alerts` pages the tenant's administrators once, naming the order, and again as a reminder when the hold is over 24 hours
+  old (`held_orders_aged`, through the same episode machinery). The way out is an ADMINISTRATOR's resolution (MEDIUM-1 of the next review):
+  `POST /api/v1/medication-orders/:id/resolve-held-transmission` (`prescribing.clinic.admin` + a fresh step-up + a human actor + an
+  Idempotency-Key + a reason), offered on the medication-order detail to administrators. The administrator checks the prescriber's DoseSpot
+  account and says SENT (entering the DoseSpot prescription id: the order becomes `transmitted`, the `transmitted` event goes out as for a
+  worker success and the status poll follows it as normal) or NOT SENT (the order becomes `transmission_failed`, whose only way on is the
+  existing retransmit, where the prescriber signs a replacement; it is never put back on the queue). Either is accepted only while the hold
+  marker is on the transmission row, under a row lock and a conditional update, so two resolutions, or a resolution racing the recovery drain,
+  cannot both win (409 `DOSESPOT_TRANSMISSION_NOT_HELD`); the reason is stored on the transmission row's denylisted `last_error_detail`, and the
+  audit entry (`m12.dosespot_order.transmission_resolved`) carries ids and the outcome only. `GET .../transmission` reports `unconfirmed_outcome`
+  while held. (The same 2xx-but-no-id ambiguity after the create step used to be a permanent
   refusal; it is now this class, like an enrolment's.) The claim also stamps `transmission_started_at` in its own committed transaction just
   BEFORE the vendor call (and clears it when the order goes back to the queue), so a worker that dies, or whose settle fails, after the call began
   leaves a stale claim the recovery drain HOLDS (same marker, same event) instead of re-queueing; a stale claim without the stamp never reached
