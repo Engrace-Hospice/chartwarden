@@ -109,7 +109,20 @@ const TOKEN_REFRESH_SKEW_MS = 60_000;
  * dedupe by NPI is unverified), so a 5xx or a timeout, which may well mean the clinician WAS created, is ONE attempt and then a retryable
  * degraded error; the enrolment's claim decides when a second attempt is allowed. Calls that carry an `Idempotency-Key` keep their retries.
  */
-const NO_IN_CALL_RETRY: ReadonlySet<keyof typeof DOSESPOT_ENDPOINTS> = new Set(["addClinician"]);
+const NO_IN_CALL_RETRY: ReadonlySet<keyof typeof DOSESPOT_ENDPOINTS> = new Set([
+  "addClinician",
+  // the SEND transmits to the pharmacy and DoseSpot's dedupe of a repeated send is unverified: one attempt per call, and a timeout is held
+  "sendPrescriptions",
+]);
+/**
+ * Endpoints whose request, once it may have left, cannot be assumed unanswered: a timeout or a dropped connection (anything but a connection
+ * that was never made) is an {@link UnconfirmedOutcomeError}, so the caller holds the order instead of re-sending it.
+ */
+const AMBIGUOUS_ON_LOST_ANSWER: ReadonlySet<keyof typeof DOSESPOT_ENDPOINTS> = new Set([
+  "sendPrescriptions",
+]);
+/** Socket errors that mean the connection was never made, so nothing reached DoseSpot. */
+const NOT_CONNECTED_CODES: ReadonlySet<string> = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"]);
 const UNSUPPORTED_MESSAGE =
   "This operation is not available against the verified DoseSpot API surface; it requires DoseSpot sandbox verification before it can be enabled.";
 
@@ -204,7 +217,12 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
       return { status: res.status, text: await res.text() };
     } catch (err) {
       const aborted = err instanceof Error && err.name === "AbortError";
-      throw new RetryableError("network_timeout", aborted ? "timeout" : "network_error");
+      const code = (err as { cause?: { code?: unknown } } | null)?.cause?.code;
+      const notConnected = typeof code === "string" && NOT_CONNECTED_CODES.has(code);
+      throw new RetryableError(
+        "network_timeout",
+        aborted ? "timeout" : notConnected ? "connect_failed" : "network_error",
+      );
     } finally {
       clearTimeout(timer);
     }
@@ -283,24 +301,40 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     body: unknown,
     idempotencyKey: string | undefined,
     correlationId: string,
+    ambiguousOnLostAnswer: boolean,
   ): Promise<unknown> {
     let forceFresh = false;
     for (let auth = 0; auth < 2; auth += 1) {
       const token = await tokenFor(op, orgId, cfg, clinicianId, correlationId, forceFresh);
-      const res = await exchange(
-        cfg,
-        endpoint,
-        path,
-        {
-          Authorization: `Bearer ${token}`,
-          "Subscription-Key": cfg.subscriptionKey,
-          Accept: "application/json",
-          "X-Correlation-Id": correlationId,
-          ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-          ...(idempotencyKey !== undefined ? { "Idempotency-Key": idempotencyKey } : {}),
-        },
-        body === undefined ? undefined : JSON.stringify(body),
-      );
+      let res: { status: number; text: string };
+      try {
+        res = await exchange(
+          cfg,
+          endpoint,
+          path,
+          {
+            Authorization: `Bearer ${token}`,
+            "Subscription-Key": cfg.subscriptionKey,
+            Accept: "application/json",
+            "X-Correlation-Id": correlationId,
+            ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+            ...(idempotencyKey !== undefined ? { "Idempotency-Key": idempotencyKey } : {}),
+          },
+          body === undefined ? undefined : JSON.stringify(body),
+        );
+      } catch (err) {
+        // the request may have reached DoseSpot and been acted on before its answer was lost: AMBIGUOUS, not an outage (the token mint
+        // above is outside this: a failed mint sent nothing)
+        if (ambiguousOnLostAnswer && isRetryableError(err) && err.errorClass !== "connect_failed") {
+          throw new UnconfirmedOutcomeError(
+            "dosespot",
+            op,
+            "DoseSpot did not answer in time.",
+            correlationId,
+          );
+        }
+        throw err;
+      }
       if (res.status === 401 && auth === 0) {
         tokens.delete(tokenCacheKey(orgId, clinicianId, cfg.version));
         forceFresh = true;
@@ -329,9 +363,9 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
           correlationId,
         );
       }
-      const err = resultError(parsed);
-      if (err !== null) {
-        throw degraded(op, false, `DoseSpot reported an error: ${err}`, correlationId);
+      // a refusal; the vendor's description is never carried (free text: it can echo a name or a drug, and the message reaches responses)
+      if (resultError(parsed) !== null) {
+        throw degraded(op, false, "DoseSpot reported an error.", correlationId);
       }
       return parsed;
     }
@@ -383,6 +417,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
           body,
           idempotencyKey,
           correlationId,
+          AMBIGUOUS_ON_LOST_ANSWER.has(name),
         );
         noteBreaker(orgId, "success", "");
         return out;
@@ -535,8 +570,9 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         { prescriptionIds: [Number(prescriptionId)] },
         idempotencyKey,
       );
-      // The send response is an array of IdentifierResponse; our id must be among them. Anything else is NOT
-      // proof it left, so it is an error and the worker retries the SEND (the prescription is remembered above).
+      // The send response is an array of IdentifierResponse; our id must be among them. A 2xx that does not echo it (an empty body included)
+      // is NOT proof it left, but DoseSpot ACCEPTED the send, so it may have: an UNCONFIRMED outcome (the worker holds the order for a
+      // person), never a retry that could send the prescription to the pharmacy twice.
       const items = Array.isArray(sent)
         ? sent
         : isRecord(sent)
@@ -545,9 +581,9 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
       const confirmed =
         Array.isArray(items) && items.some((it) => identifierOf(it) === prescriptionId);
       if (!confirmed) {
-        throw degraded(
+        throw new UnconfirmedOutcomeError(
+          "dosespot",
           "transmitNewRx",
-          true,
           "DoseSpot did not confirm the prescription was sent.",
           correlationId,
         );

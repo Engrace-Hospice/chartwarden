@@ -326,6 +326,8 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       },
     };
     let vendorRequests: string[] = [];
+    /** What the SEND answers: the echo of our id (the default), or an ambiguous answer (a 2xx that does not echo it, or no answer). */
+    let sendAnswer: "echo" | "empty_list" | "empty_body" | "timeout" = "echo";
     const fakeFetch: DoseSpotFetch = async (url) => {
       vendorRequests.push(url);
       if (url.endsWith("/connect/token"))
@@ -333,8 +335,17 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
           status: 200,
           text: async () => JSON.stringify({ access_token: "tok", expires_in: 3600 }),
         };
-      if (url.endsWith("/prescriptions/send"))
-        return { status: 200, text: async () => JSON.stringify({ Items: [{ Id: 9001 }] }) };
+      if (url.endsWith("/prescriptions/send")) {
+        if (sendAnswer === "timeout")
+          throw Object.assign(new Error("aborted"), { name: "AbortError" });
+        const body =
+          sendAnswer === "echo"
+            ? JSON.stringify({ Items: [{ Id: 9001 }] })
+            : sendAnswer === "empty_list"
+              ? "[]"
+              : "";
+        return { status: 200, text: async () => body };
+      }
       return { status: 200, text: async () => JSON.stringify({ Id: 9001 }) };
     };
     /** A fresh resolver: the source caches an unsealed credential per row version, which would hide a later corrupt envelope. */
@@ -375,6 +386,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
     };
     beforeEach(() => {
       cipherOpens = "ok";
+      sendAnswer = "echo";
       vendorRequests = [];
       platformEnv.DOSESPOT_SANDBOX_ENABLED = "true";
     });
@@ -603,6 +615,42 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
         expect(await eventsNamed("m12.dosespot_degraded", breaker)).toHaveLength(1);
       });
     });
+
+    // Review of slice 4 (send-step ambiguity): a SEND DoseSpot accepted without echoing our id, or whose answer was lost, may have reached the
+    // pharmacy. Through the REAL adapter it is HELD for a person (never re-sent), not re-queued for a retry that could dispense twice.
+    for (const answer of ["empty_list", "empty_body", "timeout"] as const) {
+      it(`an ambiguous SEND (${answer}) through the real adapter HOLDS the order: one send, no retry spent, never sent again`, async () => {
+        await h.admin.query(
+          "DELETE FROM outbox_event WHERE event_type IN ('m12.medication_order.transmission_unconfirmed','m12.medication_order.transmission_failed')",
+        );
+        const { orderId, transmissionId } = await queued();
+        await registration("active");
+        sendAnswer = answer;
+        const sends = () => vendorRequests.filter((u) => u.endsWith("/prescriptions/send")).length;
+        const r = await runTransmitNewRxForOrg(realDeps(), ORG_A);
+        expect(r).toMatchObject({ claimed: 1, held: 1, requeued: 0, failed: 0, transmitted: 0 });
+        expect(sends()).toBe(1);
+        expect(await orderRow(orderId)).toMatchObject({
+          status: "queued_for_transmission",
+          s: "in_flight",
+        });
+        const t = await txRow(transmissionId as string);
+        expect(t).toMatchObject({
+          last_error_class: "unconfirmed_outcome",
+          retry_count: 0,
+          transmission_failed_at: null,
+          dosespot_prescription_id: "9001", // the created id is kept: a person resolves against it
+        });
+        expect(await h.eventsOf("m12.medication_order.transmission_unconfirmed", ORG_A)).toHaveLength(1);
+        expect(await h.eventsOf("m12.medication_order.transmission_failed", ORG_A)).toEqual([]);
+        // neither the next tick nor the recovery drain long after the stale window sends it again
+        sendAnswer = "echo";
+        await runTransmitNewRxForOrg(realDeps(), ORG_A);
+        await runRecoveryDrainForOrg({ ...realDeps(), now: () => minutes(60) }, ORG_A);
+        expect(sends()).toBe(1);
+        expect((await orderRow(orderId)).s).toBe("in_flight");
+      });
+    }
 
     it("control: the same order goes out once the registration is active and its key opens (so the deferrals above are the registration's doing)", async () => {
       const { orderId } = await queued();

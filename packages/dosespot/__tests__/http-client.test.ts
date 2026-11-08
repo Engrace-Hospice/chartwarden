@@ -46,7 +46,7 @@ interface Recorded {
 type Responder = (
   req: Recorded,
   n: number,
-) => { status: number; body?: unknown; text?: string } | "network";
+) => { status: number; body?: unknown; text?: string } | "network" | "timeout" | "refused";
 
 function fakeTransport(routes: Record<string, Responder>) {
   const calls: Recorded[] = [];
@@ -67,6 +67,9 @@ function fakeTransport(routes: Record<string, Responder>) {
     if (!route) return { status: 404, text: async () => "" };
     const out = route(req, n);
     if (out === "network") throw new Error("ECONNRESET");
+    if (out === "timeout") throw Object.assign(new Error("aborted"), { name: "AbortError" });
+    if (out === "refused")
+      throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } });
     return {
       status: out.status,
       text: async () => out.text ?? (out.body === undefined ? "" : JSON.stringify(out.body)),
@@ -475,11 +478,78 @@ describe("transmitNewRx", () => {
     });
   });
 
-  it("never reports success when the send response does not confirm the prescription", async () => {
-    const { c } = client(routes([]));
-    const err = await c.transmitNewRx(ORG, NEWRX, "idem-2").catch((e) => e);
-    expect(err).toBeInstanceOf(DegradedError);
+  // A send DoseSpot accepted (2xx) but that does not echo our id may have reached the pharmacy: it is HELD (unconfirmed), never retried.
+  it("a 2xx send that does not echo the prescription id, an empty one included, is an UNCONFIRMED outcome, never a retry", async () => {
+    for (const [name, sendBody] of [
+      ["an empty list", []],
+      ["another id", [{ Id: 9002 }]],
+      ["an empty body", undefined],
+    ] as const) {
+      const { c, calls } = client(routes(sendBody));
+      const err = await c.transmitNewRx(ORG, NEWRX, "idem-2").catch((e) => e);
+      expect(isUnconfirmedOutcomeError(err), name).toBe(true);
+      expect(err.retryable, name).toBe(false);
+      expect(calls.filter((x) => x.url.endsWith("/prescriptions/send")), name).toHaveLength(1);
+    }
+  });
+
+  it("a send whose answer was lost (a timeout, a dropped connection) is UNCONFIRMED and is attempted once", async () => {
+    for (const lost of ["timeout", "network"] as const) {
+      const r = routes([{ Id: 9001 }]);
+      r["POST /api/patients/501/prescriptions/send"] = () => lost;
+      const { c, calls } = client(r);
+      const err = await c.transmitNewRx(ORG, NEWRX, "idem-lost").catch((e) => e);
+      expect(isUnconfirmedOutcomeError(err), lost).toBe(true);
+      expect(calls.filter((x) => x.url.endsWith("/prescriptions/send")), lost).toHaveLength(1);
+    }
+  });
+
+  it("a send refused before anything was accepted (a 5xx, a connection never made) stays retryable, with no in-call retry", async () => {
+    for (const [name, answer] of [
+      ["a 503", { status: 503 }],
+      ["a refused connection", "refused"],
+    ] as const) {
+      const r = routes([{ Id: 9001 }]);
+      r["POST /api/patients/501/prescriptions/send"] = () => answer;
+      const { c, calls } = client(r);
+      const err = await c.transmitNewRx(ORG, NEWRX, "idem-5xx").catch((e) => e);
+      expect(err, name).toBeInstanceOf(DegradedError);
+      expect(isUnconfirmedOutcomeError(err), name).toBe(false);
+      expect(err.retryable, name).toBe(true);
+      expect(calls.filter((x) => x.url.endsWith("/prescriptions/send")), name).toHaveLength(1);
+    }
+  });
+
+  it("a timeout of the token re-mint before a send sent nothing: it stays retryable", async () => {
+    let mints = 0;
+    const r = routes([{ Id: 9001 }]);
+    // the send's first answer is a 401, so the token is minted again, and that mint times out: no send was made with it
+    r["POST /api/patients/501/prescriptions/send"] = () => ({ status: 401 });
+    const { c, calls } = client({
+      ...r,
+      "POST /connect/token": (req, n) => {
+        mints += 1;
+        return mints === 1 ? TOKEN_OK(req, n) : "timeout";
+      },
+    });
+    const err = await c.transmitNewRx(ORG, NEWRX, "idem-mint").catch((e) => e);
+    expect(mints).toBe(2);
+    expect(calls.filter((x) => x.url.endsWith("/prescriptions/send"))).toHaveLength(1);
+    expect(isUnconfirmedOutcomeError(err)).toBe(false);
     expect(err.retryable).toBe(true);
+  });
+
+  it("never carries the vendor's free-text ResultDescription in the error", async () => {
+    const r = routes([{ Id: 9001 }]);
+    r["POST /api/patients/501/prescriptions/coded"] = () => ({
+      status: 200,
+      body: { Result: { ResultCode: "ERROR", ResultDescription: "Jane Synthetic oxycodone" } },
+    });
+    const err = await client(r)
+      .c.transmitNewRx(ORG, NEWRX, "idem-text")
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(DegradedError);
+    expect(`${err.message} ${err.customerMessage}`).not.toContain("Jane");
   });
 
   it("retries the SEND (not a second create) after a failed send with the same idempotency key", async () => {
