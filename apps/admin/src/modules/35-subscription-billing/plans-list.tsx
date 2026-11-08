@@ -47,13 +47,24 @@ const EMPTY_FORM = {
 };
 type PlanForm = typeof EMPTY_FORM;
 
-/** Dollars typed by the operator to integer cents; null unless it is a finite number >= 0 ("abc" is not a $0 plan). */
-export function parsePriceCents(raw: string): number | null {
+/** Plain digits with at most two decimals: no sign, exponent, hex or binary ("1e3", "0x1f" are not prices). */
+const DECIMAL_SHAPE = /^\d+(\.\d{1,2})?$/;
+
+/**
+ * A typed decimal ("49", "4.5", "19.99") to a whole count of hundredths, by string math (a float multiply rounds "1.005" and
+ * "0.145" the wrong way); null for anything else, more than two decimals included, or above `max`.
+ */
+export function parseHundredths(raw: string, max: number = Number.MAX_SAFE_INTEGER): number | null {
   const text = raw.trim();
-  if (text === "") return null;
-  const dollars = Number(text);
-  return Number.isFinite(dollars) && dollars >= 0 ? Math.round(dollars * 100) : null;
+  if (!DECIMAL_SHAPE.test(text)) return null;
+  const [whole = "0", fraction = ""] = text.split(".");
+  const value = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+  return Number.isSafeInteger(value) && value <= max ? value : null;
 }
+
+/** Dollars typed by the operator to integer cents; null unless it is 0 or more with at most two decimals ("abc" is not a $0 plan). */
+export const parsePriceCents = (raw: string, maxCents?: number): number | null =>
+  parseHundredths(raw, maxCents);
 
 /** Whole trial days >= 0; null for anything else. */
 export function parseTrialDays(raw: string): number | null {
@@ -76,7 +87,7 @@ export function planFormErrors(form: PlanForm): FieldErrors<keyof PlanForm> {
   if (form.name.trim() === "") errors.name = "Enter a plan name.";
   if (form.basePrice.trim() === "") errors.basePrice = "Enter a price in dollars, e.g. 49.00.";
   else if (parsePriceCents(form.basePrice) === null)
-    errors.basePrice = "Enter a number of dollars, 0 or more, e.g. 49.00.";
+    errors.basePrice = "Enter a number of dollars, 0 or more, with up to two decimals, e.g. 49.00.";
   if (parseTrialDays(form.trialDays) === null)
     errors.trialDays = "Enter a whole number of days, 0 or more.";
   return errors;
