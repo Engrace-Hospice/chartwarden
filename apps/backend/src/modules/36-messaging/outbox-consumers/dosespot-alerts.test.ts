@@ -155,7 +155,7 @@ describe("M36 dosespot-alerts consumer", () => {
     ).toThrow(/orderId/);
   });
 
-  it("tells an order that WAS sent but had no pharmacy acknowledgment in 24 hours apart: it may still reach the pharmacy", () => {
+  it("tells an order that WAS sent but the pharmacy did not confirm in 24 hours apart: it may still reach the pharmacy", () => {
     const plan = planDosespotAlert(
       event("m12.medication_order.transmission_failed", {
         orderId: "order-4",
