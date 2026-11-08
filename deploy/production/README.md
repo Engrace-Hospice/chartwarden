@@ -600,9 +600,9 @@ sh /opt/chartwarden/maintenance.sh off
 From step 6 on, glibc moves back to 2.36, so the indexes are rebuilt again before anything writes:
 
 1. `sh /opt/chartwarden/maintenance.sh on`, `dc stop api worker backup`, `dc stop -t 120 postgres`.
-2. With the tag restored, revert `backup/Dockerfile` and `compose.yml` through git (a PR, so the next release does not
-   rebuild Wolfi over that tag) to
-   `pgvector/pgvector:pg18-bookworm@sha256:c29f30688a9ad961691bdf0ec1650717cc132a5814619d80f80463d6e4c42e47`.
+2. With the tag restored, revert this change's PR (a `git revert` PR: it also drops the `arch:compose-policy` check
+   that a Debian `backup/Dockerfile` fails), so `compose.yml` and `backup/Dockerfile` pin
+   `pgvector/pgvector:pg18-bookworm@sha256:c29f30688a9ad961691bdf0ec1650717cc132a5814619d80f80463d6e4c42e47` again.
 3. `dc up -d --no-deps --no-build --wait postgres` (recreated from the Debian tag), then run the refresh by copy (the
    Debian image has no script; snippet under "Bumping it") and the step 8 checks.
 4. `dc up -d --no-deps --no-build backup`, `dc up -d --no-deps --no-build --wait api worker`,

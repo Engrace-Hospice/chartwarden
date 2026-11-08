@@ -164,6 +164,7 @@ cleanup() {
   local id
   while read -r id; do [ -n "$id" ] && docker rm -f "$id" >/dev/null 2>&1; done < <(docker ps -aq --filter "label=$LABEL")
   while read -r id; do [ -n "$id" ] && docker volume rm -f "$id" >/dev/null 2>&1; done < <(docker volume ls -q --filter "label=$LABEL")
+  [ -n "${scratch:-}" ] && rm -rf "$scratch"
   for id in ${BUILT_IMAGES[@]+"${BUILT_IMAGES[@]}"}; do docker rmi -f "$id" >/dev/null 2>&1 || true; done
   return 0
 }
@@ -236,7 +237,9 @@ done
 DEBIAN_IMG="$P-debian"
 docker build -q -t "$DEBIAN_IMG" "$scratch" >/dev/null
 BUILT_IMAGES+=("$DEBIAN_IMG")
-rm -rf "$scratch"
+rm -rf "$scratch"; scratch=""
+os_id="$(docker run --rm --entrypoint sh "$DEBIAN_IMG" -c '. /etc/os-release; echo $ID')"
+[ "$os_id" = debian ] || { echo "$DEBIAN_REF builds a $os_id image, not Debian: set REHEARSAL_DEBIAN_REF to a pre-Wolfi commit (e.g. 2ea20d5c0)" >&2; exit 2; }
 if [ -z "$WOLFI_IMG" ]; then
   WOLFI_BASE="$P-pg"
   docker build -q -t "$WOLFI_BASE" "$REPO_ROOT/deploy/production/postgres" >/dev/null
@@ -335,7 +338,7 @@ t=$(now)
 docker exec -u postgres "$P-wolfi" cw-refresh-collation >/dev/null 2>&1 || fail "cw-refresh-collation" "the script failed"
 pass "cw-refresh-collation (REINDEX + REFRESH COLLATION VERSION in every connectable database)" "completed" "$(since "$t")"
 AFTER="$(amcheck_all "$P-wolfi")"
-case "$AFTER" in *"0 failed"*) pass "amcheck after reindex: every btree (heapallindexed) and GIN index" "$AFTER" ;; *) fail "amcheck after reindex" "$AFTER" ;; esac
+case "$AFTER" in *" ok, 0 failed ("*) pass "amcheck after reindex: every btree (heapallindexed) and GIN index" "$AFTER" ;; *) fail "amcheck after reindex" "$AFTER" ;; esac
 NEG="$(amcheck_negative_control "$P-wolfi")"
 [ -n "$NEG" ] || fail "amcheck negative control" "bt_index_check did not flag an index whose collation order was changed under it"
 pass "amcheck negative control: an index whose collation order is changed under it is flagged" "$NEG"
@@ -392,7 +395,7 @@ restore_and_verify() { # volume-suffix set-label description
   checks="$(amcheck_all "$P-$v")"
   warns="$(mismatch_warnings "$P-$v")"
   [ "$fp" = "$FINAL_FP" ] || fail "restore $desc" "fingerprint '$fp' differs from the source '$FINAL_FP'"
-  case "$checks" in *"0 failed"*) ;; *) fail "restore $desc" "amcheck on the restored cluster: $checks" ;; esac
+  case "$checks" in *" ok, 0 failed ("*) ;; *) fail "restore $desc" "amcheck on the restored cluster: $checks" ;; esac
   [ "$warns" = 0 ] || fail "restore $desc" "$warns collation warning(s) on the restored cluster"
   docker rm -f "$P-$v" >/dev/null
   pass "restore $desc into a fresh volume with the Wolfi image" "$fp equals the source; $checks; 0 collation warnings; archive_mode off, promoted at $FINAL_LSN" "$(since "$t2")"
