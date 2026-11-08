@@ -123,55 +123,57 @@ export function DeliveryEndpoints(): JSX.Element {
   };
 
   return (
-    <div className="wx-list-drawer-main">
-      <PageHead
-        title="Delivery endpoints"
-        sub="Email, SMS and push targets your alerts are delivered to. Each must be verified."
-      />
-      <BannerView banner={banner} />
-      <form ref={formRef} noValidate className="wx-form-stack" onSubmit={(e) => void register(e)}>
-        <SelectField
-          label="Channel"
-          options={CHANNEL_OPTIONS}
-          value={channel}
-          disabled={busy !== null}
-          onChange={(e) => setChannel(e.target.value as EndpointView["channel"])}
+    <div className="wx-list-drawer">
+      <div className="wx-list-drawer-main">
+        <PageHead
+          title="Delivery endpoints"
+          sub="Email, SMS and push targets your alerts are delivered to. Each must be verified."
         />
-        <TextField
-          label="Address or device token"
-          required
-          maxLength={512}
-          value={target}
-          disabled={busy !== null}
-          onChange={(e) => setTarget(e.target.value)}
-          error={
-            registerAttempted && target.trim() === ""
-              ? "Enter the address or device token to register."
-              : undefined
-          }
-        />
-        <div className="wx-drawer-actions">
-          <Button type="submit" size="lg" loading={busy === "register"}>
-            Add endpoint
-          </Button>
-        </div>
-      </form>
-      {endpoints.length === 0 ? (
-        <StateEmpty>No endpoints added in this session. Add one above.</StateEmpty>
-      ) : (
-        <ul className="grid gap-3" aria-label="Endpoints added this session">
-          {endpoints.map((endpoint) => (
-            <li key={endpoint.endpointId} className="wx-drawer-card flex flex-wrap items-end gap-3">
-              <div className="grid gap-1">
-                <span className="wx-row-title">{endpoint.target}</span>
-                <span className="wx-row-sub">{humanize(endpoint.channel)}</span>
-              </div>
-              <StatusPill
-                tone={STATUS_TONE[endpoint.verificationStatus]}
-                label={humanize(endpoint.verificationStatus)}
-              />
-              {endpoint.verificationStatus === "verified" ? null : (
-                <>
+        <BannerView banner={banner} />
+        <form ref={formRef} noValidate className="wx-form-stack" onSubmit={(e) => void register(e)}>
+          <SelectField
+            label="Channel"
+            options={CHANNEL_OPTIONS}
+            value={channel}
+            disabled={busy !== null}
+            onChange={(e) => setChannel(e.target.value as EndpointView["channel"])}
+          />
+          <TextField
+            label="Address or device token"
+            required
+            maxLength={512}
+            value={target}
+            disabled={busy !== null}
+            onChange={(e) => setTarget(e.target.value)}
+            error={
+              registerAttempted && target.trim() === ""
+                ? "Enter the address or device token to register."
+                : undefined
+            }
+          />
+          <div className="wx-drawer-actions">
+            <Button type="submit" loading={busy === "register"}>
+              Add endpoint
+            </Button>
+          </div>
+        </form>
+        {endpoints.length === 0 ? (
+          <StateEmpty>No endpoints added in this session. Add one above.</StateEmpty>
+        ) : (
+          <ul className="wx-fact-list" aria-label="Endpoints added this session">
+            {endpoints.map((endpoint) => (
+              <li key={endpoint.endpointId} className="wx-drawer-card">
+                <div className="wx-drawer-card-head">
+                  <div>
+                    <span className="wx-row-title">{endpoint.target}</span>
+                    <span className="wx-row-sub">{humanize(endpoint.channel)}</span>
+                  </div>
+                  <StatusPill
+                    tone={STATUS_TONE[endpoint.verificationStatus]}
+                    label={humanize(endpoint.verificationStatus)}
+                  />
+                </div>
+                {endpoint.verificationStatus === "verified" ? null : (
                   <TextField
                     label={`Verification code for ${endpoint.target}`}
                     maxLength={64}
@@ -188,31 +190,35 @@ export function DeliveryEndpoints(): JSX.Element {
                       setTokens((t) => ({ ...t, [endpoint.endpointId]: token }));
                     }}
                   />
+                )}
+                <div className="wx-drawer-actions">
+                  {endpoint.verificationStatus === "verified" ? null : (
+                    <Button
+                      tone="secondary"
+                      size="sm"
+                      loading={busy === endpoint.endpointId}
+                      disabled={busy !== null}
+                      aria-label={`Verify ${endpoint.target}`}
+                      onClick={(e) => void verify(endpoint, e.currentTarget.closest("li"))}
+                    >
+                      Verify
+                    </Button>
+                  )}
                   <Button
-                    tone="secondary"
-                    size="lg"
-                    loading={busy === endpoint.endpointId}
+                    tone="tertiary"
+                    size="sm"
                     disabled={busy !== null}
-                    aria-label={`Verify ${endpoint.target}`}
-                    onClick={(e) => void verify(endpoint, e.currentTarget.closest("li"))}
+                    aria-label={`Remove ${endpoint.target}`}
+                    onClick={() => void remove(endpoint)}
                   >
-                    Verify
+                    Remove
                   </Button>
-                </>
-              )}
-              <Button
-                tone="tertiary"
-                size="lg"
-                disabled={busy !== null}
-                aria-label={`Remove ${endpoint.target}`}
-                onClick={() => void remove(endpoint)}
-              >
-                Remove
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

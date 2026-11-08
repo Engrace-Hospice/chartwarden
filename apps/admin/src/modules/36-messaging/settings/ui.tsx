@@ -1,6 +1,6 @@
 // apps/admin/src/modules/36-messaging/settings — shared state chrome for the three M36 settings screens:
 // page head and the success/error banner (loading / error / empty / no-access states live in ../ui). Shared `wx-*` classes
-// + Tailwind utilities only; no inline styles.
+// only; no Tailwind utilities, no inline styles.
 import { InlineAlert } from "@chartwarden/ui";
 import type { JSX } from "react";
 

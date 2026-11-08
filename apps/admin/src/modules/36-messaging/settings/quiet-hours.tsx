@@ -35,7 +35,7 @@ export function QuietHoursEditor({
   const setRange = (index: number, patch: (range: QuietRange) => QuietRange): void =>
     onChange((v) => ({ ...v, ranges: v.ranges.map((r, i) => (i === index ? patch(r) : r)) }));
   return (
-    <fieldset className="wx-drawer-card grid gap-3" disabled={disabled}>
+    <fieldset className="wx-drawer-card" disabled={disabled}>
       <legend>Quiet hours</legend>
       <div className="wx-form-stack">
         <TextField
@@ -59,14 +59,13 @@ export function QuietHoursEditor({
       </div>
       {value.ranges.map((range, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: ranges have no id; edited in place by position
-        <fieldset key={index} className="grid gap-2">
+        <fieldset key={index} className="wx-form-stack">
           <legend>Range {index + 1}</legend>
-          <div className="flex flex-wrap gap-2">
+          <div className="wx-drawer-title-row">
             {DAYS.map((day, d) => (
-              <label key={day} className="inline-flex min-h-11 min-w-11 items-center gap-1">
+              <label key={day} className="wx-action-check">
                 <input
                   type="checkbox"
-                  className="size-5"
                   checked={range.daysOfWeek.includes(d)}
                   aria-label={`Range ${index + 1} ${day}`}
                   onChange={(e) => {
@@ -83,7 +82,7 @@ export function QuietHoursEditor({
               </label>
             ))}
           </div>
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="wx-drawer-title-row">
             <TextField
               type="time"
               label={`Range ${index + 1} start`}
@@ -104,7 +103,7 @@ export function QuietHoursEditor({
             />
             <Button
               tone="tertiary"
-              size="lg"
+              size="sm"
               aria-label={`Remove range ${index + 1}`}
               onClick={() =>
                 onChange((v) => ({ ...v, ranges: v.ranges.filter((_, i) => i !== index) }))
@@ -118,7 +117,7 @@ export function QuietHoursEditor({
       <div>
         <Button
           tone="secondary"
-          size="lg"
+          size="sm"
           onClick={() => onChange((v) => ({ ...v, ranges: [...v.ranges, NEW_RANGE] }))}
         >
           Add quiet range
