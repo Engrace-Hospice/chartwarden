@@ -1,7 +1,9 @@
 export const CLAIMMD_RESPONSE_CAPTURE_ENABLED_ENV = "CLAIMMD_RESPONSE_CAPTURE_ENABLED";
 
 /** Explicit opt-in only. Invalid or absent values keep the account-wide poller stopped. */
-export function claimMdResponseCaptureEnabled(env: Readonly<Record<string, string | undefined>>): boolean {
+export function claimMdResponseCaptureEnabled(
+  env: Readonly<Record<string, string | undefined>>,
+): boolean {
   return env[CLAIMMD_RESPONSE_CAPTURE_ENABLED_ENV] === "true";
 }
 

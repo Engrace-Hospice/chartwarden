@@ -1,7 +1,10 @@
 // Shared Claim.MD protected-payload cipher. Account keys never enter this module; only the secret-manager key ring does.
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
-export interface ClaimMdPayloadKeyRing { readonly activeId: string; readonly byId: ReadonlyMap<string, Buffer> }
+export interface ClaimMdPayloadKeyRing {
+  readonly activeId: string;
+  readonly byId: ReadonlyMap<string, Buffer>;
+}
 export interface ClaimMdProtectedPayloadCipher {
   seal(streamId: string, itemId: string, plaintext: string): Buffer;
   open(streamId: string, itemId: string, sealed: Buffer): string;
@@ -9,7 +12,11 @@ export interface ClaimMdProtectedPayloadCipher {
 
 export function createClaimMdProtectedPayloadCipher(
   keys: ClaimMdPayloadKeyRing,
-  purpose: "claimmd-response:v1" | "claimmd-era:v1" | "claimmd-era-resolution:v1" | "claimmd-era-stage:v1",
+  purpose:
+    | "claimmd-response:v1"
+    | "claimmd-era:v1"
+    | "claimmd-era-resolution:v1"
+    | "claimmd-era-stage:v1",
   maxBytes = 32 * 1024 * 1024,
 ): ClaimMdProtectedPayloadCipher {
   const key = keys.byId.get(keys.activeId);
@@ -19,12 +26,18 @@ export function createClaimMdProtectedPayloadCipher(
   return {
     seal(streamId, itemId, plaintext) {
       const bytes = Buffer.from(plaintext, "utf8");
-      if (bytes.length > maxBytes) throw new Error("Claim.MD protected payload exceeds configured size limit");
+      if (bytes.length > maxBytes)
+        throw new Error("Claim.MD protected payload exceeds configured size limit");
       const nonce = randomBytes(12);
       const cipher = createCipheriv("aes-256-gcm", key, nonce);
       cipher.setAAD(aad(streamId, itemId));
       const encrypted = Buffer.concat([cipher.update(bytes), cipher.final()]);
-      return Buffer.concat([Buffer.from(`v1.${keys.activeId}.`), nonce, cipher.getAuthTag(), encrypted]);
+      return Buffer.concat([
+        Buffer.from(`v1.${keys.activeId}.`),
+        nonce,
+        cipher.getAuthTag(),
+        encrypted,
+      ]);
     },
     open(streamId, itemId, sealed) {
       const marker = sealed.indexOf(46, 3);
@@ -38,8 +51,14 @@ export function createClaimMdProtectedPayloadCipher(
       const decipher = createDecipheriv("aes-256-gcm", oldKey, sealed.subarray(start, start + 12));
       decipher.setAAD(aad(streamId, itemId));
       decipher.setAuthTag(sealed.subarray(start + 12, start + 28));
-      try { return Buffer.concat([decipher.update(sealed.subarray(start + 28)), decipher.final()]).toString("utf8"); }
-      catch { throw new Error("Claim.MD protected payload authentication failed"); }
+      try {
+        return Buffer.concat([
+          decipher.update(sealed.subarray(start + 28)),
+          decipher.final(),
+        ]).toString("utf8");
+      } catch {
+        throw new Error("Claim.MD protected payload authentication failed");
+      }
     },
   };
 }

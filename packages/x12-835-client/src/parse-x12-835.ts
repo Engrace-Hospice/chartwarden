@@ -59,8 +59,26 @@ const SVC_QUALIFIERS: ReadonlySet<string> = new Set([
   "WK",
 ]);
 const KNOWN_835_SEGMENTS: ReadonlySet<string> = new Set([
-  "ST", "BPR", "TRN", "DTM", "N1", "N3", "N4", "REF", "PER", "CLP", "CAS", "NM1", "MIA", "MOA",
-  "SVC", "AMT", "QTY", "LQ", "PLB", "SE",
+  "ST",
+  "BPR",
+  "TRN",
+  "DTM",
+  "N1",
+  "N3",
+  "N4",
+  "REF",
+  "PER",
+  "CLP",
+  "CAS",
+  "NM1",
+  "MIA",
+  "MOA",
+  "SVC",
+  "AMT",
+  "QTY",
+  "LQ",
+  "PLB",
+  "SE",
 ]);
 
 export interface ParseX12835Options {
@@ -233,8 +251,10 @@ function applyClaimSegment(claim: ClaimDraft, seg: X12Segment): void {
   const line = claim.lines[claim.lines.length - 1];
   if (id === "CAS") (line ?? claim).adjs.push(...parseCas(seg));
   else if (id === "LQ") (line ?? claim).remarks.push(...remarksOf(seg));
-  else if (id === "REF" && line && elem(seg, 1) && elem(seg, 2)) line.references.push({ qualifier: elem(seg, 1), value: elem(seg, 2) });
-  else if (id === "REF" && elem(seg, 1) && elem(seg, 2)) claim.references.push({ qualifier: elem(seg, 1), value: elem(seg, 2) });
+  else if (id === "REF" && line && elem(seg, 1) && elem(seg, 2))
+    line.references.push({ qualifier: elem(seg, 1), value: elem(seg, 2) });
+  else if (id === "REF" && elem(seg, 1) && elem(seg, 2))
+    claim.references.push({ qualifier: elem(seg, 1), value: elem(seg, 2) });
   else if (id === "MIA" || id === "MOA") claim.remarks.push(...remarksOf(seg));
   else if (id === "AMT") toCents(elem(seg, 2), "AMT02");
   else if (id === "NM1" && (elem(seg, 1) === "QC" || elem(seg, 1) === "IL") && elem(seg, 9)) {
@@ -344,7 +364,10 @@ function unwrapEnvelope(
   return { isa13, sets };
 }
 
-function parsePlb(seg: X12Segment, compSep: string): { readonly reason: string; readonly reference?: string; readonly cents: number }[] {
+function parsePlb(
+  seg: X12Segment,
+  compSep: string,
+): { readonly reason: string; readonly reference?: string; readonly cents: number }[] {
   const out: { reason: string; reference?: string; cents: number }[] = [];
   for (let i = 3; i < seg.el.length; i += 2) {
     const reasonElement = elem(seg, i);
@@ -373,7 +396,8 @@ function applyPartyRef(party: ParsedRemittanceParty, kind: "PR" | "PE", seg: X12
   const q = elem(seg, 1);
   const v = elem(seg, 2);
   if (!v) return;
-  (party.references ??= []).push({ qualifier: q, value: v });
+  party.references ??= [];
+  party.references.push({ qualifier: q, value: v });
   if (kind === "PE" && q === "TJ") party.taxId = v;
   else if (kind === "PE" && q === "PQ") party.payerAssignedId = v;
   else if (kind === "PR" && q === "2U") party.additionalPayerId = v;
@@ -385,7 +409,11 @@ interface Body {
   readonly production: string | undefined;
   readonly parties: Readonly<Record<"PR" | "PE", ParsedRemittanceParty | undefined>>;
   readonly claims: readonly ClaimDraft[];
-  readonly plb: readonly { readonly reason: string; readonly reference?: string; readonly cents: number }[];
+  readonly plb: readonly {
+    readonly reason: string;
+    readonly reference?: string;
+    readonly cents: number;
+  }[];
 }
 
 /** Walk the transaction-set body into BPR/TRN/header facts, claim drafts and PLB amounts. */
@@ -488,13 +516,23 @@ function buildSet(
     paymentMethod: method,
     totalPaymentAmount: total / 100,
     ...(b.plb.length > 0
-      ? { providerAdjustmentTotal: b.plb.reduce((a, c) => a + c.cents, 0) / 100,
-          providerAdjustments: b.plb.map((x): ParsedProviderAdjustment => ({ reason: x.reason,
-            ...(x.reference ? { reference: x.reference } : {}), amount: x.cents / 100 })) }
+      ? {
+          providerAdjustmentTotal: b.plb.reduce((a, c) => a + c.cents, 0) / 100,
+          providerAdjustments: b.plb.map(
+            (x): ParsedProviderAdjustment => ({
+              reason: x.reason,
+              ...(x.reference ? { reference: x.reference } : {}),
+              amount: x.cents / 100,
+            }),
+          ),
+        }
       : {}),
     ...(chosen.body.some((segment) => !KNOWN_835_SEGMENTS.has(segId(segment)))
-      ? { unknownSegments: chosen.body.filter((segment) => !KNOWN_835_SEGMENTS.has(segId(segment)))
-          .map((segment) => ({ segmentId: segId(segment), elements: segment.el.slice(1) })) }
+      ? {
+          unknownSegments: chosen.body
+            .filter((segment) => !KNOWN_835_SEGMENTS.has(segId(segment)))
+            .map((segment) => ({ segmentId: segId(segment), elements: segment.el.slice(1) })),
+        }
       : {}),
     productionDate: `${b.production}T00:00:00Z`,
     claims: b.claims.map(toClaim),

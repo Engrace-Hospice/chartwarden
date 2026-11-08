@@ -21,8 +21,17 @@ export async function readClaimMdCommercialSubmissionFacts(
   submissionIds: readonly string[],
 ): Promise<readonly ClaimMdCommercialSubmissionFact[]> {
   if (submissionIds.length === 0) return [];
-  return tx.select({ id: S.id, organizationId: S.organizationId, providerEntityId: S.providerEntityId,
-    locationId: S.locationId, claimId: S.claimId, controlNumber: S.controlNumber,
-    payerId: S.clearinghousePayerId, vendor: S.clearinghouseKey })
-    .from(S).where(inArray(S.id, [...new Set(submissionIds)]));
+  return tx
+    .select({
+      id: S.id,
+      organizationId: S.organizationId,
+      providerEntityId: S.providerEntityId,
+      locationId: S.locationId,
+      claimId: S.claimId,
+      controlNumber: S.controlNumber,
+      payerId: S.clearinghousePayerId,
+      vendor: S.clearinghouseKey,
+    })
+    .from(S)
+    .where(inArray(S.id, [...new Set(submissionIds)]));
 }

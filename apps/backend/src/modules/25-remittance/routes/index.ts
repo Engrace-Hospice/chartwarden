@@ -50,6 +50,7 @@ export {
   type SubmissionService,
 } from "./submission-service";
 
+import type { ClaimMdEraReviewService } from "../ingest/claimmd-era-review";
 import type { M25IngestService } from "../ingest/service";
 import type { AdrReadinessService } from "./adr-readiness-service";
 import type { AdrService } from "./adr-service";
@@ -69,7 +70,6 @@ import type { RepresentativeService } from "./representative-service";
 import type { SubmissionService } from "./submission-service";
 import type { TpeService } from "./tpe-service";
 import type { M25WriteService } from "./write-service";
-import type { ClaimMdEraReviewService } from "../ingest/claimmd-era-review";
 
 /**
  * The services every M25 route plugin composes over (bound to Drizzle, or in-memory in tests).

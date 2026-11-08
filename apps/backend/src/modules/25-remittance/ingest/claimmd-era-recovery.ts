@@ -1,6 +1,6 @@
+import { registerPlatformJob } from "@chartwarden/tenancy";
 import type { createClaimMdEraResolver } from "./claimmd-era-resolution";
 import type { createClaimMdEraStore } from "./claimmd-era-store";
-import { registerPlatformJob } from "@chartwarden/tenancy";
 import { CLAIMMD_ERA_RECOVERY_JOB_ID } from "./claimmd-era-store";
 
 type Store = ReturnType<typeof createClaimMdEraStore>;
@@ -38,7 +38,8 @@ export function createClaimMdEraRecoveryService(input: {
   return {
     async requeue(request: ClaimMdEraRecoveryRequest, actor: ClaimMdEraRecoveryActor) {
       if (!(await input.authorize(actor))) throw new Error("CLAIMMD_ERA_RECOVERY_FORBIDDEN");
-      if (!/^[A-Z][A-Z0-9_]{2,63}$/.test(request.reasonCode)) throw new Error("CLAIMMD_ERA_RECOVERY_REASON_REQUIRED");
+      if (!/^[A-Z][A-Z0-9_]{2,63}$/.test(request.reasonCode))
+        throw new Error("CLAIMMD_ERA_RECOVERY_REASON_REQUIRED");
       const result = await input.store.recover({
         ...request,
         actorId: actor.id,
@@ -47,7 +48,11 @@ export function createClaimMdEraRecoveryService(input: {
       // resolution decision. Conflicts are never converted to verified by this recovery service.
       if (request.stage === "ownership_resolution" && result.outcome === "requeued") {
         const resolution = await input.resolver.resolve(request.inboxId);
-        return { ...result, resolutionStatus: resolution.status, resolutionVersion: resolution.version };
+        return {
+          ...result,
+          resolutionStatus: resolution.status,
+          resolutionVersion: resolution.version,
+        };
       }
       return result;
     },
