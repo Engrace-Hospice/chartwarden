@@ -47,8 +47,10 @@ function meterErrors(m: MeterDraft): Partial<Record<keyof MeterDraft, string>> {
   if (parseWholeNumber(m.inclusive) === null) errors.inclusive = "Enter a whole number, 0 or more.";
   if (parsePriceCents(m.overage) === null)
     errors.overage = "Enter dollars, 0 or more, with up to two decimals.";
-  if (parseWholeNumber(m.threshold, 100) === null)
-    errors.threshold = "Enter a whole percentage from 0 to 100.";
+  const threshold = parseWholeNumber(m.threshold, 100);
+  // the server's range (subscription-typebox.ts: warningThresholdPercent 1..100)
+  if (threshold === null || threshold < 1)
+    errors.threshold = "Enter a whole percentage from 1 to 100.";
   return errors;
 }
 

@@ -8,6 +8,9 @@ describe("operator-typed money and counts (string math, no float multiply)", () 
     expect(parsePriceCents("4.5")).toBe(450);
     expect(parsePriceCents("0.14")).toBe(14);
     expect(parsePriceCents("0")).toBe(0);
+    // a bare leading or trailing point is still plain dollars, so "up to two decimals" says what is accepted
+    expect(parsePriceCents(".5")).toBe(50);
+    expect(parsePriceCents("5.")).toBe(500);
   });
 
   it("refuses what a float multiply or Number() would have taken", () => {
@@ -21,8 +24,8 @@ describe("operator-typed money and counts (string math, no float multiply)", () 
       "-0.004",
       "-1",
       "+1",
-      ".5",
-      "5.",
+      ".",
+      ".555",
       "",
       "abc",
       "Infinity",

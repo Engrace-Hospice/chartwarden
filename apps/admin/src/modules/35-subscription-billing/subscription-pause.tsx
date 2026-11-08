@@ -3,9 +3,9 @@ import {
   Panel,
   TextAreaField,
   TextField,
-  stashStepUpDraft,
+  stashStepUpMemoryDraft,
   useApiClient,
-  useStepUpDraft,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Pause subscription (`/admin/subscriptions/:id/pause`,
 // subscription.admin.write). A gated action: an optional until-date over POST /api/admin/subscriptions/:id/pause
@@ -24,7 +24,7 @@ export function SubscriptionPause(): JSX.Element {
   const { gate, retry } = useSubscriptionGate(id);
   // A step-up refusal sends the operator to /step-up and back; what they typed is restored.
   const draftKey = `subscription-pause:${id ?? ""}`;
-  const restored = useStepUpDraft<{ until: string; reason: string }>(draftKey);
+  const restored = useStepUpMemoryDraft<{ until: string; reason: string }>(draftKey);
   const [until, setUntil] = useState(restored?.until ?? "");
   const [reason, setReason] = useState(restored?.reason ?? "");
   const [busy, setBusy] = useState(false);
@@ -91,7 +91,7 @@ export function SubscriptionPause(): JSX.Element {
                 {outcome ? (
                   <OutcomeBanner
                     {...outcome}
-                    onReverify={() => stashStepUpDraft(draftKey, { until, reason })}
+                    onReverify={() => stashStepUpMemoryDraft(draftKey, { until, reason })}
                   />
                 ) : null}
                 <div className="wx-action-row is-end">
