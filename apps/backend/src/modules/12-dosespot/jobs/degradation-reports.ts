@@ -14,7 +14,7 @@
 // each announcement is a short-lived claim confirmed after its event commits, so an unreachable store, a failed publish or a crash delays the
 // alert (or the recovery) to a later tick and never drops it. (At-least-once: a crash after the commit announces it twice.)
 import { type DbClient, schema } from "@chartwarden/db";
-import { and, eq, exists, lt, sql } from "drizzle-orm";
+import { and, eq, exists, lt, notExists, or, sql } from "drizzle-orm";
 import { type M12CronDeps, inOrg, nowOf } from "./cron-common";
 import { HELD_ORDER_REMINDER_AGE_MS, UNCONFIRMED_OUTCOME_CLASS } from "./hold";
 
@@ -146,6 +146,9 @@ export async function reportRecovery(
  * those orders has a transmission row queued before the cutoff (`mot_order_idx`), instead of joining every
  * transmission row of the tenant to its order. Both organization predicates are explicit so the indexes lead
  * with the tenant column even before RLS adds its own.
+ *
+ * It also finds a queued order with NO transmission row at all (an orphan, which the worker never picks up and a probe that looked only at
+ * transmission rows could never see), aged by the order's own `updated_at` since there is no row to age it by.
  */
 export function staleQueuedOrdersQuery(tx: DbClient, org: string, cutoff: Date) {
   return tx
@@ -156,17 +159,28 @@ export function staleQueuedOrdersQuery(tx: DbClient, org: string, cutoff: Date) 
         eq(MO.organizationId, org),
         eq(MO.status, "queued_for_transmission"),
         eq(MO.dosespotSendState, "queued"),
-        exists(
-          tx
-            .select({ one: sql`1` })
-            .from(MOT)
-            .where(
-              and(
-                eq(MOT.organizationId, org),
-                eq(MOT.medicationOrderId, MO.id),
-                lt(MOT.queuedAt, cutoff),
+        or(
+          exists(
+            tx
+              .select({ one: sql`1` })
+              .from(MOT)
+              .where(
+                and(
+                  eq(MOT.organizationId, org),
+                  eq(MOT.medicationOrderId, MO.id),
+                  lt(MOT.queuedAt, cutoff),
+                ),
               ),
+          ),
+          and(
+            lt(MO.updatedAt, cutoff),
+            notExists(
+              tx
+                .select({ one: sql`1` })
+                .from(MOT)
+                .where(and(eq(MOT.organizationId, org), eq(MOT.medicationOrderId, MO.id))),
             ),
+          ),
         ),
       ),
     )

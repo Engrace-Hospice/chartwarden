@@ -50,6 +50,7 @@ import {
   runTransmissionSweepForOrg,
   runTransmitNewRxForOrg,
 } from "../src/modules/12-dosespot/jobs/index";
+import { TRANSMIT_BATCH_SIZE } from "../src/modules/12-dosespot/jobs/transmit-newrx";
 import { alertAfterCommit } from "../src/modules/12-dosespot/tenant-config/effects";
 import { createTransmissionResolveService } from "../src/modules/12-dosespot/tenant-config/transmission-resolve";
 import { createDrizzleAlertEmitter, wireAlertRuleSeed } from "../src/modules/36-messaging/index";
@@ -890,6 +891,80 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       } finally {
         await h.admin.query("ROLLBACK");
       }
+    });
+  });
+
+  // Review of 18d8778fe..HEAD (LOW): a queued order with NO transmission row (an orphan, left by the enqueue bug fixed in acdec7b42) is invisible to the
+  // worker, and used to be invisible to the age alert too. Worse, the claim chose its batch BEFORE looking for rows, so a batch of orphans older than a
+  // real order filled the whole batch and the real order was never reached.
+  describe("a queued order with no transmission row (an orphan)", () => {
+    const TWO_HOURS = 2 * 60 * 60_000;
+    const orphan = async (patientId: string, over: Record<string, unknown> = {}) =>
+      h.seedOrder({
+        org: ORG_A,
+        patientId,
+        status: "queued_for_transmission",
+        sendState: "queued",
+        transmission: false,
+        ...over,
+      });
+    const noCall = new FakeDoseSpotVendor({
+      transmit: async () => {
+        throw new Error("no call is expected");
+      },
+    });
+
+    it("never starves the claim: more orphans than one batch, all older than a real order, and the real order is still claimed and sent", async () => {
+      const patientId = await h.seedPatient(ORG_A, { synced: "501" });
+      const orphans: string[] = [];
+      for (let i = 0; i < TRANSMIT_BATCH_SIZE + 1; i += 1) {
+        orphans.push(
+          (await orphan(patientId, { updatedAt: new Date(Date.now() - TWO_HOURS) })).orderId,
+        );
+      }
+      const real = await h.seedOrder({
+        org: ORG_A,
+        patientId,
+        status: "queued_for_transmission",
+        sendState: "queued",
+      }); // the newest order, WITH its row
+      const sends: string[] = [];
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async (_org, payload) => {
+          sends.push(payload.medicationOrderId);
+          return { dosespotPrescriptionId: "rx-real", transmittedAt: T0.toISOString() };
+        },
+      });
+      const pass = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+      expect(pass).toMatchObject({ claimed: 1, transmitted: 1 });
+      expect(sends).toEqual([real.orderId]);
+      expect((await orderRow(real.orderId)).status).toBe("transmitted");
+      const untouched = await h.q(
+        "SELECT count(*)::int AS n FROM medication_order WHERE id = ANY($1::uuid[]) AND status='queued_for_transmission' AND dosespot_send_state='queued'",
+        [orphans],
+      );
+      expect(untouched[0]?.n).toBe(orphans.length); // the orphans are left exactly as they were
+    });
+
+    it("is surfaced by the age alert once it has waited past the threshold, and not before", async () => {
+      const probe = (org: string) =>
+        inOrg(h.handle.db, org, (tx) =>
+          staleQueuedOrdersQuery(tx, org, new Date(Date.now() - 60 * 60_000)),
+        );
+      const patientId = await h.seedPatient(ORG_A, { synced: "501" });
+      await orphan(patientId); // fresh: updated just now
+      expect(await probe(ORG_A)).toEqual([]);
+      const old = await orphan(patientId, { updatedAt: new Date(Date.now() - TWO_HOURS) });
+      expect((await probe(ORG_A)).map((r) => r.id)).toEqual([old.orderId]);
+      // ... and the alert itself is raised, once, through the degradation machinery
+      await h.admin.query("DELETE FROM outbox_event WHERE event_type='m12.dosespot_degraded'");
+      const world = { ...deps(noCall), episodes: createEpisodeTracker() };
+      expect(await runQueuedAgeAlertForOrg(world, ORG_A)).toBe(true);
+      expect(await runQueuedAgeAlertForOrg(world, ORG_A)).toBe(true);
+      const raised = (await h.eventsOf("m12.dosespot_degraded", ORG_A)).filter(
+        (e) => e.payload.breakerName === `dosespot-queued_orders_stale:${ORG_A}`,
+      );
+      expect(raised).toHaveLength(1);
     });
   });
 

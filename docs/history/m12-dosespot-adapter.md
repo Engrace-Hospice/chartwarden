@@ -205,7 +205,10 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   mint included. The order id is now part of the key (a retransmit is its own prescription, so DoseSpot's own dedupe, if it exists, cannot fold it
   into the failed attempt; a double-sign of the SAME order still shares one row), and the enqueue refuses, loudly, a row under its key that is
   another order's. After a "not sent" resolution that was a mistake the retransmit therefore duplicates the prescription, as the CW-AC-23 gap already
-  says. Orders already stuck queued with no row (demo data) are not repaired by this change: reseed them.
+  says. Orders already stuck queued with no row (demo data) are not repaired by this change: reseed them. Two things now keep a leftover orphan from hiding
+  or hurting (review of 18d8778fe..HEAD): the claim only considers orders that HAVE a transmission row (it chose its batch before reading rows, so a
+  batch of orphans older than a real order filled it and the real order was never reached), and the queued-age alert also finds a queued order with no
+  row at all, aged by the order's own `updated_at`.
 - A created-but-unsent prescription survives a change of replica (LOW of the following review): the adapter used to remember a created
   `addCodedPrescription` id only in its own process memory, so a retry on another replica re-ran the create (a second prescription). The adapter now
   reports the id (`onCreated`) before the send and accepts it back (`createdPrescriptionId`); the worker persists it on the transmission row's

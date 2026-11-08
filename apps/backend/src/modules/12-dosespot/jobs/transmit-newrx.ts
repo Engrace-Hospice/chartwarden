@@ -34,7 +34,7 @@ import {
   isNotEnabledError,
   isUnconfirmedOutcomeError,
 } from "@chartwarden/dosespot";
-import { and, asc, eq, inArray, isNull, lt, notExists, or, sql } from "drizzle-orm";
+import { and, asc, eq, exists, inArray, isNull, lt, notExists, or, sql } from "drizzle-orm";
 import { type M12CronDeps, errorClassOf, inOrg, isCircuitOpenError, nowOf } from "./cron-common";
 import { reportDegradation, reportRecovery } from "./degradation-reports";
 import { UNCONFIRMED_OUTCOME_CLASS } from "./hold";
@@ -87,10 +87,23 @@ async function claim(
 ): Promise<readonly Claimed[]> {
   const now = nowOf(deps);
   return inOrg(deps.db, organizationId, async (tx) => {
+    // Only orders that HAVE a transmission row are candidates (`mot_order_idx`): the batch is chosen before the rows are read, so an order without
+    // one (an orphan) would otherwise take a batch slot every tick, and enough of them, older than the real orders, would fill the whole batch.
     const candidates = await tx
       .select()
       .from(MO)
-      .where(and(eq(MO.status, "queued_for_transmission"), eq(MO.dosespotSendState, "queued")))
+      .where(
+        and(
+          eq(MO.status, "queued_for_transmission"),
+          eq(MO.dosespotSendState, "queued"),
+          exists(
+            tx
+              .select({ one: sql`1` })
+              .from(MOT)
+              .where(and(eq(MOT.organizationId, organizationId), eq(MOT.medicationOrderId, MO.id))),
+          ),
+        ),
+      )
       .orderBy(asc(MO.createdAt))
       .limit(batchSize)
       .for("update", { skipLocked: true });
