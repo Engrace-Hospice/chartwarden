@@ -60,6 +60,8 @@ export type {
 } from "./ops-write/ops-error";
 export { createIdempotencyKeeper, useIdempotencyKeeper } from "./ops-write/idempotency";
 export type { IdempotencyKeeper } from "./ops-write/idempotency";
+export { AFTER_SUCCESS_TIMEOUT_MS, useOpsWrite } from "./ops-write/use-ops-write";
+export type { OpsWrite, OpsWriteOutcome } from "./ops-write/use-ops-write";
 
 // Theme tokens (plain data — no styling runtime)
 export { brandColors, colors, statusColors } from "./theme/colors";
