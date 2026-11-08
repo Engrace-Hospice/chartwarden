@@ -354,6 +354,42 @@ controls:
       owner: engineering
       review_by: 2027-01-31
 
+  - id: CW-AC-22
+    title: >-
+      An e-prescription whose DoseSpot outcome is unknown is HELD for a person, never failed and never sent a second time, and only an
+      organization administrator resolves it. When DoseSpot accepts a NewRx call (2xx) but its answer is unreadable or carries no prescription
+      id, or a worker dies after the call began, the order stays in flight with its transmission row marked unconfirmed_outcome (the row is
+      stamped just before the call): it is not retried, not failed, and neither the claim nor the stale-claim drain touches it, so the
+      prescription is not sent again (a stale claim that never reached the vendor is still released and re-sent). The tenant's administrators
+      are alerted when it is held and again after 24 hours: one alert and one reminder per episode, shared by every replica, each announcement a
+      short-lived claim confirmed only after its event commits, so a crash delays one and never drops it. The order leaves the hold only through
+      POST /api/v1/medication-orders/:id/resolve-held-transmission, which needs the org-level administrator key (prescribing.clinic.admin), a
+      fresh step-up, a human (non-AI) actor, an Idempotency-Key and a recorded reason: "sent" needs the DoseSpot prescription id and makes the order
+      transmitted (the status poll then follows it); "not sent" makes it a failed transmission that the prescriber retransmits, never back on the
+      queue. It is accepted only while the hold marker is on the transmission row, under a row lock and a conditional update, so two resolutions,
+      or a resolution racing the drain, cannot both win; an order of another organization is a 404; the audit entry carries ids and the outcome
+      only, and the reason is kept on a column the write-audit trigger denylists. A transmission that exhausts its retries also alerts the
+      administrators.
+    hipaa: ["164.312(c)(1)", "164.312(b)", "164.312(a)(2)(i)"]
+    soc2: ["CC7.2", "CC6.1"]
+    status: partial
+    evidence:
+      - script: test:m12:crons-transmit:live
+      - script: test:m12:episode-store:live
+      - ci: "M12 DoseSpot crons"
+      - ci: "M12 episode store"
+      - file: apps/backend/src/modules/12-dosespot/tenant-config/transmission-resolve.ts
+      - file: apps/backend/src/modules/12-dosespot/jobs/hold.ts
+      - file: apps/backend/src/modules/12-dosespot/jobs/transmit-newrx.ts
+      - file: apps/backend/src/modules/12-dosespot/jobs/episode-store.ts
+      - file: packages/dosespot/src/lifecycle/medication-order-machine.ts
+      - file: apps/backend/__tests__/m12-tenant-dosespot-routes.test.ts
+      - file: apps/web/src/modules/12-dosespot/held-transmission-modal.tsx
+    gap:
+      reason: The resolution is an administrator's attestation. ChartWarden cannot read the prescriber's DoseSpot account (its status read needs the prescription id an unconfirmed outcome lacks), so a wrong "sent" leaves the status poll watching a prescription that does not exist (it times out after 24 hours) and a wrong "not sent" can make the retransmit a duplicate. DoseSpot's dedupe by Idempotency-Key is unverified until a sandbox run. An order whose worker died after the call began is held only at the next recovery drain (the 10-minute stale window plus the 5-minute drain, so up to about 15 minutes), and its alert is that late.
+      owner: engineering
+      review_by: 2027-01-31
+
   - id: CW-AU-01
     title: Audit controls — PHI reads and writes leave an integrity-checked trail
     hipaa: ["164.312(b)", "164.312(c)(1)"]
