@@ -13,8 +13,8 @@ blocked while a contract exists, and the operator's write was onboarding-only.
 
 - `PUT /api/v1/platform/tenants/{orgSlug}/clearinghouse` that moves a tenant with a contract from `outside` to a vendor (the body names
   `billingServiceMode`) is now accepted for a tenant that is provisioning, onboarding, active, at risk or suspended (an explicit allowlist:
-  any other status, such as offboarding, final export pending, retained or being destroyed, is `409 TENANT_NOT_ONBOARDING`, answered before
-  any mode is written). Every other write on that route stays onboarding-only. For a live tenant the mode is dated the 1st of next month,
+  any other status, such as offboarding, final export pending, retained, being destroyed, destroyed or a sign-up intent, is
+  `409 TENANT_NOT_ONBOARDING`, answered before any mode is written). Every other write on that route stays onboarding-only. For a live tenant the mode is dated the 1st of next month,
   like any mode change.
 - A body that names `billingServiceMode` also needs the pricing key `subscription.onboard_platform` (`403` with the clearinghouse key alone).
 - Everything that can be refused beforehand is refused BEFORE the mode is written (the plan's `422`s, the body's rules, `412`/`428` on the
@@ -22,6 +22,12 @@ blocked while a contract exists, and the operator's write was onboarding-only.
   After the vendor commits, the mode is asked for again (idempotent), and once more if that fails, so a sync that ran in between cannot
   leave the tenant on none. If it still cannot be confirmed the answer carries `billingModeConfirmed: false` (the vendor change stands):
   read the contract and set the mode if it is not the one chosen.
+- That early status refusal is audited (`write_refused`) on its own short transaction and fails closed: a refusal that cannot be audited is
+  `503 ONBOARDING_AUDIT_UNAVAILABLE` (nothing changed; try again).
+- If the vendor's commit fails WITHOUT a definite answer from the database (a lost connection, or a connection-class or server-error
+  SQLSTATE), the vendor row is read again before the mode is undone. Not saved: the mode goes back to `none` and the failure is answered.
+  Saved: the switch stands and the answer is the row as it is. Unreadable: the mode is left as set and the answer is
+  `503 CLEARINGHOUSE_SWITCH_OUTCOME_UNKNOWN` (read the tenant's clearinghouse and contract before changing anything).
 - A contract that is PAUSED counts: the tenant's own switch is `409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR`, the operator names the
   mode, and the outside-means-none rule applies to it. A canceled contract is none. A contract that cannot be read is
   `503 CLEARINGHOUSE_CONTRACT_UNAVAILABLE` on the operator's route too.
@@ -50,6 +56,22 @@ blocked while a contract exists, and the operator's write was onboarding-only.
   the record's own tenant (the document `tenant_baa` kind, in that organization): another tenant's document, a document of another kind or an
   unknown id is `422 BAA_DOCUMENT_INVALID` (field `documentId`); no document adapter bound is `503 BAA_DOCUMENTS_UNBOUND`. Wizard step 3
   settles only on a governing BAA whose document verifies the same way.
+- **Deploy note: go-live now needs the BAA's document to verify.** The go-live guard (the wizard's approval and the status route's
+  `onboarding -> active` activation) treats a governing BAA as executed only when its `document_id` is a `tenant_baa` document of that
+  organization, not on the `executed` status alone. A tenant whose governing BAA is `executed` but whose `document_id` does not verify
+  (an id pasted before the upload existed, another tenant's document, another kind, or none) is refused go-live (the BAA guard fails)
+  until the BAA is relinked to an uploaded document (`PATCH /api/v1/platform/baa-register/{id}`). Before deploying, list the tenants this
+  would hold back (an operator's read-only query; nothing is changed by it):
+
+  ```sql
+  SELECT a.organization_id, b.tenant_account_id, b.addendum_version, b.document_id
+  FROM platform_tenant_baa_record b
+  JOIN tenant_account a ON a.id = b.tenant_account_id
+  WHERE a.status IN ('provisioning', 'onboarding')
+    AND b.baa_status = 'executed'
+    AND NOT EXISTS (SELECT 1 FROM document d
+                    WHERE d.id = b.document_id AND d.organization_id = b.organization_id AND d.aggregate_type = 'tenant_baa');
+  ```
 
 ---
 

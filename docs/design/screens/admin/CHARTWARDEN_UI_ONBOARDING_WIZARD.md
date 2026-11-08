@@ -127,7 +127,8 @@ canceled, live or paused), and the panel never infers it from the Plan and contr
 read-only once the tenant is active): the tenant hub's clearinghouse card offers **Switch to a vendor** for a live tenant that bills
 outside and holds a contract. It reuses the choose form (Claim.MD or Stedi only) with the mode pick (no default; None is an explicit
 choice), says the mode takes effect from the 1st of next month, and sends one pinned write that sets the mode and the vendor together;
-the operator's write for that switch is accepted for any tenant status and needs the pricing key as well.
+the operator's write for that switch is accepted while the tenant is provisioning, onboarding, active, at risk or suspended (any other
+status is refused, 409, before a mode is written) and needs the pricing key as well.
 
 A vendor is then walked to active, each fact shown as met or not yet:
 
