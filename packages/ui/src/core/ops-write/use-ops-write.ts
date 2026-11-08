@@ -63,6 +63,10 @@ function reachedNoOne(result: FetchResult<unknown>): boolean {
 /** No screen copy: the server's sentence (a module constant, so `run` stays stable across renders). */
 const NO_COPY: OpsErrorCopy = {};
 
+/**
+ * `copy` must be stable across renders (a module constant, never an inline object): it is a dependency of `run`, and an object made
+ * on every render would make `run` new on every render and re-fire any effect that depends on it.
+ */
 export function useOpsWrite(copy: OpsErrorCopy = NO_COPY): OpsWrite {
   const keeper = useIdempotencyKeeper();
   const [busy, setBusy] = useState(false);

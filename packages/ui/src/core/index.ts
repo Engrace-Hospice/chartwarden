@@ -61,6 +61,8 @@ export type {
 export { createIdempotencyKeeper, useIdempotencyKeeper } from "./ops-write/idempotency";
 export type { IdempotencyKeeper } from "./ops-write/idempotency";
 export { AFTER_SUCCESS_TIMEOUT_MS, useOpsWrite } from "./ops-write/use-ops-write";
+// Money and counts an operator types, parsed by string math (no float multiply, no "1e3" or "0x1f")
+export { hundredthsText, parseHundredths, parsePriceCents, parseWholeNumber } from "./money";
 export type { OpsWrite, OpsWriteOutcome } from "./ops-write/use-ops-write";
 
 // Theme tokens (plain data — no styling runtime)
