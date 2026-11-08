@@ -149,6 +149,21 @@ controls:
       owner: engineering
       review_by: 2026-12-31
 
+  - id: CW-AC-10
+    title: Request-integrity route kit — pagination cursors are HMAC-signed per org and checked against the list's anchor shape, writes without an active membership are refused, and optimistic concurrency, Idempotency-Key and the D13 AI block run through one shared implementation
+    hipaa: ["164.312(c)(1)", "164.312(a)(1)"]
+    soc2: ["CC6.1", "PI1.4"]
+    status: implemented
+    evidence:
+      - script: test
+      - file: packages/shared/src/route-kit/pagination.ts
+      - file: packages/shared/src/route-kit/actor.ts
+      - file: packages/shared/src/route-kit/concurrency.ts
+      - file: packages/shared/__tests__/route-kit.test.ts
+      - file: apps/backend/src/bootstrap/env.ts
+      - file: apps/backend/__tests__/env-validation.test.ts
+      - file: apps/backend/__tests__/m5-census-caseload-scope.live.test.ts
+
   - id: CW-AC-06
     title: List and audit reads return minimum-necessary facts — computed age (never date of birth) on the admission census; actor names resolved only inside the caller's org
     hipaa: ["164.502(b)", "164.312(b)"]
