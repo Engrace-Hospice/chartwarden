@@ -43,6 +43,7 @@ export type {
   DoseSpotMedHistoryResponse,
   DoseSpotNewRxPayload,
   DoseSpotNewRxResponse,
+  DoseSpotNewRxResume,
   DoseSpotPatientPayload,
   DoseSpotPatientResponse,
   DoseSpotPrescriptionStatusResponse,

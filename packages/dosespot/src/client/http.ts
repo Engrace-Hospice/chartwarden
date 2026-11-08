@@ -483,7 +483,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
 
     revokePrescriber: (orgId) => unsupported("revokePrescriber", orgId),
 
-    async transmitNewRx(orgId, payload, idempotencyKey): Promise<DoseSpotNewRxResponse> {
+    async transmitNewRx(orgId, payload, idempotencyKey, resume): Promise<DoseSpotNewRxResponse> {
       const correlationId = newCorrelationId();
       const cfg = await configOrDeny("transmitNewRx", orgId, correlationId);
       if (payload.deaSchedule !== undefined && !cfg.epcsCertified) {
@@ -496,7 +496,9 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         );
       }
       const progressKey = `${orgId}|${idempotencyKey}`;
-      let prescriptionId = newRxProgress.get(progressKey)?.prescriptionId;
+      // a persisted id from an earlier attempt (any process) wins over this process's own memory
+      let prescriptionId =
+        resume?.createdPrescriptionId ?? newRxProgress.get(progressKey)?.prescriptionId;
       if (prescriptionId === undefined) {
         const created = await call(
           "transmitNewRx",
@@ -519,6 +521,8 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
           );
         }
         newRxProgress.set(progressKey, { prescriptionId });
+        // remember it OUTSIDE this process before the send: a retry elsewhere then re-runs only the send
+        await resume?.onCreated?.(prescriptionId);
       }
       const sent = await call(
         "transmitNewRx",

@@ -1096,6 +1096,33 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       expect(sent).toEqual([unstamped.orderId]); // nothing was ever sent twice
     }, 120_000);
 
+    // The created-but-unsent DoseSpot prescription id lived in the adapter's process memory, so a retry on another replica re-ran the create. The
+    // worker now persists it on the transmission row when it is created and hands it back, so a retry only re-runs the send.
+    it("the created prescription id is persisted before the send, and a retry is handed it so only the send is re-run", async () => {
+      const { orderId, transmissionId } = await queued();
+      const seen: (string | undefined)[] = [];
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async (_org, _payload, _key, resume) => {
+          seen.push(resume?.createdPrescriptionId);
+          if (resume?.createdPrescriptionId === undefined) {
+            await resume?.onCreated?.("rx-created-1"); // the create answered; the send then fails (another replica retries it)
+            throw retryable();
+          }
+          return {
+            dosespotPrescriptionId: resume.createdPrescriptionId,
+            transmittedAt: T0.toISOString(),
+          };
+        },
+      });
+      expect((await runTransmitNewRxForOrg(deps(vendor, minutes(0)), ORG_A)).requeued).toBe(1);
+      const t = await txRow(transmissionId as string);
+      expect(t.dosespot_prescription_id).toBe("rx-created-1"); // persisted, though nothing was sent
+      expect((await orderRow(orderId)).rx).toBeNull(); // the ORDER carries an id only once it is really sent
+      expect((await runTransmitNewRxForOrg(deps(vendor, minutes(5)), ORG_A)).transmitted).toBe(1);
+      expect(seen).toEqual([undefined, "rx-created-1"]); // the retry was handed the persisted id
+      expect((await orderRow(orderId)).rx).toBe("rx-created-1");
+    });
+
     it("a retryable failure puts the order back with no 'call began' mark, so a later stale claim of it that never called is released", async () => {
       const { orderId, transmissionId } = await queued();
       const vendor = new FakeDoseSpotVendor({

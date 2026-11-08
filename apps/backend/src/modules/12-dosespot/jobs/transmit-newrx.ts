@@ -229,6 +229,27 @@ async function markCallStarted(
   });
 }
 
+/**
+ * Persist the id of a prescription that was CREATED at DoseSpot but not yet sent, on the transmission row, before the send. The order itself
+ * carries an id only once it is really sent (webhooks bind by it). A failure here propagates: the send is not attempted, the order is retried.
+ */
+async function rememberCreated(
+  deps: M12CronDeps,
+  organizationId: string,
+  c: Claimed,
+  prescriptionId: string,
+): Promise<void> {
+  await inOrg(deps.db, organizationId, async (tx) => {
+    const saved = await tx
+      .update(MOT)
+      .set({ dosespotPrescriptionId: prescriptionId })
+      .where(eq(MOT.id, c.transmission.id))
+      .returning({ id: MOT.id });
+    if (saved.length !== 1)
+      throw new Error("transmission row vanished while recording the created prescription");
+  });
+}
+
 type Outcome =
   | { kind: "success"; prescriptionId: string; transmittedAt: Date }
   | { kind: "outage" }
@@ -274,6 +295,13 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
       organizationId,
       built.payload,
       c.transmission.idempotencyKey,
+      {
+        // a created-but-unsent id from an earlier attempt (possibly on another replica): the send is re-run, the create is not
+        ...(c.transmission.dosespotPrescriptionId
+          ? { createdPrescriptionId: c.transmission.dosespotPrescriptionId }
+          : {}),
+        onCreated: (id) => rememberCreated(deps, organizationId, c, id),
+      },
     );
     return {
       kind: "success",

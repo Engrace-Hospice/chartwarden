@@ -179,6 +179,12 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   earlier order of its batch makes no call (it used to stamp and send with the same key: a double send), and the stale-claim clock runs from the
   call, not the claim. A hold the drain set while the original call was still running is cleared by that call's late success, and a late
   unconfirmed outcome does not announce a held order a second time.
+- A created-but-unsent prescription survives a change of replica (LOW of the following review): the adapter used to remember a created
+  `addCodedPrescription` id only in its own process memory, so a retry on another replica re-ran the create (a second prescription). The adapter now
+  reports the id (`onCreated`) before the send and accepts it back (`createdPrescriptionId`); the worker persists it on the transmission row's
+  `dosespot_prescription_id` and hands it to the next attempt, so a retry re-runs only the send. The ORDER still carries an id only once it is
+  really sent (webhooks bind by it). If persisting fails the send is not attempted and the order is retried; a create whose answer had no id is
+  still held as unconfirmed (there is nothing to persist).
 - A tenant with an outage longer than ~31 minutes of real failed attempts sees orders land in `transmission_failed`; the existing
   `retransmit` route mints the corrected order. Breaker-open ticks do not count.
 - Live proof: `test:m12:crons-transmit:live` and `test:m12:crons-housekeeping:live` (CI job "M12 DoseSpot crons"), run against a

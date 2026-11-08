@@ -554,6 +554,48 @@ describe("transmitNewRx", () => {
     expect(isUnconfirmedOutcomeError(refused)).toBe(false);
   });
 
+  // The created-but-unsent prescription id used to live only in this process's memory, so a retry on ANOTHER replica re-ran the create (a second
+  // prescription). The caller can now persist it (`onCreated`) and hand it back (`createdPrescriptionId`): a retry then only re-runs the send.
+  it("reports the created prescription id BEFORE sending it, so a caller can persist it", async () => {
+    const order: string[] = [];
+    const r = routes([{ Id: 9001 }]);
+    const send = r["POST /api/patients/501/prescriptions/send"] as Responder;
+    r["POST /api/patients/501/prescriptions/send"] = (...a) => {
+      order.push("send");
+      return send(...a);
+    };
+    const { c } = client(r);
+    const out = await c.transmitNewRx(ORG, NEWRX, "idem-7", {
+      onCreated: async (id) => {
+        order.push(`created:${id}`);
+      },
+    });
+    expect(out.dosespotPrescriptionId).toBe("9001");
+    expect(order).toEqual(["created:9001", "send"]);
+  });
+
+  it("given a persisted created id (a retry on another process), it only re-runs the SEND: no second create", async () => {
+    const { c, calls } = client(routes([{ Id: 9001 }]));
+    const out = await c.transmitNewRx(ORG, NEWRX, "idem-8", { createdPrescriptionId: "9001" });
+    expect(out.dosespotPrescriptionId).toBe("9001");
+    expect(calls.filter((x) => x.url.endsWith("/prescriptions/coded"))).toHaveLength(0);
+    const sent = calls.find((x) => x.url.endsWith("/prescriptions/send"));
+    expect(JSON.parse(sent?.body ?? "{}")).toEqual({ prescriptionIds: [9001] });
+  });
+
+  it("a failing onCreated stops before the send (the prescription exists but could not be remembered: the caller decides)", async () => {
+    const { c, calls } = client(routes([{ Id: 9001 }]));
+    const err = await c
+      .transmitNewRx(ORG, NEWRX, "idem-9", {
+        onCreated: async () => {
+          throw new Error("could not persist");
+        },
+      })
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(calls.filter((x) => x.url.endsWith("/prescriptions/send"))).toHaveLength(0);
+  });
+
   it("surfaces a Result.ResultCode=ERROR body as a permanent failure", async () => {
     const r = routes([{ Id: 9001 }]);
     r["POST /api/patients/501/prescriptions/coded"] = () => ({

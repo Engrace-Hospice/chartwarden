@@ -72,6 +72,17 @@ export interface DoseSpotNewRxPayload {
 }
 
 /** §4.10 — the NewRx response (the DoseSpot-side prescription id recorded on the transmission row). */
+/**
+ * What a caller that can PERSIST remembers across processes (the adapter's own memory is per process): the prescription id of a NewRx that was
+ * created but not yet sent, so a retry on another replica re-runs only the send, never the create (a second prescription).
+ */
+export interface DoseSpotNewRxResume {
+  /** A created-but-unsent prescription id from an earlier attempt: skip the create and send this one. */
+  readonly createdPrescriptionId?: string;
+  /** Called with the id as soon as the create answered, BEFORE the send. If it throws, the send is not attempted and the error propagates. */
+  readonly onCreated?: (dosespotPrescriptionId: string) => Promise<void>;
+}
+
 export interface DoseSpotNewRxResponse {
   readonly dosespotPrescriptionId: string;
   readonly transmittedAt: string;
@@ -170,6 +181,7 @@ export interface DoseSpotClient {
     orgId: string,
     payload: DoseSpotNewRxPayload,
     idempotencyKey: string,
+    resume?: DoseSpotNewRxResume,
   ): Promise<DoseSpotNewRxResponse>;
   lookupRxBenefit(
     orgId: string,
