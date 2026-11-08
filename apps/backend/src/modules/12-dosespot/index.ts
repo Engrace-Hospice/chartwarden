@@ -274,7 +274,7 @@ export {
 export { DOSESPOT_WEBHOOK_PATH, registerDoseSpotWebhookRoute } from "./webhooks/webhook-route";
 export { enqueueTransmissionIfBound } from "./transmission-enqueue";
 
-// Tenant onboarding slice 4 (ADR-0110): the per-tenant DoseSpot clinic registration, its sealed credential, the layered config
+// Tenant onboarding slice 4 (ADR-0111): the per-tenant DoseSpot clinic registration, its sealed credential, the layered config
 // source, the prescriber's vendor enrolment and the sign-time transmission gate.
 export {
   type TransmissionGate,

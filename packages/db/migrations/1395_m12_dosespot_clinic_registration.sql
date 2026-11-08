@@ -1,5 +1,5 @@
 -- compat: expand
--- M12: the DoseSpot clinic each tenant registered (tenant onboarding slice 4; ADR-0110). Until now ChartWarden bound DoseSpot
+-- M12: the DoseSpot clinic each tenant registered (tenant onboarding slice 4; ADR-0111). Until now ChartWarden bound DoseSpot
 -- per tenant only through the DOSESPOT_TENANT_CONFIGS environment map, read once at boot. Now every tenant has its own row:
 -- its DoseSpot environment, clinic id, service clinician and a SEALED credential, and where the registration is in
 -- draft -> registered -> verified -> active. One row per organization.

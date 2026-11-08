@@ -1,5 +1,5 @@
 // apps/backend/src/modules/12-dosespot/tenant-config/service.ts — the rules of a tenant's DoseSpot clinic registration (tenant
-// onboarding slice 4, ADR-0110). Pure of transport and HTTP: every method takes a `ConfigStore` bound to one open org-scoped
+// onboarding slice 4, ADR-0111). Pure of transport and HTTP: every method takes a `ConfigStore` bound to one open org-scoped
 // transaction, so the tenant's own routes and a platform operator's onboarding writes run the SAME code under the tenant's own
 // RLS, and a rule is tested without a database.
 //

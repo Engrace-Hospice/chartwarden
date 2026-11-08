@@ -64,7 +64,7 @@ export type { OnboardingOperator } from "./onboarding-data-audit";
 /** A body field set with the platform `reason` already removed, ready for the tenant's own validators. */
 export type OnboardingFields = Readonly<Record<string, unknown>>;
 
-/** Tenant onboarding slice 4 (ADR-0110): the DoseSpot methods come from the lane (`onboarding-dosespot-lane.ts`). */
+/** Tenant onboarding slice 4 (ADR-0111): the DoseSpot methods come from the lane (`onboarding-dosespot-lane.ts`). */
 export interface OnboardingDataService extends DoseSpotLaneMethods {
   listProviderEntities(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
   createProviderEntity(

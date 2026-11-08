@@ -160,7 +160,7 @@ export interface OnboardingFactReaders {
   /** M23 (ADR-0053 amendment 2026-11-06): the org's clearinghouse choice is settled (`outside`, or a vendor in `active` status). */
   readonly clearinghouseSettled?: (orgId: string) => Promise<boolean>;
   readonly dosespotKickoffRecorded?: (orgId: string) => Promise<boolean>;
-  /** M12 (tenant onboarding slice 4, ADR-0110): the org's DoseSpot clinic registration is `active`. */
+  /** M12 (tenant onboarding slice 4, ADR-0111): the org's DoseSpot clinic registration is `active`. */
   readonly dosespotSettled?: (orgId: string) => Promise<boolean>;
   readonly xeroConnected?: (orgId: string) => Promise<boolean>;
   readonly gustoConnected?: (orgId: string) => Promise<boolean>;

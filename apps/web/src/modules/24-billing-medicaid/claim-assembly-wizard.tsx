@@ -61,7 +61,7 @@ export function MedicaidAssemblyWizard(): JSX.Element {
   const [eligibility, setEligibility] = useState<EligibilityCheck | null>(null);
   const [eligibilityChecked, setEligibilityChecked] = useState(false);
   const [busy, setBusy] = useState(false);
-  // ADR-0111 — creating a claim is new claims-billing work: paused without the add-on (when enforced).
+  // ADR-0110 — creating a claim is new claims-billing work: paused without the add-on (when enforced).
   const claimsBilling = useClaimsBilling();
   const [error, setError] = useState<string | null>(null);
   const [assembledId, setAssembledId] = useState<string | null>(null);

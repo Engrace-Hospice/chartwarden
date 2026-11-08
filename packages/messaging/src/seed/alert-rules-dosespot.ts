@@ -35,7 +35,7 @@ export const DOSESPOT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   // A signed prescription exhausted its retry budget (or an administrator resolved a held one as never sent): it has not reached the pharmacy and the
   // prescriber must retransmit it. Described as "M36 high-severity" since the worker was written, and consumed by nobody until `dosespot-alerts`.
   rule("m12.medication_order.transmission_failed", "critical", null),
-  // ADR-0110: a tenant's clinic registration stopped being active (deactivated, or its credential changed): newly signed orders activate
+  // ADR-0111: a tenant's clinic registration stopped being active (deactivated, or its credential changed): newly signed orders activate
   // locally and queued ones wait. Raised directly by the clinic service after its commit; before this rule it reached nobody.
   rule("m12.dosespot_config.deactivated", "warn", null),
 ];

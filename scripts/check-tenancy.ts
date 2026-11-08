@@ -94,7 +94,7 @@ const KEY_RING_CONTEXT_VARS = new Set<string>([
 // acknowledging person (update) to `app.user_id`. Same rule: that one function head, never a policy.
 // WP 5.6 (ADR-0055 item 7): the message REDACTION guard binds the requester (insert) and the approver (approval) to `app.user_id`: two
 // people, enforced in the database. Same rule: that one function head, never a policy.
-// ADR-0110 D9 (migration 1399): the DoseSpot prescriber-link confirmation guard binds a confirmation to the roster row's own member acting
+// ADR-0111 D9 (migration 1399): the DoseSpot prescriber-link confirmation guard binds a confirmation to the roster row's own member acting
 // as themself (`app.user_id` = that membership's user), so no operator, administrator or worker transaction can confirm for them. Same rule:
 // that one function head, never a policy.
 const ACK_ACTOR_GUARD_HEAD =
@@ -338,7 +338,7 @@ const NON_ORG_SCOPED = new Set<string>([
   "stripe_webhook_event",
   "platform_retained_invoice",
   "platform_retained_invoice_line",
-  // ADR-0111 — `addon`, the platform-owned add-on catalog (the `plan` shape, D11: platform pricing, no tenant
+  // ADR-0110 — `addon`, the platform-owned add-on catalog (the `plan` shape, D11: platform pricing, no tenant
   // overlay). Read-all `USING (true)` TO chartwarden_app, writes only via chartwarden_admin (migration 1321). Its
   // tenant half, `subscription_addon`, carries organization_id with app.org_id RLS and is NOT listed here.
   "addon",

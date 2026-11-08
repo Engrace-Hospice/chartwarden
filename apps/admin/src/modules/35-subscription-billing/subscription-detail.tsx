@@ -4,7 +4,7 @@ import type { operations } from "@chartwarden/ui";
 // subscription.admin.read). One tenant subscription over GET /api/admin/subscriptions/:id, with its current
 // dunning state (on the row), a usage drill-down (GET /api/admin/usage/:orgId/current), and its refund
 // history (GET /api/admin/refunds, narrowed to this org). Links to the pause + apply-promo gated actions, and the
-// ADR-0111 Add-ons panel (grant / trial / cancel the claims-billing add-on).
+// ADR-0110 Add-ons panel (grant / trial / cancel the claims-billing add-on).
 // Redesign frame: usage + refunds in the main column, the subscription summary in the right drawer.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";

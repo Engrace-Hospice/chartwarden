@@ -1,5 +1,5 @@
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-dosespot-lane.ts — the DoseSpot lane of the platform
-// onboarding-data service (tenant onboarding slice 4, ADR-0110): an operator registers a tenant's DoseSpot clinic through M12's
+// onboarding-data service (tenant onboarding slice 4, ADR-0111): an operator registers a tenant's DoseSpot clinic through M12's
 // own service, on the TENANT pool under the target org's RLS (the `write()` wrapper supplies the shared onboarding lock, the
 // status gate, the go-live void and the audit row; M12's port supplies the rules). Kept beside, not inside, the main service so
 // that file stays a reviewable size.

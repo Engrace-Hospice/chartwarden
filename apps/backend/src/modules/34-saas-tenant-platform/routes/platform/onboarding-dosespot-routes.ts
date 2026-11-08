@@ -1,5 +1,5 @@
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-dosespot-routes.ts — a platform operator registers a
-// tenant's DoseSpot clinic on its behalf (`/api/v1/platform/tenants/:orgSlug/dosespot…`, tenant onboarding slice 4, ADR-0110).
+// tenant's DoseSpot clinic on its behalf (`/api/v1/platform/tenants/:orgSlug/dosespot…`, tenant onboarding slice 4, ADR-0111).
 //
 // The guard stack is the onboarding-data one, with this lane's own key pair (`tenant_dosespot.*`, platform_ops only): the
 // permission, the `tenant_lifecycle_platform_ops` predicate (the exact `platform_ops` role), a FRESH step-up on every write, the

@@ -1,4 +1,4 @@
-// ADR-0111 D7 — every route the four billing modules register is classified, every rule still matches a route, the
+// ADR-0110 D7 — every route the four billing modules register is classified, every rule still matches a route, the
 // new-work set is exactly decision 2's list, and the gate lands AFTER each new-work route's own preHandlers (and on
 // no open route). Routes are enumerated by mounting each module on a recording Fastify over a stub service graph.
 import Fastify, { type FastifyInstance, type RouteOptions } from "fastify";
@@ -122,7 +122,7 @@ async function record(m: ModuleCase): Promise<Recorded[]> {
   return routes;
 }
 
-describe.each(MODULES)("ADR-0111 route classes — $name", (m) => {
+describe.each(MODULES)("ADR-0110 route classes — $name", (m) => {
   it("classifies every mutating route", async () => {
     const routes = await record(m);
     expect(routes.length).toBeGreaterThan(0);
@@ -150,7 +150,7 @@ describe.each(MODULES)("ADR-0111 route classes — $name", (m) => {
   });
 });
 
-describe("ADR-0111 — a void claim stays submittable without the add-on", () => {
+describe("ADR-0110 — a void claim stays submittable without the add-on", () => {
   const ORG = "a1000000-0000-4000-8000-000000000001";
   it.each([
     ["M23", m23RouteClasses, "/api/v1/billing/claims/:id/submit"],
@@ -199,7 +199,7 @@ describe("withClaimsBillingGate scope", () => {
   });
 });
 
-describe("ADR-0111 D7 — the held worker queues", () => {
+describe("ADR-0110 D7 — the held worker queues", () => {
   it("hold claim submit / retry / eligibility, never NOE, NOTR or transfer notices", async () => {
     const { M23_CLAIMS_BILLING_GATED_QUEUES } = await import(
       "../src/modules/23-billing-medicare/jobs/m23-jobs"

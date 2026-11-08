@@ -1,5 +1,5 @@
 // apps/backend/src/modules/12-dosespot/transmission-gate.ts — the sign-time decision "queue this signed order for e-prescribing,
-// or activate it locally (F-058)?" (tenant onboarding slice 4, ADR-0110).
+// or activate it locally (F-058)?" (tenant onboarding slice 4, ADR-0111).
 //
 // Before: a SYNCHRONOUS boolean that only asked whether the tenant had a config. A signed order from a prescriber with no DoseSpot
 // link was queued and then failed permanently as `prescriber_not_enrolled`. Now the decision reads, inside the SIGNING transaction

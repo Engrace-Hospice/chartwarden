@@ -1,5 +1,5 @@
 -- compat: expand
--- M12 / M34 - the DoseSpot clinic registration permission keys (tenant onboarding slice 4, ADR-0110), mirrored into the DB
+-- M12 / M34 - the DoseSpot clinic registration permission keys (tenant onboarding slice 4, ADR-0111), mirrored into the DB
 -- catalog (the 1330 / 1388 / 1390 shape):
 --   prescribing.clinic.read / .admin   the tenant's OWN surface (GET|PUT /api/v1/tenant/dosespot ...). ORG-LEVEL on purpose: the
 --                                      registration decides where EVERY prescription of the organization goes, so it is bound

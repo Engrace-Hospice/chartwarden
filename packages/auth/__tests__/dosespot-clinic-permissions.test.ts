@@ -1,4 +1,4 @@
-// Tenant onboarding slice 4 (ADR-0110): the DoseSpot clinic registration decides where EVERY prescription of the organization
+// Tenant onboarding slice 4 (ADR-0111): the DoseSpot clinic registration decides where EVERY prescription of the organization
 // goes, so its tenant keys are ORG-LEVEL and bound to the org-wide admin roles only (a prescriber-roster admin must not inherit
 // them), and its platform keys belong to the exact platform_ops role like the other onboarding-data keys.
 import { describe, expect, it } from "vitest";

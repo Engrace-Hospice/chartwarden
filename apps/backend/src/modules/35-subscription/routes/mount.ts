@@ -26,7 +26,7 @@ export {
 export interface M35MountDeps {
   readonly service: M35RouteService;
   readonly webhook?: WebhookRouteDeps;
-  /** ADR-0111 — the claims-billing add-on service (admin grant/cancel + the tenant billing-status posture). */
+  /** ADR-0110 — the claims-billing add-on service (admin grant/cancel + the tenant billing-status posture). */
   readonly addons?: AddonService;
 }
 

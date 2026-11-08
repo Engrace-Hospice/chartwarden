@@ -78,7 +78,7 @@ Everything below is flagged in code (`client/endpoints.ts` `verification`, `clie
 9. **Prescriber token**: `transmitNewRx` authenticates as the prescribing clinician (`dosespotPrescriberId`); every other call as
    `serviceClinicianId`. Whether the send needs the prescriber's PIN is unconfirmed (`pin` is optional in the swagger).
 
-## Tenant registration (slice 4, ADR-0110)
+## Tenant registration (slice 4, ADR-0111)
 
 A tenant registers its own clinic: `PUT /api/v1/tenant/dosespot` (org admin) or `PUT /api/v1/platform/tenants/:orgSlug/dosespot`
 (platform ops, while the tenant is onboarding), then `verify` (one token mint, no PHI), then `activate`. The clinic key is sealed under
@@ -125,7 +125,7 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   any column of the table. The demo seed has Dr. Harris confirm his own link.
 - Fixed here too: the shared Idempotency-Key middleware stored a plain SHA-256 of every request (a credential in the body was testable
   from the table); it is now an HMAC under a key derived from `BETTER_AUTH_SECRET` (CW-SEC-02), with the legacy form honoured for one TTL.
-- Open, not fixed here: `verify` lets a tenant administrator probe candidate clinic keys against the vendor (ADR-0110 open items).
+- Open, not fixed here: `verify` lets a tenant administrator probe candidate clinic keys against the vendor (ADR-0111 open items).
 
 ## Operational notes
 

@@ -92,7 +92,7 @@ export async function isOrgNotSelectedResponse(response: Response): Promise<bool
 }
 
 /**
- * ADR-0111 — the claims-billing gate's fail-closed 503 (`BILLING_ENTITLEMENT_UNAVAILABLE`) refuses one action; the rest
+ * ADR-0110 — the claims-billing gate's fail-closed 503 (`BILLING_ENTITLEMENT_UNAVAILABLE`) refuses one action; the rest
  * of the app works. It is not an outage, so it must not navigate to /maintenance and lose the form the user is on.
  */
 const NOT_AN_OUTAGE_ON_503 = ["BILLING_ENTITLEMENT_UNAVAILABLE"];
@@ -147,7 +147,7 @@ export function handleObservedResponse(
   } else if (signal) {
     setGlobalResponseSignal(signal); // only 401/503 notify - don't re-render on every 2xx
   } else if (status === 402) {
-    // ADR-0111 — a claims-billing add-on refusal flips every ClaimsBillingNotice / gated action at once.
+    // ADR-0110 — a claims-billing add-on refusal flips every ClaimsBillingNotice / gated action at once.
     void response
       .clone()
       .json()

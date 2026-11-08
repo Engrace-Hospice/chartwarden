@@ -1,5 +1,5 @@
 // apps/backend/src/modules/12-dosespot/tenant-config/prescriber-enrollment.ts — a prescriber's DoseSpot (vendor) enrolment
-// (tenant onboarding slice 4, ADR-0110). Until now the roster `enroll` route only wrote a local row, so `dosespot_prescriber_id`
+// (tenant onboarding slice 4, ADR-0111). Until now the roster `enroll` route only wrote a local row, so `dosespot_prescriber_id`
 // (the id `transmit-newrx` sends under) was never set by any production path and an API-enrolled prescriber's orders failed
 // permanently as `prescriber_not_enrolled`. This is the missing step: register the clinician at DoseSpot and record its id.
 //

@@ -284,7 +284,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
     expect(await orderRow(orderId)).toMatchObject({ status: "transmission_failed", s: "failed" });
   });
 
-  it("a registration that stops being live mid-batch defers WITHOUT burning the retry budget (queued orders wait, ADR-0110 D6)", async () => {
+  it("a registration that stops being live mid-batch defers WITHOUT burning the retry budget (queued orders wait, ADR-0111 D6)", async () => {
     const { orderId, transmissionId } = await queued();
     const vendor = new FakeDoseSpotVendor({
       transmit: async () => {
@@ -308,7 +308,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
   });
 
   // ── the SAME deferral, produced by the real resolver and the real HTTP client (no hand-made error in a fake vendor) ────────────
-  describe("a registration that is not live defers through the real layered resolver (ADR-0110 D6)", () => {
+  describe("a registration that is not live defers through the real layered resolver (ADR-0111 D6)", () => {
     const CLINIC_KEY = "clinic-key-plaintext-CRON-4d1b";
     const platformEnv: Record<string, string | undefined> = {
       DOSESPOT_SANDBOX_ENABLED: "true",

@@ -48,7 +48,7 @@ export interface OnboardingContext {
    *  release that still reads it evaluates (migration 1397 moved the step's precondition to the new field). */
   readonly dosespotKickoffRecorded: boolean;
   /** The org's DoseSpot clinic registration is ACTIVE (registered, connection tested, activated): e-prescribing transmits for it
-   *  (tenant onboarding slice 4, ADR-0110; M12 owns the registration, M34 reads it through a port). The prescriber count does not gate. */
+   *  (tenant onboarding slice 4, ADR-0111; M12 owns the registration, M34 reads it through a port). The prescriber count does not gate. */
   readonly dosespotSettled: boolean;
   // ── xero_connected / payroll_connected ───────────────────────────────────────────────────────
   /** Xero OAuth handshake recorded (M27 owns; M34 reads ExternalFeedReader). */

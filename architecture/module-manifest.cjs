@@ -586,7 +586,7 @@ exports.MODULES = [
     dependsOn: [1, 5, 11, 38, 40], // +M1: the bootstrap seam registry (registerSeam/getSeam) M12's backend module wires its §2.10 D17 owned seams (MedicationOrderProvider/RefillInboxProvider) into (M12-T07; M6..M11 seam-task precedent)
     ownedTables: [
       "dosespot_prescriber",
-      // Tenant onboarding slice 4 (ADR-0110, migration 1395): the DoseSpot clinic each tenant registered, with its sealed credential.
+      // Tenant onboarding slice 4 (ADR-0111, migration 1395): the DoseSpot clinic each tenant registered, with its sealed credential.
       "dosespot_clinic_registration",
       "dosespot_webhook_event",
       "epcs_signing_attempt",
@@ -1267,7 +1267,7 @@ exports.MODULES = [
     dependsOn: [1],
     /* ADR-0025: M34<->M35 seam-based both ways (no edge); minimal edge set finalized in M35's ADR-0005 D5 pass */ ownedTables:
       [
-        "addon", // ADR-0111 claims-billing add-on catalog (platform-shared)
+        "addon", // ADR-0110 claims-billing add-on catalog (platform-shared)
         "dunning_state",
         "invoice",
         "invoice_line",
@@ -1285,7 +1285,7 @@ exports.MODULES = [
         "stripe_api_call_audit",
         "stripe_webhook_event",
         "subscription",
-        "subscription_addon", // ADR-0111 (tenant read-only; platform-runner writes)
+        "subscription_addon", // ADR-0110 (tenant read-only; platform-runner writes)
         "subscription_state_history",
         "usage_event",
         "usage_period_aggregate",

@@ -1,4 +1,4 @@
-// apps/backend/src/modules/23-billing-medicare/void-claim.ts — ADR-0111: a void (TOB 818) stays transmittable without
+// apps/backend/src/modules/23-billing-medicare/void-claim.ts — ADR-0110: a void (TOB 818) stays transmittable without
 // the claims-billing add-on. The submit route and the claim.submit / retry workers ask this before refusing or holding.
 // The TOB is read from the stored claim under the org's RLS context, never taken from the request.
 import { repositories } from "@chartwarden/billing";

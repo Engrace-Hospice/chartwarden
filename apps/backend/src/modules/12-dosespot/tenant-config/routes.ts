@@ -1,4 +1,4 @@
-// apps/backend/src/modules/12-dosespot/tenant-config/routes.ts — M12 (ADR-0110): the tenant's own DoseSpot registration.
+// apps/backend/src/modules/12-dosespot/tenant-config/routes.ts — M12 (ADR-0111): the tenant's own DoseSpot registration.
 // `GET|PUT /api/v1/tenant/dosespot`, `POST …/verify`, `POST …/activate`, `POST …/deactivate`.
 //
 // Gated by its OWN ORG-LEVEL permission pair (the `billing.clearinghouse.*` shape): the read `prescribing.clinic.read`; every

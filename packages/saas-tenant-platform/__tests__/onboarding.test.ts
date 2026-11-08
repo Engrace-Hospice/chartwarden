@@ -227,7 +227,7 @@ describe("§2.3 precondition-DSL: canonical expressions met vs blocked", () => {
     const cases: ReadonlyArray<[string, keyof OnboardingContext]> = [
       ["context.macFeedConfigured == true", "macFeedConfigured"],
       ["context.dosespotKickoffRecorded == true", "dosespotKickoffRecorded"],
-      // Tenant onboarding slice 4 (ADR-0110): the e-prescribing step settles on an ACTIVE DoseSpot registration alone.
+      // Tenant onboarding slice 4 (ADR-0111): the e-prescribing step settles on an ACTIVE DoseSpot registration alone.
       ["context.dosespotSettled == true", "dosespotSettled"],
       ["context.primaryLocationExists == true", "primaryLocationExists"],
       ["context.complianceOfficerAssigned == true", "complianceOfficerAssigned"],

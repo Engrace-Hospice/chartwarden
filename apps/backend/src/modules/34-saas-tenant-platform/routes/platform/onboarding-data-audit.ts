@@ -36,7 +36,7 @@ export const ONBOARDING_DATA_AUDIT_EVENTS = {
   clearinghouseSet: "m34.tenant_onboarding.clearinghouse_set",
   clearinghouseVerified: "m34.tenant_onboarding.clearinghouse_verified",
   clearinghouseActivated: "m34.tenant_onboarding.clearinghouse_activated",
-  /** Tenant onboarding slice 4 (ADR-0110): the tenant's DoseSpot clinic registration (environment, clinic, sealed key). */
+  /** Tenant onboarding slice 4 (ADR-0111): the tenant's DoseSpot clinic registration (environment, clinic, sealed key). */
   dosespotSet: "m34.tenant_onboarding.dosespot_set",
   dosespotVerified: "m34.tenant_onboarding.dosespot_verified",
   dosespotActivated: "m34.tenant_onboarding.dosespot_activated",

@@ -69,7 +69,7 @@ export function isRetryableError(value: unknown): value is RetryableError {
  * The org has no LIVE DoseSpot registration at the moment of the call (never configured, or deactivated / rotated since the caller
  * last looked). It is a {@link DegradedError} (non-retryable, so a caller that never had a config still sees a refusal), but a
  * WORKER holding queued work must treat it as a pause, not a rejection: the order goes back to `queued` with no retry spent
- * (ADR-0110 D6: "queued ones wait"), exactly like an open circuit. Without the distinction a deactivation committed mid-batch
+ * (ADR-0111 D6: "queued ones wait"), exactly like an open circuit. Without the distinction a deactivation committed mid-batch
  * would permanently fail every order the sweep had already claimed.
  */
 export class NotEnabledError extends DegradedError {

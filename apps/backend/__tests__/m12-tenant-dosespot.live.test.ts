@@ -1,5 +1,5 @@
 /**
- * M12 / M34 — a tenant's DoseSpot clinic registration (tenant onboarding slice 4, ADR-0110), LIVE Postgres on the real roles.
+ * M12 / M34 — a tenant's DoseSpot clinic registration (tenant onboarding slice 4, ADR-0111), LIVE Postgres on the real roles.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m12:tenant-dosespot:live   (SUPERUSER url, THROWAWAY database)
  *
@@ -1750,7 +1750,7 @@ describe.skipIf(!DB_URL)(
           npi: m.physician.npi,
           by: m.membershipId,
         });
-        // ADR-0110 D9 / CW-AC-21 say the table's write-audit row records the confirmed NPI (public provider data, and the evidence of WHAT
+        // ADR-0111 D9 / CW-AC-21 say the table's write-audit row records the confirmed NPI (public provider data, and the evidence of WHAT
         // the prescriber attested): pinned here so a denylist entry for that column cannot appear without those texts being revisited
         const auditedWith = (npi: string) =>
           q(

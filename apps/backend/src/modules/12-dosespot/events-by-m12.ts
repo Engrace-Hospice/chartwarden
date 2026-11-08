@@ -501,7 +501,7 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
-  // ── tenant onboarding slice 4 (ADR-0110): the clinic registration going live / out of service ───────────
+  // ── tenant onboarding slice 4 (ADR-0111): the clinic registration going live / out of service ───────────
   {
     eventName: "m12.dosespot_config.activated",
     moduleOwner: "m12",

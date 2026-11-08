@@ -405,7 +405,7 @@ function ClaimPreview({
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  // ADR-0111 — submitting a claim is new claims-billing work: paused without the add-on (when enforced). A void
+  // ADR-0110 — submitting a claim is new claims-billing work: paused without the add-on (when enforced). A void
   // (TOB 818) is not: the server lets it through, so the button stays live for one.
   const claimsBilling = useClaimsBilling();
   const submitPaused = claimsBilling.blocked && claim.tob !== "818";

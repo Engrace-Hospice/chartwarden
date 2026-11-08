@@ -204,7 +204,7 @@ export const M12_EVENT_NAMES = [
   "m12.ial2_expiring_warn",
   "m12.dosespot_degraded",
   "m12.dosespot_recovered",
-  // Tenant onboarding slice 4 (ADR-0110): a tenant's DoseSpot clinic registration went live / stopped being live.
+  // Tenant onboarding slice 4 (ADR-0111): a tenant's DoseSpot clinic registration went live / stopped being live.
   "m12.dosespot_config.activated",
   "m12.dosespot_config.deactivated",
   "m12.controlled_substance_policy_changed",

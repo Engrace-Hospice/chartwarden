@@ -1,5 +1,5 @@
 // apps/backend/src/modules/12-dosespot/tenant-config/practitioner-link.ts — the PRESCRIBER's own confirmation of the physician record a
-// roster administrator linked them to (ADR-0110 D9). The DoseSpot enrolment sends the linked record's NPI and legal name to the vendor;
+// roster administrator linked them to (ADR-0111 D9). The DoseSpot enrolment sends the linked record's NPI and legal name to the vendor;
 // the administrator cannot choose either (they come from the NPPES-sourced record), but the LINK ("this member is that physician") was
 // still one person's word about another. So the member, signed in as themself with a fresh step-up, is shown the record's name and NPI
 // and confirms them, pinned to the link and the NPI they were shown, and enrolment on both lanes is refused until a confirmation by the

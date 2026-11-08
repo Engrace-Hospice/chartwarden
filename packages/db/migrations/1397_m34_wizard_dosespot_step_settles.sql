@@ -1,6 +1,6 @@
 -- compat: contract
 -- M34 - wizard step 10 `dosespot_kickoff_initiated` is settled from a fact, not only attested (tenant onboarding slice 4,
--- ADR-0110). Migration 1327 seeded it with `context.dosespotKickoffRecorded == true`, a field nothing produced; now that each
+-- ADR-0111). Migration 1327 seeded it with `context.dosespotKickoffRecorded == true`, a field nothing produced; now that each
 -- tenant's DoseSpot clinic registration is real data (M12 `dosespot_clinic_registration`, 1395), the advance sweep settles the step
 -- when the registration is `active` (registered, connection tested, activated), and a human may still attest it where the fact
 -- cannot be read (`either`, the mac_configured shape). The prescriber count does NOT gate: a prescriber needs a membership, and the

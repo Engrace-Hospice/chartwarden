@@ -392,7 +392,7 @@ export function mountTenantPlatformRoutes(
           }
         : {}),
     });
-    // Tenant onboarding slice 4 (ADR-0110): the same service, the DoseSpot lane.
+    // Tenant onboarding slice 4 (ADR-0111): the same service, the DoseSpot lane.
     registerOnboardingDoseSpotRoutes(app, {
       service: services.onboardingData.service,
       ...(services.onboardingData.dosespotVerifyRateLimit

@@ -66,7 +66,7 @@ export function DenialRoutePanel({
   refreshToken = 0,
 }: DenialRoutePanelProps): JSX.Element {
   const client = useApiClient();
-  // ADR-0111 — opening a reopening is new claims-billing work: paused without the add-on (when enforced).
+  // ADR-0110 — opening a reopening is new claims-billing work: paused without the add-on (when enforced).
   const claimsBilling = useClaimsBilling();
   const [route, setRoute] = useState<DenialRouteView | null>(null);
   const [live, setLive] = useState<ReopeningSummary | null>(null);

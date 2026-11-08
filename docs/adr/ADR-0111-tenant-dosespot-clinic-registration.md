@@ -1,4 +1,4 @@
-# ADR-0110 — A tenant registers its own DoseSpot clinic: a sealed per-tenant registration row (draft, registered, verified, active) in front of the env map, a named environment instead of a URL, and an e-prescribing gate that also needs a linked prescriber
+# ADR-0111 — A tenant registers its own DoseSpot clinic: a sealed per-tenant registration row (draft, registered, verified, active) in front of the env map, a named environment instead of a URL, and an e-prescribing gate that also needs a linked prescriber
 
 - **Status:** **Accepted** (2026-11-06). The product decisions below were made by the owner on 2026-11-06 (tenant onboarding revamp, slice 4).
 - **Date:** 2026-11-06
