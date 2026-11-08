@@ -215,4 +215,77 @@ describe("M23 Claim.MD evidence boundary", () => {
       expect(order).toEqual(["reserve", "upload", "observe"]);
     }
   });
+
+  it("a tenant's own Claim.MD account records NOTICE evidence under its own org and tenant:<org>, never the platform's store", async () => {
+    const order: string[] = [];
+    const submitNotice = vi.fn(async () => {
+      order.push("upload");
+      return {
+        ok: true as const,
+        data: {
+          clearinghouseSubmissionId: "file-synthetic",
+          idempotencyKey: "notice-key",
+          controlNumber: "NOTICE-REF",
+          receivedAt: new Date().toISOString(),
+          replayed: false,
+          vendorIdentifiers: [{ field: "fileid", value: "file-synthetic" }],
+        },
+      };
+    });
+    const asked: { organizationId: string; usage: string }[] = [];
+    const platformMustNotBeUsed = {
+      accountReference: "acct-synthetic",
+      usage: "test" as const,
+      reserve: async () => {
+        throw new Error("MUST-NOT-BE-USED: the platform notice store");
+      },
+      observe: async () => {
+        throw new Error("MUST-NOT-BE-USED: the platform notice store");
+      },
+    };
+    const tenant = {
+      binding: {
+        vendor: "claimmd",
+        account: "tenant",
+        transport: { submitClaim: vi.fn(), submitNotice },
+      },
+      contexts: {
+        contextFor: async () => ({ ...context, payerId: "STEDI" }),
+        providerEntitiesFor: async () => [],
+      },
+      claimMdNoticeEvidence: platformMustNotBeUsed,
+      claimMdNoticeUploadsEnabled: true,
+      tenantClaimMdEvidence: {
+        submission: () => ({}) as never,
+        notice: (organizationId: string, usage: string) => {
+          asked.push({ organizationId, usage });
+          return {
+            accountReference: tenantClaimMdAccountReference(organizationId),
+            usage,
+            reserve: async () => {
+              order.push("tenant-reserve");
+              return "tenant-notice-evidence";
+            },
+            observe: async () => {
+              order.push("tenant-observe");
+            },
+          };
+        },
+      },
+    };
+    await expect(
+      transportUpload(tenant as never)({
+        organizationId: context.organizationId,
+        providerEntityId: context.providerEntityId,
+        kind: "noe",
+        x12: noticeX12("noe"),
+        controlNumber: "WXNOE0001",
+        noticeId: "00000000-0000-4000-8000-000000000005",
+        submissionId: "00000000-0000-4000-8000-000000000006",
+        attemptIndex: 0,
+      }),
+    ).resolves.toMatchObject({ accepted: true });
+    expect(asked).toEqual([{ organizationId: context.organizationId, usage: "test" }]);
+    expect(order).toEqual(["tenant-reserve", "upload", "tenant-observe"]);
+  });
 });

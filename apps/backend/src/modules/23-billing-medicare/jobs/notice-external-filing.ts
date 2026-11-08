@@ -14,6 +14,7 @@ import {
   FILED_EXTERNALLY_ATTEMPT_REASON,
   PARKED_ATTEMPT_REASON,
   closeNoticeAttempt,
+  noticeAttemptMatches,
   ownedNoticeAttempt,
   parkNotice,
 } from "../services/external-notice-filing";
@@ -32,10 +33,6 @@ export const M23_NOTICE_PARK_QUEUES: ReadonlyMap<string, ExternalNoticeKind> = n
   [M23_QUEUES.notrSubmit, "notr"],
 ]);
 
-const controlNumberOf = (
-  notice: { noeControlNumber: string } | { notrControlNumber: string },
-): string => ("noeControlNumber" in notice ? notice.noeControlNumber : notice.notrControlNumber);
-
 /** The notice id a notice job carries (`noeId` / `notrId`). A job without it is malformed: it fails loudly, never silently parks. */
 export function noticeIdOfJob(
   kind: ExternalNoticeKind,
@@ -44,6 +41,18 @@ export function noticeIdOfJob(
   const id = kind === "noe" ? data.noeId : data.notrId;
   if (typeof id !== "string" || id.length === 0) {
     throw new Error(`M23 ${kind}.submit job has no ${kind}Id`);
+  }
+  return id;
+}
+
+/** The attempt a notice job was enqueued for (`submissionId`, main's contract). A job without it is malformed: it fails loudly. */
+export function noticeSubmissionIdOfJob(
+  kind: ExternalNoticeKind,
+  data: Readonly<Record<string, unknown>>,
+): string {
+  const id = data.submissionId;
+  if (typeof id !== "string" || id.length === 0) {
+    throw new Error(`M23 ${kind}.submit job has no submissionId`);
   }
   return id;
 }
@@ -62,8 +71,8 @@ export async function parkNoticeForExternalFiling(
     readonly organizationId: string;
     readonly kind: ExternalNoticeKind;
     readonly noticeId: string;
-    /** The attempt the job was enqueued for. A job without one falls back to the notice's latest QUEUED attempt. */
-    readonly submissionId?: string;
+    /** The attempt the job was enqueued for (required: main's contract). Only that row, and only if it is this notice's, is closed. */
+    readonly submissionId: string;
   },
 ): Promise<void> {
   const { organizationId, kind, noticeId, submissionId } = input;
@@ -83,12 +92,11 @@ export async function parkNoticeForExternalFiling(
       }
       // The submit that enqueued this job appended a QUEUED attempt that will now never run: close it, or it reads as in flight forever.
       const submissions = new repositories.ClaimSubmissionRepository(tx);
-      const attempt = await ownedNoticeAttempt(submissions, {
-        submissionId,
-        providerEntityId: notice.providerEntityId,
-        controlNumber: controlNumberOf(notice),
-      });
-      await closeNoticeAttempt(submissions, attempt, PARKED_ATTEMPT_REASON);
+      const attempt = await ownedNoticeAttempt(submissions, { submissionId });
+      // The notice is parked all the same (the org bills outside); an attempt that is not this notice's own is never closed.
+      const own = { organizationId, providerEntityId: notice.providerEntityId, kind, noticeId };
+      if (noticeAttemptMatches(attempt, own))
+        await closeNoticeAttempt(submissions, attempt, PARKED_ATTEMPT_REASON);
     },
   );
 }
@@ -143,14 +151,7 @@ export async function settleNoticeJobAttempt(
 > {
   const submissions = new repositories.ClaimSubmissionRepository(tx);
   const attempt = await ownedNoticeAttempt(submissions, input);
-  const noticeId = input.kind === "noe" ? attempt?.noeId : attempt?.notrId;
-  if (
-    !attempt ||
-    attempt.organizationId !== input.organizationId ||
-    attempt.providerEntityId !== input.providerEntityId ||
-    noticeId !== input.noticeId ||
-    attempt.kind !== input.kind
-  )
+  if (!noticeAttemptMatches(attempt, input))
     throw new Error(`${input.kind.toUpperCase()} submission attempt does not match the notice`);
   if (input.externalFilingStatus === "filed") {
     await closeNoticeAttempt(submissions, attempt, FILED_EXTERNALLY_ATTEMPT_REASON);

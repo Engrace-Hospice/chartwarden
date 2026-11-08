@@ -84,6 +84,9 @@ describe("per-organization clearinghouse binding", () => {
     expect(b?.vendor).toBe("claimmd");
     expect(b?.transport.vendor).toBe("claimmd");
     expect(a?.transport).not.toBe(b?.transport);
+    // The one stamp every per-account rule keys on (acks, ERAs, Claim.MD evidence): a tenant's own credential is `tenant`.
+    expect(a?.account).toBe("tenant");
+    expect(b?.account).toBe("tenant");
   });
 
   it("serves nothing for outside, for a draft or verified config, and for an org with no row", async () => {
@@ -109,6 +112,7 @@ describe("per-organization clearinghouse binding", () => {
   it("serves the platform env binding only to an org named in the fallback list that has no row", async () => {
     const { runtime, put, platformBinding } = await setup();
     expect(await runtime.binding.forOrg?.(ORG_C)).toBe(platformBinding);
+    expect((await runtime.binding.forOrg?.(ORG_C))?.account).toBeUndefined();
     await put(ORG_C, { vendor: "outside", mode: null });
     expect(await runtime.binding.forOrg?.(ORG_C)).toBe(UNBOUND_OUTSIDE);
   });

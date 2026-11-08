@@ -284,6 +284,7 @@ export {
   type UnboundReason,
   bindClearinghouseTransport,
   bindingForOrg,
+  cursorVendorKey,
   isPerOrgBinding,
   parseClearinghouseVendor,
 } from "./clearinghouse/transport-registry";

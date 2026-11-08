@@ -221,8 +221,23 @@ beforeEach(() => {
 });
 
 describe.each([
-  ["NOE", M23_QUEUES.noeSubmit, { noeId: "noe-1" }, fakes.noes, "noe-1", noe],
-  ["NOTR", M23_QUEUES.notrSubmit, { notrId: "notr-1" }, fakes.notrs, "notr-1", notr],
+  // Every notice job carries its attempt (main's contract); "att-job" matches no seeded row unless a test seeds it.
+  [
+    "NOE",
+    M23_QUEUES.noeSubmit,
+    { noeId: "noe-1", submissionId: "att-job" },
+    fakes.noes,
+    "noe-1",
+    noe,
+  ],
+  [
+    "NOTR",
+    M23_QUEUES.notrSubmit,
+    { notrId: "notr-1", submissionId: "att-job" },
+    fakes.notrs,
+    "notr-1",
+    notr,
+  ],
 ] as const)("%s job pre-flight (holdBeforeRun)", (_k, queue, data, table, id, make) => {
   it("PARKS the notice for an organization that bills outside and says the job is handled; nothing is held or alerted", async () => {
     table.set(id, make());
@@ -313,12 +328,32 @@ describe.each([
     expect(attemptById("att-new")).toMatchObject({ outcome: "queued" });
   });
 
-  it("a job without a submissionId (enqueued before the attempt was carried) falls back to the notice's latest QUEUED attempt", async () => {
+  it("a job without a submissionId is malformed: it fails loudly and closes nothing (no latest-queued fallback)", async () => {
     const { deps } = depsFor(UNBOUND_OUTSIDE);
     table.set(id, make());
     seedAttempt(make(), { id: "att-1" });
-    await expect(pre(deps, queue, data, jobOf().job)).resolves.toBe("parked");
-    expect(attemptById("att-1")).toMatchObject({ outcome: "failed_worker" });
+    const { submissionId: _dropped, ...withoutId } = data;
+    await expect(pre(deps, queue, withoutId, jobOf().job)).rejects.toThrow(/no submissionId/);
+    expect(attemptById("att-1")).toMatchObject({ outcome: "queued" });
+  });
+
+  it("parks the notice but never closes an attempt that is not its own (another notice's, kind's or org's)", async () => {
+    const { deps } = depsFor(UNBOUND_OUTSIDE);
+    for (const over of [
+      { organizationId: OTHER_ORG },
+      { providerEntityId: "pe-2" },
+      { kind: "other" },
+      { noeId: "noe-other", notrId: "notr-other" },
+    ]) {
+      fakes.attempts.length = 0;
+      table.set(id, make());
+      seedAttempt(make(), { id: "att-foreign", ...over });
+      await expect(
+        pre(deps, queue, { ...data, submissionId: "att-foreign" }, jobOf().job),
+      ).resolves.toBe("parked");
+      expect(attemptById("att-foreign"), JSON.stringify(over)).toMatchObject({ outcome: "queued" });
+      expect(table.get(id)).toMatchObject({ externalFilingStatus: "pending" });
+    }
   });
 
   it("HOLDS the job (delayed, no attempt spent) with ONE alert per organization and reason, whatever the notice", async () => {
@@ -378,8 +413,24 @@ describe.each([
   ["registerM23LaunchWorkers", (deps: M23WorkerDeps) => registerM23LaunchWorkers(deps, {})],
 ] as const)("%s: the submit workers honour the pre-flight verdict", (_name, register) => {
   const cases = [
-    ["NOE", M23_QUEUES.noeSubmit, { noeId: "noe-1" }, fakes.noes, "noe-1", noe, "noe"],
-    ["NOTR", M23_QUEUES.notrSubmit, { notrId: "notr-1" }, fakes.notrs, "notr-1", notr, "notr"],
+    [
+      "NOE",
+      M23_QUEUES.noeSubmit,
+      { noeId: "noe-1", submissionId: "att-job" },
+      fakes.noes,
+      "noe-1",
+      noe,
+      "noe",
+    ],
+    [
+      "NOTR",
+      M23_QUEUES.notrSubmit,
+      { notrId: "notr-1", submissionId: "att-job" },
+      fakes.notrs,
+      "notr-1",
+      notr,
+      "notr",
+    ],
   ] as const;
 
   it.each(cases)(

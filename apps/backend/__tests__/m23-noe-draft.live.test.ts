@@ -95,6 +95,8 @@ const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
+/** A job attempt id that matches no row: the park still parks, and closes nothing. */
+const NO_ATTEMPT = "99999999-9999-4999-8999-999999999999";
 const USER = "33333333-3333-3333-3333-333333333333";
 const ATTENDING = "77777777-7777-7777-7777-777777777777";
 const MD = "66666666-6666-6666-6666-666666666666";
@@ -1784,12 +1786,12 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     // The worker pre-flight (a job enqueued before the org went `outside`): parks only the job's own org's notice.
     await parkNoticeForExternalFiling(
       { db: handle.db as never },
-      { organizationId: ORG_B, kind: "noe", noticeId: id },
+      { organizationId: ORG_B, kind: "noe", noticeId: id, submissionId: NO_ATTEMPT },
     );
     expect(await noeRow(id)).toMatchObject({ external_filing_status: null });
     await parkNoticeForExternalFiling(
       { db: handle.db as never },
-      { organizationId: ORG_A, kind: "noe", noticeId: id },
+      { organizationId: ORG_A, kind: "noe", noticeId: id, submissionId: NO_ATTEMPT },
     );
     expect(await noeRow(id)).toMatchObject({ state: "READY", external_filing_status: "pending" });
   }, 60_000);

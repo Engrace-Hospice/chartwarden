@@ -58,6 +58,17 @@ export interface ClearinghouseBinding {
   readonly forOrg?: (organizationId: string) => Promise<ClearinghouseBinding>;
 }
 
+/**
+ * The `vendor` part of a stored poll cursor's key: a tenant's OWN account (`account: "tenant"`) has its own position space, so an
+ * org that moves between the platform's account and its own never reuses the other's cursor. ponytail: a tenant swapping one of
+ * its own accounts for another of the same vendor still shares a key; replays are idempotent, add a credential fingerprint if
+ * that ever skips ids.
+ */
+export const cursorVendorKey = (binding: {
+  readonly vendor: string;
+  readonly account?: "tenant";
+}): string => (binding.account === "tenant" ? `${binding.vendor}@tenant` : binding.vendor);
+
 /** The binding to use for `organizationId`: its own when the platform binding is per-organization, else the one binding. */
 export async function bindingForOrg<B extends Pick<ClearinghouseBinding, "vendor">>(
   binding: B & { readonly forOrg?: (organizationId: string) => Promise<B> },
