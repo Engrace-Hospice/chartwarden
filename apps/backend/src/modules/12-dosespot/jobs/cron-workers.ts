@@ -123,7 +123,7 @@ export function buildM12CronRunners(
         if (deferredByOutage > 0 || skipped > 0 || orgsSkippedByConfigFault > 0) {
           deps.warn?.(
             { cron: label, deferredByOutage, skipped, orgsSkippedByConfigFault },
-            "M12 cron tick held orders back instead of transmitting them",
+            "M12 cron tick did not transmit every order it reached: some were deferred (an outage, an org skipped for a config fault), and `skipped` were lost to another owner mid-pass, their result discarded",
           );
         }
       }
