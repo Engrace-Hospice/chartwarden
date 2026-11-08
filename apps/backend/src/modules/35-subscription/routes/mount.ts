@@ -27,7 +27,7 @@ export {
 export interface M35MountDeps {
   readonly service: M35RouteService;
   readonly webhook?: WebhookRouteDeps;
-  /** ADR-0108 — the claims-billing add-on service (admin grant/cancel + the tenant billing-status posture). */
+  /** ADR-0110 — the claims-billing add-on service (admin grant/cancel + the tenant billing-status posture). */
   readonly addons?: AddonService;
   /** Slice 2 — the plan editor, the onboarding contract and the tenant's own pricing read. Absent => none of those routes mount. */
   readonly pricing?: PricingRouteDeps;

@@ -1,4 +1,4 @@
-// apps/backend/src/modules/35-subscription/addon/entitlement.ts — ADR-0108 the claims-billing entitlement.
+// apps/backend/src/modules/35-subscription/addon/entitlement.ts — ADR-0110 the claims-billing entitlement.
 //
 // `decideClaimsBillingEntitlement` is the pure rule (D3): entitled iff the org holds a trialing/active, not-ended
 // `subscription_addon` row for `claims_billing` AND the subscription that row hangs off is trialing, active, past_due

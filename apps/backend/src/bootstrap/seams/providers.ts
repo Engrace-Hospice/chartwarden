@@ -316,7 +316,7 @@ export const patientPrivacyFlagReaderDenyStub: PatientPrivacyFlagReader = {
   },
 };
 
-/** M5 — ADR-0108 the active-patient census page. Throws: an unread census must never count as zero patients. */
+/** M5 — ADR-0110 the active-patient census page. Throws: an unread census must never count as zero patients. */
 export const patientCensusReaderDenyStub: PatientCensusReader = {
   activePatientIdsPage() {
     throw new NotImplementedError("PatientCensusReader");
@@ -1954,7 +1954,7 @@ export const patientCounterProviderDenyStub: PatientCounterProvider = {
   },
 };
 
-/** ADR-0108 — the claims-billing entitlement read. Throws until M35 registers the real reader: the route gate and
+/** ADR-0110 — the claims-billing entitlement read. Throws until M35 registers the real reader: the route gate and
  *  the worker hold treat a throw as "unavailable" and fail CLOSED (503 / hold), and boot refuses a non-`off`
  *  CLAIMS_BILLING_ENFORCEMENT while this stub is still bound. */
 export const claimsBillingEntitlementReaderDenyStub: ClaimsBillingEntitlementReader = {

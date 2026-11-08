@@ -1078,7 +1078,7 @@ function makeServer() {
   return { app, backend };
 }
 
-// ADR-0108 — a canned add-on service: the route smoke proves the wiring + guards, the live suite proves the data.
+// ADR-0110 — a canned add-on service: the route smoke proves the wiring + guards, the live suite proves the data.
 const ADDON_ID = "55555555-5555-4555-8555-555555555555";
 const fakeSubscriptionAddon = {
   id: "66666666-6666-4666-8666-666666666666",
@@ -1417,23 +1417,23 @@ const ROUTE_CASES: readonly RouteCase[] = [
     headers: SUPER_HEADERS,
     expectStatus: 200,
   },
-  // ADR-0108 — the claims-billing add-on admin routes.
+  // ADR-0110 — the claims-billing add-on admin routes.
   {
-    label: "ADR-0108 GET /admin/addons",
+    label: "ADR-0110 GET /admin/addons",
     method: "GET",
     url: "/api/admin/addons",
     headers: SUPER_HEADERS,
     expectStatus: 200,
   },
   {
-    label: "ADR-0108 GET /admin/subscriptions/:id/addons",
+    label: "ADR-0110 GET /admin/subscriptions/:id/addons",
     method: "GET",
     url: `/api/admin/subscriptions/${SUB_ID}/addons`,
     headers: SUPER_HEADERS,
     expectStatus: 200,
   },
   {
-    label: "ADR-0108 POST /admin/subscriptions/:id/addons",
+    label: "ADR-0110 POST /admin/subscriptions/:id/addons",
     method: "POST",
     url: `/api/admin/subscriptions/${SUB_ID}/addons`,
     headers: { ...SUPER_HEADERS, ...IDEMP() },
@@ -1441,7 +1441,7 @@ const ROUTE_CASES: readonly RouteCase[] = [
     expectStatus: 201,
   },
   {
-    label: "ADR-0108 POST /admin/subscriptions/:id/addons/:addonId/cancel",
+    label: "ADR-0110 POST /admin/subscriptions/:id/addons/:addonId/cancel",
     method: "POST",
     url: `/api/admin/subscriptions/${SUB_ID}/addons/${ADDON_ID}/cancel`,
     headers: { ...SUPER_HEADERS, ...IDEMP() },
@@ -1683,7 +1683,7 @@ describe.each(ROUTE_CASES)("M35 route smoke — $label", (c) => {
 
 // ── the §4.2 platform-ops surface is refused for a caller holding the permission key but NO platform-ops
 // role — proves `platform_billing_scope` actually runs (RBAC alone is not enough for /api/admin). ─────────
-describe("ADR-0108 — the add-on routes and the billing-status block", () => {
+describe("ADR-0110 — the add-on routes and the billing-status block", () => {
   it("GET /api/v1/billing/status carries the tenant's claimsBilling posture", async () => {
     const { app } = makeServer();
     const res = await app.inject({

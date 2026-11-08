@@ -61,7 +61,7 @@ function deceasedDateOf(payload: unknown): Date | null {
 export function buildM35PatientActivePeriodConsumer(deps: PatientActivePeriodConsumerDeps) {
   const now = deps.now ?? (() => new Date());
   const activePeriodStore = createDrizzleActivePeriodStore(deps.db);
-  // ADR-0108 D8 — the period key comes from the same window helper as the census sweep and the usage aggregator.
+  // ADR-0110 D8 — the period key comes from the same window helper as the census sweep and the usage aggregator.
   const periodKey = (organizationId: string, at: Date) =>
     withOrgContext(deps.db, { organizationId, userId: "" }, async (tx) =>
       activePeriodKeyFor(

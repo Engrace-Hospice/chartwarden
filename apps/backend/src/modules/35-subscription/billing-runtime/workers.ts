@@ -38,7 +38,7 @@ const M35_QUEUES = {
   invoiceReconciler: "m35.subscription-reconciler",
   webhookHandler: "m35.stripe-webhook-handler",
   refundExecutor: "m35.refund-executor",
-  // ADR-0108 D8 — the claims-billing add-on census pull (M5 PatientCensusReader → patient_active_period).
+  // ADR-0110 D8 — the claims-billing add-on census pull (M5 PatientCensusReader → patient_active_period).
   patientCensus: "m35.patient-census",
   // Slice 2 — the monthly statement of every org on a census_banded contract (draft while the month is open, final after).
   pricingStatement: "m35.pricing-statement",
@@ -64,7 +64,7 @@ export interface M35WorkerDeps {
   readonly cipher?: WebhookPayloadCipher;
   /** Present when `STRIPE_SECRET_KEY` is configured - without it refunds are NOT executed (stay approved). */
   readonly refunds?: RefundExecutorDeps;
-  /** ADR-0108 — present when the pseudonym key provider is bound; without it no census runs (nothing is counted). */
+  /** ADR-0110 — present when the pseudonym key provider is bound; without it no census runs (nothing is counted). */
   readonly census?: Pick<CensusDeps, "census" | "keyProvider">;
   /**
    * Slice 2 (tenant pricing) - present when the pseudonym key ring is bound. Rides the SAME census sweep for the daily active-patient
@@ -101,7 +101,7 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
     worker(M35_QUEUES.usageAggregator, () =>
       runM35Fanout(
         jobs,
-        // ADR-0108 — the claims-billing add-on aggregate rides the same sweep (plan meters first, then the add-on).
+        // ADR-0110 — the claims-billing add-on aggregate rides the same sweep (plan meters first, then the add-on).
         (o) =>
           runUsageAggregationForOrg(jobs, o)
             .then(() => aggregateAddonForOrg(jobs, o))

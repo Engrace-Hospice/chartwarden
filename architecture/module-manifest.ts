@@ -34,7 +34,7 @@
  *   - Backend code for a module lives at  apps/backend/src/modules/<NN-slug>/
  *   - Shared domain-area logic lives in   packages/<area>/
  *   - LEAVES (importable by everyone, depend on nothing app-specific):
- *       packages/shared, packages/types, packages/ui
+ *       packages/shared, packages/types, packages/domain, packages/ui
  *   - FOUNDATION HELPERS (implicitly importable by every module — see ADR-0005 D4):
  *       packages/audit, packages/auth, packages/tenancy, packages/db/src/schema.
  *       A module may call audit()/requirePermission/withOrgContext and import its
@@ -71,7 +71,12 @@
  * proposals were reviewed and confirmed all no-edge — see audit/MANIFEST_DEPENDSON_REVIEW.md.
  */
 
-export const LEAF_PACKAGES = ["packages/shared", "packages/types", "packages/ui"] as const;
+export const LEAF_PACKAGES = [
+  "packages/shared",
+  "packages/types",
+  "packages/domain",
+  "packages/ui",
+] as const;
 
 /**
  * Foundation helper packages every module may import WITHOUT a dependsOn edge
@@ -312,7 +317,6 @@ export const MODULES: ModuleDef[] = [
       "death_board",
       "death_board_item",
       "death_board_item_event",
-      "death_notification",
       "alarm_source",
       "alarm_source_mapping",
       "alarm_ingest_event",
@@ -745,13 +749,6 @@ export const MODULES: ModuleDef[] = [
       "bereavement_mailing_config",
       "bereavement_mailing_run",
       "bereavement_mailing_item",
-      "bereavement_support_group",
-      "bereavement_support_group_session",
-      "bereavement_support_group_enrollment",
-      "bereavement_support_group_attendance",
-      "bereavement_memorial_service",
-      "bereavement_memorial_invitation",
-      "bereavement_library_item",
       "tenant_bereavement_external_source_gate_override",
     ],
   },
@@ -958,7 +955,6 @@ export const MODULES: ModuleDef[] = [
       "claimmd_ack_application",
       "claimmd_ack_delivery",
       "claimmd_submission_evidence",
-      "claimmd_submission_line_evidence",
       "claimmd_notice_submission_evidence",
       "claimmd_notice_receipt_observation",
       "claimmd_submission_receipt_observation",
@@ -1062,10 +1058,6 @@ export const MODULES: ModuleDef[] = [
       "claimmd_era_recovery_action",
       "claimmd_era_resolution",
       "claimmd_era_resolution_history",
-      "claimmd_era_match_decision",
-      "claimmd_era_financial_review_decision",
-      "claimmd_era_posting_plan",
-      "claimmd_era_posting_event",
       "appeal_tier_detail",
       "recorded_deadline",
       "payer_appeal_path",
@@ -1087,9 +1079,6 @@ export const MODULES: ModuleDef[] = [
       "remittance_line",
       "remittance_remark",
       "remittance_service_line",
-      "billing_operations_investigation",
-      "billing_operations_investigation_event",
-      "billing_operations_investigation_note",
     ],
   },
   {
@@ -1316,6 +1305,7 @@ export const MODULES: ModuleDef[] = [
     name: "SaaS Tenant Platform",
     codePaths: [
       "packages/saas-tenant-platform",
+      "packages/admin-ui-shell",
       "apps/admin/src/shell",
       "apps/backend/src/modules/34-saas-tenant-platform",
       "apps/web/src/modules/34-saas",
@@ -1364,16 +1354,14 @@ export const MODULES: ModuleDef[] = [
     dependsOn: [1],
     /* ADR-0025: M34<->M35 seam-based both ways (no edge); minimal edge set finalized in M35's ADR-0005 D5 pass */ ownedTables:
       [
-        "addon", // ADR-0108 claims-billing add-on catalog (platform-shared)
+        "addon", // ADR-0110 claims-billing add-on catalog (platform-shared)
         "dunning_state",
         "invoice",
         "invoice_line",
         "patient_active_period",
-        "patient_census_daily", // slice 2 tenant pricing: the daily active-patient count behind the average daily census
         "patient_pseudonym_key",
         "payment_method",
         "plan",
-        "plan_census_band", // slice 2 tenant pricing: the census bands of a plan (platform-shared)
         "plan_meter",
         "platform_retained_invoice",
         "platform_retained_invoice_line",
@@ -1384,12 +1372,8 @@ export const MODULES: ModuleDef[] = [
         "stripe_api_call_audit",
         "stripe_webhook_event",
         "subscription",
-        "subscription_addon", // ADR-0108 (tenant read-only; platform-runner writes)
-        "subscription_contract", // slice 2 tenant pricing: the signed terms (tenant read-only; platform-runner writes)
-        "subscription_contract_mode", // slice 2 tenant pricing: the billing service mode history (tenant read-only; append-only)
+        "subscription_addon", // ADR-0110 (tenant read-only; platform-runner writes)
         "subscription_state_history",
-        "subscription_statement", // slice 2 tenant pricing: the monthly statement (tenant read-only; platform-runner writes)
-        "subscription_statement_review", // slice 2 tenant pricing: a month the run could not bill, once per subscription-month (platform-only)
         "usage_event",
         "usage_period_aggregate",
         "user_active_period",

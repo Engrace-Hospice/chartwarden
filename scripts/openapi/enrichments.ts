@@ -3189,7 +3189,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: M35SubscriptionAdminResponseDto,
     summary: "Pause subscription",
   },
-  // ADR-0108 — the claims-billing add-on (platform-ops).
+  // ADR-0110 — the claims-billing add-on (platform-ops).
   "GET /api/admin/addons": {
     response: M35AddonListResponseDto,
     summary: "List the add-on catalog (admin)",

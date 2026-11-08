@@ -213,7 +213,7 @@ controls:
       owner: platform
       review_by: 2027-01-31
 
-  - id: CW-AC-10
+  - id: CW-AC-24
     title: Paid-module entitlement is platform-controlled — only platform operators (platform credential, subscription.admin.write, fresh step-up, a human (non-AI) actor, Idempotency-Key) can grant or cancel the claims-billing add-on; a tenant can read but never write its own entitlement; when enforced, new claims and eligibility work without the add-on is refused (CMS-deadline NOE/NOTR, voids and in-flight work still run) and fails closed when the entitlement cannot be read; a new-work request with no organization context is refused
     hipaa: ["164.312(a)(1)", "164.312(b)", "164.308(a)(4)"]
     soc2: ["CC6.1", "CC6.3", "CC8.1"]

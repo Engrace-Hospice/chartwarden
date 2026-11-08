@@ -2495,7 +2495,7 @@ export async function runMacPortalHealth(
 // ── live worker construction (the M27 m27-jobs.ts template) ────────────────────────────────────────────────
 
 /**
- * ADR-0108 D7 — the queues that START new claims-billing work: a job for an org without the add-on is HELD (moved back
+ * ADR-0110 D7 — the queues that START new claims-billing work: a job for an org without the add-on is HELD (moved back
  * to delayed, no attempt spent, no DLQ), never failed. NOE / NOTR / transfer-notice submission, acknowledgment pulls,
  * validation and revalidation are deliberately absent (CMS deadlines; finish in-flight work).
  */
@@ -2506,7 +2506,7 @@ export const M23_CLAIMS_BILLING_GATED_QUEUES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Hold a gated queue's job for an org without the add-on — unless it submits a VOID claim (ADR-0108: voids stay
+ * Hold a gated queue's job for an org without the add-on — unless it submits a VOID claim (ADR-0110: voids stay
  * available), read from the stored claim under the job's org. A failed void lookup holds (fail closed).
  */
 async function holdNewClaimsWork(

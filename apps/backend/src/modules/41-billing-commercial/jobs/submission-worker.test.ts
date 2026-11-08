@@ -214,7 +214,7 @@ describe("runSubmissionDrain with no clearinghouse bound", () => {
   });
 });
 
-describe("ADR-0108 — drainOrg holds an org without the claims-billing add-on", () => {
+describe("ADR-0110 — drainOrg holds an org without the claims-billing add-on", () => {
   it("leases nothing in enforce mode (rows stay queued), and drains as before in shadow", async () => {
     registerSeam("ClaimsBillingEntitlementReader", {
       entitlementForOrg: async () => ({ entitled: false, reason: "lapsed" }),

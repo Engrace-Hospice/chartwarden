@@ -654,7 +654,7 @@ export function buildDrizzleM35RouteService(
         const [agg] = await tx
           .select()
           .from(AGG)
-          // ADR-0108 — the add-on census aggregate is not a plan meter; it never feeds these totals.
+          // ADR-0110 — the add-on census aggregate is not a plan meter; it never feeds these totals.
           .where(and(eq(AGG.subscriptionId, sub.id), ne(AGG.eventType, "billing_addon_patient")))
           .orderBy(desc(AGG.periodStart))
           .limit(1);
@@ -2004,7 +2004,7 @@ export function buildDrizzleM35RouteService(
         const [agg] = await tx
           .select()
           .from(AGG)
-          // ADR-0108 — the add-on census aggregate is not a plan meter; it never feeds these totals.
+          // ADR-0110 — the add-on census aggregate is not a plan meter; it never feeds these totals.
           .where(and(eq(AGG.subscriptionId, sub.id), ne(AGG.eventType, "billing_addon_patient")))
           .orderBy(desc(AGG.periodStart))
           .limit(1);

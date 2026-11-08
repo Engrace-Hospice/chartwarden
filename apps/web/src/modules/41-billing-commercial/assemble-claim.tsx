@@ -63,7 +63,7 @@ function validate(fields: Fields): FieldErrors {
 
 export function CommercialAssembleClaim(): JSX.Element {
   const client = useApiClient();
-  // ADR-0108 — assembling a claim is new claims-billing work: paused without the add-on (when enforced).
+  // ADR-0110 — assembling a claim is new claims-billing work: paused without the add-on (when enforced).
   const claimsBilling = useClaimsBilling();
   const navigate = useNavigate();
   const canWrite = (useSession()?.permissions ?? []).includes(WRITE_PERMISSION);
