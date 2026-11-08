@@ -159,7 +159,7 @@ export function EvaluationRuns({ capabilityId }: EvaluationRunsProps = {}): JSX.
                       {duration(r.startedAt ?? null, r.completedAt ?? null)}
                     </td>
                     <td className="wx-data-md">{r.datasetVersionRef}</td>
-                    <td className="text-xs">{summarizeMetrics(r.summaryMetrics)}</td>
+                    <td>{summarizeMetrics(r.summaryMetrics)}</td>
                     <td className="wx-data-md">{r.mlflowRunId}</td>
                   </tr>
                 ))}

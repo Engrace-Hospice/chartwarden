@@ -291,7 +291,7 @@ function TriageDrawer({
                 <dt>Reporter severity</dt>
                 <dd>{cap(report.severity)}</dd>
                 <dt>Linked invocation</dt>
-                <dd className={report.invocationId ? "wx-data-md break-all" : undefined}>
+                <dd className={report.invocationId ? "wx-data-md" : undefined}>
                   {report.invocationId ?? "None — provenance broken"}
                 </dd>
               </dl>

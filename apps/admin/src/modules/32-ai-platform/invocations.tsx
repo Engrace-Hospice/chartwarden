@@ -227,7 +227,7 @@ export function InvocationSearch({
         <>
           {table}
           {cursor ? (
-            <div className="flex justify-center">
+            <div className="wx-drawer-actions">
               <Button
                 tone="secondary"
                 onClick={() => void load(cursor, true)}
@@ -317,7 +317,7 @@ function InvocationDrawer({
                 <dt>Backend</dt>
                 <dd className="wx-data-md">{invocation.backendKey}</dd>
                 <dt>Model pin</dt>
-                <dd className="wx-data-md break-all">{invocation.modelVersionPin}</dd>
+                <dd className="wx-data-md">{invocation.modelVersionPin}</dd>
                 <dt>Prompt version</dt>
                 <dd>{invocation.promptTemplateVersion ?? "—"}</dd>
                 <dt>Routing</dt>

@@ -1,9 +1,9 @@
 import {
   Button,
-  EmptyState,
+  Glyph,
   InlineAlert,
+  LoadingSpinner,
   Modal,
-  Panel,
   ReverifyLink,
   StatusPill,
   type StatusTone,
@@ -111,82 +111,21 @@ export function NpiVerifications(): JSX.Element {
           </div>
         </header>
         {outcome ? (
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="wx-drawer-title-row">
             <InlineAlert tone={outcome.ok ? "success" : "error"}>{outcome.message}</InlineAlert>
             {outcome.stepUp ? <ReverifyLink /> : null}
           </div>
         ) : null}
-        <Panel title="Provider entities" icon="shield" flush={Boolean(rows && rows.length > 0)}>
-          {rows === null ? (
-            <p className="m-0 text-sm">Loading provider entities…</p>
-          ) : loadFailed ? (
-            <InlineAlert tone="error">Could not load provider entities.</InlineAlert>
-          ) : rows.length === 0 ? (
-            <EmptyState
-              title="No provider entities"
-              description="No tenant has registered one yet."
-            />
-          ) : (
-            <div className="wx-list-table-wrap">
-              <table className="wx-list-table wx-list-table-static">
-                <caption className="wx-sr-only">Provider entities and NPI verification</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Organization</th>
-                    <th scope="col">Provider entity</th>
-                    <th scope="col">NPI</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Since</th>
-                    <th scope="col">
-                      <span className="wx-sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.providerEntityId}>
-                      <td>{r.organizationName}</td>
-                      <td>
-                        <span className="wx-row-title">{r.legalName}</span>
-                      </td>
-                      <td className="wx-nums">{r.npi}</td>
-                      <td>
-                        <StatusPill label={STATE[r.state].label} tone={STATE[r.state].tone} />
-                      </td>
-                      <td className="wx-nums">
-                        {formatDate(r.state === "revoked" ? r.revokedAt : r.verifiedAt)}
-                      </td>
-                      <td>
-                        {r.state === "verified" ? (
-                          <Button
-                            tone="secondary"
-                            size="sm"
-                            loading={busyId === r.providerEntityId}
-                            aria-label={`Revoke NPI ${r.npi} for ${r.legalName}`}
-                            onClick={() => void revoke(r)}
-                          >
-                            Revoke
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            aria-label={`Verify NPI ${r.npi} for ${r.legalName}`}
-                            onClick={() => {
-                              setOutcome(null);
-                              setVerifying(r);
-                            }}
-                          >
-                            Verify
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Panel>
+        <EntitiesBody
+          rows={rows}
+          loadFailed={loadFailed}
+          busyId={busyId}
+          onRevoke={(row) => void revoke(row)}
+          onVerify={(row) => {
+            setOutcome(null);
+            setVerifying(row);
+          }}
+        />
       </div>
       {verifying ? (
         <VerifyDialog
@@ -199,6 +138,98 @@ export function NpiVerifications(): JSX.Element {
           }}
         />
       ) : null}
+    </div>
+  );
+}
+
+function EntitiesBody({
+  rows,
+  loadFailed,
+  busyId,
+  onRevoke,
+  onVerify,
+}: {
+  rows: readonly Row[] | null;
+  loadFailed: boolean;
+  busyId: string | null;
+  onRevoke: (row: Row) => void;
+  onVerify: (row: Row) => void;
+}): JSX.Element {
+  if (rows === null)
+    return (
+      <div className="wx-list-state">
+        <LoadingSpinner label="Loading provider entities…" />
+      </div>
+    );
+  if (loadFailed)
+    return (
+      <div className="wx-list-state" role="alert">
+        <InlineAlert tone="error">Could not load provider entities.</InlineAlert>
+      </div>
+    );
+  if (rows.length === 0)
+    return (
+      <div className="wx-list-state">
+        <Glyph name="shield" size={24} />
+        <strong>No provider entities</strong>
+        <span className="wx-row-sub">No tenant has registered one yet.</span>
+      </div>
+    );
+  return (
+    <div className="wx-list-table-wrap">
+      <table className="wx-list-table wx-list-table-static">
+        <caption className="wx-sr-only">Provider entities and NPI verification</caption>
+        <thead>
+          <tr>
+            <th scope="col">Organization</th>
+            <th scope="col">Provider entity</th>
+            <th scope="col">NPI</th>
+            <th scope="col">Status</th>
+            <th scope="col">Since</th>
+            <th scope="col">
+              <span className="wx-sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.providerEntityId}>
+              <td>{r.organizationName}</td>
+              <td>
+                <span className="wx-row-title">{r.legalName}</span>
+              </td>
+              <td className="wx-nums">{r.npi}</td>
+              <td>
+                <StatusPill label={STATE[r.state].label} tone={STATE[r.state].tone} />
+              </td>
+              <td className="wx-nums">
+                {formatDate(r.state === "revoked" ? r.revokedAt : r.verifiedAt)}
+              </td>
+              <td>
+                {r.state === "verified" ? (
+                  <Button
+                    tone="secondary"
+                    size="sm"
+                    loading={busyId === r.providerEntityId}
+                    aria-label={`Revoke NPI ${r.npi} for ${r.legalName}`}
+                    onClick={() => onRevoke(r)}
+                  >
+                    Revoke
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    aria-label={`Verify NPI ${r.npi} for ${r.legalName}`}
+                    onClick={() => onVerify(r)}
+                  >
+                    Verify
+                  </Button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
