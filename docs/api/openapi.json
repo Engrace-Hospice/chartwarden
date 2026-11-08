@@ -227005,6 +227005,35 @@
         }
       }
     },
+    "/api/v1/ops/claimmd/eras/{inboxId}/recovery": {
+      "post": {
+        "operationId": "postApiV1OpsClaimmdErasByInboxIdRecovery",
+        "tags": [
+          "bootstrap"
+        ],
+        "parameters": [
+          {
+            "name": "inboxId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/ops/outbox": {
       "get": {
         "operationId": "getApiV1OpsOutbox",
@@ -286500,6 +286529,55 @@
                 }
               }
             }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/claimmd-era": {
+      "get": {
+        "operationId": "getApiV1RemittanceClaimmdera",
+        "tags": [
+          "25-remittance"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/claimmd-era/{id}": {
+      "get": {
+        "operationId": "getApiV1RemittanceClaimmderaById",
+        "tags": [
+          "25-remittance"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
