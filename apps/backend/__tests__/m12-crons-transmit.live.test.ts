@@ -326,8 +326,8 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       },
     };
     let vendorRequests: string[] = [];
-    /** What the SEND answers: the echo of our id (the default), or an ambiguous answer (a 2xx that does not echo it, or no answer). */
-    let sendAnswer: "echo" | "empty_list" | "empty_body" | "timeout" = "echo";
+    /** What the SEND answers: the echo of our id (the default), or an ambiguous answer (a 2xx that does not echo it, no answer, or a 502). */
+    let sendAnswer: "echo" | "empty_list" | "empty_body" | "timeout" | "http_502" = "echo";
     const fakeFetch: DoseSpotFetch = async (url) => {
       vendorRequests.push(url);
       if (url.endsWith("/connect/token"))
@@ -338,6 +338,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       if (url.endsWith("/prescriptions/send")) {
         if (sendAnswer === "timeout")
           throw Object.assign(new Error("aborted"), { name: "AbortError" });
+        if (sendAnswer === "http_502") return { status: 502, text: async () => "" };
         const body =
           sendAnswer === "echo"
             ? JSON.stringify({ Items: [{ Id: 9001 }] })
@@ -621,7 +622,8 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
 
     // Review of slice 4 (send-step ambiguity): a SEND DoseSpot accepted without echoing our id, or whose answer was lost, may have reached the
     // pharmacy. Through the REAL adapter it is HELD for a person (never re-sent), not re-queued for a retry that could dispense twice.
-    for (const answer of ["empty_list", "empty_body", "timeout"] as const) {
+    // a 502 is a gateway that lost DoseSpot's answer: the send may have gone out, so it is held like a lost answer
+    for (const answer of ["empty_list", "empty_body", "timeout", "http_502"] as const) {
       it(`an ambiguous SEND (${answer}) through the real adapter HOLDS the order: one send, no retry spent, never sent again`, async () => {
         await h.admin.query(
           "DELETE FROM outbox_event WHERE event_type IN ('m12.medication_order.transmission_unconfirmed','m12.medication_order.transmission_failed')",
