@@ -6318,6 +6318,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   service: m12ClinicService,
                   outbox: m12OutboxPublisher,
                   enrollment: m12PrescriberEnrollment,
+                  directory: m12PractitionerDirectory,
                   alerts: m12ClinicAlerts,
                 }),
                 // An operator withdraws a tenant's "filed outside ChartWarden" NOE / NOTR record (M23's own rule, on the caller's tx).

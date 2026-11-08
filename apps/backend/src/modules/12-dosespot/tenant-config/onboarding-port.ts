@@ -28,12 +28,29 @@ import {
   changeOfTransition,
   registrationOf,
 } from "./effects";
-import type { EnrollPlan, PrescriberEnrollmentService } from "./prescriber-enrollment";
+import type { PractitionerDirectoryPort } from "./practitioner-profile";
+import {
+  type EnrollPlan,
+  type PrescriberEnrollmentService,
+  linkConfirmedBy,
+} from "./prescriber-enrollment";
 import { createDrizzleRosterStore } from "./roster-store";
 import type { ClinicActor, ClinicConfigView, DoseSpotClinicService, VerifyPlan } from "./service";
 import { PutClinicBodySchema } from "./typebox";
 
 const P = schema.dosespotPrescribers;
+
+interface RosterListRow {
+  readonly organizationId: string;
+  readonly membershipId: string;
+  readonly enrolledWithDoseSpot: string | null;
+  readonly revokedAt: Date | null;
+  readonly requestedAt: Date | null;
+  readonly mdmId: string | null;
+  readonly confirmedMdmId: string | null;
+  readonly confirmedNpi: string | null;
+  readonly confirmedBy: string | null;
+}
 
 const actorFor = (scope: OnboardingWriteScope): ClinicActor => ({
   organizationId: scope.organizationId,
@@ -52,9 +69,28 @@ export function buildDoseSpotClinicOnboardingPort(deps: {
   readonly service: DoseSpotClinicService;
   readonly outbox: DoseSpotWriteOutboxPort;
   readonly enrollment: PrescriberEnrollmentService;
+  /** The physician records' CURRENT NPI, so the roster list answers "confirmed?" exactly as the enrolment gate does. */
+  readonly directory: PractitionerDirectoryPort;
   readonly alerts?: ClinicAlertPort;
 }): OnboardingDoseSpotPort {
   const { db, service } = deps;
+
+  async function isLinkConfirmed(r: RosterListRow): Promise<boolean> {
+    if (r.mdmId === null || r.confirmedMdmId === null) return false;
+    const physician = await deps.directory.resolvePhysician(r.organizationId, r.mdmId);
+    const npi = physician?.canonical.identifierValue ?? null;
+    if (npi === null) return false;
+    return linkConfirmedBy(
+      {
+        membershipId: r.membershipId,
+        externalPhysicianMdmId: r.mdmId,
+        linkConfirmedMdmId: r.confirmedMdmId,
+        linkConfirmedNpi: r.confirmedNpi,
+        linkConfirmedByMembershipId: r.confirmedBy,
+      },
+      { physicianMdmId: r.mdmId, npi },
+    );
+  }
 
   /**
    * The outbox event for the change (in the operator's transaction) and the registration row's id for the audit row. The go-live
@@ -155,35 +191,42 @@ export function buildDoseSpotClinicOnboardingPort(deps: {
     },
 
     async listPrescribers(scope) {
-      return withOrgContext<DbClient, readonly object[]>(
+      const rows = await withOrgContext<DbClient, ReadonlyArray<RosterListRow>>(
         db,
         { organizationId: scope.organizationId, userId: scope.operatorUserId },
-        async (tx) => {
-          const rows = await tx
+        async (tx) =>
+          tx
             .select({
+              organizationId: P.organizationId,
               membershipId: P.membershipId,
               enrolledWithDoseSpot: P.dosespotPrescriberId,
               revokedAt: P.revokedAt,
               requestedAt: P.vendorEnrollmentRequestedAt,
               mdmId: P.externalPhysicianMdmId,
               confirmedMdmId: P.linkConfirmedMdmId,
+              confirmedNpi: P.linkConfirmedNpi,
+              confirmedBy: P.linkConfirmedByMembershipId,
             })
             .from(P)
             .where(eq(P.organizationId, scope.organizationId))
             .orderBy(desc(P.createdAt))
-            .limit(500);
-          // no NPI, no DEA number, no vendor id: only whether each roster prescriber is linked
-          return rows.map((r) => ({
-            membershipId: r.membershipId,
-            onRoster: r.revokedAt === null,
-            enrolledWithDoseSpot: r.enrolledWithDoseSpot !== null,
-            vendorEnrollmentRequestedAt: r.requestedAt ? r.requestedAt.toISOString() : null,
-            // why an enrolment is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED): the prescriber has not confirmed the CURRENT link.
-            // Only the prescriber can; there is no operator route for it.
-            linkConfirmed: r.mdmId !== null && r.confirmedMdmId === r.mdmId,
-          }));
-        },
+            .limit(500),
       );
+      // no NPI, no DEA number, no vendor id: only whether each roster prescriber is linked
+      const out: object[] = [];
+      for (const r of rows) {
+        out.push({
+          membershipId: r.membershipId,
+          onRoster: r.revokedAt === null,
+          enrolledWithDoseSpot: r.enrolledWithDoseSpot !== null,
+          vendorEnrollmentRequestedAt: r.requestedAt ? r.requestedAt.toISOString() : null,
+          // why an enrolment is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED): the prescriber has not confirmed the CURRENT link. Only the
+          // prescriber can; there is no operator route for it. The SAME test as the enrolment gate (`linkConfirmedBy`): the row's own member
+          // confirmed this record AND the NPI the record carries now.
+          linkConfirmed: await isLinkConfirmed(r),
+        });
+      }
+      return out;
     },
 
     prepareEnroll(scope, membershipId) {

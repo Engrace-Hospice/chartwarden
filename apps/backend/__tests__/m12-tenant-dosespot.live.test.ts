@@ -610,6 +610,7 @@ describe.skipIf(!DB_URL)(
         service,
         outbox,
         enrollment,
+        directory: mdmDirectory,
         alerts: alertPort,
       });
       onboardingData = buildDrizzleOnboardingDataService({
@@ -2055,6 +2056,41 @@ describe.skipIf(!DB_URL)(
         };
         expect(roster.items.find((i) => i.membershipId === M4)?.linkConfirmed).toBe(false);
         expect(roster.items.some((i) => i.linkConfirmed)).toBe(true); // the one the prescriber confirmed (M3)
+      });
+
+      // Review of slice 4, LOW-3: the list's `linkConfirmed` compared the record id only, so after the physician record's NPI changed it said
+      // "confirmed" while the enrolment (which also compares the NPI the prescriber was shown) answered 409. It now asks the same question.
+      it("the operator's roster list never says confirmed while the enrolment answers 409: a record whose NPI changed since the confirmation is unconfirmed in both", async () => {
+        const M5 = "99000000-0000-4000-8000-0000000000b5";
+        await admin.query(
+          `INSERT INTO "user" (id,email) VALUES ('99000000-0000-4000-8000-0000000000bd','rx6@ds.test') ON CONFLICT DO NOTHING`,
+        );
+        await admin.query(
+          "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,'99000000-0000-4000-8000-0000000000bd',$2,'active')",
+          [M5, ORG_B],
+        );
+        const physician = await rosterWithPhysician(ORG_B, M5); // confirmed by the member, for this record and NPI
+        const listed = async () =>
+          (
+            (await onboardingData.listDoseSpotPrescribers(operator(), "ds-b")) as {
+              items: { membershipId: string; linkConfirmed: boolean }[];
+            }
+          ).items.find((i) => i.membershipId === M5)?.linkConfirmed;
+        expect(await listed()).toBe(true);
+        // the master-data record's NPI changes to another valid NPI (same record id, same link)
+        const changed = syntheticNpi(990);
+        await admin.query("UPDATE external_physician SET npi=$2 WHERE id=$1", [
+          physician.id,
+          changed,
+        ]);
+        const calls = fetchLog.length;
+        expect(
+          await errorCode(onboardingData.enrollDoseSpotPrescriber(operator(), "ds-b", M5, REASON)),
+        ).toBe("DOSESPOT_PRACTITIONER_UNCONFIRMED");
+        expect(fetchLog.slice(calls).filter((c) => c.url.endsWith("/api/clinicians"))).toHaveLength(
+          0,
+        );
+        expect(await listed()).toBe(false);
       });
 
       it("an active tenant is closed to the operator (409 TENANT_NOT_ONBOARDING, audited, nothing written) but a deactivation is allowed", async () => {
