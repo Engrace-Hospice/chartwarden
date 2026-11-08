@@ -1303,6 +1303,41 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       expect((await backend.getTransmission(ORG_A, orderId)).status).toBe("queued");
     });
 
+    // What a late DEFINITIVE failure does after the drain held the order, pinned (the CW-AC-23 text states it): the call's own answer settles what the
+    // hold was waiting to learn, through the ordinary failure path. A retryable one puts the order back on the queue (a retry spent, the persisted
+    // created id re-sent, the hold marker replaced by the failure's class); a permanent one fails the order. Neither keeps it held.
+    for (const kind of ["retryable", "permanent"] as const) {
+      it(`a late ${kind.toUpperCase()} failure after the drain held the order is settled as an ordinary failure: ${kind === "retryable" ? "requeued, one retry spent, the marker replaced" : "the order fails and the administrators are told"}`, async () => {
+        const { orderId, transmissionId } = await queued();
+        const vendor = new FakeDoseSpotVendor({
+          transmit: async () => {
+            await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A);
+            expect((await txRow(transmissionId as string)).last_error_class).toBe(
+              "unconfirmed_outcome",
+            );
+            throw kind === "retryable" ? retryable() : permanent();
+          },
+        });
+        const pass = await runTransmitNewRxForOrg(deps(vendor), ORG_A);
+        const t = await txRow(transmissionId as string);
+        expect(t.last_error_class).not.toBe("unconfirmed_outcome");
+        if (kind === "retryable") {
+          expect(pass).toMatchObject({ requeued: 1, failed: 0, held: 0 });
+          expect(await orderRow(orderId)).toMatchObject({
+            status: "queued_for_transmission",
+            s: "queued",
+          });
+          expect(t.retry_count).toBe(1);
+        } else {
+          expect(pass).toMatchObject({ failed: 1, requeued: 0, held: 0 });
+          expect(await orderRow(orderId)).toMatchObject({ status: "transmission_failed" });
+          expect(
+            (await eventsFor("m12.medication_order.transmission_failed", orderId)).length,
+          ).toBe(1);
+        }
+      });
+    }
+
     // MEDIUM-1 of the next review: the fence covered only the vendor call. A worker that lost its claim BEFORE the fence (its payload build then
     // failed) still wrote its failure over the NEW owner's claim: it requeued or exhausted it and cleared its stamp, and the owner's success then
     // matched nothing, so a prescription that WAS sent was never recorded and went out again on the next tick. Every write a worker makes after its
@@ -1594,6 +1629,65 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
           expect(log[0]?.fields.found).toBe(found);
         });
       }
+
+      // MEDIUM-2 (code side): the adapter creates a prescription, hands its id to `onCreated`, and only then SENDS it. `onCreated` used to update the
+      // transmission row by id alone, so a worker that had lost the order (an administrator resolved it NOT SENT) still went on to send. It now
+      // answers only while the worker still owns the call, and the adapter's contract stops the send when it throws.
+      it("CREATE: a call that creates the prescription after the administrator resolved the order is stopped before the SEND, and the created id is not recorded", async () => {
+        const warnings: Warning[] = [];
+        const sends: string[] = [];
+        const { orderId, transmissionId } = await queued();
+        const vendor = new FakeDoseSpotVendor({
+          transmit: async (_org, payload, _key, resume) => {
+            await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A);
+            await resolveNotSent(orderId);
+            await resume?.onCreated?.("rx-draft-5e6f"); // the create answered AFTER the resolution; the adapter sends only if this returns
+            sends.push(payload.medicationOrderId);
+            return { dosespotPrescriptionId: "rx-draft-5e6f", transmittedAt: T0.toISOString() };
+          },
+        });
+        const pass = await runTransmitNewRxForOrg(
+          {
+            ...deps(vendor),
+            warn: (fields, message) => warnings.push({ fields, message }),
+          },
+          ORG_A,
+        );
+        expect(sends).toEqual([]); // the send was never reached
+        expect(pass).toMatchObject({
+          claimed: 1,
+          transmitted: 0,
+          skipped: 1,
+          requeued: 0,
+          held: 0,
+        });
+        expect((await txRow(transmissionId as string)).dosespot_prescription_id).toBeNull();
+        expect(await orderRow(orderId)).toMatchObject({ status: "transmission_failed", rx: null });
+        expect(warnings.filter((w) => /no longer owns/.test(w.message))).toHaveLength(1);
+        expect(JSON.stringify(warnings)).not.toContain("rx-draft-5e6f");
+      });
+
+      it("CREATE (control): after only the drain's hold, the worker still owns the call, so the created id is recorded and the send goes ahead", async () => {
+        const sends: string[] = [];
+        const { orderId, transmissionId } = await queued();
+        const vendor = new FakeDoseSpotVendor({
+          transmit: async (_org, payload, _key, resume) => {
+            await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A); // held, not resolved
+            await resume?.onCreated?.("rx-draft-7a8b");
+            expect((await txRow(transmissionId as string)).dosespot_prescription_id).toBe(
+              "rx-draft-7a8b",
+            );
+            sends.push(payload.medicationOrderId);
+            return { dosespotPrescriptionId: "rx-draft-7a8b", transmittedAt: T0.toISOString() };
+          },
+        });
+        expect((await runTransmitNewRxForOrg(deps(vendor), ORG_A)).transmitted).toBe(1);
+        expect(sends).toEqual([orderId]);
+        expect(await orderRow(orderId)).toMatchObject({
+          status: "transmitted",
+          rx: "rx-draft-7a8b",
+        });
+      });
 
       it("the cron tick reports the skipped order", async () => {
         const run = await scenario(async () => {

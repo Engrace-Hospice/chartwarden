@@ -186,7 +186,12 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   worker that lost its claim writes nothing and is counted `skipped` (and says so, ids and the kind of what it discarded only, for a failure, an outage and an unconfirmed outcome as well as a success; the cron tick's warning carries the count) (it used to requeue or exhaust the new owner's claim and clear its stamp when its
   payload build failed after a takeover, so the owner's success matched nothing and the prescription went out again). The order row is locked
   before the transmission row, as in the administrator's resolution, so a late failure racing a resolution cannot deadlock, and a late outage
-  after a drain hold clears the stale hold marker.
+  after a drain hold clears the stale hold marker. The adapter sends a prescription as soon as `onCreated` returns, and `onCreated` used to update the
+  transmission row by id alone, so a worker that had lost the order (an administrator resolved it NOT SENT) still sent it; it now answers only while the
+  worker owns the call and throws otherwise, which stops the send (the created prescription stays at DoseSpot as an unsent draft). A late DEFINITIVE
+  failure after a drain hold is deliberately NOT kept held: it is the call's own answer to what the hold was waiting for, so it is settled as an ordinary
+  failure (retryable: requeued, one retry spent, the persisted created id re-sent, the marker replaced; permanent: the order fails and the
+  administrators are told), and an administrator mid-resolution is then refused with 409 DOSESPOT_TRANSMISSION_NOT_HELD.
 - A created-but-unsent prescription survives a change of replica (LOW of the following review): the adapter used to remember a created
   `addCodedPrescription` id only in its own process memory, so a retry on another replica re-ran the create (a second prescription). The adapter now
   reports the id (`onCreated`) before the send and accepts it back (`createdPrescriptionId`); the worker persists it on the transmission row's

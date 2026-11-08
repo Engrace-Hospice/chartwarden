@@ -235,21 +235,29 @@ async function markCallStarted(
 /**
  * Persist the id of a prescription that was CREATED at DoseSpot but not yet sent, on the transmission row, before the send. The order itself
  * carries an id only once it is really sent (webhooks bind by it). A failure here propagates: the send is not attempted, the order is retried.
+ *
+ * It answers only while the worker still owns the call (see {@link Ownership}): the adapter SENDS the prescription once this returns, so a worker
+ * that lost the order meanwhile (an administrator resolved it NOT SENT, say) must not go on to send it. It throws instead, and the adapter stops
+ * before the send. The prescription it just created stays at DoseSpot as an unsent draft, which the administrator's own check of the prescriber's
+ * account shows. Locks the order, then the transmission row, like every other writer.
  */
 async function rememberCreated(
   deps: M12CronDeps,
   organizationId: string,
   c: Claimed,
+  startedAt: Date,
   prescriptionId: string,
 ): Promise<void> {
   await inOrg(deps.db, organizationId, async (tx) => {
-    const saved = await tx
+    if (!(await lockOwnership(tx, c, { stage: "call", startedAt }))) {
+      throw new Error(
+        "this worker no longer owns the order, so the created prescription is not sent",
+      );
+    }
+    await tx
       .update(MOT)
       .set({ dosespotPrescriptionId: prescriptionId })
-      .where(eq(MOT.id, c.transmission.id))
-      .returning({ id: MOT.id });
-    if (saved.length !== 1)
-      throw new Error("transmission row vanished while recording the created prescription");
+      .where(eq(MOT.id, c.transmission.id));
   });
 }
 
@@ -328,7 +336,7 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
         ...(c.transmission.dosespotPrescriptionId
           ? { createdPrescriptionId: c.transmission.dosespotPrescriptionId }
           : {}),
-        onCreated: (id) => rememberCreated(deps, organizationId, c, id),
+        onCreated: (id) => rememberCreated(deps, organizationId, c, startedAt, id),
       },
     );
     return owned({
