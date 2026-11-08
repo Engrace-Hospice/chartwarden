@@ -4,7 +4,7 @@
 > verifier end to end; they do not size production. Production RPO/RTO must come from a witnessed drill on the
 > real host and off-site target (see the follow-up ops issue).
 
-Run de9ce9 at 2026-11-08T12:08:23.433Z. Scale: synthetic: 2 tenants seeded through the real M36 routes; 50374 rows in 690 tables (incl. reference data); 6 objects.
+Run 0429c0 at 2026-11-08T19:01:11.943Z. Scale: synthetic: 2 tenants seeded through the real M36 routes; 50374 rows in 690 tables (incl. reference data); 6 objects.
 
 ## Tooling
 - **pgbackrest**: pgBackRest 2.60.0
@@ -15,26 +15,26 @@ Run de9ce9 at 2026-11-08T12:08:23.433Z. Scale: synthetic: 2 tenants seeded throu
 ## Snapshots taken
 | snapshot | base backup | LSN | objects | bytes | wall |
 |---|---|---|---|---|---|
-| 20261108T120849Z | 20261108-120851F (full) | 0/C000000 | 6 | 1630228 | 4.0 s |
-| 20261108T120854Z | 20261108-120851F (reused) | 0/D481B28 | 6 | 1671168 | 0.8 s |
+| 20261108T190137Z | 20261108-190139F (full) | 0/C000000 | 6 | 1630228 | 4.9 s |
+| 20261108T190142Z | 20261108-190139F (reused) | 0/D47B238 | 6 | 1671168 | 1.0 s |
 
 ## Measured RTO (synthetic scale)
-Isolated restore (pgBackRest restore + WAL replay + promotion + object copy with sha256 check): **8.2 s**. Verification: 2.7 s.
+Isolated restore (pgBackRest restore + WAL replay + promotion + object copy with sha256 check): **8.6 s**. Verification: 2.9 s.
 
 | phase | wall |
 |---|---|
-| pgBackRest restore from the off-site repo (base backup) | 4.2 s |
-| Postgres start + WAL replay to the marker LSN + promotion | 2.4 s |
-| objects: off-site -> fresh MinIO, sha256 checked against the manifest | 1.6 s |
+| pgBackRest restore from the off-site repo (base backup) | 4.5 s |
+| Postgres start + WAL replay to the marker LSN + promotion | 2.3 s |
+| objects: off-site -> fresh MinIO, sha256 checked against the manifest | 1.7 s |
 
 ## Measured RPO (synthetic scale)
-Restored snapshot taken 2026-11-08T12:08:55.581Z; source destroyed 2026-11-08T12:08:58.777Z. Window lost: **3.2 s** (11 audit_event, 4 idempotency_key, 3 message, 1 message_attachment, 3 message_receipt, 4 outbox_event; 1 object(s)). With the production schedule the coordinated RPO is the snapshot interval (default 15 min); the database alone can be recovered to the last archived WAL segment (archive_timeout 60 s).
+Restored snapshot taken 2026-11-08T19:01:44.358Z; source destroyed 2026-11-08T19:01:48.299Z. Window lost: **3.9 s** (11 audit_event, 4 idempotency_key, 3 message, 1 message_attachment, 3 message_receipt, 4 outbox_event; 1 object(s)). With the production schedule the coordinated RPO is the snapshot interval (default 15 min); the database alone can be recovered to the last archived WAL segment (archive_timeout 60 s).
 
 ## Checks
 | result | check | detail |
 |---|---|---|
-| PASS | restore.sh picked the newest complete snapshot (snapshot 2, no base backup of its own) | restored 20261108T120854Z, expected 20261108T120854Z |
-| PASS | restored cluster replayed WAL to the snapshot LSN, promoted, and does not archive | in_recovery=false wal>=0/D481B28:true archive_mode=off |
+| PASS | restore.sh picked the newest complete snapshot (snapshot 2, no base backup of its own) | restored 20261108T190142Z, expected 20261108T190142Z |
+| PASS | restored cluster replayed WAL to the snapshot LSN, promoted, and does not archive | in_recovery=false wal>=0/D47B238:true archive_mode=off |
 | PASS | migrations ledger equals the snapshot's (count and last applied file) | restored 663 / last 1378_fk_supporting_indexes_code_status_emergency_recipient.sql; snapshot 663 / last 1378_fk_supporting_indexes_code_status_emergency_recipient.sql |
 | PASS | migrations ledger is consistent with this release (no unknown or drifted file) | 0 pending (apply with migrate), 0 unknown, 0 drifted |
 | PASS | schema fingerprint (columns, constraints, indexes, RLS flags, policies, grants, triggers) equals the snapshot's | 8a2150d9c6d60c2b50f3069208557228 |
@@ -57,4 +57,4 @@ Restored snapshot taken 2026-11-08T12:08:55.581Z; source destroyed 2026-11-08T12
 | PASS | a failing snapshot exits non-zero and POSTs backup.snapshot_failed to OPS_ALERT_WEBHOOK_URL | exit non-zero; alert backup.snapshot_failed at step object-manifest |
 | PASS | negative control: the verifier FAILS when a referenced object is missing from the restored store | 1 message_attachment:missing-after-restore |
 | PASS | no secret (cipher passes, SSE-C key, S3/MinIO/Postgres passwords) appears in any backup/restore output | 11 secrets scanned across 10 captured outputs; 0 found |
-| PASS | restore wall time within the documented RTO target (demo scale) | 8.2 s measured vs 3600 s target |
+| PASS | restore wall time within the documented RTO target (demo scale) | 8.6 s measured vs 3600 s target |

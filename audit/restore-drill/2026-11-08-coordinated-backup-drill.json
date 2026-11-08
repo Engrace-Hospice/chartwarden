@@ -1,6 +1,6 @@
 {
-  "runId": "de9ce9",
-  "startedAt": "2026-11-08T12:08:23.433Z",
+  "runId": "0429c0",
+  "startedAt": "2026-11-08T19:01:11.943Z",
   "scale": "synthetic: 2 tenants seeded through the real M36 routes; 50374 rows in 690 tables (incl. reference data); 6 objects",
   "tooling": {
     "pgbackrest": "pgBackRest 2.60.0",
@@ -10,35 +10,35 @@
   },
   "snapshots": [
     {
-      "id": "20261108T120849Z",
-      "baseBackup": "20261108-120851F (full)",
+      "id": "20261108T190137Z",
+      "baseBackup": "20261108-190139F (full)",
       "lsn": "0/C000000",
       "objects": 6,
       "bytes": 1630228,
-      "wallMs": 3953
+      "wallMs": 4881
     },
     {
-      "id": "20261108T120854Z",
-      "baseBackup": "20261108-120851F (reused)",
-      "lsn": "0/D481B28",
+      "id": "20261108T190142Z",
+      "baseBackup": "20261108-190139F (reused)",
+      "lsn": "0/D47B238",
       "objects": 6,
       "bytes": 1671168,
-      "wallMs": 816
+      "wallMs": 1044
     }
   ],
   "rto": {
-    "restoreWallMs": 8161,
+    "restoreWallMs": 8569,
     "phasesMs": {
-      "pgBackRest restore from the off-site repo (base backup)": 4189,
-      "Postgres start + WAL replay to the marker LSN + promotion": 2360,
-      "objects: off-site -> fresh MinIO, sha256 checked against the manifest": 1612
+      "pgBackRest restore from the off-site repo (base backup)": 4545,
+      "Postgres start + WAL replay to the marker LSN + promotion": 2327,
+      "objects: off-site -> fresh MinIO, sha256 checked against the manifest": 1697
     },
-    "verifyWallMs": 2694
+    "verifyWallMs": 2939
   },
   "rpo": {
-    "snapshotAt": "2026-11-08T12:08:55.581Z",
-    "failureAt": "2026-11-08T12:08:58.777Z",
-    "windowMs": 3196,
+    "snapshotAt": "2026-11-08T19:01:44.358Z",
+    "failureAt": "2026-11-08T19:01:48.299Z",
+    "windowMs": 3941,
     "rowsLost": {
       "_chartwarden_migration": 0,
       "account": 0,
@@ -737,12 +737,12 @@
     {
       "name": "restore.sh picked the newest complete snapshot (snapshot 2, no base backup of its own)",
       "ok": true,
-      "detail": "restored 20261108T120854Z, expected 20261108T120854Z"
+      "detail": "restored 20261108T190142Z, expected 20261108T190142Z"
     },
     {
       "name": "restored cluster replayed WAL to the snapshot LSN, promoted, and does not archive",
       "ok": true,
-      "detail": "in_recovery=false wal>=0/D481B28:true archive_mode=off"
+      "detail": "in_recovery=false wal>=0/D47B238:true archive_mode=off"
     },
     {
       "name": "migrations ledger equals the snapshot's (count and last applied file)",
@@ -857,7 +857,7 @@
     {
       "name": "restore wall time within the documented RTO target (demo scale)",
       "ok": true,
-      "detail": "8.2 s measured vs 3600 s target"
+      "detail": "8.6 s measured vs 3600 s target"
     }
   ],
   "passed": true

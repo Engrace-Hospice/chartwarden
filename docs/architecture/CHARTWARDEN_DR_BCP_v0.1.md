@@ -372,7 +372,7 @@ off-site S3-compatible target) and drops what has no host to run on (repo2 backu
 
 | Piece | File | Role |
 | --- | --- | --- |
-| Backup image | `deploy/production/backup/Dockerfile` | Wolfi base = the published, signed `ghcr.io/engrace-hospice/chartwarden-postgres` digest (`POSTGRES_IMAGE`, the digest compose.yml pins) + pgBackRest 2.60.0 compiled from source (tag `release/2.60.0`, commit asserted) + `mc` (Chainguard) |
+| Backup image | `deploy/production/backup/Dockerfile` | Wolfi base = the published, signed `ghcr.io/engrace-hospice/chartwarden-postgres` digest (`POSTGRES_IMAGE`, the digest compose.yml pins) + pgBackRest 2.60.0 compiled from source (tag `release/2.60.0`, commit asserted) + `mc` compiled from source (minio/mc commit asserted, patched Go dependencies) |
 | Overlay | `deploy/production/compose.backup.yml` | `postgres` with `archive_mode=on`; the `backup` sidecar (`cw-backup.sh schedule`); an `object-store-provision` overlay that adds the read-only backup reader to SeaweedFS's identities (reader-policy.json) |
 | Job | `deploy/production/backup/cw-backup.sh` | `snapshot`, `schedule`, `healthcheck`, `marker`, `restore-db`, `restore-objects` |
 | Restore | `deploy/production/backup/restore.sh` | restores a snapshot into NEW containers on a NEW network, ports on 127.0.0.1, `archive_mode=off` |
@@ -522,7 +522,7 @@ before anything reads the restored database.
 1. Provision the off-site bucket: Object Lock + versioning at creation, default retention COMPLIANCE >= 100 days,
    lifecycle: noncurrent versions and delete markers after 120 days, incomplete multipart uploads after 7 days. Create
    its three scoped keys (§4.8.5); generate and escrow the encryption keys; write `./secrets/`; set the mandatory
-   https `OPS_ALERT_WEBHOOK_URL`. Mirror the backup image's `mc` and build-stage base digests into a registry you control (the Postgres base is already ours on GHCR).
+   https `OPS_ALERT_WEBHOOK_URL`. Mirror the backup image's build-stage base digest into a registry you control (the Postgres base is already ours on GHCR); a rebuild also fetches the pgBackRest and minio/mc sources from GitHub and mc's Go modules from proxy.golang.org (`backup/mc/go.sum` pins them).
 2. Set the §4.8.4 variables, build the image, run `object-store-provision` with the overlay, recreate `seaweedfs`, `up -d postgres backup`.
 3. First witnessed restore of production data with `restore.sh` + the verifier; record it under `audit/restore-drill/`.
 4. Recurring cadence: monthly isolated restore + verify (§8.2), quarterly full off-site restore timed against the RTO

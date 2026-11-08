@@ -297,6 +297,13 @@ describe("arch:compose-policy — the backup image is built on the Postgres prod
     expect(checkBackupImageChain(doc, "FROM scratch\n", postgres)).toHaveLength(3);
   });
 
+  it("rejects a second build stage whose base digest drifted", () => {
+    const twoStages = `${backup()}\nFROM cgr.dev/chainguard/wolfi-base@sha256:${"c".repeat(64)} AS mc-build\n`;
+    expect(checkBackupImageChain(doc, twoStages, postgres)).toEqual([
+      expect.stringContaining(`wolfi-base digest "sha256:${"c".repeat(64)}"`),
+    ]);
+  });
+
   it("holds on the real Dockerfiles and compose file", () => {
     const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
     const read = (p: string) => readFileSync(join(root, p), "utf8");
@@ -307,5 +314,20 @@ describe("arch:compose-policy — the backup image is built on the Postgres prod
         read("deploy/production/postgres/Dockerfile"),
       ),
     ).toEqual([]);
+  });
+
+  it("deploy.yml ships every file the backup Dockerfile COPYs (the host builds ./backup)", () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+    const dockerfile = readFileSync(join(root, "deploy/production/backup/Dockerfile"), "utf8");
+    const deployYml = readFileSync(join(root, ".github/workflows/deploy.yml"), "utf8");
+    const sources = [...dockerfile.matchAll(/^COPY\s+(?!--from)(.+)$/gm)].flatMap((m) =>
+      (m[1] ?? "")
+        .split(/\s+/)
+        .filter((t) => !t.startsWith("--"))
+        .slice(0, -1),
+    );
+    expect(sources.length).toBeGreaterThan(0);
+    const missing = sources.filter((s) => !deployYml.includes(`deploy/production/backup/${s}`));
+    expect(missing).toEqual([]);
   });
 });
