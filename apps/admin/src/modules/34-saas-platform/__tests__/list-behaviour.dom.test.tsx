@@ -4,9 +4,9 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/
 // filter issues one request after the typing pauses (Apply / Enter still load at once). A drawer opened from the URL
 // survives a reload that still lists its record, is cleared (with the notice) by one that does not, is not re-mounted from
 // stale rows while a failed load is retried, and closes on Back.
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { JSX } from "react";
-import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { BaaRegister } from "../baa-register";
 import { DsarQueue } from "../dsar-queue";
@@ -36,7 +36,12 @@ const page = (items: unknown[]): unknown => ({ items, nextCursor: null, hasMore:
 
 function LocationProbe(): JSX.Element {
   const location = useLocation();
-  return <output data-testid="search">{location.search}</output>;
+  return (
+    <>
+      <output data-testid="search">{location.search}</output>
+      <output data-testid="pathname">{location.pathname}</output>
+    </>
+  );
 }
 
 function HistoryBack(): JSX.Element {
@@ -51,10 +56,14 @@ function HistoryBack(): JSX.Element {
 /** A route's reply: a body served as 200 JSON, or a function that answers each request itself. */
 type Reply = unknown | (() => Response | Promise<Response>);
 
+const PREVIOUS_PATH = "/previous";
+
+/** `previous` seeds one earlier history entry (a different page), so a test can count how many Backs leave the screen. */
 function mount(
   element: JSX.Element,
   url: string,
   routes: Record<string, Reply>,
+  previous?: string,
 ): { calls: Recorded[]; listCalls: (path: string) => Recorded[] } {
   const calls: Recorded[] = [];
   const client = createApiClient({
@@ -72,8 +81,18 @@ function mount(
   render(
     <ApiClientProvider client={client}>
       <ToastProvider>
-        <MemoryRouter initialEntries={[url]}>
-          {element}
+        <MemoryRouter
+          initialEntries={previous ? [previous, url] : [url]}
+          initialIndex={previous ? 1 : 0}
+        >
+          {previous ? (
+            <Routes>
+              <Route path={previous} element={<p>previous page</p>} />
+              <Route path="*" element={element} />
+            </Routes>
+          ) : (
+            element
+          )}
           <LocationProbe />
           <HistoryBack />
         </MemoryRouter>
@@ -84,11 +103,21 @@ function mount(
 }
 
 const search = (): string => screen.getByTestId("search").textContent ?? "";
+/** The list's rows: activatable `<tr role="button">`s in the first (main) table, not buttons nested inside a row or drawer. */
+const rows = (): HTMLElement[] => {
+  const [table] = screen.queryAllByRole("table");
+  if (!table) return [];
+  return within(table)
+    .queryAllByRole("button")
+    .filter((el) => el.tagName === "TR");
+};
 const firstRow = (): HTMLElement => {
-  const row = document.querySelector<HTMLElement>("tr.wx-data-row-interactive");
+  const [row] = rows();
   if (!row) throw new Error("no interactive row rendered");
   return row;
 };
+
+const rowShown = (): void => expect(rows().length).toBeGreaterThan(0);
 
 afterEach(() => cleanup());
 
@@ -298,9 +327,7 @@ describe.each(PARAM_CASES)("$name list behaviour", (c) => {
 
   it("opens on Enter, closes on Escape and returns focus to the row", async () => {
     mount(c.element, c.path, c.routes);
-    await waitFor(() =>
-      expect(document.querySelector("tr.wx-data-row-interactive")).not.toBeNull(),
-    );
+    await waitFor(rowShown);
     const row = firstRow();
     row.focus();
     fireEvent.keyDown(row, { key: "Enter" });
@@ -314,9 +341,7 @@ describe.each(PARAM_CASES)("$name list behaviour", (c) => {
 
   it("closes the drawer on Back", async () => {
     mount(c.element, c.path, c.routes);
-    await waitFor(() =>
-      expect(document.querySelector("tr.wx-data-row-interactive")).not.toBeNull(),
-    );
+    await waitFor(rowShown);
     fireEvent.keyDown(firstRow(), { key: "Enter" });
     await screen.findByRole("complementary", { name: c.drawer });
     expect(search()).toBe(`?${c.param}=${c.id}`);
@@ -357,9 +382,6 @@ function scriptedList(c: ParamCase): {
     release: () => settle(json(listed)),
   };
 }
-
-const rowShown = (): void =>
-  expect(document.querySelector("tr.wx-data-row-interactive")).not.toBeNull();
 
 // The four screens on `useSelectionParam` (flags, BAA register, DSAR, tenant exports): each reloads from a button, empties
 // its list when a load fails, and writes the selection through a functional updater. The other lists keep their rows through
@@ -432,6 +454,129 @@ describe.each(URL_DRAWER_CASES)("$name URL drawer across reloads", (c) => {
     fireEvent.keyDown(drawer, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
     expect(search()).toBe("?keep=1");
+  });
+});
+
+/** The screen's list with a second row (the first one's id counted up), so a test can pick row A then row B. */
+function withSecondRow(c: ParamCase): { routes: Record<string, unknown>; secondId: string } {
+  const [[listPath, listed]] = Object.entries(c.routes) as [string, { items: { id: string }[] }][];
+  const [first] = listed.items;
+  const secondId = c.id.replace(/1$/, "2");
+  return { routes: { [listPath]: page([first, { ...first, id: secondId }]) }, secondId };
+}
+
+describe.each(URL_DRAWER_CASES)("$name URL drawer history", (c) => {
+  const { routes, secondId } = withSecondRow(c);
+  const openLists = async (): Promise<void> => {
+    mount(c.element, c.path, routes, PREVIOUS_PATH);
+    await waitFor(() => expect(rows()).toHaveLength(2));
+  };
+  const pathname = (): string => screen.getByTestId("pathname").textContent ?? "";
+  const back = (): void => {
+    fireEvent.click(screen.getByRole("button", { name: "history back" }));
+  };
+  const drawerShown = (): Promise<HTMLElement> =>
+    screen.findByRole("complementary", { name: c.drawer });
+
+  it("opening then closing the drawer leaves no dead entry: one Back reaches the previous page", async () => {
+    await openLists();
+    fireEvent.click(firstRow());
+    const drawer = await drawerShown();
+    expect(search()).toBe(`?${c.param}=${c.id}`);
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    await waitFor(() => expect(search()).toBe(""));
+    expect(pathname()).toBe(c.path);
+    back();
+    expect(await screen.findByText("previous page")).toBeTruthy();
+    expect(pathname()).toBe(PREVIOUS_PATH);
+  });
+
+  it("closing from the Close button pops the same single entry", async () => {
+    await openLists();
+    fireEvent.click(firstRow());
+    await drawerShown();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    back();
+    expect(await screen.findByText("previous page")).toBeTruthy();
+  });
+
+  it("picking row B while row A is open replaces the entry: one Back closes the drawer, a second leaves the page", async () => {
+    await openLists();
+    fireEvent.click(rows()[0] as HTMLElement);
+    await drawerShown();
+    fireEvent.click(rows()[1] as HTMLElement);
+    await waitFor(() => expect(search()).toBe(`?${c.param}=${secondId}`));
+    back();
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    expect(search()).toBe("");
+    expect(pathname()).toBe(c.path);
+    back();
+    expect(await screen.findByText("previous page")).toBeTruthy();
+  });
+
+  it("closing a drawer opened by picking row B pops back to the page before row A", async () => {
+    await openLists();
+    fireEvent.click(rows()[0] as HTMLElement);
+    await drawerShown();
+    fireEvent.click(rows()[1] as HTMLElement);
+    await waitFor(() => expect(search()).toBe(`?${c.param}=${secondId}`));
+    fireEvent.keyDown(screen.getByRole("complementary", { name: c.drawer }), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    expect(search()).toBe("");
+    expect(pathname()).toBe(c.path);
+    back();
+    expect(await screen.findByText("previous page")).toBeTruthy();
+  });
+
+  it("re-clicking the open row adds no history entry", async () => {
+    await openLists();
+    const rowA = rows()[0] as HTMLElement;
+    fireEvent.click(rowA);
+    await drawerShown();
+    fireEvent.click(rowA);
+    fireEvent.keyDown(rowA, { key: "Enter" });
+    expect(search()).toBe(`?${c.param}=${c.id}`);
+    // One entry was pushed: one Back closes the drawer (a duplicate entry would leave it open at the same URL).
+    back();
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    expect(search()).toBe("");
+    expect(pathname()).toBe(c.path);
+  });
+
+  it("a drawer opened by a link closes by replacing the param, not by leaving the page", async () => {
+    mount(c.element, `${c.path}?${c.param}=${c.id}`, routes, PREVIOUS_PATH);
+    const drawer = await drawerShown();
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    await waitFor(() => expect(search()).toBe(""));
+    expect(pathname()).toBe(c.path);
+    expect(screen.queryByText("previous page")).toBeNull();
+  });
+
+  it("moves focus from row A to row B's drawer, and Escape returns it to row B", async () => {
+    await openLists();
+    const [rowA, rowB] = rows() as [HTMLElement, HTMLElement];
+    rowA.focus();
+    fireEvent.click(rowA);
+    const drawerA = await drawerShown();
+    expect(document.activeElement).toBe(drawerA);
+    expect(rowA.getAttribute("aria-pressed")).toBe("true");
+
+    rowB.focus();
+    fireEvent.click(rowB);
+    await waitFor(() => expect(search()).toBe(`?${c.param}=${secondId}`));
+    const drawerB = await drawerShown();
+    expect(drawerB).not.toBe(drawerA);
+    // Row A's drawer unmounting does not drag focus back to row A, and row B's drawer takes it.
+    await waitFor(() => expect(document.activeElement).toBe(drawerB));
+    expect(rows()[1]?.getAttribute("aria-pressed")).toBe("true");
+    expect(rows()[0]?.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.keyDown(drawerB, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(rows()[1]));
   });
 });
 
