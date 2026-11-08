@@ -79,7 +79,8 @@ After the image release is live, point `platform112026.chartwarden.cloud` to the
 then run `nginx -t` before reloading. Issue a certificate with `certbot --nginx -d
 platform112026.chartwarden.cloud`. Preserve the existing entries in the VPS `.env.production` and add
 `https://platform112026.chartwarden.cloud` to `TRUSTED_ORIGINS`; recreate only `api` so CORS and Better
-Auth load the added origin. The vhost proxies the same-origin `/api/` and `/webhooks/` routes.
+Auth load the added origin. The vhost proxies the same-origin `/api/` and `/webhooks/` routes. Only the signed-BAA upload (`/api/v1/platform/tenants/<slug>/baa-document`) gets a
+16m body cap; every other route keeps nginx's 1 MiB default, so re-copy the file whenever it changes.
 
 ## DocLens worker and the scoped object-store account (GAP-138 / GAP-139)
 

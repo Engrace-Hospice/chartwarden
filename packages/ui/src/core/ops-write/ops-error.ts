@@ -68,6 +68,8 @@ const GENERIC: Readonly<Record<OpsFailureKind, string>> = {
 const STEP_UP_CODE = "STEP_UP_REQUIRED";
 const OUT_OF_ORDER_CODE = "ONBOARDING_STEP_OUT_OF_ORDER";
 const CURRENT_RECORDED_AT = "currentRecordedAt";
+/** A 413 with no envelope is a proxy (nginx's body cap) refusing before the app saw the request; it gets a code the caller's copy can name. */
+const PAYLOAD_TOO_LARGE_CODE = "PAYLOAD_TOO_LARGE";
 
 function envelopeOf(error: unknown): Envelope {
   const body = (error as { error?: unknown } | null | undefined)?.error;
@@ -119,7 +121,9 @@ export function describeOpsError(
   copy: OpsErrorCopy = {},
 ): OpsFailure {
   const status = response?.status ?? null;
-  const { code, correlationId, details } = envelopeOf(error);
+  const envelope = envelopeOf(error);
+  const { correlationId, details } = envelope;
+  const code = envelope.code ?? (status === 413 ? PAYLOAD_TOO_LARGE_CODE : null);
   const kind = kindOf(status, code);
   const recordedAt = details.find((d) => d.field === CURRENT_RECORDED_AT)?.message;
   const fieldErrors: Record<string, string> = {};
