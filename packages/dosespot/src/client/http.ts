@@ -405,15 +405,13 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     throw degraded(op, false, "DoseSpot rejected the access token twice.", correlationId);
   }
 
-  /** Holds already counted against the breaker where they were raised, so a half-open probe does not count them twice. */
-  const breakerCountedHolds = new WeakSet<UnconfirmedOutcomeError>();
+  /** A hold that is also an outage signal (a lost send answer, a send 5xx): it counts against the breaker where it is raised. */
   function countedHold(
     orgId: string,
     errorClass: string,
     hold: UnconfirmedOutcomeError,
   ): UnconfirmedOutcomeError {
     noteBreaker(orgId, "failure", errorClass);
-    breakerCountedHolds.add(hold);
     return hold;
   }
 
@@ -470,12 +468,9 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         return out;
       } catch (err) {
         // a half-open probe that ends in ANY hold (an unreadable 2xx included) is not a recovery: it re-opens the breaker rather than
-        // leaving it cooled, which would let every following call through as another probe
-        if (
-          isUnconfirmedOutcomeError(err) &&
-          gate.effectiveState === "half_open" &&
-          !breakerCountedHolds.has(err)
-        ) {
+        // leaving it cooled, which would let every following call through as another probe (a hold already counted where it was raised is
+        // counted again here: a second failure on an open snapshot only moves its openedAt)
+        if (isUnconfirmedOutcomeError(err) && gate.effectiveState === "half_open") {
           noteBreaker(orgId, "failure", "unconfirmed_outcome");
         }
         if (!isRetryableError(err)) throw err; // permanent (a hold's own counting aside): does not count against the breaker
