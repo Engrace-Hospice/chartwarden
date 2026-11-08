@@ -330,7 +330,7 @@ once we send our control number there (or Claim.MD confirms it echoes CLM01); un
 
 **The Billing add-on.** After resolution the sweep asks a `BillingEntitlementPort`; an org without the add-on keeps its
 receipt encrypted as `awaiting_entitlement`, re-checked hourly and published once the add-on is granted, and becomes
-`expired_not_entitled` 90 days after receipt. The port is bound to ADR-0108's `isClaimsBillingEntitled`, so it follows
+`expired_not_entitled` 90 days after receipt. The port is bound to ADR-0110's `isClaimsBillingEntitled`, so it follows
 `CLAIMS_BILLING_ENFORCEMENT`: `off`/`shadow` publish for every resolved org; `enforce` reads M35, and a failed read retries
 without spending an attempt.
 

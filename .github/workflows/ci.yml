@@ -1402,11 +1402,11 @@ jobs:
           # GAP-058/059/060/061 - M35 billing runtime: payment-method trust, refund cap + execution, signed
           # webhook -> dunning -> suspension, expiry watch, usage thresholds, revenue snapshot, reconciler.
           - { name: "M35 billing runtime", scripts: "test:m35:billing-runtime:live" }
-          # ADR-0108 - claims-billing add-on: no tenant self-grant as chartwarden_app, RLS isolation, one live row, audit + real-publisher events.
+          # ADR-0110 - claims-billing add-on: no tenant self-grant as chartwarden_app, RLS isolation, one live row, audit + real-publisher events.
           - { name: "M35 claims-billing add-on", scripts: "test:m35:claims-billing-addon:live" }
           # M34 - a platform operator enters a tenant's provider entity / location / MAC credential on its behalf: rows land in the target org under its RLS (real chartwarden_app), operator-attributed + audited with a reason, refused unless the tenant is provisioning/onboarding, no step-up / AI actor / missing reason refused, EIN + MAC secret never returned.
           - { name: "M34 onboarding data", scripts: "test:m34:onboarding-data:live" }
-          # ADR-0108 D8 - census pull: active-only, add-on orgs only, idempotent rerun, pseudonyms only, two-org RLS, reconcile drift.
+          # ADR-0110 D8 - census pull: active-only, add-on orgs only, idempotent rerun, pseudonyms only, two-org RLS, reconcile drift.
           - { name: "M35 claims-billing census", scripts: "test:m35:claims-billing-census:live" }
           # GAP-057 - M34's two recipient resolvers registered on the real emitter; platform-owner reader.
           - { name: "M34 alert resolvers", scripts: "test:m34:alert-resolvers:live" }
@@ -1437,7 +1437,7 @@ jobs:
           # M23 and M27 once shared a BullMQ queue named `validation-run` (an M27 worker failed M23 jobs into the DLQ). Real
           # producers, one consumer per module: a job reaches only its own module; stranded legacy jobs are moved, not dropped.
           - { name: "M23/M27 validation queue isolation", scripts: "test:m23:validation-queue-isolation:live" }
-          # ADR-0108 D7 - a held claims-billing job is delayed on real BullMQ, no attempt spent, never failed (needs Valkey).
+          # ADR-0110 D7 - a held claims-billing job is delayed on real BullMQ, no attempt spent, never failed (needs Valkey).
           - { name: "Claims-billing worker hold", scripts: "test:claims-billing:worker-hold:live" }
     services:
       # F-025 (#59): four of the newly-wired suites gate on `CHARTWARDEN_TEST_REDIS_URL` as well as the

@@ -73,7 +73,7 @@ const ACTION_NOTICE: Record<Action, string> = {
 
 function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
   const client = useApiClient();
-  // ADR-0108 — marking ready (and so sending) is new claims-billing work; validate and void stay open.
+  // ADR-0110 — marking ready (and so sending) is new claims-billing work; validate and void stay open.
   const claimsBilling = useClaimsBilling();
   const navigate = useNavigate();
   const permissions = useSession()?.permissions ?? [];

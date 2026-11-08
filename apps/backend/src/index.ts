@@ -352,7 +352,8 @@ import {
   createClaimMdAccountResponseReader,
 } from "@chartwarden/x12-837-client";
 import { buildActivePermissionHolderIds } from "./bootstrap/active-permission-holders";
-// ADR-0108 — the claims-billing add-on gate: the enforcement mode + boot assertion, the mount-boundary wrapper, and
+import { createClaimMdProtectedPayloadCipher } from "./bootstrap/claimmd-payload-cipher";
+// ADR-0110 — the claims-billing add-on gate: the enforcement mode + boot assertion, the mount-boundary wrapper, and
 // each billing module's route classes (new work vs. open).
 import {
   assertClaimsBillingSeamBound,
@@ -361,7 +362,6 @@ import {
   parseClaimsBillingEnforcement,
   withClaimsBillingGate,
 } from "./bootstrap/claims-billing-gate";
-import { createClaimMdProtectedPayloadCipher } from "./bootstrap/claimmd-payload-cipher";
 import {
   ACK_PICKER_RATE_LIMIT_KEY_PREFIX,
   buildAckRateLimit,
@@ -1069,16 +1069,6 @@ import {
   validateDocumentsAIBlock,
 } from "./modules/22-documents/index";
 import { buildM22ConsentRevokedConsumer } from "./modules/22-documents/outbox-consumers/m39-consent-revoked";
-import { claimMdWebhookConfigFromEnv } from "./modules/23-billing-medicare/claimmd-webhook/config";
-import {
-  type ClaimMdPlatformRunner,
-  buildClaimMdReceiptStore,
-} from "./modules/23-billing-medicare/claimmd-webhook/receipt-store";
-import { registerClaimMdWebhookRoutes } from "./modules/23-billing-medicare/claimmd-webhook/routes";
-import {
-  registerClaimMdWebhookSweepWorker,
-  scheduleClaimMdWebhookSweep,
-} from "./modules/23-billing-medicare/claimmd-webhook/worker";
 import { claimMdAckMode } from "./modules/23-billing-medicare/claimmd-ack/config";
 import { createClaimMdAckDispatcher } from "./modules/23-billing-medicare/claimmd-ack/service";
 import {
@@ -1113,6 +1103,16 @@ import {
   type IdentityWorkerSummary,
   startClaimMdIdentityWorker,
 } from "./modules/23-billing-medicare/claimmd-identity/worker";
+import { claimMdWebhookConfigFromEnv } from "./modules/23-billing-medicare/claimmd-webhook/config";
+import {
+  type ClaimMdPlatformRunner,
+  buildClaimMdReceiptStore,
+} from "./modules/23-billing-medicare/claimmd-webhook/receipt-store";
+import { registerClaimMdWebhookRoutes } from "./modules/23-billing-medicare/claimmd-webhook/routes";
+import {
+  registerClaimMdWebhookSweepWorker,
+  scheduleClaimMdWebhookSweep,
+} from "./modules/23-billing-medicare/claimmd-webhook/worker";
 import { createDrizzleAckCursorStore } from "./modules/23-billing-medicare/clearinghouse-ack-cursor-store";
 import { createDrizzleAttemptStore } from "./modules/23-billing-medicare/clearinghouse-attempt-store";
 import {
@@ -1320,7 +1320,6 @@ import {
   validateRemittanceAIBlock,
   wireM25Tenancy,
 } from "./modules/25-remittance/index";
-import { M25_ROUTE_CLASSES } from "./modules/25-remittance/routes/route-classes";
 import { createClaimMdEraCapture } from "./modules/25-remittance/ingest/claimmd-era-capture";
 import {
   claimMdEraRuntimeConfig,
@@ -1350,6 +1349,7 @@ import {
 } from "./modules/25-remittance/ingest/claimmd-era-store";
 import { startClaimMdEraCaptureWorker } from "./modules/25-remittance/ingest/claimmd-era-worker";
 import { createM25FinancialOpsReader } from "./modules/25-remittance/ingest/financial-ops-reader";
+import { M25_ROUTE_CLASSES } from "./modules/25-remittance/routes/route-classes";
 import { createDrizzleCapConsumerStore } from "./modules/26-cap/consumers/drizzle-store";
 import { buildM26UpstreamConsumer } from "./modules/26-cap/consumers/outbox-binding";
 // M26 (Cap Management) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers (cap_period_open /
@@ -2564,7 +2564,7 @@ export function wireModuleSeams(
   // M37 §4.11 — register the eight REAL Drizzle-backed IPU reader seams over their deny-stubs (db-present
   // boot); consumers (M23/M26/M27/M13/M30/M31/M34) resolve them via getSeam. Without a db the deny-stubs stand.
   if (deps.db) registerIpuSeams({ registerSeam }, deps.db);
-  // ADR-0108 — the claims-billing entitlement reader (M35) over its throwing deny-stub (db-present boot only).
+  // ADR-0110 — the claims-billing entitlement reader (M35) over its throwing deny-stub (db-present boot only).
   registerM35Seams(deps.db ? { db: deps.db } : {});
   // M17 — the four §4.3 owned READ seams (VisitReader — the visit read path M8 (encounter-authoring context,
   // which CLOSES M8's visit-seeding inert consumer M8 D9) / M18 (EVV geofence target) / M14 (IDG since-meeting)
@@ -3736,7 +3736,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // TWO_FACTOR_ENCRYPTION_KEY, DATABASE_URL, BETTER_AUTH_URL). No-op in dev/test. Runs first so a
   // misconfigured production deploy refuses to boot rather than serving with a weak/absent secret.
   assertProductionEnv();
-  // ADR-0108 D6 — parse the claims-billing enforcement mode up front (a bad value refuses to boot, in every env).
+  // ADR-0110 D6 — parse the claims-billing enforcement mode up front (a bad value refuses to boot, in every env).
   const claimsBillingMode = parseClaimsBillingEnforcement(process.env);
   // M4-T10 — fail closed if the consolidated audit action catalog has a D9 namespace/uniqueness
   // violation (§4.6.7) before the server serves a single request.
@@ -7061,7 +7061,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               // the platform credential. Undefined → fail-closed (503), never a tenant-pool read.
               platformRunner: m35PlatformRunner,
             }),
-            // ADR-0108 — the claims-billing add-on: platform-ops grant/trial/cancel (platform runner only; the app role
+            // ADR-0110 — the claims-billing add-on: platform-ops grant/trial/cancel (platform runner only; the app role
             // holds SELECT on subscription_addon) and the tenant `claimsBilling` block on GET /api/v1/billing/status.
             addons: buildDrizzleAddonService(dbHandle.db, {
               outbox: m35OutboxPublisher,
@@ -7113,7 +7113,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // instance here, rather than each module reading the schema directly.
           const { providerCcn: m23ProviderCcn, assemblyPorts: m23AssemblyPorts } =
             buildM23AssemblyPorts(dbHandle.db);
-          // ADR-0108 — the claims-billing add-on gate on M23's new-work routes (route-classes.ts); submitting a void
+          // ADR-0110 — the claims-billing add-on gate on M23's new-work routes (route-classes.ts); submitting a void
           // claim stays open (read under the caller's org).
           withClaimsBillingGate(
             app,
@@ -7309,7 +7309,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               outbox: m41OutboxPublisher as unknown as CommercialOutboxPort,
               audit: buildM41OverrideAuditPort(),
             };
-            // ADR-0108 — the commercial claim + ack-quarantine registrars share M41's route classes.
+            // ADR-0110 — the commercial claim + ack-quarantine registrars share M41's route classes.
             withClaimsBillingGate(app, M41_ROUTE_CLASSES, () => {
               registerCommercialBillingRoutes(app, {
                 assembly: buildCommercialClaimAssemblyService(dbHandle.db, m41Seams),
@@ -7416,7 +7416,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               )) !== null,
           });
           const claimMdEraReviewKeyRing = claimMdInboxKeyRingFromEnv(process.env);
-          // ADR-0108 — the claims-billing add-on gate on M25's new-work routes (route-classes.ts).
+          // ADR-0110 — the claims-billing add-on gate on M25's new-work routes (route-classes.ts).
           withClaimsBillingGate(app, M25_ROUTE_CLASSES, () =>
             mountM25Routes(app, {
               readService: buildDrizzleM25ReadService(dbHandle.db, m25Terminology),
@@ -7538,7 +7538,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // M41 (Billing - Commercial, #724) - commercial eligibility (270/271) and payer enrollment. The ONLY path to a payer is
           // the platform clearinghouse binding (ADR-0100 D4): unbound answers CH_NOT_WIRED and nothing is sent. The member id
           // comes from M5's coverage seam for the one call and is never stored or logged.
-          // ADR-0108 — the claims-billing add-on gate on M41's new-work routes (route-classes.ts).
+          // ADR-0110 — the claims-billing add-on gate on M41's new-work routes (route-classes.ts).
           withClaimsBillingGate(app, M41_ROUTE_CLASSES, () =>
             mountM41Routes(app, {
               eligibility: createEligibilityService({
@@ -7619,7 +7619,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             app.addHook("onClose", async () => void (await m26PsrEnqueuer.queue.close()));
           // M24 (Billing — Medicaid) — mount the §4.1 route plugins over the Drizzle READ + WRITE services;
           // the §4.11 `m24.*` transactional outbox publisher binds here (events persist on the mutation's tx).
-          // ADR-0108 — the claims-billing add-on gate on M24's new-work routes (route-classes.ts).
+          // ADR-0110 — the claims-billing add-on gate on M24's new-work routes (route-classes.ts).
           withClaimsBillingGate(
             app,
             m24RouteClasses((org, id) => isVoidM24Claim(dbHandle.db, org, id)),
@@ -8312,7 +8312,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         destructionDb: destructionDbHandle?.db,
       }),
   });
-  // ADR-0108 D6 — bind the gate's mode + logger now that the seams are validated. The billing routes only mount on a
+  // ADR-0110 D6 — bind the gate's mode + logger now that the seams are validated. The billing routes only mount on a
   // database boot, so that is where a shadow/enforce mode needs the real entitlement reader (refuse to boot otherwise).
   configureClaimsBillingGate({
     mode: claimsBillingMode,
@@ -9421,7 +9421,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               },
             }
           : {}),
-        // ADR-0108 D8 — the claims-billing census pull (M5 PatientCensusReader, resolved lazily). Bound only with
+        // ADR-0110 D8 — the claims-billing census pull (M5 PatientCensusReader, resolved lazily). Bound only with
         // the pseudonym key ring: without the key nothing is pseudonymized, so nothing is counted (never a raw id).
         ...(pseudonymKeyRing
           ? {
@@ -9462,7 +9462,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       const claimMdSweepWorker = registerClaimMdWebhookSweepWorker(queueConnection, {
         runner: claimMdBound.runner,
         cipher: claimMdBound.cipher,
-        // ADR-0108 — the claims-billing add-on. Follows CLAIMS_BILLING_ENFORCEMENT (off/shadow: entitled; enforce: the
+        // ADR-0110 — the claims-billing add-on. Follows CLAIMS_BILLING_ENFORCEMENT (off/shadow: entitled; enforce: the
         // M35 read, which throws on a failed read so the sweep retries without spending an attempt).
         entitlement: {
           isEntitled: (organizationId) =>
