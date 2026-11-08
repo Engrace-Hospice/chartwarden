@@ -105,22 +105,24 @@ export function buildM12CronRunners(
     ) =>
     async () => {
       let deferredByOutage = 0;
+      let skipped = 0;
       let orgsSkippedByConfigFault = 0;
       try {
         await runForEachActiveOrg(label, deps.activeOrgs, async (org) => {
           if (!vendorBound || (await deps.config.isConfiguredFor(org))) {
             const pass = passOf(await perOrg(org));
             deferredByOutage += pass?.deferredByOutage ?? 0;
+            skipped += pass?.skipped ?? 0;
             orgsSkippedByConfigFault += pass?.skippedConfigFault ?? 0;
           }
           await forEveryOrg?.(org);
         });
       } finally {
-        // orders sent back to `queued` (a registration that stopped being live mid-batch, an open circuit) and orgs skipped whole were
-        // never visible to the tick's caller: say so, once per tick
-        if (deferredByOutage > 0 || orgsSkippedByConfigFault > 0) {
+        // orders sent back to `queued` (a registration that stopped being live mid-batch, an open circuit), orders whose claim was lost before the
+        // worker could write (their result was discarded) and orgs skipped whole were never visible to the tick's caller: say so, once per tick
+        if (deferredByOutage > 0 || skipped > 0 || orgsSkippedByConfigFault > 0) {
           deps.warn?.(
-            { cron: label, deferredByOutage, orgsSkippedByConfigFault },
+            { cron: label, deferredByOutage, skipped, orgsSkippedByConfigFault },
             "M12 cron tick held orders back instead of transmitting them",
           );
         }

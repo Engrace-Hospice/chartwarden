@@ -359,6 +359,26 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
   }
 }
 
+/**
+ * A worker that no longer owns what it found writes nothing. It says so, with ids only and the KIND of what it discarded (never the content of it: a
+ * success carries a prescription id), so a lost claim is visible whatever the worker found. A success is the case that matters most: DoseSpot
+ * accepted a prescription for an order this worker could not record it on (an administrator resolved the order while the call ran, say).
+ */
+function discarded(
+  deps: M12CronDeps,
+  organizationId: string,
+  orderId: string,
+  found: Outcome["kind"],
+): "skipped" {
+  deps.warn?.(
+    { organizationId, orderId, found },
+    found === "success"
+      ? "M12 transmit: DoseSpot accepted a prescription for an order this worker no longer owns; nothing was recorded here"
+      : "M12 transmit: this worker no longer owns the order; what it found was discarded",
+  );
+  return "skipped";
+}
+
 /** The order row only while it is still in flight under the status it was claimed in and, before the fence, with the `updated_at` the claim wrote. */
 function orderStillTheWorkers(orderId: string, owns: Ownership) {
   return and(
@@ -406,7 +426,8 @@ async function settle(
 ): Promise<"transmitted" | "requeued" | "failed" | "deferred" | "held" | "skipped"> {
   const { outcome, owns } = attempt;
   // a superseded claim belongs to another worker now: nothing of this worker's is written
-  if (outcome.kind === "superseded") return "skipped";
+  if (outcome.kind === "superseded")
+    return discarded(deps, organizationId, c.order.id, outcome.kind);
   const now = nowOf(deps);
   return inOrg(deps.db, organizationId, async (tx) => {
     const orderId = c.order.id;
@@ -423,17 +444,8 @@ async function settle(
 
     if (outcome.kind === "success")
       await lockPrescriptionId(tx, organizationId, outcome.prescriptionId);
-    if (!(await lockOwnership(tx, c, owns))) {
-      if (outcome.kind === "success") {
-        // DoseSpot accepted a prescription for an order this worker no longer owns (an administrator resolved it meanwhile, say): it cannot be
-        // recorded over their decision, so it is said, with ids only
-        deps.warn?.(
-          { organizationId, orderId },
-          "M12 transmit: DoseSpot accepted a prescription for an order this worker no longer owns; nothing was recorded here",
-        );
-      }
-      return "skipped";
-    }
+    const lost = () => discarded(deps, organizationId, orderId, outcome.kind);
+    if (!(await lockOwnership(tx, c, owns))) return lost();
 
     if (outcome.kind === "outage") {
       const back = await tx
@@ -441,7 +453,7 @@ async function settle(
         .set({ dosespotSendState: "queued", updatedAt: now })
         .where(stillMine)
         .returning({ id: MO.id });
-      if (back.length !== 1) return "skipped";
+      if (back.length !== 1) return lost();
       // nothing reached the vendor (an open circuit, a registration not live, a config fault, or the stamp itself failed): no call began, so the
       // stamp goes, and so does a hold the drain set while this worker was still in its call (the order is queued again, not "held")
       await tx
@@ -508,7 +520,7 @@ async function settle(
         })
         .where(stillMine)
         .returning({ id: MO.id });
-      if (o.length !== 1) return "skipped";
+      if (o.length !== 1) return lost();
       await tx
         .update(MOT)
         .set({
@@ -557,7 +569,7 @@ async function settle(
         .set({ dosespotSendState: "queued", updatedAt: now })
         .where(stillMine)
         .returning({ id: MO.id });
-      if (back.length !== 1) return "skipped";
+      if (back.length !== 1) return lost();
       await recordFailure();
       if (outcome.syncPatient) {
         await new DosespotSyncQueueRepository(tx).enqueue({
@@ -583,7 +595,7 @@ async function settle(
       })
       .where(stillMine)
       .returning({ id: MO.id });
-    if (o.length !== 1) return "skipped";
+    if (o.length !== 1) return lost();
     await recordFailure();
     await emit(plan.event, {
       orderId,

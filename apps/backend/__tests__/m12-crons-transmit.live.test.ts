@@ -530,6 +530,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
           expect(warnings.map((w) => w.fields)).toContainEqual({
             cron: "M12_TRANSMIT_NEWRX",
             deferredByOutage: 0,
+            skipped: 0,
             orgsSkippedByConfigFault: 1,
           });
         }
@@ -556,6 +557,7 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
           expect(warnings.map((w) => w.fields)).toContainEqual({
             cron: "M12_TRANSMIT_NEWRX",
             deferredByOutage: 1,
+            skipped: 0,
             orgsSkippedByConfigFault: 0,
           });
         }
@@ -1494,6 +1496,121 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
           await takeover?.catch(() => undefined);
         }
       }
+    });
+
+    // LOW (review of 436fd3c1c..): a worker that lost its claim after the call began (an administrator resolved the held order while the slow call
+    // was still running) wrote nothing, and said so only for a success. Every result it discards is now said, with ids only, and counted.
+    describe("a call that answers after an administrator resolved the held order", () => {
+      type Warning = { fields: Record<string, unknown>; message: string };
+      const LATE_ID = "rx-late-9a8b7c";
+      const resolveNotSent = async (orderId: string) => {
+        const membershipId = (
+          await h.q("SELECT id FROM membership WHERE organization_id=$1 LIMIT 1", [ORG_A])
+        )[0]?.id as string;
+        await createTransmissionResolveService({
+          db: h.handle.db,
+          outbox: h.outbox,
+          audit: buildClinicAuditPort(),
+        }).resolve({ organizationId: ORG_A, userId: USER, membershipId }, orderId, {
+          outcome: "not_sent",
+          reason: "Checked the prescriber's DoseSpot account: nothing there.",
+        });
+      };
+      const outboxCount = async () =>
+        (await h.q("SELECT count(*)::int AS n FROM outbox_event"))[0]?.n as number;
+      /** A slow call: the drain holds it, the administrator resolves it NOT SENT, and only then does the call answer. */
+      const scenario = async (
+        answer: () => Promise<never | { dosespotPrescriptionId: string; transmittedAt: string }>,
+      ) => {
+        const warnings: Warning[] = [];
+        const { orderId, transmissionId } = await queued();
+        const atAnswer: { events?: number; tx?: Record<string, unknown> } = {};
+        const vendor = new FakeDoseSpotVendor({
+          transmit: async () => {
+            await runRecoveryDrainForOrg(deps(never, minutes(300)), ORG_A);
+            await resolveNotSent(orderId);
+            atAnswer.events = await outboxCount();
+            atAnswer.tx = await txRow(transmissionId as string);
+            return answer();
+          },
+        });
+        const world = {
+          ...deps(vendor),
+          warn: (fields: Record<string, string | number>, message: string) =>
+            warnings.push({ fields, message }),
+        };
+        return { orderId, transmissionId: transmissionId as string, world, warnings, atAnswer };
+      };
+
+      it("SUCCESS: nothing is recorded over the administrator's decision, and the log names ids only", async () => {
+        const run = await scenario(async () => ({
+          dosespotPrescriptionId: LATE_ID,
+          transmittedAt: new Date().toISOString(),
+        }));
+        const pass = await runTransmitNewRxForOrg(run.world, ORG_A);
+        expect(pass).toMatchObject({ claimed: 1, transmitted: 0, skipped: 1, held: 0 });
+        expect(await orderRow(run.orderId)).toMatchObject({
+          status: "transmission_failed",
+          rx: null,
+        });
+        expect(await outboxCount()).toBe(run.atAnswer.events); // no transmitted event
+        const log = run.warnings.filter((w) => /no longer owns/.test(w.message));
+        expect(log).toHaveLength(1);
+        expect(Object.keys(log[0]?.fields ?? {}).sort()).toEqual([
+          "found",
+          "orderId",
+          "organizationId",
+        ]);
+        expect(log[0]?.fields).toMatchObject({
+          organizationId: ORG_A,
+          orderId: run.orderId,
+          found: "success",
+        });
+        expect(JSON.stringify(run.warnings)).not.toContain(LATE_ID); // the id of a prescription is not logged
+      });
+
+      for (const found of ["failure", "outage", "unconfirmed"] as const) {
+        it(`${found.toUpperCase()}: nothing is written, nothing is announced, and the log says it was discarded`, async () => {
+          const run = await scenario(async () => {
+            if (found === "failure") throw retryable();
+            if (found === "outage") throw circuitOpen();
+            throw new UnconfirmedOutcomeError("dosespot", "transmitNewRx", "unreadable", "c-late");
+          });
+          const pass = await runTransmitNewRxForOrg(run.world, ORG_A);
+          expect(pass).toMatchObject({ claimed: 1, skipped: 1, requeued: 0, held: 0, failed: 0 });
+          expect(pass.deferredByOutage).toBe(0);
+          expect((await orderRow(run.orderId)).status).toBe("transmission_failed"); // the administrator's decision stands
+          expect(await outboxCount()).toBe(run.atAnswer.events);
+          expect(await txRow(run.transmissionId)).toEqual(run.atAnswer.tx); // retry count, marker and stamp untouched
+          const log = run.warnings.filter((w) => /no longer owns/.test(w.message));
+          expect(log).toHaveLength(1);
+          expect(Object.keys(log[0]?.fields ?? {}).sort()).toEqual([
+            "found",
+            "orderId",
+            "organizationId",
+          ]);
+          expect(log[0]?.fields.found).toBe(found);
+        });
+      }
+
+      it("the cron tick reports the skipped order", async () => {
+        const run = await scenario(async () => {
+          throw retryable();
+        });
+        const runners = buildM12CronRunners({
+          ...run.world,
+          connection: {} as never,
+          activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+          config: { isConfiguredFor: async () => true, configFor: async () => ({}) } as never,
+        });
+        await runners.transmitNewRx();
+        expect(run.warnings.map((w) => w.fields)).toContainEqual({
+          cron: "M12_TRANSMIT_NEWRX",
+          deferredByOutage: 0,
+          skipped: 1,
+          orgsSkippedByConfigFault: 0,
+        });
+      });
     });
 
     // LOW (lock order): the worker's settle now takes the ORDER row before the transmission row, the order the administrator's resolution takes, so a

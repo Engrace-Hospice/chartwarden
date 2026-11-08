@@ -183,7 +183,7 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   claim still being its own too: the settle locks the ORDER row with the `updated_at` the claim wrote, and after the fence the TRANSMISSION row
   carrying the stamp the fence wrote (`updated_at` is shared with a coverage save, allowed in every status, and a correction's version bump: as the token
   after the fence it made such a write during the call orphan a prescription DoseSpot had accepted, review of 436fd3c1c..), and a
-  worker that lost its claim writes nothing and is counted `skipped` (it used to requeue or exhaust the new owner's claim and clear its stamp when its
+  worker that lost its claim writes nothing and is counted `skipped` (and says so, ids and the kind of what it discarded only, for a failure, an outage and an unconfirmed outcome as well as a success; the cron tick's warning carries the count) (it used to requeue or exhaust the new owner's claim and clear its stamp when its
   payload build failed after a takeover, so the owner's success matched nothing and the prescription went out again). The order row is locked
   before the transmission row, as in the administrator's resolution, so a late failure racing a resolution cannot deadlock, and a late outage
   after a drain hold clears the stale hold marker.
