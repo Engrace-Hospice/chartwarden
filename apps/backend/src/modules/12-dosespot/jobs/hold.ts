@@ -1,7 +1,7 @@
 // apps/backend/src/modules/12-dosespot/jobs/hold.ts — what marks a transmission HELD, and how long a hold may wait unresolved.
 //
-// An order is HELD when DoseSpot accepted a NewRx call but its answer is not known (an unreadable 2xx, no prescription id, or a worker that
-// died after the call began): the order stays `queued_for_transmission` / `in_flight`, never failed, never re-sent, and its transmission row
+// An order is HELD when DoseSpot may have acted on a NewRx call but its outcome is not known (an unreadable 2xx, no prescription id, a send
+// whose answer was lost, a send answered with a 5xx other than 503, or a worker that died after the call began): the order stays `queued_for_transmission` / `in_flight`, never failed, never re-sent, and its transmission row
 // carries this class. A held order leaves that state by an administrator's resolution (`tenant-config/transmission-resolve.ts`) or, when the original call was only slow, by that call's own late answer (`transmit-newrx.ts`).
 // A tiny file of its own so the worker, the age reminder, the route service and the resolve service share one definition without an import cycle.
 

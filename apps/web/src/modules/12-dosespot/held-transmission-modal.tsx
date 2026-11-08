@@ -100,9 +100,9 @@ export function HeldTransmissionModal({
       <div className="wx-modal-body">
         <h2>Resolve held transmission</h2>
         <p>
-          DoseSpot accepted this prescription request but its answer could not be read, so it may
-          already exist there. Check the prescriber's DoseSpot account, then say which it was.
-          Nothing is sent by this action.
+          DoseSpot did not confirm what became of this prescription request, so it may already exist
+          there. Check the prescriber's DoseSpot account, then say which it was. Nothing is sent by
+          this action.
         </p>
         <SelectField
           label="What you found"

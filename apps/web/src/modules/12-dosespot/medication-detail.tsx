@@ -432,11 +432,11 @@ export function MedicationDetail(): JSX.Element {
                       <section aria-label="Held transmission" style={heldNotice}>
                         <StatusPill label="Held: outcome unconfirmed" tone="warning" />
                         <p style={muted}>
-                          DoseSpot accepted this prescription request but its answer could not be
-                          read, so the prescription may already exist there. ChartWarden is holding
-                          the order and will not send it again. An administrator checks the
-                          prescriber's DoseSpot account and resolves it: sent (it is there) or not
-                          sent (the prescriber then retransmits it).
+                          DoseSpot did not confirm what became of this prescription request, so the
+                          prescription may already exist there. ChartWarden is holding the order and
+                          will not send it again. An administrator checks the prescriber's DoseSpot
+                          account and resolves it: sent (it is there) or not sent (the prescriber
+                          then retransmits it).
                         </p>
                         {canResolveHeld ? (
                           <Button tone="secondary" onClick={() => setResolvingHeld(true)}>

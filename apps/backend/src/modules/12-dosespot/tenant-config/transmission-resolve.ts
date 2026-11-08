@@ -1,7 +1,7 @@
 // apps/backend/src/modules/12-dosespot/tenant-config/transmission-resolve.ts — an organization administrator's resolution of an order HELD for an
 // unconfirmed DoseSpot outcome (review of slice 4, MEDIUM-1).
 //
-// THE PROBLEM. When DoseSpot accepted a NewRx call but its answer is unknown, the transmit worker holds the order (`queued_for_transmission` /
+// THE PROBLEM. When DoseSpot may have acted on a NewRx call but left its outcome unconfirmed, the transmit worker holds the order (`queued_for_transmission` /
 // `in_flight`, its transmission row marked `unconfirmed_outcome`): it must neither fail it (it may exist at the pharmacy) nor re-send it (a second
 // send could dispense twice). Nothing in the order machine could take such an order anywhere, so the hold had no way out.
 //

@@ -18,8 +18,8 @@
 //                       the queued-on-recovery drain exists for).
 //        failure    -> the §4.10 planner: re-queue while budget remains, else `transmission_failed` + event; a
 //                       permanent vendor rejection or an unfixable order exhausts immediately.
-//        unconfirmed -> DoseSpot ACCEPTED the call (2xx) but its answer was unreadable or carried no id: the prescription may already
-//                       exist there. The order is HELD, still `in_flight`, its transmission row naming why
+//        unconfirmed -> DoseSpot may have acted on the call but did not confirm it (a 2xx that was unreadable or carried no id, a send
+//                       whose answer was lost, or a send answered with a 5xx other than 503): the prescription may already exist there. The order is HELD, still `in_flight`, its transmission row naming why
 //                       (`UNCONFIRMED_OUTCOME_CLASS` (hold.ts)): not failed (it did not fail), not re-queued, not retried, and skipped by the
 //                       stale-claim drain (a second send could dispense twice). `m12.medication_order.transmission_unconfirmed` is
 //                       published in the same transaction and M36 tells the tenant's administrators, who check the prescriber's DoseSpot
@@ -315,7 +315,8 @@ async function attemptOne(deps: M12CronDeps, organizationId: string, c: Claimed)
     if (isCircuitOpenError(error) || isNotEnabledError(error) || isConfigUnavailableError(error)) {
       return owned({ kind: "outage" });
     }
-    // accepted but unreadable / no id: the prescription may exist, so the order is held, not failed and not retried
+    // an unconfirmed outcome (an unreadable 2xx or no id, a lost send answer, a send 5xx but 503): the prescription may exist, so the order
+    // is held, not failed and not retried
     if (isUnconfirmedOutcomeError(error)) {
       return owned({
         kind: "unconfirmed",

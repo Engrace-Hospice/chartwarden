@@ -245,7 +245,7 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     eventName: "m12.medication_order.transmission_unconfirmed",
     moduleOwner: "m12",
     description:
-      "DoseSpot accepted a NewRx call but its answer was unreadable or carried no prescription id, so the prescription may already exist there. The order is HELD in flight (never failed, never retried, never re-sent) until an organization administrator checks the prescriber's DoseSpot account and resolves it (sent, with the DoseSpot prescription id, or not sent); M36 alerts the tenant's administrators, and again after 24 hours if it is still held. Ids only.",
+      "DoseSpot left a NewRx call's outcome unconfirmed (it accepted the call but its answer was unreadable or carried no prescription id, the send's answer was lost, or the send was answered with a 5xx other than 503), so the prescription may already exist there. The order is HELD in flight (never failed, never retried, never re-sent) until an organization administrator checks the prescriber's DoseSpot account and resolves it (sent, with the DoseSpot prescription id, or not sent); M36 alerts the tenant's administrators, and again after 24 hours if it is still held. Ids only.",
     payloadSchema: Type.Object({
       orderId: id,
       lastErrorClass: Type.String(),

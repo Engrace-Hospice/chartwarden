@@ -114,8 +114,9 @@ export function isConfigUnavailableError(value: unknown): value is ConfigUnavail
 }
 
 /**
- * DoseSpot answered 2xx but the answer cannot be read, or does not carry the id the call exists to return. The request was ACCEPTED, so
- * what it was asked to create (a clinician, a prescription) may well exist: unlike a refusal this is an AMBIGUOUS outcome, and a caller
+ * DoseSpot may have acted on the request but did not confirm it: a 2xx whose answer cannot be read or does not carry the id the call exists
+ * to return, or, for a prescription SEND, a lost answer (a timeout, a reset) or a 5xx other than 503. What it was asked to create or send
+ * (a clinician, a prescription) may well exist: unlike a refusal this is an AMBIGUOUS outcome, and a caller
  * that holds a claim must keep it rather than release it for a retry that could create a duplicate. A non-retryable {@link DegradedError}
  * (no in-call retry, the same planning as before for a worker), told apart by its class.
  */
