@@ -25,6 +25,7 @@ import {
   DrawerHead,
   type Outcome,
   OutcomeBanner,
+  StateEmpty,
   StateError,
   StateLoading,
   failureOutcome,
@@ -125,7 +126,7 @@ function PlanEditBody(): JSX.Element {
 
   const [meterAttempted, setMeterAttempted] = useState(false);
   const meterIssues = meterAttempted ? meterErrors(meter) : {};
-  const meterRowRef = useRef<HTMLDivElement>(null);
+  const meterRowRef = useRef<HTMLFormElement>(null);
 
   const addMeter = useCallback(async () => {
     if (!id) return;
@@ -239,47 +240,56 @@ function PlanEditBody(): JSX.Element {
             onReverify={() => stashStepUpMemoryDraft(meterDraftKey(id ?? ""), meter)}
           />
         ) : null}
-        <h2 className="m-0 text-base font-semibold">Usage meters</h2>
+        <h2 className="wx-action-title">Usage meters</h2>
         {plan.meters.length === 0 ? (
-          <p className="m-0 text-sm">No meters yet — add one below.</p>
+          <StateEmpty icon="bar-chart">No meters yet — add one below.</StateEmpty>
         ) : (
           <MetersTable meters={plan.meters} currencyCode={plan.currencyCode} />
         )}
-        <div
+        <form
           ref={meterRowRef}
-          className="grid max-w-3xl items-end gap-3 md:grid-cols-[repeat(4,minmax(0,1fr))_auto]"
+          className="wx-drawer-card"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void addMeter();
+          }}
         >
-          <TextField
-            label="Event type"
-            value={meter.eventType}
-            onChange={(e) => setMeter({ ...meter, eventType: e.target.value })}
-            error={meterIssues.eventType}
-          />
-          <TextField
-            label="Included qty"
-            value={meter.inclusive}
-            inputMode="numeric"
-            error={meterIssues.inclusive}
-            onChange={(e) => setMeter({ ...meter, inclusive: e.target.value })}
-          />
-          <TextField
-            label="Overage $/unit"
-            value={meter.overage}
-            inputMode="decimal"
-            error={meterIssues.overage}
-            onChange={(e) => setMeter({ ...meter, overage: e.target.value })}
-          />
-          <TextField
-            label="Warn %"
-            value={meter.threshold}
-            inputMode="numeric"
-            error={meterIssues.threshold}
-            onChange={(e) => setMeter({ ...meter, threshold: e.target.value })}
-          />
-          <Button onClick={() => void addMeter()} disabled={busy}>
-            Add meter
-          </Button>
-        </div>
+          <div className="wx-form-grid">
+            <TextField
+              label="Event type"
+              value={meter.eventType}
+              onChange={(e) => setMeter({ ...meter, eventType: e.target.value })}
+              error={meterIssues.eventType}
+            />
+            <TextField
+              label="Included qty"
+              value={meter.inclusive}
+              inputMode="numeric"
+              error={meterIssues.inclusive}
+              onChange={(e) => setMeter({ ...meter, inclusive: e.target.value })}
+            />
+            <TextField
+              label="Overage $/unit"
+              value={meter.overage}
+              inputMode="decimal"
+              error={meterIssues.overage}
+              onChange={(e) => setMeter({ ...meter, overage: e.target.value })}
+            />
+            <TextField
+              label="Warn %"
+              value={meter.threshold}
+              inputMode="numeric"
+              error={meterIssues.threshold}
+              onChange={(e) => setMeter({ ...meter, threshold: e.target.value })}
+            />
+          </div>
+          <div className="wx-drawer-actions">
+            <Button type="submit" disabled={busy}>
+              Add meter
+            </Button>
+          </div>
+        </form>
       </div>
       <PlanSummary plan={plan} />
     </div>
