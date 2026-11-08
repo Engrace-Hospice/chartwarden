@@ -129,6 +129,8 @@ const AMBIGUOUS_ON_LOST_ANSWER: ReadonlySet<keyof typeof DOSESPOT_ENDPOINTS> = n
 const AMBIGUOUS_STATUSES: ReadonlySet<number> = new Set([500, 502, 504]);
 /** Socket errors that mean the connection was never made, so nothing reached DoseSpot (a connect TIMEOUT is an abort, not one of these: it is held). */
 const NOT_CONNECTED_CODES: ReadonlySet<string> = new Set([
+  // Bun 1.3.5 (production's runtime) reports a refused connection AND a failed DNS lookup as a plain Error with code "ConnectionRefused"
+  "ConnectionRefused",
   "ECONNREFUSED",
   "ENOTFOUND",
   "EAI_AGAIN",
@@ -227,7 +229,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
       return { status: res.status, text: await res.text() };
     } catch (err) {
       const aborted = err instanceof Error && err.name === "AbortError";
-      // Bun puts the socket code on the error itself (a TypeError with `code: "ECONNREFUSED"`); undici puts it on `cause`
+      // Bun puts the code on the error itself (`code: "ConnectionRefused"`, no cause); undici puts the socket code on `cause`
       const shaped = err as { code?: unknown; cause?: { code?: unknown } } | null;
       const code = shaped?.code ?? shaped?.cause?.code;
       const notConnected = typeof code === "string" && NOT_CONNECTED_CODES.has(code);

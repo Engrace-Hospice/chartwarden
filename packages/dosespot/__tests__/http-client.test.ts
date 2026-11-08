@@ -75,10 +75,10 @@ function fakeTransport(routes: Record<string, Responder>) {
     if (out === "timeout") throw Object.assign(new Error("aborted"), { name: "AbortError" });
     if (out === "refused")
       throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } });
-    // Bun's shape: the code is on the error itself, no `cause`
+    // Bun 1.3.5's real shape (observed for a refused port AND an unresolvable host): a plain Error, the code on itself, no `cause`
     if (out === "refused-bun")
-      throw Object.assign(new TypeError("ECONNREFUSED: Unable to connect"), {
-        code: "ECONNREFUSED",
+      throw Object.assign(new Error("Unable to connect. Is the computer able to access the url?"), {
+        code: "ConnectionRefused",
       });
     return {
       status: out.status,
