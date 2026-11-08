@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
+import { tenantClaimMdAccountReference } from "../claimmd-evidence/store";
 import { transportUpload } from "./clearinghouse-submission";
 
 const x12 = readFileSync(
@@ -95,6 +96,66 @@ describe("M23 Claim.MD evidence boundary", () => {
     );
     await expect(upload(request)).rejects.toThrow(/Claim\.MD|claim/i);
     expect(order).toEqual(["reserve"]);
+  });
+
+  it("a tenant's own Claim.MD account records evidence under its own org and account reference, never the platform's", async () => {
+    const order: string[] = [];
+    const platform = makeTransport(order) as unknown as Record<string, unknown>;
+    const reserved: unknown[] = [];
+    const observed: unknown[] = [];
+    const asked: unknown[] = [];
+    const tenant = {
+      ...platform,
+      binding: { ...(platform.binding as object), account: "tenant" },
+      tenantClaimMdEvidence: {
+        submission: (organizationId: string, usage: string) => {
+          asked.push({ organizationId, usage });
+          return {
+            accountReference: `tenant:${organizationId}`,
+            usage,
+            reserve: async (input: unknown) => {
+              order.push("tenant-reserve");
+              reserved.push(input);
+              return "tenant-evidence";
+            },
+            observe: async (input: unknown) => {
+              order.push("tenant-observe");
+              observed.push(input);
+            },
+          };
+        },
+        notice: () => ({}) as never,
+      },
+    };
+    await expect(transportUpload(tenant as never)(request)).resolves.toMatchObject({
+      accepted: true,
+    });
+    expect(order).toEqual(["tenant-reserve", "upload", "tenant-observe"]);
+    expect(asked).toEqual([{ organizationId: context.organizationId, usage: "test" }]);
+    expect(reserved[0]).toMatchObject({
+      organizationId: context.organizationId,
+      accountReference: `tenant:${context.organizationId}`,
+    });
+    expect(observed[0]).toMatchObject({
+      evidenceId: "tenant-evidence",
+      organizationId: context.organizationId,
+      accountReference: `tenant:${context.organizationId}`,
+    });
+  });
+
+  it("a tenant's account reference passes the evidence tables' CHECK and is never a platform reference", () => {
+    const ref = tenantClaimMdAccountReference("0A1B2C3D-0000-4000-8000-000000000001");
+    // the same pattern as migration 1352's account_reference CHECK
+    expect(ref).toMatch(/^[A-Za-z0-9._:-]{1,128}$/);
+    expect(ref).toBe("tenant:0a1b2c3d-0000-4000-8000-000000000001");
+  });
+
+  it("a tenant's own Claim.MD account with no tenant evidence store fails closed and never borrows the platform's", async () => {
+    const order: string[] = [];
+    const platform = makeTransport(order) as unknown as Record<string, unknown>;
+    const tenant = { ...platform, binding: { ...(platform.binding as object), account: "tenant" } };
+    await expect(transportUpload(tenant as never)(request)).rejects.toThrow(/evidence/);
+    expect(order).toEqual([]);
   });
 
   it("keeps notice uploads off by default and commits typed evidence before any notice transport call", async () => {
