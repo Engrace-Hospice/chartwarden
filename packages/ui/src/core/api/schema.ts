@@ -19013,6 +19013,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ops/claimmd/eras/{inboxId}/recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1OpsClaimmdErasByInboxIdRecovery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ops/outbox": {
         parameters: {
             query?: never;
@@ -24484,6 +24500,38 @@ export interface paths {
         put?: never;
         /** Queue a remittance advice for re-parse/replay (§4.1) */
         post: operations["postApiV1RemittanceAdvicesByIdReplay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/claimmd-era": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1RemittanceClaimmdera"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/claimmd-era/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1RemittanceClaimmderaById"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -85851,6 +85899,28 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1OpsClaimmdErasByInboxIdRecovery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                inboxId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1OpsOutbox: {
         parameters: {
             query?: {
@@ -101368,6 +101438,48 @@ export interface operations {
                         status: "queued";
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceClaimmdera: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceClaimmderaById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
