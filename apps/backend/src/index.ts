@@ -1236,7 +1236,10 @@ import { buildTenantClearinghouseOnboardingPort } from "./modules/23-billing-med
 import { registerM23TenantClearinghouseSeams } from "./modules/23-billing-medicare/tenant-clearinghouse/register";
 import { createTenantClearinghouseRuntime } from "./modules/23-billing-medicare/tenant-clearinghouse/resolver";
 import { buildOrgRouteKeyReader } from "./modules/23-billing-medicare/tenant-clearinghouse/route-key";
-import { buildClearinghouseSecretCipherFromEnv } from "./modules/23-billing-medicare/tenant-clearinghouse/secret-cipher";
+import {
+  buildClearinghouseSecretCipherFromEnv,
+  platformCredentialFingerprints,
+} from "./modules/23-billing-medicare/tenant-clearinghouse/secret-cipher";
 import { createTenantClearinghouseService } from "./modules/23-billing-medicare/tenant-clearinghouse/service";
 import { buildDrizzleTenantClearinghouseRouteService } from "./modules/23-billing-medicare/tenant-clearinghouse/tenant-service";
 import {
@@ -6774,7 +6777,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             (await getSeam("TenantClearinghouseReader").choiceForOrg(organizationId)).vendor ===
             "outside";
           const tenantClearinghouseService = createTenantClearinghouseService({
-            ...(clearinghouseSecretCipher ? { cipher: clearinghouseSecretCipher } : {}),
+            ...(clearinghouseSecretCipher
+              ? {
+                  cipher: clearinghouseSecretCipher,
+                  // A tenant may not seal the platform's own vendor account (owner decision 2026-11-08).
+                  platformCredentialFingerprints: platformCredentialFingerprints(
+                    clearinghouseSecretCipher,
+                    process.env,
+                  ),
+                }
+              : {}),
             // Claim.MD has a safe no-PHI probe (uploadlist); Stedi has none, so its `verify` is an attestation with evidence.
             probes: { claimmd: (secret) => probeClaimMdAccountKey(secret) },
             platformFallback: clearinghouseFallback.lookup,

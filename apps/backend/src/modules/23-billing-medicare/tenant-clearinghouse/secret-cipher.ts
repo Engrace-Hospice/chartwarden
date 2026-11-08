@@ -12,7 +12,7 @@
 // Fail-closed: an unopenable envelope throws one generic error and never yields an empty secret; plaintext is never put in
 // an error, a log line or an audit row.
 import { Buffer } from "node:buffer";
-import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes } from "node:crypto";
 import type { TenantClearinghouseMode, TransmittingClearinghouseVendor } from "@chartwarden/types";
 import { MAC_SECRET_KEK_ENV, loadMacSecretKek } from "../routes/secret-cipher";
 
@@ -24,6 +24,7 @@ const MIN_ENVELOPE_LEN = 1 + NONCE_LEN + TAG_LEN;
 const LABELS = {
   dekInfoPrefix: "chartwarden-m23-clearinghouse-credential-dek:",
   aadPrefix: "chartwarden-m23-clearinghouse-credential:v",
+  fingerprintInfo: "chartwarden-m23-clearinghouse-credential-fingerprint:v1",
 } as const;
 
 /** What a sealed secret is bound to besides the tenant. */
@@ -43,6 +44,12 @@ export interface ClearinghouseSecretCipher {
     context: ClearinghouseSecretContext,
     sealed: string,
   ): Promise<string>;
+  /**
+   * The account's fingerprint (migration 1403): HMAC-SHA256, under a key derived from the KEK with this purpose's own label, of the
+   * vendor and the trimmed account key, as 64 hex characters. The same for every organization (it names the vendor ACCOUNT, so a
+   * second tenant sealing it is refused), never a plain hash (it cannot be checked against a guessed key without the KEK).
+   */
+  fingerprint(vendor: TransmittingClearinghouseVendor, accountKey: string): string;
 }
 
 const deriveDek = (kek: Buffer, organizationId: string): Buffer =>
@@ -71,7 +78,15 @@ const aadFor = (organizationId: string, context: ClearinghouseSecretContext): Bu
 export function buildClearinghouseSecretCipher(kek: Buffer): ClearinghouseSecretCipher {
   if (kek.length !== KEY_LEN) throw new Error(`clearinghouse secret KEK must be ${KEY_LEN} bytes`);
   const root = Buffer.from(kek);
+  const fingerprintKey = Buffer.from(
+    hkdfSync("sha256", root, Buffer.alloc(0), LABELS.fingerprintInfo, KEY_LEN),
+  );
   return {
+    fingerprint(vendor, accountKey) {
+      return createHmac("sha256", fingerprintKey)
+        .update(`${vendor}\n${accountKey.trim()}`, "utf8")
+        .digest("hex");
+    },
     async encrypt(organizationId, plaintext, context) {
       const nonce = randomBytes(NONCE_LEN);
       const cipher = createCipheriv("aes-256-gcm", deriveDek(root, organizationId), nonce);
@@ -119,4 +134,24 @@ export function buildClearinghouseSecretCipherFromEnv(
 ): ClearinghouseSecretCipher | undefined {
   if (!env[MAC_SECRET_KEK_ENV]?.trim()) return undefined;
   return buildClearinghouseSecretCipher(loadMacSecretKek(env[MAC_SECRET_KEK_ENV]));
+}
+
+/** The platform env binding's own account keys, by vendor (the names its transports read). */
+const PLATFORM_ACCOUNT_KEY_ENV: ReadonlyArray<readonly [TransmittingClearinghouseVendor, string]> =
+  [
+    ["claimmd", "CLAIMMD_ACCOUNT_KEY"],
+    ["stedi", "STEDI_API_KEY"],
+  ];
+
+/** Fingerprints of the platform's own vendor account keys that are set: a tenant may never seal one of them. */
+export function platformCredentialFingerprints(
+  cipher: Pick<ClearinghouseSecretCipher, "fingerprint">,
+  env: Readonly<Record<string, string | undefined>>,
+): ReadonlySet<string> {
+  const out = new Set<string>();
+  for (const [vendor, key] of PLATFORM_ACCOUNT_KEY_ENV) {
+    const value = env[key]?.trim();
+    if (value) out.add(cipher.fingerprint(vendor, value));
+  }
+  return out;
 }

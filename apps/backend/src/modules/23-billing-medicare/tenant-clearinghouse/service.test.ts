@@ -940,3 +940,110 @@ describe("tenant clearinghouse service: attesting a vendor with no safe probe", 
     expect((await verify(service, store, ACTOR, ATTEST)).view.status).toBe("verified");
   });
 });
+
+// Owner decision 2026-11-08 (migration 1403): one vendor account belongs to ONE organization, and never to the platform's own binding.
+describe("tenant clearinghouse service: one vendor account per organization", () => {
+  const OTHER: ClearinghouseActor = { ...ACTOR, organizationId: OTHER_ORG };
+
+  it("refuses a second organization saving the same account key (409, holder never named); the holder may re-save it", async () => {
+    const { store, service } = setup();
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    let refusal: unknown;
+    try {
+      await service.put(
+        store,
+        OTHER,
+        { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+        undefined,
+      );
+    } catch (err) {
+      refusal = err;
+    }
+    expect(refusal).toBeInstanceOf(ChartWardenError);
+    expect(refusal).toMatchObject({ code: "CLEARINGHOUSE_ACCOUNT_IN_USE", statusCode: 409 });
+    expect(JSON.stringify(refusal)).not.toContain(ORG);
+    expect((refusal as Error).message).not.toContain(ORG);
+    // the same key under another vendor is another account
+    await expect(
+      service.put(store, OTHER, { vendor: "stedi", mode: "test", secret: FAKE_KEY }, undefined),
+    ).resolves.toMatchObject({ created: true });
+    // the holder re-saving its own key (a rotation to the same value) is fine
+    const own = await service.view(store, ORG);
+    await expect(
+      service.put(
+        store,
+        ACTOR,
+        { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+        own.version ?? 0,
+      ),
+    ).resolves.toMatchObject({ created: false });
+  });
+
+  it("frees the account when its holder rotates to another key or switches to outside", async () => {
+    const { store, service } = setup();
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    let v = (await service.view(store, ORG)).version ?? 0;
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: "another-fake-key#2" },
+      v,
+    );
+    await expect(
+      service.put(store, OTHER, { vendor: "claimmd", mode: "test", secret: FAKE_KEY }, undefined),
+    ).resolves.toMatchObject({ created: true });
+
+    v = (await service.view(store, ORG)).version ?? 0;
+    await service.put(store, ACTOR, { vendor: "outside" }, v);
+    expect(store.rows().find((r) => r.organizationId === ORG)?.credentialFingerprint).toBeNull();
+    const otherV = (await service.view(store, OTHER_ORG)).version ?? 0;
+    await service.put(store, OTHER, { vendor: "outside" }, otherV);
+    await expect(
+      service.put(
+        store,
+        ACTOR,
+        { vendor: "claimmd", mode: "test", secret: "another-fake-key#2" },
+        (await service.view(store, ORG)).version ?? 0,
+      ),
+    ).resolves.toMatchObject({ created: false });
+  });
+
+  it("refuses the platform's own account key, with the same refusal", async () => {
+    const store = createInMemoryConfigStore();
+    const cipher = buildClearinghouseSecretCipher(randomBytes(32));
+    const service = createTenantClearinghouseService({
+      cipher,
+      probes: { claimmd: async () => "ok" },
+      platformCredentialFingerprints: new Set([cipher.fingerprint("claimmd", FAKE_KEY)]),
+    });
+    expect(
+      await codeOf(
+        service.put(store, ACTOR, { vendor: "claimmd", mode: "test", secret: FAKE_KEY }, undefined),
+      ),
+    ).toBe("CLEARINGHOUSE_ACCOUNT_IN_USE");
+    expect(store.rows()).toEqual([]); // nothing was written
+  });
+
+  it("stores only the keyed fingerprint, never the key", async () => {
+    const { store, service } = setup();
+    await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    const row = store.rows()[0];
+    expect(row?.credentialFingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(row)).not.toContain(FAKE_KEY);
+  });
+});

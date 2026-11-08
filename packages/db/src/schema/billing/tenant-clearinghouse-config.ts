@@ -5,6 +5,7 @@
 //
 // `secret_cipher` is write-only: no service view ever returns it (a `hasSecret` flag is derived). The membership ids are
 // logical FKs (a platform operator's membership lives in the platform org). Only `organization_id` has a real FK.
+import { sql } from "drizzle-orm";
 import { date, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
@@ -20,6 +21,9 @@ export const tenantClearinghouseConfig = pgTable(
     status: text("status").notNull().default("draft"),
     secretCipher: text("secret_cipher"),
     secretDekVersion: integer("secret_dek_version"),
+    // Migration 1403: a keyed HMAC of the vendor and the account key (write-only, never returned or audited), unique ACROSS
+    // organizations so one vendor account belongs to one tenant. NULL with no credential.
+    credentialFingerprint: text("credential_fingerprint"),
     verificationKind: text("verification_kind"),
     verificationEvidence: text("verification_evidence"),
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
@@ -41,7 +45,12 @@ export const tenantClearinghouseConfig = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("tenant_clearinghouse_config_org_uq").on(t.organizationId)],
+  (t) => [
+    uniqueIndex("tenant_clearinghouse_config_org_uq").on(t.organizationId),
+    uniqueIndex("tenant_clearinghouse_config_fingerprint_uq")
+      .on(t.credentialFingerprint)
+      .where(sql`credential_fingerprint IS NOT NULL`),
+  ],
 );
 
 export type TenantClearinghouseConfigRow = typeof tenantClearinghouseConfig.$inferSelect;

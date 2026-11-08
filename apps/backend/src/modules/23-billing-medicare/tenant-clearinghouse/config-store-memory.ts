@@ -13,6 +13,21 @@ export interface InMemoryConfigStore extends ConfigStore {
 export function createInMemoryConfigStore(now: () => Date = () => new Date()): InMemoryConfigStore {
   const byOrg = new Map<string, ConfigRow>();
   const withAttempts = new Set<string>();
+  /** Mirrors migration 1403's partial unique index: one non-null fingerprint across ALL organizations. */
+  const assertFingerprintFree = (
+    organizationId: string,
+    fingerprint: string | null | undefined,
+  ) => {
+    if (!fingerprint) return;
+    for (const row of byOrg.values()) {
+      if (row.organizationId !== organizationId && row.credentialFingerprint === fingerprint) {
+        throw Object.assign(new Error("duplicate key value violates unique constraint"), {
+          code: "23505",
+          constraint_name: "tenant_clearinghouse_config_fingerprint_uq",
+        });
+      }
+    }
+  };
   return {
     async findForUpdate(organizationId) {
       return byOrg.get(organizationId) ?? null;
@@ -26,6 +41,7 @@ export function createInMemoryConfigStore(now: () => Date = () => new Date()): I
           code: "23505",
         });
       }
+      assertFingerprintFree(row.organizationId, row.credentialFingerprint);
       const at = now();
       const created: ConfigRow = {
         id: randomUUID(),
@@ -33,6 +49,7 @@ export function createInMemoryConfigStore(now: () => Date = () => new Date()): I
         status: "draft",
         secretCipher: null,
         secretDekVersion: null,
+        credentialFingerprint: null,
         verificationKind: null,
         verificationEvidence: null,
         verifiedAt: null,
@@ -59,6 +76,8 @@ export function createInMemoryConfigStore(now: () => Date = () => new Date()): I
     async update(organizationId, expectedVersion, patch: ConfigPatch) {
       const current = byOrg.get(organizationId);
       if (!current || current.version !== expectedVersion) return null;
+      if (patch.credentialFingerprint !== undefined)
+        assertFingerprintFree(organizationId, patch.credentialFingerprint);
       const next: ConfigRow = { ...current, ...patch, version: expectedVersion + 1 };
       byOrg.set(organizationId, next);
       return next;
