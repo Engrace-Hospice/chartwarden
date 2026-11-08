@@ -583,9 +583,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
   // ── auto / either steps settle from real facts ──────────────────────────────────────────────────────────
   it("settles the BAA and provisioning steps from the real BAA register once the plan step is attested", async () => {
     await admin.query(
-      `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-       VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-      [ORG_A, T_A],
+      `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+       VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+      [ORG_A, T_A, await fileDocument(ORG_A)],
     );
     await attestPlatform(T_A, "wiz-a", "plan_contract", "order form countersigned");
     // The wizard's post-change advance ran the sweep for this tenant: both auto steps settled in one pass.
@@ -1010,9 +1010,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       memberships["officer-l"],
     ]);
     await admin.query(
-      `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-       VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-      [ORG_L, T_L],
+      `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+       VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+      [ORG_L, T_L, await fileDocument(ORG_L)],
     );
     expect(await statusOf(T_L, "xero_connected")).toBe("pending");
     expect(await statusOf(T_L, "org_seeded")).toBe("done");
@@ -1108,9 +1108,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         [org, tenant],
       );
       await admin.query(
-        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-        [org, tenant],
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+        [org, tenant, await fileDocument(org)],
       );
     }
     const assignOfficer = (tenant: string, membership: string) =>
@@ -2590,9 +2590,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         [ORG_S, T_S],
       );
       await admin.query(
-        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-        [ORG_S, T_S],
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+        [ORG_S, T_S, await fileDocument(ORG_S)],
       );
       await admin.query(
         "UPDATE tenant_account SET compliance_officer_membership_id=$2 WHERE id=$1",
@@ -2661,9 +2661,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         [ORG_P, T_P],
       );
       await admin.query(
-        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-        [ORG_P, T_P],
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+        [ORG_P, T_P, await fileDocument(ORG_P)],
       );
       adminP = await person(ORG_P, "admin-p", ["org_admin"]);
       officerP = await person(ORG_P, "officer-p", ["compliance_officer"]);
@@ -2765,9 +2765,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         [org, tenant],
       );
       await admin.query(
-        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-        [org, tenant],
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+        [org, tenant, await fileDocument(org)],
       );
     };
     const pendingAttestation = async (org: string) =>
@@ -3012,9 +3012,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
           [org, tenant],
         );
         await admin.query(
-          `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-           VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-          [org, tenant],
+          `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+           VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+          [org, tenant, await fileDocument(org)],
         );
       }
       officerR = await person(ORG_R, "officer-r", ["compliance_officer"]);
@@ -3197,9 +3197,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         [ORG_G, T_G],
       );
       await admin.query(
-        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-        [ORG_G, T_G],
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+        [ORG_G, T_G, await fileDocument(ORG_G)],
       );
       adminG = await person(ORG_G, "admin-g", ["org_admin"]);
       officerG = await person(ORG_G, "officer-g", ["compliance_officer"]);
