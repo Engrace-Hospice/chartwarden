@@ -15,6 +15,7 @@ import {
 import { useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { useSession } from "../../../shell/session";
 import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { RecordSaveDialog } from "./record-save-dialog";
@@ -161,6 +162,8 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
   const client = useApiClient();
   const { orgSlug, actions } = ctx;
   const canWrite = actions.readOnlyReason === null;
+  // The price plans screen is plan.admin.read; an operator without it is told who publishes plans instead of sent to a refusal.
+  const canReadPlans = useSession()?.permissions?.includes("plan.admin.read") ?? false;
   const plans = useLoad<Plan[]>(
     `plans:${orgSlug}`,
     () =>
@@ -331,11 +334,17 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
             <h3>Sign a plan</h3>
           </div>
           {offered.length === 0 ? (
-            <p>
-              No published plan to sign yet.{" "}
-              {/* A URL, not an import: M34 and M35 share no code edge (ADR-0025). */}
-              <Link to="/admin/pricing-plans">Create or publish a price plan</Link>.
-            </p>
+            canReadPlans ? (
+              <p>
+                No published plan to sign yet.{" "}
+                {/* A URL, not an import: M34 and M35 share no code edge (ADR-0025). */}
+                <Link to="/admin/pricing-plans">Create or publish a price plan</Link>.
+              </p>
+            ) : (
+              <p>
+                No published plan to sign. A billing admin publishes plans; none is offered yet.
+              </p>
+            )
           ) : (
             <>
               <div className="wx-form-grid">

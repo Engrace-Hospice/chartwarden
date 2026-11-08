@@ -97,10 +97,15 @@ const PREVIEW_RESULT = {
 };
 const view = (over = {}, stepOver = {}) =>
   wizardView([wizardStep("plan_contract", 1, { title: "Plan & contract", ...stepOver })], over);
-function mount(handlers: Parameters<typeof stubClient>[0], v = view()) {
+const PLAN_READER = { userId: "u1", organizationId: "o1", permissions: ["plan.admin.read"] };
+function mount(
+  handlers: Parameters<typeof stubClient>[0],
+  v = view(),
+  session?: Parameters<typeof renderAt>[3],
+) {
   const client = stubClient(handlers);
   const ctx = panelCtx(v, "plan_contract");
-  renderAt("/x", [{ path: "/x", element: <PlanContractPanel ctx={ctx} /> }], client);
+  renderAt("/x", [{ path: "/x", element: <PlanContractPanel ctx={ctx} /> }], client, session);
   return { client, ctx };
 }
 const NO_CONTRACT = { contract: null, statements: [] };
@@ -114,13 +119,19 @@ describe("formatCents", () => {
 });
 
 describe("PlanContractPanel", () => {
-  it("is an honest empty state when no plan is published", async () => {
-    mount({ GET: { [PLANS]: () => ok([]), [SUB]: () => ok(NO_CONTRACT) } });
+  it("is an honest empty state when no plan is published, linking to price plans for an operator who can read them", async () => {
+    mount({ GET: { [PLANS]: () => ok([]), [SUB]: () => ok(NO_CONTRACT) } }, view(), PLAN_READER);
     expect(await screen.findByText(/No published plan to sign/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sign contract" })).toBeNull();
     expect(
       screen.getByRole("link", { name: "Create or publish a price plan" }).getAttribute("href"),
     ).toBe("/admin/pricing-plans");
+  });
+
+  it("without plan.admin.read the empty state says who publishes plans, with no link to a refusal", async () => {
+    mount({ GET: { [PLANS]: () => ok([]), [SUB]: () => ok(NO_CONTRACT) } });
+    expect(await screen.findByText(/A billing admin publishes plans/)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Create or publish a price plan" })).toBeNull();
   });
 
   it("shows the signed contract, and the plan it is on", async () => {
