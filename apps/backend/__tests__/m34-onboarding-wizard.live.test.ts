@@ -3463,7 +3463,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       expect(await row()).toEqual(before);
     });
 
-    it("migration 1369: platform ops add and re-edit a non-canonical step on the real platform carrier (it was a 42501 before)", async () => {
+    it("migration 1394: platform ops add and re-edit a non-canonical step on the real platform carrier (it was a 42501 before)", async () => {
       const created = await backend().service.upsertOnboardingTemplate(OPS_USER, {
         key: "grant_1369_custom_step",
         title: "Custom training",
