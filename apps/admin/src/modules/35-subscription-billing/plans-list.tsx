@@ -327,7 +327,7 @@ function CreatePlanDrawer({
             value={form.name}
             onChange={(e) => onChange({ ...form, name: e.target.value })}
           />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="wx-form-grid">
             <SelectField
               label="Tier"
               value={form.tier}

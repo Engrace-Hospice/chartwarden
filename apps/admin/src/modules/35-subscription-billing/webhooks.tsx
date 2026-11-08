@@ -168,7 +168,7 @@ function ReceiptsTable({
               </td>
               <td className="wx-num-col wx-nums">{r.processingAttemptCount}</td>
               <td>
-                <div className="flex justify-end">
+                <div className="wx-action-row is-end">
                   <Button
                     tone="secondary"
                     size="sm"
