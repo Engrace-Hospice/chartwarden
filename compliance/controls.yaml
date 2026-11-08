@@ -293,7 +293,7 @@ controls:
 
   - id: CW-AC-15
     title: >-
-      Tenant onboarding steps are strictly ordered on the server (409 ONBOARDING_STEP_OUT_OF_ORDER on both the platform and tenant routes), and a human settles a step only with required evidence (a note, plus an optional reference) recorded on the task with the attester and time and audited by the row trigger; a tenant actor must hold the step's owner role; go-live cannot be skipped or attested as an ordinary step, and a skip settles only a non-canonical catalog step (added by platform ops) or a canonical step on the server's own skippable list (MAC credentials, payer enrollment, DoseSpot kickoff, sample data): a skip of any other canonical step, the plan, the BAA and the provider entity included, is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE, so the console's Skip button is not the control; canonical templates are migration-owned, and the catalog route refuses a POST naming a canonical template's key with 409 ONBOARDING_TEMPLATE_CANONICAL, so a canonical step cannot be made non-canonical (and so skippable) through it; on the platform carrier the catalog table grants INSERT (table-wide) and UPDATE only on the upsert's columns (display label, description, order, canonical flag; migration 1369), so platform ops can add a non-canonical step and re-edit it but cannot rewrite an existing step's key, owner role or settings, and the carrier holds no DELETE on it. An `either` step may be attested by its owner (the tenant's org_admin or platform ops) even when its automatic fact does not hold: the go-live approver reviews that evidence, and any later change to the onboarding data revokes a pending go-live attestation. Every free text the wizard stores (evidence, reasons, skip rationale, blocker reason, go-live note, the operator's onboarding-data reason) is cleaned and screened for patient identifiers.
+      Tenant onboarding steps are strictly ordered on the server (409 ONBOARDING_STEP_OUT_OF_ORDER on both the platform and tenant routes), and a human settles a step only with required evidence (a note, plus an optional reference) recorded on the task with the attester and time and audited by the row trigger; a tenant actor must hold the step's owner role; go-live cannot be skipped or attested as an ordinary step, and a skip settles only a non-canonical catalog step (added by platform ops) or a canonical step on the server's own skippable list (MAC credentials, payer enrollment, DoseSpot kickoff, sample data): a skip of any other canonical step, the plan, the BAA and the provider entity included, is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE, so the console's Skip button is not the control; canonical templates are migration-owned, and the catalog route refuses a POST naming a canonical template's key with 409 ONBOARDING_TEMPLATE_CANONICAL, so a canonical step cannot be made non-canonical (and so skippable) through it; on the platform carrier the catalog table grants INSERT (table-wide) and UPDATE only on the upsert's columns (display label, description, order, canonical flag; migration 1394), so platform ops can add a non-canonical step and re-edit it but cannot rewrite an existing step's key, owner role or settings, and the carrier holds no DELETE on it. An `either` step may be attested by its owner (the tenant's org_admin or platform ops) even when its automatic fact does not hold: the go-live approver reviews that evidence, and any later change to the onboarding data revokes a pending go-live attestation. Every free text the wizard stores (evidence, reasons, skip rationale, blocker reason, go-live note, the operator's onboarding-data reason) is cleaned and screened for patient identifiers.
     hipaa: ["164.308(a)(1)(ii)(D)", "164.312(b)"]
     soc2: ["CC5.2", "CC8.1"]
     status: implemented
@@ -306,7 +306,7 @@ controls:
       - file: apps/backend/src/modules/34-saas-tenant-platform/onboarding/wizard-steps.ts
       - file: apps/backend/src/modules/34-saas-tenant-platform/onboarding/model.ts
       - file: apps/backend/src/modules/34-saas-tenant-platform/__tests__/onboarding-template-upsert.test.ts
-      - file: packages/db/migrations/1369_m34_platform_onboarding_template_write_grant.sql
+      - file: packages/db/migrations/1394_m34_platform_onboarding_template_write_grant.sql
       - file: apps/backend/__tests__/m34-onboarding-wizard.live.test.ts
 
   - id: CW-AC-16
@@ -400,8 +400,8 @@ controls:
     evidence:
       - script: test:m34:baa-document:live
       - ci: "M34 BAA document upload"
-      - file: packages/db/migrations/1367_m22_document_aggregate_type_tenant_baa.sql
-      - file: packages/db/migrations/1368_m34_tenant_baa_document_permission.sql
+      - file: packages/db/migrations/1392_m22_document_aggregate_type_tenant_baa.sql
+      - file: packages/db/migrations/1393_m34_tenant_baa_document_permission.sql
       - file: apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-baa-document.ts
       - file: apps/backend/src/modules/22-documents/onboarding-baa-document-port.ts
       - file: apps/backend/__tests__/m34-baa-document-upload.live.test.ts
