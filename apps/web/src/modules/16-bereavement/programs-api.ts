@@ -424,7 +424,7 @@ export const LIBRARY_UPLOAD_MIME: readonly UploadMimeType[] = [
 export const LIBRARY_MAX_BYTES = 25 * 1024 * 1024;
 export const LIBRARY_MAX_VIDEO_BYTES = 500 * 1024 * 1024;
 
-export const UPLOAD_CANCELLED = "The upload was cancelled. Nothing was saved.";
+const UPLOAD_CANCELLED = "The upload was cancelled. Nothing was saved.";
 
 /** Steps 1-4 of the M22 verified upload for an org-level, patient-facing library document; aborts the reservation on any later failure,
  * and when `signal` aborts (the reader cancelled): the PUT stops and the reservation is released. */
@@ -473,6 +473,7 @@ export async function uploadLibraryDocument(
   }
   if (!started.ok) return { message: started.message };
   const put = signal?.aborted ? null : await putUploadBytes(started.value, file, signal);
+  // Checked again here, right before completeUpload: a cancel that lands after the bytes did must still release the reservation.
   const failure = put === null || signal?.aborted ? UPLOAD_CANCELLED : put.ok ? null : put.message;
   if (failure !== null) {
     await abortUpload(client, started.value.uploadId).catch(() => undefined);

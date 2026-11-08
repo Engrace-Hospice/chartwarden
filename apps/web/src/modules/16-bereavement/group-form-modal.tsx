@@ -14,6 +14,7 @@ import {
   SelectField,
   TextAreaField,
   TextField,
+  plainFieldset,
   primaryButtonStyle,
   useIdempotencyKey,
 } from "./bereavement-ui";
@@ -204,10 +205,7 @@ export function GroupFormModal({
         </button>
       }
     >
-      <fieldset
-        disabled={busy}
-        style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: "0.75rem" }}
-      >
+      <fieldset disabled={busy} style={plainFieldset}>
         <TextField label="Name" value={draft.name} onChange={(v) => set("name", v)} />
         <TextAreaField
           label="Description"

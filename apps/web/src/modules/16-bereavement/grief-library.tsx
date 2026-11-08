@@ -10,6 +10,8 @@ import {
   LoadingSpinner,
   PageHeader,
   StatusPill,
+  linkLifetimeMs,
+  safeMintedUrl,
   useApiClient,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
@@ -38,7 +40,6 @@ import {
 } from "./bereavement-ui";
 import { LibraryEditModal } from "./library-edit-modal";
 import { LibraryUploadModal } from "./library-upload-modal";
-import { isSafeBatchUrl, linkLifetimeMs } from "./link-safety";
 import { useLoaded } from "./mailing-load";
 import {
   LIBRARY_MANAGE_PERMISSION,
@@ -135,7 +136,7 @@ export function GriefLibrary(): JSX.Element | null {
         setActionError(errorMessage(res.error, "The preview could not be opened."));
         return;
       }
-      if (!isSafeBatchUrl(res.data.url)) {
+      if (safeMintedUrl(res.data.url) === null) {
         setActionError("The preview link was refused: it is not a secure (https) link.");
         return;
       }
@@ -302,7 +303,10 @@ export function GriefLibrary(): JSX.Element | null {
                           tone="secondary"
                           disabled={busyId !== null}
                           aria-label={`Edit ${item.title}`}
-                          onClick={() => setEditing(item)}
+                          onClick={() => {
+                            setActionError(null);
+                            setEditing(item);
+                          }}
                         >
                           Edit
                         </Button>
@@ -377,7 +381,10 @@ export function GriefLibrary(): JSX.Element | null {
               ? "Republish"
               : STATUS_ACTION[confirming.next]
           } ${confirming.item.title}`}
-          onClose={() => setConfirming(null)}
+          onClose={() => {
+            setConfirming(null);
+            setActionError(null);
+          }}
           busy={busyId !== null}
           role="alertdialog"
           describedBy={confirmDescId}

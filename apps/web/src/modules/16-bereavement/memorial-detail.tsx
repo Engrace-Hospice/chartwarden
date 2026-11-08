@@ -122,6 +122,7 @@ function ServicePage({ serviceId }: { serviceId: string }): JSX.Element | null {
       return;
     }
     adopt(res.data);
+    void reload(); // a write answers without the join link: the detail read carries it
     setCeremony(null);
     announce(
       name === "publish"
@@ -285,6 +286,7 @@ function ServicePage({ serviceId }: { serviceId: string }): JSX.Element | null {
           }}
           onSaved={(saved) => {
             adopt(saved);
+            void reload(); // the PATCH answers without the join link: the detail read carries it
             setCeremony(null);
             announce("The service was saved.");
           }}

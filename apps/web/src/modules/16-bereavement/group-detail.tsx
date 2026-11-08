@@ -133,6 +133,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
       return;
     }
     adopt(res.data);
+    void reload(); // a write answers without the join link: the detail read carries it
     refreshParts();
     setCeremony(null);
     announce(success);
@@ -285,6 +286,7 @@ function GroupPage({ groupId }: { groupId: string }): JSX.Element | null {
           }}
           onSaved={(next) => {
             adopt(next);
+            void reload(); // the PATCH answers without the join link: the detail read carries it
             refreshParts();
             setCeremony(null);
             announce("The group was saved.");

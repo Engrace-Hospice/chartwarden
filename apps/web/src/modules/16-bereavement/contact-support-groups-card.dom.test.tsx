@@ -190,7 +190,7 @@ describe("contact support-groups panel", () => {
     expect(post?.headers.get("Idempotency-Key")).toBeTruthy();
   });
 
-  it("a 409 refusal on withdraw is said in place and the list is read again", async () => {
+  it("a 409 refusal on withdraw closes the dialog, is said in the panel and the list is read again", async () => {
     let reads = 0;
     mount((method) => {
       if (method === "POST")
@@ -204,7 +204,45 @@ describe("contact support-groups panel", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Withdraw" }));
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Withdraw" }));
-    expect((await within(dialog).findByRole("alert")).textContent).toContain("Already withdrawn.");
+    expect(await screen.findByText("Already withdrawn.")).toBeTruthy();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     await waitFor(() => expect(reads).toBe(2));
+  });
+
+  it("a 409 refusal on enroll closes the dialog, is said in the panel and the list is read again", async () => {
+    let reads = 0;
+    mount((method, path) => {
+      if (method === "POST")
+        return {
+          status: 409,
+          body: { error: { code: "GROUP_FULL", message: "The group is full." } },
+        };
+      if (path === "/api/v1/bereavement/groups")
+        return { status: 200, body: { data: [group()], next_cursor: null, has_more: false } };
+      reads += 1;
+      return { status: 200, body: [enrollment()] };
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Enroll in a group" }));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByRole("combobox", { name: "Group" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Enroll" }));
+    expect(await screen.findByText("The group is full.")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(reads).toBe(2));
+  });
+
+  it("a non-stale enroll failure is said in the dialog, which stays open", async () => {
+    mount((method, path) => {
+      if (method === "POST")
+        return { status: 500, body: { error: { code: "INTERNAL", message: "boom" } } };
+      if (path === "/api/v1/bereavement/groups")
+        return { status: 200, body: { data: [group()], next_cursor: null, has_more: false } };
+      return { status: 200, body: [enrollment()] };
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Enroll in a group" }));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByRole("combobox", { name: "Group" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Enroll" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("boom");
   });
 });

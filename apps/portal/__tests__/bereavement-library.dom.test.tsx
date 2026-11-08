@@ -175,12 +175,15 @@ describe("portal grief library", () => {
       vi.advanceTimersByTime(5 * 60_000 + 1);
     });
     expect(screen.queryByRole("link", { name: /Open When the Holidays Feel Hard/ })).toBeNull();
+    expect(within(section()).getByRole("status").textContent).toBe(
+      "That link has expired. Choose Open again.",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Open When the Holidays Feel Hard" }));
     const fresh = await screen.findByRole("link", { name: /Open When the Holidays Feel Hard/ });
     expect(fresh.getAttribute("href")).toBe("https://files.example.org/r2");
   });
 
-  it("renews a video whose link failed mid-way, resumes where it was and says so", async () => {
+  it("renews a video whose link failed mid-way (network error), seeks back to where it was and says the link was refreshed", async () => {
     let minted = 0;
     const gets = renderPage((path) => {
       if (!path.endsWith("/url")) return json({ items: [video] });
@@ -204,17 +207,115 @@ describe("portal grief library", () => {
         position = v;
       },
     });
-    fireEvent.error(player);
+    failWith(player, MEDIA_ERR_NETWORK);
     await waitFor(() => expect(player.getAttribute("src")).toBe("https://files.example.org/v2"));
     position = 0; // a new source starts at the beginning until it is told otherwise
     fireEvent.loadedMetadata(player);
     expect(position).toBe(42);
-    expect(within(section()).getByRole("status").textContent).toContain(
-      "renewed it and picked up where you left off",
-    );
+    const status = within(section()).getByRole("status").textContent ?? "";
+    expect(status).toBe("We refreshed the video link.");
+    expect(status).not.toMatch(/pick|resum|continu/i);
     expect(gets.filter((g) => g.endsWith("part=document"))).toHaveLength(2);
   });
+
+  /** A library with one video whose every mint answers a fresh link. */
+  const watchVideo = async () => {
+    let minted = 0;
+    const gets = renderPage((path) => {
+      if (!path.endsWith("/url")) return json({ items: [video] });
+      minted += 1;
+      return json({
+        url: `https://files.example.org/v${minted}`,
+        expiresAt: "2099-01-01T00:00:00Z",
+      });
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Watch Talking With Children About Loss" }),
+    );
+    const player = (await within(section()).findByLabelText(
+      "Talking With Children About Loss",
+    )) as HTMLVideoElement;
+    return { gets, player };
+  };
+
+  it("a renewal keeps focus on the player (the same element, never remounted)", async () => {
+    const { player } = await watchVideo();
+    await waitFor(() => expect(document.activeElement).toBe(player));
+    failWith(player, MEDIA_ERR_SRC_NOT_SUPPORTED);
+    await waitFor(() => expect(player.getAttribute("src")).toBe("https://files.example.org/v2"));
+    expect(document.activeElement).toBe(player);
+    expect(within(section()).getByLabelText("Talking With Children About Loss")).toBe(player);
+  });
+
+  it("a renewal leaves focus where the family put it", async () => {
+    const { player } = await watchVideo();
+    const transcript = within(section()).getByRole("button", { name: "Read the transcript" });
+    transcript.focus();
+    failWith(player, MEDIA_ERR_NETWORK);
+    await waitFor(() => expect(player.getAttribute("src")).toBe("https://files.example.org/v2"));
+    expect(document.activeElement).toBe(transcript);
+  });
+
+  it("stops renewing after MAX_RENEWALS failures in a row and says the video can't be played", async () => {
+    const { gets, player } = await watchVideo();
+    failWith(player, MEDIA_ERR_NETWORK);
+    await waitFor(() => expect(player.getAttribute("src")).toBe("https://files.example.org/v2"));
+    failWith(player, MEDIA_ERR_NETWORK);
+    await waitFor(() => expect(player.getAttribute("src")).toBe("https://files.example.org/v3"));
+    failWith(player, MEDIA_ERR_NETWORK);
+    expect((await within(section()).findByRole("alert")).textContent).toBe(
+      "This video can't be played right now. Please try again later.",
+    );
+    expect(within(section()).getByRole("status").textContent).toBe("");
+    expect(gets.filter((g) => g.endsWith("part=document"))).toHaveLength(3);
+  });
+
+  it("a decode error is not renewed: the file itself is broken", async () => {
+    const { gets, player } = await watchVideo();
+    failWith(player, MEDIA_ERR_DECODE);
+    expect((await within(section()).findByRole("alert")).textContent).toContain(
+      "This video can't be played right now",
+    );
+    expect(gets.filter((g) => g.endsWith("part=document"))).toHaveLength(1);
+  });
+
+  it("a renewal that fails clears the refreshed-link notice", async () => {
+    let minted = 0;
+    renderPage((path) => {
+      if (!path.endsWith("/url")) return json({ items: [video] });
+      minted += 1;
+      return minted === 3
+        ? json({}, 500)
+        : json({ url: `https://files.example.org/v${minted}`, expiresAt: "2099-01-01T00:00:00Z" });
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Watch Talking With Children About Loss" }),
+    );
+    const player = (await within(section()).findByLabelText(
+      "Talking With Children About Loss",
+    )) as HTMLVideoElement;
+    failWith(player, MEDIA_ERR_NETWORK);
+    await waitFor(() =>
+      expect(within(section()).getByRole("status").textContent).toBe(
+        "We refreshed the video link.",
+      ),
+    );
+    failWith(player, MEDIA_ERR_NETWORK);
+    expect((await within(section()).findByRole("alert")).textContent).toContain(
+      "We couldn't open this",
+    );
+    expect(within(section()).getByRole("status").textContent).toBe("");
+  });
 });
+
+const MEDIA_ERR_NETWORK = 2;
+const MEDIA_ERR_DECODE = 3;
+const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
+/** jsdom has no media pipeline: give the player the MediaError a real one would carry, then fire `error`. */
+function failWith(player: HTMLVideoElement, code: number): void {
+  Object.defineProperty(player, "error", { configurable: true, value: { code } });
+  fireEvent.error(player);
+}
 
 afterEach(() => {
   vi.useRealTimers();

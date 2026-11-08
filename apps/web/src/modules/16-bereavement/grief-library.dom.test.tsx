@@ -514,3 +514,111 @@ describe("grief library — review fixes", () => {
     );
   });
 });
+
+describe("grief library — round 3", () => {
+  /** Start an upload whose PUT hangs until aborted; answers the reservation and its release. */
+  const startHangingUpload = async () => {
+    vi.spyOn(globalThis.crypto.subtle, "digest").mockResolvedValue(
+      new Uint8Array(32).fill(0xab).buffer,
+    );
+    let putSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          putSignal = init.signal ?? undefined;
+          init.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }),
+    );
+    const view = mount((req) =>
+      req.path === "/api/v1/document-uploads"
+        ? {
+            status: 201,
+            body: {
+              uploadId: UPLOAD_ID,
+              uploadUrl: "https://store.example/put",
+              requiredHeaders: {},
+              expiresAt: "2099-01-01T00:00:00.000Z",
+            },
+          }
+        : req.method === "DELETE"
+          ? { status: 204 }
+          : ok([]),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Upload item" }));
+    const file = new File(["%PDF-1.4 synthetic"], "guide.pdf", { type: "application/pdf" });
+    Object.defineProperty(file, "arrayBuffer", { value: async () => new ArrayBuffer(8) });
+    fireEvent.change(screen.getByLabelText(/^File/), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Guide" } });
+    fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+    await waitFor(() => expect(putSignal).toBeDefined());
+    return { ...view, signal: () => putSignal };
+  };
+  const released = (calls: { method: string; path: string }[]) =>
+    calls.some((c) => c.method === "DELETE" && c.path === `/api/v1/document-uploads/${UPLOAD_ID}`);
+
+  it("Cancel upload disables itself and says Cancelling… while the upload stops", async () => {
+    await startHangingUpload();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel upload" }));
+    const cancelling = screen.getByRole("button", { name: "Cancelling…" }) as HTMLButtonElement;
+    expect(cancelling.disabled).toBe(true);
+    expect((await screen.findByRole("alert")).textContent).toContain("The upload was cancelled");
+  });
+
+  it("leaving mid-upload aborts the PUT, releases the reservation and registers nothing", async () => {
+    const { calls, unmount, signal } = await startHangingUpload();
+    unmount();
+    expect(signal()?.aborted).toBe(true);
+    await waitFor(() => expect(released(calls)).toBe(true));
+    expect(calls.some((c) => c.method === "POST" && c.path === LIBRARY)).toBe(false);
+    expect(calls.some((c) => c.path.endsWith("/complete"))).toBe(false);
+  });
+
+  it.each([412, 409, 404])("a %i on a status change closes the confirm dialog", async (status) => {
+    mount((req) =>
+      req.method === "POST"
+        ? { status, body: { error: { code: "STALE", message: "It moved." } } }
+        : ok([item()]),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Publish When grief comes in waves" }),
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes, publish it" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  });
+
+  it("a failed status change's error is cleared when its dialog is closed", async () => {
+    mount((req) =>
+      req.method === "POST"
+        ? { status: 500, body: { error: { code: "INTERNAL", message: "could not publish" } } }
+        : ok([item()]),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Publish When grief comes in waves" }),
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes, publish it" }));
+    expect(await within(dialog).findByText("could not publish")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Go back" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(screen.queryByText("could not publish")).toBeNull();
+  });
+
+  it("a failed preview's error is cleared when Edit is chosen", async () => {
+    mount((req) =>
+      req.path.endsWith("/url")
+        ? { status: 500, body: { error: { code: "INTERNAL", message: "no preview" } } }
+        : ok([item()]),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Preview When grief comes in waves" }),
+    );
+    expect(await screen.findByText("no preview")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit When grief comes in waves" }));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(screen.queryByText("no preview")).toBeNull();
+  });
+});

@@ -1,9 +1,9 @@
 // apps/web/src/modules/16-bereavement — upload and register one grief-library item (ADR-0109 D10, route 78 over M22's verified upload).
 // The file goes through M22 first (hash, reserve, PUT to storage, complete: a reservation that fails later is aborted), then the returned
 // document is registered as a DRAFT library item under one Idempotency-Key per attempt. A draft is not shown to families until published.
-// While the file is sent, "Cancel upload" aborts the PUT and releases the reservation.
+// While the file is sent, "Cancel upload" aborts the PUT and releases the reservation; closing the dialog does the same.
 import { useApiClient } from "@chartwarden/ui";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { errorMessage } from "./bereavement-api";
 import {
@@ -25,6 +25,8 @@ import {
   registerLibraryItem,
   uploadLibraryDocument,
 } from "./programs-api";
+
+const UPLOAD_STOPPED = "The upload was cancelled. The file was not added to the library.";
 
 export function LibraryUploadModal({
   onClose,
@@ -48,6 +50,10 @@ export function LibraryUploadModal({
   /** The in-flight upload's abort switch, null when no file is being sent. */
   const sending = useRef<AbortController | null>(null);
   const [cancellable, setCancellable] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
+  // The dialog went away mid-upload: stop the PUT and release the reservation; nothing is registered.
+  useEffect(() => () => sending.current?.abort(), []);
 
   const submit = async (): Promise<void> => {
     const order = intOrNull(sortOrder);
@@ -64,13 +70,15 @@ export function LibraryUploadModal({
       const result = await uploadLibraryDocument(client, file, title.trim(), controller.signal);
       sending.current = null;
       setCancellable(false);
-      if ("message" in result) {
+      setCancelling(false);
+      // A document committed just as the reader cancelled is kept for a retry, but nothing is registered now.
+      if ("documentId" in result) uploaded.current = { file, documentId: result.documentId };
+      if ("message" in result || controller.signal.aborted) {
         setBusy(false);
-        setError(result.message);
+        setError("message" in result ? result.message : UPLOAD_STOPPED);
         return;
       }
       documentId = result.documentId;
-      uploaded.current = { file, documentId };
     }
     const body = {
       documentId,
@@ -101,8 +109,16 @@ export function LibraryUploadModal({
       footer={
         <>
           {cancellable ? (
-            <button type="button" style={ghostButtonStyle} onClick={() => sending.current?.abort()}>
-              Cancel upload
+            <button
+              type="button"
+              style={ghostButtonStyle}
+              disabled={cancelling}
+              onClick={() => {
+                setCancelling(true);
+                sending.current?.abort();
+              }}
+            >
+              {cancelling ? "Cancelling…" : "Cancel upload"}
             </button>
           ) : null}
           <button

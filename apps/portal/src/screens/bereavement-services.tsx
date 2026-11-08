@@ -1,9 +1,11 @@
 import { Button, Glyph, useApiClient } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // M31 bereavement support — the family's memorial-service invitations (ADR-0109 D10, PR 3), with a reply form while replies are open.
 // M16 decides who is invited and when replies close (`rsvpOpen`); this section only shows the invitation and sends the family's answer.
 // No invitation (or a route this account may not use) shows nothing at all; a failure is said with a retry. A reply carries one
 // Idempotency-Key per attempt, tied to what is sent: any server answer ends the attempt, a dropped connection keeps the key for a retry of
-// the SAME answer (so it cannot reply twice), and a changed answer or guest count gets a new key. No answer is chosen for the family.
+// the SAME answer (so it cannot reply twice), and a changed answer or guest count gets a new key. No answer is chosen for the family: a
+// reply sent without one is asked for it. The reply's answer never carries the join link, so a "yes" re-reads the invitations to show it.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { SectionError, SectionLoading } from "./bereavement-section";
@@ -67,53 +69,67 @@ const REFUSAL_TEXT: Record<string, string> = {
 const newKey = (): string =>
   globalThis.crypto?.randomUUID?.() ?? `rsvp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+/** Read the family's invitations; never throws. */
+async function readInvitations(client: ApiClient): Promise<Exclude<Loaded, { kind: "loading" }>> {
+  try {
+    const res = await client.GET("/api/v1/portal/bereavement/memorials", {});
+    const status = res.response?.status;
+    if (res.error) {
+      return status === 403 || status === 404
+        ? { kind: "hidden" }
+        : { kind: "error", message: readError(status) };
+    }
+    const items = (res.data as { items?: unknown } | undefined)?.items;
+    return Array.isArray(items)
+      ? { kind: "ready", items: items as Invitation[] }
+      : { kind: "error", message: readError(undefined) };
+  } catch {
+    return { kind: "error", message: readError(undefined) };
+  }
+}
+
 export function BereavementServicesSection(): JSX.Element | null {
   const client = useApiClient();
   const [state, setState] = useState<Loaded>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    [],
+  );
 
   useEffect(() => {
     void attempt;
     let active = true;
     setState({ kind: "loading" });
-    void (async () => {
-      try {
-        const res = await client.GET("/api/v1/portal/bereavement/memorials", {});
-        if (!active) return;
-        const status = res.response?.status;
-        if (res.error) {
-          setState(
-            status === 403 || status === 404
-              ? { kind: "hidden" }
-              : { kind: "error", message: readError(status) },
-          );
-          return;
-        }
-        const items = (res.data as { items?: unknown } | undefined)?.items;
-        setState(
-          Array.isArray(items)
-            ? { kind: "ready", items: items as Invitation[] }
-            : { kind: "error", message: readError(undefined) },
-        );
-      } catch {
-        if (active) setState({ kind: "error", message: readError(undefined) });
-      }
-    })();
+    void readInvitations(client).then((next) => {
+      if (active) setState(next);
+    });
     return () => {
       active = false;
     };
   }, [client, attempt]);
 
-  const replace = useCallback((next: Invitation) => {
-    setState((prev) =>
-      prev.kind === "ready"
-        ? {
-            kind: "ready",
-            items: prev.items.map((i) => (i.invitationId === next.invitationId ? next : i)),
-          }
-        : prev,
-    );
-  }, []);
+  const replace = useCallback(
+    (next: Invitation) => {
+      setState((prev) =>
+        prev.kind === "ready"
+          ? {
+              kind: "ready",
+              items: prev.items.map((i) => (i.invitationId === next.invitationId ? next : i)),
+            }
+          : prev,
+      );
+      if (next.status !== "rsvp_yes") return;
+      // The reply never carries the join link: re-read in place (what is on screen stays if the read fails).
+      void readInvitations(client).then((fresh) => {
+        if (mounted.current && fresh.kind === "ready") setState(fresh);
+      });
+    },
+    [client],
+  );
 
   if (state.kind === "hidden" || (state.kind === "ready" && state.items.length === 0)) return null;
   return (
@@ -165,7 +181,12 @@ function ServiceCard({
   const replyBy = item.rsvpBy ? (formatPortalInstant(item.rsvpBy) ?? item.rsvpBy) : null;
 
   async function send(): Promise<void> {
-    if (sending || !guestsValid || answer === null) return;
+    if (sending || !guestsValid) return;
+    if (answer === null) {
+      setThanks(false);
+      setError("Please choose an answer.");
+      return;
+    }
     setSending(true);
     setError(null);
     setThanks(false);
@@ -266,11 +287,7 @@ function ServiceCard({
               {!guestsValid ? (
                 <p role="alert">Please enter a number of guests from 0 to {MAX_GUESTS}.</p>
               ) : null}
-              <Button
-                type="submit"
-                loading={sending}
-                disabled={sending || !guestsValid || answer === null}
-              >
+              <Button type="submit" loading={sending} disabled={sending || !guestsValid}>
                 Send my reply
               </Button>
             </fieldset>

@@ -1,8 +1,9 @@
-import { Button, Glyph, useApiClient } from "@chartwarden/ui";
+import { Button, Glyph, linkLifetimeMs, safeMintedUrl, useApiClient } from "@chartwarden/ui";
 // M31 bereavement support — the grief library the hospice team published (ADR-0109 D10, PR 3). M16 decides what is published; this section
 // lists it and, when the family chooses an item, asks for a short-lived link (`/url`) and opens it: a reading in a new tab, a video in a
 // player on the page. A transcript link is offered when the item has one. The link is held in memory only, never stored, and dropped when
-// it expires; a video whose link expires mid-way is renewed and resumes where it was. Focus moves to the new link or player.
+// it expires (and the family is told so); a video whose link fails mid-way (a network or source error, not a decode error) is renewed
+// and seeks back to where it was. Focus moves to the new link or player; a renewal leaves focus where it is.
 // A route this account may not use shows nothing; a failure is said with a retry.
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -31,17 +32,6 @@ type Loaded =
   | { kind: "hidden" }
   | { kind: "error"; message: string }
   | { kind: "ready"; items: LibraryItem[] };
-
-/** A minted link is only ever https (loopback http is the local dev object store). */
-function safeMintedUrl(value: string): string | null {
-  try {
-    const url = new URL(value);
-    const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-    return url.protocol === "https:" || (url.protocol === "http:" && loopback) ? url.href : null;
-  } catch {
-    return null;
-  }
-}
 
 export function BereavementLibrarySection(): JSX.Element | null {
   const client = useApiClient();
@@ -113,17 +103,13 @@ export function BereavementLibrarySection(): JSX.Element | null {
   );
 }
 
-/** The shortest a just-minted link stays on the page (a skewed clock must not drop it at once; the server enforces the real expiry). */
-const LINK_FLOOR_MS = 60_000;
-const MAX_TIMEOUT_MS = 2 ** 31 - 1;
-const linkLifetimeMs = (expiresAt: string, now: number): number => {
-  const left = Date.parse(expiresAt) - now;
-  return Number.isFinite(left)
-    ? Math.min(Math.max(LINK_FLOOR_MS, left), MAX_TIMEOUT_MS)
-    : LINK_FLOOR_MS;
-};
 /** A video whose link keeps failing right after a renewal is broken, not expired: stop renewing after this many tries in a row. */
 const MAX_RENEWALS = 2;
+/** MediaError codes an expired or unreachable link produces (MEDIA_ERR_NETWORK, MEDIA_ERR_SRC_NOT_SUPPORTED): a fresh link may cure them.
+ * A decode error (3) is the file itself, which a new link does not change. */
+const RENEWABLE_MEDIA_ERRORS: ReadonlySet<number> = new Set([2, 4]);
+const LINK_EXPIRED = "That link has expired. Choose Open again.";
+const CANNOT_PLAY = "This video can't be played right now. Please try again later.";
 
 interface MintedLink {
   part: Part;
@@ -153,7 +139,13 @@ function LibraryEntry({ item }: { item: LibraryItem }): JSX.Element {
     // A link to open is a credential: it is dropped when it expires, and the next Open mints a fresh one. The player keeps its source
     // (it may be mid-way through); an expired source surfaces as an error, which renews it.
     if (playsHere) return;
-    const timer = setTimeout(() => setLink(null), linkLifetimeMs(link.expiresAt, Date.now()));
+    const timer = setTimeout(
+      () => {
+        setLink(null);
+        setNotice(LINK_EXPIRED);
+      },
+      linkLifetimeMs(link.expiresAt, Date.now()),
+    );
     return () => clearTimeout(timer);
   }, [link, playsHere]);
 
@@ -170,12 +162,14 @@ function LibraryEntry({ item }: { item: LibraryItem }): JSX.Element {
       });
       const url = res.data ? safeMintedUrl(res.data.url) : null;
       if (res.error || !res.data || !url) {
+        setNotice("");
         setError("We couldn't open this right now. Please try again in a moment.");
         return false;
       }
       setLink({ part, url, expiresAt: res.data.expiresAt, resumeAt, focus: resumeAt === null });
       return true;
     } catch {
+      setNotice("");
       setError("We couldn't open this right now. Please check your connection and try again.");
       return false;
     } finally {
@@ -183,16 +177,18 @@ function LibraryEntry({ item }: { item: LibraryItem }): JSX.Element {
     }
   }
 
-  async function renewVideo(at: number): Promise<void> {
-    if (renewals.current >= MAX_RENEWALS) {
+  async function renewVideo(code: number | undefined, at: number): Promise<void> {
+    if (
+      code === undefined ||
+      !RENEWABLE_MEDIA_ERRORS.has(code) ||
+      renewals.current >= MAX_RENEWALS
+    ) {
       setNotice("");
-      setError("This video can't be played right now. Please try again later.");
+      setError(CANNOT_PLAY);
       return;
     }
     renewals.current += 1;
-    if (await open("document", at)) {
-      setNotice("The video link had expired, so we renewed it and picked up where you left off.");
-    }
+    if (await open("document", at)) setNotice("We refreshed the video link.");
   }
 
   const label = item.title.trim() || "Library item";
@@ -244,7 +240,12 @@ function LibraryEntry({ item }: { item: LibraryItem }): JSX.Element {
             onPlaying={() => {
               renewals.current = 0;
             }}
-            onError={(e) => void renewVideo(e.currentTarget.currentTime || (link.resumeAt ?? 0))}
+            onError={(e) =>
+              void renewVideo(
+                e.currentTarget.error?.code,
+                e.currentTarget.currentTime || (link.resumeAt ?? 0),
+              )
+            }
           />
         ) : null}
         {link && !playsHere ? (

@@ -490,6 +490,86 @@ describe("support group — refreshes after writes", () => {
     await waitFor(() => expect(counts(calls).group).toBe(before.group + 1));
   });
 
+  it("a stale close (412) reads the sessions and the roster again", async () => {
+    const { calls } = mount({ write: () => refused(412, "PRECONDITION_FAILED") });
+    await screen.findByRole("table", { name: "Group roster" });
+    await screen.findByRole("table", { name: "Group sessions" });
+    const before = counts(calls);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel group" }));
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Yes, cancel this group",
+      }),
+    );
+    expect(await screen.findByText(/This group changed while you were working on it/)).toBeTruthy();
+    await waitFor(() => {
+      const after = counts(calls);
+      expect(after.sessions).toBe(before.sessions + 1);
+      expect(after.roster).toBe(before.roster + 1);
+    });
+  });
+
+  it("a stale edit (412) reads the sessions and the roster again", async () => {
+    const { calls } = mount({
+      write: (r) => (r.method === "PATCH" ? refused(412, "PRECONDITION_FAILED") : undefined),
+    });
+    await screen.findByRole("table", { name: "Group roster" });
+    await screen.findByRole("table", { name: "Group sessions" });
+    const before = counts(calls);
+    fireEvent.click(screen.getByRole("button", { name: "Edit group" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Save changes" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => {
+      const after = counts(calls);
+      expect(after.group).toBe(before.group + 1);
+      expect(after.sessions).toBe(before.sessions + 1);
+      expect(after.roster).toBe(before.roster + 1);
+    });
+  });
+
+  it("a saved edit reads the sessions and the roster again", async () => {
+    const { calls } = mount({
+      write: (r) => (r.method === "PATCH" ? ok(group({ version: 6 })) : undefined),
+    });
+    await screen.findByRole("table", { name: "Group roster" });
+    await screen.findByRole("table", { name: "Group sessions" });
+    const before = counts(calls);
+    fireEvent.click(screen.getByRole("button", { name: "Edit group" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Save changes" }),
+    );
+    expect(await screen.findByText("The group was saved.")).toBeTruthy();
+    await waitFor(() => {
+      const after = counts(calls);
+      expect(after.sessions).toBe(before.sessions + 1);
+      expect(after.roster).toBe(before.roster + 1);
+    });
+  });
+
+  it("a write answers without the join link: the group is read again and the edit form shows the link", async () => {
+    const LINK = "https://meet.example.org/circle";
+    const { calls } = mount({
+      over: (r) =>
+        r.method === "GET" && r.path === GROUP_PATH
+          ? ok(group({ status: "draft", hasJoinUrl: true, joinUrl: LINK }))
+          : undefined,
+      write: (r) =>
+        r.path.endsWith("/open")
+          ? ok(group({ status: "open", version: 6, hasJoinUrl: true, joinUrl: null }))
+          : undefined,
+    });
+    await screen.findByRole("table", { name: "Group sessions" });
+    const before = counts(calls);
+    fireEvent.click(screen.getByRole("button", { name: "Open to families" }));
+    expect(await screen.findByText("The group is open to families.")).toBeTruthy();
+    await waitFor(() => expect(counts(calls).group).toBe(before.group + 1));
+    fireEvent.click(screen.getByRole("button", { name: "Edit group" }));
+    const dialog = await screen.findByRole("dialog");
+    expect((within(dialog).getByLabelText(/Join link/) as HTMLInputElement).value).toBe(LINK);
+  });
+
   it("after attendance is recorded the group and the roster are read again", async () => {
     const { calls } = mount({
       write: (r) =>

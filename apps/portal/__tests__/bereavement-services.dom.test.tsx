@@ -96,11 +96,12 @@ describe("portal memorial services", () => {
   });
 
   it("sends the reply with the guest count and an Idempotency-Key, then thanks the family", async () => {
-    const sent = renderPage((method) =>
-      method === "POST"
-        ? json(invitation({ status: "rsvp_yes", guests: 2 }))
-        : json({ items: [invitation()] }),
-    );
+    let stored = invitation();
+    const sent = renderPage((method) => {
+      if (method !== "POST") return json({ items: [stored] });
+      stored = invitation({ status: "rsvp_yes", guests: 2 });
+      return json(stored);
+    });
     await screen.findByRole("heading", { name: "Winter Candle Lighting" });
     fireEvent.click(within(section()).getByRole("radio", { name: "Yes, I plan to come" }));
     fireEvent.change(within(section()).getByRole("spinbutton"), { target: { value: "2" } });
@@ -145,16 +146,39 @@ describe("portal memorial services", () => {
     expect(within(section()).queryByText("Thank you. We have your reply.")).toBeNull();
   });
 
-  it("chooses no answer for the family: nothing is selected and the reply cannot be sent yet", async () => {
-    renderPage(() => json({ items: [invitation()] }));
+  it("chooses no answer for the family: nothing is selected, and Send without an answer asks for one", async () => {
+    const sent = renderPage(() => json({ items: [invitation()] }));
     await screen.findByRole("heading", { name: "Winter Candle Lighting" });
     for (const radio of within(section()).getAllByRole("radio")) {
       expect((radio as HTMLInputElement).checked).toBe(false);
     }
-    expect(
-      (within(section()).getByRole("button", { name: "Send my reply" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+    const send = within(section()).getByRole("button", { name: "Send my reply" });
+    expect((send as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(send);
+    expect((await within(section()).findByRole("alert")).textContent).toBe(
+      "Please choose an answer.",
+    );
+    expect(sent.some((s) => s.method === "POST")).toBe(false);
+  });
+
+  it("a yes re-reads the invitations to show the join link the reply does not carry", async () => {
+    const LINK = "https://meet.example.org/candle";
+    let stored = invitation({ modality: "virtual" });
+    const sent = renderPage((method) => {
+      if (method !== "POST") return json({ items: [stored] });
+      stored = invitation({ modality: "virtual", status: "rsvp_yes", joinUrl: LINK });
+      return json({ ...stored, joinUrl: null });
+    });
+    await screen.findByRole("heading", { name: "Winter Candle Lighting" });
+    expect(within(section()).queryByRole("link", { name: /Join online/ })).toBeNull();
+    fireEvent.click(within(section()).getByRole("radio", { name: "Yes, I plan to come" }));
+    fireEvent.click(within(section()).getByRole("button", { name: "Send my reply" }));
+    expect(await within(section()).findByText("Thank you. We have your reply.")).toBeTruthy();
+    const link = await within(section()).findByRole("link", { name: /Join online/ });
+    expect(link.getAttribute("href")).toBe(LINK);
+    expect(sent.filter((s) => s.method === "GET" && s.path.endsWith("/memorials"))).toHaveLength(2);
+    // the thank-you survives the re-read
+    expect(within(section()).getByText("Thank you. We have your reply.")).toBeTruthy();
   });
 
   it("retries a dropped reply under the same key, and a changed reply under a new one", async () => {

@@ -16,6 +16,7 @@ import {
   TextField,
   dangerButtonStyle,
   mutedStyle,
+  plainFieldset,
   primaryButtonStyle,
   rowLine,
   tableStyle,
@@ -62,7 +63,7 @@ export function GroupSessions({
   mayManage: boolean;
   mayRun: boolean;
   roster: Loaded<GroupRoster>;
-  announce: (message: string) => void;
+  announce: (message: string, opts?: { readonly focus?: boolean }) => void;
   /** The page bumps it after a group write (open, close, edit): the sessions re-read. */
   refreshToken: number;
   /** A session was added, cancelled or attended: the page re-reads the group (its next session). */
@@ -89,11 +90,12 @@ export function GroupSessions({
     roster.kind === "ready"
       ? roster.data.entries.filter((e) => e.enrollmentStatus === "enrolled")
       : [];
-  const finish = (message: string): void => {
+  /** `focus: false` when the dialog's trigger is still on the page (add, attendance): focus returns there and the outcome is announced. */
+  const finish = (message: string, opts?: { readonly focus?: boolean }): void => {
     setCeremony(null);
     void reload();
     onSessionsChanged();
-    announce(message);
+    announce(message, opts);
   };
 
   return (
@@ -179,7 +181,7 @@ export function GroupSessions({
         <AddSessionModal
           onClose={() => setCeremony(null)}
           submit={(body, key) => addSession(client, group.groupId, body, key)}
-          onDone={finish}
+          onDone={(message) => finish(message, { focus: false })}
         />
       ) : null}
       {ceremony?.kind === "cancel" ? (
@@ -207,7 +209,7 @@ export function GroupSessions({
             recordAttendance(client, group.groupId, ceremony.session.sessionId, ids, key)
           }
           onDone={(message) => {
-            finish(message);
+            finish(message, { focus: false });
             onAttendanceRecorded();
           }}
         />
@@ -215,14 +217,6 @@ export function GroupSessions({
     </Card>
   );
 }
-
-const plainFieldset = {
-  border: 0,
-  padding: 0,
-  margin: 0,
-  display: "grid",
-  gap: "0.75rem",
-} as const;
 
 type Result<T> = { data: T | null; error: unknown; status: number };
 
@@ -420,10 +414,7 @@ function AttendanceModal({
           No enrolled family to mark. Enroll families from their contact page.
         </span>
       ) : (
-        <fieldset
-          disabled={write.busy}
-          style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: "0.4rem" }}
-        >
+        <fieldset disabled={write.busy} style={{ ...plainFieldset, gap: "0.4rem" }}>
           <legend style={mutedStyle}>Who came to this session?</legend>
           {enrolled.map((entry) => (
             <CheckboxField

@@ -27,6 +27,8 @@ import {
   LoadingSpinner,
   PageHeader,
   StatusPill,
+  linkLifetimeMs,
+  safeMintedUrl,
   t,
   useApiClient,
 } from "@chartwarden/ui";
@@ -65,7 +67,6 @@ import {
   useActionStatus,
   useIdempotencyKey,
 } from "./bereavement-ui";
-import { isSafeBatchUrl, linkLifetimeMs } from "./link-safety";
 import { useLoaded } from "./mailing-load";
 import { MailingRunItems } from "./mailing-run-items";
 import {
@@ -331,7 +332,7 @@ function RunPage({ runId, pollMs }: { runId: string; pollMs: number }): JSX.Elem
       setActionError(errorMessage(error, "The batch could not be downloaded."));
       return;
     }
-    if (!isSafeBatchUrl(link.url)) {
+    if (safeMintedUrl(link.url) === null) {
       setActionError("The batch link was refused: it is not a secure (https) link.");
       return;
     }

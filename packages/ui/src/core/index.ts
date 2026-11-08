@@ -81,6 +81,9 @@ export {
 // API error envelope -> the server's own message (#596)
 export { envelopeErrorMessage } from "./error-message";
 
+// Short-lived minted links (signed download/stream URLs): https only, dropped when they expire.
+export { LINK_FLOOR_MS, linkLifetimeMs, safeMintedUrl } from "./minted-link";
+
 // Display-only fallback for internal enum/event identifiers when no product label is available.
 export { humanizeIdentifier } from "./humanize-identifier";
 

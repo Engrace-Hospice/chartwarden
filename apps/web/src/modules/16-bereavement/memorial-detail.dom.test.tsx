@@ -329,6 +329,24 @@ describe("memorial service — stale edits and the join link", () => {
     expect(calls.find((c) => c.method === "PATCH")?.body).not.toHaveProperty("joinUrl");
   });
 
+  it("a write answers without the join link: the service is read again and the link is shown", async () => {
+    const LINK = "https://meet.example.org/spring";
+    let reads = 0;
+    mount((req) => {
+      if (req.method === "PATCH")
+        return ok(service({ hasJoinUrl: true, joinUrl: null, version: 6 }));
+      if (req.path.endsWith("/invitations")) return ok([]);
+      reads += 1;
+      return ok(service({ hasJoinUrl: true, joinUrl: LINK, version: reads === 1 ? 5 : 6 }));
+    });
+    expect(await screen.findByText(LINK)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("The service was saved.")).toBeTruthy();
+    await waitFor(() => expect(reads).toBe(2));
+    expect(await screen.findByText(LINK)).toBeTruthy();
+  });
+
   it("an edit that types a join link sends it", async () => {
     const { calls } = mount(
       server(
