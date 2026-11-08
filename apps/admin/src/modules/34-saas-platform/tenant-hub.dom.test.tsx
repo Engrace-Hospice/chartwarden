@@ -116,6 +116,30 @@ describe("TenantOverview: header", () => {
   });
 });
 
+describe("TenantOverview: heading outline", () => {
+  it("puts the provisioning, clearinghouse and invitation cards at h2, beside the hub's other cards", async () => {
+    mount(
+      { status: "provisioning" },
+      {
+        "/api/v1/platform/tenants/{orgSlug}/provision-status": () => ({
+          data: {
+            tenantAccountId: "t-1",
+            orgSlug: SLUG,
+            tenantStatus: "provisioning",
+            job: { state: "active", attemptsMade: 1, failedReason: null },
+          },
+        }),
+      },
+    );
+    await screen.findByRole("heading", { level: 1, name: "Cedar Ridge Hospice LLC" });
+    for (const name of ["Provisioning", "Clearinghouse", "First-admin invitation"]) {
+      expect(screen.getByRole("heading", { level: 2, name })).toBeTruthy();
+    }
+    const levels = screen.getAllByRole("heading").map((h) => Number(h.tagName.slice(1)));
+    expect(levels.some((level, i) => i > 0 && level - (levels[i - 1] as number) > 1)).toBe(false);
+  });
+});
+
 describe("TenantOverview: onboarding card", () => {
   it("shows how far the tenant is and continues the wizard", async () => {
     mount();

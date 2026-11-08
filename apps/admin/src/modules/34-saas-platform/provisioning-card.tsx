@@ -22,7 +22,14 @@ export function ProvisioningCard({
   orgSlug,
   onChanged,
   pollMs = DEFAULT_POLL_MS,
-}: { orgSlug: string; onChanged: () => void; pollMs?: number }): JSX.Element {
+  headingLevel: Heading = "h3",
+}: {
+  orgSlug: string;
+  onChanged: () => void;
+  pollMs?: number;
+  /** h2 where the card sits directly under the page h1 or beside h2 cards; h3 inside a step's h2 frame. */
+  headingLevel?: "h2" | "h3";
+}): JSX.Element {
   const client = useApiClient();
   const guard = useRequestGuard();
   const [status, setStatus] = useState<ProvisionStatus | null>(null);
@@ -92,7 +99,7 @@ export function ProvisioningCard({
   return (
     <section className="wx-drawer-card" aria-label="Provisioning">
       <div className="wx-drawer-card-head">
-        <h3>Provisioning</h3>
+        <Heading>Provisioning</Heading>
       </div>
       {loadError ? (
         <>

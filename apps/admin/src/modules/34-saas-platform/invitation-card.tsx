@@ -38,7 +38,13 @@ function serverMessage(err: unknown): string | null {
 export function InvitationCard({
   orgSlug,
   tenantAccountId,
-}: { orgSlug: string; tenantAccountId: string }): JSX.Element {
+  headingLevel: Heading = "h3",
+}: {
+  orgSlug: string;
+  tenantAccountId: string;
+  /** h2 beside the hub's other h2 cards; h3 (the default) inside the onboarding wizard's step frame (an h2). */
+  headingLevel?: "h2" | "h3";
+}): JSX.Element {
   const client = useApiClient();
   const guard = useRequestGuard();
   const [rows, setRows] = useState<InvitationRow[] | null>(null);
@@ -98,7 +104,7 @@ export function InvitationCard({
   return (
     <section className="wx-drawer-card" aria-label="First-admin invitation">
       <div className="wx-drawer-card-head">
-        <h3>First-admin invitation</h3>
+        <Heading>First-admin invitation</Heading>
       </div>
       {loadError ? <InlineAlert tone="error">Could not load invitations.</InlineAlert> : null}
       {rows === null && !loadError ? <LoadingSpinner label="Loading invitations…" /> : null}

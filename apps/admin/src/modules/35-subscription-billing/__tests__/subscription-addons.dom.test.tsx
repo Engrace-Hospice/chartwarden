@@ -66,6 +66,11 @@ const liveRow = {
 afterEach(cleanup);
 
 describe("Add-ons panel (ADR-0110)", () => {
+  it("heads the card with an h2, beside the detail page's other h2 sections", async () => {
+    mount([]);
+    expect(await screen.findByRole("heading", { level: 2, name: "Add-ons" })).toBeTruthy();
+  });
+
   it("grants the add-on with the operator's reason and an Idempotency-Key", async () => {
     const seen = mount([]);
     expect(await screen.findByText("No add-ons on this subscription.")).toBeTruthy();

@@ -4,7 +4,7 @@ import type { ApiClient } from "@chartwarden/ui";
 // After "Provision tenant" returns 202 the operator used to learn nothing: no progress, no failure, no retry — a
 // failed `tenant.provision` job left the tenant in `provisioning` indefinitely. The card shows the job's state,
 // polls while it is in flight, and offers a retry when it has failed.
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ProvisioningCard } from "./provisioning-card";
 
@@ -21,16 +21,35 @@ const status = (
   },
 });
 
-function mount(client: unknown, onChanged = vi.fn(), pollMs = 10_000): typeof onChanged {
+function mount(
+  client: unknown,
+  onChanged = vi.fn(),
+  pollMs = 10_000,
+  headingLevel?: "h2" | "h3",
+): typeof onChanged {
   render(
     <ApiClientProvider client={client as ApiClient}>
-      <ProvisioningCard orgSlug="cedar-ridge" onChanged={onChanged} pollMs={pollMs} />
+      <ProvisioningCard
+        orgSlug="cedar-ridge"
+        onChanged={onChanged}
+        pollMs={pollMs}
+        headingLevel={headingLevel}
+      />
     </ApiClientProvider>,
   );
   return onChanged;
 }
 
 describe("ProvisioningCard", () => {
+  it("heads the card with an h3 by default and an h2 when asked", () => {
+    const client = { GET: vi.fn(async () => status("queued")), POST: vi.fn() };
+    mount(client);
+    expect(screen.getByRole("heading", { level: 3, name: "Provisioning" })).toBeTruthy();
+    cleanup();
+    mount(client, vi.fn(), 10_000, "h2");
+    expect(screen.getByRole("heading", { level: 2, name: "Provisioning" })).toBeTruthy();
+  });
+
   it.each([
     ["queued", /queued/i],
     ["running", /running/i],

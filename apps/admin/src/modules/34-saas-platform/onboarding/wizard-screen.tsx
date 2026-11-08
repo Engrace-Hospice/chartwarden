@@ -131,7 +131,12 @@ export function TenantOnboardingWizard(): JSX.Element {
         <StaleNotice stale={wizard.stale} onReload={() => void wizard.reload()} />
 
         {view.tenantStatus === "provisioning" ? (
-          <ProvisioningCard key={orgSlug} orgSlug={orgSlug} onChanged={() => void refresh()} />
+          <ProvisioningCard
+            key={orgSlug}
+            orgSlug={orgSlug}
+            headingLevel="h2"
+            onChanged={() => void refresh()}
+          />
         ) : null}
 
         <div className="wx-wizard">

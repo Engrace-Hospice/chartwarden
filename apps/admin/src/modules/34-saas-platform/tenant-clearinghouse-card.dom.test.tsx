@@ -49,7 +49,12 @@ const CLAIMMD = {
   version: 3,
 };
 
-function mount(choice: unknown, contractMode: string | null = null, tenantStatus = "active") {
+function mount(
+  choice: unknown,
+  contractMode: string | null = null,
+  tenantStatus = "active",
+  headingLevel?: "h2" | "h3",
+) {
   const client = stubClient({
     GET: {
       [CH]: () => ok(choice),
@@ -67,7 +72,13 @@ function mount(choice: unknown, contractMode: string | null = null, tenantStatus
     [
       {
         path: "/x",
-        element: <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus={tenantStatus} />,
+        element: (
+          <TenantClearinghouseCard
+            orgSlug="cedar-ridge"
+            tenantStatus={tenantStatus}
+            headingLevel={headingLevel}
+          />
+        ),
       },
     ],
     client,
@@ -86,6 +97,14 @@ function MarkerProbe(): JSX.Element {
 beforeEach(() => window.sessionStorage.clear());
 
 describe("TenantClearinghouseCard", () => {
+  it("heads the card with an h3 by default and an h2 when asked", () => {
+    mount(OUTSIDE);
+    expect(screen.getByRole("heading", { level: 3, name: "Clearinghouse" })).toBeTruthy();
+    cleanup();
+    mount(OUTSIDE, null, "active", "h2");
+    expect(screen.getByRole("heading", { level: 2, name: "Clearinghouse" })).toBeTruthy();
+  });
+
   it("reads nothing until the operator asks, and says the read is audited", () => {
     const client = mount(OUTSIDE);
     expect(screen.getByText(/recorded in the audit trail/i)).toBeTruthy();

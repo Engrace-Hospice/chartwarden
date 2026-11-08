@@ -233,7 +233,12 @@ export function TenantOverview(): JSX.Element {
         </header>
 
         {tenant.status === "provisioning" ? (
-          <ProvisioningCard key={orgSlug} orgSlug={orgSlug} onChanged={() => void load(true)} />
+          <ProvisioningCard
+            key={orgSlug}
+            orgSlug={orgSlug}
+            headingLevel="h2"
+            onChanged={() => void load(true)}
+          />
         ) : null}
 
         <div className="wx-card-grid">
@@ -249,7 +254,11 @@ export function TenantOverview(): JSX.Element {
             }
           />
           <ContractCard orgSlug={orgSlug} />
-          <TenantClearinghouseCard orgSlug={orgSlug} tenantStatus={tenant.status} />
+          <TenantClearinghouseCard
+            orgSlug={orgSlug}
+            tenantStatus={tenant.status}
+            headingLevel="h2"
+          />
           <KeyRingCard
             tenant={tenant}
             onRotate={() => {
@@ -259,7 +268,7 @@ export function TenantOverview(): JSX.Element {
           />
           <SupportCard tenant={tenant} />
           <ExportsCard />
-          <InvitationCard orgSlug={orgSlug} tenantAccountId={tenant.id} />
+          <InvitationCard orgSlug={orgSlug} tenantAccountId={tenant.id} headingLevel="h2" />
         </div>
       </div>
 

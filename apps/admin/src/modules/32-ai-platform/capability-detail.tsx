@@ -234,7 +234,9 @@ function OverviewTab({ detail }: { detail: Detail }): JSX.Element {
   const c = detail.capability;
   return (
     <section className="wx-drawer-card">
-      <h3>Registry entry</h3>
+      <div className="wx-drawer-card-head">
+        <h2>Registry entry</h2>
+      </div>
       <dl className="wx-kv">
         <dt>Capability key</dt>
         <dd className="wx-data-md">{c.capabilityKey}</dd>
@@ -331,7 +333,9 @@ function CalibrationTab({ detail }: { detail: Detail }): JSX.Element {
         </StandingNotice>
       ) : (
         <section className="wx-drawer-card">
-          <h3>Current calibration</h3>
+          <div className="wx-drawer-card-head">
+            <h2>Current calibration</h2>
+          </div>
           <dl className="wx-kv">
             <dt>Backend</dt>
             <dd className="wx-data-md">{current.backendKey}</dd>
@@ -419,7 +423,9 @@ function PromptsTab({ capabilityKey }: { capabilityKey: string }): JSX.Element {
   return (
     <section className="wx-form-stack">
       <section className="wx-drawer-card">
-        <h3>Active prompt template</h3>
+        <div className="wx-drawer-card-head">
+          <h2>Active prompt template</h2>
+        </div>
         <dl className="wx-kv">
           <dt>Template key</dt>
           <dd className="wx-data-md">{prompt.templateKey}</dd>
