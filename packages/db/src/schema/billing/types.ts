@@ -159,6 +159,7 @@ export const m23ClaimSubmissionOutcome = pgEnum("m23_claim_submission_outcome", 
   "submitted",
   "failed_worker",
   "failed_portal",
+  "held_stale_source",
 ]);
 
 export const m23ClaimAcknowledgmentKind = pgEnum("m23_claim_acknowledgment_kind", [

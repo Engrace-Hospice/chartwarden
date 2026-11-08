@@ -34,7 +34,23 @@ async function stubFetch(input: RequestInfo | URL): Promise<Response> {
           version: 1,
           validationRunIdLatest: null,
           eligibilityOutcomeSnapshot: null,
+          // Readiness is the authoritative submit gate even if the legacy refusal string is absent.
           electronicSubmissionRefusal: null,
+          routeReadiness: {
+            serviceState: "OR",
+            programKind: "unresolved",
+            programAssignmentVerified: false,
+            requestedChannel: null,
+            localPreparationAvailable: true,
+            transportConfigured: false,
+            providerEnrollmentVerified: false,
+            tradingPartnerCertificationVerified: false,
+            outboundFormat: "unverified",
+            submissionAvailable: false,
+            status: "transport_unconfigured",
+            reasonCode: "MEDICAID_STATE_TRANSPORT_UNCONFIGURED",
+            message: "Oregon electronic submission is not configured.",
+          },
           createdAt: "2025-11-01T00:00:00.000Z",
           updatedAt: "2025-11-01T00:00:00.000Z",
         };
@@ -72,5 +88,10 @@ describe("Medicaid claim page — surveyor view link", () => {
     );
     const link = await screen.findByRole("link", { name: "Surveyor view" });
     expect(link.getAttribute("href")).toBe(`/admin/medicaid-billing-audit/${CLAIM_ID}`);
+    expect(screen.getByText("State program unresolved")).toBeTruthy();
+    expect(screen.getByText("Electronic submission").parentElement?.textContent).toContain(
+      "Unavailable — not certified",
+    );
+    expect(screen.getByRole("button", { name: "Submit" }).hasAttribute("disabled")).toBe(true);
   });
 });

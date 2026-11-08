@@ -425,22 +425,22 @@ describe("F-181 — M29_ALLOW_MLLP_PLAIN is forbidden in production", () => {
   });
 });
 
-describe("GAP-146 — the M24 launch-gateway gate is an opt-out production switch", () => {
+describe("GAP-146 — the M24 launch-gateway gate is explicit opt-in", () => {
   it("rejects an ambiguous value", () => {
     expect(collectEnvProblems({ ...GOOD, M24_LAUNCH_GATEWAY_ENABLED: "yes" })).toEqual([
       { key: "M24_LAUNCH_GATEWAY_ENABLED", problem: "must be 'true' or 'false'" },
     ]);
   });
 
-  it("is enabled by default in production, and an explicit false still disables it", () => {
+  it("remains disabled when unset in production and respects explicit configuration", () => {
     expect(
       withM24LaunchGatewayDefault({ NODE_ENV: "production" })[M24_LAUNCH_GATEWAY_ENABLED_ENV],
-    ).toBe("true");
+    ).toBeUndefined();
     expect(
-      withM24LaunchGatewayDefault({ NODE_ENV: "production", M24_LAUNCH_GATEWAY_ENABLED: "false" })[
+      withM24LaunchGatewayDefault({ NODE_ENV: "production", M24_LAUNCH_GATEWAY_ENABLED: "true" })[
         M24_LAUNCH_GATEWAY_ENABLED_ENV
       ],
-    ).toBe("false");
+    ).toBe("true");
   });
 
   it("leaves dev/test untouched (unset = nothing calls out by accident)", () => {
@@ -494,9 +494,12 @@ describe("CLEARINGHOUSE_VENDOR (ADR-0053 D3)", () => {
     expect(keysFor({ CLEARINGHOUSE_VENDOR: "stedi" })).toEqual([]);
     expect(keysFor({ CLEARINGHOUSE_VENDOR: "direct_mac" })).toEqual([]);
   });
-  it("claimmd needs its account key and which account it opens", () => {
+  it("claimmd requires its scoped account and claim-integrity configuration", () => {
     expect(keysFor({ CLEARINGHOUSE_VENDOR: "claimmd" })).toEqual([
       "CLAIMMD_ACCOUNT_KEY",
+      "CLAIMMD_ACCOUNT_REFERENCE",
+      "CLAIM_PREVIEW_INTEGRITY_KEY",
+      "CLAIMMD_M23_PAYER_ROUTES",
       "CLAIMMD_ACCOUNT_USAGE",
     ]);
     expect(
@@ -505,14 +508,18 @@ describe("CLEARINGHOUSE_VENDOR (ADR-0053 D3)", () => {
         CLAIMMD_ACCOUNT_KEY: "a-real-looking-key-0001",
         CLAIMMD_ACCOUNT_USAGE: "live",
       }),
-    ).toEqual(["CLAIMMD_ACCOUNT_USAGE"]);
+    ).toEqual(["CLAIMMD_ACCOUNT_REFERENCE", "CLAIM_PREVIEW_INTEGRITY_KEY", "CLAIMMD_M23_PAYER_ROUTES", "CLAIMMD_ACCOUNT_USAGE"]);
     expect(
       keysFor({
         CLEARINGHOUSE_VENDOR: "claimmd",
         CLAIMMD_ACCOUNT_KEY: "a-real-looking-key-0001",
         CLAIMMD_ACCOUNT_USAGE: "production",
       }),
-    ).toEqual([]);
+    ).toEqual([
+      "CLAIMMD_ACCOUNT_REFERENCE",
+      "CLAIM_PREVIEW_INTEGRITY_KEY",
+      "CLAIMMD_M23_PAYER_ROUTES",
+    ]);
   });
   it("refuses the in_memory test double and an unknown vendor in production", () => {
     expect(keysFor({ CLEARINGHOUSE_VENDOR: "in_memory" })).toEqual(["CLEARINGHOUSE_VENDOR"]);
