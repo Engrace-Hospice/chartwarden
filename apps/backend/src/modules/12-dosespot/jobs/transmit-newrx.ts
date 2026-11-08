@@ -37,7 +37,7 @@ import {
   planTransmissionSuccess,
   transitionMedicationOrder,
 } from "@chartwarden/dosespot";
-import { and, asc, eq, inArray, isNull, lt, notExists, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt, notExists, or, sql } from "drizzle-orm";
 import { prescriptionIdTakenByAnotherOrder } from "../prescription-id";
 import { type M12CronDeps, errorClassOf, inOrg, isCircuitOpenError, nowOf } from "./cron-common";
 import { reportDegradation, reportRecovery } from "./degradation-reports";
@@ -564,32 +564,23 @@ async function holdStaleCallsInProgress(
   organizationId: string,
   cutoff: Date,
 ): Promise<void> {
-  const stale = await tx
-    .select({ id: MO.id })
-    .from(MO)
+  // The candidates are chosen BY the stamp (a join), so the batch limit applies to the claims that need holding, not to stale claims in general:
+  // a stamped claim cannot sit behind a hundred unstamped ones. Rows are locked on the order (the lock every writer of the order takes).
+  const called = await tx
+    .select({ id: MOT.id, orderId: MOT.medicationOrderId })
+    .from(MOT)
+    .innerJoin(MO, eq(MO.id, MOT.medicationOrderId))
     .where(
       and(
         eq(MO.status, "queued_for_transmission"),
         eq(MO.dosespotSendState, "in_flight"),
         lt(MO.updatedAt, cutoff),
-      ),
-    )
-    .limit(RECOVERY_BATCH_SIZE)
-    .for("update", { skipLocked: true });
-  if (stale.length === 0) return;
-  const called = await tx
-    .select({ id: MOT.id, orderId: MOT.medicationOrderId })
-    .from(MOT)
-    .where(
-      and(
-        inArray(
-          MOT.medicationOrderId,
-          stale.map((o) => o.id),
-        ),
         sql`${MOT.transmissionStartedAt} IS NOT NULL`,
         sql`${MOT.lastErrorClass} IS DISTINCT FROM ${UNCONFIRMED_OUTCOME_CLASS}`,
       ),
-    );
+    )
+    .limit(RECOVERY_BATCH_SIZE)
+    .for("update", { of: MO, skipLocked: true });
   for (const t of called) {
     const held = await tx
       .update(MOT)
@@ -628,7 +619,8 @@ export async function runRecoveryDrainForOrg(
           eq(MO.status, "queued_for_transmission"),
           eq(MO.dosespotSendState, "in_flight"),
           lt(MO.updatedAt, cutoff),
-          // an order HELD for an unconfirmed outcome is not a crashed worker's claim: re-queueing it would send it again
+          // an order HELD for an unconfirmed outcome, or whose call BEGAN (the stamp), is not a claim that never reached the vendor: re-queueing it
+          // would send it again. A stamped claim beyond the hold batch above waits, unmoved, for the next drain to hold it.
           notExists(
             tx
               .select({ one: sql`1` })
@@ -636,7 +628,10 @@ export async function runRecoveryDrainForOrg(
               .where(
                 and(
                   eq(MOT.medicationOrderId, MO.id),
-                  eq(MOT.lastErrorClass, UNCONFIRMED_OUTCOME_CLASS),
+                  or(
+                    eq(MOT.lastErrorClass, UNCONFIRMED_OUTCOME_CLASS),
+                    sql`${MOT.transmissionStartedAt} IS NOT NULL`,
+                  ),
                 ),
               ),
           ),

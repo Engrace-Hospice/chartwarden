@@ -1030,6 +1030,72 @@ describe.skipIf(!DB_URL)("GAP-037 M12 transmission crons — LIVE Postgres, real
       );
     });
 
+    // M1: the drain's release was conditioned on the hold marker only, so a stamped claim BEYOND the 100-row hold batch was re-queued and re-sent.
+    it("more stale claims than one hold batch: a stamped claim beyond the batch is never re-queued or sent, and the next drain holds it", async () => {
+      const patientId = await h.seedPatient(ORG_A, { synced: "501" });
+      const stamped: string[] = [];
+      for (let i = 0; i < 104; i += 1) {
+        const o = await h.seedOrder({
+          org: ORG_A,
+          patientId,
+          status: "queued_for_transmission",
+          sendState: "in_flight",
+        });
+        stamped.push(o.orderId);
+      }
+      const unstamped = await h.seedOrder({
+        org: ORG_A,
+        patientId,
+        status: "queued_for_transmission",
+        sendState: "in_flight",
+      });
+      await h.admin.query(
+        "UPDATE medication_order SET updated_at = now() - interval '3 hours' WHERE organization_id=$1 AND dosespot_send_state='in_flight'",
+        [ORG_A],
+      );
+      await h.admin.query(
+        "UPDATE medication_order_transmission SET transmission_started_at = now() - interval '3 hours' WHERE medication_order_id = ANY($1::uuid[])",
+        [stamped],
+      );
+      const sent: string[] = [];
+      const vendor = new FakeDoseSpotVendor({
+        transmit: async (_org, payload) => {
+          sent.push(payload.medicationOrderId);
+          return {
+            dosespotPrescriptionId: `rx-${sent.length}`,
+            transmittedAt: new Date().toISOString(),
+          };
+        },
+      });
+      const inFlightStamped = async () =>
+        Number(
+          (
+            await h.q(
+              "SELECT count(*)::int AS n FROM medication_order WHERE id = ANY($1::uuid[]) AND dosespot_send_state='in_flight'",
+              [stamped],
+            )
+          )[0]?.n,
+        );
+      const marked = async () =>
+        Number(
+          (
+            await h.q(
+              "SELECT count(*)::int AS n FROM medication_order_transmission WHERE medication_order_id = ANY($1::uuid[]) AND last_error_class='unconfirmed_outcome'",
+              [stamped],
+            )
+          )[0]?.n,
+        );
+      const first = await runRecoveryDrainForOrg(deps(vendor, minutes(300)), ORG_A);
+      expect(first.released).toBe(1); // only the claim that never reached the vendor
+      expect(sent).toEqual([unstamped.orderId]);
+      expect(await marked()).toBe(100); // one hold batch ...
+      expect(await inFlightStamped()).toBe(104); // ... and none of the 104 stamped claims was re-queued, held or not
+      const second = await runRecoveryDrainForOrg(deps(vendor, minutes(301)), ORG_A);
+      expect(second.released).toBe(0);
+      expect(await marked()).toBe(104); // the next drain holds the rest
+      expect(sent).toEqual([unstamped.orderId]); // nothing was ever sent twice
+    }, 120_000);
+
     it("a retryable failure puts the order back with no 'call began' mark, so a later stale claim of it that never called is released", async () => {
       const { orderId, transmissionId } = await queued();
       const vendor = new FakeDoseSpotVendor({
