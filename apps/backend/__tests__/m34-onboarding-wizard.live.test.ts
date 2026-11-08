@@ -3462,5 +3462,53 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       ).rejects.toMatchObject({ code: "ONBOARDING_TEMPLATE_CANONICAL", statusCode: 409 });
       expect(await row()).toEqual(before);
     });
+
+    it("migration 1369: platform ops add and re-edit a non-canonical step on the real platform carrier (it was a 42501 before)", async () => {
+      const created = await backend().service.upsertOnboardingTemplate(OPS_USER, {
+        key: "grant_1369_custom_step",
+        title: "Custom training",
+        description: "Staff walkthrough",
+        canonicalOrder: 150,
+        isCanonical: false,
+      });
+      expect(created).toMatchObject({ key: "grant_1369_custom_step", isCanonical: false });
+      const edited = await backend().service.upsertOnboardingTemplate(OPS_USER, {
+        key: "grant_1369_custom_step",
+        title: "Custom training (renamed)",
+        description: null,
+        canonicalOrder: 151,
+        isCanonical: false,
+      });
+      expect(edited).toMatchObject({ title: "Custom training (renamed)", canonicalOrder: 151 });
+
+      // The UPDATE grant is column-level: a step's key, owner role and settings cannot be rewritten by the carrier.
+      const login = new Client({
+        connectionString: urlAs("chartwarden_platform_login", PLATFORM_PASSWORD),
+      });
+      await login.connect();
+      try {
+        for (const set of [
+          "key = 'grant_1369_renamed'",
+          "required_role = 'org_admin'",
+          "completion_mode = 'attestation'",
+          "retired_at = now()",
+        ]) {
+          await expect(
+            login.query(
+              `UPDATE onboarding_task_template SET ${set} WHERE key = 'grant_1369_custom_step'`,
+            ),
+            set,
+          ).rejects.toMatchObject({ code: "42501" });
+        }
+        await expect(
+          login.query("DELETE FROM onboarding_task_template WHERE key = 'grant_1369_custom_step'"),
+        ).rejects.toMatchObject({ code: "42501" });
+      } finally {
+        await login.end();
+      }
+      await admin.query(
+        "DELETE FROM onboarding_task_template WHERE key = 'grant_1369_custom_step'",
+      );
+    });
   });
 });
