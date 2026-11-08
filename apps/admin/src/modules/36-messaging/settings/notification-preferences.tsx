@@ -198,7 +198,7 @@ function PreferencesForm({ initial }: { initial: PreferencesView }): JSX.Element
         />
       </fieldset>
       <div className="wx-drawer-actions">
-        <Button type="submit" loading={saving}>
+        <Button type="submit" size="lg" loading={saving}>
           Save preferences
         </Button>
       </div>

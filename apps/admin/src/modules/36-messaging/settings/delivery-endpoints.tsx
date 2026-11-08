@@ -152,7 +152,7 @@ export function DeliveryEndpoints(): JSX.Element {
             }
           />
           <div className="wx-drawer-actions">
-            <Button type="submit" loading={busy === "register"}>
+            <Button type="submit" size="lg" loading={busy === "register"}>
               Add endpoint
             </Button>
           </div>
@@ -195,7 +195,7 @@ export function DeliveryEndpoints(): JSX.Element {
                   {endpoint.verificationStatus === "verified" ? null : (
                     <Button
                       tone="secondary"
-                      size="sm"
+                      size="lg"
                       loading={busy === endpoint.endpointId}
                       disabled={busy !== null}
                       aria-label={`Verify ${endpoint.target}`}
@@ -206,7 +206,7 @@ export function DeliveryEndpoints(): JSX.Element {
                   )}
                   <Button
                     tone="tertiary"
-                    size="sm"
+                    size="lg"
                     disabled={busy !== null}
                     aria-label={`Remove ${endpoint.target}`}
                     onClick={() => void remove(endpoint)}

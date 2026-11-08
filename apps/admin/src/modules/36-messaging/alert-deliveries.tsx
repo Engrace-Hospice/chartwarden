@@ -129,6 +129,7 @@ export function AlertDeliveries(): JSX.Element {
           </div>
           <div className="wx-list-toolbar-end">
             <SelectField
+              className="wx-touch-select"
               label={<span className="wx-sr-only">Filter by delivery status</span>}
               value={status}
               onChange={(ev) => onFilter(ev.target.value as DeliveryStatusFilter)}
@@ -137,7 +138,7 @@ export function AlertDeliveries(): JSX.Element {
                 label: s === "all" ? "All statuses" : s.replace(/_/g, " "),
               }))}
             />
-            <Button tone="secondary" onClick={onRefresh}>
+            <Button tone="secondary" size="lg" onClick={onRefresh}>
               Refresh
             </Button>
           </div>
@@ -190,6 +191,7 @@ export function AlertDeliveries(): JSX.Element {
                 <div className="wx-list-state">
                   <Button
                     tone="secondary"
+                    size="lg"
                     loading={moreLoading}
                     onClick={() =>
                       void loadMore(nextCursor, rows.slice(firstPage?.items.length ?? 0))

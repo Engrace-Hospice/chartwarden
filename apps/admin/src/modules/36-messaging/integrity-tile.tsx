@@ -39,14 +39,14 @@ export function IntegrityTile({ source }: { source?: IntegritySource }): JSX.Ele
             <p>Latest hash-verification run and any integrity findings, from the audit trail.</p>
           </div>
           <div className="wx-list-toolbar-end">
-            <Button tone="secondary" onClick={refresh}>
+            <Button tone="secondary" size="lg" onClick={refresh}>
               Refresh
             </Button>
           </div>
         </header>
         {fallback ??
           (summary ? (
-            <div className="wx-stat-grid" aria-label="Integrity job status">
+            <fieldset className="wx-stat-grid" aria-label="Integrity job status">
               <div className="wx-stat-card">
                 <div>
                   <span className="wx-stat-label">Hash verification</span>
@@ -72,7 +72,7 @@ export function IntegrityTile({ source }: { source?: IntegritySource }): JSX.Ele
                   ))}
                 </div>
               </div>
-            </div>
+            </fieldset>
           ) : null)}
       </div>
     </div>

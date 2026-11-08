@@ -116,9 +116,9 @@ export function StateError({
   onRetry,
 }: { message: string; onRetry: () => void }): JSX.Element {
   return (
-    <div className="wx-list-state" role="alert">
+    <div className="wx-list-state">
       <InlineAlert tone="error">{message}</InlineAlert>
-      <Button tone="secondary" onClick={onRetry}>
+      <Button tone="secondary" size="lg" onClick={onRetry}>
         Try again
       </Button>
     </div>

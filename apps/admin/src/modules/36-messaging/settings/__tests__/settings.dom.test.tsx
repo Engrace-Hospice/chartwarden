@@ -92,7 +92,7 @@ describe("AlertRules", () => {
   it("shows a loading skeleton, then the rules", async () => {
     mount(<AlertRules />, () => json({ rules: [RULE] }));
     expect(screen.getByRole("status", { name: "Loading alert rules…" })).toBeTruthy();
-    expect(await screen.findByLabelText("Sfv due enabled")).toBeTruthy();
+    expect(await screen.findByLabelText(/^Sfv due enabled/)).toBeTruthy();
   });
 
   it("renders the empty state", async () => {
@@ -109,7 +109,7 @@ describe("AlertRules", () => {
     let attempts = 0;
     mount(<AlertRules />, () => (++attempts === 1 ? denied(500) : json({ rules: [RULE] })));
     fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
-    expect(await screen.findByLabelText("Sfv due enabled")).toBeTruthy();
+    expect(await screen.findByLabelText(/^Sfv due enabled/)).toBeTruthy();
   });
 
   it("toggles optimistically and keeps the server's row", async () => {
@@ -123,9 +123,9 @@ describe("AlertRules", () => {
             enabled: false,
           }),
     );
-    const box = (await screen.findByLabelText("Sfv due enabled")) as HTMLInputElement;
+    const box = (await screen.findByLabelText(/^Sfv due enabled/)) as HTMLInputElement;
     fireEvent.click(box);
-    expect((screen.getByLabelText("Sfv due enabled") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText(/^Sfv due enabled/) as HTMLInputElement).checked).toBe(false);
     await screen.findByText("Updated Sfv due.");
     const patch = calls.find((c) => c.method === "PATCH");
     expect(patch?.path).toBe(`/api/v1/alert-rules/${ID}`);
@@ -137,9 +137,9 @@ describe("AlertRules", () => {
     mount(<AlertRules />, (c) =>
       c.method === "GET" ? json({ rules: [RULE] }) : denied(403, "Rule is system locked"),
     );
-    fireEvent.click(await screen.findByLabelText("Sfv due enabled"));
+    fireEvent.click(await screen.findByLabelText(/^Sfv due enabled/));
     expect(await screen.findByText(/Rule is system locked/)).toBeTruthy();
-    expect((screen.getByLabelText("Sfv due enabled") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText(/^Sfv due enabled/) as HTMLInputElement).checked).toBe(true);
   });
 
   it("keeps other rows' optimistic edits across concurrent writes and rolls back only the failed row", async () => {
@@ -153,26 +153,28 @@ describe("AlertRules", () => {
       if (c.method === "GET") return json({ rules: [RULE, OTHER] });
       return new Promise<Response>((resolve) => pendingWrites.set(c.path, resolve));
     });
-    const a = (await screen.findByLabelText("Sfv due enabled")) as HTMLInputElement;
-    const b = screen.getByLabelText("Visit missed enabled") as HTMLInputElement;
+    const a = (await screen.findByLabelText(/^Sfv due enabled/)) as HTMLInputElement;
+    const b = screen.getByLabelText(/^Visit missed enabled/) as HTMLInputElement;
     fireEvent.click(a);
     fireEvent.click(b);
     await waitFor(() => expect(pendingWrites.size).toBe(2));
     pendingWrites.get(`/api/v1/alert-rules/${ID}`)?.(json({ ...RULE, enabled: false }));
     await screen.findByText("Updated Sfv due.");
     // A's late success must not revert B's still-pending optimistic edit.
-    expect((screen.getByLabelText("Visit missed enabled") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText(/^Visit missed enabled/) as HTMLInputElement).checked).toBe(
+      false,
+    );
     pendingWrites.get(`/api/v1/alert-rules/${OTHER.ruleId}`)?.(denied(409, "locked"));
     await screen.findByText(/locked/);
     // B rolls back; A's confirmed change survives.
-    expect((screen.getByLabelText("Visit missed enabled") as HTMLInputElement).checked).toBe(true);
-    expect((screen.getByLabelText("Sfv due enabled") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText(/^Visit missed enabled/) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText(/^Sfv due enabled/) as HTMLInputElement).checked).toBe(false);
   });
 
   it("disables controls for a system-locked rule", async () => {
     mount(<AlertRules />, () => json({ rules: [LOCKED] }));
     expect(
-      ((await screen.findByLabelText("Safety sos enabled")) as HTMLInputElement).disabled,
+      ((await screen.findByLabelText(/^Safety sos enabled/)) as HTMLInputElement).disabled,
     ).toBe(true);
     expect(screen.getByText("Locked")).toBeTruthy();
   });

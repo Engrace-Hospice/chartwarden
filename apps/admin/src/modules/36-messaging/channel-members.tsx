@@ -98,7 +98,7 @@ export function ChannelMembers(): JSX.Element {
             <p>Who can read and post in this channel, and how they got access.</p>
           </div>
           <div className="wx-list-toolbar-end">
-            <Button tone="secondary" onClick={refresh}>
+            <Button tone="secondary" size="lg" onClick={refresh}>
               Refresh
             </Button>
           </div>
@@ -107,7 +107,7 @@ export function ChannelMembers(): JSX.Element {
         {state.kind !== "forbidden" ? (
           <form
             ref={addFormRef}
-            className="wx-list-toolbar"
+            className="wx-list-toolbar wx-list-toolbar-fields is-bottom"
             onSubmit={(ev) => void onAdd(ev)}
             aria-label="Add member"
           >
@@ -124,7 +124,7 @@ export function ChannelMembers(): JSX.Element {
               onChange={(ev) => setRole(ev.target.value as MemberRole)}
               options={MEMBER_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
             />
-            <Button type="submit" loading={busy}>
+            <Button type="submit" size="lg" loading={busy}>
               Add member
             </Button>
           </form>
@@ -169,7 +169,7 @@ export function ChannelMembers(): JSX.Element {
                         <td>
                           <Button
                             tone="secondary"
-                            size="sm"
+                            size="lg"
                             disabled={busy}
                             aria-label={`Remove ${name}`}
                             onClick={() =>

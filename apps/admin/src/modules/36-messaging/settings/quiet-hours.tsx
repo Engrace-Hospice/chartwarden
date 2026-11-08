@@ -82,7 +82,7 @@ export function QuietHoursEditor({
               </label>
             ))}
           </div>
-          <div className="wx-drawer-title-row">
+          <div className="wx-drawer-title-row is-bottom">
             <TextField
               type="time"
               label={`Range ${index + 1} start`}
@@ -103,7 +103,7 @@ export function QuietHoursEditor({
             />
             <Button
               tone="tertiary"
-              size="sm"
+              size="lg"
               aria-label={`Remove range ${index + 1}`}
               onClick={() =>
                 onChange((v) => ({ ...v, ranges: v.ranges.filter((_, i) => i !== index) }))
@@ -117,7 +117,7 @@ export function QuietHoursEditor({
       <div>
         <Button
           tone="secondary"
-          size="sm"
+          size="lg"
           onClick={() => onChange((v) => ({ ...v, ranges: [...v.ranges, NEW_RANGE] }))}
         >
           Add quiet range

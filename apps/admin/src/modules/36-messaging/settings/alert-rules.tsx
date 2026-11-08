@@ -155,16 +155,17 @@ function RulesTable({
                       checked={rule.enabled}
                       disabled={rule.systemLocked}
                       aria-disabled={busy || undefined}
-                      aria-label={`${name} enabled`}
                       onChange={(e) => patchRow({ enabled: e.target.checked })}
                     />
+                    {/* The name is "<rule> enabled: On|Off" so it contains the visible On/Off text (WCAG 2.5.3). */}
+                    <span className="wx-sr-only">{`${name} enabled: `}</span>
                     <span>{rule.enabled ? "On" : "Off"}</span>
                   </label>
                 </td>
                 <td>
                   <SelectField
+                    className="wx-touch-select"
                     label={<span className="wx-sr-only">{`${name} severity floor`}</span>}
-                    aria-label={`${name} severity floor`}
                     options={SEVERITIES.map((s) => ({ value: s, label: humanize(s) }))}
                     value={rule.severityFloor}
                     disabled={rule.systemLocked}
@@ -178,8 +179,8 @@ function RulesTable({
                 </td>
                 <td>
                   <SelectField
+                    className="wx-touch-select"
                     label={<span className="wx-sr-only">{`${name} recipients`}</span>}
-                    aria-label={`${name} recipients`}
                     options={RESOLVERS.map((r) => ({ value: r, label: humanize(r) }))}
                     value={rule.recipientResolver}
                     disabled={rule.systemLocked}
