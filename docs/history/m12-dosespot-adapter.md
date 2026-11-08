@@ -189,7 +189,8 @@ transmit cron sends under; the sign path queues an order only for a prescriber l
   `addCodedPrescription` id only in its own process memory, so a retry on another replica re-ran the create (a second prescription). The adapter now
   reports the id (`onCreated`) before the send and accepts it back (`createdPrescriptionId`); the worker persists it on the transmission row's
   `dosespot_prescription_id` and hands it to the next attempt, so a retry re-runs only the send. The ORDER still carries an id only once it is
-  really sent (webhooks bind by it). If persisting fails the send is not attempted and the order is retried; a create whose answer had no id is
+  really sent (webhooks bind by it). If persisting fails the send is not attempted and the order spends a retry as a generic failure (bounded at five; it is
+  not classified as an outage, which would loop without bound while the persist keeps failing); a create whose answer had no id is
   still held as unconfirmed (there is nothing to persist).
 - A tenant with an outage longer than ~31 minutes of real failed attempts sees orders land in `transmission_failed`; the existing
   `retransmit` route mints the corrected order. Breaker-open ticks do not count.
