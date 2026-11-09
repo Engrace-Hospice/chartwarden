@@ -20378,6 +20378,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/payers/{payerRowId}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Void an unclaimed mistaken payer row as an audited empty window (step-up required) */
+        post: operations["postApiV1PatientsByIdPayersByPayerRowIdVoid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{id}/privacy": {
         parameters: {
             query?: never;
@@ -91023,6 +91040,48 @@ export interface operations {
         responses: {
             /** @description OK */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        payerId: string;
+                        rank: number;
+                        coverageKind: string;
+                        subscriberId: string;
+                        groupNumber: string | null;
+                        binPcn: string | null;
+                        current: boolean;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdPayersByPayerRowIdVoid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                payerRowId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: "wrong_payer" | "wrong_coverage_kind" | "wrong_subscriber_id" | "wrong_effective_date" | "duplicate_entry";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

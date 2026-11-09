@@ -23,13 +23,18 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
 import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/index";
 import { createDbPatientRouteService } from "../src/modules/05-patient/patient-route-service-db";
+import { hasNonVoidMedicareClaimForPatientPayer } from "../src/modules/23-billing-medicare/index";
 import { buildClaimAssemblyService } from "../src/modules/23-billing-medicare/services/claim-assembly";
 import { buildM23PatientPayerAdapter } from "../src/modules/23-billing-medicare/services/claim-assembly-seam-adapters";
 import {
   buildDrizzleM24WriteService,
   buildM24MedicaidCoverageResolver,
+  hasNonVoidMedicaidClaimForPatientPayer,
 } from "../src/modules/24-billing-medicaid/index";
-import { resolveCoverages } from "../src/modules/41-billing-commercial/index";
+import {
+  hasNonVoidCommercialClaimForPatientPayer,
+  resolveCoverages,
+} from "../src/modules/41-billing-commercial/index";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -42,6 +47,18 @@ const CLAIM_PE = "f0000000-0845-4000-8000-0000000000e1";
 const STAFF = "d0000000-0845-4000-8000-000000000001";
 const MEDICARE = "e0000000-0845-4000-8000-000000000001";
 const COMMERCIAL = "e0000000-0845-4000-8000-000000000002";
+
+const PATIENT_PAYER_CLAIM_REFERENCES = {
+  async hasNonVoidClaim(
+    tx: Parameters<typeof hasNonVoidMedicareClaimForPatientPayer>[0],
+    organizationId: string,
+    payerRowId: string,
+  ) {
+    if (await hasNonVoidMedicareClaimForPatientPayer(tx, organizationId, payerRowId)) return true;
+    if (await hasNonVoidMedicaidClaimForPatientPayer(tx, organizationId, payerRowId)) return true;
+    return hasNonVoidCommercialClaimForPatientPayer(tx, organizationId, payerRowId);
+  },
+};
 
 describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Postgres", () => {
   let admin: Client;
@@ -195,7 +212,9 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
       publish: (tx: Parameters<typeof txPublisher.publish>[0], input: never) =>
         txPublisher.publish(tx, { ...(input as object), callerModule: "m5" } as never),
     };
-    service = createDbPatientRouteService(handle.db, outbox as never);
+    service = createDbPatientRouteService(handle.db, outbox as never, {
+      payerClaimReferences: PATIENT_PAYER_CLAIM_REFERENCES,
+    });
     reader = buildPatientCoverageReader(handle.db);
   }, 300_000);
 
@@ -264,6 +283,31 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
     });
   });
 
+  it("#874 gives every claim-reference refusal a tenant-leading payer-row index", async () => {
+    const names = [
+      "claim_org_patient_payer_ix",
+      "medicaid_claim_org_patient_payer_ix",
+      "commercial_claim_org_primary_patient_payer_ix",
+      "commercial_claim_org_secondary_patient_payer_ix",
+    ];
+    const rows = await admin.query<{ indexname: string; indexdef: string }>(
+      `SELECT indexname, indexdef FROM pg_indexes
+       WHERE schemaname='public' AND indexname = ANY($1::text[])
+       ORDER BY indexname`,
+      [names],
+    );
+    expect(rows.rows.map((row) => row.indexname).sort()).toEqual([...names].sort());
+    for (const row of rows.rows) {
+      expect(row.indexdef).toMatch(
+        /\(organization_id, (patient_payer_id|primary_patient_payer_id|secondary_patient_payer_id)\)/,
+      );
+    }
+    expect(
+      rows.rows.find((row) => row.indexname === "commercial_claim_org_secondary_patient_payer_ix")
+        ?.indexdef,
+    ).toContain("WHERE (secondary_patient_payer_id IS NOT NULL)");
+  });
+
   it("1291 refuses to run under an RLS-subject role instead of repairing zero rows", async () => {
     const app = new Client({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
@@ -311,6 +355,62 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
       statusCode: 409,
     });
     expect(await datesOf(ffs.id)).toEqual({ f: "2026-04-01", t: null });
+  });
+
+  it("#874 refuses a claimed payer row, then voids it as an audited empty window after the claim is void", async () => {
+    const patientId = await seedPatient(ORG);
+    const payer = await add(patientId, 1, "medicare_ffs", "2026-04-01");
+
+    await expect(
+      service.voidPayer(LEGACY_ORG, patientId, payer.id, "wrong_payer", STAFF),
+    ).rejects.toMatchObject({ code: "NOT_FOUND", statusCode: 404 });
+    expect(await datesOf(payer.id)).toEqual({ f: "2026-04-01", t: null });
+
+    const claimId = (
+      await admin.query(
+        `INSERT INTO claim (organization_id, provider_entity_id, patient_id, admission_id,
+         election_period_id_from, election_period_id_to, patient_payer_id, tob, service_from, service_to,
+         state, claim_control_number, mac_jurisdiction, total_expected_payment_cents,
+         sequestration_applied_pct, sequestration_policy_id, created_by_membership_id, patient_status_code)
+       VALUES ($1,$2,$3,$2,$2,$2,$4,'811','2026-04-01','2026-04-30','READY',$5,'ngs_j6',100000,'2.00',$2,$2,'01')
+       RETURNING id`,
+        [ORG, CLAIM_PE, patientId, payer.id, `cw874-${crypto.randomUUID()}`],
+      )
+    ).rows[0].id as string;
+
+    await expect(
+      service.voidPayer(ORG, patientId, payer.id, "wrong_payer", STAFF),
+    ).rejects.toMatchObject({ code: "PAYER_ROW_IN_USE", statusCode: 409 });
+    expect(await datesOf(payer.id)).toEqual({ f: "2026-04-01", t: null });
+
+    await admin.query("UPDATE claim SET state='VOIDED' WHERE id=$1", [claimId]);
+    await expect(
+      service.voidPayer(ORG, patientId, payer.id, "wrong_payer", STAFF),
+    ).resolves.toMatchObject({
+      id: payer.id,
+      current: false,
+      effectiveFrom: "2026-04-01",
+      effectiveTo: "2026-03-31",
+    });
+    expect(await datesOf(payer.id)).toEqual({ f: "2026-04-01", t: "2026-03-31" });
+
+    const auditRows = await admin.query(
+      `SELECT severity, context FROM audit_event
+       WHERE organization_id=$1 AND event_type='patient.payer_voided' AND resource_id=$2::uuid`,
+      [ORG, payer.id],
+    );
+    expect(auditRows.rows).toEqual([
+      expect.objectContaining({
+        severity: "critical",
+        context: expect.objectContaining({ payerRowId: payer.id, reason: "wrong_payer" }),
+      }),
+    ]);
+    const outboxRows = await admin.query(
+      `SELECT count(*)::int AS n FROM outbox_event
+       WHERE organization_id=$1 AND event_type='m5.patient.payer_changed' AND aggregate_id=$2`,
+      [ORG, patientId],
+    );
+    expect(outboxRows.rows[0].n).toBe(2);
   });
 
   it("interior-of-range payer switch: M23 and M41 both refuse a window whose primary changes inside it", async () => {

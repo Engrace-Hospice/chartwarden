@@ -92,6 +92,10 @@ export const medicaidClaim = pgTable(
       t.medicaidClaimControlNumber,
     ),
     byOrgStatePending: index("medicaid_claim_by_org_state").on(t.organizationId, t.state),
+    byPatientPayer: index("medicaid_claim_org_patient_payer_ix").on(
+      t.organizationId,
+      t.patientPayerId,
+    ),
     byReplaces: index("medicaid_claim_by_replaces").on(t.replacesClaimId),
     byMedicarePrimary: index("medicaid_claim_by_medicare_primary").on(
       t.organizationId,

@@ -4,6 +4,7 @@
 // the §7.1 admit-no-dup workflow is exercised end-to-end. Pure-ish: no clock except an injected
 // `now()` so the §7.7 60-day SLA is deterministic in tests.
 import { decodeOffsetCursor, encodeOffsetCursor } from "@chartwarden/shared/route-kit";
+import { ChartWardenError } from "@chartwarden/types";
 import { addDaysIso, replacementClosesOn } from "../coverage-intervals";
 import {
   type MatchCandidate,
@@ -140,6 +141,16 @@ export interface AddPatientPayerInput {
   readonly binPcn?: string | null;
   readonly effectiveFrom: string;
 }
+
+export const PATIENT_PAYER_VOID_REASONS = [
+  "wrong_payer",
+  "wrong_coverage_kind",
+  "wrong_subscriber_id",
+  "wrong_effective_date",
+  "duplicate_entry",
+] as const;
+
+export type PatientPayerVoidReason = (typeof PATIENT_PAYER_VOID_REASONS)[number];
 
 /**
  * One §3.5 `patient_assignment` row for the Care Team & Assignments tab. Links a clinician (an M2
@@ -330,6 +341,13 @@ export interface PatientRouteService {
     input: AddPatientPayerInput,
     actorUserId: string,
   ): Promise<PatientPayerView>;
+  voidPayer(
+    organizationId: string,
+    patientId: string,
+    payerRowId: string,
+    reason: PatientPayerVoidReason,
+    actorUserId: string,
+  ): Promise<PatientPayerView>;
   getCareTeam(organizationId: string, patientId: string): Promise<CareTeamView | null>;
   createAssignment(
     organizationId: string,
@@ -397,6 +415,10 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
   let seq = 0;
   // biome-ignore lint/suspicious/noAssignInExpressions: in-memory monotonic id counter.
   const nextId = (p: string) => `${p}_${(seq += 1)}`;
+  const nextUuid = (): string => {
+    seq += 1;
+    return `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`;
+  };
 
   function toCandidate(raw: RawSubject): MatchCandidate[] {
     void raw;
@@ -637,7 +659,9 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       );
 
       const row: PatientPayerView = {
-        id: nextId("payer"),
+        // Production payer-row identifiers are UUIDs; keep the route-test service faithful so the
+        // payer-void route can enforce UUID path params without weakening its contract for fixtures.
+        id: nextUuid(),
         payerId: input.payerId,
         rank: input.rank,
         coverageKind: input.coverageKind,
@@ -654,6 +678,34 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       events.push("m5.patient.payer_changed");
 
       return row;
+    },
+
+    async voidPayer(organizationId, patientId, payerRowId, _reason, _actorUserId) {
+      const patient = patients.get(patientId);
+      if (!patient || patient.organizationId !== organizationId) {
+        throw new ChartWardenError("NOT_FOUND", "patient payer not found", 404);
+      }
+      const history = payers.get(patientId) ?? [];
+      const row = history.find((payer) => payer.id === payerRowId);
+      if (!row) throw new ChartWardenError("NOT_FOUND", "patient payer not found", 404);
+      if (row.effectiveTo !== null && row.effectiveTo < row.effectiveFrom) {
+        throw new ChartWardenError(
+          "PAYER_ALREADY_VOIDED",
+          "This payer coverage row is already voided.",
+          409,
+        );
+      }
+      const voided: PatientPayerView = {
+        ...row,
+        current: false,
+        effectiveTo: addDaysIso(row.effectiveFrom, -1),
+      };
+      payers.set(
+        patientId,
+        history.map((payer) => (payer.id === payerRowId ? voided : payer)),
+      );
+      events.push("m5.patient.payer_changed");
+      return voided;
     },
 
     async getCareTeam(organizationId, patientId) {

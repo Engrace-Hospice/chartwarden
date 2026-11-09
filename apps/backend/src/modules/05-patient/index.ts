@@ -393,6 +393,7 @@ import { rebuildPrivacySnapshotsForOrg as _rebuildPrivacySnapshotsForOrg } from 
 import { mergePatients as _mergePatients } from "./merges-db";
 import { createDbPatientLifecyclePort as _dbLifecyclePort } from "./patient-lifecycle-db";
 import { createDbPatientRouteService as _dbPatientService } from "./patient-route-service-db";
+import type { PatientPayerClaimReferencePort } from "./patient-route-service-db";
 import type { PrivacyOfficerPorts } from "./privacy/officer";
 import { createDbPrivacyOfficerService as _dbPrivacyOfficerService } from "./privacy/officer-db";
 import { registerPatientAllergyRoutes as _registerPatientAllergyRoutes } from "./routes/allergy-routes";
@@ -425,6 +426,8 @@ export function mountPatientRoutes(
     readonly admissionSummary?: AdmissionCensusSummaryPort;
     /** GAP-010: the per-tenant DEK envelope for ssn / state_id. Absent -> SSN capture answers 503. */
     readonly identifierCipher?: PatientIdentifierCipher;
+    /** #874: logical references from M23/M24/M41, resolved without a cross-module schema import. */
+    readonly payerClaimReferences?: PatientPayerClaimReferencePort;
   } = {},
 ): void {
   _registerPatientRoutes(app, {

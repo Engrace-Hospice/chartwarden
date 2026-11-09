@@ -1163,6 +1163,7 @@ import {
   createDrizzleDdeChangeStore,
   createM23HetsTransport,
   createM23LaunchGateway,
+  hasNonVoidMedicareClaimForPatientPayer,
   m23HetsConfigFromEnv,
   m23LaunchGatewayConfigFromEnv,
   mountM23Routes,
@@ -1225,6 +1226,7 @@ import {
   buildM24SubmissionWorkerDeps,
   buildStateChannelHealthProbe,
   createDrizzleMedicaidRedactStore,
+  hasNonVoidMedicaidClaimForPatientPayer,
   mountM24Routes,
   registerM24AbacPredicates,
   registerM24CronWorkers,
@@ -1921,6 +1923,7 @@ import {
   buildCommercialClaimLifecycleService,
   buildCommercialClaimReadService,
   buildM41RemittanceConsumer,
+  hasNonVoidCommercialClaimForPatientPayer,
   registerCommercialAckQuarantineRoutes,
   registerCommercialBillingRoutes,
   registerM41AbacPredicates,
@@ -1951,6 +1954,14 @@ import {
 } from "./modules/41-billing-commercial/index";
 import { applyCommercialClaimMdReceipt } from "./modules/41-billing-commercial/services/claimmd-ack-adapter";
 import { readClaimMdCommercialSubmissionFacts } from "./modules/41-billing-commercial/services/claimmd-submission-reader";
+
+const PATIENT_PAYER_CLAIM_REFERENCES = {
+  async hasNonVoidClaim(tx: DbClient, organizationId: string, payerRowId: string) {
+    if (await hasNonVoidMedicareClaimForPatientPayer(tx, organizationId, payerRowId)) return true;
+    if (await hasNonVoidMedicaidClaimForPatientPayer(tx, organizationId, payerRowId)) return true;
+    return hasNonVoidCommercialClaimForPatientPayer(tx, organizationId, payerRowId);
+  },
+};
 
 export { buildServer };
 export * from "./bootstrap/index";
@@ -6060,6 +6071,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               identifierCipher: createPatientIdentifierCipher(
                 lazyIdentifierKeys(getTenantKeyProvider),
               ),
+              payerClaimReferences: PATIENT_PAYER_CLAIM_REFERENCES,
             },
           );
           registerProviderEntityLookupRoutes(app, dbHandle.db); // M1 — provider-entity selector lookup for UX surfaces
