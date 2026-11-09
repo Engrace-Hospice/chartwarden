@@ -26,7 +26,7 @@ describe("useOpsWrite", () => {
   it("returns the data on success and clears any earlier failure", async () => {
     const { hook, attempt } = setup();
     await attempt("a", {
-      error: { error: { code: "X", message: "no" } },
+      error: { error: { code: "ONBOARDING_TASK_CHANGED", message: "no" } },
       response: { status: 409 },
     });
     expect(hook.result.current.failure?.kind).toBe("conflict");
