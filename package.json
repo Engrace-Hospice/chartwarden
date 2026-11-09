@@ -168,6 +168,7 @@
     "test:m40:psap-jurisdiction:live": "vitest run apps/backend/__tests__/m40-psap-jurisdiction.live.test.ts",
     "test:f073:idempotency-bodiless:live": "vitest run apps/backend/__tests__/f-073-idempotency-bodiless-response.live.test.ts",
     "test:gap007:idempotency-claim:live": "vitest run apps/backend/__tests__/gap-007-idempotency-claim.live.test.ts",
+    "test:idempotency:cleanup:live": "vitest run apps/backend/__tests__/idempotency-cleanup.live.test.ts",
     "test:gap007:grant-scope:live": "vitest run apps/backend/__tests__/gap-007-grant-scope-route.live.test.ts",
     "test:gap049:alert-repeat:live": "vitest run apps/backend/__tests__/gap-049-m30-alert-repeat.live.test.ts",
     "test:m28:fhir-gateway:live": "vitest run apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
