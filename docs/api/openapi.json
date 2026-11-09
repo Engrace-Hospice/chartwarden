@@ -301322,7 +301322,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Claim.MD ERAs staged for M25 posting, filterable by provider entity and stage state, cursor-paginated",
+        "summary": "Tenant- and provider-scoped aggregate list of Claim.MD ERA stages for nonposting review",
         "parameters": [
           {
             "name": "providerEntityId",
@@ -301341,6 +301341,34 @@
               "minLength": 1,
               "maxLength": 64,
               "pattern": "^[a-z_]+$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "payer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "fromDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "toDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date",
               "type": "string"
             }
           },
@@ -301366,7 +301394,227 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "searchWindowLimited"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "providerEntityId",
+                          "locationId",
+                          "state",
+                          "holdReason",
+                          "possibleDuplicate",
+                          "duplicateClassification",
+                          "existingAdviceId",
+                          "createdAt",
+                          "detailsAvailable",
+                          "payer",
+                          "payee",
+                          "payment",
+                          "claimCount",
+                          "identityExceptionCount",
+                          "reconciliationEligible"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "locationId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "holdReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "possibleDuplicate": {
+                            "type": "boolean"
+                          },
+                          "duplicateClassification": {
+                            "anyOf": [
+                              {
+                                "const": "none",
+                                "type": "string"
+                              },
+                              {
+                                "const": "possible",
+                                "type": "string"
+                              },
+                              {
+                                "const": "exact",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "existingAdviceId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "detailsAvailable": {
+                            "type": "boolean"
+                          },
+                          "payer": {
+                            "type": "object",
+                            "required": [
+                              "name",
+                              "identifier"
+                            ],
+                            "properties": {
+                              "name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "identifier": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "payee": {
+                            "type": "object",
+                            "required": [
+                              "name"
+                            ],
+                            "properties": {
+                              "name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "payment": {
+                            "type": "object",
+                            "required": [
+                              "method",
+                              "amount",
+                              "date"
+                            ],
+                            "properties": {
+                              "method": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "amount": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "date": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "claimCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "identityExceptionCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "reconciliationEligible": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "searchWindowLimited": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -301383,7 +301631,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "One Claim.MD ERA staged for M25 posting",
+        "summary": "Authorized nonposting detail for one tenant-owned Claim.MD ERA stage",
         "parameters": [
           {
             "name": "id",
@@ -301396,13 +301644,2790 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "providerEntityId",
+                    "locationId",
+                    "eraId",
+                    "fileIndex",
+                    "transactionSetControlNumber",
+                    "state",
+                    "holdReason",
+                    "possibleDuplicate",
+                    "duplicateClassification",
+                    "existingAdviceId",
+                    "createdAt",
+                    "detailsAvailable",
+                    "payer",
+                    "payee",
+                    "payment",
+                    "claims",
+                    "providerAdjustments",
+                    "claimOutcomes",
+                    "reconciliationEligible",
+                    "history"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "eraId": {
+                      "type": "string"
+                    },
+                    "fileIndex": {
+                      "type": "integer"
+                    },
+                    "transactionSetControlNumber": {
+                      "minLength": 1,
+                      "maxLength": 9,
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "holdReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "possibleDuplicate": {
+                      "type": "boolean"
+                    },
+                    "duplicateClassification": {
+                      "anyOf": [
+                        {
+                          "const": "none",
+                          "type": "string"
+                        },
+                        {
+                          "const": "possible",
+                          "type": "string"
+                        },
+                        {
+                          "const": "exact",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "existingAdviceId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "detailsAvailable": {
+                      "type": "boolean"
+                    },
+                    "payer": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "identifier"
+                      ],
+                      "properties": {
+                        "name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "identifier": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "payee": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "npi"
+                      ],
+                      "properties": {
+                        "name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "npi": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "payment": {
+                      "type": "object",
+                      "required": [
+                        "trace",
+                        "method",
+                        "amount",
+                        "date"
+                      ],
+                      "properties": {
+                        "trace": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "method": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "amount": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "date": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "claims": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "patientControlNumber",
+                          "payerIcn",
+                          "statusCode",
+                          "totalCharge",
+                          "totalPayment",
+                          "patientResponsibility",
+                          "serviceFrom",
+                          "serviceTo",
+                          "adjustments",
+                          "serviceLines",
+                          "remarks"
+                        ],
+                        "properties": {
+                          "patientControlNumber": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "payerIcn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "statusCode": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "totalCharge": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "totalPayment": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "patientResponsibility": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "serviceFrom": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "serviceTo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "adjustments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "groupCode",
+                                "reasonCode",
+                                "amount",
+                                "quantity"
+                              ],
+                              "properties": {
+                                "groupCode": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "reasonCode": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "amount": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "quantity": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "serviceLines": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "procedureCode",
+                                "revenueCode",
+                                "chargeAmount",
+                                "paidAmount",
+                                "paidUnits",
+                                "submittedUnits",
+                                "payerLineReference",
+                                "adjustments",
+                                "remarks"
+                              ],
+                              "properties": {
+                                "procedureCode": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "revenueCode": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "chargeAmount": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "paidAmount": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "paidUnits": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "submittedUnits": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "payerLineReference": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "adjustments": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "groupCode",
+                                      "reasonCode",
+                                      "amount",
+                                      "quantity"
+                                    ],
+                                    "properties": {
+                                      "groupCode": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "reasonCode": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "amount": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "quantity": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                },
+                                "remarks": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "kind",
+                                      "code"
+                                    ],
+                                    "properties": {
+                                      "kind": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "code": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "remarks": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "kind",
+                                "code"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "code": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "providerAdjustments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "reason",
+                          "reference",
+                          "amount"
+                        ],
+                        "properties": {
+                          "reason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reference": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "amount": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "claimOutcomes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "claimId",
+                          "patientControlNumber",
+                          "outcome",
+                          "module",
+                          "fileIndex",
+                          "transactionSetControlNumber"
+                        ],
+                        "properties": {
+                          "claimId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "patientControlNumber": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "outcome": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "module": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "fileIndex": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "transactionSetControlNumber": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "reconciliationEligible": {
+                      "type": "boolean"
+                    },
+                    "history": {
+                      "type": "object",
+                      "required": [
+                        "availability",
+                        "events"
+                      ],
+                      "properties": {
+                        "availability": {
+                          "anyOf": [
+                            {
+                              "const": "available",
+                              "type": "string"
+                            },
+                            {
+                              "const": "partial",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unavailable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "events": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "eventType",
+                              "description",
+                              "occurredAt",
+                              "stageId",
+                              "fromState",
+                              "toState",
+                              "reasonCode",
+                              "origin",
+                              "actorClassification",
+                              "attemptCount"
+                            ],
+                            "properties": {
+                              "eventType": {
+                                "maxLength": 80,
+                                "type": "string"
+                              },
+                              "description": {
+                                "maxLength": 240,
+                                "type": "string"
+                              },
+                              "occurredAt": {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              "stageId": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "fromState": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "toState": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "reasonCode": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "origin": {
+                                "anyOf": [
+                                  {
+                                    "const": "ingestion",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "ownership",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "delivery",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "recovery",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "system",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "actorClassification": {
+                                "anyOf": [
+                                  {
+                                    "const": "platform_operator",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "system",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "attemptCount": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/claimmd-era/{id}/financial-review/decision": {
+      "post": {
+        "operationId": "postApiV1RemittanceClaimmderaByIdFinancialreviewDecision",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Append a nonposting financial-review decision; does not allocate, reconcile, or post funds",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "itemType",
+                    "itemIndex",
+                    "decisionVersion",
+                    "disposition",
+                    "financialPostingAuthorized"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "itemType": {
+                      "anyOf": [
+                        {
+                          "const": "era",
+                          "type": "string"
+                        },
+                        {
+                          "const": "claim",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "itemIndex": {
+                      "type": "integer"
+                    },
+                    "decisionVersion": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "disposition": {
+                      "anyOf": [
+                        {
+                          "const": "note",
+                          "type": "string"
+                        },
+                        {
+                          "const": "follow_up",
+                          "type": "string"
+                        },
+                        {
+                          "const": "reviewed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "reopened",
+                          "type": "string"
+                        },
+                        {
+                          "const": "completed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "financialPostingAuthorized": {
+                      "const": false,
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "itemType",
+                  "itemIndex",
+                  "disposition",
+                  "expectedVersion",
+                  "reason"
+                ],
+                "properties": {
+                  "itemType": {
+                    "anyOf": [
+                      {
+                        "const": "era",
+                        "type": "string"
+                      },
+                      {
+                        "const": "claim",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "itemIndex": {
+                    "minimum": -1,
+                    "maximum": 999,
+                    "type": "integer"
+                  },
+                  "disposition": {
+                    "anyOf": [
+                      {
+                        "const": "note",
+                        "type": "string"
+                      },
+                      {
+                        "const": "follow_up",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reviewed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reopened",
+                        "type": "string"
+                      },
+                      {
+                        "const": "completed",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "expectedVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "minLength": 3,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/claimmd-era/{id}/matching": {
+      "get": {
+        "operationId": "getApiV1RemittanceClaimmderaByIdMatching",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Nonposting matching review based only on verified original submission evidence",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stageId",
+                    "totalClaims",
+                    "verifiedSourceIdentities",
+                    "unresolvedSourceIdentities",
+                    "claims",
+                    "decisionHistory",
+                    "serviceLineMatching",
+                    "financialReview",
+                    "financialReviewHistory",
+                    "readOnlyBalance",
+                    "postingAuthorized"
+                  ],
+                  "properties": {
+                    "stageId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "totalClaims": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "verifiedSourceIdentities": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "unresolvedSourceIdentities": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "claims": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "claimIndex",
+                          "patientControlNumber",
+                          "payerIcn",
+                          "serviceLines",
+                          "outcome",
+                          "linkedClaimId",
+                          "linkedModule",
+                          "decision",
+                          "decisionVersion",
+                          "reason",
+                          "decisionAt"
+                        ],
+                        "properties": {
+                          "claimIndex": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "patientControlNumber": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "payerIcn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "serviceLines": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "lineIndex",
+                                "payerLineReference",
+                                "outcome"
+                              ],
+                              "properties": {
+                                "lineIndex": {
+                                  "minimum": 0,
+                                  "type": "integer"
+                                },
+                                "payerLineReference": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "outcome": {
+                                  "anyOf": [
+                                    {
+                                      "const": "original_line_evidence_unavailable",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "payer_line_reference_missing",
+                                      "type": "string"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "outcome": {
+                            "anyOf": [
+                              {
+                                "const": "verified",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ambiguous",
+                                "type": "string"
+                              },
+                              {
+                                "const": "conflict",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unmatched",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unsupported",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "linkedClaimId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "linkedModule": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "decision": {
+                            "anyOf": [
+                              {
+                                "const": "unreviewed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "confirmed_identity",
+                                "type": "string"
+                              },
+                              {
+                                "const": "human_confirmed_candidate",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cleared",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "decisionVersion": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "reason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "decisionAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "decisionHistory": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "claimIndex",
+                          "decisionVersion",
+                          "decision",
+                          "reason",
+                          "occurredAt",
+                          "actorClassification"
+                        ],
+                        "properties": {
+                          "claimIndex": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "decisionVersion": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "decision": {
+                            "anyOf": [
+                              {
+                                "const": "confirmed_identity",
+                                "type": "string"
+                              },
+                              {
+                                "const": "human_confirmed_candidate",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cleared",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "maxLength": 500,
+                            "type": "string"
+                          },
+                          "occurredAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "actorClassification": {
+                            "const": "authorized_reviewer",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "serviceLineMatching": {
+                      "const": "not_available_without_original_line_reference",
+                      "type": "string"
+                    },
+                    "financialReview": {
+                      "type": "object",
+                      "required": [
+                        "reportedPaymentCents",
+                        "claimCount",
+                        "chargeCents",
+                        "claimPaymentCents",
+                        "patientResponsibilityCents",
+                        "claimAdjustmentCents",
+                        "serviceLineAdjustmentCents",
+                        "providerAdjustmentCents",
+                        "balance",
+                        "claims",
+                        "adjustments",
+                        "providerAdjustments",
+                        "exceptions",
+                        "canCompleteNonpostingReview",
+                        "financialPostingAuthorized"
+                      ],
+                      "properties": {
+                        "reportedPaymentCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "claimCount": {
+                          "type": "integer"
+                        },
+                        "chargeCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "claimPaymentCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "patientResponsibilityCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "claimAdjustmentCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "serviceLineAdjustmentCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "providerAdjustmentCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "balance": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "status",
+                                "reason"
+                              ],
+                              "properties": {
+                                "status": {
+                                  "const": "unavailable",
+                                  "type": "string"
+                                },
+                                "reason": {
+                                  "const": "invalid_money_value",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "status",
+                                "claimPaymentsCents",
+                                "providerAdjustmentsCents",
+                                "reportedPaymentCents",
+                                "expectedPaymentCents",
+                                "differenceCents"
+                              ],
+                              "properties": {
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "const": "balanced",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "discrepancy",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "claimPaymentsCents": {
+                                  "type": "integer"
+                                },
+                                "providerAdjustmentsCents": {
+                                  "type": "integer"
+                                },
+                                "reportedPaymentCents": {
+                                  "type": "integer"
+                                },
+                                "expectedPaymentCents": {
+                                  "type": "integer"
+                                },
+                                "differenceCents": {
+                                  "type": "integer"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        "claims": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "claimIndex",
+                              "status",
+                              "chargeCents",
+                              "paymentCents",
+                              "patientResponsibilityCents",
+                              "adjustments",
+                              "lineEvidence"
+                            ],
+                            "properties": {
+                              "claimIndex": {
+                                "type": "integer"
+                              },
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "const": "payer_denied",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "reversal",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "zero_payment",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "partial_payment",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "payment_reported",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "insufficient_data",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "chargeCents": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "paymentCents": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "patientResponsibilityCents": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "adjustments": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "scope",
+                                    "groupCode",
+                                    "category",
+                                    "reasonCode",
+                                    "amountCents",
+                                    "description"
+                                  ],
+                                  "properties": {
+                                    "scope": {
+                                      "anyOf": [
+                                        {
+                                          "const": "claim",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "service_line",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "groupCode": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "category": {
+                                      "anyOf": [
+                                        {
+                                          "const": "contractual_obligation",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "patient_responsibility",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "other_adjustment",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "payer_initiated_reduction",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "correction_or_reversal",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "unsupported",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "reasonCode": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "amountCents": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "description": {
+                                      "const": "Description unavailable",
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              },
+                              "lineEvidence": {
+                                "anyOf": [
+                                  {
+                                    "const": "original_line_evidence_unavailable",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "payer_line_reference_missing",
+                                    "type": "string"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "adjustments": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "scope",
+                              "groupCode",
+                              "category",
+                              "reasonCode",
+                              "amountCents",
+                              "description"
+                            ],
+                            "properties": {
+                              "scope": {
+                                "anyOf": [
+                                  {
+                                    "const": "claim",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "service_line",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "groupCode": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "category": {
+                                "anyOf": [
+                                  {
+                                    "const": "contractual_obligation",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "patient_responsibility",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "other_adjustment",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "payer_initiated_reduction",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "correction_or_reversal",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unsupported",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "reasonCode": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "amountCents": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "description": {
+                                "const": "Description unavailable",
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "providerAdjustments": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "reason",
+                              "reference",
+                              "amountCents"
+                            ],
+                            "properties": {
+                              "reason": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "reference": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "amountCents": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "exceptions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "code",
+                              "severity",
+                              "blocksReviewCompletion",
+                              "blocksFuturePosting"
+                            ],
+                            "properties": {
+                              "code": {
+                                "type": "string"
+                              },
+                              "severity": {
+                                "anyOf": [
+                                  {
+                                    "const": "blocking",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "follow_up",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "informational",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "blocksReviewCompletion": {
+                                "type": "boolean"
+                              },
+                              "blocksFuturePosting": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        },
+                        "canCompleteNonpostingReview": {
+                          "type": "boolean"
+                        },
+                        "financialPostingAuthorized": {
+                          "const": false,
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "financialReviewHistory": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "itemType",
+                          "itemIndex",
+                          "decisionVersion",
+                          "disposition",
+                          "reason",
+                          "occurredAt",
+                          "reviewerMembershipId",
+                          "currentSource"
+                        ],
+                        "properties": {
+                          "itemType": {
+                            "anyOf": [
+                              {
+                                "const": "era",
+                                "type": "string"
+                              },
+                              {
+                                "const": "claim",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "itemIndex": {
+                            "type": "integer"
+                          },
+                          "decisionVersion": {
+                            "type": "integer"
+                          },
+                          "disposition": {
+                            "anyOf": [
+                              {
+                                "const": "note",
+                                "type": "string"
+                              },
+                              {
+                                "const": "follow_up",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reviewed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reopened",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "maxLength": 1000,
+                            "type": "string"
+                          },
+                          "occurredAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "reviewerMembershipId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "currentSource": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "readOnlyBalance": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "status",
+                            "reason"
+                          ],
+                          "properties": {
+                            "status": {
+                              "const": "unavailable",
+                              "type": "string"
+                            },
+                            "reason": {
+                              "const": "invalid_money_value",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "status",
+                            "claimPaymentsCents",
+                            "providerAdjustmentsCents",
+                            "reportedPaymentCents",
+                            "expectedPaymentCents",
+                            "differenceCents"
+                          ],
+                          "properties": {
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "balanced",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "discrepancy",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "claimPaymentsCents": {
+                              "type": "integer"
+                            },
+                            "providerAdjustmentsCents": {
+                              "type": "integer"
+                            },
+                            "reportedPaymentCents": {
+                              "type": "integer"
+                            },
+                            "expectedPaymentCents": {
+                              "type": "integer"
+                            },
+                            "differenceCents": {
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "postingAuthorized": {
+                      "const": false,
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/claimmd-era/{id}/matching/claims/{claimIndex}/candidates": {
+      "get": {
+        "operationId": "getApiV1RemittanceClaimmderaByIdMatchingClaimsByClaimIndexCandidates",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Bounded tenant/provider-scoped historical submission candidates for nonposting reviewer matching",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "claimIndex",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "complete",
+                    "candidates",
+                    "postingAuthorized"
+                  ],
+                  "properties": {
+                    "complete": {
+                      "type": "boolean"
+                    },
+                    "candidates": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "module",
+                          "evidenceId",
+                          "claimId",
+                          "submissionId",
+                          "attemptKey",
+                          "claimType",
+                          "payerId",
+                          "usage",
+                          "serviceFrom",
+                          "serviceTo",
+                          "chargeCents",
+                          "lineage",
+                          "attemptState",
+                          "submittedAt",
+                          "supportingEvidence",
+                          "selectable",
+                          "submittedLines"
+                        ],
+                        "properties": {
+                          "module": {
+                            "anyOf": [
+                              {
+                                "const": "M23",
+                                "type": "string"
+                              },
+                              {
+                                "const": "M41",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "evidenceId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "claimId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "submissionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "attemptKey": {
+                            "maxLength": 128,
+                            "type": "string"
+                          },
+                          "claimType": {
+                            "maxLength": 64,
+                            "type": "string"
+                          },
+                          "payerId": {
+                            "maxLength": 128,
+                            "type": "string"
+                          },
+                          "usage": {
+                            "anyOf": [
+                              {
+                                "const": "test",
+                                "type": "string"
+                              },
+                              {
+                                "const": "production",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "serviceFrom": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "serviceTo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "chargeCents": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lineage": {
+                            "anyOf": [
+                              {
+                                "const": "original",
+                                "type": "string"
+                              },
+                              {
+                                "const": "correction",
+                                "type": "string"
+                              },
+                              {
+                                "const": "replacement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "void",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unknown",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "attemptState": {
+                            "maxLength": 64,
+                            "type": "string"
+                          },
+                          "submittedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "supportingEvidence": {
+                            "type": "array",
+                            "items": {
+                              "maxLength": 120,
+                              "type": "string"
+                            }
+                          },
+                          "selectable": {
+                            "type": "boolean"
+                          },
+                          "submittedLines": {
+                            "const": "unavailable",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "postingAuthorized": {
+                      "const": false,
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/claimmd-era/{id}/matching/claims/{claimIndex}/decision": {
+      "post": {
+        "operationId": "postApiV1RemittanceClaimmderaByIdMatchingClaimsByClaimIndexDecision",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Append a reviewer confirmation for an already verified source claim identity; no financial effects",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "claimIndex",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "claimIndex",
+                    "decisionVersion",
+                    "decision",
+                    "postingAuthorized"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "claimIndex": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "decisionVersion": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "decision": {
+                      "anyOf": [
+                        {
+                          "const": "confirmed_identity",
+                          "type": "string"
+                        },
+                        {
+                          "const": "human_confirmed_candidate",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cleared",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "postingAuthorized": {
+                      "const": false,
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "action",
+                  "expectedVersion",
+                  "reason"
+                ],
+                "properties": {
+                  "action": {
+                    "anyOf": [
+                      {
+                        "const": "confirm_identity",
+                        "type": "string"
+                      },
+                      {
+                        "const": "confirm_candidate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clear",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "expectedVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "minLength": 3,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "evidenceId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/claimmd-era/{id}/posting-history": {
+      "get": {
+        "operationId": "getApiV1RemittanceClaimmderaByIdPostinghistory",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Tenant- and provider-scoped immutable Claim.MD posting approval and execution history",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "eventType",
+                      "planId",
+                      "occurredAt",
+                      "reason",
+                      "adviceId",
+                      "remittanceLineId"
+                    ],
+                    "properties": {
+                      "eventType": {
+                        "anyOf": [
+                          {
+                            "const": "approved",
+                            "type": "string"
+                          },
+                          {
+                            "const": "posted",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "planId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "occurredAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      "adviceId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "remittanceLineId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/claimmd-era/{id}/posting-plan": {
+      "post": {
+        "operationId": "postApiV1RemittanceClaimmderaByIdPostingplan",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Generate or retrieve the current server-calculated, nonposting Claim.MD financial plan",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "planId",
+                    "planDigest",
+                    "stageId",
+                    "providerEntityId",
+                    "payer",
+                    "paymentCents",
+                    "claimId",
+                    "eligible",
+                    "status",
+                    "blockers",
+                    "featureEnabled",
+                    "approval",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "planId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "planDigest": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "stageId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "payer": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "paymentCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "claimId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "eligible": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "eligible",
+                          "type": "string"
+                        },
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        },
+                        {
+                          "const": "already_posted",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "blockers": {
+                      "type": "array",
+                      "items": {
+                        "maxLength": 64,
+                        "type": "string"
+                      }
+                    },
+                    "featureEnabled": {
+                      "type": "boolean"
+                    },
+                    "approval": {
+                      "anyOf": [
+                        {
+                          "const": "not_approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "posted",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/claimmd-era/{id}/posting-plans/{planId}/approval": {
+      "post": {
+        "operationId": "postApiV1RemittanceClaimmderaByIdPostingplansByPlanIdApproval",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record a separate approval for one exact eligible Claim.MD posting plan",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "planId",
+                    "outcome"
+                  ],
+                  "properties": {
+                    "planId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "already_approved",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "planDigest",
+                  "reason"
+                ],
+                "properties": {
+                  "planDigest": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 3,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/remittance/claimmd-era/{id}/posting-plans/{planId}/execution": {
+      "post": {
+        "operationId": "postApiV1RemittanceClaimmderaByIdPostingplansByPlanIdExecution",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Execute one current approved Claim.MD plan through the controlled M25 transaction core",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "planId",
+                    "outcome",
+                    "adviceId",
+                    "remittanceLineId",
+                    "paymentCents"
+                  ],
+                  "properties": {
+                    "planId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "already_approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "posted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "already_posted",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "adviceId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "remittanceLineId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "paymentCents": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "planDigest",
+                  "reason"
+                ],
+                "properties": {
+                  "planDigest": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 3,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }

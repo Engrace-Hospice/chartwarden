@@ -205,6 +205,7 @@ describe.skipIf(!DB_URL)("M23 Claim.MD response inbox — LIVE Postgres", () => 
             claimType: "81:A:3",
             serviceFrom: null,
             serviceTo: null,
+            serviceLines: [],
             isa13: "000000201",
             gs06: "201",
             st02: "0201",

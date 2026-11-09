@@ -1,12 +1,12 @@
 {
   "totals": {
-    "routes": 2023,
-    "enriched": 2023,
+    "routes": 2016,
+    "enriched": 2016,
     "deficit": 0,
-    "mutating": 1164,
+    "mutating": 1158,
     "mutatingNoBody": 1,
-    "gets": 806,
-    "getsNoResponse": 11
+    "gets": 805,
+    "getsNoResponse": 9
   },
   "modules": [
     {
@@ -111,12 +111,12 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 43,
-      "enriched": 43,
+      "routes": 34,
+      "enriched": 34,
       "deficit": 0,
-      "mutating": 30,
+      "mutating": 23,
       "mutatingNoBody": 0,
-      "gets": 13,
+      "gets": 11,
       "getsNoResponse": 0
     },
     {
@@ -241,13 +241,13 @@
     },
     {
       "module": "25-remittance",
-      "routes": 160,
-      "enriched": 160,
+      "routes": 168,
+      "enriched": 168,
       "deficit": 0,
-      "mutating": 104,
+      "mutating": 109,
       "mutatingNoBody": 0,
-      "gets": 53,
-      "getsNoResponse": 2
+      "gets": 56,
+      "getsNoResponse": 0
     },
     {
       "module": "26-cap",
@@ -331,12 +331,12 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 93,
-      "enriched": 93,
+      "routes": 87,
+      "enriched": 87,
       "deficit": 0,
-      "mutating": 61,
+      "mutating": 57,
       "mutatingNoBody": 0,
-      "gets": 31,
+      "gets": 29,
       "getsNoResponse": 0
     },
     {
