@@ -5,7 +5,12 @@
 // projected onto a list/detail view; the taxonomy plain-language is the M38-catalog-fallback merge.
 import type { AgingBucketLabel, DenialPayerKind } from "../domain";
 import type { M25ReadActor } from "./actor";
-import type { CursorPage } from "./concurrency";
+
+/** A page of results plus the next opaque cursor (null at the end). */
+export interface CursorPage<T> {
+  readonly items: T[];
+  readonly nextCursor: string | null;
+}
 
 export interface RemittanceAdviceSummary {
   readonly id: string;

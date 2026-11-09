@@ -1310,6 +1310,7 @@ import {
 import {
   // response DTOs (service views)
   CapAccrualLinePageResponse as M26AccrualLinePageResponse,
+  AccrualLinesQuery as M26AccrualLinesQuery,
   // request bodies
   AcknowledgeEventRequest as M26AcknowledgeEventRequest,
   AmendConstantRequest as M26AmendConstantRequest,
@@ -3137,7 +3138,7 @@ const IF_MATCH_HEADER: RouteEnrichment["headers"] = {
   "If-Match": {
     required: true,
     description:
-      "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+      "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
   },
 };
 const IDEMPOTENCY_AND_IF_MATCH_HEADERS: RouteEnrichment["headers"] = {
@@ -4021,7 +4022,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
         Type.String({ description: "Case-insensitive search over names, CCN, and NPI" }),
       ),
       cursor: Type.Optional(
-        Type.String({ description: "Offset cursor returned by the previous page" }),
+        Type.String({ description: "Opaque cursor returned by the previous page" }),
       ),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
     }),
@@ -4062,7 +4063,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
         Type.String({ description: "Case-insensitive search over name and address fields" }),
       ),
       cursor: Type.Optional(
-        Type.String({ description: "Offset cursor returned by the previous page" }),
+        Type.String({ description: "Opaque cursor returned by the previous page" }),
       ),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
     }),
@@ -5906,7 +5907,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12MedicationOrderListResponseSchema,
   },
   "POST /api/v1/medication-orders": {
-    summary: "Create a medication-order draft (prescriber_eligible ABAC)",
+    summary: "Create a medication-order draft (prescriber_eligible ABAC); Idempotency-Key required",
     body: M12CreateMedicationOrderRequest,
     // F-031 — the route replies 201 with the created order and published neither, so `client:gen` typed the
     // response `never` and a caller could create a draft without learning its id. M13's reconciliation
@@ -5921,58 +5922,62 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12MedicationOrderDetailResponseSchema,
   },
   "PATCH /api/v1/medication-orders/:id": {
-    summary: "Edit a medication-order draft",
+    summary: "Edit a medication-order draft; Idempotency-Key required",
     body: M12UpdateMedicationOrderRequest,
   },
   "POST /api/v1/medication-orders/:id/request-signature": {
-    summary: "Move a draft to pending_signature",
+    summary: "Move a draft to pending_signature; Idempotency-Key required",
     body: M12RequestSignatureRequest,
   },
   "POST /api/v1/medication-orders/:id/sign": {
-    summary: "Standard sign a medication order",
+    summary: "Standard sign a medication order; Idempotency-Key required",
     body: M12SignMedicationOrderRequest,
   },
   "POST /api/v1/medication-orders/:id/sign-controlled/initiate": {
-    summary: "Initiate an EPCS controlled-substance sign (2FA nonce; dea_schedule_authorized ABAC)",
+    summary:
+      "Initiate an EPCS controlled-substance sign (2FA nonce; dea_schedule_authorized ABAC); Idempotency-Key required",
     body: M12SignControlledInitiateRequest,
   },
   "POST /api/v1/medication-orders/:id/sign-controlled/complete": {
-    summary: "Complete an EPCS controlled-substance sign (second factor)",
+    summary: "Complete an EPCS controlled-substance sign (second factor); Idempotency-Key required",
     body: M12SignControlledCompleteRequest,
   },
   "POST /api/v1/medication-orders/:id/verbal": {
-    summary: "Record a medication order as verbal",
+    summary: "Record a medication order as verbal; Idempotency-Key required",
     body: M12RecordVerbalRequest,
   },
   "POST /api/v1/medication-orders/:id/cosign": {
-    summary: "Attach a cosignature (no self-cosign)",
+    summary: "Attach a cosignature (no self-cosign); Idempotency-Key required",
     body: M12CosignRequest,
   },
   "POST /api/v1/medication-orders/:id/discontinue": {
-    summary: "Discontinue a medication order",
+    summary: "Discontinue a medication order; Idempotency-Key required",
     body: M12DiscontinueRequest,
   },
   "POST /api/v1/medication-orders/:id/report-error": {
-    summary: "File a clinician-initiated medication-error report against an order (F-205, #248)",
+    summary:
+      "File a clinician-initiated medication-error report against an order (F-205, #248); Idempotency-Key required",
     body: M12ReportMedicationErrorRequest,
     response: M12MedicationErrorReportResponseSchema,
   },
   "PUT /api/v1/medication-orders/:id/coverage-determination": {
     summary:
-      "COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination (reason required when not covered; emits m12.medication_order.coverage_determination_changed)",
+      "COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination (reason required when not covered; emits m12.medication_order.coverage_determination_changed); Idempotency-Key required",
     body: M12SetCoverageDeterminationRequest,
     response: M12MedicationOrderResponseSchema,
   },
   "POST /api/v1/medication-orders/:id/complete": {
-    summary: "Complete a medication order (no-refills-no-renewal)",
+    summary: "Complete a medication order (no-refills-no-renewal); Idempotency-Key required",
     body: M12CompleteRequest,
   },
   "POST /api/v1/medication-orders/:id/correct": {
-    summary: "Issue a corrected replacement order (prescriber_eligible ABAC)",
+    summary:
+      "Issue a corrected replacement order (prescriber_eligible ABAC); Idempotency-Key required",
     body: M12CorrectMedicationOrderRequest,
   },
   "POST /api/v1/medication-orders/:id/retransmit": {
-    summary: "Retransmit a transmission_failed order (mints a corrected order)",
+    summary:
+      "Retransmit a transmission_failed order (mints a corrected order); Idempotency-Key required",
     response: M12NewOrderIdResponseSchema,
   },
   "GET /api/v1/medication-orders/:id/transmission": {
@@ -5989,12 +5994,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12MedicationHistoryResponseSchema,
   },
   "POST /api/v1/patients/:patientId/medications/history/refresh": {
-    summary: "Enqueue a DoseSpot MedHx refresh",
+    summary: "Enqueue a DoseSpot MedHx refresh; Idempotency-Key required",
     response: M12HistoryRefreshResponseSchema,
   },
   "POST /api/v1/medication-history-records/:id/reconcile": {
     summary:
-      "Record a reconciliation decision on a medication-history record (never mints a medication order; F-238)",
+      "Record a reconciliation decision on a medication-history record (never mints a medication order; F-238); Idempotency-Key required",
     body: M12ReconcileRequest,
     response: M12ReconcileResponseSchema,
   },
@@ -6008,12 +6013,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12RefillRequestResponseSchema,
   },
   "POST /api/v1/refills/:id/approve": {
-    summary: "Approve a refill (mints a new medication order)",
+    summary: "Approve a refill (mints a new medication order); Idempotency-Key required",
     body: M12ApproveRefillRequest,
   },
-  "POST /api/v1/refills/:id/deny": { summary: "Deny a refill request", body: M12DenyRefillRequest },
+  "POST /api/v1/refills/:id/deny": {
+    summary: "Deny a refill request; Idempotency-Key required",
+    body: M12DenyRefillRequest,
+  },
   "POST /api/v1/rx-benefit/lookup": {
-    summary: "Cached RxBenefit coverage lookup",
+    summary: "Cached RxBenefit coverage lookup; Idempotency-Key required",
     body: M12RxBenefitLookupRequest,
   },
   "GET /api/v1/admin/dosespot-prescribers": {
@@ -6027,11 +6035,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12NamedPrescriberListResponseSchema,
   },
   "POST /api/v1/admin/dosespot-prescribers/:membershipId/enroll": {
-    summary: "Enroll a prescriber into DoseSpot",
+    summary: "Enroll a prescriber into DoseSpot; Idempotency-Key required",
     body: M12EnrollPrescriberRequest,
   },
   "POST /api/v1/admin/dosespot-prescribers/:membershipId/revoke": {
-    summary: "Revoke a prescriber",
+    summary: "Revoke a prescriber; Idempotency-Key required",
     body: M12RevokePrescriberRequest,
   },
   "GET /api/v1/admin/refill-inbox-policy": {
@@ -6039,7 +6047,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12RefillInboxPolicyResponseSchema,
   },
   "PATCH /api/v1/admin/refill-inbox-policy": {
-    summary: "Update the refill-inbox SLA policy (tighten-only)",
+    summary: "Update the refill-inbox SLA policy (tighten-only); Idempotency-Key required",
     body: M12RefillInboxPolicyRequest,
   },
   "GET /api/v1/admin/controlled-substance-policy": {
@@ -6048,7 +6056,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12ControlledSubstancePolicyResponseSchema,
   },
   "PATCH /api/v1/admin/controlled-substance-policy": {
-    summary: "Update the controlled-substance refill policy (tighten-only, 21 CFR 1306.22)",
+    summary:
+      "Update the controlled-substance refill policy (tighten-only, 21 CFR 1306.22); Idempotency-Key required",
     body: M12ControlledSubstancePolicyRequest,
   },
 });
@@ -6067,7 +6076,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/administrations": {
     summary:
-      "Record a clinician administration (five-rights; administering_clinician_eligible ABAC)",
+      "Record a clinician administration (five-rights; administering_clinician_eligible ABAC); Idempotency-Key required",
     body: M13RecordAdministrationRequest,
     // The §2.6 D7 double-witness credential. Server-MINTED and single-use (never a self-assertion —
     // check-request-header-auth.ts classifies it `verified` for exactly that reason), so it is declared
@@ -6084,35 +6093,38 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/witness-attest": {
-    summary: "Mint a single-use controlled-substance witness-attestation token (D7)",
+    summary:
+      "Mint a single-use controlled-substance witness-attestation token (D7); Idempotency-Key required",
     body: M13WitnessAttestRequest,
     status: 201,
     response: M13WitnessTokenResponseSchema,
   },
   "POST /api/v1/administrations/caregiver-attested": {
-    summary: "Record a caregiver-attested administration via the M31 portal (D10)",
+    summary:
+      "Record a caregiver-attested administration via the M31 portal (D10); Idempotency-Key required",
     body: M13RecordCaregiverAttestedRequest,
     status: 201,
     response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/:id/acknowledge-caregiver": {
-    summary: "RN acknowledges a caregiver-attested row (caregiver_attested_review_required ABAC)",
+    summary:
+      "RN acknowledges a caregiver-attested row (caregiver_attested_review_required ABAC); Idempotency-Key required",
     body: M13AcknowledgeCaregiverRequest,
     response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/:id/dispute-caregiver": {
-    summary: "RN disputes a caregiver-attested row",
+    summary: "RN disputes a caregiver-attested row; Idempotency-Key required",
     body: M13DisputeCaregiverRequest,
     response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/:id/correct": {
-    summary: "Correct a committed administration (supersede)",
+    summary: "Correct a committed administration (supersede); Idempotency-Key required",
     body: M13CorrectAdministrationRequest,
     status: 201,
     response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/:id/void": {
-    summary: "Administrative hard-void (recorded in error)",
+    summary: "Administrative hard-void (recorded in error); Idempotency-Key required",
     body: M13VoidAdministrationRequest,
     response: M13AdministrationViewSchema,
   },
@@ -6132,13 +6144,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13IvSessionViewSchema,
   },
   "POST /api/v1/administrations/refuse": {
-    summary: "Record a refusal (administering_clinician_eligible ABAC)",
+    summary: "Record a refusal (administering_clinician_eligible ABAC); Idempotency-Key required",
     body: M13RecordRefusalRequest,
     status: 201,
     response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/offline-sync": {
-    summary: "Bulk offline-queue sync from device (D18)",
+    summary: "Bulk offline-queue sync from device (D18); Idempotency-Key required",
     body: M13OfflineSyncRequest,
     status: 201,
     response: M13OfflineSyncResponseSchema,
@@ -6149,7 +6161,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13ScheduledDoseListResponseSchema,
   },
   "POST /api/v1/scheduled-doses/:id/intentional-hold": {
-    summary: "Record an intentional hold before the grace window expires",
+    summary: "Record an intentional hold before the grace window expires; Idempotency-Key required",
     body: M13IntentionalHoldRequest,
     response: M13ScheduledDoseViewSchema,
   },
@@ -6159,7 +6171,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13MissedDoseListResponseSchema,
   },
   "POST /api/v1/missed-doses/:id/acknowledge": {
-    summary: "Case manager acknowledges a missed dose",
+    summary: "Case manager acknowledges a missed dose; Idempotency-Key required",
     response: M13MissedDoseViewSchema,
   },
   "GET /api/v1/reconciliation/worksheets": {
@@ -6173,29 +6185,31 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13WorksheetViewSchema,
   },
   "POST /api/v1/reconciliation/worksheets/:id/decisions": {
-    summary: "Record a per-line reconciliation decision (reconciliation_authoring_eligible ABAC)",
+    summary:
+      "Record a per-line reconciliation decision (reconciliation_authoring_eligible ABAC); Idempotency-Key required",
     body: M13RecordDecisionRequest,
     status: 201,
     response: M13WorksheetViewSchema,
   },
   "PATCH /api/v1/reconciliation/worksheets/:id/decisions/:lineId": {
-    summary: "Update a per-line decision before finalization",
+    summary: "Update a per-line decision before finalization; Idempotency-Key required",
     body: M13UpdateDecisionRequest,
     response: M13WorksheetViewSchema,
   },
   "POST /api/v1/reconciliation/worksheets/:id/add-caregiver-reported-line": {
-    summary: "Add a caregiver-reported home-med line",
+    summary: "Add a caregiver-reported home-med line; Idempotency-Key required",
     body: M13AddCaregiverReportedLineRequest,
     status: 201,
     response: M13WorksheetViewSchema,
   },
   "POST /api/v1/reconciliation/worksheets/:id/finalize": {
-    summary: "Finalize the worksheet (emits m13.reconciliation.completed)",
+    summary:
+      "Finalize the worksheet (emits m13.reconciliation.completed); Idempotency-Key required",
     body: M13FinalizeReconciliationRequest,
     response: M13WorksheetViewSchema,
   },
   "POST /api/v1/reconciliation/worksheets/:id/void": {
-    summary: "Void a reconciliation worksheet",
+    summary: "Void a reconciliation worksheet; Idempotency-Key required",
     body: M13VoidReconciliationRequest,
     response: M13WorksheetViewSchema,
   },
@@ -6209,7 +6223,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13DeploymentViewSchema,
   },
   "POST /api/v1/comfort-kits/deployments/:id/acknowledge-return": {
-    summary: "Manual return acknowledgment (Phase-1 fallback)",
+    summary: "Manual return acknowledgment (Phase-1 fallback); Idempotency-Key required",
     body: M13AcknowledgeReturnRequest,
     response: M13DeploymentViewSchema,
   },
@@ -6219,7 +6233,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13AdministrationPolicyViewSchema,
   },
   "PUT /api/v1/admin/administration-policy": {
-    summary: "Update tenant administration policy",
+    summary: "Update tenant administration policy; Idempotency-Key required",
     body: M13AdministrationPolicyRequest,
     response: M13AdministrationPolicyViewSchema,
   },
@@ -6424,42 +6438,42 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visits": {
-    summary: "Manual visit create (runs the D8 pre-schedule gate)",
+    summary: "Manual visit create (runs the D8 pre-schedule gate); Idempotency-Key required",
     body: M17CreateVisitRequest,
     response: M17VisitViewSchema,
   },
   "PATCH /api/v1/visits/:visitId": {
-    summary: "Edit times / discipline / assignment (reruns D8 gate)",
+    summary: "Edit times / discipline / assignment (reruns D8 gate); Idempotency-Key required",
     body: M17EditVisitRequest,
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visits/:visitId/start": {
-    summary: "Self-attest start (EVV-missing path; step-up-fresh)",
+    summary: "Self-attest start (EVV-missing path; step-up-fresh); Idempotency-Key required",
     body: M17StartVisitRequest,
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visits/:visitId/arrive": {
-    summary: "Record arrival/check-in (EVV-missing path; step-up-fresh)",
+    summary: "Record arrival/check-in (EVV-missing path; step-up-fresh); Idempotency-Key required",
     body: M17StartVisitRequest,
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visits/:visitId/cancel": {
-    summary: "Cancel a visit (reason + reason code)",
+    summary: "Cancel a visit (reason + reason code); Idempotency-Key required",
     body: M17CancelVisitRequest,
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visits/:visitId/reschedule": {
-    summary: "Reschedule (returns the newly-created visit, 201)",
+    summary: "Reschedule (returns the newly-created visit, 201); Idempotency-Key required",
     body: M17RescheduleVisitRequest,
     response: M17RescheduleResponseSchema,
   },
   "POST /api/v1/visits/:visitId/no-show": {
-    summary: "Mark no-show (triggers reassign-or-followup)",
+    summary: "Mark no-show (triggers reassign-or-followup); Idempotency-Key required",
     body: M17NoShowVisitRequest,
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visits/:visitId/reassign": {
-    summary: "Reassign-only (reruns the D8 gate)",
+    summary: "Reassign-only (reruns the D8 gate); Idempotency-Key required",
     body: M17ReassignVisitRequest,
     response: M17VisitViewSchema,
   },
@@ -6470,11 +6484,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17ProposalListResponseSchema,
   },
   "POST /api/v1/visit-proposals/:proposalId/publish": {
-    summary: "Publish a proposal as a real visit (201)",
+    summary: "Publish a proposal as a real visit (201); Idempotency-Key required",
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visit-proposals/:proposalId/dismiss": {
-    summary: "Dismiss a scheduler proposal",
+    summary: "Dismiss a scheduler proposal; Idempotency-Key required",
     body: M17DismissProposalRequest,
     response: M17ProposalViewSchema,
   },
@@ -6484,12 +6498,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17RecurringListResponseSchema,
   },
   "POST /api/v1/recurring-visits": {
-    summary: "Create a recurring policy (validates RRULE subset; 201)",
+    summary: "Create a recurring policy (validates RRULE subset; 201); Idempotency-Key required",
     body: M17CreateRecurringVisitRequest,
     response: M17RecurringViewSchema,
   },
   "POST /api/v1/recurring-visits/:id/discontinue": {
-    summary: "Discontinue a recurring policy (cascade-cancels future)",
+    summary: "Discontinue a recurring policy (cascade-cancels future); Idempotency-Key required",
     body: M17DiscontinueRecurringVisitRequest,
     response: M17RecurringViewSchema,
   },
@@ -6499,7 +6513,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17AvailabilityViewSchema,
   },
   "PUT /api/v1/availability/:membershipId": {
-    summary: "Upsert a membership's weekly availability",
+    summary: "Upsert a membership's weekly availability; Idempotency-Key required",
     body: M17UpsertAvailabilityRequest,
     response: M17AvailabilityViewSchema,
   },
@@ -6509,22 +6523,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17TimeOffListResponseSchema,
   },
   "POST /api/v1/time-off": {
-    summary: "Request PTO (201)",
+    summary: "Request PTO (201); Idempotency-Key required",
     body: M17RequestTimeOffRequest,
     response: M17TimeOffViewSchema,
   },
   "POST /api/v1/time-off/:id/approve": {
-    summary: "Approve PTO (triggers reassignment scan)",
+    summary: "Approve PTO (triggers reassignment scan); Idempotency-Key required",
     body: M17ApproveTimeOffRequest,
     response: M17TimeOffViewSchema,
   },
   "POST /api/v1/time-off/:id/deny": {
-    summary: "Deny PTO (reason)",
+    summary: "Deny PTO (reason); Idempotency-Key required",
     body: M17DenyTimeOffRequest,
     response: M17TimeOffViewSchema,
   },
   "POST /api/v1/time-off/:id/cancel": {
-    summary: "Cancel own pre-start PTO",
+    summary: "Cancel own pre-start PTO; Idempotency-Key required",
     body: M17CancelTimeOffRequest,
     response: M17TimeOffViewSchema,
   },
@@ -6544,7 +6558,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17MapViewResponseSchema,
   },
   "POST /api/v1/optimize-day": {
-    summary: "On-demand route optimisation (degraded when flag OFF)",
+    summary: "On-demand route optimisation (degraded when flag OFF); Idempotency-Key required",
     body: M17OptimizeDayRequest,
     response: M17OptimizeDayResponseSchema,
   },
@@ -6584,12 +6598,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17CredentialListResponseSchema,
   },
   "POST /api/v1/memberships/:membershipId/credentials": {
-    summary: "GAP-093: grant a clinical-license/certification credential (201)",
+    summary:
+      "GAP-093: grant a clinical-license/certification credential (201); Idempotency-Key required",
     body: M17GrantCredentialRequest,
     response: M17CredentialViewSchema,
   },
   "DELETE /api/v1/memberships/:membershipId/credentials/:credentialId": {
-    summary: "GAP-093: revoke a credential (204)",
+    summary: "GAP-093: revoke a credential (204); Idempotency-Key required",
     body: M17RevokeCredentialRequest,
   },
   "GET /api/v1/oncall-rotation": {
@@ -6598,24 +6613,24 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17OnCallRotationListResponseSchema,
   },
   "POST /api/v1/oncall-rotation": {
-    summary: "GAP-029: add an on-call rotation entry (201)",
+    summary: "GAP-029: add an on-call rotation entry (201); Idempotency-Key required",
     body: M17CreateOnCallRotationRequest,
     response: M17OnCallRotationViewSchema,
   },
   "DELETE /api/v1/oncall-rotation/:id": {
-    summary: "GAP-029: cancel an on-call rotation entry (204)",
+    summary: "GAP-029: cancel an on-call rotation entry (204); Idempotency-Key required",
   },
 });
 
 // ── M18 EVV (25 routes) ───────────────────────────────────────────────────────────────────────────
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/evv/check-in": {
-    summary: "Record a check-in (§4.7 capture predicates gate)",
+    summary: "Record a check-in (§4.7 capture predicates gate); Idempotency-Key required",
     body: M18CheckInRequest,
     response: M18EvvCheckResultView,
   },
   "POST /api/v1/evv/check-out": {
-    summary: "Record a check-out",
+    summary: "Record a check-out; Idempotency-Key required",
     body: M18CheckOutRequest,
     response: M18EvvCheckResultView,
   },
@@ -6630,7 +6645,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvOfflineSyncV2Response,
   },
   "POST /api/v1/evv/events/:eventId/correct": {
-    summary: "Correction-of-record (Clinical Supervisor+, fresh step-up)",
+    summary: "Correction-of-record (Clinical Supervisor+, fresh step-up); Idempotency-Key required",
     body: M18CorrectEventRequest,
     response: M18EvvCheckResultView,
   },
@@ -6654,26 +6669,26 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvDeviceListResponse,
   },
   "POST /api/v1/evv/devices/self-register": {
-    summary: "Clinician self-registers a device (-> pending_approval)",
+    summary: "Clinician self-registers a device (-> pending_approval); Idempotency-Key required",
     body: M18SelfRegisterDeviceRequest,
     response: M18EvvDeviceView,
   },
   "POST /api/v1/evv/devices/:id/approve": {
-    summary: "Approve a pending device",
+    summary: "Approve a pending device; Idempotency-Key required",
     response: M18EvvDeviceView,
   },
   "POST /api/v1/evv/devices/:id/reject": {
-    summary: "Reject a pending device",
+    summary: "Reject a pending device; Idempotency-Key required",
     body: M18RejectDeviceRequest,
     response: M18EvvDeviceView,
   },
   "POST /api/v1/evv/devices/:id/suspend": {
-    summary: "Suspend a device",
+    summary: "Suspend a device; Idempotency-Key required",
     body: M18SuspendDeviceRequest,
     response: M18EvvDeviceView,
   },
   "POST /api/v1/evv/devices/:id/retire": {
-    summary: "Retire a device",
+    summary: "Retire a device; Idempotency-Key required",
     body: M18RetireDeviceRequest,
     response: M18EvvDeviceView,
   },
@@ -6683,12 +6698,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvGeofencePolicyView,
   },
   "PATCH /api/v1/evv/geofence-policy/tenant": {
-    summary: "Edit tenant tighten-only policy",
+    summary: "Edit tenant tighten-only policy; Idempotency-Key required",
     body: M18EditTenantPolicyRequest,
     response: M18EvvGeofencePolicyView,
   },
   "POST /api/v1/evv/geofence-policy/per-address": {
-    summary: "Create/replace a per-address override (reason >=30 chars)",
+    summary: "Create/replace a per-address override (reason >=30 chars); Idempotency-Key required",
     body: M18CreatePerAddressOverrideRequest,
     response: M18EvvGeofencePolicyView,
   },
@@ -6699,12 +6714,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvMissingResolutionListResponse,
   },
   "POST /api/v1/evv/missing-resolutions/:id/clinician-attest": {
-    summary: "Assigned clinician self-attests (reason >=40; D6 <=24h)",
+    summary: "Assigned clinician self-attests (reason >=40; D6 <=24h); Idempotency-Key required",
     body: M18ClinicianAttestResolutionRequest,
     response: M18EvvMissingResolutionView,
   },
   "POST /api/v1/evv/missing-resolutions/:id/supervisor-override": {
-    summary: "Supervisor override (step-up; reason >=60; D6 <=7d)",
+    summary: "Supervisor override (step-up; reason >=60; D6 <=7d); Idempotency-Key required",
     body: M18SupervisorOverrideResolutionRequest,
     response: M18EvvMissingResolutionView,
   },
@@ -6715,12 +6730,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvAggregatorSubmissionListResponse,
   },
   "POST /api/v1/evv/aggregator-submissions/:id/resubmit": {
-    summary: "Operator-initiated resubmit (from rejected/timeout)",
+    summary: "Operator-initiated resubmit (from rejected/timeout); Idempotency-Key required",
     body: M18ResubmitSubmissionRequest,
     response: M18EvvAggregatorSubmissionView,
   },
   "POST /api/v1/evv/aggregator-submissions/:id/cancel": {
-    summary: "Operator-initiated cancel (from a non-terminal status)",
+    summary: "Operator-initiated cancel (from a non-terminal status); Idempotency-Key required",
     body: M18CancelSubmissionRequest,
     response: M18EvvAggregatorSubmissionView,
   },
@@ -9984,6 +9999,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/cap/accruals/patient/:periodId/:patientId/lines": {
     summary:
       "Per-patient accrual source lines — cursor-paginated (source kind/id, amount cents, service span; §4.1)",
+    query: M26AccrualLinesQuery,
     response: M26AccrualLinePageResponse,
   },
   "GET /api/v1/cap/accruals/inpatient/:periodId": {
@@ -11201,7 +11217,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/messaging/escalations/unacknowledged": {
     summary:
-      "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
+      "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 422 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
     query: M36UnacknowledgedQuerySchema,
     response: M36UnacknowledgedResponseSchema,
   },

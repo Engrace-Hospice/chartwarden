@@ -20,7 +20,6 @@ export type AdrChecklistState = "pending" | "ready" | "not_applicable";
 
 /** How the response left the building. Electronic sending with receipts is milestone 6. */
 export const ADR_FILING_CHANNELS = ["mac_portal", "fax", "mail", "esmd", "other"] as const;
-export type AdrFilingChannel = (typeof ADR_FILING_CHANNELS)[number];
 
 export type AdrSignOffRefusal = "REVIEWER_IS_ASSEMBLER" | "PACKET_EMPTY" | "CHECKLIST_INCOMPLETE";
 export type AdrFilingRefusal =

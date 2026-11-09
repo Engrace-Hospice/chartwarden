@@ -20,6 +20,7 @@
 // DTOs therefore carry `narrative: string | null` with `narrativeAvailable: boolean` beside it, so "there
 // is no narrative" and "we cannot open it here" are different answers on the wire (the M19-T08 three-state
 // rule).
+import type { CursorPage } from "@chartwarden/shared/route-kit";
 import type {
   IsoInstant,
   SafetyAlertKind,
@@ -42,7 +43,6 @@ import type {
   SafetySubscriptionScopeKind,
 } from "@chartwarden/types";
 import type { M20ReadActor } from "./actor";
-import type { CursorPage } from "./concurrency";
 
 /** §4.2 `RecordCheckInResponse`'s read sibling — one `safety_check_in` row. */
 export interface SafetyCheckInView {

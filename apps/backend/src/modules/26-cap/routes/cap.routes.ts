@@ -2,13 +2,14 @@
 // surface: cap-period list/detail/open/close/reopen/methodology, projection reads + recompute, accrual
 // reads, the threshold-event queue + acknowledge, and the cap-watch dashboard composite. Reads gate on the
 // §4.6 key; the lifecycle mutations compose the §4.7 ABAC predicate over `:periodId` and the §D12 step-up
-// on methodology-lock / reopen. Org/actor binding is server-side (actorOf/writeActorOf).
+// on methodology-lock / reopen. Org/actor binding is server-side (route-kit actorOf).
+
+import { actorOf, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { clampLimit, requireIdempotencyKey } from "./concurrency";
 import { ABAC, P, STEP_UP } from "./guards";
 import {
+  AccrualLinesQuery,
   AcknowledgeEventRequest,
   EventIdParams,
   LockMethodologyRequest,
@@ -34,6 +35,7 @@ const ACCRUAL_READ = P("cap.accrual.read");
 const EVENT_READ = P("cap.event.read");
 const EVENT_ACK = P("cap.event.acknowledge");
 const IDEMPOTENT = requireIdempotencyKey();
+const ACCRUAL_PAGE_DEFAULT = 50;
 
 const qStr = (q: unknown, key: string): string | undefined => {
   const v = (q as Record<string, unknown> | undefined)?.[key];
@@ -66,7 +68,7 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
     { preHandler: [PERIOD_MANAGE, IDEMPOTENT] },
     async (request, reply) => {
       const body = parse(OpenCapPeriodRequest, request.body);
-      const period = await writeService.openPeriod(writeActorOf(request), body);
+      const period = await writeService.openPeriod(actorOf(request), body);
       return reply.code(201).send(period);
     },
   );
@@ -101,7 +103,7 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
     async (request, reply) =>
       reply.send(
         await writeService.closePeriod(
-          writeActorOf(request),
+          actorOf(request),
           parse(PeriodIdParams, request.params).periodId,
         ),
       ),
@@ -121,7 +123,7 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
     async (request, reply) => {
       const { periodId } = parse(PeriodIdParams, request.params);
       const body = parse(ReopenCapPeriodRequest, request.body);
-      return reply.send(await writeService.reopenPeriod(writeActorOf(request), periodId, body));
+      return reply.send(await writeService.reopenPeriod(actorOf(request), periodId, body));
     },
   );
 
@@ -139,7 +141,7 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
     async (request, reply) => {
       const { periodId } = parse(PeriodIdParams, request.params);
       const body = parse(LockMethodologyRequest, request.body);
-      return reply.send(await writeService.lockMethodology(writeActorOf(request), periodId, body));
+      return reply.send(await writeService.lockMethodology(actorOf(request), periodId, body));
     },
   );
 
@@ -216,7 +218,7 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
     async (request, reply) =>
       reply.send(
         await writeService.recompute(
-          writeActorOf(request),
+          actorOf(request),
           parse(PeriodIdParams, request.params).periodId,
         ),
       ),
@@ -258,16 +260,18 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
         auditRead: { resourceKind: "cap_accrual_line", patientIdParam: "patientId", list: true },
       },
     },
-    async (request, reply) =>
-      reply.send(
+    async (request, reply) => {
+      const q = parse(AccrualLinesQuery, request.query);
+      return reply.send(
         await readService.listAccrualLines(
           actorOf(request),
           pParam(request, "periodId"),
           pParam(request, "patientId"),
-          qStr(request.query, "cursor"),
-          clampLimit(qStr(request.query, "limit")),
+          q.cursor || undefined,
+          q.limit ?? ACCRUAL_PAGE_DEFAULT,
         ),
-      ),
+      );
+    },
   );
   app.get(
     "/api/v1/cap/accruals/inpatient/:periodId",
@@ -312,7 +316,7 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
     async (request, reply) => {
       const { eventId } = parse(EventIdParams, request.params);
       const body = parse(AcknowledgeEventRequest, request.body);
-      await writeService.acknowledgeEvent(writeActorOf(request), eventId, body);
+      await writeService.acknowledgeEvent(actorOf(request), eventId, body);
       return reply.code(204).send();
     },
   );

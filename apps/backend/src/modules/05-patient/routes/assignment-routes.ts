@@ -1,3 +1,4 @@
+import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/05-patient/routes/assignment-routes.ts — the M5 §4.3 care-team assignment
 // routes (GAP-015). Until now NO production code wrote `patient_assignment`, so durable caseload
 // membership (the `caseload_or_scope` source) and the care-team lookups M8/M12/M13/M36 read could not be
@@ -10,7 +11,7 @@
 // "Assigner must already have access" (spec): the chart scope guard runs on `:id` for all three, 404 on
 // deny so a refusal never confirms the chart exists. Org-wide oversight roles (DON etc.) pass it through
 // the predicate's org-wide arm, which is how the first clinician ever lands on a caseload.
-import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -30,8 +31,6 @@ import {
 } from "./assignment-typebox";
 import { LooseIdParamsSchema, parse } from "./patient-typebox";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 const chartScope = (action: string): PreHandler =>
   requireAbac(action, "caseload_or_scope", {
     getTarget: (request: GuardRequest) => ({
@@ -44,12 +43,6 @@ const READ = requirePermission("patient.read") as PreHandler;
 const ASSIGN = requirePermission("patient.assign") as PreHandler;
 const SCOPE_READ = chartScope("patient.read");
 const SCOPE_ASSIGN = chartScope("patient.assign");
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
-}
 
 /** Map the port's typed precondition errors onto the §4.3 HTTP contract; anything else rethrows. */
 function mapAssignmentError(err: unknown): unknown {

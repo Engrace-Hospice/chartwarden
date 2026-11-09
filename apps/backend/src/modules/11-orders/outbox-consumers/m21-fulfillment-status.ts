@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/11-orders/outbox-consumers/m21-fulfillment-status.ts — the D8 one-shot
 // auto-complete consumer (F-15x, #248).
 //
@@ -37,16 +38,13 @@
 // ever replies — so what "M11 releases the source order" (M21's own catalog gloss on `.cancelled`) would
 // mean for a request cancelled through some OTHER path (never through M11's cascade) is a genuine, open
 // question this pass does not guess at.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { OrderKind } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import type { OrderWriteOutboxPort } from "../orders-route-service-db";
 
 const ORDER = schema.orderRecords;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 /** D8 / §2.2 — the M11 order kinds that complete automatically on M21 delivery. `dme` is excluded: it
  *  completes on receipt via a separate monthly-rental close-out, not on "delivered". */

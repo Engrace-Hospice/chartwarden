@@ -1,3 +1,4 @@
+import { requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/36-messaging/routes/family-routes.ts - WP 6.7 (ADR-0099, PROPOSED): family / caregiver messaging without an app.
 //
 // STAFF (a workforce session). Which PATIENTS a staff member may act on is the care-team predicate inside the service; the permission only says the role exists.
@@ -20,7 +21,7 @@
 //   POST /api/v1/messaging/family-contact/verify     the spoken 8-digit code -> active (5 attempts per invitation)
 //   GET  /api/v1/messaging/family-contact/messages   the one thread, oldest first, active stage only; every read leaves a trail row
 //   POST /api/v1/messaging/family-contact/messages   send text (<= 2,000 characters); every send leaves a trail row
-import { requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import {
   FAMILY_MANAGE_PERMISSION,
   FAMILY_MANAGE_STEP_UP_KEY,
@@ -53,8 +54,6 @@ import {
 import { parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 const MANAGE = requirePermission(FAMILY_MANAGE_PERMISSION) as PreHandler;
 const RESPOND = requirePermission(FAMILY_RESPOND_PERMISSION) as PreHandler;
 const STEP_UP = requireStepUp(FAMILY_MANAGE_STEP_UP_KEY) as PreHandler;
@@ -74,12 +73,6 @@ export interface FamilyRouteDeps {
   readonly contactRoutes?: boolean | undefined;
 }
 
-function staffOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
-}
-
 /** `Authorization: Bearer <orgId>.<token>`; anything else is "no bearer" (the service answers the uniform 404). */
 function bearerOf(request: FastifyRequest): string | null {
   const header = request.headers.authorization;
@@ -94,7 +87,7 @@ export function registerFamilyRoutes(app: FastifyInstance, deps: FamilyRouteDeps
 
   /** Off => the uniform 404, before the step-up is asked for. */
   const FLAG_ON: PreHandler = async (request) => {
-    if (!(await staff.isEnabled(staffOf(request).organizationId)))
+    if (!(await staff.isEnabled(actorOf(request).organizationId)))
       throw new NotFoundError("patient");
   };
 
@@ -109,7 +102,7 @@ export function registerFamilyRoutes(app: FastifyInstance, deps: FamilyRouteDeps
         },
       },
     },
-    async (request, reply) => noStore(reply).send(await staff.getSettings(staffOf(request))),
+    async (request, reply) => noStore(reply).send(await staff.getSettings(actorOf(request))),
   );
 
   app.put(
@@ -117,7 +110,7 @@ export function registerFamilyRoutes(app: FastifyInstance, deps: FamilyRouteDeps
     { preHandler: [MANAGE, STEP_UP], schema: { response: { 200: FamilySettingsResponseSchema } } },
     async (request, reply) => {
       const body = parse(FamilySettingsBodySchema, request.body);
-      return noStore(reply).send(await staff.putSettings(staffOf(request), body));
+      return noStore(reply).send(await staff.putSettings(actorOf(request), body));
     },
   );
 
@@ -138,7 +131,7 @@ export function registerFamilyRoutes(app: FastifyInstance, deps: FamilyRouteDeps
     async (request, reply) => {
       const { patientId } = parse(FamilyPatientParamsSchema, request.params);
       return noStore(reply).send({
-        caregivers: await staff.caregivers(staffOf(request), patientId),
+        caregivers: await staff.caregivers(actorOf(request), patientId),
       });
     },
   );
@@ -155,7 +148,7 @@ export function registerFamilyRoutes(app: FastifyInstance, deps: FamilyRouteDeps
       const body = parse(CreateFamilyInvitationBodySchema, request.body);
       return noStore(reply)
         .code(201)
-        .send(await staff.createInvitation(staffOf(request), body));
+        .send(await staff.createInvitation(actorOf(request), body));
     },
   );
 
@@ -172,7 +165,7 @@ export function registerFamilyRoutes(app: FastifyInstance, deps: FamilyRouteDeps
         },
       },
     },
-    async (request, reply) => noStore(reply).send({ contacts: await staff.list(staffOf(request)) }),
+    async (request, reply) => noStore(reply).send({ contacts: await staff.list(actorOf(request)) }),
   );
 
   app.get(
@@ -191,7 +184,7 @@ export function registerFamilyRoutes(app: FastifyInstance, deps: FamilyRouteDeps
     },
     async (request, reply) => {
       const { contactId } = parse(FamilyContactIdParamsSchema, request.params);
-      return noStore(reply).send(await staff.thread(staffOf(request), contactId));
+      return noStore(reply).send(await staff.thread(actorOf(request), contactId));
     },
   );
 
@@ -206,7 +199,7 @@ export function registerFamilyRoutes(app: FastifyInstance, deps: FamilyRouteDeps
       const body = parse(FamilyReplyBodySchema, request.body);
       return noStore(reply)
         .code(201)
-        .send(await staff.reply(staffOf(request), contactId, body.body));
+        .send(await staff.reply(actorOf(request), contactId, body.body));
     },
   );
 
@@ -218,7 +211,7 @@ export function registerFamilyRoutes(app: FastifyInstance, deps: FamilyRouteDeps
     },
     async (request, reply) => {
       const { contactId } = parse(FamilyContactIdParamsSchema, request.params);
-      return noStore(reply).send(await staff.revoke(staffOf(request), contactId));
+      return noStore(reply).send(await staff.revoke(actorOf(request), contactId));
     },
   );
 
@@ -229,7 +222,7 @@ export function registerFamilyRoutes(app: FastifyInstance, deps: FamilyRouteDeps
   ) => Promise<unknown>;
   const toggle = (run: Toggle) => async (request: FastifyRequest, reply: FastifyReply) => {
     const { contactId } = parse(FamilyContactIdParamsSchema, request.params);
-    return noStore(reply).send(await run(staff, staffOf(request), contactId));
+    return noStore(reply).send(await run(staff, actorOf(request), contactId));
   };
   const toggleOptions = (stepUp: boolean) => ({
     preHandler: [requireUuidParams("contactId"), MANAGE, ...(stepUp ? [STEP_UP] : [])],

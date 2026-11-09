@@ -30,7 +30,6 @@ export const QIC_MIN_UNAVAILABLE_REASON = 10;
 
 /** How an escalation request left the building. Electronic sending is milestone 6. */
 export const QIC_ESCALATION_CHANNELS = ["qic_portal", "fax", "mail", "other"] as const;
-export type QicEscalationChannel = (typeof QIC_ESCALATION_CHANNELS)[number];
 
 export interface QicExtension {
   /** Calendar days added to the QIC clock (0-14). */

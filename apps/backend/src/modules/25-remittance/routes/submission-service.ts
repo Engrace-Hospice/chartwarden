@@ -10,6 +10,7 @@
 // shells are unbound (registry.ts). A recorded receipt is frozen by trigger; a correction appends to
 // `receipt_amendments`. No outbox events (nothing consumes them); the write-audit trigger and the rows are the trail.
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError, isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
@@ -40,8 +41,6 @@ import {
   UNBOUND_APPEAL_SOURCES,
   describeEnclosures,
 } from "./appeal-packet-sources";
-import { VersionConflictError } from "./concurrency";
-import { isUniqueViolation } from "./denial-route-service";
 import { providerEntityScopeCondition } from "./scope";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -532,7 +531,7 @@ export function buildDrizzleSubmissionService(
             })
             .where(and(eq(SA.id, cur.id), eq(SA.version, ifMatch)))
             .returning({ id: SA.id, version: SA.version });
-          if (!updated[0]) throw new VersionConflictError(cur.version);
+          if (!updated[0]) throw new StaleVersionError();
           return { ...updated[0], amended: true };
         }
         if (!canTransitionSubmission(status, "acknowledged")) {
@@ -556,7 +555,7 @@ export function buildDrizzleSubmissionService(
           })
           .where(and(eq(SA.id, cur.id), eq(SA.version, ifMatch)))
           .returning({ id: SA.id, version: SA.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         return { ...updated[0], amended: false };
       });
     },
@@ -584,7 +583,7 @@ export function buildDrizzleSubmissionService(
           })
           .where(and(eq(SA.id, cur.id), eq(SA.version, ifMatch)))
           .returning({ id: SA.id, version: SA.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         return updated[0];
       });
     },

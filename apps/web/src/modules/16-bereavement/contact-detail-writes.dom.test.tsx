@@ -1,4 +1,4 @@
-// apps/web/src/modules/16-bereavement — the contact page's inline writes and reloads: a refused write (412/409/404) reloads the
+// apps/web/src/modules/16-bereavement — the contact page's inline writes and reloads: a refused write (409/404) reloads the
 // page and says the contact moved; a lost response is retried under the same Idempotency-Key; a reload never unmounts the page or
 // eats what the reader typed into the care goals; an unreadable schedule is said (403) or flagged (anything else) with a retry.
 import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
@@ -137,12 +137,12 @@ beforeEach(() => {
 });
 
 const STALE = {
-  status: 412,
+  status: 409,
   body: { error: { code: "STALE_VERSION", message: "the contact moved" } },
 };
 
 describe("contact page — refused and lost writes", () => {
-  it("a stale Resume mailings (412) says the contact changed, and reloads the page", async () => {
+  it("a stale Resume mailings (409 STALE_VERSION) says the contact changed, and reloads the page", async () => {
     const { planGets } = mount({
       write: STALE,
       afterWrite: contact({ version: 5, mailingsAllowed: true }),

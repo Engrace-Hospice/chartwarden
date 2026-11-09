@@ -43,7 +43,7 @@ export interface PutPreDeathDraftInput {
 export interface M16DraftService {
   /** `null` = the admission is absent or another tenant's (the route's 404). */
   getDraft(actor: M16ReadActor, admissionId: string): Promise<PreDeathDraftView | null>;
-  /** 404 unknown admission · 409 `DRAFT_LOCKED` once a plan exists · 412 `STALE_VERSION`. */
+  /** 404 unknown admission · 409 `DRAFT_LOCKED` once a plan exists · 409 `STALE_VERSION`. */
   putDraft(
     actor: M16WriteActor,
     admissionId: string,

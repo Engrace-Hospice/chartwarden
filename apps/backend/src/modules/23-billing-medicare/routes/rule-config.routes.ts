@@ -6,18 +6,24 @@
 // `billing.rule_config.read` (the `inOrg` default — the library is org-scoped, not provider-scoped). Every
 // mutation gates `billing.rule_config.edit` + the §4.7 `regulatory_required_rule_protected` predicate (D5:
 // a `regulatoryRequired` rule cannot be overlay-edited / disabled / deleted) + the §D13 AI-block. The PATCH
-// and DELETE carry the §2.5 `If-Match` optimistic-concurrency header (412 on stale); every mutation carries
+// and DELETE carry the §2.5 `If-Match` optimistic-concurrency header (409 STALE_VERSION on stale); every mutation carries
 // `Idempotency-Key` (§4.1). Org/actor/membership binding is ALWAYS server-side.
+import {
+  actorOf,
+  ifMatchVersionOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+  requireIfMatch,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, rejectAiActor, writeActorOf } from "./actor";
+import { writeActorOf } from "./actor";
 import {
   CreateRuleConfigBodySchema,
   RuleConfigIdParamsSchema,
   RuleConfigListQuerySchema,
   UpdateRuleConfigBodySchema,
-  parse,
 } from "./billing-typebox";
-import { parseIfMatch, requireIdempotencyKey, requireIfMatch } from "./concurrency";
 import { P, RULE_PROTECTED, targetRuleKeyFromBody } from "./guards";
 import type { M23ReadRouteService } from "./read-service";
 import type { M23WriteRouteService } from "./write-service";
@@ -110,7 +116,7 @@ export function registerRuleConfigRoutes(app: FastifyInstance, deps: RuleConfigR
       const actor = writeActorOf(request);
       const { id } = parse(RuleConfigIdParamsSchema, request.params);
       const body = parse(UpdateRuleConfigBodySchema, request.body);
-      const expectedVersion = parseIfMatch(request);
+      const expectedVersion = ifMatchVersionOf(request);
       return writeService.updateRuleConfig(actor, id, {
         expectedVersion,
         enabled: body.enabled,
@@ -130,7 +136,7 @@ export function registerRuleConfigRoutes(app: FastifyInstance, deps: RuleConfigR
     async (request, reply) => {
       const actor = writeActorOf(request);
       const { id } = parse(RuleConfigIdParamsSchema, request.params);
-      const expectedVersion = parseIfMatch(request);
+      const expectedVersion = ifMatchVersionOf(request);
       await writeService.deleteRuleConfig(actor, id, { expectedVersion });
       return reply.code(204).send();
     },

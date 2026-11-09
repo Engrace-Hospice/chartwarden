@@ -28,16 +28,6 @@ export class LicensedSourceCredentialMissingError extends Error {
   }
 }
 
-/** Egress for public sources is disabled (the flag is off). */
-export class EgressDisabledError extends Error {
-  constructor() {
-    super(
-      "EGRESS_DISABLED: TERMINOLOGY_LOADER_EGRESS is not 'on'; upload the release file instead",
-    );
-    this.name = "EgressDisabledError";
-  }
-}
-
 /** True for a deterministic fault that should fail the version rather than retry the job. */
 export function isDataError(err: unknown): err is LoaderDataError {
   return err instanceof LoaderDataError;

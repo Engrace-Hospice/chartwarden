@@ -1,8 +1,9 @@
-import { paramStringMap } from "./_util";
 // @chartwarden/billing — §4.5 rule `place_of_service_consistency` (pos, error, regulatory). Each line's
 // Q-code must match the patient's documented place of service (home / ALF / SNF / IPU) per the M5/M40
 // facility lookup; place-of-service changes must be documented with effective dates (M6). Reads the
 // resolved `mdm.placeOfService` + line Q-codes; SKIPs when the M40 resolver is unbound. PURE: reads ctx.
+import type { NewClaimLineInput } from "../repositories/claim-line";
+import { paramStringMap } from "./_util";
 import type { Rule } from "./types";
 import { fail, pass, skip } from "./types";
 
@@ -45,6 +46,20 @@ export const POS_LABEL_ALIASES: Readonly<Record<string, string>> = {
   inpatient_unit: "ipu",
   hospice_facility: "ipu",
 };
+
+const QCODE_BY_POS: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(POS_BY_QCODE).map(([qcode, pos]) => [pos, qcode]),
+);
+
+/**
+ * Map a resolved place of service to its CMS hospice Q-code ({@link POS_BY_QCODE} inverted). An unrecognized or
+ * absent place resolves to Q5009 — CMS's own "place N.O.S." catch-all — never a specific site (F-125).
+ */
+export function qCodeForPlaceOfService(pos: string | null): NewClaimLineInput["qCode"] {
+  const label = (pos ?? "").toLowerCase();
+  const canonical = POS_LABEL_ALIASES[label] ?? label;
+  return (QCODE_BY_POS[canonical] ?? "Q5009") as NewClaimLineInput["qCode"];
+}
 
 export const placeOfServiceConsistency: Rule = {
   key: KEY,

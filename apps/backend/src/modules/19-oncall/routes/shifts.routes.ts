@@ -14,9 +14,13 @@
 // THE POLICY PATCH (26) CARRIES STEP-UP because it edits the escalation ladder and the vendor binding:
 // §8.3.2 lists "alter the tenant on-call policy to lower mandatory-escalation tiers" as the tampering
 // threat, and the platform floor a tenant may only TIGHTEN lives in the protocol catalog next door.
+import {
+  ifMatchVersionOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import { ABAC_CASELOAD_OR_SCOPE, ABAC_IN_ORG, P, STEP_UP } from "./guards";
 import {
   CancelShiftBody,
@@ -92,7 +96,7 @@ export function registerShiftRoutes(app: FastifyInstance, deps: ShiftRouteDeps):
       const { shiftId } = parse(ShiftIdParams, request.params);
       const body = parse(CancelShiftBody, request.body);
       return writeService.cancelShift(writeActorOf(request), shiftId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         ...body,
       });
     },
@@ -107,7 +111,7 @@ export function registerShiftRoutes(app: FastifyInstance, deps: ShiftRouteDeps):
       const { shiftId } = parse(ShiftIdParams, request.params);
       parse(ShiftTransitionBody, request.body);
       return writeService.openShift(writeActorOf(request), shiftId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -121,7 +125,7 @@ export function registerShiftRoutes(app: FastifyInstance, deps: ShiftRouteDeps):
       const { shiftId } = parse(ShiftIdParams, request.params);
       parse(ShiftTransitionBody, request.body);
       return writeService.closeShift(writeActorOf(request), shiftId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -173,7 +177,7 @@ export function registerShiftRoutes(app: FastifyInstance, deps: ShiftRouteDeps):
       const { providerEntityId } = parseQuery(PolicyQuery, request.query);
       const body = parse(PatchOncallPolicyBody, request.body);
       return writeService.patchPolicy(writeActorOf(request), {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         providerEntityId,
         ...body,
       });

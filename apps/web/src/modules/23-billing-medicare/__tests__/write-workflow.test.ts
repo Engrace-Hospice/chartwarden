@@ -27,8 +27,8 @@ describe("authFailureRedirect", () => {
     ).toBeNull();
   });
 
-  it("does not redirect on unrelated failures (412/422/503)", () => {
-    expect(authFailureRedirect(412, "VERSION_CONFLICT", "/billing/claims/abc")).toBeNull();
+  it("does not redirect on unrelated failures (409/422/503)", () => {
+    expect(authFailureRedirect(409, "STALE_VERSION", "/billing/claims/abc")).toBeNull();
     expect(authFailureRedirect(422, "VALIDATION_FAILED", "/billing/claims/abc")).toBeNull();
     expect(authFailureRedirect(503, undefined, "/billing/claims/abc")).toBeNull();
     expect(authFailureRedirect(undefined, undefined, "/billing/claims/abc")).toBeNull();

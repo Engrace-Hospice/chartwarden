@@ -28,7 +28,6 @@
     "apps/web/**",
     "apps/admin/**",
     "apps/portal/**",
-    "packages/ui/**",
-    "packages/admin-ui-shell/**"
+    "packages/ui/**"
   ]
 }

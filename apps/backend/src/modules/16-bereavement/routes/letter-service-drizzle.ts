@@ -11,6 +11,12 @@
 // is sealed in `personal_note_cipher` only (an outbox payload is a plaintext copy the eraser cannot reach), and M22 pulls it at render time
 // through `physicianLetterNoteForOrg` (the composition root binds the port).
 import { type DbClient, schema } from "@chartwarden/db";
+import {
+  type KeysetCursor,
+  clampLimit,
+  decodeKeysetCursor,
+  toCursorPage,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { NotFoundError } from "@chartwarden/types";
 import { and, asc, eq, gt, or } from "drizzle-orm";
@@ -23,8 +29,8 @@ import {
   normalizePersonalNote,
 } from "../lifecycle/index";
 import type { M16ReadActor, M16WriteActor } from "./actor";
-import { type Cursor, M16_PAGE_SIZES, clampLimit, decodeCursor, toCursorPage } from "./concurrency";
 import type { M16LetterService, PhysicianLetterView } from "./letter-service";
+import { M16_PAGE_SIZES } from "./pagination";
 import type { WriteOutboxPort } from "./write-service";
 
 /** The M22 template the approved letter renders through, and the document kind the event names. */
@@ -85,7 +91,11 @@ export function buildDrizzleM16LetterService(db: DbClient, deps: M16LetterDeps):
   return {
     async listLetters(actor, input) {
       const limit = clampLimit(input.limit, M16_PAGE_SIZES.plans);
-      const after: Cursor | null = decodeCursor(input.cursor);
+      const after: KeysetCursor | null = decodeKeysetCursor(
+        actor.organizationId,
+        input.cursor,
+        "instant",
+      );
       return withOrgContext(db, scope(actor), async (scoped) => {
         const tx = scoped as unknown as DbClient;
         const dueAfter = after === null ? undefined : new Date(after.a);
@@ -105,7 +115,13 @@ export function buildDrizzleM16LetterService(db: DbClient, deps: M16LetterDeps):
           )
           .orderBy(asc(LETTER.dueAt), asc(LETTER.id))
           .limit(limit + 1);
-        return toCursorPage(rows, limit, (row) => ({ a: iso(row.dueAt), id: row.id }), viewOf);
+        return toCursorPage(
+          actor.organizationId,
+          rows,
+          limit,
+          (row) => ({ a: iso(row.dueAt), id: row.id }),
+          viewOf,
+        );
       });
     },
 

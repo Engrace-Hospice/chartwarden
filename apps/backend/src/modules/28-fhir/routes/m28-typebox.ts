@@ -1,12 +1,3 @@
-import {
-  FHIR_BULK_EXPORT_STATUSES,
-  FHIR_CLIENT_STATUSES,
-  FHIR_CLIENT_TIERS,
-  FHIR_CLIENT_TYPES,
-  FHIR_INBOUND_OWNER_MODULES,
-  FHIR_INBOUND_STATUSES,
-  ValidationError,
-} from "@chartwarden/types";
 // apps/backend/src/modules/28-fhir/routes/m28-typebox.ts — M28-T08 (§4.1 / §4.2) request schemas.
 //
 // TypeBox request bodies, path params and list queries for the §4.1 FHIR-gateway routes. Named
@@ -17,22 +8,21 @@ import {
 // M28-T01), which mirror the `@chartwarden/db` pgEnums and the §3 CHECK vocabularies. The DB wins on conflict.
 //
 // FOUR THINGS NOTHING HERE ACCEPTS: (1) no organization id and no acting membership — both are server-side
-// (./actor.ts); (2) no client SECRET on the wire — a rotated credential's plaintext is minted server-side
+// (@chartwarden/shared/route-kit); (2) no client SECRET on the wire — a rotated credential's plaintext is minted server-side
 // and returned once; (3) no `status` a caller may set directly — every status change walks the §2.2 FSM
 // through a named transition route; (4) no signed cursor key — R39 rotates it server-side.
-import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
+import { Uuid as uuidSchema } from "@chartwarden/shared/route-kit";
+import {
+  FHIR_BULK_EXPORT_STATUSES,
+  FHIR_CLIENT_STATUSES,
+  FHIR_CLIENT_TIERS,
+  FHIR_CLIENT_TYPES,
+  FHIR_INBOUND_OWNER_MODULES,
+  FHIR_INBOUND_STATUSES,
+  ValidationError,
+} from "@chartwarden/types";
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("uri")) {
-  FormatRegistry.Set("uri", (v) => typeof v === "string" && v.length > 0);
-}
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -55,7 +45,7 @@ export function parseQuery<T extends TSchema>(schema: T, raw: unknown): Static<T
   return check(schema, Value.Convert(schema, raw ?? {}));
 }
 
-const Uuid = Type.String({ format: "uuid" });
+const Uuid = uuidSchema();
 const InstantOpt = Type.Optional(Type.String({ format: "date-time" }));
 const Lit = <T extends string>(members: readonly T[]) =>
   Type.Union(members.map((m) => Type.Literal(m)));
@@ -67,7 +57,7 @@ export const FhirClientTierSchema = Lit(FHIR_CLIENT_TIERS);
 export const FhirClientStatusSchema = Lit(FHIR_CLIENT_STATUSES);
 export const FhirInboundOwnerModuleSchema = Lit(FHIR_INBOUND_OWNER_MODULES);
 export const FhirInboundStatusSchema = Lit(FHIR_INBOUND_STATUSES);
-export const FhirBulkExportStatusSchema = Lit(FHIR_BULK_EXPORT_STATUSES);
+const FhirBulkExportStatusSchema = Lit(FHIR_BULK_EXPORT_STATUSES);
 
 // ── path params ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -75,24 +65,12 @@ export const ClientIdParams = Type.Object({ id: Uuid });
 export const ClientSessionParams = Type.Object({ id: Uuid, jti: Uuid });
 export const JobIdParams = Type.Object({ id: Uuid });
 export const ProposalIdParams = Type.Object({ id: Uuid });
-export const PollJobParams = Type.Object({ jobId: Uuid });
 export const ResourceReadParams = Type.Object({
   resourceType: Type.String({ minLength: 1, maxLength: 60 }),
   id: Type.String({ minLength: 1, maxLength: 200 }),
 });
 export const ResourceTypeParams = Type.Object({
   resourceType: Type.String({ minLength: 1, maxLength: 60 }),
-});
-export const PatientEverythingParams = Type.Object({
-  id: Type.String({ minLength: 1, maxLength: 200 }),
-});
-export const CodeSystemParams = Type.Object({
-  system: Type.String({ minLength: 1, maxLength: 200 }),
-});
-export const ValueSetParams = Type.Object({ vs: Type.String({ minLength: 1, maxLength: 200 }) });
-export const GroupExportParams = Type.Object({ id: Type.String({ minLength: 1, maxLength: 200 }) });
-export const Phase2ResourceParams = Type.Object({
-  id: Type.String({ minLength: 1, maxLength: 200 }),
 });
 
 // ── §4.2 admin bodies — client registry (R24-R30) ────────────────────────────────────────────────────

@@ -198,7 +198,7 @@ export function PageOf<T extends TSchema>(item: T) {
 /**
  * The optimistic-concurrency guard for any mutation whose target carries a `version` column (§2.5). The
  * routes ALSO accept the `If-Match` header; this body field is the spec §4.2 in-payload form (`ifVersion`)
- * — the service treats whichever is present as the precondition and 412s on mismatch.
+ * — the service treats whichever is present as the precondition and answers 409 STALE_VERSION on mismatch.
  */
 export const IfVersion = Type.Integer({ minimum: 0 });
 

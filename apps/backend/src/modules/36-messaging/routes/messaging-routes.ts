@@ -1,3 +1,18 @@
+import {
+  type AbacContext,
+  abacRegistry,
+  isPortalSessionClass,
+  registerPredicate,
+  requireAbac,
+  requirePermission,
+  resolveActorPermissions,
+} from "@chartwarden/auth";
+import { isValidNativePushToken, parseNativeDestination } from "@chartwarden/messaging";
+import type {
+  AnnouncementService,
+  MemberAdminActor,
+  MessagingRouteService,
+} from "@chartwarden/messaging";
 // apps/backend/src/modules/36-messaging/routes/messaging-routes.ts — M36-T07 the messaging route
 // inventory (M36 spec §4.1–4.2; the §4.5 permission handshake; the `channel_visibility` ABAC gate).
 //
@@ -20,21 +35,7 @@
 // whose mutations run inside `withOrgContext` so RLS on `app.org_id` is the backstop and whose
 // `sendMessage` envelope-encrypts the body under the tenant DEK (§3.4). Org/actor binding is always
 // server-side: the org/user come from `request.context`, never the body.
-import {
-  type AbacContext,
-  abacRegistry,
-  isPortalSessionClass,
-  registerPredicate,
-  requireAbac,
-  requirePermission,
-  resolveActorPermissions,
-} from "@chartwarden/auth";
-import { isValidNativePushToken, parseNativeDestination } from "@chartwarden/messaging";
-import type {
-  AnnouncementService,
-  MemberAdminActor,
-  MessagingRouteService,
-} from "@chartwarden/messaging";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import {
   ChartWardenError,
   ForbiddenError,
@@ -136,9 +137,6 @@ import {
   registerUnacknowledgedRoutes,
 } from "./unacknowledged-routes";
 import { DISABLED_URGENT, type UrgentRouteDeps, registerUrgentRoutes } from "./urgent-routes";
-
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The named ABAC predicate the channel-scoped routes gate on (§4.5). */
 export const CHANNEL_VISIBILITY_PREDICATE = "channel_visibility";
@@ -264,13 +262,6 @@ function memberAdminActorOf(source: {
     roles: [...source.roles],
     locationIds: [...source.locationIds],
   };
-}
-
-/** The org-scoped actor (org binding is server-side: the context, never the body). */
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 /**

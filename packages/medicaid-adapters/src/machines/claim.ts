@@ -100,13 +100,6 @@ export const MEDICAID_CLAIM_TRANSITIONS: readonly MedicaidClaimTransition[] = [
   { from: "DENIED", event: "appeal_succeeded", to: "PAID" },
 ] as const;
 
-/** Terminal states (§2.2): no outbound edge. (PAID/DENIED carry post-pay/appeal edges, so are not here.) */
-export const MEDICAID_CLAIM_TERMINAL_STATES: readonly MedicaidClaimState[] = [
-  "REPLACED",
-  "VOIDED",
-  "ABANDONED",
-] as const;
-
 export function isTerminal(state: MedicaidClaimState): boolean {
   return !MEDICAID_CLAIM_TRANSITIONS.some((t) => t.from === state);
 }

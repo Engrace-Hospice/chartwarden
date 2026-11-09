@@ -6,7 +6,7 @@
 // CENTS (signed; a negative adjustment reduces allowable cost).
 //
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
-import { type Static, Type } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 
 /** One related-party transaction disclosure + its cost adjustment. */
 const RelatedPartyTransaction = Type.Object({
@@ -36,5 +36,3 @@ export const WorksheetA8 = Type.Object(
   },
   { additionalProperties: false },
 );
-
-export type WorksheetA8Data = Static<typeof WorksheetA8>;

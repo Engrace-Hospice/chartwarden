@@ -1,3 +1,5 @@
+import type { DbClient } from "@chartwarden/db";
+import { schema } from "@chartwarden/db";
 // apps/backend/src/modules/05-patient/outbox-consumers/m6-admission-activated.ts — the §3.3 tenancy-
 // column denormalization M5's own schema has always documented and nothing has ever written (F-152,
 // #248).
@@ -40,8 +42,7 @@
 // (re-admission at a different provider entity) correctly overwrites the earlier value with the
 // currently-true one — there is no ordering hazard to guard against beyond what the outbox already
 // guarantees (per-aggregate in-order delivery).
-import type { DbClient } from "@chartwarden/db";
-import { schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { eq } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
@@ -54,9 +55,6 @@ import {
 import { activationPromotesToActive } from "../patient-status-transitions";
 
 const P = schema.patients;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M5_ADMISSION_SITING_CONSUMER = {
   eventName: "m6.admission.activated",

@@ -4,15 +4,14 @@
 // `audit_request.submit` + step-up (the operation key is the permission key, guards.ts). Each packet change is If-Match
 // so a sign-off is always on the version the reviewer saw, and every mutation requires an Idempotency-Key. Org, actor
 // and provider-entity scope are server-derived (actor.ts). Nothing here sends anything outside ChartWarden.
+import { ifMatchVersionOf, parse, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { AUDIT_FILING_CHANNELS, AUDIT_RESPONSE_ITEM_STATES } from "../domain";
 import { writeActorOf } from "./actor";
 import type { AuditResponseOps } from "./audit-response-service";
-import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { P, STEP_UP } from "./guards";
 import { uuidParam } from "./later-tier.routes";
-import { parse } from "./m25-typebox";
 
 export interface AuditResponseRouteDeps {
   readonly auditResponse: AuditResponseOps;
@@ -76,7 +75,7 @@ export function registerAuditResponseRoutes(
           writeActorOf(request),
           auditId(request),
           body.items,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -92,7 +91,7 @@ export function registerAuditResponseRoutes(
           writeActorOf(request),
           auditId(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -107,7 +106,7 @@ export function registerAuditResponseRoutes(
           writeActorOf(request),
           auditId(request),
           uuidParam(request, "documentId", "attached document"),
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       ),
   );
@@ -121,7 +120,7 @@ export function registerAuditResponseRoutes(
         await ops.attestNoDeadlineStated(
           writeActorOf(request),
           auditId(request),
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       ),
   );
@@ -131,7 +130,7 @@ export function registerAuditResponseRoutes(
     { preHandler: [REVIEW, REVIEW_STEPUP, IDEMPOTENT] },
     async (request, reply) =>
       reply.send(
-        await ops.signOffAudit(writeActorOf(request), auditId(request), ifMatchVersion(request)),
+        await ops.signOffAudit(writeActorOf(request), auditId(request), ifMatchVersionOf(request)),
       ),
   );
 
@@ -146,7 +145,7 @@ export function registerAuditResponseRoutes(
           writeActorOf(request),
           auditId(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },

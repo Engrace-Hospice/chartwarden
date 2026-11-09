@@ -19,7 +19,7 @@ import { concept, finish } from "./shared";
  * Dose forms (DF/DFG), dose-form groups (SCDG/SBDG), entry terms (ET), prescribable names (PSN) and synonyms
  * (SY/TMSY) are NOT concepts of their own for a drug picker: an RXCUI whose only atoms are of those types is skipped.
  */
-export const RXNORM_LOADED_TTYS = [
+const RXNORM_LOADED_TTYS = [
   "SCD",
   "SBD",
   "GPCK",

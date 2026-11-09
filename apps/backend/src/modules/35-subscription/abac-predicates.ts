@@ -1,3 +1,9 @@
+import {
+  type AbacContext,
+  type AbacTarget,
+  PLATFORM_OPS_ROLE_KEYS,
+  registerPredicateIdempotent,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/35-subscription/abac-predicates.ts — M35 (§4.8).
 //
 // The five named ABAC predicate resolvers M35 OWNS and registers into M3's named-predicate registry
@@ -22,12 +28,7 @@
 // route can cheaply put them on the ABAC target, checked here too; otherwise the write service re-asserts
 // the same invariant. Default-deny throughout: a missing role, a stale step-up, an inapplicable promo all
 // resolve to deny. Registration is idempotent (single-owner registry; the M27/M30 `has()` guard).
-import {
-  type AbacContext,
-  type AbacTarget,
-  PLATFORM_OPS_ROLE_KEYS,
-  registerPredicateIdempotent,
-} from "@chartwarden/auth";
+import { targetStr } from "@chartwarden/shared/route-kit";
 
 /** The §4.8 predicate names M35 OWNS and registers into M3 (five). `inOrg` (M3) is excluded — re-used. */
 export const M35_REGISTERED_ABAC_PREDICATES = [
@@ -47,12 +48,6 @@ export type M35RegisteredAbacPredicate = (typeof M35_REGISTERED_ABAC_PREDICATES)
  * so the ABAC gate's admit-set and the role catalog are a single source and can never drift.
  */
 const PLATFORM_BILLING_ROLES: readonly string[] = PLATFORM_OPS_ROLE_KEYS;
-
-/** Read a string field off the ABAC target; null when absent/empty (fail-closed on a missing fact). */
-const targetStr = (target: AbacTarget, field: string): string | null => {
-  const value = target[field];
-  return typeof value === "string" && value.length > 0 ? value : null;
-};
 
 /** The actor's ACTIVE membership id (server-assembled M2 session attribute); null when the session has none. */
 const actorMembershipId = (context: AbacContext): string | null => {

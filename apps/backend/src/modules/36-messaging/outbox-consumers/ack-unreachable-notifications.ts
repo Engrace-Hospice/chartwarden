@@ -23,13 +23,12 @@ import {
 import { M36_ACK_FAILED_UNREACHABLE } from "../ack-requests/ack-events";
 import type { AckRow } from "../ack-requests/ack-types";
 
-export const M36_ACK_UNREACHABLE_NOTIFICATION_CONSUMER =
-  "m36.ack-unreachable-notifications" as const;
+const M36_ACK_UNREACHABLE_NOTIFICATION_CONSUMER = "m36.ack-unreachable-notifications" as const;
 
 export const ACK_UNREACHABLE_NOTIFICATION_TEXT =
   "A clinical message could not be delivered to anyone and nobody is known to have received it; it is still open";
 
-export const ACK_UNREACHABLE_OPS_KIND = "m36.ack.failed_unreachable" as const;
+const ACK_UNREACHABLE_OPS_KIND = "m36.ack.failed_unreachable" as const;
 
 /** The notice this consumer raises itself; the sink also receives the supervisor module's. */
 export type UnreachableOpsNotice = SupervisorOpsNotice;

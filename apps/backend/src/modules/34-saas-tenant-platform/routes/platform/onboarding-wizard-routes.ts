@@ -11,10 +11,10 @@
 //   PUT   /platform/tenants/:orgSlug/compliance-officer              assign the officer who attests go-live (a reason is required)
 //   POST  /platform/tenants/:orgSlug/go-live/approve | revoke        the second party of the two-party go-live
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { rejectAiActor } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { rejectAiActor } from "../../../../bootstrap/reject-ai-actor";
 import type { PlatformActor } from "../../onboarding/model";
 import type { OnboardingWizard } from "../../onboarding/wizard-service";
 import {

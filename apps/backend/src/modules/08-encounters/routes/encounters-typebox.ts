@@ -1,3 +1,4 @@
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/08-encounters/routes/encounters-typebox.ts — M8-T09 TypeBox route schemas
 // (§4.2). Named `encounters-typebox` (NOT `*schema*`) so the table-ownership import heuristic never
@@ -6,7 +7,6 @@ import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@chartwarden/ty
 // consequential routes). Optimistic concurrency rides the `If-Match` header (NOT the body); the sign
 // routes carry the client's step-up timestamp (verified server-side ≤ 5 min stale, §2.7 D13).
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   CreatedEncounter as ServiceCreatedEncounter,
@@ -15,17 +15,6 @@ import type {
   EncounterRouteService as ServiceRouteApi,
   VitalsResult as ServiceVitalsResult,
 } from "./service";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
-}
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -276,8 +265,7 @@ export const EncounterListQuerySchema = Type.Object({
   lateEntryTier: Type.Optional(Type.String({ maxLength: 32 })),
   from: Type.Optional(Type.String({ maxLength: 32 })),
   to: Type.Optional(Type.String({ maxLength: 32 })),
-  cursor: Type.Optional(Type.String({ maxLength: 64 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 export const BillableQuerySchema = Type.Object({

@@ -71,7 +71,7 @@ export const M33_QUEUES = {
 export type M33QueueName = (typeof M33_QUEUES)[keyof typeof M33_QUEUES];
 
 /** The §4.8 dead-letter queue names (OPS document-before-clear; ops alerts off DLQ depth). One per queue. */
-export const M33_DLQ = {
+const M33_DLQ = {
   mvRefresh: "report.mv_refresh.dlq",
   scheduledRun: "report.scheduled_run.dlq",
   exportRender: "report.export_render.dlq",
@@ -172,39 +172,6 @@ export const M33_QUEUE_PARAMS = {
 /** `report.mv_refresh` jobId — per `(mvKey, requestedAtFloor)` (§2.6 debounce dedup; a redelivery collides). */
 export function mvRefreshJobId(input: { mvKey: string; floorEpochMs: number }): string {
   return `mv_refresh:${input.mvKey}:${input.floorEpochMs}`;
-}
-
-/** `report.scheduled_run` jobId — per `(scheduleId, scheduledFor)` (§2.6 at-most-once per occurrence). */
-export function scheduledRunJobId(input: { scheduleId: string; scheduledFor: string }): string {
-  return `scheduled_run:${input.scheduleId}:${input.scheduledFor}`;
-}
-
-/** `report.export_render` jobId — per `exportId` (§2.6 — = the M22 render-handshake idempotencyKey). */
-export function exportRenderJobId(exportId: string): string {
-  return `export_render:${exportId}`;
-}
-
-/** `report.tile_warm_cache` jobId — per `(organizationId, tileCacheKey)` (the sha256 tile key dedups warms). */
-export function tileWarmCacheJobId(input: {
-  organizationId: string;
-  tileCacheKey: string;
-}): string {
-  return `tile_warm_cache:${input.organizationId}:${input.tileCacheKey}`;
-}
-
-/** `report.drilldown_audit_flush` jobId — per `drilldownTraceId` (one audit row per emitted navigation). */
-export function drilldownAuditFlushJobId(drilldownTraceId: string): string {
-  return `drilldown_audit_flush:${drilldownTraceId}`;
-}
-
-/** `report.lag_probe` jobId — the fixed singleton key (only one probe is ever in flight, §2.4). */
-export function lagProbeJobId(): string {
-  return "lag_probe:singleton";
-}
-
-/** `report.tenant_eraser` jobId — per `organizationId` (single-flight per offboarding org, §3.7). */
-export function tenantEraserJobId(organizationId: string): string {
-  return `tenant_eraser:${organizationId}`;
 }
 
 // ── the per-org/platform scoping envelope the live wiring runs each processor inside ───────────────────

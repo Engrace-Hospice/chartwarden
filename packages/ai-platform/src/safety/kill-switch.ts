@@ -105,7 +105,7 @@ export interface AiKillSwitchVerdict {
 }
 
 /** `AiKillSwitchVerdict`'s not-killed value, so the negative arm has one construction point. */
-export const AI_KILL_SWITCH_CLEAR: AiKillSwitchVerdict = {
+const AI_KILL_SWITCH_CLEAR: AiKillSwitchVerdict = {
   killed: false,
   decidedBy: null,
   scope: null,

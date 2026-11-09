@@ -17,8 +17,8 @@ import type {
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
 
-export const M36_CAP_THRESHOLD_ALERT_CONSUMER = "m36.cap-threshold-alerts" as const;
-export const M36_CAP_THRESHOLD_ALERT_EVENT_TYPES = ["m26.cap.threshold_crossed"] as const;
+const M36_CAP_THRESHOLD_ALERT_CONSUMER = "m36.cap-threshold-alerts" as const;
+const M36_CAP_THRESHOLD_ALERT_EVENT_TYPES = ["m26.cap.threshold_crossed"] as const;
 
 type ScopeFamily = "agency" | "patient" | "inpatient";
 const SCOPE_FAMILY: Readonly<Record<string, ScopeFamily>> = {

@@ -10,10 +10,15 @@
 // The §7.8/§7.9 confidentiality gates are NOT route guards: withholding a SUD goal is a filtered body plus
 // a `redacted_categories` marker, not a 403 — the read service resolves them per patient and applies them
 // in SQL (see `./disclosure.ts`).
+import {
+  actorOf,
+  ifMatchVersionOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+  writeActorOf,
+} from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import { P, STEP_UP, planCaseloadScope } from "./guards";
 import {
   AmendAssessmentBody,
@@ -128,7 +133,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
       const { planId, versionId } = parse(VersionParams, request.params);
       const body = parse(FinalizeVersionBody, request.body);
       return writeService.finalizeVersion(writeActorOf(request), planId, versionId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         requiredSignerSet: body.requiredSignerSet,
       });
     },
@@ -150,7 +155,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
       const { planId, versionId } = parse(VersionParams, request.params);
       const body = parse(SignVersionBody, request.body);
       return writeService.signVersion(writeActorOf(request), planId, versionId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         signerRole: body.signerRole,
         attestationText: body.attestationText,
         isAcknowledgment: body.isAcknowledgment,
@@ -178,7 +183,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
       const { planId, goalId } = parse(GoalParams, request.params);
       const body = parse(UpdateGoalBody, request.body);
       return writeService.updateGoal(writeActorOf(request), planId, goalId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         ...body,
       });
     },
@@ -204,7 +209,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
       const { planId, interventionId } = parse(InterventionParams, request.params);
       const body = parse(UpdateInterventionBody, request.body);
       return writeService.updateIntervention(writeActorOf(request), planId, interventionId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         ...body,
       });
     },
@@ -242,7 +247,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
     async (request) => {
       const { planId, assessmentId } = parse(AssessmentParams, request.params);
       return writeService.signAssessment(writeActorOf(request), planId, assessmentId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
       });
     },
   );
@@ -265,7 +270,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
         writeActorOf(request),
         planId,
         assessmentId,
-        { expectedVersion: ifMatchVersion(request, true), ...body },
+        { expectedVersion: ifMatchVersionOf(request), ...body },
       );
       return reply.code(201).send(amendment);
     },

@@ -569,7 +569,7 @@ describe("#91 — adjournment is the commit point, and its refusal is legible", 
 
   it("distinguishes an obsolete version from a step-up refusal", async () => {
     writeFailure = {
-      status: 412,
+      status: 409,
       body: { error: { code: "STALE_VERSION", message: "expected version 3" } },
     };
     mountLive();

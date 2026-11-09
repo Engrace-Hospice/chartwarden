@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/17-scheduling/outbox-consumers/m18-evv-check-out.ts — the §3.3 provenance
 // pointer M17's own schema comment already promises (F-133/F-152 follow-up, #248).
 //
@@ -30,14 +31,11 @@
 // Deliberately no `visit_state_history` row (no lifecycle state changes) and no outbox emission (nothing
 // downstream reads this pointer today — confirmed by a repo-wide grep — so inventing a notification would
 // be advertising a fact no consumer asked for).
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, isNull } from "drizzle-orm";
 
 const V = schema.visit;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M17_EVV_CHECK_OUT_CONSUMER = {
   eventName: "m18.evv.check_out_recorded",

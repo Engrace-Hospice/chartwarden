@@ -1,3 +1,4 @@
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/typebox.ts — M34 shared TypeBox route schemas
 // (§4.2). Named `typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox
@@ -8,19 +9,7 @@ import { ValidationError } from "@chartwarden/types";
 // spec spells out; representative where it abbreviates). Org binding is server-side (`request.context` /
 // `withOrgContext` / `withPlatformContext`), NEVER the body — no schema below carries an `organizationId`.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("email")) {
-  FormatRegistry.Set("email", (v) => typeof v === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v));
-}
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -28,7 +17,7 @@ const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Typ
 
 /** The eleven-state tenant lifecycle (§2.2). `signup_intent`/`destroyed` are never targetable via the
  *  status route (signup_intent is the genesis state; destroyed is reached only by the shred worker). */
-export const TENANT_STATUS = [
+const TENANT_STATUS = [
   "signup_intent",
   "provisioning",
   "onboarding",
@@ -43,7 +32,7 @@ export const TENANT_STATUS = [
 ] as const;
 
 /** Statuses the §4.2 `StatusTransitionRequest` permits as `toStatus` (`destroyed` excluded). */
-export const TENANT_STATUS_TRANSITIONABLE = [
+const TENANT_STATUS_TRANSITIONABLE = [
   "provisioning",
   "onboarding",
   "active",
@@ -74,24 +63,9 @@ export const DSAR_REQUEST_SOURCE = [
   "legal_representative",
   "authorized_third_party",
 ] as const;
-export const QUALIFY_DECISION = ["qualified", "rejected"] as const;
 
-// ── Path params ──────────────────────────────────────────────────────────────────────────────────────
-export const OrgIdParamsSchema = Type.Object({
-  orgId: Type.String({ minLength: 1, maxLength: 64 }),
-});
-export const TenantTaskParamsSchema = Type.Object({
-  orgId: Type.String({ minLength: 1, maxLength: 64 }),
-  taskId: Type.String({ minLength: 1, maxLength: 64 }),
-});
 export const IdParamsSchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 64 }),
-});
-export const TaskIdParamsSchema = Type.Object({
-  taskId: Type.String({ minLength: 1, maxLength: 64 }),
-});
-export const FlagKeyParamsSchema = Type.Object({
-  flagKey: Type.String({ minLength: 1, maxLength: 128 }),
 });
 /** Raw single-use credential; the service hashes it before lookup. A stored hash is never a bearer token. */
 export const TokenHashParamsSchema = Type.Object({
@@ -162,30 +136,6 @@ export const SkipOnboardingTaskRequest = Type.Object({
   skipRationale: Type.String({ minLength: 8, maxLength: 2000 }),
 });
 
-// POST /api/v1/platform/tenant-invitations.
-export const IssueTenantInvitationRequest = Type.Object({
-  organizationId: Type.Optional(Type.String({ format: "uuid" })),
-  inviteeEmail: Type.String({ format: "email", minLength: 3, maxLength: 320 }),
-});
-
-// POST /api/v1/platform/onboarding-templates — non-canonical only (canonical=true is migration-only).
-export const WriteOnboardingTemplateRequest = Type.Object({
-  templateKey: Type.String({ minLength: 1, maxLength: 128 }),
-  title: Type.String({ minLength: 1, maxLength: 500 }),
-  description: Type.Optional(Type.String({ maxLength: 4000 })),
-  sequenceOrder: Type.Integer({ minimum: 0, maximum: 10000 }),
-});
-
-// POST /api/v1/platform/support-sessions — references a consent grant; opens a session.
-export const StartSupportSessionRequest = Type.Object({
-  supportConsentGrantId: Type.String({ format: "uuid" }),
-  sessionReason: Type.String({ minLength: 8, maxLength: 2000 }),
-});
-export const ElevateSupportSessionRequest = Type.Object({
-  elevationReason: Type.String({ minLength: 8, maxLength: 2000 }),
-});
-export const CloseSupportSessionRequest = Type.Object({});
-
 // POST /api/v1/platform/feature-flags — create/update a flag (calls M1 FeatureFlagAdmin.upsert).
 export const UpsertFeatureFlagRequest = Type.Object({
   flagKey: Type.String({ minLength: 1, maxLength: 128 }),
@@ -198,23 +148,12 @@ export const KillSwitchRequest = Type.Object({
   reason: Type.String({ minLength: 8, maxLength: 1000 }),
 });
 
-// POST /api/v1/platform/signup-intents/:id/qualify — promote to qualified or rejected.
-export const QualifySignupIntentRequest = Type.Object({
-  decision: lit(QUALIFY_DECISION),
-  rejectionReason: Type.Optional(Type.String({ minLength: 5, maxLength: 2000 })),
-});
-
 // POST /api/v1/platform/tenant-export-jobs/:id/approve-oversized — SEC-052 second-actor approval.
 export const ApproveOversizedExportRequest = Type.Object({
   approvalReason: Type.String({ minLength: 8, maxLength: 2000 }),
 });
 
 // ── Tenant-scoped bodies (§4.2; routes/tenant/*) ───────────────────────────────────────────────────────
-
-export const OnboardingActionRequest = Type.Object({
-  evidence: Type.Optional(Type.String({ maxLength: 4000 })),
-  reason: Type.Optional(Type.String({ maxLength: 2000 })),
-});
 
 // POST /api/v1/tenant/support-consent-grants — the §4.2 SupportConsentGrantRequest (verbatim shape).
 export const SupportConsentGrantRequest = Type.Object({
@@ -224,9 +163,6 @@ export const SupportConsentGrantRequest = Type.Object({
   ),
   grantReason: Type.String({ minLength: 20, maxLength: 2000 }),
   expiresAtIsoOffsetHours: Type.Number({ minimum: 0.5, maximum: 72 }),
-});
-export const RevokeSupportConsentGrantRequest = Type.Object({
-  revocationReason: Type.Optional(Type.String({ maxLength: 2000 })),
 });
 
 // POST /api/v1/tenant/dsar-export-jobs — the §4.2 DsarExportRequest (verbatim shape).
@@ -267,8 +203,7 @@ export const TenantFlagWriteRequest = Type.Object({
 
 // ── Queries (cursor / keyset pagination — §4.1 SD-052) ─────────────────────────────────────────────────
 const PageQuery = {
-  cursor: Type.Optional(Type.String({ maxLength: 256 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 };
 
 export const TenantListQuerySchema = Type.Object({
@@ -284,10 +219,8 @@ export const SignupIntentListQuerySchema = Type.Object({
 });
 export const InvitationListQuerySchema = Type.Object(PageQuery);
 export const SupportSessionListQuerySchema = Type.Object(PageQuery);
-export const DsarJobListQuerySchema = Type.Object(PageQuery);
 export const TenantExportJobListQuerySchema = Type.Object(PageQuery);
 export const TemplateListQuerySchema = Type.Object(PageQuery);
-export const PlainPageQuerySchema = Type.Object(PageQuery);
 
 // ── Response views (read surfaces — the Phase-3 screens consume these) ─────────────────────────────────
 // Mirror the repo/service DTO shapes so the generated client types the M34 read screens (the
@@ -323,7 +256,7 @@ export const PublicSignupIntentAckSchema = Type.Object({
   status: Type.Literal("new"),
 });
 
-export const TenantAccountViewSchema = Type.Object({
+const TenantAccountViewSchema = Type.Object({
   organizationId: Type.String(),
   tenantAccountId: Type.String(),
   legalBusinessName: Type.String(),

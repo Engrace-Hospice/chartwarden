@@ -15,17 +15,21 @@
 // RECORD-EXTERNAL-FILING (owner decision D4) — an organization that bills outside ChartWarden files its NOE itself: submit PARKS
 // the notice (nothing queued or sent) and `POST /:id/record-external-filing` records the date the tenant filed it. Guarded like
 // submit (same permission, provider scope, step-up, AI-block, Idempotency-Key); 200, idempotent for the same date.
+import {
+  actorOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, rejectAiActor, writeActorOf } from "./actor";
+import { writeActorOf } from "./actor";
 import {
   CancelNoeBodySchema,
   CorrectNoticeBodySchema,
   NoeIdParamsSchema,
   NoeListQuerySchema,
   RecordExternalFilingBodySchema,
-  parse,
 } from "./billing-typebox";
-import { requireIdempotencyKey } from "./concurrency";
 import { P, PROVIDER_SCOPE, STEP_UP, targetNoeId } from "./guards";
 import type { M23ReadRouteService } from "./read-service";
 import type { M23WriteRouteService } from "./write-service";

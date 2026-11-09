@@ -270,9 +270,13 @@ describe.skipIf(!DB_URL)("S11 adversarial cases across clinical stages — LIVE 
     server.inject({
       method,
       url,
-      headers: cookie
-        ? { cookie: `${cookie}; chartwarden_csrf=${CSRF}`, "x-csrf-token": CSRF }
-        : { cookie: `chartwarden_csrf=${CSRF}`, "x-csrf-token": CSRF },
+      headers: {
+        ...(cookie
+          ? { cookie: `${cookie}; chartwarden_csrf=${CSRF}`, "x-csrf-token": CSRF }
+          : { cookie: `chartwarden_csrf=${CSRF}`, "x-csrf-token": CSRF }),
+        // the web client sends one on every mutation; the write routes require it
+        ...(method === "GET" ? {} : { "idempotency-key": randomUUID() }),
+      },
       ...(payload !== undefined ? { payload } : {}),
     });
   const call = (

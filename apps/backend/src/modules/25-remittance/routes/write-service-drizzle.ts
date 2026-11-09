@@ -3,10 +3,11 @@
 // domain machines, version-checks the PATCH surfaces (§2.5 — `WHERE id = ? AND version = ?` with a
 // distinguishing re-read), stamps the acting membership, and emits the §4.5 outbox event through the
 // injected {@link WriteOutboxPort}. A failed transition → INVALID_TRANSITION; a stale version →
-// VERSION_CONFLICT; a missing row → NOT_FOUND. Free-text reason/narrative is stored in the audit-denylisted
+// STALE_VERSION; a missing row → NOT_FOUND. Free-text reason/narrative is stored in the audit-denylisted
 // columns (override_payload / appeal_narrative / assignment.reason), NEVER in an outbox payload.
 import { repositories } from "@chartwarden/billing";
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
@@ -26,7 +27,6 @@ import {
 import type { M25WriteActor } from "./actor";
 import { loadAppealPacketPayload } from "./appeal-packet-payload";
 import { type AppealSourcePorts, UNBOUND_APPEAL_SOURCES } from "./appeal-packet-sources";
-import { VersionConflictError } from "./concurrency";
 import { assertNotMedicaidDenial, resolveDenialPayer } from "./denial-payer";
 import { resolveDenialRoute } from "./denial-route-service";
 import { type RemittanceCommandDeps, buildRemittanceCommands } from "./remittance-commands-drizzle";
@@ -262,7 +262,7 @@ export function buildDrizzleM25WriteService(
         .set({ state: to, version: cur.version + 1, ...extra })
         .where(and(eq(DC.id, id), eq(DC.version, ifMatch)))
         .returning({ id: DC.id, version: DC.version });
-      if (!updated[0]) throw new VersionConflictError(cur.version);
+      if (!updated[0]) throw new StaleVersionError();
       if (emit) await emit(tx, cur);
       return { id: updated[0].id, version: updated[0].version };
     });
@@ -305,7 +305,7 @@ export function buildDrizzleM25WriteService(
           .set({ assigneeMembershipId: input.assigneeMembershipId, version: cur.version + 1 })
           .where(and(eq(DC.id, id), eq(DC.version, ifMatch)))
           .returning({ id: DC.id, version: DC.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         await tx.insert(schema.denialCaseAssignment).values({
           organizationId: actor.organizationId,
           denialCaseId: id,
@@ -495,7 +495,7 @@ export function buildDrizzleM25WriteService(
           .set({ appealPacketDocumentId: documentId, version: cur.version + 1 })
           .where(and(eq(AC.id, id), eq(AC.version, ifMatch)))
           .returning({ id: AC.id, version: AC.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         await tx.insert(AE).values({
           organizationId: actor.organizationId,
           appealCaseId: id,
@@ -652,7 +652,7 @@ export function buildDrizzleM25WriteService(
           })
           .where(and(eq(AC.id, id), eq(AC.version, ifMatch)))
           .returning({ id: AC.id, version: AC.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         await tx.insert(AE).values({
           organizationId: actor.organizationId,
           appealCaseId: id,
@@ -733,7 +733,7 @@ export function buildDrizzleM25WriteService(
             })
             .where(and(eq(TO.id, rows[0].id), eq(TO.version, ifMatch)))
             .returning({ id: TO.id, version: TO.version });
-          if (!updated[0]) throw new VersionConflictError(rows[0].version);
+          if (!updated[0]) throw new StaleVersionError();
           return { id: updated[0].id, version: updated[0].version };
         }
         const inserted = await tx
@@ -802,7 +802,7 @@ export function buildDrizzleM25WriteService(
         .set({ state: to, version: cur.version + 1, ...extra })
         .where(and(eq(AC.id, id), eq(AC.version, ifMatch)))
         .returning({ id: AC.id, version: AC.version });
-      if (!updated[0]) throw new VersionConflictError(cur.version);
+      if (!updated[0]) throw new StaleVersionError();
       if (emit) await emit(tx, cur);
       return { id: updated[0].id, version: updated[0].version };
     });

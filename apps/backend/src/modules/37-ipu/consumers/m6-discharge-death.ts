@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import { planOpenBodyRelease, transitionAdmission } from "@chartwarden/inpatient";
 // apps/backend/src/modules/37-ipu/consumers/m6-discharge-death.ts — the SEPARATE, previously
 // catalog-unbindable `m6.discharge.death` consumer `m6-admission-discharged.ts`'s own header names
 // (F-172, #248). `transitionAdmission`'s `recordDeath` case (`@chartwarden/inpatient`,
@@ -57,8 +59,7 @@
 // no later than this consumer's own delivery, regardless of whether an IPU stay was ever involved. A
 // third M16 path off `death_recorded` would be strictly redundant — see that event's own catalog entry
 // (`events-by-m37.ts`) for the drop.
-import { type DbClient, schema } from "@chartwarden/db";
-import { planOpenBodyRelease, transitionAdmission } from "@chartwarden/inpatient";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { WriteOutboxPort } from "../routes/service-drizzle";
@@ -70,9 +71,6 @@ const BR = schema.ipuBodyRelease;
 /** Mirrors `M37_SYSTEM_MEMBERSHIP_ID` (`../routes/system-actor.ts`) and
  *  `m6-admission-discharged.ts`'s own identical constant — see file header. */
 const M37_SYSTEM_MEMBERSHIP_ID = "00000000-0000-0000-0000-000000000037";
-/** The `withOrgContext` session-GUC actor for a consumer-driven write (F-102's `CONSUMER_USER_ID`
- *  convention — a plain text session variable, distinct from the `uuid NOT NULL` column above). */
-const CONSUMER_USER_ID = "";
 
 /** The non-terminal `ipu_admission_state` values a death recording may still find (§2.2 `ADMISSION_GRAPH`
  *  keys minus `discharged`/`transferred`/`deceased`/`closed`, which are already exited/terminal) —

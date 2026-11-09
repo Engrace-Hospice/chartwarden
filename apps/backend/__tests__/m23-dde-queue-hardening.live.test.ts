@@ -6,7 +6,7 @@
  *     NOE and NOTR end to end; a `ready` / `submitted` / `ack_pending` notice takes 3 / 2 / 1 edges; a draft is a 409;
  *     an already-accepted notice is left untouched and the item takes its date;
  *   - rollback atomicity (the notice walk is undone when the item write loses a version race) and concurrent writers
- *     (one success, one 412);
+ *     (one success, one 409);
  *   - DCN / outcome-code / note screens, the assignee check, a non-uuid subject failing closed (4xx, never 500);
  *   - deadlines judged on the Eastern day (not UTC); the watchdog's anti-join (no starvation behind >200 served
  *     notices) and its isolation (a failure cannot undo the window warnings).
@@ -187,7 +187,7 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
       const noe = await seedNoe(admin);
       const [id] = await submitted("noe", noe);
       const stale = await accept(id, 1, { macAcceptedOn: "2026-01-18" });
-      expect(stale.statusCode).toBe(412);
+      expect(stale.statusCode).toBe(409);
       expect((await noeRow(noe)).state).toBe("READY");
       expect((await get(`/${id}`)).json().state).toBe("submitted");
     });
@@ -205,7 +205,7 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
   });
 
   describe("concurrent writers", () => {
-    it("resolves two parallel starts to one success and one 412/409", async () => {
+    it("resolves two parallel starts to one success and one 409", async () => {
       const noe = await seedNoe(admin);
       const id = (await post("", asA(), { itemType: "noe", subjectId: noe })).json().ddeWorkItemId;
       await post(`/${id}/claim`, asA(), { expectedVersion: 0 });
@@ -215,10 +215,10 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
       ]);
       const codes = res.map((r) => r.statusCode).sort();
       expect(codes[0]).toBe(200);
-      expect([409, 412]).toContain(codes[1]);
+      expect(codes[1]).toBe(409);
     });
 
-    it("resolves two parallel record-submissions to one success and one 412/409", async () => {
+    it("resolves two parallel record-submissions to one success and one 409", async () => {
       const noe = await seedNoe(admin);
       const id = (await post("", asA(), { itemType: "noe", subjectId: noe })).json().ddeWorkItemId;
       await post(`/${id}/claim`, asA(), { expectedVersion: 0 });
@@ -229,7 +229,7 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
       ]);
       const codes = res.map((r) => r.statusCode).sort();
       expect(codes[0]).toBe(200);
-      expect([409, 412]).toContain(codes[1]);
+      expect(codes[1]).toBe(409);
     });
   });
 

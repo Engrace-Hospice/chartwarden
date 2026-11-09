@@ -468,7 +468,7 @@ describe("M25 playbook work rail", () => {
     await user.type(summary, "My newer wording");
     // Someone else saved first: the next read carries row version 4.
     detail = detailOf([{ ...draftVersion(4), summary: "Someone else's wording" }]);
-    writeFailure = { status: 409, code: "VERSION_CONFLICT", message: "modified by another writer" };
+    writeFailure = { status: 409, code: "STALE_VERSION", message: "modified by another writer" };
     writeFailureOnce = true;
     await user.click(within(dialog).getByRole("button", { name: "Save draft" }));
     expect(await within(dialog).findByText(/modified by another writer/)).toBeTruthy();

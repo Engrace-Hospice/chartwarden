@@ -364,7 +364,7 @@ describe("DDE item rail: send via provider", () => {
   });
 
   it("reloads on a version conflict instead of retrying", async () => {
-    const post = vi.fn(async () => fail(412, "VERSION_CONFLICT"));
+    const post = vi.fn(async () => fail(409, "STALE_VERSION"));
     const { api } = setup({ post });
     mount(api);
     fireEvent.click((await rail()).getByRole("button", SEND));

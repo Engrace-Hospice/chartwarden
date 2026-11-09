@@ -20,8 +20,3 @@ export function canTransitionDenial(from: DenialState, to: DenialState): boolean
 export function isReopen(from: DenialState, to: DenialState): boolean {
   return from === "closed" && to === "open";
 }
-
-/** Terminal state — no further transitions except the gated reopen. */
-export function isDenialTerminal(state: DenialState): boolean {
-  return state === "closed";
-}

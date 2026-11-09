@@ -1,3 +1,4 @@
+import { Uuid, pageQuery } from "@chartwarden/shared/route-kit";
 import { ADMISSION_SOURCE_CODES, ADMISSION_TYPE_CODES, ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/06-admission/routes/admission-typebox.ts — M6-T06 TypeBox route schemas
 // (§4.2). Named `admission-typebox` (NOT `*schema*`) so the table-ownership import heuristic never
@@ -5,7 +6,6 @@ import { ADMISSION_SOURCE_CODES, ADMISSION_TYPE_CODES, ValidationError } from "@
 // VALIDATION_FAILED envelope. Schemas mirror §4.2 1:1 (abbreviated where the spec is). Optimistic
 // locking: state-change PATCH/POST routes carry `ifVersion`.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   AdmissionDetail as ServiceAdmissionDetail,
@@ -20,21 +20,6 @@ import type {
   SummaryRow as ServiceSummaryRow,
 } from "./service";
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set(
-    "date",
-    (v) => typeof v === "string" && DATE_RE.test(v) && !Number.isNaN(Date.parse(v)),
-  );
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-
 // Slice ids are non-uuid synthetic (`adm_1`); routes accept a loose id param. Cross-module ids
 // (patientId, physicianId) are validated as uuids per §4.2.
 export const IdParamsSchema = Type.Object({ id: Type.String({ minLength: 1, maxLength: 64 }) });
@@ -44,7 +29,6 @@ export const PatientIdParamsSchema = Type.Object({
   patientId: Type.String({ minLength: 1, maxLength: 64 }),
 });
 
-export const Uuid = () => Type.String({ format: "uuid" });
 const Reason = (min = 10, max = 4000) => Type.String({ minLength: min, maxLength: max });
 export const Version = () => Type.Integer({ minimum: 0 });
 const Icd10 = () => Type.String({ pattern: "^[A-Z][0-9A-Z.]{1,7}$" });
@@ -91,8 +75,7 @@ export const ReferralListQuerySchema = Type.Object({
   assigned: Type.Optional(Type.Union([Type.Literal("mine"), Type.Literal("unassigned")])),
   includeConverted: Type.Optional(Type.Boolean()),
   q: Type.Optional(Type.String({ maxLength: 200 })),
-  cursor: Type.Optional(Type.String({ maxLength: 64 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 export const ReferralTriageSchema = Type.Object({
@@ -298,8 +281,7 @@ export const AdmissionCreateSchema = Type.Object({
 export const AdmissionListQuerySchema = Type.Object({
   state: Type.Optional(Type.String({ maxLength: 32 })),
   patientId: Type.Optional(Uuid()),
-  cursor: Type.Optional(Type.String({ maxLength: 64 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 /** F-065 — the patient's admissions, newest first (`GET /patients/:patientId/admissions`). */
@@ -748,8 +730,7 @@ export const NorAcknowledgeSchema = Type.Object({
 
 export const ComplianceListQuerySchema = Type.Object({
   state: Type.Optional(Type.String({ maxLength: 32 })),
-  cursor: Type.Optional(Type.String({ maxLength: 64 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 export const ComplianceCloseSchema = Type.Object({ ifVersion: Version() });
@@ -1210,3 +1191,5 @@ export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   }
   return converted as Static<T>;
 }
+
+export { Uuid } from "@chartwarden/shared/route-kit";

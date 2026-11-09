@@ -118,7 +118,7 @@ export function anniversaryAlertSeverity(
 }
 
 /** §2.5 — `bereavement_plan` and `bereaved_contact` carry `version int`; PATCH requires `If-Match:
- *  <version>` and answers a mismatch with 412 + the current row (the M7 §7.7 / M15 pattern verbatim). */
+ *  <version>` and answers a mismatch with 409 STALE_VERSION + the current row (the M7 §7.7 / M15 pattern verbatim). */
 export const OPTIMISTIC_CONCURRENCY_HEADER = "If-Match" as const;
 
 /** §4.4 — the `payloadSchemaVersion` stamped on every M16 outbox envelope; a consumer refusing an unknown

@@ -983,7 +983,7 @@ function createFakeBackend() {
   };
 
   // ADR-0109 D6 — the physician letter queue. The fake applies the REAL pure approve / decline rules, so the wiring tests also see
-  // the 409 / 422 / 412 a reviewer would, without a database.
+  // the 409 / 422 a reviewer would, without a database.
   const letters = new Map<string, PhysicianLetterView & { note: string | null }>();
   const letterEvents: Array<{ letterId: string; templateKey: string; documentKind: string }> = [];
   const seedLetter = (over: Partial<PhysicianLetterView> = {}) => {
@@ -1943,11 +1943,11 @@ describe("M16 §4.1 routes 35 / 36 — pre-death risk-assessment draft", () => {
     await app.close();
   });
 
-  it("a stale If-Match is refused 412", async () => {
+  it("a stale If-Match is refused 409", async () => {
     const { app } = makeServer();
     await put(app, { ...COUNSELOR, "idempotency-key": "d-4", "if-match": '"0"' });
     const stale = await put(app, { ...COUNSELOR, "idempotency-key": "d-5", "if-match": '"0"' });
-    expect(stale.statusCode).toBe(412);
+    expect(stale.statusCode).toBe(409);
     await app.close();
   });
 
@@ -2142,7 +2142,7 @@ describe("M16 §4.1 routes 38 / 39 / 40 — physician letter review queue", () =
     await app.close();
   });
 
-  it("requires If-Match (428) and Idempotency-Key (400); a stale version is 412", async () => {
+  it("requires If-Match (428) and Idempotency-Key (400); a stale version is 409", async () => {
     const { app, backend } = makeServer();
     const letter = backend.seedLetter();
     expect(
@@ -2159,7 +2159,7 @@ describe("M16 §4.1 routes 38 / 39 / 40 — physician letter review queue", () =
           "if-match": '"7"',
         })
       ).statusCode,
-    ).toBe(412);
+    ).toBe(409);
     expect(backend.letterEvents).toHaveLength(0);
     await app.close();
   });
@@ -2173,7 +2173,7 @@ describe("M16 §4.1 routes 38 / 39 / 40 — physician letter review queue", () =
       { ...SUPERVISOR, "idempotency-key": "l-hdr", "if-match": '"7"' },
       { expectedVersion: 0 } as never,
     );
-    expect(res.statusCode).toBe(412);
+    expect(res.statusCode).toBe(409);
     expect(backend.letterEvents).toHaveLength(0);
     await app.close();
   });
@@ -2394,7 +2394,7 @@ describe("M16 §4.1 route 41 — PUT /contacts/:contactId/care-plan", () => {
     await app.close();
   });
 
-  it("requires If-Match (428), an Idempotency-Key (400), and refuses a stale version (412)", async () => {
+  it("requires If-Match (428), an Idempotency-Key (400), and refuses a stale version (409)", async () => {
     const { app, contact } = setup();
     expect(
       (
@@ -2425,7 +2425,7 @@ describe("M16 §4.1 route 41 — PUT /contacts/:contactId/care-plan", () => {
           { goals: ["a"] },
         )
       ).statusCode,
-    ).toBe(412);
+    ).toBe(409);
     await app.close();
   });
 
@@ -2640,7 +2640,7 @@ describe("M16 §4.1 routes 42-51 — the mailing program (bereavement oversight 
     await app.close();
   });
 
-  it("the If-Match header names the version the service decides on; a stale one is 412", async () => {
+  it("the If-Match header names the version the service decides on; a stale one is 409", async () => {
     const { app, backend } = makeServer();
     const ok = await app.inject({
       method: "POST",
@@ -2654,7 +2654,7 @@ describe("M16 §4.1 routes 42-51 — the mailing program (bereavement oversight 
       url: `${RUN}/generate`,
       headers: { ...SUPERVISOR, "idempotency-key": nextKey("m-y"), "if-match": '"9"' },
     });
-    expect(stale.statusCode).toBe(412);
+    expect(stale.statusCode).toBe(409);
     expect(backend.mailingCalls.map((c) => c.expectedVersion)).toEqual([0, 9]);
     await app.close();
   });

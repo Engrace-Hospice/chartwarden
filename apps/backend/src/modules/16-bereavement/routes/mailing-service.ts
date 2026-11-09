@@ -1,3 +1,4 @@
+import type { CursorPage } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/16-bereavement/routes/mailing-service.ts — the mailing program service interface (ADR-0109 D10, routes 42-51).
 //
 // A tenant configures its mailings (`config`), the 5-minute sweep drafts a RUN per occurrence, and bereavement oversight drives the run:
@@ -17,7 +18,6 @@ import type {
   BereavementMailingRunStatus,
 } from "@chartwarden/types";
 import type { M16ReadActor, M16WriteActor } from "./actor";
-import type { CursorPage } from "./concurrency";
 
 /** The tenant's overrides of the occurrence dates (see `mailings/occurrence.ts`). */
 export interface MailingScheduleView {

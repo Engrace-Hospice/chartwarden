@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import type { SearchKeyProvider } from "@chartwarden/messaging";
 // WP 2.7b C3 (ADR-0058 decision 13, "Enablement and kill switches") - the three route gates that decide whether global search
 // may ANSWER for this tenant right now. Each is a Fastify preHandler; they stash what they read per request so the service gets
 // one typed `ServeContext` (the only thing that lets a query run) instead of re-reading.
@@ -9,8 +11,7 @@
 //             'ready' AND reconciled since the setting and the platform row last changed AND not expired (C2's `stillValid`),
 //             otherwise 503 GLOBAL_SEARCH_INDEX_NOT_READY. Status alone is not enough (a flip invalidates a prior reconcile).
 // Any unexpected failure (key provider, destroyed ring, database) is 503: no gate ever falls back to "allowed".
-import { type DbClient, schema } from "@chartwarden/db";
-import type { SearchKeyProvider } from "@chartwarden/messaging";
+import { actorOf } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
@@ -58,12 +59,6 @@ const notReady = () =>
 const unavailable = () =>
   new ChartWardenError("GLOBAL_SEARCH_UNAVAILABLE", "global search is unavailable", 503);
 
-function orgOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
-}
-
 /** Typed refusals pass through; anything else is logged by NAME only (never a message: it could carry a query) and is a 503. */
 function failClosed(request: FastifyRequest, error: unknown): never {
   if (error instanceof ChartWardenError || error instanceof UnauthorizedError) throw error;
@@ -94,7 +89,7 @@ export function createServeGates(deps: ServeGateDeps): ServeGates {
   return {
     async platform(request) {
       try {
-        const { organizationId } = orgOf(request);
+        const { organizationId } = actorOf(request);
         const flag = await deps.platformFlag.read(organizationId);
         if (!flag.enabled) throw disabled();
         stateOf(request).platform = flag;
@@ -105,7 +100,7 @@ export function createServeGates(deps: ServeGateDeps): ServeGates {
 
     async tenant(request) {
       try {
-        const { organizationId } = orgOf(request);
+        const { organizationId } = actorOf(request);
         const setting = await deps.settings.read(organizationId);
         if (!setting.enabled) throw disabled();
         stateOf(request).setting = setting;
@@ -116,7 +111,7 @@ export function createServeGates(deps: ServeGateDeps): ServeGates {
 
     async serve(request) {
       try {
-        const { organizationId, userId } = orgOf(request);
+        const { organizationId, userId } = actorOf(request);
         const { platform, setting } = stateOf(request);
         if (!platform || !setting) throw unavailable();
         // A pending purge refuses even though rows may still exist: a slow purge never leaves search answering.

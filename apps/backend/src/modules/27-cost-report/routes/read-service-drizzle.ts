@@ -1,18 +1,3 @@
-import {
-  BadDebtRepository,
-  ComplianceWindowRepository,
-  CostCenterMappingRepository,
-  type CostReportDb,
-  CostReportRepository,
-  CostReportSnapshotRepository,
-  CostReportWorksheetRepository,
-  EcrSubmissionRepository,
-  ImportsRepository,
-  StatisticDataRepository,
-  ValidationRepository,
-  ValidationRuleRepository,
-  emptyWorksheetData,
-} from "@chartwarden/cost-report";
 // apps/backend/src/modules/27-cost-report/routes/read-service-drizzle.ts — the Drizzle-backed
 // M27ReadRouteService (§4.1 GET surface: cost-report list/detail, worksheets, mappings, bad-debt,
 // statistics, imports, validations, ECR submissions, snapshots, compliance window, the rule library).
@@ -28,11 +13,25 @@ import {
 // DTO discipline: the cipher / audit-denylisted columns (`raw_payload_cipher`, and on list views the
 // `materialized_inputs` / `worksheet_snapshot`) are NEVER projected here — only `getSnapshot` (the one
 // audit-read-logged route) surfaces the materialized payloads.
+import {
+  BadDebtRepository,
+  ComplianceWindowRepository,
+  CostCenterMappingRepository,
+  type CostReportDb,
+  CostReportRepository,
+  CostReportSnapshotRepository,
+  CostReportWorksheetRepository,
+  EcrSubmissionRepository,
+  ImportsRepository,
+  StatisticDataRepository,
+  ValidationRepository,
+  ValidationRuleRepository,
+  emptyWorksheetData,
+} from "@chartwarden/cost-report";
 import type { schema } from "@chartwarden/db";
+import { decodeCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { NotFoundError } from "@chartwarden/types";
-import type { M27ReadActor } from "./actor";
-import { type CursorPage, paginate } from "./concurrency";
 import type {
   BadDebtRecordView,
   ComplianceWindowView,
@@ -40,7 +39,9 @@ import type {
   CostReportDetailView,
   CostReportListFilter,
   CostReportSummaryView,
+  CursorPage,
   EcrSubmissionView,
+  M27ReadActor,
   M27ReadRouteService,
   SnapshotDetailView,
   SnapshotSummaryView,
@@ -304,7 +305,7 @@ export function buildDrizzleM27ReadService(
             createdAt: r.fiscalYearEndDate,
             id: r.id,
           }));
-        const page = paginate(mapped, cursor, limit);
+        const page = paginate(actor.organizationId, mapped, cursor, limit);
         return {
           ...page,
           items: page.items.map(({ createdAt: _c, id: _i, ...v }) => v),
@@ -555,3 +556,48 @@ export function buildDrizzleM27ReadService(
 
 /** The platform rule-set version the rule-library read projects (the §11.B default ships at v1). */
 const DEFAULT_RULE_SET_VERSION = 1;
+
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 100;
+
+interface CreatedAtKeyset {
+  readonly createdAt: string;
+  readonly id: string;
+}
+
+function isCreatedAtKeyset(value: unknown): value is CreatedAtKeyset {
+  const v = value as Partial<CreatedAtKeyset> | null;
+  return typeof v?.createdAt === "string" && typeof v.id === "string";
+}
+
+/**
+ * Page an already-sorted `(createdAt DESC, id DESC)` row set in memory with the route kit's signed cursor:
+ * resume strictly after the cursor's keyset, return `limit` rows (default 50, max 100).
+ */
+function paginate<T extends CreatedAtKeyset>(
+  organizationId: string,
+  rows: readonly T[],
+  cursor: string | undefined,
+  limit: number | undefined,
+): CursorPage<T> {
+  const size = Math.max(1, Math.min(MAX_PAGE_SIZE, limit ?? DEFAULT_PAGE_SIZE));
+  const key = decodeCursor(organizationId, cursor, isCreatedAtKeyset);
+  let start = 0;
+  if (key) {
+    start = rows.findIndex(
+      (r) => r.createdAt < key.createdAt || (r.createdAt === key.createdAt && r.id < key.id),
+    );
+    if (start === -1) start = rows.length;
+  }
+  const slice = rows.slice(start, start + size);
+  const hasMore = start + size < rows.length;
+  const last = slice[slice.length - 1];
+  return {
+    items: slice,
+    nextCursor:
+      hasMore && last
+        ? encodeCursor(organizationId, { createdAt: last.createdAt, id: last.id })
+        : null,
+    hasMore,
+  };
+}

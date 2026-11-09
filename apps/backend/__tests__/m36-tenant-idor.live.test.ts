@@ -454,6 +454,7 @@ const REGISTRAR_FILES = [
   "alarm-ingest-routes.ts", // WP 6.10 alarm ingest (flag off): staff list/create/rotate/disable are org-bound (another org's staff lists nothing and disables/rotates a random-id 404). The INBOUND route has NO session by design: its credential is a per-source HMAC whose key id names the org, so a secret from org A presented under org B's key id (or the reverse) is the same 401 as any wrong signature and no row of either org is touched - m36-alarm-ingest.live "tenancy"
   "alarm-ingest-typebox.ts", // schemas only
   "uuid-params.ts", // preHandler helper, no routes
+  "actor.ts", // route actor helper, no routes
   "webhook-routes.ts",
 ];
 
@@ -1804,7 +1805,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       ).toBe(0);
     });
 
-    it("a malformed cursor is a 400 on the thread read and the channel list, never a 500 and never a silent first page", async () => {
+    it("a malformed cursor is a 422 on the thread read and the channel list, never a 500 and never a silent first page", async () => {
       const b64 = (text: string) => Buffer.from(text, "utf8").toString("base64url");
       const bad = [
         b64("not-a-time|not-a-uuid"),
@@ -1815,7 +1816,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       ];
       for (const cursor of bad) {
         const t = await thread(u1, `?cursor=${encodeURIComponent(cursor)}`);
-        expect(t.statusCode, `thread ${cursor}: ${t.body}`).toBe(400);
+        expect(t.statusCode, `thread ${cursor}: ${t.body}`).toBe(422);
         const l = await call(
           "GET /api/v1/messaging/channels/:id/messages",
           u1,
@@ -1824,7 +1825,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           {},
           `?cursor=${encodeURIComponent(cursor)}`,
         );
-        expect(l.statusCode, `list ${cursor}: ${l.body}`).toBe(400);
+        expect(l.statusCode, `list ${cursor}: ${l.body}`).toBe(422);
       }
       // a cursor the server itself issued still works (positive control)
       const first = (await thread(u1, "?limit=2")).json();

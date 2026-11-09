@@ -9,14 +9,15 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
-import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf } from "./concurrency";
+import {
+  type CursorPage,
+  PLATFORM_CURSOR_SCOPE,
+  decodeKeyset,
+  encodeKeyset,
+  pageSizeOf,
+} from "../keyset-page";
 
-export const DSAR_OPEN_STATUSES = [
-  "requested",
-  "generating",
-  "review_pending",
-  "extended",
-] as const;
+const DSAR_OPEN_STATUSES = ["requested", "generating", "review_pending", "extended"] as const;
 
 export interface PlatformDsarJobView {
   readonly id: string;
@@ -45,16 +46,6 @@ export interface PlatformOpsService {
     cursor: string | undefined,
     limit: number | undefined,
   ): Promise<CursorPage<PlatformDsarJobView>>;
-}
-
-/** PURE - open and past the (extended) SLA. */
-export function isDsarSlaBreached(
-  job: { status: string; slaDueAt: Date; extendedUntil: Date | null },
-  now: Date,
-): boolean {
-  if (!(DSAR_OPEN_STATUSES as readonly string[]).includes(job.status)) return false;
-  const due = job.extendedUntil ?? job.slaDueAt;
-  return due.getTime() < now.getTime();
 }
 
 // ── in-memory twin ───────────────────────────────────────────────────────────────────────────────────
@@ -114,7 +105,7 @@ export function createDrizzlePlatformOpsService(deps: DrizzlePlatformOpsDeps): P
     async listDsarJobs(filter, cursor, limit) {
       return inPlatform("platform-ops cross-tenant DSAR list", async (tx) => {
         const size = pageSizeOf(limit);
-        const after = cursor ? decodeCursor(cursor) : null;
+        const after = decodeKeyset(PLATFORM_CURSOR_SCOPE, cursor);
         const open = sql.join(
           DSAR_OPEN_STATUSES.map((s) => sql`${s}`),
           sql`, `,
@@ -163,7 +154,9 @@ export function createDrizzlePlatformOpsService(deps: DrizzlePlatformOpsDeps): P
             }),
           ),
           nextCursor:
-            hasMore && last ? encodeCursor({ createdAt: last.cursorTs, id: last.id }) : null,
+            hasMore && last
+              ? encodeKeyset(PLATFORM_CURSOR_SCOPE, { createdAt: last.cursorTs, id: last.id })
+              : null,
           hasMore,
         };
       });

@@ -16,7 +16,7 @@
 export const PHI_LINT_VERSION = 2;
 
 /** The longest text the lint examines (the templates' own 2000 character body cap). */
-export const MAX_LINT_INPUT = 2000;
+const MAX_LINT_INPUT = 2000;
 
 export type PhiFindingCode =
   | "DATE"

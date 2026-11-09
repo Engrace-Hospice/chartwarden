@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { type AuditContext, audit } from "@chartwarden/audit";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/15-discipline-care-plans/consumers/m14-idg-decision-recorded.ts — M15's live
 // `idg.decision_recorded` binding (F-234 / #248; M15 spec §7.7 `idg-decision.worker`, §4.5 idempotency key
 // `idgDecisionId`). It consumes only `kind: 'discipline_plan_update'`; every other decision arm belongs to
@@ -21,9 +24,7 @@
 // The M7 IPOC parent-problem check is an INJECTED org-explicit port (bound at the composition root to M7's
 // `activeProblemIdsForOrg`): `CarePlanReader`'s id-keyed reads need an ambient request scope a relay tick has
 // not got, and M15 must not import M7's schema. The port runs BEFORE the transaction (its own `withOrgContext`).
-import { randomUUID } from "node:crypto";
-import { type AuditContext, audit } from "@chartwarden/audit";
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { DisciplineGoalSource, DisciplinePlanKind } from "@chartwarden/types";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
@@ -43,9 +44,6 @@ const VERSION = schema.disciplineCarePlanVersion;
 const GOAL = schema.disciplineGoal;
 const INTERVENTION = schema.disciplineIntervention;
 const APPLICATION = schema.disciplinePlanIdgDecisionApplication;
-
-/** §3.3 — a consumer-driven write names no acting membership. */
-const CONSUMER_USER_ID = "";
 
 /** The event M15 consumes, and the `(eventId, consumerName)` receipt identity. */
 export const M15_IDG_DECISION_CONSUMER = {

@@ -1,3 +1,4 @@
+import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/05-patient/routes/code-status-routes.ts — the M5 patient code-status routes (ADR-0104).
 //
 //   GET  /api/v1/patients/:id/code-status                              patient.read             caseload_or_scope
@@ -6,7 +7,7 @@
 //
 // The chart scope guard runs on `:id` for all three (404 on deny, no existence leak). A write needs a human membership
 // on the request context — the actor the row records — so an AI principal or a membership-less session gets a 401.
-import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
+import { type PreHandler, actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -23,8 +24,6 @@ import {
 } from "./code-status-typebox";
 import { LooseIdParamsSchema, parse } from "./patient-typebox";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 const chartScope = (action: string): PreHandler =>
   requireAbac(action, "caseload_or_scope", {
     getTarget: (request: GuardRequest) => ({
@@ -38,17 +37,9 @@ const EDIT = requirePermission("patient.edit_code_status") as PreHandler;
 const SCOPE_READ = chartScope("patient.read");
 const SCOPE_EDIT = chartScope("patient.edit_code_status");
 
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
-}
-
 function writerOf(request: FastifyRequest) {
-  const { organizationId, userId } = actorOf(request);
-  const m = request.context.attributes?.membershipId;
-  if (typeof m !== "string" || m.length === 0) throw new UnauthorizedError();
-  return { organizationId, actor: { userId, membershipId: m } };
+  const { organizationId, userId, membershipId } = writeActorOf(request);
+  return { organizationId, actor: { userId, membershipId } };
 }
 
 /** Map the port's typed precondition errors onto the HTTP contract; anything else rethrows. */

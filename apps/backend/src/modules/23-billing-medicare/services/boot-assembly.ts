@@ -1,4 +1,11 @@
-import { createDefaultBillingRegistry, type repositories } from "@chartwarden/billing";
+import {
+  type AssemblyOutboxPort,
+  type ClaimAssemblySeams,
+  type DiagnosisSequenceReader,
+  type ElectionAddendumComplianceReader,
+  createDefaultBillingRegistry,
+  type repositories,
+} from "@chartwarden/billing";
 import { ChartWardenError } from "@chartwarden/types";
 // apps/backend/src/modules/23-billing-medicare/services/boot-assembly.ts — the boot-time CLAIM-ASSEMBLY
 // service the composition root binds into `mountM23Routes` (route #1 `POST /claims/assemble`).
@@ -106,13 +113,7 @@ import { type ClaimZipPorts, buildHospiceCbsaReader } from "./claim-cbsa";
 
 import type { ProviderCcnPort } from "../routes/write-service";
 import { buildM23CapProjectionAdapter } from "./cap-projection-adapter";
-import {
-  type AssemblyOutboxPort,
-  type ClaimAssemblySeams,
-  type ClaimAssemblyService,
-  type DiagnosisSequenceReader,
-  buildClaimAssemblyService,
-} from "./claim-assembly";
+import { type ClaimAssemblyService, buildClaimAssemblyService } from "./claim-assembly";
 import {
   type M6ClaimRangeReader,
   type M7ClaimDiagnosesReader,
@@ -131,7 +132,6 @@ import {
   buildM23SignedEncountersAdapter,
   buildM23TerminologyAdapter,
 } from "./claim-assembly-seam-adapters";
-import type { ElectionAddendumComplianceReader } from "./claim-assembly-types";
 import type { PlaceOfServicePorts } from "./place-of-service-resolver";
 
 type BillingDb = repositories.BillingDb;

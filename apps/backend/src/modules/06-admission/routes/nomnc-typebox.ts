@@ -2,11 +2,11 @@
 // expedited-review record-keeping routes. Named `*-typebox` (not `*schema*`) so the table-ownership import heuristic
 // never mistakes a TypeBox import for a Drizzle one. Every typed time is a SEPARATE date and time of day with no
 // default for either; closed sets are labels that imply no CMS rule.
+import { Uuid } from "@chartwarden/shared/route-kit";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 
 const Nullable = <T extends TSchema>(t: T) => Type.Union([t, Type.Null()]);
 const Version = () => Type.Integer({ minimum: 1 });
-const Uuid = () => Type.String({ format: "uuid" });
 const NullableString = Type.Union([Type.String(), Type.Null()]);
 
 /** A local date and time of day as printed on the notice / told by the QIO. Both optional here so the SERVER can

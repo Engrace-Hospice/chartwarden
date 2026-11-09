@@ -1,3 +1,5 @@
+import type { AuditContext, AuditExecutor, AuditQuery } from "@chartwarden/audit";
+import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/04-audit/routes/audit-routes.ts — M4-T06 the audit query route
 // inventory (M4 spec §4.1–4.3; the §10.2 "who touched this chart" + §4.2 event search).
 //
@@ -12,8 +14,7 @@
 //
 // `audit_event` is HELPER-ONLY: this route file never SELECTs the schema directly; it consumes the
 // typed query port from @chartwarden/audit (the only sanctioned reader).
-import type { AuditContext, AuditExecutor, AuditQuery } from "@chartwarden/audit";
-import { requirePermission } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { auditElevatedAccess, isElevatedAuditRead } from "../audit/audit-meta";
@@ -25,26 +26,12 @@ import {
   parse,
 } from "./audit-typebox";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 /** The injection surface for the audit query routes (mirrors M3's `AuthzRouteDeps`). */
 export interface AuditRouteDeps {
   /** Read surface over `audit_event` (in-memory in the slice; Drizzle/withOrgContext in prod). */
   query: AuditQuery;
   /** Audit sink for the `audit.elevated_access` meta-event (audit() — the denylist runs there). */
   audit: AuditExecutor;
-}
-
-/** The org-scoped actor (org binding is server-side: the context, never the query/body). */
-function actorOf(request: FastifyRequest): {
-  organizationId: string;
-  userId: string;
-  roles: readonly string[];
-} {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
 }
 
 /** Build the audit context for the meta-event from the request. */

@@ -17,7 +17,7 @@ import type { HandoffPolicyStore } from "./handoff-policy-store-db";
 import { type SettleDeps, finishHandoff } from "./handoff-settle";
 import type { HandoffRow, HandoffStore } from "./handoff-store-db";
 
-export const HANDOFF_EXPIRY_BATCH_SIZE = 100;
+const HANDOFF_EXPIRY_BATCH_SIZE = 100;
 
 export interface ExpiryDeps {
   readonly db: DbClient;

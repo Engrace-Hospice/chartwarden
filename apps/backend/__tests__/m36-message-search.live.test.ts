@@ -359,7 +359,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7a in-conversation search - LIVE Postgres", (
       );
       expect(ids(second)).toEqual([made[2], made[1], made[0]]);
       expect(second.json().nextCursor).toBeUndefined();
-      expect((await search(u1, room, "q=capybara&cursor=garbage")).statusCode).toBe(400);
+      expect((await search(u1, room, "q=capybara&cursor=garbage")).statusCode).toBe(422);
     });
   });
 

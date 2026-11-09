@@ -1,3 +1,4 @@
+import { actorOf } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/37-ipu/routes/ipu.routes.ts — M37 §4.1 route handlers (T11b core spine). Reads
 // gate on the `*.read` keys (inOrg base); mutations compose the RBAC key + §D14 step-up where the catalog
 // marks it. Org/actor/membership are always server-assembled (actorOf/writeActorOf), never read off the wire.
@@ -16,7 +17,7 @@
 // gates coverage one step earlier, at request-bed).
 import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
+import { writeActorOf } from "./actor";
 import {
   GIP_ATTESTER_ELIGIBLE,
   P,

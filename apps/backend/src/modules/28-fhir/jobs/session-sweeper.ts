@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/28-fhir/jobs/session-sweeper.ts — the `fhir.client-session-sweeper` cron (GAP-084,
 // §4.8, §8.4). `fhir_client_session` is `operational` retention: kept 90 days past expiry for incident review,
 // then routinely purged. Nothing purged it, so the partitioned ledger grew without bound.
@@ -6,7 +7,7 @@
 // (the conservative reading: keep the evidence longer, never shorter), so rows are deleted once
 // `expires_at < now - 90 days`. An expired token is already refused at the bearer check regardless of the row.
 // Bounded per org per tick; idempotent (a deleted row is simply absent); one org's failure does not stop the rest.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, inArray, lt } from "drizzle-orm";
 
@@ -14,7 +15,6 @@ import type { ActiveOrgListPort } from "./ports";
 import { CLIENT_SESSION_RETENTION_DAYS, SWEEP_BATCH_LIMIT } from "./queues";
 
 const SESSION = schema.fhirClientSession;
-const SYSTEM_USER_ID = "";
 const MS_PER_DAY = 86_400_000;
 
 export interface SessionSweeperDeps {
@@ -25,7 +25,7 @@ export interface SessionSweeperDeps {
 }
 
 async function sweepOrg(db: DbClient, organizationId: string, cutoff: Date): Promise<number> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const t = tx as unknown as DbClient;
     const stale = await t
       .select({ jti: SESSION.jti })

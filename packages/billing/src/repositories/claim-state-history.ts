@@ -99,7 +99,7 @@ export class ClaimStateHistoryRepository {
     const size = pageSizeOf(limit);
     const where = and(
       eq(H.claimId, claimId),
-      keysetBefore(H.at, H.id, cursor ? decodeCursor(cursor) : undefined),
+      keysetBefore(H.at, H.id, decodeCursor(claimId, cursor)),
     );
     const rows = await this.db
       .select()
@@ -107,7 +107,7 @@ export class ClaimStateHistoryRepository {
       .where(where)
       .orderBy(desc(H.at), desc(H.id))
       .limit(size + 1);
-    return buildCursorPage(rows.map(toRecord), size, (r) => ({
+    return buildCursorPage(claimId, rows.map(toRecord), size, (r) => ({
       createdAt: r.at.toISOString(),
       id: r.id,
     }));

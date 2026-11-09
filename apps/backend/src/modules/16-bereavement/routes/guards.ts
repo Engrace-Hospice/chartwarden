@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/16-bereavement/routes/guards.ts — M16-T06 (§4.7 / §4.8) route-guard builders.
 //
 // The shared `requirePermission` / `requireAbac` / `requireStepUp` preHandler factories every M16 route
@@ -22,9 +23,8 @@
 //      §4.1's own ABAC column agrees for 3 and 4 (`org_scope_bereavement_oversight ∧ …`); route 5's
 //      `bereavement_window` cell is the spec contradicting its own §4.8 definition, and §4.8 (the
 //      predicate's definition) wins, so route 5 binds oversight.
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { ForbiddenError, NotFoundError } from "@chartwarden/types";
-import type { PreHandler } from "./actor";
 
 type TargetRequest = {
   readonly params?: unknown;

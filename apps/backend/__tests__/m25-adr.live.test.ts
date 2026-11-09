@@ -292,7 +292,7 @@ describe.skipIf(!DB_URL)("M25 ADR intake - LIVE Postgres", () => {
       code: "INVALID_TRANSITION",
     });
     expect(await refused(svc().transitionAdr(actor(), id, "in_review", version))).toMatchObject({
-      code: "VERSION_CONFLICT",
+      code: "STALE_VERSION",
     });
     const b = await svc().transitionAdr(actor(), id, "in_review", a.version);
     expect(b.version).toBe(a.version + 1);

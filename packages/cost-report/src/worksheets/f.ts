@@ -5,7 +5,7 @@
 // (D18).
 //
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@chartwarden/db`, no `getSeam`.
-import { type Static, Type } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 
 /** Worksheet F — balance sheet at fiscal-year-end. */
 export const WorksheetF = Type.Object(
@@ -32,5 +32,3 @@ export const WorksheetF = Type.Object(
   },
   { additionalProperties: false },
 );
-
-export type WorksheetFData = Static<typeof WorksheetF>;

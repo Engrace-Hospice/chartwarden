@@ -21,7 +21,7 @@
 // WHAT THE SERVER OWNS, WHICH NOTHING HERE RE-DECIDES.
 //
 //   • §7.7 OPTIMISTIC CONCURRENCY. `PATCH .../selections` takes `If-Match` as a TYPED HEADER PARAM, so
-//     forgetting it does not compile. The version comes from the read; a 412 means someone else saved
+//     forgetting it does not compile. The version comes from the read; a 409 STALE_VERSION means someone else saved
 //     first, which on a shared draft is ordinary rather than exceptional.
 //   • §2.6 THE LAYER-3 GATE. Whether a note may finalize — required sections filled, vitals present,
 //     late-entry tier — is the server's. The composer shows which sections are `required` because a
@@ -68,8 +68,6 @@ export type EvvReconcileBody = ReqBody<operations["postApiV1EncountersByEncounte
 export type EncounterType = CreateEncounterBody["encounterType"];
 /** The §2.2 authoring disciplines. */
 export type EncounterDiscipline = CreateEncounterBody["discipline"];
-/** The mileage provenance the server accepts (`odometer` | `route_calc` | `manual_override`). */
-export type MileageSource = CaptureMileageBody["source"];
 
 // ── §2.2 the (encounter type × discipline) matrix, and the caller's own half of it (F-083) ────────────
 //
@@ -158,7 +156,7 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
       : code === "UNKNOWN_TEMPLATE_SECTION" || code === "UNKNOWN_VOCAB_CODE"
         ? (detail ??
           "This note referenced something its template does not contain. Reload and try again.")
-        : httpStatus === 412
+        : code === "STALE_VERSION"
           ? "Someone else saved this note after you opened it. Reload to pick up their changes — saving now would discard them."
           : httpStatus === 403
             ? (detail ?? "Your role is not permitted to author on this encounter.")
@@ -196,28 +194,6 @@ export async function loadSelections(
     params: { path: { encounterId } },
   });
   return (data ?? null) as SelectionsView | null;
-}
-
-/** Every vitals set on the encounter, newest capture first (#92). */
-export async function loadVitals(
-  client: ApiClient,
-  encounterId: string,
-): Promise<VitalsListView | null> {
-  const { data } = await client.GET("/api/v1/encounters/{encounterId}/vitals", {
-    params: { path: { encounterId } },
-  });
-  return (data ?? null) as VitalsListView | null;
-}
-
-/** The encounter's mileage row, or null when none was recorded (F-063). */
-export async function loadMileage(
-  client: ApiClient,
-  encounterId: string,
-): Promise<MileageView | null> {
-  const { data } = await client.GET("/api/v1/encounters/{encounterId}/mileage", {
-    params: { path: { encounterId } },
-  });
-  return (data ?? null) as MileageView | null;
 }
 
 // ── authoring writes ───────────────────────────────────────────────────────────────────────────────────
@@ -261,7 +237,7 @@ export async function createDraft(
  * than merging, which is what makes deselecting an entry expressible at all.
  *
  * `If-Match` is a TYPED header param on this operation, so omitting it does not compile. The version is
- * whatever the last read or save returned; a 412 means someone else saved first.
+ * whatever the last read or save returned; a 409 STALE_VERSION means someone else saved first.
  */
 export async function saveSelections(
   client: ApiClient,

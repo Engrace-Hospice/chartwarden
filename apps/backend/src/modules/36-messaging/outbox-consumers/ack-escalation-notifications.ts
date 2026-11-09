@@ -45,7 +45,7 @@ function requireString(payload: Record<string, unknown>, key: string): string {
   return value;
 }
 
-export const ACK_UNROUTED_OPS_KIND = {
+const ACK_UNROUTED_OPS_KIND = {
   route_unavailable: "m36.ack.route_unavailable",
   ladder_exhausted: "m36.ack.ladder_exhausted",
 } as const;

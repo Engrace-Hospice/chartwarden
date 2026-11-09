@@ -6,6 +6,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { registerLocationLookupRoutes } from "../src/bootstrap/routes/locations";
+import { registerProviderEntityLookupRoutes } from "../src/bootstrap/routes/provider-entities";
 import { LIVE_DROP_ROLES } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -107,6 +108,7 @@ describe.skipIf(!DB_URL)("M1 location lookup route — LIVE Postgres", () => {
     handle = createDbClient({ connectionString: appUrl.toString() });
     app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
     registerLocationLookupRoutes(app, handle.db);
+    registerProviderEntityLookupRoutes(app, handle.db);
   }, 120_000);
 
   afterAll(async () => {
@@ -155,4 +157,36 @@ describe.skipIf(!DB_URL)("M1 location lookup route — LIVE Postgres", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().items).toMatchObject([{ name: "Alpha South", city: "Boulder" }]);
   });
+
+  // Both directory lookups page by offset; the cursor is signed like every other list's, so a tampered or
+  // unsigned position is a 422, never a silent restart at page 1.
+  it.each([
+    ["/api/v1/locations", ["Alpha North", "Alpha South"], ["Beta East"], "name"],
+    ["/api/v1/provider-entities", ["Alpha Hospice"], ["Beta Hospice"], "legalName"],
+  ] as const)(
+    "%s pages on a signed cursor and refuses an unsigned one",
+    async (path, p1, p2, key) => {
+      const names = (res: { json: () => { items: Record<string, string>[] } }) =>
+        res.json().items.map((item) => item[key]);
+      const first = await app.inject({ method: "GET", url: `${path}?limit=${p1.length}` });
+      expect(first.statusCode).toBe(200);
+      expect(names(first)).toEqual(p1);
+      const { nextCursor } = first.json() as { nextCursor: string };
+      expect(nextCursor).toContain(".");
+      const second = await app.inject({
+        method: "GET",
+        url: `${path}?limit=${p1.length}&cursor=${encodeURIComponent(nextCursor)}`,
+      });
+      expect(names(second)).toEqual(p2);
+      expect(second.json().nextCursor).toBeNull();
+      for (const bad of ["garbage", "1", `x${nextCursor}`]) {
+        const res = await app.inject({
+          method: "GET",
+          url: `${path}?cursor=${encodeURIComponent(bad)}`,
+        });
+        expect(res.statusCode, bad).toBe(422);
+        expect(res.json().error.code).toBe("INVALID_CURSOR");
+      }
+    },
+  );
 });

@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/20-field-safety/routes/guards.ts — M20-T06 (§4.1 / §4.7) route-guard builders.
 //
 // The shared `requirePermission` / `requireAbac` / `requireStepUp` preHandler factories every M20 route
@@ -31,9 +32,8 @@
 //      second name for it (../abac-predicates.ts states the decision). {@link ABAC_IN_ORG} binds it
 //      explicitly rather than leaving the cell bare, so "this route is org-scoped" is a declared fact the
 //      §9 test can assert instead of an absence.
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import type { PreHandler } from "./actor";
 
 type TargetRequest = {
   readonly params?: unknown;

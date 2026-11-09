@@ -20,10 +20,10 @@ const R = schema.messageAckRequests;
 const M = schema.messages;
 
 /** The dedicated fixed reason for an offboarding reassign (ADR-0084 decision 6, migration 1158): the assignee has left the organisation. */
-export const OFFBOARDING_ACK_REASON: AckReasonCode = "assignee_left_organisation";
+const OFFBOARDING_ACK_REASON: AckReasonCode = "assignee_left_organisation";
 
 /** An urgent message with no tracked request is only "open" for this long (ADR-0084, PROPOSED): older ones are history, not live risk. */
-export const UNTRACKED_URGENT_WINDOW_HOURS = 72;
+const UNTRACKED_URGENT_WINDOW_HOURS = 72;
 
 const WAITING = ["pending", "escalated", "failed_unreachable"] as const;
 const OPEN = [...WAITING, "acknowledged"] as const;

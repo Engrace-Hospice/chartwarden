@@ -19,7 +19,7 @@ import type {
 } from "../../../bootstrap/outbox-dispatcher";
 
 export const M36_SCHEDULE_BLOCKED_CONSUMER = "m36.schedule-blocked" as const;
-export const M36_SCHEDULE_BLOCKED_EVENTS = ["m36.message.schedule_blocked"] as const;
+const M36_SCHEDULE_BLOCKED_EVENTS = ["m36.message.schedule_blocked"] as const;
 
 function requireString(payload: Record<string, unknown>, key: string): string {
   const value = payload[key];

@@ -1,3 +1,4 @@
+import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/33-reporting/routes/bases-metrics.routes.ts — M33 (§4.1 #5–#7).
 //
 // The platform-shipped report-builder catalog reads: list/read report bases (the base picker the
@@ -6,9 +7,9 @@
 // per-row ABAC (`abac:"none"` in M33_CONTRIBUTED_PERMISSIONS) — `requirePermission` on the §4.6 keys is
 // the full gate. Every read still runs through the injected service → `withReportSession` (§8.1.2 / D3).
 // Org/actor binding is ALWAYS server-side (request.context). Mirrors M34 routes/platform/tenants.ts.
-import { requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf } from "./actor";
+import { actorOf } from "./actor";
 import type { M33ReadRouteService } from "./read-service";
 import {
   BaseKeyParamsSchema,

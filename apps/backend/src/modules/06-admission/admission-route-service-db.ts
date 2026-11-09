@@ -14,6 +14,11 @@
 
 import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
+import {
+  decodeOffsetCursor,
+  encodeOffsetCursor,
+  mapUniqueViolation,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
@@ -202,7 +207,6 @@ import type { SignedNoteFacts } from "./state-machines/f2f-attestation-rules";
 import { type FaceToFaceState, transitionFaceToFace } from "./state-machines/face-to-face";
 import { type LevelOfCareState, transitionLevelOfCare } from "./state-machines/level-of-care";
 import { TEXT_MINIMUMS } from "./state-machines/validation";
-import { mapUniqueViolation } from "./unique-violation";
 
 /**
  * The transactional-outbox port (§4.4): the composition root binds M1's catalog-validating publisher
@@ -459,12 +463,6 @@ const DEFAULT_LIMIT = 50;
 
 const clampLimit = (n?: number): number =>
   n === undefined ? DEFAULT_LIMIT : Math.max(1, Math.min(MAX_LIMIT, Math.trunc(n)));
-/** The in-memory slice cursors on an integer offset (`String(offset)`); mirror it exactly. */
-const parseOffset = (cursor?: string): number => {
-  const n = cursor ? Number.parseInt(cursor, 10) : 0;
-  return Number.isFinite(n) && n > 0 ? n : 0;
-};
-
 const toSummary = (r: {
   id: string;
   state: string;
@@ -1723,7 +1721,7 @@ export function createDbAdmissionRouteService(
       return { id: r.id, state: r.status, version: Number(r.version) };
     });
   }
-  /** Page a status-bearing table on the integer-offset cursor, newest-first. */
+  /** Page a status-bearing table on the signed offset cursor, newest-first. */
   const complianceWindowColumns = {
     id: CW.id,
     state: CW.status,
@@ -1759,7 +1757,7 @@ export function createDbAdmissionRouteService(
     query: { state?: string; cursor?: string; limit?: number },
   ): Promise<Page<SummaryRow>> {
     const limit = clampLimit(query.limit);
-    const offset = parseOffset(query.cursor);
+    const offset = decodeOffsetCursor(organizationId, query.cursor);
     return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const where = query.state ? eq(table.status as never, query.state as never) : undefined;
       const rows = (await tx
@@ -1770,7 +1768,8 @@ export function createDbAdmissionRouteService(
         .limit(limit + 1)
         .offset(offset)) as { id: string; state: string; version: number }[];
       const items = rows.slice(0, limit).map(toSummary);
-      const nextCursor = rows.length > limit ? String(offset + limit) : null;
+      const nextCursor =
+        rows.length > limit ? encodeOffsetCursor(organizationId, offset + limit) : null;
       return { items, nextCursor };
     });
   }
@@ -2016,7 +2015,7 @@ export function createDbAdmissionRouteService(
     async listReferrals(organizationId, query, actorUserId, scope) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const limit = clampLimit(query.limit);
-        const offset = parseOffset(query.cursor);
+        const offset = decodeOffsetCursor(organizationId, query.cursor);
         const filters: SQL[] = [];
         // GAP-182 — mirror `referral.scope`: no location (org-level) OR one of the caller's locations.
         if (scope) {
@@ -2084,7 +2083,8 @@ export function createDbAdmissionRouteService(
         );
         return {
           items,
-          nextCursor: rows.length > limit ? String(offset + limit) : null,
+          nextCursor:
+            rows.length > limit ? encodeOffsetCursor(organizationId, offset + limit) : null,
         };
       });
     },
@@ -2120,7 +2120,7 @@ export function createDbAdmissionRouteService(
     // ── Admission reads ──────────────────────────────────────────────────────────────────────────
     async listAdmissions(organizationId, query, scope) {
       const limit = clampLimit(query.limit);
-      const offset = parseOffset(query.cursor);
+      const offset = decodeOffsetCursor(organizationId, query.cursor);
       // GAP-020 — narrow to the caller's caseload in SQL; an empty caseload reads nothing (no query).
       const scopedIds = scope?.patientIds ?? null;
       if (scopedIds !== null && scopedIds.length === 0) return { items: [], nextCursor: null };
@@ -2203,7 +2203,8 @@ export function createDbAdmissionRouteService(
           holdAt: r.holdAt ? r.holdAt.toISOString() : null,
           releasedAt: r.releasedAt ? r.releasedAt.toISOString() : null,
         }));
-        const nextCursor = rows.length > limit ? String(offset + limit) : null;
+        const nextCursor =
+          rows.length > limit ? encodeOffsetCursor(organizationId, offset + limit) : null;
         return { items, nextCursor };
       });
     },
@@ -2791,7 +2792,7 @@ export function createDbAdmissionRouteService(
       // FY2027 — its own read (not `pageByStatus`) so each row says what the window is and when it is due:
       // the dashboard could not tell an election-addendum window from any other kind.
       const limit = clampLimit(query.limit);
-      const offset = parseOffset(query.cursor);
+      const offset = decodeOffsetCursor(organizationId, query.cursor);
       // Mirror `compliance.scope`: narrow to the caller's caseload in SQL (a window has no patient of its
       // own — it is the admission's); an empty caseload reads nothing (no query).
       const scopedIds = scope?.patientIds ?? null;
@@ -2810,7 +2811,8 @@ export function createDbAdmissionRouteService(
           .offset(offset);
         return {
           items: rows.slice(0, limit).map(toComplianceWindowRow),
-          nextCursor: rows.length > limit ? String(offset + limit) : null,
+          nextCursor:
+            rows.length > limit ? encodeOffsetCursor(organizationId, offset + limit) : null,
         };
       });
     },

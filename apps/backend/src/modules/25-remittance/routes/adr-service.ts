@@ -8,6 +8,7 @@
 // submission that milestone 2b adds. There are no outbox events yet (nothing consumes them); the adr_case
 // write-audit trigger and the adr_case_event history are the trail.
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, lte, sql } from "drizzle-orm";
@@ -29,7 +30,6 @@ import {
   buildAdrPacketOps,
   loadAdrPacketView,
 } from "./adr-packet-service";
-import { VersionConflictError } from "./concurrency";
 import { type ClaimFactsPort, m23ClaimFactsPort } from "./remittance-ports";
 import { providerEntityScopeCondition } from "./scope";
 
@@ -327,7 +327,7 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
           .set({ state: to, version: cur.version + 1, ...reviewBookkeeping })
           .where(and(eq(ADR.id, id), eq(ADR.version, ifMatch)))
           .returning({ id: ADR.id, version: ADR.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         await tx.insert(EV).values({
           organizationId: actor.organizationId,
           adrCaseId: id,

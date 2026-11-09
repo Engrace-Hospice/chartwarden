@@ -19,10 +19,10 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
-import type { M24ReadActor } from "./routes/actor";
+import type { M24Actor } from "./routes/actor";
 import type { M24ReadService } from "./routes/read-service";
 
-const systemActor = (orgId: string): M24ReadActor => ({
+const systemActor = (orgId: string): M24Actor => ({
   organizationId: orgId,
   userId: "system",
   roles: [],

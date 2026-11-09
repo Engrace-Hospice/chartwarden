@@ -88,12 +88,12 @@ describe("GAP-043 updateDecision — only an open decision is editable", () => {
     expect(second.version).toBe(2);
   });
 
-  it("refuses a stale If-Match version with 412 STALE_VERSION and leaves the row untouched", async () => {
+  it("refuses a stale If-Match version with 409 STALE_VERSION and leaves the row untouched", async () => {
     const { svc, openId } = await world();
     await svc.updateDecision(ORG, COORD, openId, EDITED, 0); // a concurrent editor wins first
     await expect(
       svc.updateDecision(ORG, COORD, openId, { kind: "team_note", noteText: "lost update" }, 0),
-    ).rejects.toMatchObject({ statusCode: 412, code: "STALE_VERSION" });
+    ).rejects.toMatchObject({ statusCode: 409, code: "STALE_VERSION" });
     const row = (await svc.listDecisions(ORG, MTG_1)).find((d) => d.id === openId);
     expect(row!.decisionKind).toBe("order_request");
   });

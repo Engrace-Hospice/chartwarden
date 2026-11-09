@@ -1,5 +1,5 @@
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
-// Live meeting — per-discipline notes: render per discipline, create, edit (If-Match), 412, Part 2, not-live, poll safety.
+// Live meeting — per-discipline notes: render per discipline, create, edit (If-Match), 409 stale, Part 2, not-live, poll safety.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -375,9 +375,9 @@ describe("Discipline notes", () => {
     expect(within(p).queryByRole("button", { name: "Edit" })).toBeNull();
   });
 
-  it("on 412 keeps the draft, reloads, and explains", async () => {
+  it("on a 409 STALE_VERSION keeps the draft, reloads, and explains", async () => {
     notes = [note({ id: "n-2", discipline: "msw", bodyText: "Old text", version: 1 })];
-    patchStatus = 412;
+    patchStatus = 409;
     mount();
     const p = await panel();
     fireEvent.click(await within(p).findByRole("button", { name: "Edit" }));

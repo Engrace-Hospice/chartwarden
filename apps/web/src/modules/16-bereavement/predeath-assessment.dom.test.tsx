@@ -233,9 +233,9 @@ describe("pre-death assessment draft", () => {
     expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull();
   });
 
-  it("a stale save (412) says the draft changed, and loads the colleague's version", async () => {
+  it("a stale save (409 STALE_VERSION) says the draft changed, and loads the colleague's version", async () => {
     const { gets } = mount({
-      put: { status: 412, body: { error: { code: "STALE_VERSION", message: "stale" } } },
+      put: { status: 409, body: { error: { code: "STALE_VERSION", message: "stale" } } },
       getAfterWrite: {
         status: 200,
         body: draft({ version: 4, factors: { ...draft().factors, financial_strain: false } }),

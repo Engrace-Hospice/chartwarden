@@ -1,3 +1,4 @@
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 // apps/backend/src/modules/16-bereavement/outbox-consumers/m6-bereavement-eligible.ts — the §4.3.1
 // bereavement intake, and the ONLY path by which a `bereavement_plan` row has ever been able to exist
 // (F-105 / #103).
@@ -47,7 +48,7 @@
 // directives), M6's rule already evaluated the flag one transaction earlier, and §2.6 gives the flip a
 // complete post-hoc path. Refusing to open a plan because a fact was unreadable would deny a grieving
 // family a regulatory service to defend against a race the cascade already handles.
-import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { AdmissionId, IsoInstant, PatientId } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
@@ -66,9 +67,6 @@ import {
 } from "./physician-letter-intake";
 
 const PLAN = schema.bereavementPlan;
-
-/** §3.3 — a consumer-driven write names no acting membership. */
-const CONSUMER_USER_ID = "";
 
 /** The event M16 opens plans from, and the `(eventId, consumerName)` receipt identity. */
 export const M16_BEREAVEMENT_ELIGIBLE_CONSUMER = {

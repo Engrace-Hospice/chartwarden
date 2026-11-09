@@ -25,7 +25,7 @@
 //      that is sitting on the shelf they can see. The one exception is the per-patient request list, which
 //      is addressed by patient id and does 404.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import type { PreHandler } from "./actor";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 
 type TargetRequest = {
   readonly params?: unknown;

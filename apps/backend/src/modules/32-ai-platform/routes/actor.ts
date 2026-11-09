@@ -20,20 +20,18 @@
 // and the read service applies it (read-service.ts's `maskInvocationForActor`). Extracting it once,
 // server-side, is what keeps "may see the patient" from becoming a query parameter.
 import { resolveActorPermissions } from "@chartwarden/auth";
-import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
-import type { FastifyReply, FastifyRequest } from "fastify";
+import {
+  type ContextCarrier,
+  actorOf as routeActorOf,
+  writeActorOf as routeWriteActorOf,
+} from "@chartwarden/shared/route-kit";
+import { ForbiddenError } from "@chartwarden/types";
+import type { FastifyRequest } from "fastify";
 
 import type { AiPlatformReadActor } from "./read-service";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 /** The M5-contributed permission key that unmasks PHI in the §164.528 disclosure ledger. */
 export const PHI_FULL_READ_GRANT = "phi.full_read";
-
-function str(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
 
 /**
  * Does this session hold the unmasking grant?
@@ -52,24 +50,18 @@ function str(value: unknown): string | null {
  * the same resolver `requirePermission` gates on. Fail-safe either way (absent ⇒ masked), which is
  * why nothing surfaced it — a permanently masked ledger and a correctly masked one look identical.
  */
-async function hasPhiFullRead(context: {
+async function hasPhiFullRead(actor: {
   organizationId: string;
   userId: string;
 }): Promise<boolean> {
-  return (await resolveActorPermissions(context)).has(PHI_FULL_READ_GRANT);
+  const { organizationId, userId } = actor;
+  return (await resolveActorPermissions({ organizationId, userId })).has(PHI_FULL_READ_GRANT);
 }
 
 /** Extract the org-scoped read actor from `request.context` (server-assembled), or 401. */
-export async function actorOf(request: FastifyRequest): Promise<AiPlatformReadActor> {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return {
-    organizationId: ctx.organizationId,
-    userId: ctx.userId,
-    membershipId: str(ctx.attributes?.membershipId),
-    roles: ctx.roles,
-    phiFullRead: await hasPhiFullRead({ organizationId: ctx.organizationId, userId: ctx.userId }),
-  };
+export async function actorOf(request: ContextCarrier): Promise<AiPlatformReadActor> {
+  const actor = routeActorOf(request);
+  return { ...actor, phiFullRead: await hasPhiFullRead(actor) };
 }
 
 /** The WRITE actor — the read actor with a guaranteed membership plus the step-up flag. */
@@ -90,18 +82,9 @@ export interface M32WriteActor extends AiPlatformReadActor {
  * AUTOMATED activations §3.2.12 allows with a NULL membership come from the §4.8 workers, which attribute
  * to an `automated_*` actor kind and never reach this file.
  */
-export async function writeActorOf(request: FastifyRequest): Promise<M32WriteActor> {
-  const actor = await actorOf(request);
-  if (actor.membershipId === null) {
-    throw new ForbiddenError(
-      "an M32 AI-platform mutation must be attributed to an active membership; this session carries none",
-    );
-  }
-  return {
-    ...actor,
-    membershipId: actor.membershipId,
-    stepUpRecent: request.context?.attributes?.stepUpRecent === true,
-  };
+export async function writeActorOf(request: ContextCarrier): Promise<M32WriteActor> {
+  const actor = routeWriteActorOf(request);
+  return { ...actor, phiFullRead: await hasPhiFullRead(actor) };
 }
 
 /**

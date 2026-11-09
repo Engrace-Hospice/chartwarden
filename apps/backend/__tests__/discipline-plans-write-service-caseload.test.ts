@@ -47,6 +47,7 @@ const actor = (userId: string, roles: readonly string[] = ["rn_case_manager"]): 
   membershipId: userId,
   roles,
   sessionClass: "staff",
+  actorKind: "user",
   locationIds: [],
   stepUpRecent: true,
 });

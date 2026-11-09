@@ -20,6 +20,7 @@
 // emitted the plan's `m31.*` event; M31 has no outbox publisher, and the request was simply dropped.)
 // `portal.administration.attest` and `portal.amendment.submit` additionally carry TOTP step-up (M2),
 // composed in `./mount`.
+import { requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { MedicationOrderProvider } from "@chartwarden/types";
 import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
@@ -30,7 +31,6 @@ import { planCaregiverAttestation } from "../write-paths/caregiver-attestation";
 import { PORTAL_UPLOAD_MAX_BYTES } from "../write-paths/document-upload";
 import { requirePortalWrite } from "../write-paths/errors";
 import { actorOf, portalAccountIdOf, portalPatientIdOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
 import {
   ABAC_ACCOUNT,
   ABAC_BEREAVED,

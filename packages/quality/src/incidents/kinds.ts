@@ -18,7 +18,7 @@ import type { IncidentKind, IncidentSeverity } from "../contracts";
  * corrective-action gate, the WF-11 sentinel rule) is a single rank comparison. Mirrors
  * `m30_incident_severity`. Exported because the lifecycle machine reuses it.
  */
-export const INCIDENT_SEVERITY_RANK: Readonly<Record<IncidentSeverity, number>> = {
+const INCIDENT_SEVERITY_RANK: Readonly<Record<IncidentSeverity, number>> = {
   minor: 0,
   moderate: 1,
   severe: 2,

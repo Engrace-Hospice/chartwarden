@@ -6,9 +6,9 @@ import {
   type ClearinghouseContext,
 } from "@chartwarden/x12-837-client";
 import { NOT_WIRED_TRANSPORT } from "@chartwarden/x12-837-client";
+import { clearinghouseUsageFromEnv } from "@chartwarden/x12-837-client";
 import { InMemoryClearinghouse } from "@chartwarden/x12-837-client/testing";
 import { describe, expect, it } from "vitest";
-import { clearinghouseUsageFromEnv } from "../src/modules/23-billing-medicare/jobs/clearinghouse-context";
 import {
   type M23TransportDeps,
   type TransportAck,
