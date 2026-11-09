@@ -103,6 +103,9 @@ describe("the route gate", () => {
 
   it("enforce: the 402 message and detail say why, not always that the add-on is missing", () => {
     const wording = [
+      ["clearinghouse_not_chosen", "has not chosen a clearinghouse"],
+      ["clearinghouse_outside", "bills outside ChartWarden"],
+      ["clearinghouse_not_active", "clearinghouse is set up but not active"],
       ["never_purchased", "has not purchased the claims-billing add-on"],
       ["lapsed", "claims-billing add-on has ended"],
       ["subscription_suspended", "subscription is suspended"],

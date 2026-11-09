@@ -143,6 +143,9 @@ export async function isClaimsBillingEntitled(
 
 /** Why new claims work is refused, in words that match the reason code (the envelope code stays the one 402). */
 const REFUSAL_WORDING: Record<ClaimsBillingDenyReason, string> = {
+  clearinghouse_not_chosen: "this organization has not chosen a clearinghouse for claims yet",
+  clearinghouse_outside: "this organization bills outside ChartWarden",
+  clearinghouse_not_active: "this organization's clearinghouse is set up but not active yet",
   never_purchased: "this organization has not purchased the claims-billing add-on",
   lapsed: "this organization's claims-billing add-on has ended",
   subscription_suspended: "this organization's subscription is suspended",
