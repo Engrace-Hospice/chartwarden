@@ -1045,7 +1045,8 @@ function interactiveInvocation(p: Parsed): boolean {
   const terminalInput = ins.some((path) => TERMINAL_INPUT.test(path));
   const explicitInput = !terminalInput && ins.length + docs.length > 0;
 
-  if (/^(chroot|nsenter)$/.test(prog)) return true;
+  if (/^(chroot|nsenter|unshare|setpriv|setarch|taskset|prlimit|systemd-run)$/.test(prog))
+    return true;
   if (prog === "rlwrap") return true;
   if (/^(docker-compose|podman-compose)$/.test(prog)) {
     if (args.some((a) => /^(?:attach|exec|run)$/.test(a))) return true;
