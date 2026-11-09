@@ -13,4 +13,4 @@ These remain separate from non-deploying development integration. Claim.MD contr
 
 ## Git delivery
 
-Final branch, commit, remote publication and worktree state will be recorded after the commit/push attempt. No force-push, `main` merge, deployment, shared migration, branch deletion or worker activation is part of this task.
+Delivered on `develop` in commit `d72ba893b2f35ca908ebc6c7e00a8d3d338a9c91` (`test(billing): close BIL-3 financial safety gaps`). The normal push to `origin/develop` succeeded, and `git ls-remote` confirmed the same SHA. The worktree was clean after publication. No force-push, `main` merge, deployment, shared migration, branch deletion or worker activation occurred.
