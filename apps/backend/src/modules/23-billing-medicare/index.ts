@@ -162,7 +162,6 @@ export {
   registerM23DomainWorkers,
   sweepLegacyValidationRunQueue,
   registerM23PortalHealthWorker,
-  registerM23Workers,
   registerM23LaunchWorkers,
   registerM23WatchCronWorkers,
   scheduleM23Jobs,
