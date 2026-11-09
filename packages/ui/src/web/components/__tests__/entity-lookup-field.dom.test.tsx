@@ -12,6 +12,7 @@
 // entities, admissions and the M40 directory, and roughly fourteen screens across M6, M15, M23 and
 // M24 render one. A single page's a11y scan is not the coverage this deserves.
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { EntityLookupField } from "../entity-lookup-field";
 
@@ -118,6 +119,73 @@ describe("EntityLookupField keyboard (default appearance)", () => {
     expect(onChange).toHaveBeenCalledWith(
       OPTIONS[0]?.id,
       expect.objectContaining({ id: OPTIONS[0]?.id }),
+    );
+  });
+});
+
+describe("EntityLookupField name and description", () => {
+  const renderWithMessages = () => {
+    const loadOptions = vi.fn(async () => ({ options: OPTIONS, nextCursor: null }));
+    render(
+      <EntityLookupField
+        label="Patient"
+        required
+        value={OPTIONS[0]?.id as string}
+        valueLabel="Whitfield, Eleanor"
+        onChange={vi.fn()}
+        loadOptions={loadOptions}
+        hint="Search by name"
+        error="Choose a patient"
+      />,
+    );
+  };
+  const describedText = (control: HTMLElement): string[] =>
+    (control.getAttribute("aria-describedby") ?? "")
+      .split(" ")
+      .filter(Boolean)
+      .map((id) => document.getElementById(id)?.textContent ?? "");
+
+  it("is named by its label alone, not by the error, the hint, the Clear button or the option text", async () => {
+    renderWithMessages();
+    await act(async () => {
+      fireEvent.focus(screen.getByRole("combobox"));
+    });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
+    // `getByRole(name)` matches the computed accessible name exactly, so any leaked text would fail to find it.
+    const input = screen.getByRole("combobox", { name: "Patient" });
+    expect(input.closest("label")).toBeNull();
+    expect(screen.getByText("Patient").closest("label")?.getAttribute("for")).toBe(input.id);
+  });
+
+  it("is described by the hint then the error, both outside the label", () => {
+    renderWithMessages();
+    const input = screen.getByRole("combobox", { name: "Patient" });
+    expect(describedText(input)).toEqual(["Search by name", "Choose a patient"]);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    for (const id of (input.getAttribute("aria-describedby") ?? "").split(" ")) {
+      expect(document.getElementById(id)?.closest("label")).toBeNull();
+    }
+  });
+
+  it("clicking the label focuses the combobox", async () => {
+    renderWithMessages();
+    const user = userEvent.setup();
+    await user.click(screen.getByText("Patient"));
+    expect(document.activeElement).toBe(screen.getByRole("combobox", { name: "Patient" }));
+  });
+
+  it("keeps the combobox wiring while open: aria-controls names the listbox and activedescendant names the active option", async () => {
+    renderWithMessages();
+    const input = screen.getByRole("combobox", { name: "Patient" });
+    fireEvent.focus(input);
+    await screen.findAllByRole("option");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    const listbox = screen.getByRole("listbox");
+    expect(input.getAttribute("aria-expanded")).toBe("true");
+    expect(input.getAttribute("aria-controls")).toBe(listbox.id);
+    expect(input.getAttribute("aria-activedescendant")).toBe(screen.getAllByRole("option")[0]?.id);
+    expect(listbox.getAttribute("aria-labelledby")).toBe(
+      document.querySelector("label")?.getAttribute("id"),
     );
   });
 });

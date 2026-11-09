@@ -3,6 +3,7 @@ import type { CSSProperties, JSX, KeyboardEvent, ReactNode } from "react";
 
 import { t } from "../theme/tokens";
 import { Button } from "./button";
+import { FieldFrame } from "./fields";
 import { LoadingSpinner } from "./loading-spinner";
 
 export interface EntityLookupOption {
@@ -68,11 +69,8 @@ export function EntityLookupField({
 }: EntityLookupFieldProps): JSX.Element {
   const generatedId = useId();
   const inputId = generatedId;
-  const hintId = `${inputId}-hint`;
-  const errorId = `${inputId}-error`;
   const listId = `${inputId}-list`;
   const labelId = `${inputId}-label`;
-  const describedBy = error ? errorId : hint ? hintId : undefined;
   const closeTimer = useRef<number | null>(null);
   // Newest-wins guard: a slow earlier response (or one that lands after unmount) never overwrites a later one.
   const requestSeq = useRef(0);
@@ -221,171 +219,157 @@ export function EntityLookupField({
     }
   }
 
+  // The label, hint and error sit outside the combobox (like the kit's other fields): the control is named by its label alone
+  // and described by the hint and error, not by the option text or the Clear button.
   return (
-    <label
-      htmlFor={inputId}
-      className="wx-field"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: t.space2,
-        color: t.onSurface,
-      }}
+    <FieldFrame
+      id={inputId}
+      labelId={labelId}
+      label={label}
+      hint={hint}
+      error={error}
+      required={required}
     >
-      <span id={labelId} style={{ fontSize: "0.8125rem", fontWeight: 650 }}>
-        {label}
-        {required ? <span aria-hidden="true"> *</span> : null}
-      </span>
-
-      <span style={shellStyle}>
-        <input
-          id={inputId}
-          type="search"
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={open}
-          aria-controls={open ? listId : undefined}
-          aria-activedescendant={
-            open && activeIndex >= 0 ? `${listId}-option-${activeIndex}` : undefined
-          }
-          aria-invalid={Boolean(error) || undefined}
-          aria-describedby={describedBy}
-          required={required}
-          disabled={disabled}
-          autoComplete="off"
-          value={display}
-          placeholder={placeholder}
-          onFocus={focus}
-          onBlur={blur}
-          onKeyDown={onInputKeyDown}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setActiveIndex(-1);
-            if (value) {
-              setSelectedLabel(null);
-              setSelectedValue(null);
-              onChange("", null);
+      {({ describedBy, invalid }) => (
+        <span style={shellStyle}>
+          <input
+            id={inputId}
+            type="search"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={open}
+            aria-controls={open ? listId : undefined}
+            aria-activedescendant={
+              open && activeIndex >= 0 ? `${listId}-option-${activeIndex}` : undefined
             }
-            if (!open) setOpen(true);
-          }}
-          style={inputStyle(Boolean(error), open, appearance)}
-        />
+            aria-invalid={invalid || undefined}
+            aria-describedby={describedBy}
+            required={required}
+            disabled={disabled}
+            autoComplete="off"
+            value={display}
+            placeholder={placeholder}
+            onFocus={focus}
+            onBlur={blur}
+            onKeyDown={onInputKeyDown}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setActiveIndex(-1);
+              if (value) {
+                setSelectedLabel(null);
+                setSelectedValue(null);
+                onChange("", null);
+              }
+              if (!open) setOpen(true);
+            }}
+            style={inputStyle(invalid, open, appearance)}
+          />
 
-        {clearable && value && !disabled ? (
-          <button
-            type="button"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={clear}
-            aria-label="Clear selection"
-            style={clearStyle(appearance)}
-          >
-            {appearance === "modal" ? "×" : "x"}
-          </button>
-        ) : null}
+          {clearable && value && !disabled ? (
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={clear}
+              aria-label="Clear selection"
+              style={clearStyle(appearance)}
+            >
+              {appearance === "modal" ? "×" : "x"}
+            </button>
+          ) : null}
 
-        {open ? (
-          // biome-ignore lint/a11y/useFocusableInteractive: focus stays in the combobox input; option buttons are intentionally removed from the tab order
-          <span
-            // biome-ignore lint/a11y/useSemanticElements: <select>/<option> cannot hold a search field's async, richly-formatted results (ARIA 1.2 combobox popup pattern)
-            id={listId}
-            role="listbox"
-            aria-labelledby={labelId}
-            style={popoverStyle(appearance)}
-          >
-            {loading ? (
-              <span style={stateStyle(appearance)}>
-                <LoadingSpinner />
-                {appearance === "modal" ? <span>Searching…</span> : null}
-              </span>
-            ) : loadError ? (
-              <span role="alert" style={{ ...stateStyle(appearance), color: t.error }}>
-                {loadError}
-              </span>
-            ) : options.length === 0 ? (
-              noMatchesContent ? (
-                <span style={stateStyle(appearance)}>{noMatchesContent}</span>
+          {open ? (
+            // biome-ignore lint/a11y/useFocusableInteractive: focus stays in the combobox input; option buttons are intentionally removed from the tab order
+            <span
+              // biome-ignore lint/a11y/useSemanticElements: <select>/<option> cannot hold a search field's async, richly-formatted results (ARIA 1.2 combobox popup pattern)
+              id={listId}
+              role="listbox"
+              aria-labelledby={labelId}
+              style={popoverStyle(appearance)}
+            >
+              {loading ? (
+                <span style={stateStyle(appearance)}>
+                  <LoadingSpinner />
+                  {appearance === "modal" ? <span>Searching…</span> : null}
+                </span>
+              ) : loadError ? (
+                <span role="alert" style={{ ...stateStyle(appearance), color: t.error }}>
+                  {loadError}
+                </span>
+              ) : options.length === 0 ? (
+                noMatchesContent ? (
+                  <span style={stateStyle(appearance)}>{noMatchesContent}</span>
+                ) : (
+                  <span style={stateStyle(appearance)}>No matches</span>
+                )
               ) : (
-                <span style={stateStyle(appearance)}>No matches</span>
-              )
-            ) : (
-              options.map((option, index) => {
-                const selected = option.id === value;
-                const active = index === activeIndex || option.id === hoveredId;
-                return (
-                  <button
-                    id={`${listId}-option-${index}`}
-                    key={option.id}
-                    // biome-ignore lint/a11y/useSemanticElements: an <option> element cannot carry the description markup or the click behaviour these rows have
-                    type="button"
-                    role="option"
-                    tabIndex={-1}
-                    aria-selected={selected}
-                    onMouseEnter={() => {
-                      if (appearance === "modal") {
-                        setHoveredId(option.id);
-                        setActiveIndex(index);
-                      }
-                    }}
-                    onMouseLeave={() => {
-                      if (appearance === "modal") setHoveredId(null);
-                    }}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => select(option)}
-                    style={optionStyle(appearance, selected, active)}
-                  >
-                    <span style={optionTopLine}>
-                      <span style={{ fontWeight: 650, color: t.onSurface }}>{option.label}</span>
-                      {selected ? (
-                        <span aria-hidden="true" style={selectedMarkStyle}>
-                          ✓
+                options.map((option, index) => {
+                  const selected = option.id === value;
+                  const active = index === activeIndex || option.id === hoveredId;
+                  return (
+                    <button
+                      id={`${listId}-option-${index}`}
+                      key={option.id}
+                      // biome-ignore lint/a11y/useSemanticElements: an <option> element cannot carry the description markup or the click behaviour these rows have
+                      type="button"
+                      role="option"
+                      tabIndex={-1}
+                      aria-selected={selected}
+                      onMouseEnter={() => {
+                        if (appearance === "modal") {
+                          setHoveredId(option.id);
+                          setActiveIndex(index);
+                        }
+                      }}
+                      onMouseLeave={() => {
+                        if (appearance === "modal") setHoveredId(null);
+                      }}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => select(option)}
+                      style={optionStyle(appearance, selected, active)}
+                    >
+                      <span style={optionTopLine}>
+                        <span style={{ fontWeight: 650, color: t.onSurface }}>{option.label}</span>
+                        {selected ? (
+                          <span aria-hidden="true" style={selectedMarkStyle}>
+                            ✓
+                          </span>
+                        ) : null}
+                      </span>
+                      {option.description ? (
+                        <span
+                          style={{
+                            color: t.onSurfaceVariant,
+                            fontSize: "0.75rem",
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {option.description}
                         </span>
                       ) : null}
-                    </span>
-                    {option.description ? (
-                      <span
-                        style={{
-                          color: t.onSurfaceVariant,
-                          fontSize: "0.75rem",
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {option.description}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })
-            )}
+                    </button>
+                  );
+                })
+              )}
 
-            {nextCursor ? (
-              <span style={{ padding: t.space2 }}>
-                <Button
-                  type="button"
-                  size="sm"
-                  tone="secondary"
-                  loading={loadingMore}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => void load(nextCursor, true)}
-                >
-                  Load more
-                </Button>
-              </span>
-            ) : null}
-          </span>
-        ) : null}
-      </span>
-
-      {hint && !error ? (
-        <span id={hintId} style={{ color: t.onSurfaceVariant, fontSize: "0.75rem" }}>
-          {hint}
+              {nextCursor ? (
+                <span style={{ padding: t.space2 }}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    tone="secondary"
+                    loading={loadingMore}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => void load(nextCursor, true)}
+                  >
+                    Load more
+                  </Button>
+                </span>
+              ) : null}
+            </span>
+          ) : null}
         </span>
-      ) : null}
-      {error ? (
-        <span id={errorId} role="alert" style={{ color: t.error, fontSize: "0.75rem" }}>
-          {error}
-        </span>
-      ) : null}
-    </label>
+      )}
+    </FieldFrame>
   );
 }
 

@@ -3,6 +3,7 @@
 // the error are tied to the control with aria-describedby, so they must not also sit inside the <label> (where they would be
 // read as part of the name AND again as the description).
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { SelectField, TextAreaField, TextField } from "./fields";
 
@@ -34,19 +35,45 @@ describe("field label, hint and error", () => {
     expect(error?.closest("label")).toBeNull();
   });
 
-  it("an error replaces the hint, in the description as on screen", () => {
-    render(<TextAreaField label="Notes" hint="Plain text" error="Too long" />);
+  it("an error shows alongside the hint: both are on screen and in the description, hint first", () => {
+    render(
+      <TextAreaField label="Notes" hint="Do not include patient information." error="Too long" />,
+    );
     const control = screen.getByRole("textbox", { name: "Notes" });
-    expect(describedBy(control).map((el) => el.textContent)).toEqual(["Too long"]);
-    expect(screen.queryByText("Plain text")).toBeNull();
+    expect(describedBy(control).map((el) => el.textContent)).toEqual([
+      "Do not include patient information.",
+      "Too long",
+    ]);
+    expect(screen.getByText("Do not include patient information.")).toBeTruthy();
   });
 
-  it("keeps the label bound to the control: clicking it focuses the control, and the required asterisk is not in the name", () => {
+  it("keeps a caller-supplied aria-describedby after the kit's own ids instead of overwriting it", () => {
+    render(
+      <>
+        <p id="extra-note">Extra note</p>
+        <TextField label="Email" hint="Hint" error="Error" aria-describedby="extra-note" />
+        <SelectField
+          label="Kind"
+          aria-describedby="extra-note"
+          options={[{ value: "a", label: "A" }]}
+        />
+      </>,
+    );
+    const email = screen.getByRole("textbox", { name: "Email" });
+    expect(describedBy(email).map((el) => el.textContent)).toEqual(["Hint", "Error", "Extra note"]);
+    const kind = screen.getByRole("combobox", { name: "Kind" });
+    expect(describedBy(kind).map((el) => el.textContent)).toEqual(["Extra note"]);
+  });
+
+  it("keeps the label bound to the control: clicking it focuses the control, and the required asterisk is not in the name", async () => {
     render(<SelectField label="Kind" required options={[{ value: "a", label: "A" }]} />);
     const control = screen.getByRole("combobox", { name: "Kind" });
     const label = document.querySelector("label") as HTMLLabelElement;
     expect(label.htmlFor).toBe(control.id);
     expect(label.textContent).toContain("*");
+    expect(document.activeElement).not.toBe(control);
+    await userEvent.setup().click(label);
+    expect(document.activeElement).toBe(control);
   });
 
   it("lays the label, control, hint and error out as one column under a .wx-field root", () => {
