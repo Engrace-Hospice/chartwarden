@@ -889,13 +889,18 @@ async function generateClaim837i(
   organizationId: string,
   claim: Parameters<typeof claimDocumentFor>[0] & { readonly providerEntityId: string },
   claimControlNumber: string,
+  /**
+   * The org's transport, resolved by the CALLER (see {@link transportForOrg}): resolving it here, inside the caller's open
+   * transaction, took a second pooled connection while that transaction held one, which can starve the pool when every
+   * submit worker is mid-job.
+   */
+  transport: M23TransportDeps | null,
 ): Promise<{
   readonly x12: string;
   readonly stediJson?: StediClaimJson;
   readonly correlationId: string;
   readonly sourceFingerprint: string | null;
 }> {
-  const transport = await transportForOrg(deps, organizationId);
   if (!transport) {
     const legacyContext = deps.transport?.contexts;
     const legacyAttempts = deps.transport?.attempts;
@@ -993,7 +998,9 @@ export async function runClaimSubmitWithinLegacyTransaction(
     throw new Error("claim submission reservation does not match the worker job");
   }
   // Tenant clearinghouses: the vendor is the ORG's own (per-organization binding), never the platform's.
-  const claimMd = (await transportForOrg(deps, job.organizationId))?.binding.vendor === "claimmd";
+  // (This deprecated processor is handed an already-open transaction, so it cannot resolve before it; it resolves once.)
+  const orgTransport = await transportForOrg(deps, job.organizationId);
+  const claimMd = orgTransport?.binding.vendor === "claimmd";
   if (claimMd &&
     (!job.reviewedSourceFingerprint || job.reviewedSourceFingerprint !== reservedSubmission.reviewedSourceFingerprint)) {
     await submissions.terminalize(job.submissionId, {
@@ -1051,6 +1058,7 @@ export async function runClaimSubmitWithinLegacyTransaction(
       job.organizationId,
       claim,
       job.claimControlNumber,
+      orgTransport,
     );
     if (reviewedClaimSourceIsStale(
       reservedSubmission.reviewedSourceFingerprint,
@@ -1310,12 +1318,21 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
     if (filedAs !== null) {
       uploaded = { accepted: true, generatedFileUri: filedAs };
     } else {
-      generated = await generateClaim837i(tx, deps, job.organizationId, claim, claimControlNumber);
-      if (reviewedClaimSourceIsStale(
-        priorSubmission.reviewedSourceFingerprint,
-        generated.sourceFingerprint,
-        transport?.binding.vendor === "claimmd",
-      )) {
+      generated = await generateClaim837i(
+        tx,
+        deps,
+        job.organizationId,
+        claim,
+        claimControlNumber,
+        transport,
+      );
+      if (
+        reviewedClaimSourceIsStale(
+          priorSubmission.reviewedSourceFingerprint,
+          generated.sourceFingerprint,
+          transport?.binding.vendor === "claimmd",
+        )
+      ) {
         await submissions.append({
           organizationId: job.organizationId,
           providerEntityId: claim.providerEntityId,
@@ -1454,7 +1471,14 @@ export async function runClaimSubmit(
     }
     let generated: Awaited<ReturnType<typeof generateClaim837i>>;
     try {
-      generated = await generateClaim837i(tx as unknown as BillingDb, deps, job.organizationId, claim, job.claimControlNumber);
+      generated = await generateClaim837i(
+        tx as unknown as BillingDb,
+        deps,
+        job.organizationId,
+        claim,
+        job.claimControlNumber,
+        orgTransport,
+      );
     } catch {
       await submissions.terminalize(job.submissionId, {
         outcome: "failed_worker", outcomeReason: "CLAIM_PREPARATION_FAILED",
